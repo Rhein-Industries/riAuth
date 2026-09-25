@@ -24,7 +24,7 @@ base64 = "0.22"
 clap = { version = "4.6", features = ["derive", "env"] }
 jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 pem = "4"
-rand = "0.10.2"
+rand = "0.10.3"
 redb = "3.1"
 reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls", "blocking", "stream"] }
 rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
