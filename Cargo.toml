@@ -73,7 +73,7 @@ webauthn-authenticator-rs = { version = "=0.5.5", features = ["softpasskey"] }
 tempfile = "3"
 http-body-util = "0.1"
 axum = { version = "0.8.9", features = ["ws"] }
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 
 [profile.release]
 lto = "thin"
