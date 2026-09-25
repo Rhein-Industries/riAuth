@@ -1,6 +1,6 @@
 # v0.1 release scope and limitations
 
-riAuth v0.1.0 is an early release for evaluation and controlled pilots. It is not OpenID certified, and compatibility with a particular application, identity provider, directory, browser, or network device requires testing in that environment. The [testing guide](testing.md) lists the checks to record before a cutover.
+riAuth v0.1.1 is an early release for evaluation and controlled pilots. It is not OpenID certified, and compatibility with a particular application, identity provider, directory, browser, or network device requires testing in that environment. The [testing guide](testing.md) lists the checks to record before a cutover.
 
 | Area | Current boundary |
 | --- | --- |

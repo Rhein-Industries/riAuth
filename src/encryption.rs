@@ -5,7 +5,7 @@ use crate::{
 };
 use aws_lc_rs::rsa::{OAEP_SHA256_MGF1SHA256, OaepPublicEncryptingKey, PublicEncryptingKey};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::{RngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -62,7 +62,7 @@ impl EncryptionKey {
                 64
             }
         ]);
-        OsRng.fill_bytes(&mut cek);
+        SysRng.try_fill_bytes(&mut cek).map_err(Error::internal)?;
         let protected = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"alg":"RSA-OAEP-256","enc":self.content_encryption,"cty":"JWT","kid":self.kid})).map_err(Error::internal)?);
         let mut wrapped = vec![0; key.ciphertext_size()];
         let wrapped = key

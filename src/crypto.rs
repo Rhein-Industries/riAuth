@@ -1,5 +1,8 @@
 use crate::error::{Error, Result};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
+use argon2::{
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
+    password_hash::{Salt, SaltString},
+};
 use aws_lc_rs::{
     encoding::{AsDer, Pkcs8V1Der},
     rsa::{KeyPair as RsaKeyPair, KeySize, PublicKeyComponents},
@@ -7,7 +10,7 @@ use aws_lc_rs::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
-use rand::{Rng, RngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -54,7 +57,9 @@ pub fn id() -> String {
 }
 pub fn random_token(prefix: &str) -> String {
     let mut bytes = [0; 32];
-    OsRng.fill_bytes(&mut bytes);
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .expect("system random source unavailable");
     format!("{prefix}{}", URL_SAFE_NO_PAD.encode(bytes))
 }
 pub fn digest(value: &str) -> String {
@@ -68,7 +73,7 @@ pub fn seal(key: &[u8; 32], context: &[u8], plaintext: &[u8]) -> Result<Vec<u8>>
     use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
     let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key).map_err(Error::internal)?);
     let mut nonce = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce);
+    SysRng.try_fill_bytes(&mut nonce).map_err(Error::internal)?;
     let mut body = plaintext.to_vec();
     key.seal_in_place_append_tag(
         Nonce::assume_unique_for_key(nonce),
@@ -120,12 +125,18 @@ pub fn read_key(path: &std::path::Path) -> Result<zeroize::Zeroizing<[u8; 32]>> 
             .map_err(|_| Error::bad("Encryption key must contain 32 random bytes"))?,
     ))
 }
+fn password_salt() -> Result<SaltString> {
+    let mut bytes = [0u8; Salt::RECOMMENDED_LENGTH];
+    SysRng.try_fill_bytes(&mut bytes).map_err(Error::internal)?;
+    SaltString::encode_b64(&bytes).map_err(Error::internal)
+}
 pub fn password_hash(password: &str) -> Result<String> {
     if password.len() < 12 || password.len() > 1024 {
         return Err(Error::bad("Passwords must be between 12 and 1024 bytes"));
     }
+    let salt = password_salt()?;
     Argon2::default()
-        .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+        .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(Error::internal)
 }
@@ -222,15 +233,16 @@ pub fn upgrade_password_hash(password: &str, old: &str) -> Result<Option<String>
         return Ok(None);
     }
     // Preserve legacy passwords on first login, including lengths below the new-password policy.
+    let salt = password_salt()?;
     Argon2::default()
-        .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+        .hash_password(password.as_bytes(), &salt)
         .map(|hash| Some(hash.to_string()))
         .map_err(Error::internal)
 }
 pub fn user_code() -> String {
     const ALPHABET: &[u8] = b"BCDFGHJKLMNPQRSTVWXYZ23456789";
     let raw: String = (0..10)
-        .map(|_| ALPHABET[OsRng.gen_range(0..ALPHABET.len())] as char)
+        .map(|_| ALPHABET[rand::random_range(0..ALPHABET.len())] as char)
         .collect();
     format!("{}-{}", &raw[..5], &raw[5..])
 }
@@ -274,7 +286,9 @@ pub fn totp_with(
 }
 pub fn totp_secret() -> String {
     let mut bytes = vec![0; 20];
-    OsRng.fill_bytes(&mut bytes);
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .expect("system random source unavailable");
     Secret::Raw(bytes).to_encoded().to_string()
 }
 pub fn totp_step(

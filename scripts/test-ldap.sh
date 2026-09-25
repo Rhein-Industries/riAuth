@@ -20,7 +20,11 @@ if [[ "$(uname)" = Darwin ]]; then
   riauth_backend=mdb
   riauth_modules=""
 else
-  riauth_slapd="${SLAPD:-/usr/sbin/slapd}"
+  # Ubuntu confines /usr/sbin/slapd to system paths with AppArmor. Run a
+  # private copy so this disposable fixture can keep all files under /tmp.
+  cp "${SLAPD:-/usr/sbin/slapd}" "$riauth_ldap_root/slapd"
+  chmod 700 "$riauth_ldap_root/slapd"
+  riauth_slapd="$riauth_ldap_root/slapd"
   riauth_schema=/etc/ldap/schema
   riauth_backend=mdb
   riauth_modules=$'modulepath /usr/lib/ldap\nmoduleload back_mdb'

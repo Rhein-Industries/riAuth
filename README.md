@@ -6,7 +6,7 @@
 
 riAuth brings sign-in, single sign-on, application access, and identity administration into one self-hosted service. People get a familiar place to find their apps and sign in. Administrators get standards-based connections, clear access policies, and a way to preview desired-state changes before applying them.
 
-**v0.1.0 · [MIT licensed](LICENSE)**
+**v0.1.1 · [MIT licensed](LICENSE)**
 
 ## What you can do with riAuth
 
