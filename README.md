@@ -60,7 +60,7 @@ The output file holds the client secret; `deployment-private/` is excluded from 
 - **Create a polished app experience:** Configure the [application portal](docs/PORTAL.md), [passkeys](docs/passkeys.md), and [account lifecycle](docs/lifecycle.md).
 - **Connect your environment:** Follow the [SAML](docs/saml.md), [directory and provisioning](docs/README.md#interfaces-and-identity), or [proxy sign-in](docs/proxy.md) guides.
 - **Automate administration:** Use [scoped agents and reviewed plans](docs/agent.md) or the [HTTP API](docs/api.md).
-- **Bring over existing identities:** Follow the [import and migration guide](docs/migration.md) for a staged cutover.
+- **Import from Authentik:** Follow the [migration guide](docs/migration.md) for a reviewed, staged cutover.
 - **Prepare a reachable deployment:** Set an HTTPS issuer and use the [operations guide](docs/operations.md) for keys, backups, monitoring, and recovery. The [release notes](docs/release-notes.md) describe this version.
 
 ## Contribute
