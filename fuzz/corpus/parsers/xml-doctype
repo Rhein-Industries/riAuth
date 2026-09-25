@@ -1,0 +1,1 @@
+<!DOCTYPE saml [<!ENTITY x SYSTEM "file:///dev/null">]><Response>&x;</Response>

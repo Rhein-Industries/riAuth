@@ -1,0 +1,8 @@
+id.example.com {
+    reverse_proxy 127.0.0.1:9000 {
+        health_uri /readyz
+        health_interval 10s
+        health_timeout 3s
+        header_up X-Forwarded-For {remote_host}
+    }
+}

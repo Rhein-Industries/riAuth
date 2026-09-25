@@ -1,0 +1,27 @@
+[Unit]
+Description=riAuth identity service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riauth
+Group=riauth
+WorkingDirectory=/var/lib/riauth
+ExecStart=/usr/local/bin/riauth --config /var/lib/riauth/riauth.toml serve
+Restart=on-failure
+RestartSec=3
+StateDirectory=riauth
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/riauth
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

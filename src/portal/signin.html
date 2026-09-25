@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Sign in · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/signin.js" defer></script>
+  <noscript><meta http-equiv="refresh" content="5"></noscript>
+</head>
+<body>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+</defs></svg>
+<main class="standalone">
+  <div class="auth-panel signin-shell">
+    <div class="signin-brand"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true"><p class="eyebrow">RIAUTH</p></div>
+    <section id="signin-loading" aria-labelledby="loading-title">
+      <h1 id="loading-title" tabindex="-1">Checking your sign-in…</h1>
+      <p><span class="spinner" aria-hidden="true"></span></p>
+    </section>
+    <section id="signin-authenticate" aria-labelledby="signin-title" hidden>
+      <h1 id="signin-title" tabindex="-1"></h1>
+      <p id="signin-reason" hidden></p>
+      <p id="signin-app-host" class="field-hint" hidden></p>
+      <div id="signin-account" class="account-line" hidden><span id="signin-account-text"></span><button class="text-button" id="signin-switch" type="button">Use another account</button></div>
+      <div id="signin-requirement" class="notice" hidden><span><span id="signin-requirement-text"></span> <a href="__BASE__apps">Open your applications portal</a> to add one.</span></div>
+      <div id="signin-error" class="form-error" role="alert" tabindex="-1" hidden></div>
+      <button class="button primary" id="signin-passkey" type="button" hidden>Sign in with a passkey</button>
+      <p class="divider" id="signin-divider" hidden><span>or</span></p>
+      <form id="signin-form" novalidate>
+        <div class="field"><label for="signin-username">Username</label><input id="signin-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
+        <div class="field"><label for="signin-password">Password</label><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div>
+        <div class="field"><label for="signin-otp">Authenticator or recovery code (if enabled)</label><input id="signin-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="signin-otp-hint"><p class="field-hint" id="signin-otp-hint">Leave empty if your account has no authenticator app.</p></div>
+        <button class="button primary" id="signin-submit" type="submit">Sign in</button>
+      </form>
+      <details id="signin-terminal" class="terminal">
+        <summary>Use your terminal instead</summary>
+        <p class="terminal-help">Sign in with <code>riauth login</code> on this server, then run the command below. Approve only if your terminal shows this code: <strong id="signin-code"></strong></p>
+        <div class="command-box"><code id="signin-command"></code><button class="icon-button" id="signin-copy" type="button" aria-label="Copy command" title="Copy command"><svg class="icon"><use href="#i-copy"/></svg></button></div>
+      </details>
+      <button class="text-button" id="signin-cancel" type="button"></button>
+    </section>
+    <section id="signin-consent" aria-labelledby="consent-title" hidden>
+      <h1 id="consent-title" tabindex="-1"></h1>
+      <div id="consent-account" class="account-line" hidden></div>
+      <p id="consent-intro" hidden></p>
+      <ul id="consent-scopes" class="consent-list" hidden></ul>
+      <p id="consent-resource" class="field-hint" hidden></p>
+      <p id="consent-host" class="field-hint" hidden></p>
+      <div id="consent-error" class="form-error" role="alert" tabindex="-1" hidden></div>
+      <label class="checkbox" id="consent-remember-label"><input type="checkbox" id="consent-remember" checked> Remember this decision for 30 days</label>
+      <p><button class="button primary" id="consent-allow" type="button">Allow</button> <button class="button secondary" id="consent-deny" type="button">Deny</button></p>
+    </section>
+    <section id="signin-logout" aria-labelledby="logout-title" hidden>
+      <h1 id="logout-title" tabindex="-1"></h1>
+      <p id="logout-text" hidden></p>
+      <div id="logout-account" class="account-line" hidden></div>
+      <div id="logout-error" class="form-error" role="alert" tabindex="-1" hidden></div>
+      <p><button class="button primary" id="logout-confirm" type="button">Sign out</button> <button class="button secondary" id="logout-stay" type="button">Stay signed in</button></p>
+    </section>
+    <section id="signin-message" aria-labelledby="message-title" hidden>
+      <h1 id="message-title" tabindex="-1"></h1>
+      <p id="message-text"></p>
+      <div id="message-error" class="form-error" role="alert" tabindex="-1" hidden></div>
+      <p><button class="button primary" id="message-action" type="button" hidden></button> <a class="button secondary" id="message-link" href="__BASE__apps" hidden>Your applications</a></p>
+    </section>
+    <p id="signin-expiry" class="field-hint" hidden></p>
+    <div id="signin-announcement" class="sr-only" role="status" aria-live="polite"></div>
+    <noscript><p>JavaScript is turned off. Approve this request from your terminal: <code>riauth __COMMAND__ __CODE__</code>. This page reloads automatically.</p></noscript>
+  </div>
+</main>
+</body>
+</html>

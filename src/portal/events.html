@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Event map · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/map.css">
+  <script src="__BASE__portal/assets/map.js" defer></script>
+</head>
+<body>
+<main class="standalone map-page">
+  <div class="auth-panel">
+    <p class="eyebrow">AUDIT</p>
+    <h1>Event map</h1>
+    <p class="map-note" id="privacy-note">Coordinates on this map are only values an operator already stored on an audit event or on a user attribute named location. This view does not read IP addresses and does not add tracking. Events without coordinates stay in the unknown count.</p>
+    <form id="map-filters" class="map-filters">
+      <label for="since">Since (unix seconds)<input id="since" name="since" inputmode="numeric" autocomplete="off"></label>
+      <label for="until">Until (unix seconds)<input id="until" name="until" inputmode="numeric" autocomplete="off"></label>
+      <label for="action-prefix">Action prefix<input id="action-prefix" name="action" maxlength="128" autocomplete="off" spellcheck="false"></label>
+      <button class="button primary" type="submit">Update map</button>
+    </form>
+    <p id="map-status" role="status">Loading stored events…</p>
+    <div class="map-frame">
+      <svg id="event-map" viewBox="0 0 360 180" role="img" aria-labelledby="event-map-title">
+        <title id="event-map-title">Schematic equirectangular grid</title>
+        <rect class="ocean" x="0" y="0" width="360" height="180"></rect>
+        <g id="graticule" class="graticule">
+          <line x1="0" y1="0" x2="0" y2="180"></line>
+          <line x1="30" y1="0" x2="30" y2="180"></line>
+          <line x1="60" y1="0" x2="60" y2="180"></line>
+          <line x1="90" y1="0" x2="90" y2="180"></line>
+          <line x1="120" y1="0" x2="120" y2="180"></line>
+          <line x1="150" y1="0" x2="150" y2="180"></line>
+          <line class="major" x1="180" y1="0" x2="180" y2="180"></line>
+          <line x1="210" y1="0" x2="210" y2="180"></line>
+          <line x1="240" y1="0" x2="240" y2="180"></line>
+          <line x1="270" y1="0" x2="270" y2="180"></line>
+          <line x1="300" y1="0" x2="300" y2="180"></line>
+          <line x1="330" y1="0" x2="330" y2="180"></line>
+          <line x1="360" y1="0" x2="360" y2="180"></line>
+          <line x1="0" y1="0" x2="360" y2="0"></line>
+          <line x1="0" y1="30" x2="360" y2="30"></line>
+          <line x1="0" y1="60" x2="360" y2="60"></line>
+          <line class="major" x1="0" y1="90" x2="360" y2="90"></line>
+          <line x1="0" y1="120" x2="360" y2="120"></line>
+          <line x1="0" y1="150" x2="360" y2="150"></line>
+          <line x1="0" y1="180" x2="360" y2="180"></line>
+        </g>
+        <g id="event-points"></g>
+        <rect class="frame" x="0.4" y="0.4" width="359.2" height="179.2"></rect>
+        <text class="axis" x="4" y="8">90 N</text>
+        <text class="axis" x="4" y="176">90 S</text>
+        <text class="axis" x="4" y="88">180</text>
+        <text class="axis" x="332" y="88">180</text>
+      </svg>
+    </div>
+    <p class="unknown-count">Unknown locations: <strong id="unknown-value">—</strong></p>
+    <ul id="point-list" aria-label="Aggregated areas"></ul>
+    <p class="map-note">Each dot is a 0.1 degree cell on this grid. No external map tiles are loaded.</p>
+    <a class="button secondary" href="__BASE__apps">Back to applications</a>
+    <noscript><p>JavaScript is required to load stored event counts. The grid itself is part of this page.</p></noscript>
+  </div>
+</main>
+</body>
+</html>

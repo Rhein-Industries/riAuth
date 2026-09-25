@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Your applications · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to applications</a>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+  <symbol id="i-app" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.7"/><rect x="14" y="3" width="7" height="7" rx="1.7"/><rect x="3" y="14" width="7" height="7" rx="1.7"/><rect x="14" y="14" width="7" height="7" rx="1.7"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1 6.2-5.6-3-5.6 3 1-6.2-4.5-4.4 6.3-.9Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 5h12M9 12h12M9 19h12M3 5h.1M3 12h.1M3 19h.1"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8.5 12 2.3 2.3 4.7-4.6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5v16h5M10 12h11m-4-4 4 4-4 4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-6v6h6M4 14a8 8 0 0 0 14 4l3-3m0 6v-6h-6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m7 7-5 5 5 5m10-10 5 5-5 5M14 4l-4 16"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 3v17h17M8 15l4-5 4 3 5-8"/></symbol>
+  <symbol id="i-files" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h5l3 4h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8h18"/></symbol>
+  <symbol id="i-messages" viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H7l-5 3 2-6a8 8 0 1 1 17-5Z"/><path d="M8 10h8M8 14h5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5C9 3 5 3 2 4v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1v15"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a5 5 0 1 1 0-10 7 7 0 0 1 13 2 4 4 0 0 1-1 8Z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 9 3 3-3 3m7 0h5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8 20 3m-3 3 3 3m-5-1 2 2"/></symbol>
+</defs></svg>
+<div class="shell">
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <a class="brand" href="__BASE__apps" aria-label="riAuth home"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true"><span>ri<span class="brand-light">Auth</span><small>YOUR ACCESS, SIMPLIFIED</small></span></a>
+    <div class="workspace-label"><span class="workspace-icon">W</span><div>My workspace<small>Application portal</small></div><svg class="icon"><use href="#i-lock"/></svg></div>
+    <p class="nav-label">WORKSPACE</p>
+    <nav>
+      <button class="nav-item active" id="nav-all" aria-current="page"><svg class="icon"><use href="#i-app"/></svg><span>All applications</span><span class="nav-count" id="all-count">—</span></button>
+      <button class="nav-item" id="nav-favorites"><svg class="icon"><use href="#i-star"/></svg><span>Favorites</span><span class="nav-count" id="favorite-count">—</span></button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="access-note"><span class="note-icon"><svg class="icon"><use href="#i-shield"/></svg></span><h2>One place. Your apps.</h2><p>Your applications follow your access, so everything you need stays together.</p></div>
+      <div class="account" id="account" role="group" hidden><span class="avatar" id="avatar"> </span><div class="account-text"><strong id="account-name"></strong><span id="account-username"></span></div><button class="icon-button" id="account-security" aria-label="Passkeys and security" title="Passkeys and security" aria-haspopup="dialog"><svg class="icon"><use href="#i-key"/></svg></button><button class="icon-button" id="sign-out" aria-label="Sign out" title="Sign out"><svg class="icon"><use href="#i-logout"/></svg></button></div>
+      <div class="signed-out-label" id="signed-out-label"><svg class="icon"><use href="#i-lock"/></svg> Your personal workspace</div>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div class="breadcrumb"><span>Workspace</span><svg class="icon"><use href="#i-chevron"/></svg><strong id="breadcrumb-current">Applications</strong></div><div class="topbar-actions"><span class="connection" id="connection"><span class="status-dot"></span><span id="connection-label">Connecting</span></span><button class="icon-button" id="refresh" aria-label="Refresh applications" title="Refresh applications"><svg class="icon"><use href="#i-refresh"/></svg></button></div></header>
+    <main id="main" tabindex="-1">
+      <div id="catalogue" hidden>
+        <section class="page-heading"><div><p class="eyebrow">YOUR WORKSPACE, CONNECTED</p><h1 id="page-title">Your applications<span class="heading-dot">.</span></h1><p class="page-description" id="welcome">Everything you need, one sign-in away.</p></div><div class="access-pill"><svg class="icon"><use href="#i-shield"/></svg><span id="access-count"></span></div></section>
+        <p id="mfa-notice" class="notice" role="status" hidden><span id="mfa-notice-text"></span> <button class="text-button" id="mfa-action" type="button"></button></p>
+        <div class="toolbar"><div class="search-field"><svg class="icon"><use href="#i-search"/></svg><label class="sr-only" for="search">Search applications</label><input type="search" id="search" placeholder="Search your applications…" autocomplete="off" maxlength="200"><kbd id="search-shortcut">/</kbd><button class="icon-button" id="clear-search" aria-label="Clear search" hidden><svg class="icon"><use href="#i-close"/></svg></button></div><div class="toolbar-options"><label class="sr-only" for="category">Filter by category</label><select id="category"><option value="">All categories</option></select><div class="view-switch" role="group" aria-label="Application view"><button class="icon-button selected" id="view-grid" aria-label="Grid view" aria-pressed="true" title="Grid view"><svg class="icon"><use href="#i-app"/></svg></button><button class="icon-button" id="view-list" aria-label="List view" aria-pressed="false" title="List view"><svg class="icon"><use href="#i-list"/></svg></button></div></div></div>
+        <div class="results-heading"><h2 id="collection-title">All applications <span id="result-count"></span></h2><span id="sort-label">A–Z</span></div>
+        <div class="app-grid" id="apps"></div>
+        <section class="empty-state" id="empty" hidden><span class="empty-icon"><svg class="icon" id="empty-svg"><use href="#i-search"/></svg></span><h2 id="empty-title"></h2><p id="empty-description"></p><button class="button secondary" id="reset-filters" hidden>Clear filters</button></section>
+        <footer class="catalogue-footer"><svg class="icon"><use href="#i-shield"/></svg><span>Showing applications available to your account.</span><span class="footer-detail">Access stays up to date</span></footer>
+      </div>
+      <section class="loading-state" id="loading" aria-label="Loading applications" aria-busy="true"><div class="skeleton skeleton-heading"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-toolbar"></div><div class="skeleton-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div><p>Getting your workspace ready…</p></section>
+      <section class="auth-layout" id="auth" hidden><div class="auth-panel"><span class="auth-emblem"><svg class="icon"><use href="#i-shield"/></svg></span><p class="eyebrow">WELCOME TO YOUR WORKSPACE</p><h1>Your apps.<br>One place to start.</h1><p class="auth-description" id="auth-description">Sign in to see the applications available to you. Your workspace is ready when you are.</p>
+        <p id="auth-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+        <button class="button primary" id="passkey-login" type="button" hidden>Sign in with a passkey</button>
+        <p class="divider" id="auth-divider" hidden><span>or</span></p>
+        <form id="password-form" novalidate>
+          <div class="field"><label for="login-username">Username</label><input id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
+          <div class="field"><label for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div>
+          <div class="field"><label for="login-otp">Authenticator or recovery code (if enabled)</label><input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="login-otp-hint"><p class="field-hint" id="login-otp-hint">Leave empty if your account has no authenticator app.</p></div>
+          <button class="button primary" id="password-login" type="submit">Sign in</button>
+        </form>
+        <button class="button secondary" id="start-login" type="button">Sign in with your terminal <svg class="icon"><use href="#i-arrow"/></svg></button><div id="login-request" hidden><div class="code-heading"><span>Your sign-in code</span><span id="code-time"></span></div><div class="user-code" id="user-code"></div><p class="terminal-help">Sign in with <code>riauth login</code> on this server, then run:</p><div class="command-box"><code id="login-command"></code><button class="icon-button" id="copy-command" aria-label="Copy sign-in command" title="Copy command"><svg class="icon"><use href="#i-copy"/></svg></button></div><p class="waiting"><span class="status-dot"></span>Waiting for your approval…</p><button class="text-button" id="cancel-login">Cancel sign-in</button></div><p class="auth-footnote"><svg class="icon"><use href="#i-lock"/></svg>Approval connects only this browser.</p></div><div class="auth-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="art-center"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt=""></div><span class="art-app art-one"><svg class="icon"><use href="#i-code"/></svg></span><span class="art-app art-two"><svg class="icon"><use href="#i-files"/></svg></span><span class="art-app art-three"><svg class="icon"><use href="#i-chart"/></svg></span><span class="art-app art-four"><svg class="icon"><use href="#i-cloud"/></svg></span><p>A little less searching.<br>A lot more doing.</p></div></section>
+      <section class="empty-state error-state" id="error" hidden><span class="empty-icon"><svg class="icon"><use href="#i-cloud"/></svg></span><h1>We couldn’t load your workspace</h1><p>Your applications will appear when we can check your access again.</p><button class="button primary" id="retry">Try again <svg class="icon"><use href="#i-refresh"/></svg></button></section>
+      <noscript><div class="auth-panel"><h1>JavaScript is needed for your applications</h1><p>Enable JavaScript and reload this page. You can continue using riAuth from your terminal.</p></div></noscript>
+    </main>
+  </div>
+</div>
+<dialog id="security-dialog" class="security" aria-labelledby="security-title">
+  <h2 id="security-title">Passkeys</h2>
+  <p class="field-hint">Sign in without a password. Adding or removing a passkey signs you out everywhere.</p>
+  <ul class="passkey-list" id="passkey-list"></ul>
+  <p class="field-hint" id="security-status" role="status"></p>
+  <div id="reauth-panel" hidden>
+    <p class="notice" id="reauth-hint"></p>
+    <p id="reauth-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+    <button class="button primary" id="reauth-passkey" type="button">Use your passkey</button>
+    <form id="reauth-form" novalidate>
+      <div class="field"><label for="reauth-password">Password</label><input id="reauth-password" type="password" autocomplete="current-password" maxlength="1024" required></div>
+      <div class="field"><label for="reauth-otp">Authenticator or recovery code (if enabled)</label><input id="reauth-otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128"></div>
+      <button class="button secondary" id="reauth-confirm" type="submit">Confirm</button>
+    </form>
+  </div>
+  <form id="passkey-form" novalidate>
+    <div class="field"><label for="passkey-name">Passkey name</label><input id="passkey-name" autocomplete="off" maxlength="200" required></div>
+    <button class="button primary" id="add-passkey" type="submit">Add a passkey</button>
+  </form>
+  <p class="field-hint">Authenticator apps and recovery codes are managed from your terminal: <code>riauth mfa enroll</code>, <code>riauth mfa recovery-codes --out FILE</code>.</p>
+  <button class="button secondary" id="security-close" type="button">Close</button>
+</dialog>
+<div class="toast" role="status" id="toast" hidden></div>
+<div class="sr-only" role="status" aria-live="polite" id="announcement"></div>
+</body>
+</html>

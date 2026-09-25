@@ -1,0 +1,35 @@
+# Dynamic configuration (file provider). Issuer at the root path; for a path-prefixed issuer add an
+# addPrefix middleware to the -outpost router and append the path to the forwardAuth address.
+# {{RIAUTH_URL}} must be riAuth's INTERNAL address (never routed back through Traefik).
+# Add `tls: {}` (or a certResolver) to both routers on HTTPS entrypoints. Requires single-app mode (no proxy.domain).
+http:
+  middlewares:
+    riauth-{{CLIENT_ID}}:
+      forwardAuth:
+        address: "{{RIAUTH_URL}}/outpost/{{CLIENT_ID}}/traefik"
+        trustForwardHeader: false
+        maxResponseBodySize: 65536
+        authRequestHeaders:
+          [Accept, Cookie, Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-WebSocket-Key]
+        authResponseHeaders:
+          [X-Authentik-Username, X-Authentik-Uid, X-Authentik-Name, X-Authentik-Email,
+           X-Authentik-Groups, X-Authentik-Entitlements, X-Auth-User, X-Auth-Sub, Cookie, Authorization]
+    riauth-{{CLIENT_ID}}-outpost-headers:
+      headers:
+        customRequestHeaders:
+          X-Original-URL: ""              # Drop client-supplied logout target.
+  routers:
+    {{CLIENT_ID}}:
+      rule: "Host(`{{APP_HOST}}`)"
+      entryPoints: ["{{ENTRYPOINT}}"]
+      middlewares: ["riauth-{{CLIENT_ID}}"]      # forwardAuth before any stripPrefix/replacePath
+      service: "{{CLIENT_ID}}-app"
+    {{CLIENT_ID}}-outpost:
+      rule: "Host(`{{APP_HOST}}`) && (Path(`/outpost/{{CLIENT_ID}}/start`) || Path(`/outpost/{{CLIENT_ID}}/callback`) || Path(`/outpost/{{CLIENT_ID}}/logout`))"
+      priority: 1000
+      entryPoints: ["{{ENTRYPOINT}}"]
+      middlewares: ["riauth-{{CLIENT_ID}}-outpost-headers"]
+      service: "{{CLIENT_ID}}-riauth"
+  services:
+    {{CLIENT_ID}}-app:    { loadBalancer: { servers: [ { url: "{{APP_UPSTREAM}}" } ] } }
+    {{CLIENT_ID}}-riauth: { loadBalancer: { servers: [ { url: "{{RIAUTH_URL}}" } ] } }

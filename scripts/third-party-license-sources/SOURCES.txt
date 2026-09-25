@@ -1,0 +1,9 @@
+License texts copied verbatim from the following primary sources for the exact dependency revisions:
+ribergshamra-LICENSE  https://raw.githubusercontent.com/Rhein-Industries/ribergshamra/33927f40a480d05284fa56749800b157540ee2d7/LICENSE
+webauthn-LICENSE.md  https://raw.githubusercontent.com/kanidm/webauthn-rs/d2c10d53ca5ef033d37ee6462e936e9eb72ad98c/LICENSE.md
+ldap3-LICENSE.md  https://raw.githubusercontent.com/kanidm/ldap3/a41de11d4331bb8977b7bc373aba78bd153674ea/LICENSE.md
+asn1-rs-LICENSE-MIT  https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-MIT
+asn1-rs-LICENSE-APACHE  https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE
+yasna-LICENSE-MIT  https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-MIT
+yasna-LICENSE-APACHE  https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-APACHE
+Apache-2.0.txt  https://www.apache.org/licenses/LICENSE-2.0.txt

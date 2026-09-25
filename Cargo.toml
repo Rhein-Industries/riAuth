@@ -1,0 +1,83 @@
+[package]
+name = "riauth"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Self-hosted identity provider with OIDC, SAML, directory services, and agent management"
+license = "MIT"
+repository = "https://github.com/Rhein-Industries/riAuth"
+homepage = "https://github.com/Rhein-Industries/riAuth"
+readme = "README.md"
+keywords = ["identity", "oidc", "saml", "sso"]
+
+[features]
+test-support = []
+fuzzing = []
+
+[dependencies]
+anyhow = "1"
+argon2 = "0.5.3"
+aws-lc-rs = "1.18.1"
+axum = { version = "0.8.9", features = ["form", "json", "query"] }
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+base64 = "0.22"
+clap = { version = "4.6", features = ["derive", "env"] }
+jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+pem = "3"
+rand = "0.8.5"
+redb = "3.1"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls", "blocking", "stream"] }
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1.2.1"
+serde_urlencoded = "0.7"
+sha2 = "0.10"
+subtle = "2.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
+toml = "0.8"
+totp-rs = { version = "5.7", features = ["otpauth"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2.5"
+uuid = { version = "1", features = ["v4", "serde"] }
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
+webauthn-authenticator-rs = { version = "=0.5.5", features = ["usb", "ui-cli"] }
+futures-util = { version = "0.3", features = ["sink"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-rustls = "0.26"
+ldap3_proto = { version = "0.8.1", features = ["serde"] }
+md-5 = "0.11"
+hmac = "0.13"
+risaml = { version = "0.6", default-features = false, features = ["crypto-aws-lc"] }
+roxmltree = "0.21"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
+x509-parser = "0.18"
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "aws-lc-rs"] }
+postgres = "0.19.14"
+tokio-postgres-rustls = "0.14.0"
+webpki-roots = "1"
+ldap3 = { version = "0.12.1", default-features = false, features = ["sync", "tls-rustls-aws-lc-rs"] }
+zeroize = "1.8"
+psl = "2.1.213"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+sha1 = "0.10"
+tower = { version = "0.5", features = ["util"] }
+
+[dev-dependencies]
+openssl = "0.10"
+webauthn-authenticator-rs = { version = "=0.5.5", features = ["softpasskey"] }
+tempfile = "3"
+http-body-util = "0.1"
+axum = { version = "0.8.9", features = ["ws"] }
+tokio-tungstenite = "0.29"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[lints.rust]
+unsafe_code = "forbid"

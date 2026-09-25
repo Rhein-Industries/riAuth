@@ -1,0 +1,6 @@
+# Retain exact malformed XML corpus bytes, including trailing whitespace.
+fuzz/corpus/parsers/xml-deep-unclosed -diff
+src/saml/fixtures/xml-deep-unclosed -diff
+# Preserve upstream license text and generated notices byte for byte.
+THIRD_PARTY_NOTICES.md whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+scripts/third-party-license-sources/** whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol

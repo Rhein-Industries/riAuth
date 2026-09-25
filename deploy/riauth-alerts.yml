@@ -1,0 +1,67 @@
+groups:
+  - name: riauth
+    rules:
+      - alert: RiAuthUnavailable
+        expr: up{job="riauth"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: riAuth metrics endpoint is unavailable
+          description: Check the service, TLS certificate, and metrics credential expiry.
+      - alert: RiAuthHighErrorRate
+        expr: rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_total[5m]), 0.01) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: More than 5 percent of riAuth requests fail with server errors
+          description: Inspect storage, signing dependencies and server logs. Authentication rejections have a separate counter.
+      - alert: RiAuthLatency
+        expr: histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: riAuth request latency exceeds one second at the 95th percentile
+      - alert: RiAuthRateLimits
+        expr: rate(riauth_rate_limited_total[5m]) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: riAuth is rejecting more than one request per second due to rate limits
+      - alert: RiAuthWorkerSaturation
+        expr: rate(riauth_worker_rejections_total[5m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: riAuth is rejecting requests because application workers are occupied
+      - alert: RiAuthSignerFailures
+        expr: increase(riauth_signing_errors_total[5m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: riAuth token signing is failing
+      - alert: RiAuthMaintenanceFailures
+        expr: increase(riauth_cleanup_errors_total[10m]) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: riAuth expired-record maintenance is failing
+      - alert: RiAuthStorageContention
+        expr: histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: riAuth storage writer waits exceed 500 milliseconds at the 95th percentile
+      - alert: RiAuthDeliveryBacklog
+        expr: riauth_queue_oldest_pending_seconds > 300 and riauth_queue_pending > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "riAuth delivery queue is stalled"
+      - alert: RiAuthFailedDeliveries
+        expr: riauth_queue_failed > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "riAuth has unresolved delivery failures"

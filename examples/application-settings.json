@@ -1,0 +1,12 @@
+{
+  "app": {
+    "description": "Build, review, and ship your team's projects.",
+    "category": "Engineering",
+    "launch_url": "https://code.example.com/",
+    "icon": "code",
+    "accent": "violet",
+    "launch_scopes": ["openid", "profile"],
+    "hidden": false
+  },
+  "implicit_consent": false
+}

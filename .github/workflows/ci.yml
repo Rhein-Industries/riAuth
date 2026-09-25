@@ -1,0 +1,129 @@
+name: Public CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riauth-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_TEST_THREADS: '4'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check repository hygiene
+        run: python3 scripts/check-repo-hygiene.py
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates cmake libssl-dev libudev-dev clang pkg-config
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
+      - run: cargo test --all-targets --features test-support,fuzzing --locked
+      - name: Check documentation, notices, and delivery scripts
+        run: |
+          python3 scripts/check-docs.py
+          python3 scripts/generate-third-party-notices.py --check
+          bash -n scripts/*.sh
+      - run: cargo build --release --locked
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_TEST_THREADS: '4'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: 1.93.0
+      - name: Install integration dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl cmake libssl-dev libudev-dev libpq-dev clang pkg-config \
+            postgresql slapd ldap-utils nginx xmlsec1
+      - name: Prepare Chrome for browser tests
+        run: |
+          if ! command -v google-chrome >/dev/null 2>&1; then
+            curl --fail --silent --show-error --location \
+              https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+              --output "$RUNNER_TEMP/google-chrome.deb"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              "$RUNNER_TEMP/google-chrome.deb"
+          fi
+          mkdir -p "$RUNNER_TEMP/riauth-browser-bin"
+          cat > "$RUNNER_TEMP/riauth-browser-bin/riauth-chrome" <<'SH'
+          #!/usr/bin/env bash
+          exec /usr/bin/google-chrome --no-sandbox --disable-dev-shm-usage "$@"
+          SH
+          chmod +x "$RUNNER_TEMP/riauth-browser-bin/riauth-chrome"
+          printf '%s\n' "$RUNNER_TEMP/riauth-browser-bin" >> "$GITHUB_PATH"
+      - name: Independent SAML XML signature and encryption
+        run: RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_independent_xmlsec -- --ignored
+      - name: Independent upstream SAML signatures
+        run: RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_source_independent_xmlsec -- --ignored
+      - name: Independent SAML logout
+        run: RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_logout_independent_xmlsec -- --ignored
+      - name: PostgreSQL replication and service failover
+        run: PG_BIN="$(pg_config --bindir)" scripts/test-postgres.sh
+      - name: OpenLDAP synchronization and authentication
+        run: scripts/test-ldap.sh
+      - name: Real browser and relying party
+        run: RIAUTH_TEST_BROWSER="$(command -v riauth-chrome)" cargo test --test browser --locked -- --ignored
+      - name: Application portal browser checks
+        run: RIAUTH_TEST_BROWSER="$(command -v riauth-chrome)" cargo test --test portal_browser --locked -- --ignored
+      - name: nginx forward authentication and browser SSO
+        run: RIAUTH_TEST_NGINX="$(command -v nginx)" RIAUTH_TEST_BROWSER="$(command -v riauth-chrome)" cargo test --test outpost --locked -- --ignored
+      - name: Traefik forward authentication
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/traefik/traefik/releases/download/v3.7.13/traefik_v3.7.13_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/traefik.tgz"
+          echo "52cd039a34258dd61c617a95d69252bc6bcae27c520f338186c31c7fef8f6394  $RUNNER_TEMP/traefik.tgz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/traefik.tgz" -C "$RUNNER_TEMP" traefik
+          RIAUTH_TEST_TRAEFIK="$RUNNER_TEMP/traefik" cargo test --test outpost_traefik --locked -- --ignored
+
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: 1.93.0
+      - name: Install audit build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake libssl-dev clang pkg-config
+      - name: Audit dependency advisories
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1 --root "$RUNNER_TEMP/riauth-audit"
+          "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit

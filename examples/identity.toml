@@ -1,0 +1,38 @@
+api_version = "riauth/v1"
+
+[[users]]
+username = "alice"
+display_name = "Alice Example"
+email = "alice@example.com"
+password_ref = "env:RIAUTH_ALICE_PASSWORD"
+password_version = "v1"
+[users.attributes]
+department = "engineering"
+
+[[groups]]
+name = "staff"
+members = ["alice"]
+
+[[clients]]
+client_id = "reports"
+name = "Reports"
+confidential = true
+redirect_uris = ["https://reports.example.com/oauth/callback"]
+scopes = ["openid", "profile", "email", "groups", "offline_access"]
+allowed_groups = ["staff"]
+secret_ref = "env:RIAUTH_REPORTS_SECRET"
+secret_version = "v1"
+[clients.settings]
+allowed_grants = ["authorization_code", "refresh_token"]
+access_token_ttl = 300
+groups_in_profile = true
+post_logout_redirect_uris = ["https://reports.example.com/signed-out"]
+backchannel_logout_uri = "https://reports.example.com/backchannel-logout"
+[clients.settings.policy.access]
+all_groups = ["staff"]
+[[clients.settings.claim_mappings]]
+scope = "profile"
+claim = "department"
+[clients.settings.claim_mappings.source]
+type = "attribute"
+key = "department"
