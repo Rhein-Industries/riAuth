@@ -1,6 +1,6 @@
 # Contributing to riAuth
 
-riAuth v0.1.0 is an early public release. Bug reports, documentation corrections, interoperability results, and focused patches are welcome. Check the [release limitations](docs/limitations.md) and [existing issues](https://github.com/Rhein-Industries/riAuth/issues) before starting a larger change.
+riAuth v0.1.1 is an early public release. Bug reports, documentation corrections, interoperability results, and focused patches are welcome. Check the [release limitations](docs/limitations.md) and [existing issues](https://github.com/Rhein-Industries/riAuth/issues) before starting a larger change.
 
 For a vulnerability, follow the [security policy](SECURITY.md). Keep exploit details, credentials, and personal data out of public issues and pull requests.
 

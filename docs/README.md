@@ -1,6 +1,6 @@
 # Documentation
 
-Choose a path for v0.1.0:
+Choose a path for v0.1.1:
 
 - **New to riAuth?** [Get started locally](getting-started.md), then read the [project README](../README.md) and [release notes](release-notes.md).
 - **Signing in or managing your account?** Use [My applications](PORTAL.md), [passkeys](passkeys.md), and [account lifecycle](lifecycle.md).
