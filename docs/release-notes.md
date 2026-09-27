@@ -1,3 +1,26 @@
+# Unreleased dependency refresh
+
+- Updated direct Rust dependencies to their current stable releases, including
+  risaml 0.7, ribergshamra 0.11, ritsp-ltv 0.6 and riptering 0.7 on the AWS-LC
+  provider. The updated SAML stack tightens XML signature and message validation.
+- Updated Argon2, TOTP, JWT, HTTP client, digest and embedded database dependencies,
+  and migrated their APIs while retaining existing password hashing parameters,
+  TOTP settings, replay checks and explicit upstream CA restrictions.
+  HTTP clients now use platform certificate verification by default; configured
+  proxy CA bundles continue to restrict trust to the supplied roots.
+- Refreshed both Cargo lockfiles and generated third-party notices. Browser test
+  dependencies were checked against npm and are already current.
+- Pinned Rust 1.98.1 in development, CI and container builds. Container images now
+  use Debian trixie; CI uses cargo-audit 0.22.2 and checks both Rust lockfiles.
+  Dependabot now also monitors the container images and fuzz workspace.
+
+The current SAML libraries pin the transitive `rustix` dependency to 1.1.4 and
+`generic-array` to 0.14.7; newer versions require an upstream dependency change.
+
+The logical storage schema remains version 3. Follow the existing backup,
+upgrade and rollback procedure below, and retest SAML peers against the stricter
+validation before upgrading a deployment.
+
 # riAuth v0.1.1 release notes
 
 riAuth v0.1.1 refreshes dependencies and project checks for the v0.1

@@ -353,7 +353,7 @@ impl Packet {
         }
         let mut plain = zeroize::Zeroizing::new(Vec::new());
         let mut previous = self.authenticator.as_slice();
-        for chunk in ciphertext.chunks_exact(16) {
+        for chunk in ciphertext.as_chunks::<16>().0 {
             let mut md5 = Md5::new();
             md5.update(secret);
             md5.update(previous);

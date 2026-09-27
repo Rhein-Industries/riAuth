@@ -94,11 +94,11 @@ fn hashes(f: &Fixture) -> u64 {
         .as_u64()
         .unwrap()
 }
-fn enroll_totp(f: &Fixture, token: &str, username: &str) -> totp_rs::TOTP {
+fn enroll_totp(f: &Fixture, token: &str, username: &str) -> totp_rs::Totp {
     let pending = f.core.mfa_begin(token).unwrap();
     let totp = crypto::totp(&text(&pending, "secret"), username).unwrap();
     f.core
-        .mfa_confirm(token, &totp.generate(now() - 30))
+        .mfa_confirm(token, &totp.generate(now() - 30).to_string())
         .unwrap();
     totp
 }
@@ -475,7 +475,11 @@ fn browser_credential_errors_are_identical_for_unknown_disabled_wrong_locked_and
         ("directory", PASSWORD, None),
         ("coded", PASSWORD, None),
         ("coded", PASSWORD, Some("000000".into())),
-        ("coded", "wrong-password", Some(totp.generate(now()))),
+        (
+            "coded",
+            "wrong-password",
+            Some(totp.generate(now()).to_string()),
+        ),
     ];
     let errors: Vec<_> = cases
         .into_iter()
@@ -594,7 +598,7 @@ fn pinned_login_with_other_username_is_generic_and_consumes_nothing() {
     f.user("alice");
     let bob = f.user("bob");
     let totp = enroll_totp(&f, &bob, "bob");
-    let code = totp.generate(now());
+    let code = totp.generate(now()).to_string();
     let alice_id = user_id(&f, "alice");
     let before = user(&f, "bob");
     let (events, hashed) = (audit(&f).len(), hashes(&f));
@@ -652,7 +656,7 @@ fn transaction_rejection_after_valid_totp_commits_the_step() {
         .core
         .authorization_prepare(Some(&f.admin), f.request("app", &crypto::random_token("")))
         .unwrap();
-    let code = totp.generate(now());
+    let code = totp.generate(now()).to_string();
     let error = f
         .core
         .login_for(
@@ -684,7 +688,7 @@ fn transaction_rejection_after_valid_totp_commits_the_step() {
         .login(
             "alice".into(),
             PASSWORD.into(),
-            Some(totp.generate(now() + 30)),
+            Some(totp.generate(now() + 30).to_string()),
         )
         .unwrap();
     let recovery = f
@@ -1456,9 +1460,7 @@ fn redirect_uri_cap_is_raised_to_32() {
 
 #[test]
 fn argon2id_non_default_parameters_are_rehashed_on_login() {
-    use argon2::{
-        Algorithm, Argon2, Params, PasswordHash, PasswordHasher, Version, password_hash::SaltString,
-    };
+    use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, Version};
     let f = Fixture::new();
     f.user("alice");
     let costly = Argon2::new(
@@ -1466,10 +1468,7 @@ fn argon2id_non_default_parameters_are_rehashed_on_login() {
         Version::V0x13,
         Params::new(8192, 3, 1, None).unwrap(),
     )
-    .hash_password(
-        PASSWORD.as_bytes(),
-        &SaltString::encode_b64(b"sixteen byte salt").unwrap(),
-    )
+    .hash_password_with_salt(PASSWORD.as_bytes(), b"sixteen byte salt")
     .unwrap()
     .to_string();
     assert!(

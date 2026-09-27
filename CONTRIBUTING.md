@@ -21,7 +21,7 @@ Link new guides from the [documentation index](docs/README.md). Put generated bu
 
 ## Build and check changes
 
-Use the pinned Rust 1.93.0 toolchain. The [getting-started guide](docs/getting-started.md#prerequisites) lists native build prerequisites; Linux builds need a C/C++ compiler, CMake, pkg-config, OpenSSL development headers, and udev development headers.
+Use the pinned Rust 1.98.1 toolchain. The [getting-started guide](docs/getting-started.md#prerequisites) lists native build prerequisites; Linux builds need a C/C++ compiler, CMake, pkg-config, OpenSSL development headers, and udev development headers.
 
 ```sh
 cargo fmt --all -- --check

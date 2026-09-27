@@ -162,8 +162,8 @@ fn openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync() {
         "invalid_credentials"
     );
     let enroll = core.mfa_begin(&session).unwrap();
-    let totp = totp_rs::TOTP::from_url(text(&enroll, "otpauth_uri")).unwrap();
-    core.mfa_confirm(&session, &totp.generate(now() - 30))
+    let totp = totp_rs::Totp::from_url(text(&enroll, "otpauth_uri")).unwrap();
+    core.mfa_confirm(&session, &totp.generate(now() - 30).to_string())
         .unwrap();
     assert!(
         core.login("alice".into(), "fixture-user-password".into(), None)
@@ -173,7 +173,7 @@ fn openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync() {
         .login(
             "alice".into(),
             "fixture-user-password".into(),
-            Some(totp.generate(now())),
+            Some(totp.generate(now()).to_string()),
         )
         .unwrap();
     let session = text(&login, "session_token");

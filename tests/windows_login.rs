@@ -297,7 +297,8 @@ fn totp_requires_a_valid_code() {
     assert_eq!(wrong.code, "invalid_credentials");
     let code = crypto::totp(&totp_secret, "alice")
         .unwrap()
-        .generate(crypto::now());
+        .generate(crypto::now())
+        .to_string();
     let session = login(
         &fx,
         "laptop",

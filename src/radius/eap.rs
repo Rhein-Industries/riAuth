@@ -789,7 +789,7 @@ fn mppe(key: &[u8], secret: &[u8], auth: &[u8; 16], salt: u16, kind: u8) -> Vec<
     let salt = salt.to_be_bytes();
     let mut previous = [auth.as_slice(), &salt].concat();
     let mut ciphertext: Vec<u8> = Vec::new();
-    for block in plaintext.chunks_exact(16) {
+    for block in plaintext.as_chunks::<16>().0 {
         let mut hash = Md5::new();
         hash.update(secret);
         hash.update(&previous);

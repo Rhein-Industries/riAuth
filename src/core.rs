@@ -631,7 +631,9 @@ impl Core {
             if user.totp_secret.is_some() { return Err(Error::conflict("MFA already enabled")); }
             user.totp_settings = Default::default();
             let secret = crypto::totp_secret();
-            let uri = crypto::totp(&secret, &user.username)?.get_url();
+            let uri = crypto::totp(&secret, &user.username)?
+                .to_url()
+                .map_err(Error::internal)?;
             user.totp_pending = Some((secret.clone(), now() + 600));
             tx.put("users", &user.id, &user)?;
             audit(tx, &user.id, "mfa.enroll.begin", &user.id)?;

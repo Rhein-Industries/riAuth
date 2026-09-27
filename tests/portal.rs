@@ -476,14 +476,14 @@ fn portal_inherits_live_access_without_admin_bypass_or_information_leaks() {
     let enrollment = f.core.mfa_begin(&bob).unwrap();
     let totp = riauth::crypto::totp(enrollment["secret"].as_str().unwrap(), "bob").unwrap();
     f.core
-        .mfa_confirm(&bob, &totp.generate(riauth::crypto::now() - 30))
+        .mfa_confirm(&bob, &totp.generate(riauth::crypto::now() - 30).to_string())
         .unwrap();
     let mfa_login = f
         .core
         .login(
             "bob".into(),
             PASSWORD.into(),
-            Some(totp.generate(riauth::crypto::now())),
+            Some(totp.generate(riauth::crypto::now()).to_string()),
         )
         .unwrap();
     let mfa_cookie = f.cookie(mfa_login["session_token"].as_str().unwrap());
@@ -1173,11 +1173,15 @@ fn portal_totp_and_recovery_code_sign_in() {
     let enrollment = f.core.mfa_begin(&bob).unwrap();
     let totp = riauth::crypto::totp(enrollment["secret"].as_str().unwrap(), "bob").unwrap();
     f.core
-        .mfa_confirm(&bob, &totp.generate(now() - 30))
+        .mfa_confirm(&bob, &totp.generate(now() - 30).to_string())
         .unwrap();
     let cli = f
         .core
-        .login("bob".into(), PASSWORD.into(), Some(totp.generate(now())))
+        .login(
+            "bob".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now()).to_string()),
+        )
         .unwrap()["session_token"]
         .as_str()
         .unwrap()
@@ -1204,7 +1208,7 @@ fn portal_totp_and_recovery_code_sign_in() {
             "{otp:?}"
         );
     }
-    let code = totp.generate(now() + 30);
+    let code = totp.generate(now() + 30).to_string();
     let sso = sign_in(Some(&code)).unwrap();
     assert!(f.session(&f.sid(&sso)).identity.mfa);
     assert_eq!(f.core.portal_apps(Some(&sso)).unwrap()["mfa"], true);
@@ -2042,7 +2046,7 @@ fn portal_catalogue_reports_mfa_available() {
     let enrollment = f.core.mfa_begin(&bob).unwrap();
     let totp = riauth::crypto::totp(enrollment["secret"].as_str().unwrap(), "bob").unwrap();
     f.core
-        .mfa_confirm(&bob, &totp.generate(now() - 30))
+        .mfa_confirm(&bob, &totp.generate(now() - 30).to_string())
         .unwrap();
     let reply = f
         .core
@@ -2050,7 +2054,7 @@ fn portal_catalogue_reports_mfa_available() {
             None,
             "bob".into(),
             PASSWORD.into(),
-            Some(totp.generate(now())),
+            Some(totp.generate(now()).to_string()),
             false,
         )
         .unwrap();

@@ -50,9 +50,10 @@ pub fn import(user: &mut User, encoded: &str) -> Result<()> {
     input.settings.validate()?;
     let secret = zeroize::Zeroizing::new(input.secret);
     let bytes = match input.encoding.as_str() {
-        "base32" => totp_rs::Secret::Encoded(secret.to_string())
-            .to_bytes()
-            .map_err(|_| Error::bad("Invalid base32 TOTP secret"))?,
+        "base32" => totp_rs::Secret::try_from_base32(secret.as_str())
+            .map_err(|_| Error::bad("Invalid base32 TOTP secret"))?
+            .as_bytes()
+            .to_vec(),
         "hex" => {
             if !secret.len().is_multiple_of(2)
                 || secret.len() > 128
@@ -77,7 +78,7 @@ pub fn import(user: &mut User, encoded: &str) -> Result<()> {
     if input.last_used_step.is_some_and(|s| s > current + 1) {
         return Err(Error::bad("TOTP last-used step is in the future"));
     }
-    user.totp_secret = Some(totp_rs::Secret::Raw(bytes).to_encoded().to_string());
+    user.totp_secret = Some(totp_rs::Secret::from(bytes).to_base32());
     user.totp_settings = input.settings;
     user.totp_pending = None;
     // Never accept a code that could have been used before the cutover.

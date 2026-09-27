@@ -106,9 +106,9 @@ async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
             .unwrap();
     }
     let factor = f.core.mfa_begin(&alice).unwrap();
-    let totp = totp_rs::TOTP::from_url(text(&factor, "otpauth_uri")).unwrap();
+    let totp = totp_rs::Totp::from_url(text(&factor, "otpauth_uri")).unwrap();
     f.core
-        .mfa_confirm(&alice, &totp.generate(now() - 30))
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
         .unwrap();
     f.core
         .create_client(
@@ -323,7 +323,7 @@ async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
                 .rc,
             49
         );
-        let replayed_otp = totp.generate(now());
+        let replayed_otp = totp.generate(now()).to_string();
         ldap.simple_bind(
             "uid=ldap-alice,ou=users,dc=riauth,dc=test",
             &format!("{PASSWORD};{}", replayed_otp),
@@ -416,7 +416,7 @@ async fn radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy
         padded.resize(padded.len().div_ceil(16) * 16, 0);
         let mut ciphertext: Vec<u8> = Vec::new();
         let mut previous = auth.to_vec();
-        for block in padded.chunks_exact(16) {
+        for block in padded.as_chunks::<16>().0 {
             let mask = md5(&[secret, &previous].concat());
             previous = block.iter().zip(mask).map(|(a, b)| a ^ b).collect();
             ciphertext.extend(&previous);
@@ -544,9 +544,9 @@ async fn radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy
         .group_member(&f.admin, "network", "radius-user", true)
         .unwrap();
     let factor = f.core.mfa_begin(&session).unwrap();
-    let totp = totp_rs::TOTP::from_url(text(&factor, "otpauth_uri")).unwrap();
+    let totp = totp_rs::Totp::from_url(text(&factor, "otpauth_uri")).unwrap();
     f.core
-        .mfa_confirm(&session, &totp.generate(now() - 30))
+        .mfa_confirm(&session, &totp.generate(now() - 30).to_string())
         .unwrap();
     let settings = Settings {
         eap_tls: false,

@@ -1154,14 +1154,21 @@ async fn require_mfa_client_accepts_totp_login() {
     let enrollment = f.core.mfa_begin(&alice).unwrap();
     let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
     f.core
-        .mfa_confirm(&alice, &totp.generate(now() - 30))
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
         .unwrap();
     let verifier = crypto::random_token("");
     let i = start(&f, &app, &f.request("secure", &verifier), None).await;
     let missing = password(&app, &i, None, "alice", None).await;
     assert_eq!(missing.status, StatusCode::UNAUTHORIZED);
     assert_eq!(missing.body["error"], "invalid_credentials");
-    let signed_in = password(&app, &i, None, "alice", Some(&totp.generate(now()))).await;
+    let signed_in = password(
+        &app,
+        &i,
+        None,
+        "alice",
+        Some(&totp.generate(now()).to_string()),
+    )
+    .await;
     assert_eq!(signed_in.body["status"], "consent", "{}", signed_in.text);
     assert_eq!(signed_in.body["account"]["mfa"], true);
     let sso = signed_in.sso();

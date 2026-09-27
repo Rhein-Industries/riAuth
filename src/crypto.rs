@@ -1,8 +1,5 @@
 use crate::error::{Error, Result};
-use argon2::{
-    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
-    password_hash::{Salt, SaltString},
-};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::phc::Salt};
 use aws_lc_rs::{
     encoding::{AsDer, Pkcs8V1Der},
     rsa::{KeyPair as RsaKeyPair, KeySize, PublicKeyComponents},
@@ -15,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use totp_rs::{Algorithm as TotpAlgorithm, Secret, TOTP};
+use totp_rs::{Algorithm as TotpAlgorithm, Builder as TotpBuilder, Secret, Totp};
 
 #[cfg(feature = "test-support")]
 thread_local! { static TEST_TIME: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) }; }
@@ -125,10 +122,10 @@ pub fn read_key(path: &std::path::Path) -> Result<zeroize::Zeroizing<[u8; 32]>> 
             .map_err(|_| Error::bad("Encryption key must contain 32 random bytes"))?,
     ))
 }
-fn password_salt() -> Result<SaltString> {
+fn password_salt() -> Result<[u8; Salt::RECOMMENDED_LENGTH]> {
     let mut bytes = [0u8; Salt::RECOMMENDED_LENGTH];
     SysRng.try_fill_bytes(&mut bytes).map_err(Error::internal)?;
-    SaltString::encode_b64(&bytes).map_err(Error::internal)
+    Ok(bytes)
 }
 pub fn password_hash(password: &str) -> Result<String> {
     if password.len() < 12 || password.len() > 1024 {
@@ -136,7 +133,7 @@ pub fn password_hash(password: &str) -> Result<String> {
     }
     let salt = password_salt()?;
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password_with_salt(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(Error::internal)
 }
@@ -235,7 +232,7 @@ pub fn upgrade_password_hash(password: &str, old: &str) -> Result<Option<String>
     // Preserve legacy passwords on first login, including lengths below the new-password policy.
     let salt = password_salt()?;
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password_with_salt(password.as_bytes(), &salt)
         .map(|hash| Some(hash.to_string()))
         .map_err(Error::internal)
 }
@@ -257,39 +254,37 @@ pub fn normalize_code(code: &str) -> Result<String> {
     }
     Ok(normalized)
 }
-pub fn totp(secret: &str, username: &str) -> Result<TOTP> {
+pub fn totp(secret: &str, username: &str) -> Result<Totp> {
     totp_with(secret, username, &Default::default())
 }
 pub fn totp_with(
     secret: &str,
     username: &str,
     settings: &crate::authenticator::TotpSettings,
-) -> Result<TOTP> {
+) -> Result<Totp> {
     settings.validate()?;
-    let bytes = Secret::Encoded(secret.to_owned())
-        .to_bytes()
-        .map_err(Error::internal)?;
-    TOTP::new(
-        match settings.algorithm.as_str() {
+    let secret = Secret::try_from_base32(secret).map_err(Error::internal)?;
+    TotpBuilder::new()
+        .with_algorithm(match settings.algorithm.as_str() {
             "SHA256" => TotpAlgorithm::SHA256,
             "SHA512" => TotpAlgorithm::SHA512,
             _ => TotpAlgorithm::SHA1,
-        },
-        settings.digits,
-        1,
-        settings.period,
-        bytes,
-        Some("riAuth".into()),
-        username.into(),
-    )
-    .map_err(Error::internal)
+        })
+        .with_digits(settings.digits as u8)
+        .with_skew(1)
+        .with_step_duration(settings.period)
+        .with_secret(secret)
+        .with_issuer(Some("riAuth"))
+        .with_account_name(username)
+        .build()
+        .map_err(Error::internal)
 }
 pub fn totp_secret() -> String {
     let mut bytes = vec![0; 20];
     SysRng
         .try_fill_bytes(&mut bytes)
         .expect("system random source unavailable");
-    Secret::Raw(bytes).to_encoded().to_string()
+    Secret::from(bytes).to_base32()
 }
 pub fn totp_step(
     secret: &str,
@@ -319,7 +314,7 @@ pub fn totp_step_with(
         (at / settings.period).saturating_sub(1),
     ] {
         if last_step.is_none_or(|last| step > last)
-            && constant_eq(&totp.generate(step * settings.period), code)
+            && constant_eq(&totp.generate(step * settings.period).to_string(), code)
         {
             return Ok(Some(step));
         }

@@ -30,7 +30,7 @@ jobs:
         run: python3 scripts/check-repo-hygiene.py
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
-          toolchain: 1.93.0
+          toolchain: 1.98.1
           components: rustfmt, clippy
       - name: Install native build dependencies
         run: |
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
-          toolchain: 1.93.0
+          toolchain: 1.98.1
       - name: Install integration dependencies
         run: |
           sudo apt-get update
@@ -117,7 +117,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
-          toolchain: 1.93.0
+          toolchain: 1.98.1
       - name: Install audit build dependencies
         run: |
           sudo apt-get update
@@ -125,5 +125,6 @@ jobs:
             cmake libssl-dev clang pkg-config
       - name: Audit dependency advisories
         run: |
-          cargo install cargo-audit --locked --version 0.22.1 --root "$RUNNER_TEMP/riauth-audit"
+          cargo install cargo-audit --locked --version 0.22.2 --root "$RUNNER_TEMP/riauth-audit"
           "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit
+          "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit --file fuzz/Cargo.lock

@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn totp_rfc6238_vectors_preserve_algorithms_leading_zeroes_and_replay_checks() {
+    for (algorithm, secret, at, expected) in [
+        ("SHA1", "12345678901234567890", 59, "94287082"),
+        ("SHA256", "12345678901234567890123456789012", 59, "46119246"),
+        (
+            "SHA512",
+            "1234567890123456789012345678901234567890123456789012345678901234",
+            59,
+            "90693936",
+        ),
+        ("SHA1", "12345678901234567890", 1_111_111_109, "07081804"),
+    ] {
+        let settings = riauth::authenticator::TotpSettings {
+            algorithm: algorithm.into(),
+            digits: 8,
+            period: 30,
+        };
+        let secret = totp_rs::Secret::from(secret.as_bytes()).to_base32();
+        let totp = crypto::totp_with(&secret, "alice", &settings).unwrap();
+        assert_eq!(totp.generate(at).to_string(), expected);
+        let step = crypto::totp_step_with(&secret, "alice", expected, at, None, &settings)
+            .unwrap()
+            .unwrap();
+        assert_eq!(step, at / settings.period);
+        assert_eq!(
+            crypto::totp_step_with(&secret, "alice", expected, at, Some(step), &settings).unwrap(),
+            None,
+        );
+        assert_eq!(
+            crypto::totp_step_with(&secret, "alice", &expected[1..], at, None, &settings).unwrap(),
+            None,
+        );
+    }
+}
+
+#[test]
 fn password_reset_revokes_sessions_and_grants() {
     let f = Fixture::new();
     f.client("app", false);
@@ -87,7 +123,7 @@ fn totp_requires_confirmation_prevents_replay_and_satisfies_policy() {
     assert_eq!(f.core.me(&alice).unwrap()["user"]["mfa_enabled"], false);
     assert!(f.core.mfa_confirm(&alice, "garbage").is_err());
     let totp = crypto::totp(&text(&pending, "secret"), "alice").unwrap();
-    let prior = totp.generate(now() - 30);
+    let prior = totp.generate(now() - 30).to_string();
     f.core.mfa_confirm(&alice, &prior).unwrap();
     assert!(f.core.me(&alice).is_err());
     assert!(
@@ -95,7 +131,7 @@ fn totp_requires_confirmation_prevents_replay_and_satisfies_policy() {
             .login("alice".into(), PASSWORD.into(), Some(prior))
             .is_err()
     );
-    let current = totp.generate(now());
+    let current = totp.generate(now()).to_string();
     let login = f
         .core
         .login("alice".into(), PASSWORD.into(), Some(current.clone()))
@@ -118,11 +154,15 @@ fn recovery_codes_are_single_use_and_password_change_revokes_old_sessions() {
     let pending = f.core.mfa_begin(&alice).unwrap();
     let totp = crypto::totp(&text(&pending, "secret"), "alice").unwrap();
     f.core
-        .mfa_confirm(&alice, &totp.generate(now() - 30))
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
         .unwrap();
     let session = f
         .core
-        .login("alice".into(), PASSWORD.into(), Some(totp.generate(now())))
+        .login(
+            "alice".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now()).to_string()),
+        )
         .unwrap();
     let token = text(&session, "session_token");
     let codes = f.core.recovery_codes(&token).unwrap();
@@ -279,10 +319,14 @@ fn imported_totp_factors_preserve_settings_reject_replay_and_reconcile_without_s
     let totp = crypto::totp_with(user.totp_secret.as_deref().unwrap(), "alice", &settings).unwrap();
     assert!(
         f.core
-            .login("alice".into(), PASSWORD.into(), Some(totp.generate(now())))
+            .login(
+                "alice".into(),
+                PASSWORD.into(),
+                Some(totp.generate(now()).to_string())
+            )
             .is_err()
     );
-    let next = totp.generate((now() / 45 + 1) * 45);
+    let next = totp.generate((now() / 45 + 1) * 45).to_string();
     let login = f
         .core
         .login("alice".into(), PASSWORD.into(), Some(next.clone()))
@@ -717,7 +761,8 @@ async fn email_password_reset_preserves_factors_revokes_grants_and_retries_deliv
     assert_eq!(user.totp_secret, Some(factor));
     let otp = crypto::totp(user.totp_secret.as_deref().unwrap(), &user.username)
         .unwrap()
-        .generate(now());
+        .generate(now())
+        .to_string();
     assert!(
         f.core
             .login("reset-user".into(), password.into(), Some(otp))
@@ -1272,11 +1317,15 @@ fn passkey_enrollment_requires_mfa_session_when_a_factor_exists() {
     let pending = f.core.mfa_begin(&bob).unwrap();
     let totp = crypto::totp(&text(&pending, "secret"), "bob").unwrap();
     f.core
-        .mfa_confirm(&bob, &totp.generate(now() - 30))
+        .mfa_confirm(&bob, &totp.generate(now() - 30).to_string())
         .unwrap();
     let bob = text(
         &f.core
-            .login("bob".into(), PASSWORD.into(), Some(totp.generate(now())))
+            .login(
+                "bob".into(),
+                PASSWORD.into(),
+                Some(totp.generate(now()).to_string()),
+            )
             .unwrap(),
         "session_token",
     );

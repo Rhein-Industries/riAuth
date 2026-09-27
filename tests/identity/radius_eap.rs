@@ -123,7 +123,7 @@ fn key(attrs: &Attributes, kind: u8, request: &[u8]) -> Vec<u8> {
     assert_ne!(value[6] & 128, 0);
     let mut previous = [&request[4..20], &value[6..8]].concat();
     let mut plain = vec![];
-    for block in value[8..].chunks_exact(16) {
+    for block in value[8..].as_chunks::<16>().0 {
         let mask = md5(&[SECRET, previous.as_slice()].concat());
         plain.extend(block.iter().zip(mask).map(|(a, b)| a ^ b));
         previous = block.to_vec();

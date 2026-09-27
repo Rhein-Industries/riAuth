@@ -638,7 +638,7 @@ async fn local_totp_is_still_required_when_upstream_is_not_mfa() {
     let enrollment = f.core.mfa_begin(&alice).unwrap();
     let totp = crypto::totp(&text(&enrollment, "secret"), "alice").unwrap();
     f.core
-        .mfa_confirm(&alice, &totp.generate(now() - 30))
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
         .unwrap();
     let (request, _) = authorization(&f, None, None);
     let prepared = f.core.authorization_prepare(None, request).unwrap();
@@ -687,7 +687,7 @@ async fn local_totp_is_still_required_when_upstream_is_not_mfa() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({"authorization_id": authorization_id,
-                "otp": totp.generate(now())})
+                "otp": totp.generate(now()).to_string()})
                     .to_string(),
                 ))
                 .unwrap(),

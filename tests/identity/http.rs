@@ -483,7 +483,10 @@ async fn native_tls_serves_trusted_https_and_rejects_untrusted_certificates() {
         hash::MessageDigest,
         nid::Nid,
         pkey::PKey,
-        x509::{X509, X509NameBuilder, extension::SubjectAlternativeName},
+        x509::{
+            X509, X509NameBuilder,
+            extension::{BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName},
+        },
     };
     let f = Fixture::new();
     let dir = tempfile::TempDir::new().unwrap();
@@ -502,6 +505,18 @@ async fn native_tls_serves_trusted_https_and_rejects_untrusted_certificates() {
     cert.set_not_before(&Asn1Time::days_from_now(0).unwrap())
         .unwrap();
     cert.set_not_after(&Asn1Time::days_from_now(1).unwrap())
+        .unwrap();
+    cert.append_extension(BasicConstraints::new().critical().build().unwrap())
+        .unwrap();
+    cert.append_extension(
+        KeyUsage::new()
+            .critical()
+            .digital_signature()
+            .build()
+            .unwrap(),
+    )
+    .unwrap();
+    cert.append_extension(ExtendedKeyUsage::new().server_auth().build().unwrap())
         .unwrap();
     let san = SubjectAlternativeName::new()
         .dns("localhost")

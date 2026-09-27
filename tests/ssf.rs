@@ -2302,7 +2302,7 @@ fn factor_events_skip_authentication_consumption_and_deduplicate_bulk_removal() 
     let secret = enrollment["secret"].as_str().unwrap();
     let totp = crypto::totp(secret, "alice").unwrap();
     f.core
-        .mfa_confirm(&session, &totp.generate(crypto::now() - 30))
+        .mfa_confirm(&session, &totp.generate(crypto::now() - 30).to_string())
         .unwrap();
     assert_eq!(
         events(&f, "alice"),
@@ -2313,7 +2313,7 @@ fn factor_events_skip_authentication_consumption_and_deduplicate_bulk_removal() 
             .login(
                 "alice".into(),
                 common::PASSWORD.into(),
-                Some(totp.generate(crypto::now())),
+                Some(totp.generate(crypto::now()).to_string()),
             )
             .unwrap(),
         "session_token",

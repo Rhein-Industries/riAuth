@@ -633,10 +633,7 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
                 anyhow::ensure!(bytes.len() <= 65536, "Upstream CA bundle exceeds 64 KiB");
                 let roots = reqwest::Certificate::from_pem_bundle(&bytes)?;
                 anyhow::ensure!(!roots.is_empty(), "Upstream CA bundle is empty");
-                http = http.tls_built_in_root_certs(false);
-                for cert in roots {
-                    http = http.add_root_certificate(cert);
-                }
+                http = http.tls_certs_only(roots);
             }
             routes.insert(
                 authority(&origin(external)?).to_owned(),

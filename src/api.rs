@@ -406,7 +406,12 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         digest.update(parts.uri.to_string());
         digest.update([0]);
         digest.update(&body);
-        context.fingerprint = format!("{:x}", digest.finalize());
+        use std::fmt::Write as _;
+        let mut fingerprint = String::with_capacity(64);
+        for byte in digest.finalize() {
+            write!(&mut fingerprint, "{byte:02x}").expect("writing to a String cannot fail");
+        }
+        context.fingerprint = fingerprint;
         req = Request::from_parts(parts, axum::body::Body::from(body));
     }
     let origin = req

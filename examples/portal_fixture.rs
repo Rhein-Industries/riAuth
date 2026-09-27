@@ -70,7 +70,7 @@ fn enroll_totp(core: &Core, account: &mut Value) -> anyhow::Result<()> {
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
     let code = crypto::totp(&secret, &username)?.generate(now - 30);
-    core.mfa_confirm(token, &code)?;
+    core.mfa_confirm(token, &code.to_string())?;
     account["totp_secret"] = secret.into();
     Ok(())
 }
