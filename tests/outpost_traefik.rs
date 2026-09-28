@@ -320,8 +320,12 @@ async fn unauthenticated_background_and_unsafe_requests_get_401() {
             .set("x-forwarded-method", "POST")
             .set("origin", APP)
             .set("sec-fetch-site", "same-origin"),
-        call().set("x-forwarded-method", "DELETE"),
-        call().without("x-forwarded-method"),
+        call()
+            .set("x-forwarded-method", "DELETE")
+            .set("x-riauth-request-intent", "api"),
+        call()
+            .without("x-forwarded-method")
+            .set("x-riauth-request-intent", "api"),
     ] {
         let reply = request.send(&s.router).await;
         assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
@@ -487,6 +491,56 @@ async fn cross_site_unsafe_methods_are_refused_before_authentication() {
         .send(&s.router)
         .await;
     assert_eq!(reply.status, StatusCode::FOUND);
+}
+
+#[tokio::test]
+async fn unsafe_writes_need_browser_provenance_or_explicit_api_intent() {
+    let s = setup();
+    for cookie in ["", s.proxy.as_str()] {
+        let denied = call()
+            .set("x-forwarded-method", "POST")
+            .set("cookie", cookie)
+            .send(&s.router)
+            .await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN);
+        assert!(denied.header("x-authentik-username").is_none());
+    }
+    for intent in ["", "browser", "api, api"] {
+        let denied = call()
+            .set("x-forwarded-method", "POST")
+            .set("cookie", &s.proxy)
+            .set("x-riauth-request-intent", intent)
+            .send(&s.router)
+            .await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN, "{intent}");
+    }
+    let duplicate = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .add("x-riauth-request-intent", "api")
+        .add("x-riauth-request-intent", "api")
+        .send(&s.router)
+        .await;
+    assert_eq!(duplicate.status, StatusCode::BAD_REQUEST);
+
+    let allowed = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .set("x-riauth-request-intent", "api")
+        .send(&s.router)
+        .await;
+    assert_eq!(allowed.status, StatusCode::OK);
+    assert_eq!(allowed.header("x-authentik-username"), Some("alice"));
+    assert!(allowed.header("x-riauth-request-intent").is_none());
+
+    let denied = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .set("x-riauth-request-intent", "api")
+        .set("origin", "https://attacker.test")
+        .send(&s.router)
+        .await;
+    assert_eq!(denied.status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

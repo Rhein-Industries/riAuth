@@ -154,6 +154,7 @@ async fn exercise(nginx: Option<String>) {
                         "username": header("x-authentik-username"),
                         "authorization": header("authorization"),
                         "cookie": header("cookie"),
+                        "intent": header("x-riauth-request-intent"),
                         "uri": uri.to_string(),
                         "auth_alias": header("x_auth_user"),
                         "identity_alias": header("x_authentik_username"),
@@ -381,6 +382,25 @@ async fn exercise(nginx: Option<String>) {
         assert_eq!(value["forwarded_proto"], "http");
     }
     let _ = receiver.recv().await;
+    let missing_provenance = http
+        .post(&target)
+        .header("cookie", &proxy_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_provenance.status(), 403);
+    assert!(receiver.try_recv().is_err());
+    let explicit_api = http
+        .post(&target)
+        .header("cookie", &proxy_cookie)
+        .header("x-riauth-request-intent", "api")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(explicit_api.status(), 200);
+    let api_seen = receiver.recv().await.unwrap();
+    assert_eq!(api_seen["username"], "admin");
+    assert_eq!(api_seen["intent"], Value::Null);
     for (request_origin, site) in [
         ("http://evil.example.test", "same-site"),
         (&origin[..], "same-site"),
@@ -459,6 +479,7 @@ async fn exercise(nginx: Option<String>) {
         assert_eq!(
             http.post(&target)
                 .header("cookie", &proxy_cookie)
+                .header("x-riauth-request-intent", "api")
                 .body(vec![0; 4097])
                 .send()
                 .await
@@ -481,7 +502,15 @@ async fn exercise(nginx: Option<String>) {
         None
     };
 
-    assert_eq!(http.post(&target).send().await.unwrap().status(), 401);
+    assert_eq!(
+        http.post(&target)
+            .header("x-riauth-request-intent", "api")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
     let logout_url = format!("{origin}/outpost/reports/logout");
     for (request_origin, site) in [
         ("http://evil.example.test", "same-site"),

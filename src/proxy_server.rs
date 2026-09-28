@@ -196,13 +196,7 @@ async fn handle(
     // Apply the write guard before dispatching /outpost/logout as well as
     // forwarding application requests.
     if ![Method::GET, Method::HEAD, Method::OPTIONS].contains(request.method()) {
-        let origin = single(request.headers(), "origin")?;
-        let site = single(request.headers(), "sec-fetch-site")?;
-        if origin.is_some_and(|value| value != route.external)
-            || site.is_some_and(|value| value != "same-origin" && value != "none")
-        {
-            return Err(Error::forbidden());
-        }
+        crate::outpost::unsafe_request_provenance(request.headers(), &route.external)?;
     }
     let mut auth_headers = request.headers().clone();
     auth_headers.insert(

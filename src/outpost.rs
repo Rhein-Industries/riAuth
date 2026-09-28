@@ -187,6 +187,33 @@ fn one<'a>(headers: &'a HeaderMap, name: &str) -> Result<&'a str> {
     }
     Ok(value)
 }
+fn optional_one<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
+    if headers.contains_key(name) {
+        one(headers, name).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+/// Browser writes need a positive same-origin signal. Clients that do not send
+/// browser provenance must explicitly mark an API write; HTML forms cannot set
+/// this header, and an explicit cross-site signal always takes precedence.
+pub(crate) fn unsafe_request_provenance(headers: &HeaderMap, target_origin: &str) -> Result<()> {
+    let origin = optional_one(headers, "origin")?;
+    let site = optional_one(headers, "sec-fetch-site")?;
+    if origin.is_some_and(|value| value != target_origin)
+        || site.is_some_and(|value| value != "same-origin" && value != "none")
+    {
+        return Err(Error::forbidden());
+    }
+    if origin.is_none()
+        && site.is_none()
+        && optional_one(headers, "x-riauth-request-intent")? != Some("api")
+    {
+        return Err(Error::forbidden());
+    }
+    Ok(())
+}
 /// Rebuilds the request URL from Traefik's `X-Forwarded-*` headers. The flag reports a
 /// `ws`/`wss` protocol, which Traefik sends only with `trustForwardHeader: true`.
 pub(crate) fn forwarded_target(headers: &HeaderMap) -> Result<(String, bool)> {
@@ -493,14 +520,9 @@ impl Core {
             .ok()
             .map(str::to_ascii_uppercase)
             .unwrap_or_default();
-        // Cross-origin writes are refused before authentication, so they never reach the login flow.
-        if !["GET", "HEAD", "OPTIONS"].contains(&method.as_str())
-            && (present("origin") && !same_origin()
-                || present("sec-fetch-site")
-                    && !one(headers, "sec-fetch-site")
-                        .is_ok_and(|site| site == "same-origin" || site == "none"))
-        {
-            return Err(Error::forbidden());
+        // Reject unsafe browser writes before authentication or login routing.
+        if !["GET", "HEAD", "OPTIONS"].contains(&method.as_str()) {
+            unsafe_request_provenance(headers, &target_origin)?;
         }
         match self.outpost_auth(id, peer, &forwarded) {
             Ok((body, mut output)) => {

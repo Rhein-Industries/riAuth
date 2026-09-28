@@ -10,10 +10,11 @@ http:
         trustForwardHeader: false
         maxResponseBodySize: 65536
         authRequestHeaders:
-          [Accept, Cookie, Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-WebSocket-Key]
+          [Accept, Cookie, Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-WebSocket-Key, X-Riauth-Request-Intent]
         authResponseHeaders:
           [X-Authentik-Username, X-Authentik-Uid, X-Authentik-Name, X-Authentik-Email,
-           X-Authentik-Groups, X-Authentik-Entitlements, X-Auth-User, X-Auth-Sub, Cookie, Authorization]
+           X-Authentik-Groups, X-Authentik-Entitlements, X-Auth-User, X-Auth-Sub, Cookie, Authorization,
+           X-Riauth-Request-Intent]
     riauth-{{CLIENT_ID}}-outpost-headers:
       headers:
         customRequestHeaders:
