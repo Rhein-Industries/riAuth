@@ -308,6 +308,11 @@ def main() -> None:
             r"\.\s*store\s*\.\s*write\s*\(", masked_rust_source(path.read_text())
         ):
             errors.append("src/windows_login.rs: Windows protocol directly writes storage")
+        if path == SRC / "pam.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/pam.rs: temporary-access protocol refers directly to Core or storage")
         if path == SRC / "ldap_server.rs" and (
             refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
         ):

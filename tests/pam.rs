@@ -922,7 +922,9 @@ fn user_grant_index_bounds_lookup_and_rebuilds_changed_associations() {
             for (key, _) in tx.list::<serde_json::Value>("index_user_access_grants")? {
                 tx.delete("index_user_access_grants", &key)?;
             }
-            tx.delete("meta", "index_version")
+            // Simulate a pre-activation index for the legacy rebuild path.
+            tx.delete("meta", "index_version")?;
+            tx.delete("meta", "version_activation")
         })
         .unwrap();
     riauth::upgrade::migrate(&f.core.store).unwrap();

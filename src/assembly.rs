@@ -19,6 +19,10 @@ mod mtls;
 pub(crate) use mtls::clear_user_binding;
 mod oidc;
 pub(crate) use oidc::{backfill_prepared_index, cleanup_prepared, stamp_prepared_index};
+#[cfg(feature = "platform")]
+mod pam;
+#[cfg(feature = "platform")]
+pub use pam::{cleanup as pam_cleanup, extra_groups as pam_extra_groups};
 pub(crate) mod passkey;
 mod password;
 mod portal_mfa;
