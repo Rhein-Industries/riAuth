@@ -38,7 +38,25 @@ token_file = "payroll-scim-token"
 groups = ["payroll-users"]
 export_groups = true
 # ca_file = "private-ca.pem"
+
+[scim_reconciliation_modes]
+payroll = "guarded-automatic"
 ```
+
+`scim_reconciliation_modes` is an optional, per-target controller policy. An
+omitted target uses `manual-review`. `guarded-automatic` queues plans with no
+removals; `automatic` also queues below-threshold user deactivations. Both stop
+at the shared removal review threshold and return the exact plan for operator
+review. A controller trigger returns `awaiting_review`, `queued` (with a durable
+job), or `in_progress`; queued work is not reported as delivered. If an old
+leased job becomes stale, it returns `awaiting_prior_delivery` with a current
+plan until the in-flight request settles, so replacement delivery cannot race it.
+The trigger is available to server-side callers through
+`Core::provisioning_reconcile`; P02
+scheduling and a remote trigger endpoint are separate work. Unknown modes and
+policies for unconfigured targets are rejected at configuration validation.
+Changing a mode invalidates pending plans and stales queued jobs before another
+remote dispatch.
 
 `token_file` is a static bearer token. To acquire and refresh an OAuth access token instead, omit `token_file` and set `oauth`. A target must use exactly one of those modes. OAuth supports `client_credentials` or a configured `refresh_token` file with Basic/post client authentication; access tokens stay in process memory and a SCIM 401 triggers one refresh/retry. See [OAuth for outbound SCIM](enterprise/ENT-12.md) for the configuration, token lifetime and opaque-token limitations.
 

@@ -2,8 +2,10 @@
 
 LDAP import, Google Workspace import, Microsoft Entra import and outbound SCIM
 share the guard in `connector_guard`. It validates bounded pagination, removal
-impact and exact plan content. It safeguards the existing consumers without
-introducing automatic reconciliation, a scheduler or a new engine.
+impact and exact plan content. LDAP, cloud and outbound SCIM apply now use its
+common eligibility, authority binding and recomputed removal-impact gate.
+Outbound SCIM also has an explicit per-target controller mode; LDAP and cloud
+remain manually triggered. No scheduler is installed by these modes.
 
 | Path | Snapshot checks | Destructive boundary |
 | --- | --- | --- |
@@ -69,7 +71,8 @@ outside that reviewed membership is rejected rather than implicitly approved.
 Remote delivery remains at least once and can be partial or uncertain. Revocation
 cannot roll back a remote write already accepted by a peer. Inspect job errors
 and partial results before replanning; local apply does not mean downstream work
-has completed. P01 must integrate the shared guard into the future common engine.
+has completed. Other connectors and desired-state reconciliation still need
+controller-mode integration before the full P01 scope is complete.
 Two-build parity, PostgreSQL/concurrency contracts and controlled real-peer
 acceptance remain integration gates; local fake-peer tests establish only the
 paths they exercise.

@@ -2,7 +2,10 @@
 //! Targets use either a static `token_file` or an OAuth `client_credentials` / `refresh_token` grant.
 use crate::{
     agent::{Agent, Principal},
-    connector_guard::{Pagination, RemovalImpact, ReviewBinding, plan_content},
+    connector_guard::{
+        ApplyGate, Pagination, ReconciliationDecision, ReconciliationMode, RemovalImpact,
+        ReviewBinding, plan_content,
+    },
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -198,6 +201,10 @@ const MAX_RETAINED_PLANS: usize = 32;
 const MAX_RETAINED_PLAN_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RETAINED_JOBS: usize = 64;
 const MAX_RETAINED_JOB_BYTES: usize = 32 * 1024 * 1024;
+// A claimed item has a 60-second lease. A remote write can start just before
+// expiry and take up to 10 seconds, followed by a bounded read-back. Keep a
+// stale leased job from overlapping replacement delivery through that window.
+const STALE_LEASE_SETTLE_SECONDS: u64 = 30;
 #[derive(Clone, Serialize, Deserialize)]
 struct Job {
     plan: Plan,
@@ -255,11 +262,17 @@ fn job_view(job: &Job) -> Value {
 }
 
 fn compact_terminal_job(job: &mut Job) {
-    if job.completed || job.stale {
+    if (job.completed || job.stale) && job.lease.is_none() {
         job.total = job.total.max(job.plan.resources.len());
         job.plan.resources.clear();
         job.plan.managed_links.clear();
     }
+}
+
+fn stale_lease_settling(job: &Job, at: u64) -> bool {
+    job.stale
+        && job.lease.is_some()
+        && job.next_attempt.saturating_add(STALE_LEASE_SETTLE_SECONDS) > at
 }
 
 fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
@@ -273,7 +286,7 @@ fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
         }
         let bytes = serde_json::to_vec(job).map_err(Error::internal)?.len();
         retained_bytes = retained_bytes.saturating_add(bytes);
-        if job.completed || job.stale {
+        if (job.completed || job.stale) && job.lease.is_none() {
             terminal.push((id.clone(), job.plan.expires_at, bytes));
         }
     }
@@ -298,6 +311,169 @@ fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
     Ok(())
 }
 impl Core {
+    fn provisioning_mode(&self, target_id: &str) -> ReconciliationMode {
+        self.config
+            .scim_reconciliation_modes
+            .get(target_id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn provisioning_fingerprint(&self, target_id: &str, target: &Target) -> Result<String> {
+        let fingerprint = target.fingerprint()?;
+        let mode = self.provisioning_mode(target_id);
+        // Preserve bindings for pre-existing manual plans and jobs. Switching
+        // either direction changes the fingerprint and stales pending work.
+        if mode == ReconciliationMode::ManualReview {
+            Ok(fingerprint)
+        } else {
+            crate::connector_guard::hash(&(fingerprint, mode))
+        }
+    }
+
+    fn provisioning_fingerprint_matches(&self, plan: &Plan) -> bool {
+        self.config.scim_targets.get(&plan.target).is_some_and(|target| {
+            self.provisioning_fingerprint(&plan.target, target)
+                .is_ok_and(|fingerprint| fingerprint == plan.target_fingerprint)
+        })
+    }
+
+    fn provisioning_job_eligible(&self, tx: &Tx<'_>, job: &Job) -> Result<bool> {
+        let permitted = actor(tx, &job.plan.actor)
+            .and_then(|actor| {
+                actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
+                job.plan
+                    .review
+                    .validate(tx, &actor, &plan_content(&job.plan)?)?;
+                job.plan.review.confirm(
+                    &job.plan.id,
+                    &job.plan.removal_impact,
+                    job.reviewed_removals.then_some(job.plan.id.as_str()),
+                )
+            })
+            .is_ok();
+        Ok(permitted
+            && job.plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+            && self.provisioning_fingerprint_matches(&job.plan)
+            && job.plan.expires_at.saturating_add(86400) >= now())
+    }
+
+    /// Controller trigger for a single configured target. The returned
+    /// decision reports a pending plan or a queued durable job, never remote
+    /// completion. A future scheduler can call this with its scoped credential.
+    pub fn provisioning_reconcile(&self, token: &str, target_id: &str) -> Result<Value> {
+        let target = self
+            .config
+            .scim_targets
+            .get(target_id)
+            .ok_or_else(|| Error::missing("SCIM target not configured"))?;
+        target.validate()?;
+        let mode = self.provisioning_mode(target_id);
+        let (active, settling) = self.store.write(|tx| {
+            self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{target_id}"),
+            )?;
+            let at = now();
+            let mut active = None;
+            let mut settling = false;
+            for (id, mut job) in tx.list::<Job>("provisioning_jobs")? {
+                if job.plan.target != target_id || job.completed {
+                    continue;
+                }
+                if job.stale {
+                    if job.lease.is_some() && !stale_lease_settling(&job, at) {
+                        job.lease = None;
+                        compact_terminal_job(&mut job);
+                        tx.put("provisioning_jobs", &id, &job)?;
+                    } else {
+                        settling |= stale_lease_settling(&job, at);
+                    }
+                    continue;
+                }
+                if self.provisioning_job_eligible(tx, &job)? {
+                    active = Some(job_view(&job));
+                    continue;
+                }
+                job.stale = true;
+                job.error = Some(
+                    "Plan authority or source configuration changed; inspect partial results and create a new plan"
+                        .into(),
+                );
+                if job.lease.is_some() && !stale_lease_settling(&job, at) {
+                    job.lease = None;
+                }
+                settling |= stale_lease_settling(&job, at);
+                compact_terminal_job(&mut job);
+                tx.put("provisioning_jobs", &id, &job)?;
+            }
+            Ok((active, settling))
+        })?;
+        if let Some(job) = active {
+            return Ok(json!({"decision":"in_progress","mode":mode,"job":job}));
+        }
+
+        // Reuse a still-bound unqueued plan so repeated controller ticks do
+        // not continually replace the exact ID an operator is reviewing.
+        let pending = self.store.read(|tx| {
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{target_id}"),
+            )?;
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let fingerprint = self.provisioning_fingerprint(target_id, target)?;
+            let links = managed_links(tx, target_id)?;
+            for (id, plan) in tx.list::<Plan>("provisioning_plans")? {
+                if plan.actor == actor.id
+                    && plan.target == target_id
+                    && plan.expires_at > now()
+                    && plan.revision == revision
+                    && plan.target_fingerprint == fingerprint
+                    && plan.managed_links == links
+                    && tx.get::<Job>("provisioning_jobs", &id)?.is_none()
+                    && plan
+                        .review
+                        .validate(tx, &actor, &plan_content(&plan)?)
+                        .is_ok()
+                {
+                    return Ok(Some(json!(plan)));
+                }
+            }
+            Ok(None)
+        })?;
+        let plan = match pending {
+            Some(plan) => plan,
+            None => self.provisioning_plan(token, target_id)?,
+        };
+        let impact: RemovalImpact = serde_json::from_value(plan["removal_impact"].clone())
+            .map_err(Error::internal)?;
+        let reason = if mode == ReconciliationMode::ManualReview {
+            "manual_mode"
+        } else if impact.review_required
+            || impact.missing_users > 0
+            || impact.removed_memberships > 0
+        {
+            "removal_review_required"
+        } else {
+            "guarded_removal"
+        };
+        if mode.decide(&impact) == ReconciliationDecision::AwaitingReview {
+            return Ok(json!({"decision":"awaiting_review","mode":mode,"reason":reason,"plan":plan,"prior_delivery_settling":settling}));
+        }
+        if settling {
+            return Ok(json!({"decision":"awaiting_prior_delivery","mode":mode,"plan":plan}));
+        }
+        let id = plan["id"]
+            .as_str()
+            .ok_or_else(|| Error::internal("Provisioning plan has no ID"))?;
+        let job = self.provisioning_apply_confirmed(token, id, None)?;
+        Ok(json!({"decision":"queued","mode":mode,"plan":plan,"job":job}))
+    }
+
     pub fn provisioning_plan_get(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
             let principal = self.principal(tx, token)?;
@@ -312,7 +488,19 @@ impl Core {
         })
     }
     pub fn provisioning_targets(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx|{let actor=self.principal(tx,token)?;Ok(json!(self.config.scim_targets.iter().filter(|(id,_)|actor.allows("provisioner.read",&format!("provisioner/{id}"))).map(|(id,t)|json!({"id":id,"url":t.url,"groups":t.groups,"export_groups":t.export_groups})).collect::<Vec<_>>()))})
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            Ok(json!(self.config.scim_targets.iter()
+                .filter(|(id, _)| actor.allows("provisioner.read", &format!("provisioner/{id}")))
+                .map(|(id, target)| json!({
+                    "id": id,
+                    "url": target.url,
+                    "groups": target.groups,
+                    "export_groups": target.export_groups,
+                    "reconciliation_mode": self.provisioning_mode(id),
+                }))
+                .collect::<Vec<_>>()))
+        })
     }
     pub fn provisioning_plan(&self, token: &str, target_id: &str) -> Result<Value> {
         let target = self
@@ -347,7 +535,18 @@ impl Core {
             }
             let mut resources:Vec<_>=resources.into_values().collect();resources.sort_by(|a,b|(a.kind!="Users",&a.local_id).cmp(&(b.kind!="Users",&b.local_id)));
             let removal_impact = provisioning_impact(tx, target_id, &resources)?;
-            let mut plan=Plan{id:crypto::id(),target:target_id.into(),actor:actor.id.clone(),revision:tx.get::<u64>("meta","revision")?.unwrap_or(0),expires_at:now()+3600,target_fingerprint:target.fingerprint()?,resources,removal_impact,managed_links:managed_links(tx,target_id)?,review:ReviewBinding::default()};
+            let mut plan = Plan {
+                id: crypto::id(),
+                target: target_id.into(),
+                actor: actor.id.clone(),
+                revision: tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+                expires_at: now() + 3600,
+                target_fingerprint: self.provisioning_fingerprint(target_id, target)?,
+                resources,
+                removal_impact,
+                managed_links: managed_links(tx, target_id)?,
+                review: ReviewBinding::default(),
+            };
             plan.review=ReviewBinding::new(tx, &actor,&plan_content(&plan)?)?;
             let plan_bytes = serde_json::to_vec(&plan).map_err(Error::internal)?.len();
             if plan_bytes > MAX_PLAN_BYTES {
@@ -416,29 +615,29 @@ impl Core {
                 .scim_targets
                 .get(&plan.target)
                 .ok_or_else(Error::forbidden)?;
-            if plan.expires_at <= now()
-                || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || plan.target_fingerprint != target.fingerprint()?
-            {
-                return Err(Error::conflict(
-                    "Provisioning plan expired or configuration changed",
-                ));
-            }
-            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
             if managed_links(tx, &plan.target)? != plan.managed_links {
                 return Err(Error::conflict(
                     "SCIM managed snapshot changed; create a new plan",
                 ));
             }
             let impact = provisioning_impact(tx, &plan.target, &plan.resources)?;
-            if impact != plan.removal_impact {
-                return Err(Error::conflict(
-                    "SCIM removal impact changed; create a new plan",
-                ));
+            ApplyGate {
+                id,
+                revision: plan.revision,
+                expires_at: plan.expires_at,
+                fingerprint_matches: plan.target_fingerprint
+                    == self.provisioning_fingerprint(&plan.target, target)?,
+                expected_impact: &plan.removal_impact,
+                observed_impact: &impact,
+                review: &plan.review,
+                reviewed_plan,
             }
-            plan.review.confirm(id, &impact, reviewed_plan)?;
+            .validate(tx, &actor, &plan)?;
             for (_, job) in tx.list::<Job>("provisioning_jobs")? {
-                if job.plan.target == plan.target && !job.completed && !job.stale {
+                if job.plan.target == plan.target
+                    && !job.completed
+                    && (!job.stale || stale_lease_settling(&job, now()))
+                {
                     return Err(Error::conflict(
                         "Target already has an unfinished job; inspect or retry it",
                     ));
@@ -481,13 +680,12 @@ impl Core {
         self.store.write(|tx|{
             for (id,mut job) in tx.due::<Job>("provisioning_jobs", now(), 16)? {
                 if job.completed || job.stale || job.next_attempt>now(){continue;}
-                let permitted=actor(tx,&job.plan.actor).and_then(|a| {
-                    a.require("provisioner.sync",&format!("provisioner/{}",job.plan.target))?;
-                    job.plan.review.validate(tx, &a,&plan_content(&job.plan)?)?;
-                    job.plan.review.confirm(&job.plan.id,&job.plan.removal_impact,if job.reviewed_removals {Some(&job.plan.id)} else {None})
-                }).is_ok();
-                if !permitted || job.plan.revision!=tx.get::<u64>("meta","revision")?.unwrap_or(0) || self.config.scim_targets.get(&job.plan.target).is_none_or(|t|t.fingerprint().ok().as_ref()!=Some(&job.plan.target_fingerprint)) || job.plan.expires_at+86400<now() {
-                    job.stale=true;job.error=Some("Plan authority or source configuration changed; inspect partial results and create a new plan".into());compact_terminal_job(&mut job);tx.put("provisioning_jobs",&id,&job)?;continue;
+                if !self.provisioning_job_eligible(tx, &job)? {
+                    job.stale = true;
+                    job.error = Some("Plan authority or source configuration changed; inspect partial results and create a new plan".into());
+                    compact_terminal_job(&mut job);
+                    tx.put("provisioning_jobs", &id, &job)?;
+                    continue;
                 }
                 job.next_attempt=now()+60;job.attempts+=1;job.lease=Some(crypto::id());tx.put("provisioning_jobs",&id,&job)?;return Ok(Some(job));
             }
@@ -725,6 +923,7 @@ impl Core {
                         },
                     );
                     current.next_attempt = now() + 2u64.pow(current.attempts.min(12)).min(3600);
+                    compact_terminal_job(&mut current);
                     tx.put("provisioning_jobs", &job.plan.id, &current)?;
                 }
                 Ok(())
@@ -742,7 +941,7 @@ impl Core {
                 || current.next_attempt <= now()
                 || current.plan.review != job.plan.review
                 || job.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || self.config.scim_targets.get(&job.plan.target).is_none_or(|t|t.fingerprint().ok().as_ref()!=Some(&job.plan.target_fingerprint)) {
+                || !self.provisioning_fingerprint_matches(&job.plan) {
                 return Err(Error::conflict("SCIM delivery authority, lease or source changed; inspect partial results and replan"));
             }
             Ok(())
@@ -753,7 +952,22 @@ impl Core {
             let Some(mut current)=tx.get::<Job>("provisioning_jobs",&job.plan.id)?.filter(|j|j.lease==job.lease) else{return Ok(());};
             if let Some(link)=link {tx.put("provisioning_links",&link_key(&link.target,&link.kind,&link.local_id),&link)?;}
             current.cursor=(current.cursor+1).min(current.plan.resources.len());current.completed=current.cursor==current.plan.resources.len();current.lease=None;current.error=None;current.next_attempt=now();current.attempts=0;
-            if current.plan.revision!=tx.get::<u64>("meta","revision")?.unwrap_or(0) || actor(tx,&current.plan.actor).and_then(|a|a.require("provisioner.sync",&format!("provisioner/{}",current.plan.target))).is_err() {
+            let authority_valid = actor(tx, &current.plan.actor)
+                .and_then(|actor| {
+                    actor.require(
+                        "provisioner.sync",
+                        &format!("provisioner/{}", current.plan.target),
+                    )?;
+                    current
+                        .plan
+                        .review
+                        .validate(tx, &actor, &plan_content(&current.plan)?)
+                })
+                .is_ok();
+            if current.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                || !authority_valid
+                || !self.provisioning_fingerprint_matches(&current.plan)
+            {
                 current.stale=true;current.completed=false;current.error=Some("Source or authority changed during delivery; inspect partial results and replan".into());
             }
             compact_terminal_job(&mut current);

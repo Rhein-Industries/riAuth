@@ -7,7 +7,7 @@
 //! must not disable accounts.
 use crate::{
     agent::Principal,
-    connector_guard::{Pagination, ReviewBinding, plan_content},
+    connector_guard::{ApplyGate, Pagination, ReviewBinding, plan_content},
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -1630,23 +1630,18 @@ impl Core {
                 return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
             }
             authorize_reconcile(tx, &actor, &settings, &plan.entries)?;
-            if actor.id != plan.actor
-                || plan.expires_at <= now()
-                || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || plan.fingerprint != settings.fingerprint
-            {
-                return Err(Error::conflict(
-                    "Cloud directory plan expired or local revision changed",
-                ));
-            }
-            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
             let impact = removal_impact(tx, &settings, &plan.entries)?;
-            if impact != plan.removal_impact {
-                return Err(Error::conflict(
-                    "Cloud directory removal impact changed; create a new plan",
-                ));
+            ApplyGate {
+                id,
+                revision: plan.revision,
+                expires_at: plan.expires_at,
+                fingerprint_matches: plan.fingerprint == settings.fingerprint,
+                expected_impact: &plan.removal_impact,
+                observed_impact: &impact,
+                review: &plan.review,
+                reviewed_plan,
             }
-            plan.review.confirm(id, &impact, reviewed_plan)?;
+            .validate(tx, &actor, &plan)?;
             let changes = reconcile(tx, &actor, &settings, &plan.entries)?;
             if changes != plan.changes {
                 return Err(Error::conflict(

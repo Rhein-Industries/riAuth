@@ -21,6 +21,7 @@ use axum::{
 use common::{Fixture, strings, text};
 use riauth::{
     agent::{NewAgent, Permission},
+    connector_guard::ReconciliationMode,
     core::Core,
     crypto::{self, digest},
     error::Error,
@@ -35,6 +36,296 @@ const ACCESS: &str = "ENT12-ACCESS-7f3c9a";
 const SECRET: &str = "ENT12-SECRET-91ab44";
 const LEAKED_ACCESS: &str = "ENT12-ACCESS-LEAK";
 const LEAKED_SECRET: &str = "ENT12-SECRET-LEAK";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn controller_modes_bind_plans_and_stop_at_removal_review_floor() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("reconciliation-modes");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    for user in ["first", "second"] {
+        f.user(user);
+        f.core.group_member(&f.admin, "staff", user, true).unwrap();
+    }
+    let agent = provisioner(&f, &name);
+
+    let manual = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(manual["decision"], "awaiting_review");
+    assert_eq!(manual["mode"], "manual-review");
+    assert_eq!(
+        f.core.provisioning_reconcile(&agent, &name).unwrap()["plan"]["id"],
+        manual["plan"]["id"]
+    );
+    assert!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&manual["plan"], "id"))
+            .is_err()
+    );
+    let initial = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(initial["decision"], "queued");
+    assert_eq!(initial["job"]["completed"], false);
+    step(&f.core).await;
+    step(&f.core).await;
+    assert_eq!(scim.users.lock().unwrap().len(), 2);
+
+    f.core
+        .group_member(&f.admin, "staff", "first", false)
+        .unwrap();
+    let guarded = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(guarded["decision"], "awaiting_review");
+    assert_eq!(guarded["reason"], "guarded_removal");
+    assert_eq!(
+        f.core.provisioning_reconcile(&agent, &name).unwrap()["plan"]["id"],
+        guarded["plan"]["id"]
+    );
+    assert_eq!(guarded["plan"]["removal_impact"]["review_required"], false);
+    assert_eq!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::Automatic);
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&guarded["plan"], "id"))
+            .is_err()
+    );
+    let automatic = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(automatic["decision"], "queued");
+    assert_eq!(automatic["job"]["completed"], false);
+    step(&f.core).await;
+    step(&f.core).await;
+    let remote = scim.users.lock().unwrap().clone();
+    assert_eq!(
+        remote.iter().filter(|u| u["active"] == true).count(),
+        1,
+        "jobs={} remote={}",
+        f.core.provisioning_jobs(&agent).unwrap(),
+        json!(remote)
+    );
+    assert_eq!(
+        f.core
+            .provisioning_apply(&agent, &text(&automatic["plan"], "id"))
+            .unwrap()["completed"],
+        true,
+        "jobs={}",
+        f.core.provisioning_jobs(&agent).unwrap()
+    );
+
+    f.core
+        .group_member(&f.admin, "staff", "second", false)
+        .unwrap();
+    let held = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(held["decision"], "awaiting_review");
+    assert_eq!(held["reason"], "removal_review_required");
+    assert_eq!(held["plan"]["removal_impact"]["review_required"], true);
+    let id = text(&held["plan"], "id");
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    assert_eq!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let job = f
+        .core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    assert_eq!(job["completed"], false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("mode-change");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    f.core
+        .group_member(&f.admin, "staff", "member", true)
+        .unwrap();
+    let agent = provisioner(&f, &name);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    let queued = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(queued["decision"], "queued");
+    let id = text(&queued["plan"], "id");
+
+    let store = f.core.store.clone();
+    let delay = |id: &str| {
+        store
+            .write(|tx| {
+                let mut job = tx.get::<Value>("provisioning_jobs", id)?.unwrap();
+                job["next_attempt"] = json!(crypto::now() + 3600);
+                tx.put("provisioning_jobs", id, &job)
+            })
+            .unwrap();
+    };
+    delay(&id);
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::Automatic);
+    let replanned = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(replanned["decision"], "queued");
+    assert_ne!(replanned["plan"]["id"], queued["plan"]["id"]);
+    let job = f
+        .core
+        .store
+        .get::<Value>("provisioning_jobs", &id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(job["stale"], true);
+    assert_eq!(job["cursor"], 0);
+    let second = text(&replanned["plan"], "id");
+    delay(&second);
+
+    f.core.create_group(&f.admin, "unrelated").unwrap();
+    let revised = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(revised["decision"], "queued");
+    assert_ne!(revised["plan"]["id"], replanned["plan"]["id"]);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &second)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    let third = text(&revised["plan"], "id");
+    delay(&third);
+
+    let agent_id = revised["plan"]["actor"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("agent:")
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent = tx.get::<Value>("agents", agent_id)?.unwrap();
+            agent["permissions"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"action":"audit.read","resource":"*"}));
+            tx.put("agents", agent_id, &agent)
+        })
+        .unwrap();
+    let rebound = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(rebound["decision"], "queued");
+    assert_ne!(rebound["plan"]["id"], revised["plan"]["id"]);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &third)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    let fourth = text(&rebound["plan"], "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &fourth)?.unwrap();
+            job["lease"] = json!("in-flight");
+            job["next_attempt"] = json!(crypto::now() + 60);
+            tx.put("provisioning_jobs", &fourth, &job)
+        })
+        .unwrap();
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    let settling = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(settling["decision"], "awaiting_prior_delivery");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &fourth)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&settling["plan"], "id"))
+            .is_err()
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &fourth)?.unwrap();
+            job["lease"] = Value::Null;
+            tx.put("provisioning_jobs", &fourth, &job)
+        })
+        .unwrap();
+    let resumed = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(resumed["decision"], "queued");
+    assert_eq!(resumed["plan"]["id"], settling["plan"]["id"]);
+    assert_eq!(scim.hits.load(Ordering::SeqCst), 0);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_links")
+            .unwrap()
+            .is_empty()
+    );
+}
 
 #[derive(Clone)]
 struct TokenReply {
@@ -1388,7 +1679,7 @@ async fn create_user(
     };
     let mut resources = collection.lock().unwrap();
     body["id"] = if kind == "Users" {
-        json!("remote-user-1")
+        json!(format!("remote-user-{}", resources.len() + 1))
     } else {
         json!(format!("remote-group-{}", resources.len() + 1))
     };

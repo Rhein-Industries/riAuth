@@ -28,6 +28,9 @@ pub struct Config {
         std::collections::BTreeMap<String, crate::cloud_directory::EntraDirectory>,
     #[serde(default)]
     pub scim_targets: std::collections::BTreeMap<String, crate::provisioning::Target>,
+    /// Explicit per-target controller policy. Omitted targets stay manual-review.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scim_reconciliation_modes: BTreeMap<String, crate::connector_guard::ReconciliationMode>,
     #[serde(default)]
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
@@ -142,6 +145,7 @@ impl Default for Config {
             workspace_directories: Default::default(),
             entra_directories: Default::default(),
             scim_targets: Default::default(),
+            scim_reconciliation_modes: BTreeMap::new(),
             signers: Default::default(),
             postgres: None,
             mail: None,
@@ -237,6 +241,11 @@ impl Config {
         for (id, target) in &self.scim_targets {
             crate::core::validate_name(id)?;
             target.validate()?;
+        }
+        for id in self.scim_reconciliation_modes.keys() {
+            if !self.scim_targets.contains_key(id) {
+                bail!("SCIM reconciliation mode references an unconfigured target {id}");
+            }
         }
         if self.signers.len() > 32 {
             bail!("Configure at most 32 external signing key versions");
@@ -560,6 +569,22 @@ pub fn write_private(path: &Path, data: &[u8], replace: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scim_reconciliation_policy_is_scoped_and_rejects_unknown_modes() {
+        let document = "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n[scim_targets.payroll]\nurl='http://127.0.0.1:9/scim/v2'\ntoken_file='token'\ngroups=['staff']\n[scim_reconciliation_modes]\npayroll='automatic'\n";
+        let configured: Config = toml::from_str(document).unwrap();
+        assert!(configured.validate().is_ok());
+        assert_eq!(
+            configured.scim_reconciliation_modes["payroll"],
+            crate::connector_guard::ReconciliationMode::Automatic
+        );
+        assert!(toml::from_str::<Config>(&document.replace("'automatic'", "'unsafe'")).is_err());
+        let dangling: Config =
+            toml::from_str(&document.replace("payroll='automatic'", "missing='automatic'"))
+                .unwrap();
+        assert!(dangling.validate().is_err());
+    }
 
     #[test]
     fn password_history_defaults_to_five_within_bounds() {

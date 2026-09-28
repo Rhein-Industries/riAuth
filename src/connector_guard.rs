@@ -3,13 +3,49 @@
 //! must check live authority and recompute impact before their first mutation.
 use crate::{
     agent::{Agent, Principal},
-    crypto::digest,
+    crypto::{digest, now},
     error::{Error, Result},
     model::User,
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+
+/// A controller policy is scoped to one configured connector. Absence of a
+/// policy means manual review; a controller never infers an automatic mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReconciliationMode {
+    #[default]
+    ManualReview,
+    GuardedAutomatic,
+    Automatic,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReconciliationDecision {
+    AwaitingReview,
+    Eligible,
+}
+
+impl ReconciliationMode {
+    /// Guarded automation stops at any removal. Automatic mode may queue a
+    /// below-threshold disable, but the shared P03 review floor always wins.
+    pub fn decide(self, impact: &RemovalImpact) -> ReconciliationDecision {
+        let any_removal =
+            impact.disabled_users > 0 || impact.missing_users > 0 || impact.removed_memberships > 0;
+        let floor_review =
+            impact.review_required || impact.missing_users > 0 || impact.removed_memberships > 0;
+        match self {
+            Self::ManualReview => ReconciliationDecision::AwaitingReview,
+            Self::GuardedAutomatic if any_removal => ReconciliationDecision::AwaitingReview,
+            Self::Automatic | Self::GuardedAutomatic if floor_review => {
+                ReconciliationDecision::AwaitingReview
+            }
+            Self::Automatic | Self::GuardedAutomatic => ReconciliationDecision::Eligible,
+        }
+    }
+}
 
 #[derive(schemars::JsonSchema, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RemovalImpact {
@@ -99,12 +135,50 @@ impl ReviewBinding {
         Ok(())
     }
     pub fn confirm(&self, id: &str, impact: &RemovalImpact, reviewed: Option<&str>) -> Result<()> {
-        if impact.review_required && reviewed != Some(id) {
+        if (impact.review_required || impact.missing_users > 0 || impact.removed_memberships > 0)
+            && reviewed != Some(id)
+        {
             return Err(Error::conflict(
                 "Connector removals require explicit review; confirm this exact plan ID after inspecting removal_impact and changes",
             ));
         }
         Ok(())
+    }
+}
+
+/// Common apply boundary for connector plans. Callers still authenticate the
+/// actor, validate connector-specific source snapshots and ownership, and
+/// compare the resulting changes before committing. This gate binds the exact
+/// plan, current authority/configuration/revision and recomputed P03 impact.
+pub struct ApplyGate<'a> {
+    pub id: &'a str,
+    pub revision: u64,
+    pub expires_at: u64,
+    pub fingerprint_matches: bool,
+    pub expected_impact: &'a RemovalImpact,
+    pub observed_impact: &'a RemovalImpact,
+    pub review: &'a ReviewBinding,
+    pub reviewed_plan: Option<&'a str>,
+}
+
+impl ApplyGate<'_> {
+    pub fn validate(&self, tx: &Tx<'_>, actor: &Principal, plan: &impl Serialize) -> Result<()> {
+        if self.expires_at <= now()
+            || self.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+            || !self.fingerprint_matches
+        {
+            return Err(Error::conflict(
+                "Connector plan expired or source configuration or local revision changed; create a new plan",
+            ));
+        }
+        self.review.validate(tx, actor, &plan_content(plan)?)?;
+        if self.expected_impact != self.observed_impact {
+            return Err(Error::conflict(
+                "Connector removal impact changed; create a new plan",
+            ));
+        }
+        self.review
+            .confirm(self.id, self.observed_impact, self.reviewed_plan)
     }
 }
 
@@ -165,6 +239,81 @@ impl Pagination {
             return Err(incomplete());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reconciliation_tests {
+    use super::*;
+
+    #[test]
+    fn automatic_modes_keep_the_removal_review_floor() {
+        let mut impact = RemovalImpact::default();
+        assert_eq!(
+            ReconciliationMode::ManualReview.decide(&impact),
+            ReconciliationDecision::AwaitingReview
+        );
+        assert_eq!(
+            ReconciliationMode::GuardedAutomatic.decide(&impact),
+            ReconciliationDecision::Eligible
+        );
+        assert_eq!(
+            ReconciliationMode::Automatic.decide(&impact),
+            ReconciliationDecision::Eligible
+        );
+
+        impact.disabled_users = 1;
+        assert_eq!(
+            ReconciliationMode::GuardedAutomatic.decide(&impact),
+            ReconciliationDecision::AwaitingReview
+        );
+        assert_eq!(
+            ReconciliationMode::Automatic.decide(&impact),
+            ReconciliationDecision::Eligible
+        );
+        impact.review_required = true;
+        assert_eq!(
+            ReconciliationMode::Automatic.decide(&impact),
+            ReconciliationDecision::AwaitingReview
+        );
+
+        impact = RemovalImpact {
+            missing_users: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            ReconciliationMode::Automatic.decide(&impact),
+            ReconciliationDecision::AwaitingReview
+        );
+        assert!(
+            ReviewBinding::default()
+                .confirm("plan", &impact, None)
+                .is_err()
+        );
+        assert!(
+            ReviewBinding::default()
+                .confirm("plan", &impact, Some("other"))
+                .is_err()
+        );
+        assert!(
+            ReviewBinding::default()
+                .confirm("plan", &impact, Some("plan"))
+                .is_ok()
+        );
+
+        impact = RemovalImpact {
+            removed_memberships: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            ReconciliationMode::Automatic.decide(&impact),
+            ReconciliationDecision::AwaitingReview
+        );
+        assert!(
+            ReviewBinding::default()
+                .confirm("plan", &impact, None)
+                .is_err()
+        );
     }
 }
 

@@ -1,7 +1,7 @@
 //! Bounded LDAP import plans and online LDAP password authentication.
 use crate::{
     agent::Principal,
-    connector_guard::{Pagination, RemovalImpact, ReviewBinding, plan_content},
+    connector_guard::{ApplyGate, Pagination, RemovalImpact, ReviewBinding, plan_content},
     core::{Core, Delivery, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -654,22 +654,18 @@ impl Core {
             if plan.applied {
                 return Ok(json!({"id":id,"applied":true,"changes":plan.changes}));
             }
-            if plan.expires_at <= now()
-                || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || plan.fingerprint != directory.fingerprint()?
-            {
-                return Err(Error::conflict(
-                    "LDAP plan expired or local revision changed",
-                ));
-            }
-            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
             let impact = removal_impact(tx, &plan.directory, &plan.entries)?;
-            if impact != plan.removal_impact {
-                return Err(Error::conflict(
-                    "LDAP removal impact changed; create a new plan",
-                ));
+            ApplyGate {
+                id,
+                revision: plan.revision,
+                expires_at: plan.expires_at,
+                fingerprint_matches: plan.fingerprint == directory.fingerprint()?,
+                expected_impact: &plan.removal_impact,
+                observed_impact: &impact,
+                review: &plan.review,
+                reviewed_plan,
             }
-            plan.review.confirm(id, &impact, reviewed_plan)?;
+            .validate(tx, &actor, &plan)?;
             let changes = reconcile(
                 tx,
                 &actor,
