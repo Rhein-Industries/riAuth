@@ -63,8 +63,9 @@ origin and write guards. These are thin adapters to the same service, not a
 second writer. The admin **Reviewed applications** page
 (`/admin#/client-creation-review`) stages and reviews creation proposals. When
 review is enabled, **Applications → New application** opens this flow; otherwise
-it keeps the ordinary setup wizard. The guarded admin session response exposes
-only the review-enabled boolean needed for this choice.
+it keeps the ordinary setup wizard. The guarded admin session response includes
+the review-enabled boolean needed for this choice and an opaque session marker
+for binding in-memory browser intent to the current sign-in.
 
 Example stage content:
 
@@ -109,7 +110,9 @@ The browser form supports web, public browser, native and service clients with
 names/IDs, callbacks, scopes, group restrictions, MFA, browser origins and
 post-logout URLs. It shows the exact content before staging. Other settings within
 the service's supported allowlist can be staged through API/CLI and inspected in
-the browser's complete immutable client content. The form does not add an
+the browser's complete immutable client content. All proposed settings are
+visible by default before approval, including API-staged advanced settings;
+there is no collapsed disclosure to skip. The form does not add an
 advanced-settings writer or relax the service's supported creation classes.
 
 New drafts load a fresh management revision. In-page refresh preserves unsent
@@ -129,20 +132,27 @@ advisory; the unchanged service revalidates all authority and dependencies in th
 transaction. Stale unfinished work can be cancelled under the service's rules.
 
 An unknown execution keeps its original request key and revision in memory.
-**Recover execution result** replays that receipt under the same administrator;
-it never creates a fresh execution request. Refreshing an executed proposal alone
-cannot recover a secret. A confirmed response clears the recovery request, and
-the secret is displayed once in a focused tab only after a second identity check.
+**Recover execution result** replays that receipt under the same administrator
+and browser session; it never creates a fresh execution request. Refreshing an
+executed proposal alone cannot recover a secret. A confirmed response clears the
+recovery request, and the secret is displayed once in a focused tab only after a
+second identity check.
 Public clients show no secret. Explicit erasure, refresh, navigation, page hide,
 tab switching or loss of focus removes every displayed copy. A response arriving
 after loss of focus cannot reveal a secret. A discarded secret requires rotation
 through the existing application controls.
 
 Drafts, request keys and secrets are not written to browser storage. Account or
-session changes discard drafts and pending decisions. Server error bodies are
-not echoed; the page gives fixed authorization, freshness and unknown-outcome
-feedback. All proposal fields render as text. Malformed responses cannot enable
-actions. The UI adds no management writer or authorization exception.
+session changes, including signing out and back into the same account in another
+tab, discard drafts and pending decisions when the live session is rechecked.
+The session marker is a domain-separated SHA-256 digest of the SSO cookie and
+its session ID, not a credential or session lookup key. It is used only for
+equality checks on refresh, focus, and before/after review mutations. A changed
+session also prevents an in-flight execution response from displaying a secret.
+Server error bodies are not echoed; the page gives fixed authorization,
+freshness and unknown-outcome feedback. All proposal fields render as text.
+Malformed responses cannot enable actions. The UI adds no management writer or
+authorization exception.
 
 ## Binding and atomic execution
 
@@ -213,17 +223,20 @@ Browser continuation checks:
 cargo build --locked --offline --example portal_fixture
 cargo test --locked --offline --features test-support --test reviewed_client_creation
 cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_creation
-node node_modules/@playwright/test/cli.js test client-creation-review.spec.js --project=chromium --workers=1 --reporter=line --output=/tmp/riauth-m05-creation-ui-results
+node node_modules/@playwright/test/cli.js test client-creation-review.spec.js --project=chromium --workers=1 --reporter=line --output=/tmp/riauth-m05-creation-ui-correction-results
 ```
 
 The browser command runs from `tools/browser` using existing dependencies and
 writes artifacts under `/tmp`. The fixture enables review after creating seed
 clients, leaving the other browser suites' default policy unchanged. The focused
-browser checks cover exact content, participant separation, retry and receipt
-recovery, secret erasure, stale revisions, cancellation, account changes, and
-public/service creation. Chromium accessibility and narrow-screen checks cover
-WCAG 2 A/AA and 2.1 AA and 320-pixel reflow. Firefox, WebKit and PostgreSQL
-peer checks remain separate.
+Rust checks cover the policy flag, stable session marker, rotation on new
+cookie/session, refusal to use the marker as a credential, and browser/headless
+asset routing. Chromium cases cover complete disclosure of API-staged settings,
+same-account session rotation, exact content and participant separation,
+request retry and receipt recovery, secret erasure, stale revisions,
+cancellation, and public/service creation. Accessibility and narrow-screen
+checks cover WCAG 2 A/AA and 2.1 AA and 320-pixel reflow. Firefox, WebKit and
+PostgreSQL peer checks remain separate.
 
 Remaining browser gaps are editing the rest of the service's allowed creation
 settings, existing-client access-policy review UI, and a shared review inbox.

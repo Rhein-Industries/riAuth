@@ -315,6 +315,59 @@ async fn configured_creation_review_binds_content_authority_dependencies_and_iss
     .await;
     assert_eq!(session.0, StatusCode::OK);
     assert_eq!(session.1["reviewed_client_creation"], true);
+    let marker = session.1["session_marker"].as_str().unwrap();
+    assert_eq!(marker.len(), 43);
+    assert!(
+        marker
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"-_".contains(&c))
+    );
+    assert_ne!(marker, riauth::crypto::digest(&author_cookie));
+    let again = call(
+        &app,
+        "GET",
+        "/api/admin/session",
+        browser,
+        Value::Null,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(again.1["session_marker"], marker);
+    // Both an SSO binding rotation and a fresh login as the same administrator
+    // change the marker. It is neither a browser cookie nor a bearer credential.
+    for next_cookie in [
+        cookie(&f.core, &f.admin),
+        cookie(&f.core, &login(&f, "admin")),
+    ] {
+        let next = call(
+            &app,
+            "GET",
+            "/api/admin/session",
+            Auth::Browser(&next_cookie, Some("http://localhost:9000")),
+            Value::Null,
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(next.0, StatusCode::OK);
+        assert_eq!(next.1["user"]["id"], session.1["user"]["id"]);
+        assert_ne!(next.1["session_marker"], marker);
+    }
+    for (path, auth) in [
+        (
+            "/api/admin/session",
+            Auth::Browser(marker, Some("http://localhost:9000")),
+        ),
+        ("/api/users", Auth::Bearer(marker)),
+    ] {
+        assert_eq!(
+            call(&app, "GET", path, auth, Value::Null, None, None)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
     let asset = "/portal/assets/client-creation-review.js";
     let script = call(&app, "GET", asset, browser, Value::Null, None, None).await;
     assert_eq!(script.0, StatusCode::OK);

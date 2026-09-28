@@ -209,6 +209,8 @@
     connection(kind === "offline" ? "Offline" : "Not signed in");
     screen("gate"); $("gate-title").focus();
   }
+  const sameSession = (before, after) => before?.user?.id === after?.user?.id
+    && typeof before?.session_marker === "string" && before.session_marker === after?.session_marker;
   async function refresh(options = {}) {
     RiAuthClientCreationReview.eraseSecrets();
     const run = ++generation;
@@ -219,6 +221,11 @@
       // conflict, never a silent overwrite.
       await RiAuthCapabilities.refresh();
       const me = await api("GET", "admin/session");
+      if (run !== generation) return;
+      // Clear intent as soon as the session changes, even if a later data read fails.
+      if ((draft && draft.owner !== me.user.id) || (data.me && !sameSession(data.me, me))) {
+        forget(); loaded = false; screen("loading");
+      }
       const canReadAccess = me.user.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
       const [clients, users, groups, requests, grants, audit, invites, directories, deliveries, workflows] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
@@ -231,7 +238,6 @@
         me.edition === "platform" ? api("GET", "admin/workflows") : Promise.resolve([]),
       ]);
       if (run !== generation) return;
-      if ((draft && draft.owner !== me.user.id) || (data.me && data.me.user.id !== me.user.id)) forget();
       Object.assign(data, { me, revision: me.revision, clients, users, groups, workflows, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000 });
       Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
@@ -2189,16 +2195,19 @@
   window.addEventListener("blur", eraseSecrets);
   window.addEventListener("pagehide", eraseSecrets);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") eraseSecrets(); });
-  // A session that ends, or becomes another account, in another tab is noticed on return.
+  // A session that ends or rotates (including the same account) is noticed on return.
   // Any one-time secret is erased first, synchronously, so no answer or stall can expose it.
   window.addEventListener("focus", async () => {
     eraseSecrets();
     if (!loaded) return;
-    const owner = data.me.user.id;
+    const before = data.me, run = generation;
     try {
       const me = await api("GET", "admin/session");
-      if (me.user.id !== owner) { forget(); loaded = false; refresh({ focus: true }); }
-    } catch (error) { if (error.status === 401 || error.status === 403) refresh(); }
+      if (!loaded || run !== generation || data.me !== before) return;
+      if (!sameSession(before, me)) { forget(); loaded = false; refresh({ focus: true }); }
+    } catch (error) {
+      if (loaded && run === generation && data.me === before && [401, 403].includes(error.status)) refresh();
+    }
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;

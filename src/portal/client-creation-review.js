@@ -50,8 +50,9 @@
   }
   function view({ id, api, h, me, users, identityChanged, sessionLost }) {
     const run = ++generation, owner = me?.user?.id;
-    if (savedDraft?.owner !== owner || !me?.user?.admin) savedDraft = null;
-    if (decision?.owner !== owner || !me?.user?.admin) decision = null;
+    const sessionMarker = typeof me?.session_marker === "string" && /^[A-Za-z0-9_-]{43}$/.test(me.session_marker) ? me.session_marker : null;
+    if (!sessionMarker || savedDraft?.sessionMarker !== sessionMarker || savedDraft?.owner !== owner || !me?.user?.admin) savedDraft = null;
+    if (!sessionMarker || decision?.sessionMarker !== sessionMarker || decision?.owner !== owner || !me?.user?.admin) decision = null;
     const root = h("div", { class: "grant-review client-creation-review" });
     const active = () => run === generation && root.isConnected;
     const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
@@ -70,12 +71,16 @@
     async function session() {
       const live = await api("GET", "admin/session");
       if (!active()) return null;
-      if (live?.user?.id !== owner) { identityChanged(); return null; }
+      if (live?.user?.id !== owner || live?.session_marker !== sessionMarker) { identityChanged(); return null; }
       if (!live.user.admin) { sessionLost(403); return null; }
       return live;
     }
     if (!me?.user?.admin) {
       root.append(h("p", { class: "notice" }, "A full administrator account is required to review application creation."));
+      return { node: root };
+    }
+    if (!sessionMarker) {
+      root.append(h("p", { class: "notice" }, "Reload this page to verify your browser session before reviewing application creation."));
       return { node: root };
     }
     const otherDecision = decision && decision.id !== id;
@@ -94,7 +99,7 @@
           h("a", { href: "#/applications/new", class: "button secondary" }, "Set up an application"));
         return { node: root };
       }
-      savedDraft ||= { owner, revision: null, pending: null, blocked: false,
+      savedDraft ||= { owner, sessionMarker, revision: null, pending: null, blocked: false,
         values: { name: "", client_id: "", type: "web", redirects: "", scopes: "openid profile", groups: "", mfa: false, origins: "", logout: "" } };
       const record = savedDraft, inputs = {};
       const input = (key, attrs = {}) => inputs[key] = h("input", { id: `creation-${key}`, value: record.values[key], autocomplete: "off", ...attrs });
@@ -278,8 +283,8 @@
           facts([["Client ID", p.client_id], ["Type", p.after.service ? "Service" : p.after.confidential ? "Confidential OIDC" : "Public OIDC"],
             ["Redirect URIs", p.after.redirect_uris.join("\n") || "None"], ["Scopes", p.after.scopes.join(", ")],
             ["Allowed groups", p.after.allowed_groups.join(", ") || "No group restriction"], ["Require MFA", p.after.require_mfa ? "Yes" : "No"]]),
-          h("details", {}, h("summary", {}, "Complete client content, including all settings"),
-            h("pre", { class: "creation-content", id: "creation-content" }, JSON.stringify(p.after, null, 2)))),
+          h("h3", {}, "Complete client content, including all settings"),
+          h("pre", { class: "creation-content", id: "creation-content" }, JSON.stringify(p.after, null, 2))),
         h("section", { class: "admin-card" }, h("h2", {}, "Immutable approval binding"),
           facts([["Change ID", h("code", { id: "creation-id" }, p.id)], ["Canonical digest", h("code", { id: "creation-digest" }, row.digest)],
             ["Management revision", String(p.base_revision)], ["Resource dependencies", h("code", {}, p.resource_revision)], ["Policy dependencies", h("code", {}, p.policy_revision)]]),
@@ -300,7 +305,7 @@
           if (!live) return;
           currentSession = live;
           if (!retry && action !== "cancel" && ["Stale", "Expired"].includes(state()[0])) return;
-          decision ||= { owner, id, action, digest: row.digest, proposal: row.proposal, revision: live.revision, key: key() };
+          decision ||= { owner, sessionMarker, id, action, digest: row.digest, proposal: row.proposal, revision: live.revision, key: key() };
           const request = decision;
           const response = await api("POST", `${endpoint}/${request.action}`, { digest: request.digest }, request);
           const result = checkedChange(action === "execute" ? response?.change : response, id);

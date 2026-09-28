@@ -358,8 +358,16 @@ async fn session(State(app): State<App>, headers: HeaderMap) -> Result<Json<Valu
         core.store.read(|tx| {
             let (user, session) = core.browser_user(tx, &cookie)?;
             core.management(tx, &token, "state.read", "state/revision")?;
+            // Public equality marker only: domain separation keeps this from being
+            // a credential or a session lookup key. Bind both the SSO cookie and
+            // its session so a new sign-in as the same account clears UI intent.
+            let session_marker = crate::crypto::digest(&format!(
+                "riauth/admin-session-marker/v1\n{cookie}\n{}",
+                session.id
+            ));
             Ok(Json(json!({
                 "user": UserView::from(&user),
+                "session_marker": session_marker,
                 "mfa": session.identity.mfa,
                 "edition": crate::edition::NAME,
                 "reviewed_client_creation": core.config.reviewed_client_creation,

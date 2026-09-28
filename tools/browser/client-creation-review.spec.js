@@ -52,6 +52,102 @@ async function stage(page, client, type = 'web') {
 async function acknowledge(page) {
   await page.getByLabel('I checked the exact application, digest and dependencies.').check();
 }
+async function rotateSession(context, user) {
+  const other = await context.newPage();
+  const session = async () => {
+    const response = await other.request.get(`${fixture.issuer}/api/admin/session`, { headers: { 'x-riauth-portal': '1' } });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  const before = await session();
+  await other.goto(`${fixture.issuer}/admin`);
+  await other.locator('#sign-out').click();
+  await expect(other.locator('#gate-title')).toHaveText('Sign in to administer riAuth');
+  await signIn(other, user);
+  const after = await session();
+  expect(after.user.id).toBe(before.user.id);
+  expect(after.session_marker).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(after.session_marker).not.toBe(before.session_marker);
+  return other;
+}
+
+test('API-staged advanced settings are visible before approval', async ({ page, request }) => {
+  const advanced = {
+    token_endpoint_auth_method: 'client_secret_basic', allowed_grants: ['authorization_code'],
+    access_token_ttl: 300, refresh_token_ttl: 1800, code_ttl: 45,
+    require_pushed_authorization_requests: true, dpop_bound_access_tokens: true,
+    userinfo_signed_response: true, claims_in_access_token: true,
+    backchannel_logout_uri: 'https://advanced.example.test/logout',
+  };
+  const response = await request.post(`${fixture.issuer}/api/client-creation-changes`, {
+    headers: bearer(), data: {
+      client_id: 'browser-advanced', name: 'API-staged advanced application', confidential: true, service: false,
+      redirect_uris: ['https://advanced.example.test/callback'], scopes: ['openid', 'profile'],
+      allowed_groups: ['creation-staff'], require_mfa: true, settings: advanced,
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const change = await response.json(), id = change.proposal.id;
+  await signIn(page, reviewer); await open(page, id);
+  // All normalized settings, including those absent from the wizard, are open
+  // before the reviewer acknowledges anything; textContent alone is insufficient.
+  await expect(page.getByRole('heading', { name: 'Complete client content, including all settings' })).toBeVisible();
+  const content = page.locator('#creation-content');
+  await expect(content).toBeVisible();
+  expect(JSON.parse(await content.innerText())).toEqual(change.proposal.after);
+  expect(JSON.parse(await content.innerText()).settings).toMatchObject(advanced);
+  await expect(page.getByRole('button', { name: 'Approve exact application' })).toBeDisabled();
+  await acknowledge(page);
+  const approval = page.waitForRequest((r) => r.url().endsWith(`/${id}/approve`) && r.method() === 'POST');
+  await page.getByRole('button', { name: 'Approve exact application' }).click();
+  expect((await approval).postDataJSON()).toEqual({ digest: change.digest });
+  await expect(page.locator('#creation-status')).toHaveText('Approved');
+  await expect(content).toBeVisible();
+  expect(JSON.parse(await content.innerText())).toEqual(change.proposal.after);
+});
+
+test('same-account sign-out and sign-in discard drafts and unconfirmed execution decisions', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  await signIn(page, fixture.admin); await draft(page, 'discarded-session-draft');
+  const authorTab = await rotateSession(page.context(), fixture.admin);
+  try {
+    // Do not depend on a focus event: an in-page refresh must clear the old intent.
+    await page.evaluate(() => document.querySelector('#refresh').click());
+    await expect(page.getByLabel('Client ID', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('I checked the complete application content.')).not.toBeChecked();
+  } finally { await authorTab.close(); }
+  const id = await stage(page, 'session-bound-execution');
+  const reviewContext = await browser.newContext(), executeContext = await browser.newContext();
+  try {
+    const review = await reviewContext.newPage(), execute = await executeContext.newPage();
+    await signIn(review, reviewer); await open(review, id); await acknowledge(review);
+    await review.getByRole('button', { name: 'Approve exact application' }).click();
+    await expect(review.locator('#creation-status')).toHaveText('Approved');
+    await signIn(execute, executor); await open(execute, id); await acknowledge(execute);
+    let executions = 0, secret;
+    await execute.route(`**/api/admin/client-creation-changes/${id}/execute`, async (route) => {
+      executions += 1;
+      const response = await route.fetch(); expect(response.ok()).toBe(true);
+      secret = (await response.json()).client_secret;
+      await route.abort('failed');
+    });
+    await execute.getByRole('button', { name: 'Create application once' }).click();
+    await expect(execute.locator('#creation-status')).toHaveText('Outcome unknown');
+    const executorTab = await rotateSession(executeContext, executor);
+    // Exercise the action's own preflight without relying on refresh or focus.
+    await execute.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Recover execution result')?.click());
+    await expect(execute.locator('#creation-status')).toHaveText('Executed');
+    await expect(execute.getByRole('button', { name: 'Recover execution result' })).toBeHidden();
+    expect(executions).toBe(1);
+    await expect(execute.getByLabel('One-time client secret')).toHaveCount(0);
+    expect(secret).toMatch(/^ri_client_/);
+    expect(await execute.content()).not.toContain(secret);
+    await execute.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(execute.locator('#creation-status')).toHaveText('Executed');
+    expect(executions).toBe(1);
+    await executorTab.close();
+  } finally { await reviewContext.close(); await executeContext.close(); }
+});
 
 test('wizard stages exact creation, separates actors, recovers one execution and erases its secret', async ({ page, browser }) => {
   test.setTimeout(90000);
@@ -76,6 +172,8 @@ test('wizard stages exact creation, separates actors, recovers one execution and
   await expect(page.getByRole('alert')).toContainText('response was lost or incomplete');
   await expect(page.getByLabel('Client ID', { exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  // Wait for the replacement view before retrying; refresh retires old callbacks.
+  await expect(page.getByRole('alert')).toBeHidden();
   await page.getByRole('button', { name: 'Retry same staging request' }).click();
   await expect(page.locator('#creation-status')).toHaveText('Awaiting review');
   expect(attempts).toHaveLength(2);
