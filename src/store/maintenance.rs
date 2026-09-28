@@ -325,6 +325,18 @@ impl Tx<'_> {
             limit.min(PAGE),
         )
     }
+    /// Check one durable membership without decoding the Group's member set.
+    #[cfg(feature = "platform")]
+    pub(crate) fn user_has_group_index(&self, user_id: &str, group_name: &str) -> Result<bool> {
+        let bucket = format!("index_user_groups/{}", crypto::digest(user_id));
+        match self.get::<String>(&bucket, &crypto::digest(group_name))? {
+            Some(name) if name == group_name => Ok(true),
+            Some(_) => Err(Error::internal(
+                "Group membership index has a mismatched name",
+            )),
+            None => Ok(false),
+        }
+    }
     /// Group storage keys whose LDAP DNs have the same ASCII case fold.
     /// A page is enough for the read side to detect visible collisions without
     /// retaining every projected Group DN.

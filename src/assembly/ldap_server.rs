@@ -8,9 +8,11 @@ use crate::{
     store::Tx,
 };
 use ldap3_proto::proto::{LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope};
+use serde::de::{SeqAccess, Visitor};
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
+    fmt,
     net::IpAddr,
 };
 
@@ -18,6 +20,44 @@ const MAX_SELECTED_USERS: usize = 2000;
 const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
 const GROUP_INDEX_PAGE: usize = 16;
 const MAX_RESULT_BYTES: usize = 4 * 1024 * 1024;
+
+// Validate the durable Group shape and key binding without allocating its
+// potentially large members set. Storage still reads one encoded record.
+#[derive(serde::Deserialize)]
+struct GroupHeader {
+    name: String,
+    #[serde(rename = "members", deserialize_with = "skip_group_members")]
+    _members: (),
+}
+
+fn skip_group_members<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<(), D::Error> {
+    struct MemberIds;
+    impl<'de> Visitor<'de> for MemberIds {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a sequence of Group member IDs")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut members: A) -> std::result::Result<(), A::Error> {
+            while members.next_element::<String>()?.is_some() {}
+            Ok(())
+        }
+    }
+    deserializer.deserialize_seq(MemberIds)
+}
+
+fn require_group_binding(tx: &Tx<'_>, name: &str) -> Result<()> {
+    let group = tx
+        .get::<GroupHeader>("groups", name)?
+        .ok_or_else(|| Error::internal("LDAP Group index has a missing Group"))?;
+    if group.name != name {
+        return Err(Error::internal("LDAP Group record binding mismatch"));
+    }
+    Ok(())
+}
 
 /// The membership index is hash ordered, while memberOf is Group-name
 /// ordered. Retain only DNs that fit within the existing LDAP result limit;
@@ -95,7 +135,7 @@ impl GroupIndexCursor {
 fn for_each_visible_group(
     tx: &Tx<'_>,
     visible: &BTreeMap<String, String>,
-    mut visit: impl FnMut(String, Group) -> Result<()>,
+    mut visit: impl FnMut(String, Vec<String>) -> Result<()>,
 ) -> Result<()> {
     let mut cursors = Vec::with_capacity(visible.len());
     let mut next = BinaryHeap::new();
@@ -111,32 +151,32 @@ fn for_each_visible_group(
         }
         cursors.push(cursor);
     }
-    let mut previous = None;
     while let Some(Reverse((key, name, index))) = next.pop() {
+        let mut member_ids = vec![cursors[index].user_id.clone()];
         if let Some((next_key, next_name)) = cursors[index].next(tx)? {
             next.push(Reverse((next_key, next_name, index)));
         }
-        if previous
-            .as_ref()
-            .is_some_and(|(prior_key, prior_name)| prior_key == &key && prior_name == &name)
+        while next
+            .peek()
+            .is_some_and(|Reverse((other_key, other_name, _))| {
+                other_key == &key && other_name == &name
+            })
         {
-            continue;
+            let Reverse((_, _, other_index)) = next.pop().unwrap();
+            member_ids.push(cursors[other_index].user_id.clone());
+            if let Some((next_key, next_name)) = cursors[other_index].next(tx)? {
+                next.push(Reverse((next_key, next_name, other_index)));
+            }
         }
         if crate::crypto::digest(&name) != key {
             return Err(Error::internal(
                 "LDAP Group membership index has a mismatched key",
             ));
         }
-        let group = tx
-            .get::<Group>("groups", &name)?
-            .ok_or_else(|| Error::internal("LDAP Group membership index has a missing Group"))?;
-        if group.name != name {
-            return Err(Error::internal(
-                "LDAP Group membership index has a mismatched Group",
-            ));
-        }
-        previous = Some((key, name.clone()));
-        visit(name, group)?;
+        require_group_binding(tx, &name)?;
+        member_ids.sort();
+        member_ids.dedup();
+        visit(name, member_ids)?;
     }
     Ok(())
 }
@@ -179,11 +219,11 @@ fn ensure_unique_group_dn(
                 indexed = true;
                 continue;
             }
-            let other = tx
-                .get::<Group>("groups", &other_name)?
-                .ok_or_else(|| Error::internal("LDAP Group DN index has a missing Group"))?;
-            if other.members.iter().any(|id| visible.contains_key(id)) {
-                return Err(Error::conflict("LDAP group DNs collide"));
+            require_group_binding(tx, &other_name)?;
+            for id in visible.keys() {
+                if tx.user_has_group_index(id, &other_name)? {
+                    return Err(Error::conflict("LDAP group DNs collide"));
+                }
             }
         }
         if !full {
@@ -504,13 +544,16 @@ impl Core {
                 include(entry(dn, attrs));
             }
             if client.scopes.contains("groups") {
-                for_each_visible_group(tx, &visible, |name, group| {
-                    let members: Vec<_> = group
-                        .members
+                for_each_visible_group(tx, &visible, |name, member_ids| {
+                    let members: Vec<_> = member_ids
                         .iter()
-                        .filter_map(|id| visible.get(id))
-                        .map(|name| settings.user_dn(name))
-                        .collect();
+                        .map(|id| {
+                            visible
+                                .get(id)
+                                .map(|name| settings.user_dn(name))
+                                .ok_or_else(|| Error::internal("LDAP Group member is not visible"))
+                        })
+                        .collect::<Result<_>>()?;
                     if !members.is_empty() {
                         let dn = settings.group_dn(&name);
                         ensure_unique_group_dn(tx, &name, &visible)?;
@@ -920,6 +963,154 @@ mod tests {
     #[test]
     fn ldap_search_caps_disabled_member_reads_and_pages_fallback() {
         assert_member_lookup_fallback(true);
+    }
+
+    #[test]
+    fn ldap_group_projection_merges_visible_members_past_user_page() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "groups"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let created = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "relation-ldap-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            created["credential"]["token"].as_str().unwrap().into(),
+        ));
+        core.store
+            .write(|tx| {
+                let admin_id: String = tx.get("usernames", "admin")?.unwrap();
+                let template: User = tx.get("users", &admin_id)?.unwrap();
+                let mut directory: Group = tx.get("groups", "directory")?.unwrap();
+                for index in 0..129 {
+                    let mut user = template.clone();
+                    user.id = format!("member-{index:03}");
+                    user.username = user.id.clone();
+                    user.admin = false;
+                    directory.members.insert(user.id.clone());
+                    tx.put("users", &user.id, &user)?;
+                }
+                let mut related = directory.members.clone();
+                related.extend((0..2100).map(|index| format!("stale-{index:04}")));
+                tx.put("groups", "directory", &directory)?;
+                tx.put(
+                    "groups",
+                    "z-related",
+                    &Group {
+                        name: "z-related".into(),
+                        members: related,
+                    },
+                )
+            })
+            .unwrap();
+        let mut query = LdapSearchRequest {
+            base: "ou=groups,dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::OneLevel,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("member".into()),
+            attrs: vec![],
+        };
+        let scans = &core.store.telemetry().reads;
+        let before_unbounded = scans.scans(ReadContext::Read, false).count();
+        let (rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        assert_eq!(
+            scans.scans(ReadContext::Read, false).count(),
+            before_unbounded
+        );
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].dn < rows[1].dn);
+        let expected: Vec<Vec<u8>> = (0..129)
+            .map(|index| format!("uid=member-{index:03},ou=users,dc=riauth,dc=test").into_bytes())
+            .collect();
+        for row in &rows {
+            let members = &row
+                .attributes
+                .iter()
+                .find(|attribute| attribute.atype == "member")
+                .unwrap()
+                .vals;
+            assert_eq!(
+                members, &expected,
+                "stale IDs must not enter the projection"
+            );
+        }
+
+        // The later visible member makes the case variant collide even when
+        // every Group entry is outside the query's scope and filter.
+        core.store
+            .write(|tx| {
+                tx.put(
+                    "groups",
+                    "Z-RELATED",
+                    &Group {
+                        name: "Z-RELATED".into(),
+                        members: ["member-128".into()].into(),
+                    },
+                )
+            })
+            .unwrap();
+        query.base = "ou=users,dc=riauth,dc=test".into();
+        query.filter = LdapFilter::Present("uid".into());
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
+        );
     }
 
     fn assert_member_lookup_fallback(disabled_members: bool) {
