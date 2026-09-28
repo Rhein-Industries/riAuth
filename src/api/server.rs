@@ -100,8 +100,8 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
     })
 }
 
-pub async fn serve(core: Core) -> anyhow::Result<()> {
-    // No listener or worker starts on unreconciled restored state.
+async fn serving_preflight(core: &Core) -> anyhow::Result<()> {
+    // No protocol adapter or background worker starts on unreconciled restored state.
     let store = core.store.clone();
     let config = core.config.clone();
     tokio::task::spawn_blocking(move || {
@@ -110,6 +110,11 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
         store.ready()
     })
     .await??;
+    Ok(())
+}
+
+pub async fn serve(core: Core) -> anyhow::Result<()> {
+    serving_preflight(&core).await?;
     let config = core.config.clone();
     let _workers = start_workers(core.clone()).await?;
     serve_http(config, router(core)).await
@@ -124,7 +129,9 @@ pub(crate) async fn serve_bootstrap(setup: crate::bootstrap::Bootstrap) -> anyho
     tokio::select! {
         result = &mut serving => result,
         core = ready => {
-            let _workers = start_workers(core.map_err(|_| anyhow::anyhow!("Setup runtime closed"))?).await?;
+            let core = core.map_err(|_| anyhow::anyhow!("Setup runtime closed"))?;
+            serving_preflight(&core).await?;
+            let _workers = start_workers(core).await?;
             serving.await
         }
     }

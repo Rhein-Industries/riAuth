@@ -13,6 +13,70 @@ use crate::{
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "platform")]
+use crate::model::Group;
+#[cfg(feature = "platform")]
+use std::sync::{
+    Arc, Mutex, Weak,
+    atomic::{AtomicBool, Ordering},
+};
+
+/// Ephemeral listener state shared by Core clones. The weak entries do not
+/// retain a server after its owner or worker stops.
+#[derive(Default)]
+pub(crate) struct RuntimeStatus {
+    #[cfg(feature = "platform")]
+    ldap: Mutex<BTreeMap<String, Vec<(crate::ldap_server::Listener, Weak<AtomicBool>)>>>,
+}
+
+#[cfg(feature = "platform")]
+#[derive(Clone)]
+pub(crate) struct ListenerLease(Arc<AtomicBool>);
+
+#[cfg(feature = "platform")]
+impl ListenerLease {
+    pub(crate) fn running(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(feature = "platform")]
+impl Drop for ListenerLease {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(feature = "platform")]
+impl RuntimeStatus {
+    pub(crate) fn bind_ldap(
+        &self,
+        id: &str,
+        listener: &crate::ldap_server::Listener,
+    ) -> ListenerLease {
+        let live = Arc::new(AtomicBool::new(false));
+        let mut listeners = self.ldap.lock().unwrap_or_else(|error| error.into_inner());
+        let entries = listeners.entry(id.to_owned()).or_default();
+        entries.retain(|(_, entry)| entry.strong_count() > 0);
+        entries.push((listener.clone(), Arc::downgrade(&live)));
+        ListenerLease(live)
+    }
+
+    fn ldap_running(&self, id: &str, listener: &crate::ldap_server::Listener) -> bool {
+        self.ldap
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(id)
+            .is_some_and(|entries| {
+                entries.iter().any(|(bound, entry)| {
+                    bound == listener
+                        && entry
+                            .upgrade()
+                            .is_some_and(|live| live.load(Ordering::Acquire))
+                })
+            })
+    }
+}
 
 /// Activation switches with a complete pre-serving dependency check. Other
 /// names are rejected until their stored references and runtime gates are wired.
@@ -45,7 +109,7 @@ pub(crate) fn validate_config_for(
     Ok(())
 }
 
-/// Retained policies, proxy routes, and RADIUS listener bindings are active
+/// Retained policies, proxy routes, LDAP and RADIUS listener bindings are active
 /// dependencies even when their clients are disabled. Run before workers.
 pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
     store.read(|tx| validate_store_tx_for(config, crate::edition::CURRENT, tx))
@@ -72,6 +136,10 @@ pub(crate) fn validate_store_tx_for(
                 let client = tx.get::<Client>("clients", &route.client_id)?;
                 validate_proxy_route(listener_id, origin, &route.client_id, client.as_ref())?;
             }
+        }
+        for (listener_id, listener) in &config.ldap_listeners {
+            let client = tx.get::<Client>("clients", &listener.client_id)?;
+            validate_ldap_listener_client(tx, listener_id, listener, client.as_ref())?;
         }
         for (listener_id, listener) in &config.radius_listeners {
             validate_radius_listener_material(listener_id, listener)?;
@@ -113,12 +181,13 @@ fn device_trust_usable_for(config: &Config, target: crate::edition::Target) -> b
 /// client write commits. Only this record is inspected; the full collection is
 /// checked once at startup for retained records and edition downgrades.
 pub(crate) fn validate_client_policy(
+    tx: &Tx<'_>,
     config: &Config,
     existing: Option<&Client>,
     client: &Client,
 ) -> Result<()> {
     #[cfg(not(feature = "platform"))]
-    let _ = existing;
+    let _ = (tx, existing);
     if !device_trust_usable(config) {
         let settings = serde_json::to_value(&client.settings).map_err(Error::internal)?;
         if settings_require_device_trust(&settings) {
@@ -134,6 +203,12 @@ pub(crate) fn validate_client_policy(
             if target.client_id == client.id {
                 validate_proxy_route(listener_id, origin, &client.id, Some(client))?;
             }
+        }
+    }
+    #[cfg(feature = "platform")]
+    for (listener_id, listener) in &config.ldap_listeners {
+        if listener.client_id == client.id {
+            validate_ldap_listener_client(tx, listener_id, listener, Some(client))?;
         }
     }
     #[cfg(feature = "platform")]
@@ -163,6 +238,46 @@ pub(crate) fn validate_client_policy(
         validate_radius_listener_material(listener_id, listener)?;
     }
     Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn ldap_client_eligible(tx: &Tx<'_>, client: &Client) -> Result<bool> {
+    if !client.enabled {
+        return Ok(false);
+    }
+    let Some(settings) = &client.settings.ldap else {
+        return Ok(false);
+    };
+    if settings.validate(client).is_err() {
+        return Ok(false);
+    }
+    for group in &settings.search_groups {
+        if tx.get::<Group>("groups", group)?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(feature = "platform")]
+fn validate_ldap_listener_client(
+    tx: &Tx<'_>,
+    id: &str,
+    listener: &crate::ldap_server::Listener,
+    client: Option<&Client>,
+) -> Result<()> {
+    listener.validate().map_err(|error| {
+        Error::bad(format!("LDAP listener {id:?} is invalid: {}", error.message))
+    })?;
+    if let Some(client) = client {
+        if ldap_client_eligible(tx, client)? {
+            return Ok(());
+        }
+    }
+    Err(Error::bad(format!(
+        "LDAP listener {id:?} requires enabled client {:?} with a valid LDAP policy and existing search groups",
+        listener.client_id
+    )))
 }
 
 #[cfg(feature = "platform")]
@@ -331,7 +446,7 @@ pub fn artifact() -> Value {
         .map(|name| {
             (
                 (*name).to_owned(),
-                json!({"compiled": compiled(name), "enabled": null, "configured": null, "usable": null}),
+                json!({"compiled": compiled(name), "enabled": null, "configured": null, "runtime_ready": null, "usable": null}),
             )
         })
         .collect::<Map<String, Value>>();
@@ -352,6 +467,7 @@ struct Facts {
     radius_pap_ready: bool,
     radius_radsec_ready: bool,
     radius_eap_ready: bool,
+    #[cfg(feature = "platform")]
     ldap_clients: BTreeSet<String>,
     proxy_clients: BTreeMap<String, ProxyClient>,
     oidc_source: bool,
@@ -389,7 +505,8 @@ impl Facts {
                     }
                 }
             }
-            if client.settings.ldap.is_some() {
+            #[cfg(feature = "platform")]
+            if ldap_client_eligible(tx, &client)? {
                 facts.ldap_clients.insert(client.id.clone());
             }
             #[cfg(feature = "platform")]
@@ -446,10 +563,7 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         "directory.scim_outbound" => !config.scim_targets.is_empty(),
         "directory.workspace_sync" => !config.workspace_directories.is_empty(),
         "directory.entra_sync" => !config.entra_directories.is_empty(),
-        "directory.ldap_provider" => config
-            .ldap_listeners
-            .values()
-            .any(|listener| facts.ldap_clients.contains(&listener.client_id)),
+        "directory.ldap_provider" => !config.ldap_listeners.is_empty(),
         "proxy.forward_auth_sso" => !facts.proxy_clients.is_empty(),
         "proxy.shared_domain_sso" => facts
             .proxy_clients
@@ -504,6 +618,29 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
     }
 }
 
+/// `None` means this capability has no independently tracked runtime worker.
+/// A configured LDAP listener is usable only after its socket bound and while
+/// its task and owning server are both alive.
+fn runtime_ready(name: &str, core: &Core, facts: &Facts) -> Option<bool> {
+    match name {
+        "directory.ldap_provider" => {
+            #[cfg(feature = "platform")]
+            {
+                Some(core.config.ldap_listeners.iter().any(|(id, listener)| {
+                    facts.ldap_clients.contains(&listener.client_id)
+                        && core.runtime.ldap_running(id, listener)
+                }))
+            }
+            #[cfg(not(feature = "platform"))]
+            {
+                let _ = (core, facts);
+                Some(false)
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Read the same durable configuration that live adapters use. External peer
 /// health is deliberately outside this local usability snapshot.
 pub fn runtime(core: &Core) -> Result<Value> {
@@ -525,7 +662,8 @@ pub fn runtime(core: &Core) -> Result<Value> {
         let compiled = compiled(name);
         let enabled = core.config.capabilities.enabled(name);
         let configured = configured(name, &core.config, &facts);
-        let available = compiled && enabled && configured;
+        let runtime_ready = runtime_ready(name, core, &facts);
+        let available = compiled && enabled && configured && runtime_ready.unwrap_or(true);
         if available {
             usable.push(name);
         }
@@ -535,12 +673,14 @@ pub fn runtime(core: &Core) -> Result<Value> {
             Some("operator_disabled")
         } else if !configured {
             Some("not_configured")
+        } else if runtime_ready == Some(false) {
+            Some("not_ready")
         } else {
             None
         };
         states.insert(
             name.to_owned(),
-            json!({"compiled": compiled, "enabled": enabled, "configured": configured, "usable": available, "reason": reason}),
+            json!({"compiled": compiled, "enabled": enabled, "configured": configured, "runtime_ready": runtime_ready, "usable": available, "reason": reason}),
         );
     }
     document["scope"] = json!("instance");
@@ -599,10 +739,128 @@ mod tests {
                 ClaimMapping, ClaimSource, ConditionalClaimMapping, ConditionalPolicy, Predicate,
             },
         },
+        ldap_server::{Listener as LdapListener, Settings as LdapSettings},
         outpost::{Domain as ProxyDomain, Settings as ProxySettings},
         proxy_server::{Listener as ProxyListener, Target as ProxyTarget},
     };
     use std::collections::{BTreeMap, BTreeSet};
+
+    #[tokio::test]
+    async fn ldap_provider_requires_a_bound_worker_and_preserves_its_policy_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = core
+            .login("admin".into(), "capability-test-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&token, "directory").unwrap();
+        core.create_client(
+            &token,
+            NewClient {
+                client_id: "ldap-app".into(),
+                name: "LDAP policy".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: BTreeSet::from(["openid".into(), "profile".into()]),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(LdapSettings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: BTreeSet::from(["directory".into()]),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        core.config.ldap_listeners.insert(
+            "local".into(),
+            LdapListener {
+                listen: "127.0.0.1:0".parse().unwrap(),
+                client_id: "ldap-app".into(),
+                allowed_peers: BTreeSet::from(["127.0.0.1".parse().unwrap()]),
+                tls_cert_file: None,
+                tls_key_file: None,
+                ldaps: false,
+                local_unencrypted: true,
+            },
+        );
+        validate_store(&core.config, &core.store).unwrap();
+        let state = &runtime(&core).unwrap()["feature_states"]["directory.ldap_provider"];
+        assert_eq!(state["configured"], true);
+        assert_eq!(state["runtime_ready"], false);
+        assert_eq!(state["usable"], false);
+        assert_eq!(state["reason"], "not_ready");
+
+        let servers = crate::ldap_server::start(core.clone()).await.unwrap();
+        assert_eq!(servers.addresses.len(), 1);
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !core.runtime.ldap_running("local", &core.config.ldap_listeners["local"]) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let state = &runtime(&core).unwrap()["feature_states"]["directory.ldap_provider"];
+        assert_eq!(state["runtime_ready"], true);
+        assert_eq!(state["usable"], true);
+        assert_eq!(state["reason"], Value::Null);
+        let mut reconfigured = core.clone();
+        reconfigured.config.ldap_listeners.get_mut("local").unwrap().listen =
+            "127.0.0.1:38901".parse().unwrap();
+        let state = &runtime(&reconfigured).unwrap()["feature_states"]["directory.ldap_provider"];
+        assert_eq!(state["configured"], true);
+        assert_eq!(state["runtime_ready"], false);
+
+        let error = core
+            .update_client(
+                &token,
+                "ldap-app",
+                ClientPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(error.message.contains("LDAP listener"));
+        assert!(
+            core.store
+                .read(|tx| tx.get::<Client>("clients", "ldap-app"))
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
+
+        let mut missing = core.clone();
+        missing.config.ldap_listeners.get_mut("local").unwrap().client_id = "missing".into();
+        let state = &runtime(&missing).unwrap()["feature_states"]["directory.ldap_provider"];
+        assert_eq!(state["configured"], true);
+        assert_eq!(state["usable"], false);
+        assert!(validate_store(&missing.config, &missing.store)
+            .unwrap_err().message.contains("LDAP listener"));
+
+        drop(servers);
+        let state = &runtime(&core).unwrap()["feature_states"]["directory.ldap_provider"];
+        assert_eq!(state["runtime_ready"], false);
+        assert_eq!(state["usable"], false);
+    }
 
     fn proxy_fixture() -> (tempfile::TempDir, Core, String) {
         let dir = tempfile::tempdir().unwrap();

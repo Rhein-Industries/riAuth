@@ -9,7 +9,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Listener {
     pub listen: SocketAddr,

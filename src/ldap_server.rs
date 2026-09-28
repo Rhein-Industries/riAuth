@@ -128,6 +128,7 @@ pub use crate::ldap_listener::Listener;
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
+    leases: Vec<crate::capability::ListenerLease>,
 }
 impl Drop for Servers {
     fn drop(&mut self) {
@@ -152,22 +153,28 @@ async fn tls(
 }
 pub async fn start(core: Core) -> anyhow::Result<Servers> {
     let mut ready = Vec::new();
-    for listener in core.config.ldap_listeners.values() {
+    for (id, listener) in &core.config.ldap_listeners {
         listener.validate()?;
         let tls = tls(&core, listener).await?;
         let socket = TcpListener::bind(listener.listen).await?;
-        ready.push((socket, listener.clone(), tls));
+        ready.push((id.clone(), socket, listener.clone(), tls));
     }
     let mut servers = Servers {
         addresses: Vec::new(),
         tasks: Vec::new(),
+        leases: Vec::new(),
     };
-    for (socket, config, tls) in ready {
+    for (id, socket, config, tls) in ready {
         servers.addresses.push(socket.local_addr()?);
         let core = core.clone();
-        servers
-            .tasks
-            .push(tokio::spawn(listen(core, socket, config, tls)));
+        let lease = core.runtime.bind_ldap(&id, &config);
+        let worker_lease = lease.clone();
+        servers.leases.push(lease);
+        servers.tasks.push(tokio::spawn(async move {
+            let _lease = worker_lease;
+            _lease.running();
+            listen(core, socket, config, tls).await;
+        }));
     }
     Ok(servers)
 }

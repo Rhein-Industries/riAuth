@@ -23,6 +23,7 @@ pub struct Core {
     pub config: Config,
     pub store: Store,
     dummy_hash: Arc<String>,
+    pub(crate) runtime: Arc<crate::capability::RuntimeStatus>,
 }
 
 impl Core {
@@ -171,6 +172,7 @@ impl Core {
             config,
             store,
             dummy_hash: Arc::new(dummy),
+            runtime: Arc::default(),
         })
     }
     pub fn open(config: Config) -> Result<Self> {
@@ -202,6 +204,7 @@ impl Core {
             config,
             store,
             dummy_hash: Arc::new(dummy),
+            runtime: Arc::default(),
         })
     }
 
