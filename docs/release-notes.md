@@ -1,3 +1,13 @@
+# Unreleased upgrade activation fence (O04)
+
+- Startup rejects future schema or index revisions and a persisted activation
+  from a newer release or one requiring compiled capabilities this build lacks,
+  before rebuilding indexes. A successful activation records its release,
+  edition, compiled capabilities and configuration revision atomically.
+- Readiness checks that the running process still matches the store's active
+  release/capability record. A process left running after another build activates
+  the store fails `/readyz`; operators must still stop all writers during upgrades.
+
 # Unreleased reliable delivery outcomes (P08)
 
 - Outbound SCIM jobs and offboarding deactivation rows report `delivery_state`:

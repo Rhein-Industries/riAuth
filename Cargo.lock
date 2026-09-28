@@ -2358,6 +2358,7 @@ dependencies = [
  "rpassword",
  "rustls",
  "schemars",
+ "semver",
  "serde",
  "serde_json",
  "serde_urlencoded",

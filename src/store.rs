@@ -115,9 +115,7 @@ impl Store {
                 return Err(Error::internal("Storage is not writable"));
             }
         }
-        if self.get::<u32>("meta", "schema")? != Some(crate::upgrade::SCHEMA) {
-            return Err(Error::internal("Storage schema is not ready"));
-        }
+        crate::upgrade::require_active(self)?;
         crate::recovery::require_serving(self)
     }
     pub fn shared_rate_limit(

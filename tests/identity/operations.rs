@@ -3969,6 +3969,8 @@ fn schema_upgrade_is_atomic_preserves_credentials_and_rejects_future_versions() 
             let mut user: Value = tx.get("users", &user_id)?.unwrap();
             user.as_object_mut().unwrap().remove("pairwise_seed");
             tx.put("users", &user_id, &user)?;
+            // This fixture represents a store written before activation records existed.
+            tx.delete("meta", "version_activation")?;
             tx.put("meta", "schema", &1u32)
         })
         .unwrap();

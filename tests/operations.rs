@@ -229,6 +229,61 @@ async fn readiness_fails_when_storage_is_invalid_while_liveness_stays_available(
     }
 }
 
+#[test]
+fn newer_activation_evidence_blocks_rollback_without_mutating_identity_state() {
+    for future in ["release", "index", "capability", "revision"] {
+        let fixture = Fixture::new();
+        fixture.core.store.ready().unwrap();
+        let config = fixture.core.config.clone();
+        fixture
+            .core
+            .store
+            .write(|tx| {
+                if future == "release" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    activation["version"] = serde_json::json!("999.0.0");
+                    tx.put("meta", "version_activation", &activation)?;
+                } else if future == "capability" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    activation["compiled_capabilities"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(serde_json::json!("future.capability"));
+                    tx.put("meta", "version_activation", &activation)?;
+                } else if future == "revision" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                    activation["at_revision"] = serde_json::json!(revision + 1);
+                    tx.put("meta", "version_activation", &activation)?;
+                } else {
+                    tx.put("meta", "index_version", &(riauth::store::maintenance::INDEX_VERSION + 1))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert!(fixture.core.store.ready().is_err(), "{future}");
+        let before = fixture.snapshot().unwrap();
+        let common::Fixture { _dir, core, .. } = fixture;
+        drop(core);
+        let error = riauth::core::Core::open(config.clone()).err().unwrap();
+        let expected = match future {
+            "capability" => "compiled capability",
+            "revision" => "predates its last activation",
+            _ => "newer release",
+        };
+        assert!(error.message.contains(expected), "{future}: {error}");
+        let store = riauth::store::Store::from_config(&config).unwrap();
+        let after = store.read(|tx| tx.snapshot()).unwrap();
+        assert!(before == after, "failed {future} activation mutated stored records");
+    }
+}
+
 #[tokio::test]
 async fn metrics_distinguish_client_and_server_errors_without_unbounded_path_labels() {
     let fixture = Fixture::new();

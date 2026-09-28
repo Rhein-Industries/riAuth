@@ -163,6 +163,7 @@ impl Core {
             tx.delete("meta", "browser_setup")?;
             tx.delete("meta", "browser_setup_passkeys")?;
             crate::recovery::stamp_lineage(tx)?;
+            crate::upgrade::stamp_initial(tx)?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;
         Ok(Self {
