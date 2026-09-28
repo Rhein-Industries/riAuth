@@ -1028,16 +1028,7 @@ pub(crate) fn user_by_name(tx: &Tx<'_>, username: &str) -> Result<User> {
 }
 /// Changing a factor needs an MFA session once the user has TOTP or a passkey.
 #[doc(hidden)]
-pub fn require_factor_session(user: &User, session: &Session) -> Result<()> {
-    if (user.totp_secret.is_some() || user.has_passkeys) && !session.identity.mfa {
-        return Err(Error::new(
-            StatusCode::FORBIDDEN,
-            "mfa_required",
-            "Sign in with your passkey or authenticator code first",
-        ));
-    }
-    Ok(())
-}
+pub use crate::identity::require_factor_session;
 pub fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name == "."

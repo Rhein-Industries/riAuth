@@ -10,6 +10,7 @@ mod exchange;
 mod issuer;
 mod keyring;
 mod oidc;
+pub(crate) mod passkey;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

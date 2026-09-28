@@ -18,6 +18,19 @@ use crate::{
 use persistence::IdentityTx;
 use serde_json::Value;
 
+/// Changing a factor needs an MFA session once the user has TOTP or a passkey.
+#[doc(hidden)]
+pub fn require_factor_session(user: &User, session: &Session) -> Result<()> {
+    if (user.totp_secret.is_some() || user.has_passkeys) && !session.identity.mfa {
+        return Err(Error::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "mfa_required",
+            "Sign in with your passkey or authenticator code first",
+        ));
+    }
+    Ok(())
+}
+
 /// Check current account authority after the adapter-specific proofs are checked.
 pub(crate) fn validate_user(tx: &impl IdentityTx, identity: &Identity) -> Result<User> {
     let user = tx
