@@ -164,6 +164,53 @@ fn redb_paged_scim_lists() {
 }
 
 #[test]
+fn redb_scim_user_pages_cross_store_scan_boundary() {
+    let f = Backend::Redb.fixture();
+    let owner = agent(&f, "boundary-scim-owner");
+    let mut expected = Vec::with_capacity(130);
+    for index in 0..130 {
+        let created = f
+            .core
+            .scim_write(
+                &owner,
+                "Users",
+                None,
+                json!({"schemas":[scim::USER],"userName":format!("boundary-user-{index:03}")}),
+                false,
+            )
+            .unwrap();
+        expected.push(text(&created, "id"));
+    }
+    expected.sort();
+
+    // The store scan reads 128 rows at a time. These pages cover both sides
+    // of the cursor transition and must account for every owned resource.
+    let first = list(&f, &owner, "Users", 1, 128);
+    let tail = list(&f, &owner, "Users", 129, 2);
+    let crossing = list(&f, &owner, "Users", 128, 2);
+    for (page, start, size) in [(&first, 1, 128), (&tail, 129, 2), (&crossing, 128, 2)] {
+        assert_eq!(page["totalResults"], 130);
+        assert_eq!(page["startIndex"], start);
+        assert_eq!(page["itemsPerPage"], size);
+    }
+    let ids = |page: &Value| {
+        page["Resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|resource| text(resource, "id"))
+            .collect::<Vec<_>>()
+    };
+    let mut combined = ids(&first);
+    combined.extend(ids(&tail));
+    assert_eq!(combined, expected);
+    assert_eq!(ids(&crossing), expected[127..129]);
+    let beyond = list(&f, &owner, "Users", 131, 2);
+    assert_eq!(beyond["totalResults"], 130);
+    assert_eq!(beyond["itemsPerPage"], 0);
+}
+
+#[test]
 #[ignore = "requires an isolated PostgreSQL test cluster"]
 fn postgres_paged_scim_lists() {
     paged_scim_lists_count_without_building_every_resource(Backend::Postgres);
