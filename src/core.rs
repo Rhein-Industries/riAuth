@@ -2,6 +2,7 @@ use crate::{
     config::Config,
     crypto::{self, Keys, RetiredKey, SigningKey, digest, id, now},
     error::{Error, Result},
+    identity::signals,
     model::*,
     store::{Store, Tx},
 };
@@ -22,6 +23,70 @@ pub struct Core {
     pub config: Config,
     pub store: Store,
     dummy_hash: Arc<String>,
+}
+
+impl Core {
+    /// Apply a management mutation and its retry receipt in one transaction.
+    pub(crate) fn mutation(
+        &self,
+        token: &str,
+        f: impl FnOnce(&Tx<'_>) -> Result<Value>,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let actor = self.principal(tx, token)?;
+            let context = crate::context::current();
+            let receipt_key = context
+                .as_ref()
+                .and_then(|c| c.idempotency_key.as_ref())
+                .map(|k| digest(&format!("{}\0{k}", actor.id)));
+            let permissions = serde_json::to_value(&actor.permissions).map_err(Error::internal)?;
+            if let Some(key) = &receipt_key
+                && let Some(receipt) = tx.get::<crate::context::Receipt>("receipts", key)?
+            {
+                if receipt.expires_at <= now() {
+                    return Err(Error::conflict(
+                        "Idempotency receipt expired; inspect state before using a new key",
+                    ));
+                }
+                if receipt.fingerprint != context.as_ref().unwrap().fingerprint {
+                    return Err(Error::conflict(
+                        "Idempotency key was used for a different request",
+                    ));
+                }
+                if receipt.permissions != permissions {
+                    return Err(Error::forbidden());
+                }
+                return Ok(receipt.result);
+            }
+            if let Some(c) = &context {
+                if actor.agent && c.revision.is_none() {
+                    return Err(Error::new(
+                        StatusCode::PRECONDITION_REQUIRED,
+                        "precondition_required",
+                        "Agent mutations require If-Match with the current revision, or use plan/apply",
+                    ));
+                }
+                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                if c.revision.is_some_and(|r| r != revision) {
+                    return Err(Error::conflict("Configuration revision changed"));
+                }
+            }
+            let result = f(tx)?;
+            if let Some(key) = receipt_key {
+                tx.put(
+                    "receipts",
+                    &key,
+                    &crate::context::Receipt {
+                        fingerprint: context.unwrap().fingerprint,
+                        permissions,
+                        result: result.clone(),
+                        expires_at: now() + 86_400,
+                    },
+                )?;
+            }
+            Ok(result)
+        })
+    }
 }
 
 impl Core {
@@ -288,7 +353,7 @@ impl Core {
             s.revoked = true;
             tx.put("sessions", &s.id, &s)?;
             crate::logout::queue_session(tx, &s.id)?;
-            crate::ssf::enqueue(tx, &u.id, crate::ssf::SESSION_REVOKED, "")?;
+            signals::enqueue(tx, &u.id, signals::SESSION_REVOKED, "")?;
             audit(tx, &u.id, "session.revoke", &s.id)?;
             let propagation=crate::saml::logout::redirect(self,tx,&s.id,None)?;
             Ok(json!({"revoked": true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
@@ -326,7 +391,7 @@ impl Core {
             target.revoked = true;
             tx.put("sessions", sid, &target)?;
             crate::logout::queue_session(tx, sid)?;
-            crate::ssf::enqueue(tx, &target.identity.user_id, crate::ssf::SESSION_REVOKED, "")?;
+            signals::enqueue(tx, &target.identity.user_id, signals::SESSION_REVOKED, "")?;
             audit(tx, &actor, "session.revoke", sid)?;
             let propagation=crate::saml::logout::redirect(self,tx,sid,None)?;
             Ok(json!({"revoked":true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
@@ -440,7 +505,7 @@ impl Core {
                 crate::logout::queue_user(tx, &user.id)?;
             }
             if patch.revoke_sessions {
-                crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
+                signals::enqueue(tx, &user.id, signals::SESSION_REVOKED, "")?;
             }
             audit(tx, &actor.id, "user.update", &user.id)?;
             Ok(json!(UserView::from(&user)))
@@ -774,7 +839,7 @@ impl Core {
         self.store.write(|tx| crate::source::cleanup(tx, at))?;
         self.store.write(|tx| crate::passkey::cleanup(tx, at))?;
         self.store
-            .write(|tx| crate::windows_login::cleanup(tx, at))?;
+            .write(|tx| crate::identity::windows_credentials::cleanup(tx, at))?;
         self.store.write(|tx| crate::lifecycle::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
@@ -789,7 +854,8 @@ impl Core {
         self.store.write(|tx| crate::browser::cleanup(tx, at))?;
         self.store.write(|tx| crate::portal::cleanup(tx, at))?;
         self.store.write(|tx| crate::pam::cleanup(tx, at))?;
-        self.store.write(|tx| crate::logout::cleanup(tx, at))?;
+        self.store
+            .write(|tx| crate::identity::logout_queue::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::device_trust::cleanup(tx, at))?;
         self.store.write(|tx| crate::ssf::cleanup(tx, at))?;
@@ -885,12 +951,7 @@ impl Core {
     }
     pub(crate) fn identity_user(&self, tx: &Tx<'_>, identity: &Identity) -> Result<User> {
         let user = self.identity_user_unbound(tx, identity)?;
-        let session = tx
-            .get::<Session>("sessions", &identity.session_id)?
-            .ok_or_else(Error::unauthorized)?;
-        if session.revoked || session.identity.user_id != user.id {
-            return Err(Error::unauthorized());
-        }
+        crate::identity::validate_session(tx, identity, &user)?;
         Ok(user)
     }
     /// Every identity check except the session row, for identities not yet bound to a session.
@@ -899,13 +960,7 @@ impl Core {
         crate::mtls::validate_identity(tx, identity)?;
         crate::directory::validate_identity(self, tx, identity)?;
         crate::source::validate_identity(tx, identity)?;
-        let user = tx
-            .get::<User>("users", &identity.user_id)?
-            .ok_or_else(Error::unauthorized)?;
-        if !user.enabled || user.epoch != identity.epoch {
-            return Err(Error::unauthorized());
-        }
-        Ok(user)
+        crate::identity::validate_user(tx, identity)
     }
     pub(crate) fn dummy_password_hash(&self) -> &str {
         &self.dummy_hash
@@ -1024,49 +1079,6 @@ pub(crate) fn user_by_name(tx: &Tx<'_>, username: &str) -> Result<User> {
         .ok_or_else(|| Error::missing("User not found"))?;
     tx.get("users", &uid)?
         .ok_or_else(|| Error::missing("User not found"))
-}
-/// Atomic account revocation and credential signals shared by every user writer.
-pub(crate) fn user_security_transition(
-    tx: &Tx<'_>,
-    user_id: &str,
-    before: &Value,
-    after: Option<&Value>,
-) -> Result<()> {
-    let disabled = after.is_none_or(|user| user["enabled"] == false);
-    // Old snapshots may contain disabled parents whose children were never
-    // revoked. Re-enabling must repair those credentials before enabling use.
-    if disabled || before["enabled"] == false {
-        crate::agent::revoke_owned(tx, user_id)?;
-        crate::windows_login::revoke_user(tx, user_id)?;
-        crate::logout::queue_user(tx, user_id)?;
-        if disabled && before["enabled"] == true {
-            crate::ssf::enqueue(tx, user_id, crate::ssf::ACCOUNT_DISABLED, "")?;
-        }
-    }
-    let Some(after) = after else {
-        return Ok(());
-    };
-    // A successful password login may transparently rehash the same credential.
-    // Credential replacement paths bump the epoch; rehashes keep it unchanged.
-    if before["password_hash"] != after["password_hash"] && before["epoch"] != after["epoch"] {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "password")?;
-    }
-    if before["totp_secret"] != after["totp_secret"]
-        || before["totp_settings"] != after["totp_settings"] && !after["totp_secret"].is_null()
-    {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "otp")?;
-    }
-    // Consuming a recovery code is authentication, whereas adding new codes is rotation.
-    if after["recovery_codes"].as_array().is_some_and(|codes| {
-        codes.iter().any(|code| {
-            before["recovery_codes"]
-                .as_array()
-                .is_none_or(|old| !old.contains(code))
-        })
-    }) {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "recovery-code")?;
-    }
-    Ok(())
 }
 /// Changing a factor needs an MFA session once the user has TOTP or a passkey.
 #[doc(hidden)]

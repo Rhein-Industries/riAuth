@@ -1,0 +1,299 @@
+# A03 shared module boundaries
+
+This slice starts from dependency-updated revision `96e23e2`. It follows the
+reviewed A01 dependency inventory and Q01 contracts RI-SES-004/005,
+RI-CON-004 and RI-STORE-001. The A02 distribution boundary is preserved; this
+change introduces no product inclusion, capability gating or separate build.
+
+## Selected cut
+
+Two candidate edges were examined. `model::ProviderSettings` embeds types from
+portal, SAML, RADIUS, LDAP and proxy adapters. Storage also called account
+revocation in the large `Core` module and notification enqueue in the SSF
+adapter. The latter is selected because it puts the shared account transition
+and its durable effects behind one implementation before subsequent assembly
+work, while retaining the existing transaction machinery.
+
+The production dependency changes are:
+
+| Before | After |
+| --- | --- |
+| `store -> core::user_security_transition` | `store -> identity::record_transition`; the transition implementation is removed from `core` |
+| `store -> ssf::enqueue` | `store -> identity::record_transition -> identity::signals::enqueue`; enqueue and its persisted record definitions are removed from the SSF adapter |
+| `core` implements live user/epoch and session-owner checks | `core -> identity::validate_user/validate_session`, with one implementation of those checks |
+| Core and RP logout enqueue through SSF | Both enqueue through the shared durable signal module |
+
+[identity.rs](../src/identity.rs) owns user-state epoch normalization, account
+liveness, session binding, dependent credential revocation and credential-change
+classification. [identity/signals.rs](../src/identity/signals.rs) owns the existing
+stream/delivery storage records and transactional enqueue/deduplication. Neither
+module imports `core` or `ssf`. This is implementation extraction, not a forwarding
+facade that still executes the previous Core/SSF implementations.
+
+[ssf.rs](../src/ssf.rs) retains inbound signature/issuer/subject/event validation,
+management authorization, signing, delivery-time disclosure checks, HTTP delivery,
+retries and protocol replay cleanup. Its public `Stream`, `Delivery`, event
+constants and crate-internal enqueue path are compatibility re-exports of the
+single shared definitions. Existing public Core, Store, Tx and test APIs remain.
+The persisted buckets, fields, defaults, event URIs and schema versions are
+unchanged. Enqueue persists intent; it does not perform network work or promise
+exactly-once remote delivery.
+
+## Preserved ordering and semantics
+
+1. `Tx::put` reads the prior user/passkey record, normalizes a changed account
+   state's epoch, updates indexes and redacted changes, and writes the record.
+   `Tx::delete` updates indexes and changes and deletes the record.
+2. Both invoke the shared transition in that same transaction. Disabling/deleting
+   a user, or touching a previously disabled user, revokes owned agent tokens,
+   Windows devices and sign-in tickets, then queues RP logout, then the account
+   disabled signal for an enabled-to-disabled transition. Re-enable repairs
+   legacy dependents and never emits another account-disabled event.
+3. Password replacement requires both a changed hash and epoch; transparent
+   rehash is not replacement. TOTP changes, recovery-code rotation and passkey
+   insertion/removal retain their existing classifications. Factor use is not
+   rotation. Per-transaction signal deduplication and ended RP-session records
+   retain exactly-once local intent behavior.
+4. Writer abort and preview discard every effect and index. Prepared writes stage
+   the same effects, recheck their reads/ranges/deadlines and retry from a fresh
+   transaction; they do not replay hooks after commit. The redb and PostgreSQL
+   transaction implementations are unchanged. Offline snapshot `import_record`
+   still deliberately bypasses the hook; restore policy is separate work.
+5. Core still checks RADIUS EAP, mTLS, directory and source bindings in that order,
+   then shared account liveness, then session ownership/revocation where required.
+   Bearer expiry remains in `Core::session`; explicit offline grants do not gain
+   a new CLI-expiry restriction. Administrator, scoped-agent, client/group/claims,
+   assurance and device-policy checks stay at their existing call sites.
+
+## Remaining coupling after the first cut
+
+This is an intra-crate boundary, not complete A03 acceptance. Storage still knows
+which records receive hooks and depends on shared identity semantics, configuration,
+crypto, audit projections and backend modules. Identity effects still call the
+existing agent, Windows and RP logout persistence helpers; those modules also
+contain Core methods, so transitive cycles remain. Signal persistence still uses
+the existing SSF-shaped records and JOSE key type. Core still assembles adapter
+validation and protocol cleanup. None of these facts establishes an independently
+compilable identity/storage crate or distribution parity.
+
+The next bounded A03 slice identified at this handoff was the provider-settings
+data extraction. Its implementation and verification are recorded below. A later
+slice can introduce explicit persistence ports for dependent credentials and
+notifications to remove the remaining transitive identity-to-adapter cycles.
+
+Q02 can continue using the baseline public APIs, `tests/common` helpers and SSF
+record paths. No unreviewed Q02 code is incorporated. Integration with its
+contracts and later architecture/engine/assembly changes still requires
+orchestrator review.
+
+## Verification scope
+
+[identity_boundary.rs](../tests/identity_boundary.rs) adds plaintext/encrypted
+storage regressions for real user, owned agent, Windows device/ticket and RP
+session state. It checks effects and queue indexes inside the transaction;
+preview, writer/prepared abort, enqueue failure and a forced optimistic retry;
+disable/delete, re-enable, omitted epoch bumps, passkey intent deduplication and
+unrelated-subject isolation. The existing identity, offboarding, storage and SSF
+suites remain the primary behavior regressions. Actual commands and results are
+recorded in `target/riwork/A03-results.md` for the orchestrator; this note does not
+claim release, cross-build or real-peer acceptance.
+
+## Continuation: shared provider settings data
+
+The reviewed A02 target contract is now accepted. This continuation changes no
+product inclusion or support claim. [client_settings.rs](../src/model/client_settings.rs)
+is the canonical data-only home for the five setting families: portal `Settings`;
+SAML `NameIdFormat`, `Attribute`, `Settings`; RADIUS `ReplyValue`, `Attribute`,
+`Settings`; LDAP `Settings`; and proxy `Domain`, `Settings`. Their derives, field
+order, Serde attributes and default functions moved intact. `ProviderSettings`
+now refers directly to these shared types instead of importing five adapter
+`Settings` types. The adapter modules re-export their old public paths, while
+their validation and protocol methods stay in place; `Core`, provider validation
+and authorization call sites are unchanged.
+
+This demonstrably removes the five direct `model -> adapter::Settings` references.
+Baseline checksums for the public provider schema, each individual/nested schema
+and serialized stored-client JSON are fixed in
+[provider_settings_boundary.rs](../tests/provider_settings_boundary.rs); its
+fixture includes every setting family and exercises their default/unknown-field
+rules and redb round-trip. The exact regression results are in the continuation
+handoff under `target/riwork/`.
+
+The model still refers to authenticator, JOSE, exchange, claims, encryption and
+source types, and `config` still aggregates protocol/connector sections. Adapters
+still depend on `Core` and the model; Core still assembles their validation and
+runtime behavior. At that handoff, the shared identity effects invoked agent,
+Windows and logout helpers from modules that also contained Core methods.
+No independent crate, build gating, client split, management unification or full
+A03 acceptance follows from this data extraction.
+
+## Continuation: parent-owned agent credential persistence
+
+[agent_credentials.rs](../src/identity/agent_credentials.rs) now owns the stored
+`Agent` and `Permission` definitions and the transactional `revoke_owned` helper.
+The former public `agent::Agent` and `agent::Permission` paths re-export those
+same types. Agent management, parent authority checks, permission evaluation and
+audit attribution remain in [agent.rs](../src/agent.rs). Storage's public agent
+projection uses the shared record directly.
+
+This removes the direct `identity -> agent::revoke_owned` call and the direct
+`store -> agent::Agent` reference. Identity still performs the existing sequence:
+drop owned agent token indexes, disable owned agents, revoke Windows devices and
+one-time tickets, queue RP logout, then enqueue account-disabled intent when
+applicable. All writes stay in the caller's transaction; no persisted fields,
+Serde defaults, permission schema or public type paths change. A focused
+regression in [identity_boundary.rs](../tests/identity_boundary.rs) checks
+legacy-disabled-parent repair, unrelated-agent isolation, preview rollback and
+prepared commit on plaintext and encrypted redb.
+
+At this handoff, identity still called Windows and RP logout persistence helpers
+from modules containing Core methods. The shared record/transition module still depends on
+storage's `Tx`, while storage calls the transition; that intra-crate cycle, other
+adapter dependencies, and the remaining product integration limits are unchanged.
+
+## Continuation: Windows and RP logout effects
+
+[windows_credentials.rs](../src/identity/windows_credentials.rs) now owns the
+persisted Windows device and one-time sign-in ticket records, bucket names,
+account-wide revocation and expired-ticket cleanup. The Windows protocol adapter
+still validates credentials, issues offline claims and tickets, and consumes a
+ticket before live-account checks. Moving the records does not change the HMAC
+payload, ticket expiry, secret handling or the single-use redeem transaction.
+
+[logout_queue.rs](../src/identity/logout_queue.rs) now owns RP session and
+delivery records, session recording, the session/client/user queue filters and
+retention cleanup. [logout.rs](../src/logout.rs) re-exports the established public
+record, queue, record and cleanup paths. It retains ID-token hint validation,
+browser/session authorization, signing, delivery attempts and HTTP transport.
+The identity transition invokes both new helpers in the same order as before:
+owned agent token revocation, Windows device and ticket revocation, RP logout
+intent, then account-disabled signal intent. The RP record is marked ended before
+a back-channel delivery is enqueued, so a repeated transition adds no second
+delivery. Every effect remains in the caller's storage transaction.
+
+| Direct source edge | Before this continuation | After |
+| --- | ---: | ---: |
+| `identity -> windows_login` | 1 | 0 |
+| `identity -> logout` | 1 | 0 |
+| `core -> windows_login` (cleanup) | 1 | 0 |
+| `core -> logout::cleanup` | 1 | 0 |
+
+The pre-edit source scan and moved-body hashes are retained in
+`target/riwork/A03-wave3-before.json` and `A03-wave3-edges.json`. The revocation,
+RP record/queue and cleanup bodies match the pre-move code. Windows record fields
+and bucket names match after accounting for crate-level visibility needed by the
+protocol adapter. No storage fields/defaults, schema version, manifest, lockfile,
+product capability or edition assembly changed.
+
+### Measured dependency graph
+
+[check-module-boundaries.py](../scripts/check-module-boundaries.py) scans all 81
+Rust source files for explicit crate-root references, including grouped imports.
+It enforces zero references from identity to adapter/Core modules, from storage
+to Core/agent/Windows/logout/SSF modules, and from the model to the five extracted
+provider adapters. The recorded graph at `target/riwork/A03-wave3-graph.json`
+includes every source-module group and path behind each counted edge. Counts below
+are **distinct source files naming a target group**, not call counts. `super`
+imports, macro expansion, trait dispatch and runtime calls are outside this scan.
+
+```mermaid
+flowchart LR
+  Client["CLI / local entrypoint"] --> API["API / server"]
+  Client --> Core["Core assembly"]
+  API --> Core
+  API --> Protocol["Protocol adapters"]
+  Management["Management modules"] --> Core
+  Management --> Storage["Storage"]
+  Protocol --> Core
+  Protocol --> Storage
+  Protocol --> Identity["Shared identity effects"]
+  Core --> Identity
+  Core --> Storage
+  Identity --> Storage
+  Identity --> Protocol
+  Storage --> Identity
+  Identity --> Model["Shared model"]
+  Model --> Protocol
+```
+
+| Remaining explicit edge | Source files | Consequence |
+| --- | ---: | --- |
+| `identity -> storage` / `storage -> identity` | 5 / 1 | The transition and transaction types still form an intra-crate cycle. |
+| `identity -> protocol` | 1 | SSF signal records still use the JOSE public-key type. |
+| `model -> protocol` | 1 | The shared model still embeds other protocol-support types. |
+| `management -> Core` / `protocol -> Core` | 9 / 32 | Management and protocol modules still implement methods on the same Core type. |
+| `protocol -> storage` / `protocol -> model` | 33 / 35 | Adapter logic still reaches records and transactions directly. |
+| `API/server -> Core` / `client -> API/server` | 2 / 1 | HTTP and local CLI/server startup remain coupled to the current assembly. |
+| `client -> Core` / `client -> storage` | 1 / 1 | The CLI still includes local engine and storage operations. |
+
+The source-level zero checks are enforceable boundaries, but the graph shows no
+separate identity/storage crate, management engine contract, protocol port, API
+contract package or standalone client build. The API/server and CLI share this
+crate and its capability assembly. Full A03 acceptance still needs reviewed
+boundaries across those responsibilities and integration against the downstream
+contract/build work; these effect extractions alone do not meet that gate.
+
+## Wave 4: identity transaction port and management context
+
+[IdentityTx](../src/identity/persistence.rs) defines the typed reads, writes,
+deletes, maintenance paging and security-event deduplication that identity
+effects require. [Store](../src/store.rs) implements the port once for its
+existing `Tx`. Identity no longer imports `store::Tx`; the storage mutation hook
+still calls the single identity transition. The port forwards to `Tx::put` and
+`Tx::delete`, so record indexes, audit changes and nested effects keep their
+existing order. It forwards `maintenance_page` without replacing its durable
+cursor/bound behavior. Security-event deduplication stays on the transaction,
+including a fresh set for each prepared-write retry. There is no second identity
+policy implementation or backend-specific policy branch.
+
+Management mutation and idempotency receipt checks now live on
+[Core](../src/core.rs). [Context](../src/context.rs) continues to own request
+metadata, receipt records and retention cleanup, but no longer imports Core.
+The public `context::RequestContext`, `context::scope`, `context::current` and
+`context::cleanup` paths remain available. Actor permission and revision checks,
+receipt replay, expiration and the mutation remain in the same transaction.
+
+The wave 4 checker snapshot at `target/riwork/A03-wave4-graph.json` covers **82
+Rust source files**. It counts distinct files with explicit crate-root references,
+not call sites, `super` imports, macro expansion or field access. It does not
+assert acyclicity. The new guards require zero direct identity-to-storage
+references and zero context-to-Core references.
+
+```mermaid
+flowchart LR
+  Client["CLI / local entrypoint"] --> API["API / server"]
+  Client --> Core["Core assembly"]
+  API --> Core
+  API --> Protocol["Protocol adapters"]
+  Management["Management modules"] --> Core
+  Management --> Storage["Storage"]
+  Protocol --> Core
+  Protocol --> Storage
+  Core --> Identity["Shared identity effects"]
+  Core --> Storage
+  Storage --> Identity
+  Identity --> Protocol
+  Identity --> Model["Shared model"]
+  Model --> Protocol
+```
+
+| Explicit source edge | Wave 3 files | Wave 4 files |
+| --- | ---: | ---: |
+| `identity -> storage` | 5 | 0 |
+| `storage -> identity` | 1 | 1 |
+| `identity -> protocol` | 1 | 1 |
+| `management -> Core` | 9 | 8 |
+| `context -> Core` | 1 | 0 |
+| `protocol -> Core` | 32 | 32 |
+| `protocol -> storage` | 33 | 33 |
+| `API/server -> Core` | 2 | 2 |
+
+The direct `identity -> storage` source edge is removed, but the transitive
+`identity -> JOSE -> storage -> identity` source cycle remains:
+`identity::signals` names `jose::PublicJwks`, JOSE imports `store::Tx`, and
+storage calls `identity::record_transition`. Context still depends on storage
+for receipt cleanup; other management modules still implement Core methods.
+Protocol adapters, API/server handlers and the CLI still reach Core and storage.
+The checker guards explicit crate-root references; it does not establish
+acyclicity, independent crates, a standalone client, or Essentials/Platform
+assembly parity. Those are remaining A03 integration gates.

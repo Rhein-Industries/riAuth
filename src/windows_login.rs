@@ -4,6 +4,7 @@ use crate::{
     core::{Core, audit, user_by_name, validate_display, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
+    identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKETS},
     model::{Attempts, User},
     store::Tx,
 };
@@ -15,37 +16,12 @@ use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
-const DEVICES: &str = "windows_devices";
-const TICKETS: &str = "windows_tickets";
 /// Sign-in tickets are single-use and never live longer than five minutes.
 const TICKET_TTL: u64 = 300;
 /// Same fresh-authentication window as MFA and passkey changes.
 const REAUTH_TTL: u64 = 300;
 const OFFLINE_MAX: u64 = 72 * 60 * 60;
 const MAX_DEVICES: usize = 32;
-
-#[derive(Clone, Serialize, Deserialize)]
-struct Device {
-    id: String,
-    display_name: String,
-    username: String,
-    user_id: String,
-    /// SHA-256 digest of the device secret. The secret itself is not stored.
-    secret_hash: String,
-    created_at: u64,
-    rotated_at: u64,
-    revoked: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct SignInTicket {
-    device_id: String,
-    user_id: String,
-    username: String,
-    epoch: u64,
-    expires_at: u64,
-    mfa: bool,
-}
 
 /// Compact JSON, in this field order, is the HMAC payload. Do not re-encode it.
 #[derive(Serialize, Deserialize)]
@@ -229,35 +205,6 @@ fn delete_tickets(tx: &Tx<'_>, mut keep: impl FnMut(&SignInTicket) -> bool) -> R
         .collect::<Vec<_>>();
     for id in ids {
         tx.delete(TICKETS, &id)?;
-    }
-    Ok(())
-}
-
-/// Revoke every device and outstanding sign-in ticket for a user.
-/// The shared user transition invokes this in the disable transaction. Its caller's
-/// audit event records the device changes with the original mutation actor.
-pub(crate) fn revoke_user(tx: &Tx<'_>, user_id: &str) -> Result<()> {
-    let device_ids = tx
-        .list::<Device>(DEVICES)?
-        .into_iter()
-        .filter(|(_, device)| device.user_id == user_id && !device.revoked)
-        .map(|(id, _)| id)
-        .collect::<Vec<_>>();
-    for id in &device_ids {
-        let mut device = tx
-            .get::<Device>(DEVICES, id)?
-            .ok_or_else(|| Error::internal("Windows device disappeared during revocation"))?;
-        device.revoked = true;
-        tx.put(DEVICES, id, &device)?;
-    }
-    let ticket_ids = tx
-        .list::<SignInTicket>(TICKETS)?
-        .into_iter()
-        .filter(|(_, ticket)| ticket.user_id == user_id)
-        .map(|(id, _)| id)
-        .collect::<Vec<_>>();
-    for id in &ticket_ids {
-        tx.delete(TICKETS, id)?;
     }
     Ok(())
 }
@@ -677,13 +624,4 @@ impl Core {
             }))
         })
     }
-}
-
-pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, ticket) in tx.maintenance_page::<SignInTicket>(TICKETS)? {
-        if ticket.expires_at <= at {
-            tx.delete(TICKETS, &id)?;
-        }
-    }
-    Ok(())
 }

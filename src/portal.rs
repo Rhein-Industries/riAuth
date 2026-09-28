@@ -18,20 +18,7 @@ use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
 /// The per-user passkey limit enforced by enrollment.
 const PASSKEY_LIMIT: usize = 16;
 
-#[derive(schemars::JsonSchema, Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, deny_unknown_fields)]
-pub struct Settings {
-    pub description: String,
-    pub category: String,
-    /// Application home/login URL, never an OAuth callback URL.
-    pub launch_url: Option<String>,
-    pub hidden: bool,
-    /// Built-in icon; no remote image requests are made by the portal.
-    pub icon: String,
-    pub accent: String,
-    /// Scopes the application's login requests, in addition to protocol minimums.
-    pub launch_scopes: BTreeSet<String>,
-}
+pub use crate::model::client_settings::portal::Settings;
 
 impl Settings {
     pub fn validate(&self, client: &Client) -> Result<()> {

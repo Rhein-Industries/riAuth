@@ -1,3 +1,5 @@
+pub mod client_settings;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -89,15 +91,15 @@ pub struct Client {
 pub struct ProviderSettings {
     /// User-facing application metadata. Access always inherits the client policies.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub app: Option<crate::portal::Settings>,
+    pub app: Option<client_settings::portal::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub saml: Option<crate::saml::Settings>,
+    pub saml: Option<client_settings::saml::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub radius: Option<crate::radius::Settings>,
+    pub radius: Option<client_settings::radius::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ldap: Option<crate::ldap_server::Settings>,
+    pub ldap: Option<client_settings::ldap::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub proxy: Option<crate::outpost::Settings>,
+    pub proxy: Option<client_settings::proxy::Settings>,
     pub resources: BTreeMap<String, BTreeSet<String>>,
     pub issuer: Option<String>,
     pub token_endpoint_auth_method: Option<crate::jose::ClientAuthMethod>,

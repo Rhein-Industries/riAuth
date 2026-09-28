@@ -1,10 +1,15 @@
 use riauth::{
+    agent::{Agent, NewAgent, Permission},
     config::Config,
     core::Core,
-    crypto,
+    crypto::{self, SigningKey},
+    jose::PublicJwks,
+    logout::{Delivery as LogoutDelivery, RpSession},
     model::*,
     oidc::{Authorization, TokenRequest},
     postgres_store::PostgresConfig,
+    ssf::{ACCOUNT_DISABLED, Delivery as SsfDelivery, DeliverySpec, PUSH, SsfAuth, StreamInput},
+    windows_login::{EnrollDevice, WindowsLogin},
 };
 use serde_json::Value;
 use std::{
@@ -108,6 +113,566 @@ fn service(config: &Config, file: &std::path::Path) -> (Service, String) {
     }
     (server, url)
 }
+
+fn shared_identity_effects_on_postgres(first: &Core, second: &Core, admin: &str) {
+    let created = first
+        .create_user(
+            admin,
+            NewUser {
+                username: "effects-user".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Effects User".into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+    let user_id = text(&created, "id");
+    let key = SigningKey::generate_algorithm("ES256").unwrap();
+    first
+        .ssf_create(
+            &SsfAuth::Bearer(admin.into()),
+            StreamInput {
+                id: "effects-watch".into(),
+                issuer: "https://security.example".into(),
+                audience: "receiver".into(),
+                events_requested: [ACCOUNT_DISABLED.into()].into(),
+                events: Default::default(),
+                delivery: Some(DeliverySpec {
+                    method: PUSH.into(),
+                    endpoint_url: "https://receiver.example/events".into(),
+                    authorization_header: None,
+                }),
+                delivery_method: None,
+                endpoint_url: None,
+                jwks: PublicJwks {
+                    keys: vec![serde_json::from_value(key.jwk().unwrap()).unwrap()],
+                },
+                subjects: [("effects-user".into(), "effects-user".into())].into(),
+            },
+        )
+        .unwrap();
+    let session_token = text(
+        &first
+            .login("effects-user".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let session_id: String = first
+        .store
+        .get("session_tokens", &crypto::digest(&session_token))
+        .unwrap()
+        .unwrap();
+    let agent = first
+        .create_agent(
+            admin,
+            NewAgent {
+                id: "effects-agent".into(),
+                parent: Some("effects-user".into()),
+                ttl: 3600,
+                permissions: vec![Permission {
+                    action: "user.read".into(),
+                    resource: "*".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let agent_token = text(&agent["credential"], "token");
+    let agent_hash = crypto::digest(&agent_token);
+    let device = first
+        .windows_device_enroll(
+            admin,
+            EnrollDevice {
+                id: "effects-device".into(),
+                display_name: "Effects Device".into(),
+                username: "effects-user".into(),
+                offline_ttl: None,
+            },
+        )
+        .unwrap();
+    let ticket = text(
+        &first
+            .windows_login(WindowsLogin {
+                device_id: "effects-device".into(),
+                device_secret: text(&device, "device_secret"),
+                username: "effects-user".into(),
+                password: None,
+                otp: None,
+                reauth_session: Some(session_token.clone()),
+            })
+            .unwrap(),
+        "signin_ticket",
+    );
+    let ticket_hash = crypto::digest(&ticket);
+    first
+        .create_client(
+            admin,
+            NewClient {
+                client_id: "effects-rp".into(),
+                name: "Effects RP".into(),
+                confidential: false,
+                redirect_uris: vec!["http://localhost:7654/callback".into()],
+                scopes: strings(&["openid"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    backchannel_logout_uri: Some("https://rp.example/effects-logout".into()),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let rp = RpSession {
+        sid: crypto::digest(&format!("{session_id}\0effects-rp")),
+        session_id,
+        user_id: user_id.clone(),
+        subject: user_id.clone(),
+        client_id: "effects-rp".into(),
+        created_at: crypto::now(),
+        expires_at: crypto::now() + 3600,
+        ended: false,
+    };
+    first
+        .store
+        .write(|tx| tx.put("rp_sessions", &rp.sid, &rp))
+        .unwrap();
+
+    let unchanged = || {
+        assert!(
+            second
+                .store
+                .get::<User>("users", &user_id)
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            second
+                .store
+                .get::<Agent>("agents", "effects-agent")
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            second
+                .store
+                .get::<String>("agent_tokens", &agent_hash)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            second
+                .store
+                .get::<Value>("windows_devices", "effects-device")
+                .unwrap()
+                .unwrap()["revoked"],
+            false
+        );
+        assert!(
+            second
+                .store
+                .get::<Value>("windows_tickets", &ticket_hash)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            !second
+                .store
+                .get::<RpSession>("rp_sessions", &rp.sid)
+                .unwrap()
+                .unwrap()
+                .ended
+        );
+        assert!(
+            second
+                .store
+                .list::<LogoutDelivery>("logout_deliveries")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            second
+                .store
+                .list::<SsfDelivery>("ssf_deliveries")
+                .unwrap()
+                .is_empty()
+        );
+    };
+    unchanged();
+    let disable = |tx: &riauth::store::Tx<'_>| -> riauth::error::Result<()> {
+        let mut user: User = tx.get("users", &user_id)?.unwrap();
+        user.enabled = false;
+        tx.put("users", &user_id, &user)?;
+        assert!(!tx.get::<Agent>("agents", "effects-agent")?.unwrap().enabled);
+        assert!(tx.get::<String>("agent_tokens", &agent_hash)?.is_none());
+        assert_eq!(
+            tx.get::<Value>("windows_devices", "effects-device")?
+                .unwrap()["revoked"],
+            true
+        );
+        assert!(tx.get::<Value>("windows_tickets", &ticket_hash)?.is_none());
+        assert!(tx.get::<RpSession>("rp_sessions", &rp.sid)?.unwrap().ended);
+        let deliveries: Vec<(String, riauth::identity::logout_queue::Delivery)> =
+            tx.list::<LogoutDelivery>("logout_deliveries")?;
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].1.sid, rp.sid);
+        assert_eq!(deliveries[0].1.uri, "https://rp.example/effects-logout");
+        assert_eq!(
+            tx.queue_stats("logout_deliveries", crypto::now())?.pending,
+            1
+        );
+        let signals = tx.list::<SsfDelivery>("ssf_deliveries")?;
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].1.event, ACCOUNT_DISABLED);
+        assert_eq!(tx.queue_stats("ssf_deliveries", crypto::now())?.pending, 1);
+        Ok(())
+    };
+    first.store.preview(disable).unwrap();
+    unchanged();
+    let aborted: riauth::error::Result<()> = first.store.write(|tx| {
+        disable(tx)?;
+        Err(riauth::error::Error::conflict("abort after effects"))
+    });
+    assert!(aborted.is_err());
+    unchanged();
+    first.store.prepared_write(disable).unwrap();
+    assert!(
+        !second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        !second
+            .store
+            .get::<Agent>("agents", "effects-agent")
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        second
+            .store
+            .get::<String>("agent_tokens", &agent_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        second
+            .store
+            .get::<Value>("windows_devices", "effects-device")
+            .unwrap()
+            .unwrap()["revoked"],
+        true
+    );
+    assert!(
+        second
+            .store
+            .get::<Value>("windows_tickets", &ticket_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert!(second.windows_ticket_redeem(&ticket).is_err());
+    assert!(second.me(&agent_token).is_err());
+    assert!(
+        second
+            .store
+            .get::<RpSession>("rp_sessions", &rp.sid)
+            .unwrap()
+            .unwrap()
+            .ended
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<LogoutDelivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<SsfDelivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    second
+        .store
+        .write(|tx| {
+            let current: User = tx.get("users", &user_id)?.unwrap();
+            tx.put("users", &user_id, &current)?;
+            assert_eq!(tx.list::<LogoutDelivery>("logout_deliveries")?.len(), 1);
+            assert_eq!(tx.list::<SsfDelivery>("ssf_deliveries")?.len(), 1);
+            Ok(())
+        })
+        .unwrap();
+
+    let disabled_epoch = second
+        .store
+        .get::<User>("users", &user_id)
+        .unwrap()
+        .unwrap()
+        .epoch;
+    let reenable = |tx: &riauth::store::Tx<'_>| -> riauth::error::Result<()> {
+        let mut user: User = tx.get("users", &user_id)?.unwrap();
+        user.enabled = true;
+        tx.put("users", &user_id, &user)?;
+        assert_eq!(
+            tx.get::<User>("users", &user_id)?.unwrap().epoch,
+            disabled_epoch + 1
+        );
+        assert!(!tx.get::<Agent>("agents", "effects-agent")?.unwrap().enabled);
+        assert!(tx.get::<String>("agent_tokens", &agent_hash)?.is_none());
+        assert_eq!(tx.list::<LogoutDelivery>("logout_deliveries")?.len(), 1);
+        assert_eq!(tx.list::<SsfDelivery>("ssf_deliveries")?.len(), 1);
+        Ok(())
+    };
+    first.store.preview(reenable).unwrap();
+    assert!(
+        !second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    first.store.prepared_write(reenable).unwrap();
+    assert!(
+        second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert!(second.me(&session_token).is_err());
+
+    // Give the re-enabled account fresh dependents; deletion must revoke them
+    // without restoring or replaying the old credentials.
+    let new_agent = first
+        .create_agent(
+            admin,
+            NewAgent {
+                id: "effects-agent-delete".into(),
+                parent: Some("effects-user".into()),
+                ttl: 3600,
+                permissions: vec![Permission {
+                    action: "user.read".into(),
+                    resource: "*".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let new_agent_token = text(&new_agent["credential"], "token");
+    let new_agent_hash = crypto::digest(&new_agent_token);
+    let new_session_token = text(
+        &first
+            .login("effects-user".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let new_session_id: String = first
+        .store
+        .get("session_tokens", &crypto::digest(&new_session_token))
+        .unwrap()
+        .unwrap();
+    let new_device = first
+        .windows_device_enroll(
+            admin,
+            EnrollDevice {
+                id: "effects-device-delete".into(),
+                display_name: "Effects Device After Re-enable".into(),
+                username: "effects-user".into(),
+                offline_ttl: None,
+            },
+        )
+        .unwrap();
+    let new_ticket = text(
+        &first
+            .windows_login(WindowsLogin {
+                device_id: "effects-device-delete".into(),
+                device_secret: text(&new_device, "device_secret"),
+                username: "effects-user".into(),
+                password: None,
+                otp: None,
+                reauth_session: Some(new_session_token.clone()),
+            })
+            .unwrap(),
+        "signin_ticket",
+    );
+    let new_ticket_hash = crypto::digest(&new_ticket);
+    let new_rp = RpSession {
+        sid: crypto::digest(&format!("{new_session_id}\0effects-rp")),
+        session_id: new_session_id,
+        user_id: user_id.clone(),
+        subject: user_id.clone(),
+        client_id: "effects-rp".into(),
+        created_at: crypto::now(),
+        expires_at: crypto::now() + 3600,
+        ended: false,
+    };
+    first
+        .store
+        .write(|tx| tx.put("rp_sessions", &new_rp.sid, &new_rp))
+        .unwrap();
+
+    let delete = |tx: &riauth::store::Tx<'_>| -> riauth::error::Result<()> {
+        tx.delete("users", &user_id)?;
+        assert!(tx.get::<User>("users", &user_id)?.is_none());
+        assert!(
+            !tx.get::<Agent>("agents", "effects-agent-delete")?
+                .unwrap()
+                .enabled
+        );
+        assert!(tx.get::<String>("agent_tokens", &new_agent_hash)?.is_none());
+        assert_eq!(
+            tx.get::<Value>("windows_devices", "effects-device-delete")?
+                .unwrap()["revoked"],
+            true
+        );
+        assert!(
+            tx.get::<Value>("windows_tickets", &new_ticket_hash)?
+                .is_none()
+        );
+        assert!(
+            tx.get::<RpSession>("rp_sessions", &new_rp.sid)?
+                .unwrap()
+                .ended
+        );
+        assert_eq!(tx.list::<LogoutDelivery>("logout_deliveries")?.len(), 2);
+        let signals = tx.list::<SsfDelivery>("ssf_deliveries")?;
+        assert_eq!(signals.len(), 2);
+        assert!(
+            signals
+                .iter()
+                .all(|(_, signal)| signal.event == ACCOUNT_DISABLED)
+        );
+        Ok(())
+    };
+    first.store.preview(delete).unwrap();
+    assert!(
+        second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        second
+            .store
+            .get::<Agent>("agents", "effects-agent-delete")
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<LogoutDelivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<SsfDelivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    let aborted: riauth::error::Result<()> = first.store.write(|tx| {
+        delete(tx)?;
+        Err(riauth::error::Error::conflict("abort delete after effects"))
+    });
+    assert!(aborted.is_err());
+    assert!(
+        second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<LogoutDelivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    first.store.prepared_write(delete).unwrap();
+    assert!(
+        second
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !second
+            .store
+            .get::<Agent>("agents", "effects-agent-delete")
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        second
+            .store
+            .get::<String>("agent_tokens", &new_agent_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        second
+            .store
+            .get::<Value>("windows_devices", "effects-device-delete")
+            .unwrap()
+            .unwrap()["revoked"],
+        true
+    );
+    assert!(
+        second
+            .store
+            .get::<Value>("windows_tickets", &new_ticket_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        second
+            .store
+            .get::<RpSession>("rp_sessions", &new_rp.sid)
+            .unwrap()
+            .unwrap()
+            .ended
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<LogoutDelivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        second
+            .store
+            .list::<SsfDelivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(second.windows_ticket_redeem(&new_ticket).is_err());
+    assert!(second.me(&new_agent_token).is_err());
+}
+
 #[test]
 #[ignore = "runs against a disposable synchronous PostgreSQL primary/standby; use scripts/test-postgres.sh"]
 fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failover() {
@@ -167,6 +732,7 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
     assert_eq!(first.jwks().unwrap(), keys);
     assert_eq!(second.me(&admin).unwrap()["user"]["username"], "admin");
     assert_eq!(first.doctor(&admin).unwrap()["storage"], "postgresql");
+    shared_identity_effects_on_postgres(&first, &second, &admin);
     let (_service_a, url_a) = service(&config, &local.path().join("node-a.toml"));
     let (_service_b, url_b) = service(&config, &local.path().join("node-b.toml"));
     let http = reqwest::blocking::Client::builder()

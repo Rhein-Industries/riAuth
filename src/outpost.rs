@@ -13,24 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::net::IpAddr;
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain: Option<Domain>,
-    pub external_origin: String,
-    #[serde(default = "default_ttl")]
-    pub session_ttl: u64,
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Domain {
-    pub cookie_domain: String,
-    pub application_origins: std::collections::BTreeSet<String>,
-}
-fn default_ttl() -> u64 {
-    3600
-}
+pub use crate::model::client_settings::proxy::{Domain, Settings};
+
 impl Settings {
     pub fn callback(&self, id: &str) -> String {
         format!("{}/outpost/{id}/callback", self.external_origin)

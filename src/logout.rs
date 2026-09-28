@@ -1,113 +1,25 @@
 use crate::{
     core::{Core, audit},
-    crypto::{self, digest, now},
+    crypto::{digest, now},
     error::{Error, Result},
-    model::{Client, Grant, Identity},
+    identity::signals,
+    model::Client,
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct RpSession {
-    pub sid: String,
-    pub session_id: String,
-    pub user_id: String,
-    pub subject: String,
-    pub client_id: String,
-    pub created_at: u64,
-    pub expires_at: u64,
-    pub ended: bool,
-}
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Delivery {
-    pub id: String,
-    pub client_id: String,
-    pub sid: String,
-    pub subject: String,
-    pub uri: String,
-    pub created_at: u64,
-    pub next_attempt: u64,
-    pub attempts: u32,
-    pub delivered_at: Option<u64>,
-    pub last_status: Option<u16>,
-    #[serde(default)]
-    pub last_failed: bool,
-}
+pub use crate::identity::logout_queue::{
+    Delivery, RpSession, cleanup, queue_client, queue_session, queue_user, queue_user_client,
+    record,
+};
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct LogoutRequest {
     pub id_token_hint: Option<String>,
     pub client_id: Option<String>,
     pub post_logout_redirect_uri: Option<String>,
     pub state: Option<String>,
-}
-
-pub fn record(
-    tx: &Tx<'_>,
-    client: &Client,
-    identity: &Identity,
-    subject: &str,
-    grant: &Grant,
-) -> Result<String> {
-    let sid = digest(&format!("{}\0{}", identity.session_id, client.id));
-    let existing = tx.get::<RpSession>("rp_sessions", &sid)?;
-    let record = RpSession {
-        sid: sid.clone(),
-        session_id: identity.session_id.clone(),
-        user_id: identity.user_id.clone(),
-        subject: subject.into(),
-        client_id: client.id.clone(),
-        created_at: existing.as_ref().map(|s| s.created_at).unwrap_or_else(now),
-        expires_at: existing
-            .as_ref()
-            .map(|s| s.expires_at)
-            .unwrap_or(0)
-            .max(grant.expires_at),
-        ended: false,
-    };
-    tx.put("rp_sessions", &sid, &record)?;
-    Ok(sid)
-}
-
-pub fn queue_session(tx: &Tx<'_>, session_id: &str) -> Result<()> {
-    queue_matching(tx, |rp| rp.session_id == session_id)
-}
-pub fn queue_client(tx: &Tx<'_>, client_id: &str) -> Result<()> {
-    queue_matching(tx, |rp| rp.client_id == client_id)
-}
-fn queue_matching(tx: &Tx<'_>, matches: impl Fn(&RpSession) -> bool) -> Result<()> {
-    for (_, mut rp) in tx.list::<RpSession>("rp_sessions")? {
-        if !matches(&rp) || rp.ended {
-            continue;
-        }
-        rp.ended = true;
-        tx.put("rp_sessions", &rp.sid, &rp)?;
-        if let Some(client) = tx.get::<Client>("clients", &rp.client_id)?
-            && let Some(uri) = client.settings.backchannel_logout_uri
-        {
-            let delivery = Delivery {
-                id: crypto::id(),
-                client_id: rp.client_id,
-                sid: rp.sid,
-                subject: rp.subject,
-                uri,
-                created_at: now(),
-                next_attempt: now(),
-                attempts: 0,
-                delivered_at: None,
-                last_status: None,
-                last_failed: false,
-            };
-            tx.put("logout_deliveries", &delivery.id, &delivery)?;
-        }
-    }
-    Ok(())
-}
-pub fn queue_user(tx: &Tx<'_>, user_id: &str) -> Result<()> {
-    queue_matching(tx, |rp| rp.user_id == user_id)
-}
-pub fn queue_user_client(tx: &Tx<'_>, user_id: &str, client_id: &str) -> Result<()> {
-    queue_matching(tx, |rp| rp.user_id == user_id && rp.client_id == client_id)
 }
 
 impl Core {
@@ -178,7 +90,7 @@ impl Core {
             session.revoked = true;
             tx.put("sessions", &session.id, &session)?;
             queue_session(tx, &session.id)?;
-            crate::ssf::enqueue(tx, &session.identity.user_id, crate::ssf::SESSION_REVOKED, "")?;
+            signals::enqueue(tx, &session.identity.user_id, signals::SESSION_REVOKED, "")?;
             audit(tx, &session.identity.user_id, "oidc.logout", cid)?;
             let clear_sso = self.forget_browser(tx, browser_cookie, &session.id)?;
             let propagation=crate::saml::logout::redirect(self,tx,&session.id,redirect)?;
@@ -349,20 +261,6 @@ pub async fn deliver(core: Core) -> Result<()> {
     }
     while let Some(result) = jobs.join_next().await {
         result.map_err(Error::internal)??;
-    }
-    Ok(())
-}
-
-pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, rp) in tx.maintenance_page::<RpSession>("rp_sessions")? {
-        if rp.expires_at.saturating_add(86400) < at {
-            tx.delete("rp_sessions", &id)?;
-        }
-    }
-    for (id, d) in tx.maintenance_page::<Delivery>("logout_deliveries")? {
-        if d.created_at.saturating_add(7 * 86400) < at {
-            tx.delete("logout_deliveries", &id)?;
-        }
     }
     Ok(())
 }

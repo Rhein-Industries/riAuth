@@ -13,7 +13,7 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -25,35 +25,8 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum ReplyValue {
-    Text(String),
-    Integer(u32),
-    Ipv4(Ipv4Addr),
-    Attribute(String),
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Attribute {
-    Standard {
-        code: u8,
-        value: ReplyValue,
-    },
-    Vendor {
-        vendor: u32,
-        code: u8,
-        value: ReplyValue,
-    },
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    #[serde(default)]
-    pub eap_tls: bool,
-    #[serde(default)]
-    pub reply: Vec<Attribute>,
-}
+pub use crate::model::client_settings::radius::{Attribute, ReplyValue, Settings};
+
 impl Settings {
     pub fn validate(&self, client: &Client) -> Result<()> {
         if client.service || !client.scopes.contains("radius") || self.reply.len() > 32 {

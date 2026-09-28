@@ -19,15 +19,8 @@ use std::collections::BTreeSet;
 use webauthn_rs::prelude::PublicKeyCredential;
 use wire::{ASSERTION, DSIG, METADATA, POST, PROTOCOL, REDIRECT, RSA256};
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum NameIdFormat {
-    #[default]
-    Persistent,
-    Transient,
-    Email,
-    Unspecified,
-}
+pub use crate::model::client_settings::saml::{Attribute, NameIdFormat, Settings};
+
 impl NameIdFormat {
     pub fn uri(&self) -> &'static str {
         match self {
@@ -37,41 +30,6 @@ impl NameIdFormat {
             Self::Unspecified => "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
         }
     }
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Attribute {
-    pub name: String,
-    pub claim: String,
-    pub friendly_name: Option<String>,
-    #[serde(default)]
-    pub required: bool,
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    pub sp_entity_id: String,
-    pub acs_urls: Vec<String>,
-    #[serde(default)]
-    pub acs_indices: std::collections::BTreeMap<u16, String>,
-    pub idp_entity_id: Option<String>,
-    pub idp_certificate_pem: String,
-    pub sp_certificates_pem: Vec<String>,
-    pub encryption_certificate_pem: Option<String>,
-    #[serde(default)]
-    pub name_id_format: NameIdFormat,
-    #[serde(default)]
-    pub attributes: Vec<Attribute>,
-    pub slo_redirect_url: Option<String>,
-    pub slo_post_url: Option<String>,
-    #[serde(default)]
-    pub idp_initiated: bool,
-    pub default_relay_state: Option<String>,
-    #[serde(default = "assertion_ttl")]
-    pub assertion_ttl: u64,
-}
-fn assertion_ttl() -> u64 {
-    120
 }
 /// HTTP endpoint base from the configured issuer. Protocol identifiers keep the exact issuer.
 pub(crate) fn endpoint_base(issuer: &str) -> &str {

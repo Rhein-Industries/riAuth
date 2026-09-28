@@ -20,6 +20,7 @@ pub mod encryption;
 pub mod error;
 pub mod event_map;
 pub mod exchange;
+pub mod identity;
 pub mod issuer;
 pub mod jose;
 pub mod keyring;

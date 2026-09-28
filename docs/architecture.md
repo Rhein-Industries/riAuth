@@ -20,6 +20,14 @@ flowchart LR
 
 Network listeners and integrations are enabled separately by configuration.
 
+The [module-boundary work](module-boundaries.md) separates shared account
+liveness and transactional security effects from Core assembly and SSF transport,
+places protocol setting data in the shared client model, and keeps parent-owned
+agent, Windows and RP logout persistence with the shared identity effects. An
+identity transaction port removes the identity-to-storage source edge, and
+management mutation checks now live in Core rather than request context. The
+same note records the remaining Core, storage, protocol, API and client coupling.
+
 ## Entry points and request handling
 
 One Rust crate builds the `riauth` binary and library. [CLI dispatch](../src/cli.rs) handles local initialization, restore, import and configuration, then uses [remote transport](../src/cli/transport.rs) for authenticated server operations. The remote client pins saved sessions and agent credentials to the configured issuer, rejects redirects and uses a configurable per-request timeout (`--request-timeout` / `RIAUTH_REQUEST_TIMEOUT`, default 30 seconds). It does not refresh human sessions automatically.

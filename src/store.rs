@@ -51,6 +51,32 @@ pub struct Tx<'a> {
     prepared: RefCell<Option<Prepared>>,
 }
 
+impl crate::identity::persistence::IdentityTx for Tx<'_> {
+    fn get<T: DeserializeOwned>(&self, bucket: &str, key: &str) -> Result<Option<T>> {
+        Tx::get(self, bucket, key)
+    }
+
+    fn list<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
+        Tx::list(self, bucket)
+    }
+
+    fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
+        Tx::put(self, bucket, key, value)
+    }
+
+    fn delete(&self, bucket: &str, key: &str) -> Result<()> {
+        Tx::delete(self, bucket, key)
+    }
+
+    fn maintenance_page<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
+        Tx::maintenance_page(self, bucket)
+    }
+
+    fn mark_security_event(&self, user: &str, event: &str, credential: &str) -> bool {
+        Tx::mark_security_event(self, user, event, credential)
+    }
+}
+
 macro_rules! read_table {
     ($self:expr, $table:ident, $body:block) => {{
         match &$self.transaction {
@@ -459,9 +485,11 @@ fn public_record(bucket: &str, value: Option<&Value>) -> Result<Value> {
         "clients" => serde_json::from_value::<crate::model::Client>(value.clone())
             .map_err(Error::internal)?
             .view(),
-        "agents" => serde_json::from_value::<crate::agent::Agent>(value.clone())
-            .map_err(Error::internal)?
-            .view(),
+        "agents" => {
+            serde_json::from_value::<crate::identity::agent_credentials::Agent>(value.clone())
+                .map_err(Error::internal)?
+                .view()
+        }
         _ => value.clone(),
     })
 }
@@ -680,23 +708,11 @@ impl Tx<'_> {
         } else {
             None
         };
-        if bucket == "users"
-            && let Some(old) = &before
-            && old["enabled"] != public["enabled"]
-        {
-            // Account state changes revoke sessions even if a caller omitted its
-            // epoch bump. Re-enabling a legacy snapshot cannot revive sessions.
-            public["epoch"] = Value::from(
-                public["epoch"]
-                    .as_u64()
-                    .unwrap_or(0)
-                    .max(old["epoch"].as_u64().unwrap_or(0).saturating_add(1)),
-            );
-        }
+        crate::identity::prepare_record(bucket, before.as_ref(), &mut public);
         self.update_indexes(bucket, key, Some(&public))?;
         self.record_change(bucket, key, Some(public.clone()))?;
         self.import_record(bucket, key, &public)?;
-        self.security_transition(bucket, key, before.as_ref(), Some(&public))
+        crate::identity::record_transition(self, bucket, key, before.as_ref(), Some(&public))
     }
     pub(crate) fn import_record<T: Serialize>(
         &self,
@@ -721,7 +737,7 @@ impl Tx<'_> {
         self.update_indexes(bucket, key, None)?;
         self.record_change(bucket, key, None)?;
         self.raw_put(&record_key(bucket, key), None)?;
-        self.security_transition(bucket, key, before.as_ref(), None)
+        crate::identity::record_transition(self, bucket, key, before.as_ref(), None)
     }
 
     pub(crate) fn mark_security_event(&self, user: &str, event: &str, credential: &str) -> bool {
@@ -730,27 +746,6 @@ impl Tx<'_> {
             .insert((user.into(), event.into(), credential.into()))
     }
 
-    /// Security effects belong to the durable transition, irrespective of its API.
-    /// Offline import_record deliberately bypasses this hook when restoring a snapshot.
-    fn security_transition(
-        &self,
-        bucket: &str,
-        key: &str,
-        before: Option<&Value>,
-        after: Option<&Value>,
-    ) -> Result<()> {
-        if bucket == "users" {
-            if let Some(before) = before {
-                crate::core::user_security_transition(self, key, before, after)?;
-            }
-        } else if bucket == "passkeys"
-            && before.is_some() != after.is_some()
-            && let Some(user) = after.or(before).and_then(|v| v["user_id"].as_str())
-        {
-            crate::ssf::enqueue(self, user, crate::ssf::CREDENTIAL_CHANGE, "public-key")?;
-        }
-        Ok(())
-    }
     fn raw_put(&self, name: &str, bytes: Option<Vec<u8>>) -> Result<()> {
         if self.stage(name, &bytes)? {
             return Ok(());

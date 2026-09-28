@@ -26,6 +26,7 @@ use tokio_util::codec::Framed;
 const STARTTLS: &str = "1.3.6.1.4.1.1466.20037";
 const WHOAMI: &str = "1.3.6.1.4.1.4203.1.11.3";
 const PAGED: &str = "1.2.840.113556.1.4.319";
+pub use crate::model::client_settings::ldap::Settings;
 
 // Reuse the listener's BER decoder and limits without creating a connection or
 // invoking bind/search handlers. &[u8] is an always-ready Tokio AsyncRead.
@@ -89,12 +90,6 @@ mod ber_tests {
         assert!(fuzz_ber(include_bytes!("../fuzz/corpus/parsers/ldap-deep-filter")).is_err());
         assert!(fuzz_ber(&vec![0; 65_537]).is_err());
     }
-}
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    pub base_dn: String,
-    pub search_groups: BTreeSet<String>,
 }
 impl Settings {
     pub fn validate(&self, client: &Client) -> Result<()> {
