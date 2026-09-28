@@ -7,11 +7,11 @@ use riauth::{
     core::Core,
     crypto::{self, digest, now, with_test_time},
     model::{
-        Audit, AuthenticationTransaction, Client, Code, NewClient, NewUser, Session, User,
-        UserPatch,
+        Audit, AuthenticationTransaction, Client, Code, Family, Grant, NewClient, NewUser, Session,
+        User, UserPatch,
     },
     offboarding::{BUCKET, BeforeCommit, ExecuteAt, Job, ScheduleRequest, Status},
-    oidc::Authorization,
+    oidc::{Authorization, TokenRequest},
     postgres_store::PostgresConfig,
     signin,
     state::{ApplyRequest, Manifest},
@@ -20,9 +20,9 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     path::PathBuf,
-    sync::{Arc, Barrier, mpsc},
+    sync::{Arc, Barrier, atomic::Ordering, mpsc},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const AT: u64 = 1_900_000_000;
@@ -34,6 +34,12 @@ fn text(value: &Value, key: &str) -> String {
 
 fn strings(values: &[&str]) -> BTreeSet<String> {
     values.iter().map(|value| (*value).into()).collect()
+}
+
+fn signing_count(core: &Core) -> u64 {
+    core.store.telemetry().signing.snapshot()["count"]
+        .as_u64()
+        .unwrap()
 }
 
 struct Harness {
@@ -457,6 +463,376 @@ fn proof_binding_race(h: &Harness, alice: &str) {
     assert_eq!(issued.identity.user_id, h.user_id("q05-alice"));
 }
 
+fn issue_refresh_tokens(h: &Harness, client_id: &str) -> Value {
+    let verifier = crypto::random_token("");
+    let redirect_uri = "http://localhost:7777/refresh";
+    let callback = h
+        .first
+        .authorize(
+            &h.admin,
+            Authorization {
+                client_id: client_id.into(),
+                response_type: "code".into(),
+                redirect_uri: redirect_uri.into(),
+                scope: "openid offline_access".into(),
+                code_challenge: digest(&verifier),
+                code_challenge_method: "S256".into(),
+                decision: Some("approve".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let code = url::Url::parse(&callback)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    h.first
+        .token(TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some(client_id.into()),
+            code: Some(code),
+            redirect_uri: Some(redirect_uri.into()),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap()
+}
+
+fn refresh_family_replay_during_concurrent_preparation(h: &Harness) {
+    for client_id in ["q05-refresh", "q05-refresh-other"] {
+        h.first
+            .create_client(
+                &h.admin,
+                NewClient {
+                    client_id: client_id.into(),
+                    name: client_id.into(),
+                    confidential: false,
+                    redirect_uris: vec!["http://localhost:7777/refresh".into()],
+                    scopes: strings(&["openid", "offline_access"]),
+                    allowed_groups: Default::default(),
+                    require_mfa: false,
+                    service: false,
+                    settings: Default::default(),
+                },
+            )
+            .unwrap();
+    }
+    let original = issue_refresh_tokens(h, "q05-refresh");
+    let control = issue_refresh_tokens(h, "q05-refresh-other");
+    let old_token = text(&original, "refresh_token");
+    let old_key = digest(&old_token);
+    let old_grant: Grant = h.first.store.get("refresh", &old_key).unwrap().unwrap();
+    let family_id = old_grant.family_id.clone();
+    let family_before: Family = h.first.store.get("families", &family_id).unwrap().unwrap();
+    let control_key = digest(&text(&control, "refresh_token"));
+    let control_grant: Grant = h.first.store.get("refresh", &control_key).unwrap().unwrap();
+    let old_access_key = digest(&text(&original, "access_token"));
+    let old_access: Grant = h
+        .first
+        .store
+        .get("access", &old_access_key)
+        .unwrap()
+        .unwrap();
+    let control_family_before: Family = h
+        .first
+        .store
+        .get("families", &control_grant.family_id)
+        .unwrap()
+        .unwrap();
+    assert_ne!(family_id, control_grant.family_id);
+    assert!(!family_before.revoked);
+    assert!(h.first.userinfo(&text(&original, "access_token")).is_ok());
+    assert!(h.second.userinfo(&text(&control, "access_token")).is_ok());
+    let before_audits = h.first.store.list::<Audit>("audit").unwrap().len();
+    let before_issued = h.audits("token.issued", Some("q05-refresh"));
+    let before_replay = h.audits("refresh.replay", Some(&family_id));
+    assert_eq!(before_replay, 0);
+
+    // A wrong client must not spend the still-live handle or revoke its family.
+    assert_eq!(
+        h.second
+            .token(TokenRequest {
+                grant_type: "refresh_token".into(),
+                client_id: Some("q05-refresh-other".into()),
+                refresh_token: Some(old_token.clone()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_grant"
+    );
+    assert_eq!(
+        serde_json::to_value(h.second.store.get::<Grant>("refresh", &old_key).unwrap()).unwrap(),
+        serde_json::to_value(Some(&old_grant)).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(
+            h.second
+                .store
+                .get::<Family>("families", &family_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(Some(&family_before)).unwrap()
+    );
+    assert_eq!(
+        h.first.store.list::<Audit>("audit").unwrap().len(),
+        before_audits
+    );
+
+    // Keep a writer lock while both prepared refresh calls read the old grant
+    // and sign their candidate access and ID tokens. Neither can commit yet.
+    let first_signs = signing_count(&h.first);
+    let second_signs = signing_count(&h.second);
+    let first_conflicts = h
+        .first
+        .store
+        .telemetry()
+        .optimistic_conflicts
+        .load(Ordering::Relaxed);
+    let second_conflicts = h
+        .second
+        .store
+        .telemetry()
+        .optimistic_conflicts
+        .load(Ordering::Relaxed);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let writer = h.first.store.clone();
+    let held_writer = thread::spawn(move || {
+        with_test_time(AT + 1, || {
+            writer.write(|_| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(15)).unwrap();
+                Ok(())
+            })
+        })
+    });
+    entered_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("writer lock was not acquired");
+    let barrier = Arc::new(Barrier::new(3));
+    let workers: Vec<_> = [h.first.clone(), h.second.clone()]
+        .into_iter()
+        .map(|core| {
+            let barrier = barrier.clone();
+            let old_token = old_token.clone();
+            thread::spawn(move || {
+                with_test_time(AT + 1, || {
+                    barrier.wait();
+                    core.token(TokenRequest {
+                        grant_type: "refresh_token".into(),
+                        client_id: Some("q05-refresh".into()),
+                        refresh_token: Some(old_token),
+                        ..Default::default()
+                    })
+                })
+            })
+        })
+        .collect();
+    barrier.wait();
+    let started = Instant::now();
+    let prepared = loop {
+        let ready = if h.first.store.backend() == "postgresql" {
+            signing_count(&h.first) >= first_signs + 2
+                && signing_count(&h.second) >= second_signs + 2
+        } else {
+            signing_count(&h.first) >= first_signs + 4
+        };
+        if ready {
+            break true;
+        }
+        if started.elapsed() >= Duration::from_secs(10) {
+            break false;
+        }
+        thread::yield_now();
+    };
+    let both_waiting = workers.iter().all(|worker| !worker.is_finished());
+    release_tx.send(()).unwrap();
+    held_writer.join().unwrap().unwrap();
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    assert!(
+        prepared && both_waiting,
+        "refreshes did not both prepare before release: {results:?}"
+    );
+    assert_eq!(
+        results.iter().filter(|result| result.is_ok()).count(),
+        1,
+        "{results:?}"
+    );
+    assert!(results.iter().any(|result| {
+        result
+            .as_ref()
+            .is_err_and(|error| error.code == "invalid_grant")
+    }));
+    let rotated = results.into_iter().find_map(Result::ok).unwrap();
+    let new_token = text(&rotated, "refresh_token");
+    let new_key = digest(&new_token);
+    let new_access_key = digest(&text(&rotated, "access_token"));
+    assert_ne!(old_key, new_key);
+    let old_after: Grant = h.second.store.get("refresh", &old_key).unwrap().unwrap();
+    let new_grant: Grant = h.second.store.get("refresh", &new_key).unwrap().unwrap();
+    let family_after: Family = h.second.store.get("families", &family_id).unwrap().unwrap();
+    let old_access_after: Grant = h
+        .second
+        .store
+        .get("access", &old_access_key)
+        .unwrap()
+        .unwrap();
+    let new_access: Grant = h
+        .second
+        .store
+        .get("access", &new_access_key)
+        .unwrap()
+        .unwrap();
+    let mut expected_old = old_grant.clone();
+    expected_old.used = true;
+    assert_eq!(
+        serde_json::to_value(old_after).unwrap(),
+        serde_json::to_value(expected_old).unwrap()
+    );
+    let mut expected_new = old_grant.clone();
+    expected_new.issued_at = AT + 1;
+    assert_eq!(
+        serde_json::to_value(new_grant).unwrap(),
+        serde_json::to_value(expected_new).unwrap()
+    );
+    let mut expected_family = family_before.clone();
+    expected_family.revoked = true;
+    assert_eq!(
+        serde_json::to_value(family_after).unwrap(),
+        serde_json::to_value(expected_family).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(old_access_after).unwrap(),
+        serde_json::to_value(&old_access).unwrap()
+    );
+    let mut expected_new_access = old_access.clone();
+    expected_new_access.issued_at = AT + 1;
+    expected_new_access.expires_at = AT + 1 + rotated["expires_in"].as_u64().unwrap();
+    assert_eq!(
+        serde_json::to_value(new_access).unwrap(),
+        serde_json::to_value(expected_new_access).unwrap()
+    );
+    assert_eq!(
+        h.first
+            .store
+            .list::<Grant>("refresh")
+            .unwrap()
+            .into_iter()
+            .filter(|(_, grant)| grant.family_id == family_id)
+            .count(),
+        2
+    );
+    assert_eq!(
+        h.first
+            .store
+            .list::<Grant>("access")
+            .unwrap()
+            .into_iter()
+            .filter(|(_, grant)| grant.family_id == family_id)
+            .count(),
+        2
+    );
+    assert_eq!(
+        h.audits("token.issued", Some("q05-refresh")),
+        before_issued + 1
+    );
+    assert_eq!(
+        h.audits("refresh.replay", Some(&family_id)),
+        before_replay + 1
+    );
+    assert_eq!(
+        h.first.store.list::<Audit>("audit").unwrap().len(),
+        before_audits + 2
+    );
+    let replay: Vec<_> = h
+        .first
+        .store
+        .list::<Audit>("audit")
+        .unwrap()
+        .into_iter()
+        .filter_map(|(_, event)| {
+            (event.action == "refresh.replay" && event.target == family_id).then_some(event)
+        })
+        .collect();
+    assert_eq!(replay.len(), 1);
+    assert_eq!(replay[0].actor, "q05-refresh");
+    assert_eq!(replay[0].at, AT + 1);
+    let conflict_delta = if h.first.store.backend() == "postgresql" {
+        h.first
+            .store
+            .telemetry()
+            .optimistic_conflicts
+            .load(Ordering::Relaxed)
+            - first_conflicts
+            + h.second
+                .store
+                .telemetry()
+                .optimistic_conflicts
+                .load(Ordering::Relaxed)
+            - second_conflicts
+    } else {
+        h.first
+            .store
+            .telemetry()
+            .optimistic_conflicts
+            .load(Ordering::Relaxed)
+            - first_conflicts
+    };
+    assert!(conflict_delta >= 1);
+
+    assert!(h.second.userinfo(&text(&original, "access_token")).is_err());
+    assert!(h.first.userinfo(&text(&rotated, "access_token")).is_err());
+    assert_eq!(
+        h.second
+            .token(TokenRequest {
+                grant_type: "refresh_token".into(),
+                client_id: Some("q05-refresh".into()),
+                refresh_token: Some(new_token),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_grant"
+    );
+    assert_eq!(
+        h.audits("refresh.replay", Some(&family_id)),
+        before_replay + 1
+    );
+    assert_eq!(
+        h.first.store.list::<Audit>("audit").unwrap().len(),
+        before_audits + 2
+    );
+    assert!(h.first.userinfo(&text(&control, "access_token")).is_ok());
+    let control_family: Family = h
+        .second
+        .store
+        .get("families", &control_grant.family_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(control_family).unwrap(),
+        serde_json::to_value(control_family_before).unwrap()
+    );
+    let control_grant_after: Grant = h
+        .second
+        .store
+        .get("refresh", &control_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(control_grant_after).unwrap(),
+        serde_json::to_value(control_grant).unwrap()
+    );
+}
+
 fn management_retry_race(h: &Harness) {
     let agent = h.agent(
         "q05-planner",
@@ -652,6 +1028,175 @@ fn interrupted_offboarding_authority(h: &Harness) {
     );
 }
 
+fn offboarding_lease_reclaim_after_reopen(h: Harness, postgres: bool) {
+    let username = "q05-reclaim-target";
+    h.add_user(username);
+    let original = h.user(username);
+    let original_value = serde_json::to_value(&original).unwrap();
+    let scheduled = h
+        .first
+        .offboard_schedule(
+            &h.admin,
+            ScheduleRequest {
+                username: username.into(),
+                execute_at: ExecuteAt::Unix(AT + 60),
+                timezone: "UTC".into(),
+            },
+        )
+        .unwrap();
+    let id = text(&scheduled, "id");
+    let audit_target = format!("{id}/{username}");
+    let actor = text(&scheduled, "created_by");
+    let audits_before = h.first.store.list::<Audit>("audit").unwrap().len();
+    assert_eq!(h.audits("offboard.execute", Some(&audit_target)), 0);
+
+    let first_claim = with_test_time(AT + 61, || {
+        h.first.offboard_claim("q05-old-worker").unwrap().unwrap()
+    });
+    assert_eq!(first_claim["id"], id);
+    assert_eq!(first_claim["status"], "running");
+    assert_eq!(first_claim["attempts"], 1);
+    assert_eq!(first_claim["lease_owner"], "q05-old-worker");
+    assert_eq!(first_claim["lease_until"], AT + 121);
+    assert_eq!(first_claim["next_attempt"], AT + 121);
+    assert_eq!(
+        serde_json::to_value(h.first.store.get::<Job>(BUCKET, &id).unwrap().unwrap()).unwrap(),
+        first_claim
+    );
+    assert_eq!(
+        serde_json::to_value(h.user(username)).unwrap(),
+        original_value
+    );
+    assert_eq!(
+        h.first.store.list::<Audit>("audit").unwrap().len(),
+        audits_before
+    );
+
+    // All old handles are dropped while the committed lease is still live. The
+    // new Core reads it from durable storage rather than an in-memory clone.
+    let config = h.first.config.clone();
+    let Harness {
+        _dir,
+        first,
+        second,
+        admin: _,
+    } = h;
+    drop(first);
+    drop(second);
+    let reopened = Core::open(config.clone()).unwrap();
+    let contender = if postgres {
+        Core::open(config).unwrap()
+    } else {
+        reopened.clone()
+    };
+    let stored = || reopened.store.get::<Job>(BUCKET, &id).unwrap().unwrap();
+    let target = || {
+        reopened
+            .store
+            .get::<User>("users", &original.id)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(serde_json::to_value(stored()).unwrap(), first_claim);
+    with_test_time(AT + 62, || {
+        assert!(
+            contender
+                .offboard_claim("q05-new-worker")
+                .unwrap()
+                .is_none()
+        );
+    });
+    assert_eq!(serde_json::to_value(stored()).unwrap(), first_claim);
+    assert_eq!(serde_json::to_value(target()).unwrap(), original_value);
+    assert_eq!(
+        reopened.store.list::<Audit>("audit").unwrap().len(),
+        audits_before
+    );
+
+    with_test_time(AT + 122, || {
+        let reclaimed = contender.offboard_claim("q05-new-worker").unwrap().unwrap();
+        assert_eq!(reclaimed["id"], id);
+        assert_eq!(reclaimed["status"], "running");
+        assert_eq!(reclaimed["attempts"], 2);
+        assert_eq!(reclaimed["lease_owner"], "q05-new-worker");
+        assert_eq!(reclaimed["lease_until"], AT + 182);
+        assert_eq!(reclaimed["next_attempt"], AT + 182);
+        assert_eq!(serde_json::to_value(stored()).unwrap(), reclaimed);
+        assert!(
+            reopened
+                .offboard_claim("q05-third-worker")
+                .unwrap()
+                .is_none()
+        );
+
+        let stale = reopened
+            .offboard_commit("q05-old-worker", &id, BeforeCommit::Proceed)
+            .unwrap_err();
+        assert_eq!(stale.code, "lease_lost");
+        assert_eq!(serde_json::to_value(stored()).unwrap(), reclaimed);
+        assert_eq!(serde_json::to_value(target()).unwrap(), original_value);
+        assert_eq!(
+            reopened.store.list::<Audit>("audit").unwrap().len(),
+            audits_before
+        );
+
+        let completed = contender
+            .offboard_commit("q05-new-worker", &id, BeforeCommit::Proceed)
+            .unwrap();
+        assert_eq!(completed["status"], "done");
+        assert_eq!(completed["attempts"], 2);
+        assert_eq!(completed["lease_owner"], Value::Null);
+        assert_eq!(completed["lease_until"], 0);
+        assert_eq!(completed["next_attempt"], AT + 122);
+        assert_eq!(completed["last_error"], Value::Null);
+        assert_eq!(
+            completed["result"],
+            json!({"downstream": "local-only", "scim_targets_configured": false})
+        );
+        assert_eq!(serde_json::to_value(stored()).unwrap(), completed);
+        let mut expected_user = original_value.clone();
+        expected_user["enabled"] = json!(false);
+        expected_user["epoch"] = json!(original.epoch + 1);
+        assert_eq!(serde_json::to_value(target()).unwrap(), expected_user);
+
+        let audits: Vec<_> = reopened
+            .store
+            .list::<Audit>("audit")
+            .unwrap()
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect();
+        assert_eq!(audits.len(), audits_before + 1);
+        let executions: Vec<_> = audits
+            .iter()
+            .filter(|event| event.action == "offboard.execute" && event.target == audit_target)
+            .collect();
+        assert_eq!(executions.len(), 1);
+        assert_eq!(executions[0].actor, actor);
+        assert_eq!(executions[0].at, AT + 122);
+
+        // Terminal reads are idempotent, and no other worker can claim it.
+        assert_eq!(
+            reopened
+                .offboard_commit("q05-new-worker", &id, BeforeCommit::Proceed)
+                .unwrap(),
+            completed
+        );
+        assert!(
+            contender
+                .offboard_claim("q05-third-worker")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(serde_json::to_value(stored()).unwrap(), completed);
+        assert_eq!(serde_json::to_value(target()).unwrap(), expected_user);
+        assert_eq!(
+            reopened.store.list::<Audit>("audit").unwrap().len(),
+            audits_before + 1
+        );
+    });
+}
+
 fn run_suite(postgres: bool) {
     with_test_time(AT, || {
         let h = Harness::new(postgres);
@@ -663,6 +1208,8 @@ fn run_suite(postgres: bool) {
         proof_binding_race(&h, &alice);
         management_retry_race(&h);
         interrupted_offboarding_authority(&h);
+        refresh_family_replay_during_concurrent_preparation(&h);
+        offboarding_lease_reclaim_after_reopen(h, postgres);
     });
 }
 
