@@ -64,6 +64,7 @@ enum Mode {
     InvalidTotal,
     EntraNested,
     FailSecondMember,
+    EntraCountedMissingUser,
 }
 
 struct State {
@@ -457,6 +458,16 @@ fn users(state: &State, page: usize) -> (u16, String) {
     let people = state.people.lock().unwrap().clone();
     if mode == Mode::FailSecond && page >= 1 {
         return (500, json!({"error": "page_failed"}).to_string());
+    }
+    if state.kind == "entra" && mode == Mode::EntraCountedMissingUser {
+        let shown: Vec<_> = people
+            .iter()
+            .filter(|person| person.id != "ext-bob")
+            .cloned()
+            .collect();
+        let mut body: Value = serde_json::from_str(&render_users("entra", &shown, None)).unwrap();
+        body["@odata.count"] = json!(shown.len());
+        return (200, body.to_string());
     }
     let base = state.base.lock().unwrap().clone();
     if mode == Mode::EvilNext && page == 0 {
@@ -1121,6 +1132,146 @@ fn entra_transitive_membership_requires_complete_graph_pages() {
             .core
             .cloud_plan_get(&fixture.admin, "entra", reviewed["id"].as_str().unwrap())
             .unwrap()["applied"],
+        false
+    );
+}
+
+#[test]
+fn entra_counted_snapshot_binds_members_and_revokes_on_complete_change() {
+    let (directory, fixture) = linked_pair("entra");
+    let alice_id = user_named(&users_of(&fixture), "alice").unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let bob_id = user_named(&users_of(&fixture), "bob").unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut wrong_tenant = fixture.core.config.entra_directories["corp"].clone();
+    wrong_tenant.graph_url = "https://graph.microsoft.com".into();
+    wrong_tenant.token_url =
+        "https://login.microsoftonline.com/another-tenant/oauth2/v2.0/token".into();
+    assert!(wrong_tenant.validate().is_err());
+
+    subscribe(&fixture, "alice");
+    let children = Dependents::create(&fixture, "alice");
+    let link_key = riauth::crypto::digest(&format!("crm\0Users\0{alice_id}"));
+    let link = json!({
+        "target": "crm",
+        "url": "https://scim.example.test",
+        "kind": "Users",
+        "local_id": alice_id,
+        "remote_id": "remote-alice",
+        "external_id": "ext-alice",
+        "body": {"active": true},
+    });
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("provisioning_links", &link_key, &link))
+        .unwrap();
+    let reviewed = fixture
+        .core
+        .cloud_plan(&fixture.admin, "entra", "corp")
+        .unwrap();
+    let before_users = users_of(&fixture);
+    let before_members = group_members(&fixture, "staff");
+
+    // Both Graph collections have internally correct counts, but the member
+    // relationship still contains Bob while /users omits his object ID.
+    *directory.state.mode.lock().unwrap() = Mode::EntraCountedMissingUser;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "entra", "corp")
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "entra", reviewed["id"].as_str().unwrap())
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert_eq!(users_of(&fixture), before_users);
+    assert_eq!(group_members(&fixture, "staff"), before_members);
+    assert!(
+        fixture
+            .core
+            .store
+            .list::<Value>(riauth::identity::downstream::BUCKET)
+            .unwrap()
+            .is_empty()
+    );
+
+    *directory.state.mode.lock().unwrap() = Mode::Split;
+    for person in directory.state.people.lock().unwrap().iter_mut() {
+        if person.id == "ext-alice" {
+            person.disabled = true;
+        } else if person.id == "ext-bob" {
+            person.staff = false;
+        }
+    }
+    let plan = fixture
+        .core
+        .cloud_plan(&fixture.admin, "entra", "corp")
+        .unwrap();
+    assert_eq!(plan["entries"][0]["external_id"], "ext-alice");
+    assert_eq!(plan["entries"][1]["external_id"], "ext-bob");
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    fixture
+        .core
+        .cloud_apply_confirmed(
+            &fixture.admin,
+            "entra",
+            plan["id"].as_str().unwrap(),
+            plan["id"].as_str(),
+        )
+        .unwrap();
+    assert_eq!(
+        user_named(&users_of(&fixture), "alice").unwrap()["id"],
+        alice_id
+    );
+    assert_eq!(
+        user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+        false
+    );
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+    assert!(!group_members(&fixture, "staff").contains(&bob_id));
+    children.assert_revoked(&fixture);
+    assert_eq!(
+        events(&fixture, "alice"),
+        vec![(riauth::ssf::ACCOUNT_DISABLED.into(), "".into())]
+    );
+    let intent = fixture
+        .core
+        .store
+        .list::<Value>(riauth::identity::downstream::BUCKET)
+        .unwrap();
+    assert_eq!(intent.len(), 1);
+    assert_eq!(intent[0].1["user_id"], alice_id);
+    assert_eq!(intent[0].1["status"], "pending");
+
+    // Reusing Alice's mail with a different Graph ID cannot take her binding.
+    directory.state.people.lock().unwrap()[0].id = "ext-alice-recreated".into();
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "entra", "corp")
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
         false
     );
 }

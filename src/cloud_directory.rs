@@ -222,9 +222,9 @@ impl EntraDirectory {
                 "Entra requires either one secret file or a certificate and private key pair",
             ));
         }
-        if certificate.is_some() {
-            validate_entra_certificate_endpoint(self, &graph)?;
-        }
+        // The configured tenant is part of the immutable local binding. A
+        // secret-file credential must not silently fetch another tenant either.
+        validate_entra_endpoint(self, &graph)?;
         validate_scope(&self.scope, true)?;
         validate_groups(&self.groups)?;
         validate_attributes(&self.attributes)?;
@@ -237,7 +237,7 @@ impl EntraDirectory {
     }
 }
 
-fn validate_entra_certificate_endpoint(directory: &EntraDirectory, graph: &Url) -> Result<()> {
+fn validate_entra_endpoint(directory: &EntraDirectory, graph: &Url) -> Result<()> {
     if matches!(graph.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
         let token =
             Url::parse(&directory.token_url).map_err(|_| Error::bad("Invalid Entra token URL"))?;
@@ -256,7 +256,7 @@ fn validate_entra_certificate_endpoint(directory: &EntraDirectory, graph: &Url) 
         }
         _ => {
             return Err(Error::bad(
-                "Entra certificate credential requires a supported Graph cloud",
+                "Entra directory requires a supported Graph cloud",
             ));
         }
     };
@@ -269,7 +269,7 @@ fn validate_entra_certificate_endpoint(directory: &EntraDirectory, graph: &Url) 
         || directory.scope != format!("{}/.default", directory.graph_url.trim_end_matches('/'))
     {
         return Err(Error::bad(
-            "Entra certificate token URL, tenant, and Graph scope must match",
+            "Entra token URL, tenant, and Graph scope must match",
         ));
     }
     Ok(())
@@ -840,10 +840,10 @@ impl Settings {
             )?
         };
         let mut users = Vec::new();
-        let mut ids = BTreeSet::new();
+        let mut user_ids = BTreeSet::new();
         for value in raw_users {
             let user = parse_user(self.kind, &value, &self.attributes)?;
-            if !ids.insert(user.external_id.clone()) {
+            if !user_ids.insert(user.external_id.clone()) {
                 return Err(unavailable("Cloud directory returned an unreadable page"));
             }
             users.push(user);
@@ -986,6 +986,14 @@ impl Settings {
                         _ => {
                             return Err(unavailable("Cloud directory returned an unreadable page"));
                         }
+                    }
+                    // Each collection may be internally counted yet reflect a
+                    // different Graph index moment. A group user absent from
+                    // /users makes the removal snapshot inconsistent.
+                    if !user_ids.contains(&id) {
+                        return Err(unavailable(
+                            "Entra group member is missing from the users snapshot",
+                        ));
                     }
                 }
                 ids.insert(id);
