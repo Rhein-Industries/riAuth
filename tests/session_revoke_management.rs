@@ -9,6 +9,7 @@ use riauth::{
     agent::{NewAgent, Permission},
     crypto::now,
     identity::logout_queue::RpSession,
+    model::Session,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -66,6 +67,125 @@ fn count_audit(f: &Fixture, action: &str, target: &str) -> usize {
         .iter()
         .filter(|event| event["action"] == action && event["target"] == target)
         .count()
+}
+
+fn reply_cookie(cookies: &[String], name: &str) -> String {
+    cookies
+        .iter()
+        .filter_map(|cookie| cookie.split(';').next())
+        .find_map(|cookie| cookie.strip_prefix(&format!("{name}=")))
+        .unwrap()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn browser_sign_out_shares_session_writer_and_keeps_terminal_unmap() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    let alice_id = text(&f.core.me(&alice).unwrap()["user"], "id");
+    let browser_reply = f
+        .core
+        .portal_password(None, "alice".into(), PASSWORD.into(), None, false)
+        .unwrap();
+    let cookie = reply_cookie(&browser_reply.cookies, "riauth_sso");
+    let browser_id = text(
+        &f.core.portal_security(Some(&cookie)).unwrap(),
+        "current_session_id",
+    );
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "rp_sessions",
+                "rp-browser-signout",
+                &RpSession {
+                    sid: "rp-browser-signout".into(),
+                    session_id: browser_id.clone(),
+                    user_id: alice_id.clone(),
+                    subject: "alice-browser-rp".into(),
+                    client_id: "no-backchannel".into(),
+                    created_at: now(),
+                    expires_at: now() + 3600,
+                    ended: false,
+                },
+            )
+        })
+        .unwrap();
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let app = riauth::api::router(f.core.clone());
+    let sign_out = || {
+        browser(
+            &cookie,
+            "/api/portal/sign-out",
+            "browser-signout",
+            &origin,
+            &json!({}),
+        )
+    };
+    let first = send(&app, sign_out()).await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(first.1["revoked"], true);
+    assert!(first.1.get("saml_logout").is_none());
+    assert!(f.core.portal_security(Some(&cookie)).is_err());
+    assert!(
+        f.core
+            .store
+            .get::<Session>("sessions", &browser_id)
+            .unwrap()
+            .unwrap()
+            .revoked
+    );
+    assert!(
+        f.core
+            .store
+            .get::<RpSession>("rp_sessions", "rp-browser-signout")
+            .unwrap()
+            .unwrap()
+            .ended
+    );
+    assert_eq!(count_audit(&f, "session.revoke", &browser_id), 1);
+    // The old cookie may be submitted again, but cannot revoke or audit twice.
+    assert_eq!(send(&app, sign_out()).await.1["revoked"], true);
+    assert_eq!(count_audit(&f, "session.revoke", &browser_id), 1);
+    assert!(f.core.me(&alice).is_ok());
+
+    let started = f.core.portal_sign_in().unwrap();
+    f.core
+        .portal_decide(&alice, started.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let terminal = f
+        .core
+        .portal_poll(
+            started.body["id"].as_str().unwrap(),
+            Some(&reply_cookie(&started.cookies, "riauth_portal")),
+        )
+        .unwrap();
+    let terminal_cookie = reply_cookie(&terminal.cookies, "riauth_sso");
+    let terminal_id = session_id(&f, &alice);
+    let unmap = || {
+        browser(
+            &terminal_cookie,
+            "/api/portal/sign-out",
+            "terminal-unmap",
+            &origin,
+            &json!({"scope":"browser"}),
+        )
+    };
+    let unmap_result = send(&app, unmap()).await;
+    assert_eq!(unmap_result, (StatusCode::OK, json!({"revoked":false})));
+    assert!(f.core.portal_security(Some(&terminal_cookie)).is_err());
+    assert!(f.core.me(&alice).is_ok());
+    assert_eq!(count_audit(&f, "session.revoke", &terminal_id), 0);
+    assert_eq!(send(&app, unmap()).await.1["revoked"], true);
+
+    // CLI and API logout use the same writer for the still-live terminal.
+    let logout = || bearer(Method::POST, "/api/logout", &alice, "terminal-logout");
+    assert_eq!(send(&app, logout()).await.0, StatusCode::OK);
+    assert!(f.core.me(&alice).is_err());
+    assert_eq!(count_audit(&f, "session.revoke", &terminal_id), 1);
 }
 
 #[tokio::test]

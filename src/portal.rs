@@ -350,38 +350,26 @@ impl Core {
         cookie: Option<&str>,
         browser_only: bool,
     ) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let mut body = json!({"revoked":true});
-            let session = self.browser_session(tx, cookie)?;
-            if let Some(session) = &session
-                && browser_only
-                && bearer_backed(tx, session)?
-            {
-                body["revoked"] = json!(false);
-            } else if let Some(mut session) = session {
-                session.revoked = true;
-                tx.put("sessions", &session.id, &session)?;
-                crate::logout::queue_session(tx, &session.id)?;
-                crate::ssf::enqueue(
-                    tx,
-                    &session.identity.user_id,
-                    crate::ssf::SESSION_REVOKED,
-                    "",
-                )?;
-                audit(tx, &session.identity.user_id, "session.revoke", &session.id)?;
-                let propagation = crate::saml::logout::redirect(self, tx, &session.id, None)?;
-                body["saml_logout_url"] = propagation["redirect_uri"].clone();
-            }
-            if let Some(cookie) = cookie {
-                tx.delete("browser_sessions", &digest(cookie))?;
-            }
-            Ok(BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                body,
-                cookies: self.sso_cookies("", 0),
-            })
+        let outcome = self.store.write(|tx| {
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::BrowserSignOut {
+                    cookie,
+                    browser_only,
+                },
+            )
+        })?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            body: outcome.body,
+            cookies: if outcome.clear_browser_cookie {
+                self.sso_cookies("", 0)
+            } else {
+                vec![]
+            },
         })
     }
 

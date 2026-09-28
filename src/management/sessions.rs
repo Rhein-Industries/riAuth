@@ -1,5 +1,5 @@
 //! One transaction writer for bearer, agent and browser session revocation.
-//! Browser binding and freshness are checked before any receipt is read.
+//! Account-management browser requests check binding and freshness before receipts.
 
 use crate::{
     core::{Core, audit},
@@ -16,6 +16,10 @@ use std::collections::BTreeSet;
 pub(crate) enum RevokeIntent<'a> {
     Logout {
         token: &'a str,
+    },
+    BrowserSignOut {
+        cookie: Option<&'a str>,
+        browser_only: bool,
     },
     BearerOne {
         token: &'a str,
@@ -75,8 +79,9 @@ impl SessionReceipt {
 /// The adapters provide only their credential or browser binding. This writer
 /// rechecks live authority and target ownership inside the mutation transaction.
 /// A receipt is available for another session while the caller remains live.
-/// Self-revocation and revoke-all deliberately invalidate that caller, so a
-/// retry with its old credential fails authentication instead of replaying.
+/// Self-revocation and revoke-all deliberately invalidate that caller. Portal
+/// sign-out retains its idempotent cookie-clearing response after the session
+/// ends; it cannot replay a receipt under a no-longer-live browser session.
 pub(crate) fn revoke_sessions(
     core: &Core,
     tx: &Tx<'_>,
@@ -88,6 +93,32 @@ pub(crate) fn revoke_sessions(
             Ok(RevokeOutcome::plain(revoke_one_api(
                 core, tx, &user.id, current,
             )?))
+        }
+        RevokeIntent::BrowserSignOut {
+            cookie,
+            browser_only,
+        } => {
+            let session = core.browser_session(tx, cookie)?;
+            let body = match session {
+                Some(session) if browser_only && crate::signin::bearer_backed(tx, &session)? => {
+                    // Only unmap a terminal-backed browser. Its bearer session
+                    // and grants remain available to the approving terminal.
+                    json!({"revoked":false})
+                }
+                Some(session) => {
+                    let user_id = session.identity.user_id.clone();
+                    let revoked = revoke_one_api(core, tx, &user_id, session)?;
+                    json!({"revoked":true,"saml_logout_url":revoked["saml_logout_url"]})
+                }
+                None => json!({"revoked":true}),
+            };
+            if let Some(cookie) = cookie {
+                tx.delete("browser_sessions", &digest(cookie))?;
+            }
+            Ok(RevokeOutcome {
+                body,
+                clear_browser_cookie: true,
+            })
         }
         RevokeIntent::BearerOne { token, target_id } => {
             if token.starts_with("ri_agent_") {
