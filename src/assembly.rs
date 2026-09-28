@@ -31,6 +31,8 @@ mod saml_logout;
 mod session_protocol;
 #[cfg(feature = "platform")]
 mod ssf;
+#[cfg(feature = "platform")]
+mod windows_login;
 
 use crate::{
     config::Config,
