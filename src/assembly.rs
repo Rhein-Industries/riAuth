@@ -10,6 +10,7 @@ mod event_map;
 mod exchange;
 mod issuer;
 mod keyring;
+mod logout;
 mod oidc;
 pub(crate) mod passkey;
 mod password;
