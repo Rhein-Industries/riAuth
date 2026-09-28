@@ -70,6 +70,19 @@ fn browser_sources(tx: &Tx<'_>) -> Result<Vec<Source>> {
 }
 
 impl Core {
+    /// A browser-started source callback continues on its review page only when
+    /// this browser's one-use cookie matches the callback state.
+    pub(crate) fn portal_source_continuation(
+        &self,
+        binding: Option<&str>,
+        state: Option<&str>,
+    ) -> Option<String> {
+        let (_, started) = binding?.split_once('.')?;
+        let state = state?;
+        crate::crypto::constant_eq(started, &digest(state))
+            .then(|| format!("{}account/sources/continue", self.cookie_path()))
+    }
+
     pub fn portal_source_list(&self) -> Result<Value> {
         self.store.read(|tx| {
             let sources = browser_sources(tx)?

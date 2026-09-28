@@ -4,8 +4,6 @@
 //! and gives a finished sign-in to the browser instead of a bearer token.
 use crate::{
     api::{App, binding_cookie, browser_response, sso_cookie},
-    core::Core,
-    crypto::digest,
     error::Result,
     portal::{
         http::{browser_write_guard, portal_html},
@@ -172,16 +170,7 @@ async fn unlink(
     .await
 }
 
-/// The local path a source callback continues on when `headers` carry the cookie of the login
-/// behind `state`: the review page of the browser that started it. Other logins, such as the
-/// CLI's, keep their JSON reply.
-pub(crate) fn continuation(
-    core: &Core,
-    headers: &HeaderMap,
-    state: Option<&str>,
-) -> Option<String> {
-    let (_, started) = binding_cookie(core, headers, KIND, ID)?.split_once('.')?;
-    let state = state?;
-    crate::crypto::constant_eq(started, &digest(state))
-        .then(|| format!("{}account/sources/continue", core.cookie_path()))
+/// The browser's source-login cookie, read before deciding the callback continuation.
+pub(crate) fn continuation_binding<'a>(app: &App, headers: &'a HeaderMap) -> Option<&'a str> {
+    binding_cookie(&app.core, headers, KIND, ID)
 }

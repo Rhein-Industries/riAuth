@@ -1761,7 +1761,10 @@ async fn source_callback(
         .iter()
         .find(|(k, _)| k == "state")
         .map(|(_, v)| v.clone());
-    let continuation = crate::portal::sources::continuation(&app.core, &headers, state.as_deref());
+    let binding = crate::portal::sources::continuation_binding(&app, &headers);
+    let continuation = app
+        .core
+        .portal_source_continuation(binding, state.as_deref());
     let value = app.core.source_callback(&id, pairs).await;
     if let Some(path) = continuation {
         return see_other(&app, &path, vec![]);
