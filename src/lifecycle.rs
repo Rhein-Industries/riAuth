@@ -529,9 +529,11 @@ pub async fn deliver(core: Core) -> Result<()> {
     };
     let transport = config.transport()?;
     let worker = core.clone();
-    let pending = tokio::task::spawn_blocking(move || worker.claim_mail())
-        .await
-        .map_err(Error::internal)??;
+    let pending = tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || worker.claim_mail())
+    })
+    .await
+    .map_err(Error::internal)??;
     let mut jobs = tokio::task::JoinSet::new();
     for delivery in pending {
         let message = Message::builder()
@@ -555,9 +557,13 @@ pub async fn deliver(core: Core) -> Result<()> {
             let sent = tokio::time::timeout(Duration::from_secs(30), transport.send(message))
                 .await
                 .is_ok_and(|r| r.is_ok());
-            tokio::task::spawn_blocking(move || core.finish_mail(&delivery, sent))
-                .await
-                .map_err(Error::internal)?
+            tokio::task::spawn_blocking(move || {
+                crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || {
+                    core.finish_mail(&delivery, sent)
+                })
+            })
+            .await
+            .map_err(Error::internal)?
         });
     }
     while let Some(result) = jobs.join_next().await {

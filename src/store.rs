@@ -294,10 +294,10 @@ impl Store {
         let Backend::Redb(db) = &self.db else {
             unreachable!()
         };
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         let transaction = db.begin_write().map_err(Error::internal)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let output = f(&Tx {
             transaction: Transaction::Write(&transaction),
             key: self.key(),
@@ -306,7 +306,9 @@ impl Store {
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
         })?;
+        let committing = self.telemetry.commit.timer();
         transaction.commit().map_err(Error::internal)?;
+        drop(committing);
         Ok(output)
     }
     pub fn preview<T>(&self, f: impl FnOnce(&Tx<'_>) -> Result<T>) -> Result<T> {
@@ -316,10 +318,10 @@ impl Store {
         let Backend::Redb(db) = &self.db else {
             unreachable!()
         };
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         let transaction = db.begin_write().map_err(Error::internal)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let output = f(&Tx {
             transaction: Transaction::Write(&transaction),
             key: self.key(),
@@ -346,12 +348,12 @@ impl Store {
             .isolation_level(postgres::IsolationLevel::ReadCommitted)
             .start()
             .map_err(unavailable)?;
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         transaction
             .query_one("SELECT pg_advisory_xact_lock($1)", &[&WRITE_LOCK])
             .map_err(unavailable)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let tx = Tx {
             transaction: Transaction::Postgres(RefCell::new(transaction), true),
             key: self.key(),
@@ -367,6 +369,7 @@ impl Store {
         if preview {
             transaction.into_inner().rollback().map_err(unavailable)?;
         } else {
+            let _committing = self.telemetry.commit.timer();
             transaction.into_inner().commit().map_err(unavailable)?;
         }
         Ok(output)
@@ -632,10 +635,26 @@ impl Tx<'_> {
             .map(|bytes| decode(self.key, &name, &bytes))
             .transpose()
     }
-    fn raw_get_base(&self, name: &str) -> Result<Option<Vec<u8>>> {
-        if let Transaction::Prepared(store) = self.transaction {
-            return store.read(|tx| tx.raw_get_base(name));
+    fn read_context(&self) -> crate::telemetry::ReadContext {
+        use crate::telemetry::ReadContext;
+        match self.transaction {
+            Transaction::Prepared(_) => ReadContext::Prepared,
+            Transaction::Write(_) | Transaction::Postgres(_, true) => ReadContext::Writer,
+            Transaction::Read(_) | Transaction::Postgres(_, false) => ReadContext::Read,
         }
+    }
+    fn raw_get_base(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let bytes = if let Transaction::Prepared(store) = self.transaction {
+            store.read(|tx| tx.raw_get_fetch(name))?
+        } else {
+            self.raw_get_fetch(name)?
+        };
+        self.telemetry
+            .reads
+            .point(self.read_context(), bytes.as_ref().map_or(0, Vec::len));
+        Ok(bytes)
+    }
+    fn raw_get_fetch(&self, name: &str) -> Result<Option<Vec<u8>>> {
         if let Transaction::Postgres(transaction, _) = &self.transaction {
             return transaction
                 .borrow_mut()
@@ -834,17 +853,31 @@ impl Tx<'_> {
         .collect()
     }
     fn raw_scan_base(&self, range: &Range) -> Result<Vec<(String, Vec<u8>)>> {
-        if let Transaction::Prepared(store) = self.transaction {
-            return store.read(|tx| tx.raw_scan_base(range));
-        }
-        let records = if let Transaction::Postgres(transaction, _) = &self.transaction {
+        let records = if let Transaction::Prepared(store) = self.transaction {
+            store.read(|tx| tx.raw_scan_fetch(range))?
+        } else {
+            self.raw_scan_fetch(range)?
+        };
+        self.telemetry
+            .scanned_records
+            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        self.telemetry.reads.scan(
+            self.read_context(),
+            range.limit != usize::MAX,
+            records.len(),
+            records.iter().map(|(_, bytes)| bytes.len()).sum(),
+        );
+        Ok(records)
+    }
+    fn raw_scan_fetch(&self, range: &Range) -> Result<Vec<(String, Vec<u8>)>> {
+        if let Transaction::Postgres(transaction, _) = &self.transaction {
             let limit = i64::try_from(range.limit).unwrap_or(i64::MAX);
             let query = if range.reverse {
                 "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key < $2 ORDER BY key DESC LIMIT $3"
             } else {
                 "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key < $2 ORDER BY key LIMIT $3"
             };
-            transaction
+            return transaction
                 .borrow_mut()
                 .query(
                     query,
@@ -858,28 +891,23 @@ impl Tx<'_> {
                         row.get(1),
                     ))
                 })
-                .collect::<Result<Vec<_>>>()?
-        } else {
-            read_table!(self, table, {
-                let iter = table
-                    .range(range.start.as_str()..range.end.as_str())
-                    .map_err(Error::internal)?;
-                let iter: Box<dyn Iterator<Item = _>> = if range.reverse {
-                    Box::new(iter.rev().take(range.limit))
-                } else {
-                    Box::new(iter.take(range.limit))
-                };
-                iter.map(|entry| {
-                    let (key, value) = entry.map_err(Error::internal)?;
-                    Ok((key.value().to_owned(), value.value().to_vec()))
-                })
-                .collect::<Result<Vec<_>>>()?
+                .collect();
+        }
+        read_table!(self, table, {
+            let iter = table
+                .range(range.start.as_str()..range.end.as_str())
+                .map_err(Error::internal)?;
+            let iter: Box<dyn Iterator<Item = _>> = if range.reverse {
+                Box::new(iter.rev().take(range.limit))
+            } else {
+                Box::new(iter.take(range.limit))
+            };
+            iter.map(|entry| {
+                let (key, value) = entry.map_err(Error::internal)?;
+                Ok((key.value().to_owned(), value.value().to_vec()))
             })
-        };
-        self.telemetry
-            .scanned_records
-            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        Ok(records)
+            .collect()
+        })
     }
     /// One page of the whole keyspace, strictly after `after`.
     /// Repeat inside the same read transaction for a consistent scan.
@@ -888,8 +916,11 @@ impl Tx<'_> {
         after: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, Value)>> {
-        self.snapshot_page_raw(after, limit)?
-            .into_iter()
+        let page = self.snapshot_page_raw(after, limit)?;
+        self.telemetry
+            .snapshot_records
+            .fetch_add(page.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        page.into_iter()
             .map(|(name, bytes)| {
                 let value = decode(self.key, &name, &bytes)?;
                 Ok((name, value))
@@ -947,6 +978,13 @@ impl Tx<'_> {
         })
     }
     pub fn snapshot(&self) -> Result<BTreeMap<String, Value>> {
+        let records = self.snapshot_all()?;
+        self.telemetry
+            .snapshot_records
+            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(records)
+    }
+    fn snapshot_all(&self) -> Result<BTreeMap<String, Value>> {
         if self.prepared.borrow().is_some() {
             return Err(Error::internal(
                 "Full snapshots require an ordinary read transaction",

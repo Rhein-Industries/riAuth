@@ -314,9 +314,13 @@ pub(crate) fn verify_hint(tx: &Tx<'_>, token: &str, issuer: &str) -> Result<Valu
 
 pub async fn deliver(core: Core) -> Result<()> {
     let worker = core.clone();
-    let pending = tokio::task::spawn_blocking(move || worker.claim_logout_deliveries())
-        .await
-        .map_err(Error::internal)??;
+    let pending = tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::LogoutDelivery, || {
+            worker.claim_logout_deliveries()
+        })
+    })
+    .await
+    .map_err(Error::internal)??;
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .redirect(reqwest::redirect::Policy::none())
@@ -335,7 +339,9 @@ pub async fn deliver(core: Core) -> Result<()> {
                 .ok()
                 .map(|r| r.status().as_u16());
             tokio::task::spawn_blocking(move || {
-                core.finish_logout_delivery(&delivery.id, delivery.attempts, status)
+                crate::telemetry::in_activity(crate::telemetry::Activity::LogoutDelivery, || {
+                    core.finish_logout_delivery(&delivery.id, delivery.attempts, status)
+                })
             })
             .await
             .map_err(Error::internal)?

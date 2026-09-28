@@ -605,9 +605,13 @@ pub async fn dispatch_alerts(core: &Core) -> Result<Value> {
         return Ok(json!({"delivered": false, "signals": []}));
     }
     let probe = core.clone();
-    let prepared = tokio::task::spawn_blocking(move || prepare_alert(&probe))
-        .await
-        .map_err(Error::internal)?;
+    let prepared = tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+            prepare_alert(&probe)
+        })
+    })
+    .await
+    .map_err(Error::internal)?;
     match prepared {
         AlertPrep::Quiet => Ok(json!({"delivered": false, "signals": []})),
         AlertPrep::Failed { signals } => {

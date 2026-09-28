@@ -1353,10 +1353,14 @@ impl Core {
 }
 
 pub async fn deliver(core: Core) -> Result<()> {
-    tokio::task::spawn_blocking(move || core.deliver_once())
-        .await
-        .map_err(Error::internal)?
-        .map(|_| ())
+    tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::SsfDelivery, || {
+            core.deliver_once()
+        })
+    })
+    .await
+    .map_err(Error::internal)?
+    .map(|_| ())
 }
 
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {

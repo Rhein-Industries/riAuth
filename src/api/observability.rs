@@ -18,6 +18,93 @@ pub(super) struct Stats {
             crate::telemetry::Histogram,
         >,
     >,
+    admission_wait: [crate::telemetry::Histogram; 3],
+    admission_rejections: [std::sync::atomic::AtomicU64; 3],
+    blocking_work: [crate::telemetry::Histogram; 3],
+}
+
+/// Admission permit pools. Blocking work is labelled by the pool that admitted it:
+/// a password check holds a credential and a worker permit and counts as `credentials`.
+#[derive(Clone, Copy)]
+pub(super) enum Permits {
+    Workers,
+    Credentials,
+    Forward,
+}
+impl Permits {
+    const ALL: [Permits; 3] = [Permits::Workers, Permits::Credentials, Permits::Forward];
+    fn label(self) -> &'static str {
+        match self {
+            Permits::Workers => "workers",
+            Permits::Credentials => "credentials",
+            Permits::Forward => "forward",
+        }
+    }
+}
+impl Stats {
+    pub(super) fn admitted(&self, permits: Permits, waited: Duration, admitted: bool) {
+        self.admission_wait[permits as usize].observe(waited);
+        if !admitted {
+            self.admission_rejections[permits as usize]
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    pub(super) fn blocking_work(&self, work: Permits) -> &crate::telemetry::Histogram {
+        &self.blocking_work[work as usize]
+    }
+    fn admission_snapshot(&self, app: &App) -> Value {
+        Value::Object(
+            Permits::ALL
+                .iter()
+                .map(|p| {
+                    (
+                        p.label().to_owned(),
+                        json!({"wait":self.admission_wait[*p as usize].snapshot(),"rejections":self.admission_rejections[*p as usize].load(std::sync::atomic::Ordering::Relaxed),"work":self.blocking_work(*p).snapshot(),"available":app.permits(*p).available_permits()}),
+                    )
+                })
+                .collect(),
+        )
+    }
+    fn render_admission(&self, app: &App, text: &mut String) {
+        use std::fmt::Write;
+        for (name, histograms) in [
+            ("riauth_admission_wait_seconds", &self.admission_wait),
+            ("riauth_blocking_work_seconds", &self.blocking_work),
+        ] {
+            writeln!(text, "# TYPE {name} histogram").unwrap();
+            for permits in Permits::ALL
+                .into_iter()
+                .filter(|p| histograms[*p as usize].count() > 0)
+            {
+                histograms[permits as usize].render(
+                    text,
+                    name,
+                    &format!("permits=\"{}\"", permits.label()),
+                );
+            }
+        }
+        text.push_str("# TYPE riauth_admission_rejections_total counter\n");
+        for permits in Permits::ALL {
+            writeln!(
+                text,
+                "riauth_admission_rejections_total{{permits=\"{}\"}} {}",
+                permits.label(),
+                self.admission_rejections[permits as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            )
+            .unwrap();
+        }
+        text.push_str("# TYPE riauth_permits_available gauge\n");
+        for permits in Permits::ALL {
+            writeln!(
+                text,
+                "riauth_permits_available{{permits=\"{}\"}} {}",
+                permits.label(),
+                app.permits(permits).available_permits()
+            )
+            .unwrap();
+        }
+    }
 }
 
 const LATENCY_MICROS: [u64; 7] = [
@@ -221,6 +308,7 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
             &format!("route=\"{route}\",method=\"{method}\",status_class=\"{class}\""),
         );
     }
+    app.stats.render_admission(&app, &mut text);
     app.core.store.telemetry().render(&mut text);
     for metric in ["pending", "failed", "oldest_pending_seconds"] {
         writeln!(text, "# TYPE riauth_queue_{metric} gauge").unwrap();
@@ -250,6 +338,6 @@ pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Resul
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
     Ok(Json(
-        json!({"schema_version":"riauth.metrics/v1","reset":"process_start","requests_total":app.stats.requests.load(Relaxed),"responses_error_total":app.stats.errors.load(Relaxed),"client_errors_total":app.stats.client_errors.load(Relaxed),"server_errors_total":app.stats.server_errors.load(Relaxed),"authentication_rejections_total":app.stats.authentication_rejections.load(Relaxed),"worker_rejections_total":app.stats.worker_rejections.load(Relaxed),"rate_limited_total":app.stats.rate_limited.load(Relaxed),"request_duration_microseconds_total":app.stats.elapsed_micros.load(Relaxed),"worker_slots_available":app.workers.available_permits(),"runtime":app.core.store.telemetry().snapshot(),"queues":queues}),
+        json!({"schema_version":"riauth.metrics/v1","reset":"process_start","requests_total":app.stats.requests.load(Relaxed),"responses_error_total":app.stats.errors.load(Relaxed),"client_errors_total":app.stats.client_errors.load(Relaxed),"server_errors_total":app.stats.server_errors.load(Relaxed),"authentication_rejections_total":app.stats.authentication_rejections.load(Relaxed),"worker_rejections_total":app.stats.worker_rejections.load(Relaxed),"rate_limited_total":app.stats.rate_limited.load(Relaxed),"request_duration_microseconds_total":app.stats.elapsed_micros.load(Relaxed),"worker_slots_available":app.workers.available_permits(),"admission":app.stats.admission_snapshot(&app),"runtime":app.core.store.telemetry().snapshot(),"queues":queues}),
     ))
 }

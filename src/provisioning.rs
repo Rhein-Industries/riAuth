@@ -1188,9 +1188,13 @@ pub async fn deliver(core: Core) -> Result<()> {
     if core.config.scim_targets.is_empty() {
         return Ok(());
     }
-    tokio::task::spawn_blocking(move || core.provisioning_step())
-        .await
-        .map_err(Error::internal)?
+    tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::Provisioning, || {
+            core.provisioning_step()
+        })
+    })
+    .await
+    .map_err(Error::internal)?
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, plan) in tx.maintenance_page::<Plan>("provisioning_plans")? {

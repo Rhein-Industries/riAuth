@@ -753,7 +753,9 @@ impl Core {
     }
     pub fn cleanup(&self) -> Result<()> {
         let _timer = self.store.telemetry().cleanup.timer();
-        let result = self.cleanup_pass();
+        let result = crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+            self.cleanup_pass()
+        });
         if result.is_err() {
             self.store
                 .telemetry()

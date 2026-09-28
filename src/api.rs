@@ -6,7 +6,7 @@ mod interaction;
 mod observability;
 mod probes;
 mod rates;
-use observability::{Stats, metrics, observe, prometheus};
+use observability::{Permits, Stats, metrics, observe, prometheus};
 #[doc(hidden)]
 pub use rates::RateTable;
 
@@ -66,33 +66,36 @@ impl App {
         &self,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        let Some(permit) = admit(&self.workers).await else {
+        let Some(permit) = self.admission(Permits::Workers).await else {
             self.stats
                 .worker_rejections
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Err(busy());
         };
-        self.blocking(permit, f).await
+        self.blocking(Permits::Workers, permit, f).await
     }
     /// Runs a read-only forward-auth check on the forward permits instead of a worker.
     pub async fn run_forward<T: Send + 'static>(
         &self,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        let permit = admit(&self.forward).await.ok_or_else(busy)?;
-        self.blocking(permit, f).await
+        let permit = self.admission(Permits::Forward).await.ok_or_else(busy)?;
+        self.blocking(Permits::Forward, permit, f).await
     }
     /// The permits move into the blocking task: a caller that goes away (a client that
     /// hangs up drops the handler future) cannot release them while the work still runs.
     async fn blocking<T: Send + 'static, P: Send + 'static>(
         &self,
+        work: Permits,
         permits: P,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         let core = self.core.clone();
+        let stats = self.stats.clone();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
         tokio::task::spawn_blocking(move || {
             let _permits = permits;
+            let _working = stats.blocking_work(work).timer();
             crate::context::scope(context, || f(&core))
         })
         .await
@@ -104,14 +107,33 @@ impl App {
         &self,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
     ) -> Result<T> {
-        let credential = admit(&self.credentials).await.ok_or_else(busy)?;
-        let Some(worker) = admit(&self.workers).await else {
+        let credential = self
+            .admission(Permits::Credentials)
+            .await
+            .ok_or_else(busy)?;
+        let Some(worker) = self.admission(Permits::Workers).await else {
             self.stats
                 .worker_rejections
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Err(busy());
         };
-        self.blocking((credential, worker), f).await
+        self.blocking(Permits::Credentials, (credential, worker), f)
+            .await
+    }
+    fn permits(&self, permits: Permits) -> &Arc<Semaphore> {
+        match permits {
+            Permits::Workers => &self.workers,
+            Permits::Credentials => &self.credentials,
+            Permits::Forward => &self.forward,
+        }
+    }
+    /// Records how long the request queued for a permit and whether it was admitted.
+    async fn admission(&self, permits: Permits) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        let started = Instant::now();
+        let permit = admit(self.permits(permits)).await;
+        self.stats
+            .admitted(permits, started.elapsed(), permit.is_some());
+        permit
     }
 }
 async fn admit(permits: &Arc<Semaphore>) -> Option<tokio::sync::OwnedSemaphorePermit> {
@@ -1290,7 +1312,7 @@ async fn source_callback(
     Path(id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response> {
-    let Some(_permit) = admit(&app.workers).await else {
+    let Some(_permit) = app.admission(Permits::Workers).await else {
         app.stats
             .worker_rejections
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);

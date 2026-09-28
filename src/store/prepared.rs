@@ -70,6 +70,10 @@ impl Store {
             // Each uncached read uses a short transaction. Expensive preparation
             // holds neither a writer nor a PostgreSQL pool slot. Point reads are
             // repeatable from the cache; all points/ranges must still match at commit.
+            self.telemetry
+                .prepared_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let preparing = self.telemetry.prepared_prepare.timer();
             let tx = Tx {
                 transaction: Transaction::Prepared(self),
                 key: self.key(),
@@ -79,19 +83,34 @@ impl Store {
                 prepared: RefCell::new(Some(Prepared::default())),
             };
             let output = f(&tx)?;
+            drop(preparing);
             let prepared = tx
                 .prepared
                 .borrow_mut()
                 .take()
                 .expect("prepared transaction");
             let committed = self.write(|tx| {
+                let _validating = self.telemetry.prepared_validate.timer();
                 // Authority can expire without a concurrent database mutation.
                 if prepared
                     .deadline
                     .is_some_and(|deadline| crypto::now() >= deadline)
                 {
+                    self.telemetry
+                        .prepared_expired
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Ok(false);
                 }
+                // Recorded before checking; a mismatch stops the checks early.
+                self.telemetry.prepared_validated_records.fetch_add(
+                    (prepared.reads.len()
+                        + prepared
+                            .scans
+                            .iter()
+                            .map(|scan| scan.records.len())
+                            .sum::<usize>()) as u64,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 for (name, expected) in &prepared.reads {
                     if tx.raw_get_base(name)? != *expected {
                         return Ok(false);
@@ -114,6 +133,9 @@ impl Store {
                 .optimistic_conflicts
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
+        self.telemetry
+            .prepared_exhausted
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Err(Error::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "transaction_conflict",

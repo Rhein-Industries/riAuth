@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     ops::{Deref, DerefMut},
     path::PathBuf,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar, Mutex, atomic::Ordering::Relaxed},
     time::{Duration, Instant},
 };
 
@@ -152,6 +152,10 @@ impl Pool {
         config: PostgresConfig,
         telemetry: Arc<crate::telemetry::Telemetry>,
     ) -> Arc<Self> {
+        telemetry.pool_capacity.store(
+            config.pool_size as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         Arc::new(Self {
             config,
             connections: Mutex::default(),
@@ -160,7 +164,7 @@ impl Pool {
         })
     }
     pub fn get(self: &Arc<Self>) -> Result<Pooled> {
-        let _timer = self.telemetry.pool_wait.timer();
+        let _checkout = self.telemetry.pool_checkout();
         let started = Instant::now();
         loop {
             let mut connections = self
@@ -169,24 +173,23 @@ impl Pool {
                 .map_err(|_| Error::internal("PostgreSQL pool lock poisoned"))?;
             while let Some(client) = connections.idle.pop() {
                 if !client.is_closed() {
-                    return Ok(Pooled {
-                        client: Some(client),
-                        pool: self.clone(),
-                    });
+                    return Ok(self.checked_out(client));
                 }
                 connections.total -= 1;
+                self.telemetry.pool_discarded.fetch_add(1, Relaxed);
             }
             if connections.total < self.config.pool_size {
                 connections.total += 1;
                 drop(connections);
-                match self.config.connect() {
+                let connecting = self.telemetry.pool_connect.timer();
+                let connected = self.config.connect();
+                drop(connecting);
+                match connected {
                     Ok(client) => {
-                        return Ok(Pooled {
-                            client: Some(client),
-                            pool: self.clone(),
-                        });
+                        return Ok(self.checked_out(client));
                     }
                     Err(error) => {
+                        self.telemetry.pool_connect_errors.fetch_add(1, Relaxed);
                         let mut connections =
                             self.connections.lock().unwrap_or_else(|e| e.into_inner());
                         connections.total -= 1;
@@ -197,6 +200,7 @@ impl Pool {
             }
             let remaining = Duration::from_secs(5).saturating_sub(started.elapsed());
             if remaining.is_zero() {
+                self.telemetry.pool_timeouts.fetch_add(1, Relaxed);
                 return Err(Error::new(
                     axum::http::StatusCode::SERVICE_UNAVAILABLE,
                     "storage_busy",
@@ -208,6 +212,15 @@ impl Pool {
                     .wait_timeout(connections, remaining)
                     .map_err(|_| Error::internal("PostgreSQL pool wait failed"))?,
             );
+        }
+    }
+    fn checked_out(self: &Arc<Self>, client: Client) -> Pooled {
+        self.telemetry.pool_in_use.enter();
+        Pooled {
+            client: Some(client),
+            pool: self.clone(),
+            activity: crate::telemetry::Activity::current(),
+            acquired: Instant::now(),
         }
     }
 }
@@ -231,6 +244,8 @@ impl Drop for Pool {
 pub struct Pooled {
     client: Option<Client>,
     pool: Arc<Pool>,
+    activity: crate::telemetry::Activity,
+    acquired: Instant,
 }
 impl Deref for Pooled {
     type Target = Client;
@@ -245,6 +260,9 @@ impl DerefMut for Pooled {
 }
 impl Drop for Pooled {
     fn drop(&mut self) {
+        self.pool
+            .telemetry
+            .pool_returned(self.activity, self.acquired.elapsed());
         let mut connections = self
             .pool
             .connections
@@ -253,6 +271,7 @@ impl Drop for Pooled {
         let client = self.client.take().unwrap();
         if client.is_closed() {
             connections.total -= 1;
+            self.pool.telemetry.pool_discarded.fetch_add(1, Relaxed);
         } else {
             connections.idle.push(client);
         }
