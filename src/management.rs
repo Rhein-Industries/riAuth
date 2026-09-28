@@ -8,8 +8,9 @@
 //! credential handling, dependent revocation, persistence and the direct audit
 //! record are decided here, inside the caller's transaction.
 //!
-//! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
-//! this seam. Inbound SCIM User and Group writes reach their shared writers.
+//! Applications (OAuth/OIDC/SAML/proxy client records), users, groups and agent
+//! lifecycle writes use this seam. Inbound SCIM User and Group writes reach
+//! their shared writers.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -23,7 +24,7 @@ use crate::identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKET
 #[cfg(feature = "platform")]
 use crate::windows_login::{EnrollDevice, issue_offline, offline_ttl};
 use crate::{
-    agent::Principal,
+    agent::{ACTIONS, Agent, NewAgent, Principal},
     config::Config,
     core::{
         Core, audit, ensure_remaining_admin, make_user, revoke_client_grants, user_by_name,
@@ -116,6 +117,115 @@ pub(crate) enum GroupAudit<'a> {
 pub(crate) struct GroupWrite {
     pub(crate) group: Group,
     pub(crate) changed: bool,
+}
+
+/// Validate the permission scope before a receipt can replay, and again at the
+/// write boundary. Agent lifecycle mutations remain human-admin-only.
+pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
+    validate_name(&input.id)?;
+    if let Some(parent) = &input.parent {
+        validate_name(parent)?;
+        if !cfg!(feature = "platform") {
+            return Err(Error::bad("Parent-owned agents require the Platform build"));
+        }
+    }
+    if !(60..=2_592_000).contains(&input.ttl)
+        || input.permissions.is_empty()
+        || input.permissions.len() > 100
+    {
+        return Err(Error::bad(
+            "Agent requires 1–100 permissions and a lifetime of 60 seconds to 30 days",
+        ));
+    }
+    for permission in &input.permissions {
+        let (_, kind) = ACTIONS
+            .iter()
+            .filter(|(action, _)| crate::edition::action_available(action))
+            .find(|(action, _)| *action == permission.action)
+            .ok_or_else(|| Error::bad("Unknown agent permission"))?;
+        if permission.resource != "*" {
+            let (prefix, name) = permission
+                .resource
+                .split_once('/')
+                .ok_or_else(|| Error::bad("Resource must be kind/name or *"))?;
+            let kind_matches = if *kind == "directory" {
+                // LDAP stays directory/<id>. Cloud sync reuses these actions
+                // with an exact workspace/<id> or entra/<id> resource.
+                matches!(prefix, "directory" | "workspace" | "entra")
+            } else {
+                prefix == *kind
+            };
+            if !kind_matches {
+                return Err(Error::bad(
+                    "Permission action and resource kind do not match",
+                ));
+            }
+            validate_name(name)?;
+        }
+        if !crate::edition::agent_permission_available(&permission.action, &permission.resource) {
+            return Err(Error::bad(
+                "Agent permission resource requires the Platform build",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Issue exactly one agent credential in the caller's mutation transaction.
+/// The parent binding and token index are committed with the agent and audit.
+pub(crate) fn create_agent(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    input: NewAgent,
+) -> Result<Value> {
+    // Bootstrap and delegation stay restricted to a live human administrator.
+    let actor = core.admin(tx, token)?;
+    validate_new_agent(&input)?;
+    if tx.get::<Agent>("agents", &input.id)?.is_some() {
+        return Err(Error::conflict("Agent already exists"));
+    }
+    let parent_user = if let Some(username) = &input.parent {
+        let parent = user_by_name(tx, username)?;
+        if parent.admin {
+            return Err(Error::forbidden());
+        }
+        if !parent.enabled {
+            return Err(Error::bad("Parent user is disabled"));
+        }
+        Some(parent.id)
+    } else {
+        None
+    };
+    let credential = crypto::random_token("ri_agent_");
+    let agent = Agent {
+        id: input.id,
+        permissions: input.permissions,
+        expires_at: now() + input.ttl,
+        created_at: now(),
+        enabled: true,
+        token_hash: digest(&credential),
+        parent_user,
+    };
+    tx.put("agents", &agent.id, &agent)?;
+    tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
+    audit(tx, &actor.id, "agent.create", &agent.id)?;
+    Ok(
+        json!({"agent": agent.view(), "credential": {"issuer": core.config.issuer, "agent_id": agent.id, "token": credential, "expires_at": agent.expires_at}}),
+    )
+}
+
+/// Disable the row before dropping the credential index and recording one audit.
+pub(crate) fn revoke_agent(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> Result<Value> {
+    let actor = core.admin(tx, token)?;
+    let mut agent = tx
+        .get::<Agent>("agents", id)?
+        .ok_or_else(|| Error::missing("Agent not found"))?;
+    agent.enabled = false;
+    tx.put("agents", id, &agent)?;
+    tx.delete("agent_tokens", &agent.token_hash)?;
+    audit(tx, &actor.id, "agent.revoke", id)?;
+    Ok(agent.view())
 }
 
 fn requires_membership_review(config: &Config, name: &str) -> bool {
