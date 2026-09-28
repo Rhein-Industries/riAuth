@@ -511,6 +511,7 @@ impl<'k, R: Read> FrameReader<'k, R> {
 
 struct Scanned {
     config: Config,
+    created_at: u64,
     stream_id: [u8; 16],
     records: u64,
     transcript: String,
@@ -591,6 +592,7 @@ fn scan(
                 options.check()?;
                 return Ok(Scanned {
                     config: header.config,
+                    created_at: header.created_at,
                     stream_id,
                     records,
                     transcript,
@@ -646,7 +648,12 @@ pub fn restore_stream(
         return Err(Error::bad("Backup issuer mismatch"));
     }
     options.check()?;
-    let expected = (verified.stream_id, verified.transcript, verified.records);
+    let expected = (
+        verified.stream_id,
+        verified.transcript,
+        verified.records,
+        verified.created_at,
+    );
     let cancel = options.cancel;
     commit_restore(
         verified.config,
@@ -664,7 +671,13 @@ pub fn restore_stream(
                 },
             )?;
             check_cancel(cancel)?;
-            if (imported.stream_id, imported.transcript, imported.records) != expected {
+            if (
+                imported.stream_id,
+                imported.transcript,
+                imported.records,
+                imported.created_at,
+            ) != expected
+            {
                 return Err(Error::bad("Backup archive changed during restore"));
             }
             Ok(())
