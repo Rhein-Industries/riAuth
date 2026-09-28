@@ -263,6 +263,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: SSF refers directly to storage or Core")
         if path == SRC / "saml.rs" and refs & (STORAGE | {"core"}):
             errors.append("src/saml.rs: SAML browser SSO refers directly to storage or Core")
+        if path == SRC / "saml/logout.rs" and refs & (STORAGE | {"core"}):
+            errors.append("src/saml/logout.rs: SAML logout refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -408,6 +410,12 @@ def main() -> None:
             ),
             "saml_browser_core_reference_files": int(
                 "core" in references(SRC / "saml.rs")
+            ),
+            "saml_logout_storage_reference_files": int(
+                bool(references(SRC / "saml/logout.rs") & STORAGE)
+            ),
+            "saml_logout_core_reference_files": int(
+                "core" in references(SRC / "saml/logout.rs")
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

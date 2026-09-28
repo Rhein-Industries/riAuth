@@ -13,6 +13,8 @@ mod oidc;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;
+#[cfg(feature = "platform")]
+mod saml_logout;
 mod session_protocol;
 #[cfg(feature = "platform")]
 mod ssf;
