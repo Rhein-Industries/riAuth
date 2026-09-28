@@ -162,6 +162,29 @@ fn validate_base(value: &str) -> Result<Url> {
     }
     Ok(url)
 }
+fn direct_loopback(url: &Url) -> bool {
+    url.scheme() == "http"
+        && match url.host() {
+            Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+            Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+            _ => false,
+        }
+}
+fn validate_direct_workspace_endpoints(directory: &str, base: &Url, token: &str) -> Result<()> {
+    let official = directory.trim_end_matches('/') == "https://admin.googleapis.com"
+        && (token.is_empty() || token == GOOGLE_TOKEN_URL);
+    let fake_peer = direct_loopback(base)
+        && Url::parse(token).is_ok_and(|token_url| {
+            direct_loopback(&token_url) && token_url.origin() == base.origin()
+        });
+    if official || fake_peer {
+        Ok(())
+    } else {
+        Err(Error::bad(
+            "Workspace direct endpoints must be Google's official endpoints or one literal HTTP loopback fake peer",
+        ))
+    }
+}
 fn validate_token_url(value: &str) -> Result<()> {
     crate::config::validate_server_url(value).map_err(|_| {
         Error::bad("Cloud directory token URL must be canonical HTTPS or HTTP loopback")
@@ -190,7 +213,7 @@ impl WorkspaceDirectory {
         if !valid_domain(&self.domain) {
             return Err(Error::bad("Workspace domain must be an explicit DNS name"));
         }
-        validate_base(&self.directory_url)?;
+        let directory_url = validate_base(&self.directory_url)?;
         if let Some(direct) = &self.direct_auth {
             if !self.client_id.is_empty() || !self.client_secret_file.as_os_str().is_empty() {
                 return Err(Error::bad(
@@ -199,18 +222,12 @@ impl WorkspaceDirectory {
             }
             if !self.token_url.is_empty() {
                 validate_token_url(&self.token_url)?;
-                if self.token_url != GOOGLE_TOKEN_URL
-                    && !Url::parse(&self.token_url).is_ok_and(|url| {
-                        url.host_str().is_some_and(|host| {
-                            host == "localhost" || host == "127.0.0.1" || host == "[::1]"
-                        })
-                    })
-                {
-                    return Err(Error::bad(
-                        "Workspace direct token URL must be Google's endpoint or loopback",
-                    ));
-                }
             }
+            validate_direct_workspace_endpoints(
+                &self.directory_url,
+                &directory_url,
+                &self.token_url,
+            )?;
             if direct.key_file.as_os_str().is_empty()
                 || !valid_delegated_subject(&direct.delegated_subject)
                 || !self.scope.is_empty()

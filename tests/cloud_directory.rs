@@ -89,6 +89,7 @@ struct State {
     base: Mutex<String>,
     direct_public_key: Mutex<Option<Vec<u8>>>,
     direct_expires_in: AtomicUsize,
+    redirect_users_to: Mutex<Option<String>>,
 }
 
 struct Directory {
@@ -175,6 +176,7 @@ fn serve(kind: &'static str, people: Vec<Person>, secret: &str) -> Directory {
         base: Mutex::new(base.clone()),
         direct_public_key: Mutex::new(None),
         direct_expires_in: AtomicUsize::new(3600),
+        redirect_users_to: Mutex::new(None),
     });
     let stop = Arc::new(AtomicBool::new(false));
     let thread_state = Arc::clone(&state);
@@ -219,6 +221,7 @@ fn handle(mut stream: TcpStream, state: &State) -> std::io::Result<()> {
     let (status, body) = dispatch(state, &request);
     let reason = match status {
         200 => "OK",
+        302 => "Found",
         401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -227,9 +230,17 @@ fn handle(mut stream: TcpStream, state: &State) -> std::io::Result<()> {
         _ => "Error",
     };
     let bytes = body.into_bytes();
+    let location = if status == 302 {
+        format!(
+            "Location: {}\r\n",
+            state.redirect_users_to.lock().unwrap().as_deref().unwrap()
+        )
+    } else {
+        String::new()
+    };
     write!(
         stream,
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{location}Connection: close\r\n\r\n",
         bytes.len()
     )?;
     stream.write_all(&bytes)?;
@@ -352,6 +363,9 @@ fn dispatch(state: &State, request: &Incoming) -> (u16, String) {
         return groups(state);
     }
     if path.contains("/users") {
+        if state.redirect_users_to.lock().unwrap().is_some() {
+            return (302, "{}".into());
+        }
         return users(state, page);
     }
     (404, json!({"error": "not_found"}).to_string())
@@ -1222,6 +1236,117 @@ fn workspace_direct_service_account_assertion_and_expiry() {
             .cloud_plan(&fixture.admin, "workspace", "corp")
             .is_ok()
     );
+}
+
+#[test]
+fn workspace_direct_rejects_external_origins_aliases_and_redirects() {
+    let directory = serve(
+        "workspace",
+        vec![person("ext-alice", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let receiver = serve("workspace", Vec::new(), SECRET);
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let mut broker = fixture.core.config.workspace_directories["corp"].clone();
+    broker.directory_url = "https://directory-broker.example".into();
+    assert!(broker.validate().is_ok());
+
+    let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    *directory.state.direct_public_key.lock().unwrap() = Some(key.public_key_to_pem().unwrap());
+    let key_file = fixture._dir.path().join("adversarial-service-account.json");
+    write_private(
+        &key_file,
+        json!({
+            "type": "service_account",
+            "client_email": "sync@example.iam.gserviceaccount.com",
+            "private_key_id": "local-test-key",
+            "private_key": String::from_utf8(key.private_key_to_pem_pkcs8().unwrap()).unwrap(),
+            "token_uri": "https://oauth2.googleapis.com/token",
+        })
+        .to_string()
+        .as_bytes(),
+        true,
+    )
+    .unwrap();
+    let config = fixture
+        .core
+        .config
+        .workspace_directories
+        .get_mut("corp")
+        .unwrap();
+    config.client_id.clear();
+    config.client_secret_file.clear();
+    config.direct_auth = Some(WorkspaceDirectAuth {
+        key_file,
+        delegated_subject: "admin@example.test".into(),
+    });
+    for hostile in [
+        "https://attacker.example",
+        "https://admin.googleapis.com.attacker.example",
+        "https://admin.googleapis.com.",
+        "https://admin.googleapis.com:444",
+        "https://localhost",
+        "http://localhost:1234",
+    ] {
+        fixture
+            .core
+            .config
+            .workspace_directories
+            .get_mut("corp")
+            .unwrap()
+            .directory_url = hostile.into();
+        assert!(
+            fixture
+                .core
+                .cloud_plan(&fixture.admin, "workspace", "corp")
+                .is_err(),
+            "{hostile}"
+        );
+        assert_eq!(
+            directory.state.token_hits.load(Ordering::Relaxed),
+            0,
+            "{hostile}"
+        );
+        assert_eq!(
+            receiver.state.directory_hits.load(Ordering::Relaxed),
+            0,
+            "{hostile}"
+        );
+    }
+    let config = fixture
+        .core
+        .config
+        .workspace_directories
+        .get_mut("corp")
+        .unwrap();
+    config.directory_url = directory.base.clone();
+    config.token_url.clear();
+    assert!(config.validate().is_err());
+    config.token_url = receiver.token_url.clone();
+    assert!(config.validate().is_err());
+    config.directory_url = "https://admin.googleapis.com".into();
+    assert!(config.validate().is_err());
+    config.token_url.clear();
+    assert!(config.validate().is_ok());
+    config.directory_url = directory.base.clone();
+    config.token_url = directory.token_url.clone();
+    assert!(config.validate().is_ok());
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+    *directory.state.redirect_users_to.lock().unwrap() =
+        Some(format!("{}/admin/directory/v1/users", receiver.base));
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(receiver.state.directory_hits.load(Ordering::Relaxed), 0);
+    assert!(receiver.state.seen_bearers.lock().unwrap().is_empty());
 }
 
 #[test]
