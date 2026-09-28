@@ -648,7 +648,11 @@ impl Core {
     /// A browser that collected a terminal approval shares that terminal session, and an
     /// approval can be phished. Changing the password or factors needs this browser's own
     /// sign-in: the re-authentication this 403 asks for gives it a session of its own.
-    fn portal_factor_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
+    pub(crate) fn portal_factor_session(
+        &self,
+        tx: &Tx<'_>,
+        sso: Option<&str>,
+    ) -> Result<(User, Session)> {
         let (user, session) = self.portal_session(tx, sso)?;
         if bearer_backed(tx, &session)? {
             return Err(Error::new(
@@ -686,7 +690,7 @@ impl Core {
 
     /// A factor change bumps the epoch and ends every session, so this browser's mapping
     /// goes and its SSO cookie is cleared.
-    fn portal_factor_changed(
+    pub(crate) fn portal_factor_changed(
         &self,
         tx: &Tx<'_>,
         sso: Option<&str>,
