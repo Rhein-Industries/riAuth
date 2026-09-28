@@ -284,6 +284,10 @@ def main() -> None:
             or re.search(r"\bimpl\s+Core\b|\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/portal/sources.rs: browser source adapter refers directly to storage, Core or assembly")
+        if path == SRC / "proxy_server.rs" and (
+            refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/proxy_server.rs: proxy transport refers directly to storage")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

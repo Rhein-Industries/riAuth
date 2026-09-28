@@ -3,7 +3,6 @@ use crate::{
     api::App,
     core::Core,
     error::{Error, Result},
-    model::Client,
     outpost::Settings,
 };
 use axum::{
@@ -164,20 +163,7 @@ async fn profile(runtime: &Runtime, route: &Route) -> Result<Settings> {
     let (id, external) = (route.target.client_id.clone(), route.external.clone());
     runtime
         .app
-        .run(move |core| {
-            core.store.read(|tx| {
-                let client = tx
-                    .get::<Client>("clients", &id)?
-                    .filter(|c| c.enabled)
-                    .ok_or_else(Error::forbidden)?;
-                let settings = client.settings.proxy.clone().ok_or_else(Error::forbidden)?;
-                settings.validate(&client)?;
-                if !settings.allows_origin(&external) {
-                    return Err(Error::forbidden());
-                }
-                Ok(settings)
-            })
-        })
+        .run(move |core| core.proxy_profile(&id, &external))
         .await
 }
 fn redirect(location: &str) -> Result<Response> {
@@ -251,20 +237,7 @@ async fn handle(
         let bucket = format!("proxy:{id}:{action}");
         runtime
             .app
-            .run(move |core| {
-                if core
-                    .store
-                    .shared_rate_limit(peers, &bucket, 60)
-                    .map_err(Error::internal)?
-                {
-                    return Err(Error::new(
-                        StatusCode::TOO_MANY_REQUESTS,
-                        "rate_limited",
-                        "Retry shortly",
-                    ));
-                }
-                Ok(())
-            })
+            .run(move |core| core.proxy_outpost_rate_limit(peers, &bucket))
             .await?;
         let pairs = url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
             .map(|(k, v)| (k.into_owned(), v.into_owned()))

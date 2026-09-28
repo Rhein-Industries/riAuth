@@ -21,6 +21,8 @@ mod password;
 mod portal_mfa;
 mod portal_self_service;
 mod portal_sources;
+#[cfg(feature = "platform")]
+mod proxy_server;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;
