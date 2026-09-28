@@ -1,5 +1,6 @@
 /* Administration layout on top of the portal primitives in app.css. */
 .admin a.nav-item{text-decoration:none}
+.admin .nav-item[hidden]{display:none}
 .admin .brand{color:inherit}
 .admin .nav-count.attention{background:#f7e3b5;color:#6d4a00}
 .admin-apps-link{display:block;font-size:12px;font-weight:550;color:#5f49c4;padding:0 13px 18px}

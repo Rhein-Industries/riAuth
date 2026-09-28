@@ -6,17 +6,19 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", security: "Security" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", security: "Security" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
-  const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
+  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
   // The routes can read and revoke retained grants after approver rules are removed.
-  const accessRoutes = () => RiAuthCapabilities.compiled("access.temporary_entitlements");
+  const accessRoutes = () => !!data.me?.user?.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
   const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
+  const cloudAvailable = () => RiAuthCapabilities.usable("directory.workspace_sync") || RiAuthCapabilities.usable("directory.entra_sync");
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
+  const operationLoads = new Set();
 
   class ApiError extends Error {
     constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -207,16 +209,18 @@
       // conflict, never a silent overwrite.
       await RiAuthCapabilities.refresh();
       const me = await api("GET", "admin/session");
-      const [clients, users, groups, requests, grants, audit, invites] = await Promise.all([
+      const canReadAccess = me.user.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
+      const [clients, users, groups, requests, grants, audit, invites, directories] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
-        accessRoutes() ? api("GET", "admin/access/requests") : Promise.resolve([]),
-        accessRoutes() ? api("GET", "admin/access/grants") : Promise.resolve([]),
-        api("GET", "admin/audit?limit=50"),
+        canReadAccess ? api("GET", "admin/access/requests") : Promise.resolve([]),
+        canReadAccess ? api("GET", "admin/access/grants") : Promise.resolve([]),
+        api("GET", "admin/audit?limit=50").catch((error) => { if (error.status === 403) return []; throw error; }),
         api("GET", "admin/invitations"),
+        cloudAvailable() ? api("GET", "admin/cloud-directories") : Promise.resolve([]),
       ]);
       if (run !== generation) return;
       if (draft && draft.owner !== me.user.id) forget();
-      Object.assign(data, { me, revision: me.revision, clients, users, groups, requests, grants, audit });
+      Object.assign(data, { me, revision: me.revision, clients, users, groups, directories, operations: {}, probes: {}, requests, grants, audit });
       Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -255,6 +259,7 @@
       badge.classList.toggle("attention", waiting > 0);
       badge.setAttribute("aria-label", `${waiting} access ${waiting === 1 ? "request" : "requests"} waiting for review`);
     }
+    document.querySelector('[data-section="operations"]').hidden = !cloudAvailable() || !data.directories.length;
   }
 
   // ---- Routing -----------------------------------------------------------------------------
@@ -266,7 +271,7 @@
     const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map((part) => {
       try { return decodeURIComponent(part); } catch { return ""; }
     });
-    const section = Object.hasOwn(SECTIONS, parts[0]) ? parts[0] : "applications";
+    const section = Object.hasOwn(SECTIONS, parts[0]) && (parts[0] !== "operations" || (cloudAvailable() && data.directories.length)) ? parts[0] : "applications";
     lastRoute = { section, id: parts[1] || null };
     return lastRoute;
   }
@@ -283,7 +288,7 @@
       item.classList.toggle("active", active);
       if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
     }
-    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], security: [security, null, null] }[section];
+    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], security: [security, null, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -1524,6 +1529,97 @@
     ], grants, "No temporary access is active.", (g) => `${g.group}`);
     return { waiting, grants, requests, active };
   }
+  // Cloud connector operations use the same scoped Core reads and connection probe as the
+  // bearer API. The browser never receives credential paths or source job outcomes.
+  function connectors() {
+    const rows = data.directories;
+    const grid = table("Configured cloud connectors", [
+      { label: "Connector", cell: (row) => link(hash("operations", `${row.kind}/${row.id}`), row.id) },
+      { label: "Provider", cell: (row) => row.kind === "workspace" ? "Google Workspace" : "Microsoft Entra" },
+      { label: "Mode", cell: (row) => String(row.reconciliation_mode || "manual-review").replaceAll("-", " ") },
+      { label: "Mapped groups", cell: (row) => (row.groups || []).length },
+    ], rows, "No Google Workspace or Entra connectors are configured.", (row) => `${row.kind} ${row.id}`);
+    return { node: h("div", {}, heading("OPERATIONS", "Connectors", "Review mappings, schedules, local job history and credential file status for each configured directory."), grid.node) };
+  }
+  function connector(key) {
+    const row = data.directories.find((item) => `${item.kind}/${item.id}` === key);
+    if (!row) return missing("operations", "Connector");
+    const title = `${row.kind === "workspace" ? "Google Workspace" : "Microsoft Entra"} · ${row.id}`;
+    const report = data.operations[key];
+    if (!report) {
+      const loadKey = `${generation}:${key}`;
+      if (!operationLoads.has(loadKey)) {
+        operationLoads.add(loadKey);
+        const run = generation;
+        api("GET", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/operations`)
+          .then((value) => { if (run === generation) data.operations[key] = value; })
+          .catch((error) => { if (run === generation) { if (error.status === 401) gate("signin"); else data.operations[key] = { error: explain(error) }; } })
+          .finally(() => { operationLoads.delete(loadKey); if (run === generation && loaded && route().id === key) render(); });
+      }
+      return { crumb: title, node: h("div", {}, heading("CONNECTOR", title), card("Loading operations", h("p", { class: "field-hint" }, "Reading current configuration and job state…"))) };
+    }
+    if (report.error) return { crumb: title, node: h("div", {}, heading("CONNECTOR", title), card("Operations unavailable", h("p", { class: "notice warn-notice" }, report.error), h("button", { class: "button secondary", type: "button", onclick: () => { delete data.operations[key]; render(); } }, "Try again"))) };
+    const config = report.configuration, validation = report.validation, credential = report.credential;
+    const probe = data.probes[key];
+    const groups = Object.entries(config.groups || {});
+    const mapped = table("Local to upstream group mappings", [
+      { label: "Local group", cell: ([name]) => name },
+      { label: "Upstream selector", cell: ([, selector]) => h("code", {}, selector) },
+    ], groups, "No groups are mapped; only users are reconciled.", ([name, selector]) => `${name} ${selector}`);
+    const jobs = table("Recent local reconciliation jobs", [
+      { label: "Created", cell: (job) => when(job.created_at) },
+      { label: "Origin", cell: (job) => job.origin },
+      { label: "State", cell: (job) => badge(job.status, job.status === "completed" ? "ok" : job.status === "failed" || job.status === "stale" ? "warn" : "info") },
+      { label: "Attempts", cell: (job) => job.attempts },
+      { label: "Next attempt", cell: (job) => job.next_attempt ? when(job.next_attempt) : "—" },
+      { label: "Next action", cell: (job) => ({ wait_for_attempt: "Wait for retry", wait_for_worker: "Wait for worker", check_downstream_delivery: "Check downstream delivery", inspect_connector_and_replan: "Inspect and replan", refresh_authority_and_replan: "Refresh authority and replan" })[job.next_action] || "Inspect job" },
+    ], report.jobs || [], "No local jobs are recorded for this connector.", (job) => `${job.id} ${job.status} ${job.origin}`);
+    const test = h("button", { class: "button secondary", type: "button", onclick: async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true; button.textContent = "Testing…";
+      try {
+        data.probes[key] = await api("POST", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/test-connection`);
+        if (route().id === key) render();
+      } catch (error) {
+        if (error.status === 401) gate("signin");
+        else { data.probes[key] = { connected: false, message: explain(error) }; if (route().id === key) render(); }
+      } finally { button.disabled = false; button.textContent = "Test connection"; }
+    } }, "Test connection");
+    const attributes = config.attributes || {};
+    const node = h("div", {}, heading("CONNECTOR", title, "Configuration is read from the server. This view and its test do not apply a reconciliation plan.", test),
+      h("div", { class: "detail-grid" },
+        h("div", { class: "detail-side" },
+          card("Configuration validation",
+            badge(validation.valid ? "Valid" : "Needs attention", validation.valid ? "ok" : "warn"),
+            validation.message ? h("p", { class: "notice warn-notice" }, validation.message) : null,
+            (validation.missing_local_groups || []).length ? h("p", { class: "field-hint" }, `Create these local groups before reconciliation: ${validation.missing_local_groups.join(", ")}.`, " ", link(hash("groups"), "Open groups")) : null),
+          card("Mappings", h("dl", { class: "facts" },
+            h("dt", {}, row.kind === "workspace" ? "Customer" : "Tenant"), h("dd", {}, config.customer_id || config.tenant_id),
+            row.kind === "workspace" ? [h("dt", {}, "Domain"), h("dd", {}, config.domain)] : null,
+            h("dt", {}, "Authorization"), h("dd", {}, String(config.authorization).replaceAll("_", " ")),
+            h("dt", {}, "Reconciliation"), h("dd", {}, String(config.reconciliation_mode).replaceAll("-", " ")),
+            h("dt", {}, "Username prefix"), h("dd", {}, config.username_prefix || "None"),
+            h("dt", {}, "Email attribute"), h("dd", {}, attributes.email),
+            h("dt", {}, "Display name attribute"), h("dd", {}, attributes.display_name),
+            h("dt", {}, "External ID attribute"), h("dd", {}, attributes.external_id)), mapped.node),
+          card("Recent job history", h("p", { class: "field-hint" }, "These are local reconciliation job states. Queued or running work is not complete; a completed local job does not prove downstream delivery."), jobs.node)),
+        h("div", { class: "detail-side" },
+          card("Credential rotation",
+            badge(credential.state === "file_readable" ? "Private file readable" : "Private file unavailable", credential.state === "file_readable" ? "ok" : "warn"),
+            h("p", { class: "field-hint" }, credential.state === "file_readable" ? "The configured private file was readable with owner-only permissions. The next token request reads it again." : "Check that the configured private file exists, is bounded and has owner-only permissions."),
+            credential.modified_at ? h("p", { class: "field-hint" }, "File last modified: ", when(credential.modified_at)) : null,
+            h("p", { class: "field-hint" }, "File status does not verify the credential with the provider. Run Test connection after rotation.")),
+          card("Schedule", report.schedule ? h("dl", { class: "facts" },
+            h("dt", {}, "Cadence"), h("dd", {}, duration(report.schedule.interval_seconds)),
+            h("dt", {}, "Next run"), h("dd", {}, when(report.schedule.next_run)),
+            h("dt", {}, "Last job"), h("dd", {}, report.schedule.last_job || "None"),
+            h("dt", {}, "Last error"), h("dd", {}, report.schedule.has_error ? "Yes; inspect controller and job state" : "None recorded")) : h("p", { class: "field-hint" }, "No schedule is configured for this connector. Configure its reconciliation controller on the server to enable scheduled jobs.")),
+          probe ? card("Connection test", badge(probe.connected ? "Connected" : "Failed", probe.connected ? "ok" : "warn"),
+            h("p", { class: "field-hint" }, probe.connected ? "Token acquisition and the first users page succeeded. Group pages, full crawl and apply were not tested." : probe.message || "The connection test failed."),
+            probe.checked_at ? h("p", { class: "field-hint" }, "Checked ", when(probe.checked_at)) : null) : null)));
+    return { crumb: title, node };
+  }
+
   function security() {
     const access = accessRoutes() ? accessSecurity() : null;
     const admins = data.users.filter((u) => u.admin && u.enabled);

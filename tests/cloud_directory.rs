@@ -2708,6 +2708,7 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
     let mut fixture = Fixture::new();
     configure(&mut fixture, "workspace", "corp", &workspace, "");
     configure(&mut fixture, "entra", "tenant", &entra, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
     fixture
         .core
         .store
@@ -2759,6 +2760,8 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
         let (status, operations) = call(&app, "GET", &path, &fixture.admin).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(operations["validation"]["valid"], true);
+        assert_eq!(operations["credential"]["state"], "file_readable");
+        assert_eq!(operations["credential"]["provider_verified"], false);
         assert_eq!(
             operations["configuration"]["groups"]["staff"],
             if kind == "workspace" {
@@ -2772,6 +2775,11 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
         if kind == "workspace" {
             assert_eq!(operations["schedule"]["interval_seconds"], 300);
             assert_eq!(operations["jobs"][0]["status"], "failed");
+            assert_eq!(
+                operations["jobs"][0]["next_action"],
+                "inspect_connector_and_replan"
+            );
+            assert_eq!(operations["jobs"][0]["remote_completion_verified"], false);
         } else {
             assert!(operations["schedule"].is_null());
             assert_eq!(operations["jobs"], json!([]));
@@ -2833,6 +2841,128 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
         token_hits
     );
     fixture.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    async fn read(app: &axum::Router, path: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+        let mut request = Request::builder().uri(path).header("x-riauth-portal", "1");
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", format!("riauth_sso={cookie}"));
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        (status, value)
+    }
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let private_path = secret_path(&fixture, "workspace", "corp");
+    let sign_in = fixture.core.portal_sign_in().unwrap();
+    fixture
+        .core
+        .portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = sign_in.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let poll = fixture
+        .core
+        .portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    let cookie = poll
+        .cookies
+        .iter()
+        .find(|value| value.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_owned();
+    let app = riauth::api::router(fixture.core.clone());
+    let path = "/api/admin/cloud-directories/workspace/corp/operations";
+    assert_eq!(read(&app, path, None).await.0, StatusCode::UNAUTHORIZED);
+    let (status, listed) = read(&app, "/api/admin/cloud-directories", Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed[0]["id"], "corp");
+    let (status, missing_group) = read(&app, path, Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        missing_group["validation"]["missing_local_groups"],
+        json!(["staff"])
+    );
+    assert_eq!(missing_group["credential"]["state"], "file_readable");
+    assert_eq!(missing_group["credential"]["provider_verified"], false);
+    assert!(missing_group["credential"]["modified_at"].is_u64());
+    assert_redacted(&missing_group);
+    assert!(
+        !missing_group
+            .to_string()
+            .contains(&private_path.display().to_string())
+    );
+
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    std::fs::remove_file(&private_path).unwrap();
+    let (_, unavailable) = read(&app, path, Some(&cookie)).await;
+    assert_eq!(unavailable["validation"]["valid"], true);
+    assert_eq!(unavailable["credential"]["state"], "file_unavailable");
+    assert!(unavailable["credential"]["modified_at"].is_null());
+    write_private(&private_path, SECRET.as_bytes(), false).unwrap();
+    let (_, restored) = read(&app, path, Some(&cookie)).await;
+    assert_eq!(restored["credential"]["state"], "file_readable");
+    assert_eq!(restored["schedule"], Value::Null);
+    assert_eq!(restored["jobs"], json!([]));
+    assert_redacted(&restored);
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+
+    let origin = Url::parse(&fixture.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/admin/cloud-directories/workspace/corp/test-connection")
+                .header("cookie", format!("riauth_sso={cookie}"))
+                .header("x-riauth-portal", "1")
+                .header("origin", origin)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let probe: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    assert_eq!(probe["connected"], true);
+    assert_redacted(&probe);
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

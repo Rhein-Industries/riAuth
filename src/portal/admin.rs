@@ -52,7 +52,7 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/client-checks", post(check_client))
         .route("/api/admin/audit", get(audit));
     #[cfg(feature = "platform")]
-    let routes = routes.merge(access_routes());
+    let routes = routes.merge(access_routes()).merge(cloud_routes());
     routes
 }
 
@@ -78,6 +78,62 @@ pub fn browser_routes() -> Router<App> {
                 )
             }),
         )
+}
+
+#[cfg(feature = "platform")]
+fn cloud_routes() -> Router<App> {
+    Router::new()
+        .route("/api/admin/cloud-directories", get(cloud_directories))
+        .route(
+            "/api/admin/cloud-directories/{kind}/{id}/operations",
+            get(cloud_operations),
+        )
+        .route(
+            "/api/admin/cloud-directories/{kind}/{id}/test-connection",
+            post(cloud_test_connection),
+        )
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_directories(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| {
+        let mut rows = core
+            .cloud_directories(&token, "workspace")?
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        rows.extend(
+            core.cloud_directories(&token, "entra")?
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+        );
+        Ok(Json(json!(rows)))
+    })
+    .await
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_operations(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.cloud_operations(&token, &kind, &id).map(Json))
+        .await
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_test_connection(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
+        .await
 }
 
 #[cfg(feature = "platform")]
