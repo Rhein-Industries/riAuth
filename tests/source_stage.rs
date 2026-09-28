@@ -14,6 +14,288 @@ use std::sync::{Arc, Mutex};
 
 type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)>>>;
 
+/// The signed source proof remains pending until a bound, one-use local factor
+/// commits through the same completion writer.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_totp_consumes_bound_factor_and_source_proofs_atomically() {
+    use riauth::workflow::{Outcome, RunState, executor::TotpChallenge};
+    async fn challenge(f: &Fixture, upstream: &Upstream, token: &str) -> TotpChallenge {
+        let start = f.core.workflow_source_start(token, "upstream").unwrap();
+        assert!(
+            f.core
+                .workflow_totp_challenge(token, &start.workflow.id)
+                .is_err()
+        );
+        upstream
+            .callback(
+                f,
+                &json!({"authorization_url":start.authorization_url}),
+                "mfa-subject",
+            )
+            .await;
+        let next = f
+            .core
+            .workflow_source_finish(token, &start.workflow.id)
+            .unwrap();
+        assert!(
+            matches!(next.state, RunState::Active { ref step, attempt: 1 } if step.as_str() == "totp")
+        );
+        f.core.workflow_totp_challenge(token, &next.id).unwrap()
+    }
+
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, false).await;
+    let alice = f.user("workflow-mfa");
+    let bob = f.user("workflow-other");
+    let user_id = text(&f.core.me(&alice).unwrap()["user"], "id");
+    let link = f
+        .core
+        .source_start(
+            "upstream",
+            riauth::source::Start {
+                link: true,
+                authentication_transaction: None,
+            },
+            Some(&alice),
+        )
+        .unwrap();
+    upstream.callback(&f, &link, "mfa-subject").await;
+    f.core
+        .source_finish(riauth::source::Finish {
+            credential: text(&link["credential"], "token"),
+            approve: true,
+            otp: None,
+        })
+        .unwrap();
+
+    // Real enrollment spends the previous allowed TOTP interval; ordinary
+    // sign-in spends the current one. No replay counter is reset by the fixture.
+    let enrollment = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(&text(&enrollment, "secret"), "workflow-mfa").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate((now() / 30 - 1) * 30).to_string())
+        .unwrap();
+    let alice = text(
+        &f.core
+            .login(
+                "workflow-mfa".into(),
+                common::PASSWORD.into(),
+                Some(totp.generate(now()).to_string()),
+            )
+            .unwrap(),
+        "session_token",
+    );
+    let recovery = f.core.recovery_codes(&alice).unwrap()["recovery_codes"][0]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let second = text(
+        &f.core
+            .login(
+                "workflow-mfa".into(),
+                common::PASSWORD.into(),
+                Some(recovery),
+            )
+            .unwrap(),
+        "session_token",
+    );
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let last_step = || {
+        f.core
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .totp_last_step
+    };
+    let initial_step = last_step();
+
+    let cancelled = challenge(&f, &upstream, &alice).await;
+    f.core
+        .workflow_cancel(&alice, &cancelled.workflow.id)
+        .unwrap();
+    let active = challenge(&f, &upstream, &alice).await;
+    let run_id = active.workflow.id.clone();
+    let factor_step = now() / 30 + 1;
+    let code = totp.generate(factor_step * 30).to_string();
+    assert!(
+        f.core
+            .workflow_totp(
+                &alice,
+                &cancelled.workflow.id,
+                &cancelled.challenge,
+                code.clone()
+            )
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_totp(&alice, &run_id, &cancelled.challenge, code.clone())
+            .is_err()
+    );
+    for token in [&bob, &second] {
+        assert!(
+            f.core
+                .workflow_totp(token, &run_id, &active.challenge, code.clone())
+                .is_err()
+        );
+    }
+    let failed = f
+        .core
+        .workflow_totp(&alice, &run_id, &active.challenge, "invalid".into())
+        .unwrap();
+    assert!(matches!(failed.state, RunState::Active { attempt: 2, .. }));
+    assert_eq!(last_step(), initial_step);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Attempts>("attempts", "workflow-mfa")
+            .unwrap()
+            .unwrap()
+            .failures,
+        1
+    );
+    let retry = f.core.workflow_totp_challenge(&alice, &run_id).unwrap();
+    assert!(
+        f.core
+            .workflow_totp(&alice, &run_id, &active.challenge, code.clone())
+            .is_err()
+    );
+
+    let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    let request = text(&run["record"], "request");
+    let source_proof = text(&run["record"]["steps"][0], "evidence");
+    for (bucket, key, field, replacement) in [
+        (
+            "workflow_requests",
+            request.as_str(),
+            "id",
+            json!("another-request"),
+        ),
+        (
+            "workflow_evidence",
+            source_proof.as_str(),
+            "expires_at",
+            json!(now()),
+        ),
+        (
+            "workflow_evidence",
+            source_proof.as_str(),
+            "consumed",
+            json!(true),
+        ),
+    ] {
+        let original: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+        let mut changed = original.clone();
+        changed[field] = replacement;
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &changed))
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_totp(&alice, &run_id, &retry.challenge, code.clone())
+                .is_err(),
+            "{bucket}/{field}"
+        );
+        assert_eq!(last_step(), initial_step);
+        assert!(
+            f.core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .iter()
+                .all(|(_, v)| v["proof"] != "totp")
+        );
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &original))
+            .unwrap();
+    }
+    let outcomes = std::thread::scope(|scope| {
+        let first = scope.spawn(|| {
+            f.core
+                .workflow_totp(&alice, &run_id, &retry.challenge, code.clone())
+        });
+        let second = scope.spawn(|| {
+            f.core
+                .workflow_totp(&alice, &run_id, &retry.challenge, code.clone())
+        });
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    let finished = outcomes
+        .into_iter()
+        .find_map(std::result::Result::ok)
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    assert_eq!(last_step(), Some(factor_step));
+    let evidence = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    let receipts: Vec<_> = evidence
+        .iter()
+        .filter(|(_, v)| v["run"] == run_id)
+        .map(|(_, v)| v)
+        .collect();
+    assert_eq!(receipts.len(), 2);
+    for receipt in &receipts {
+        assert_eq!(receipt["consumed"], true);
+        for field in ["account", "account_epoch", "session", "request", "binding"] {
+            assert_eq!(receipt[field], run["record"][field], "{field}");
+        }
+    }
+    let local = receipts.iter().find(|v| v["proof"] == "totp").unwrap();
+    assert_eq!(local["step"], "totp");
+    assert_eq!(local["attempt"], 2);
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+    assert!(codes(&f).is_empty());
+
+    // A new run and handle cannot reuse the account's consumed TOTP interval.
+    let next = challenge(&f, &upstream, &alice).await;
+    let replay = f
+        .core
+        .workflow_totp(&alice, &next.workflow.id, &next.challenge, code.clone())
+        .unwrap();
+    assert!(matches!(replay.state, RunState::Active { attempt: 2, .. }));
+    let pending = f
+        .core
+        .workflow_totp_challenge(&alice, &next.workflow.id)
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut user: User = tx.get("users", &user_id)?.unwrap();
+            user.epoch += 1;
+            tx.put("users", &user_id, &user)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_totp(&alice, &pending.workflow.id, &pending.challenge, code)
+            .is_err()
+    );
+    assert_eq!(last_step(), Some(factor_step));
+    assert_eq!(
+        f.core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .iter()
+            .filter(|(_, v)| v["proof"] == "totp")
+            .count(),
+        1
+    );
+}
+
 /// Exercises the real signed OIDC callback and durable W02/W03 completion, with
 /// authority changes between verification and consumption and competing writers.
 #[cfg(feature = "platform")]

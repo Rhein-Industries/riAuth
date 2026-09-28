@@ -3,7 +3,7 @@
 use super::{App, bearer, credential_floor};
 use crate::{
     error::Result,
-    workflow::executor::{PasskeyChallenge, SourceStart, View},
+    workflow::executor::{PasskeyChallenge, SourceStart, TotpChallenge, View},
 };
 use axum::{
     Json, Router,
@@ -25,7 +25,41 @@ pub(super) fn routes() -> Router<App> {
         .route("/api/workflows/{id}/passkey/start", post(passkey_challenge))
         .route("/api/workflows/{id}/passkey", post(passkey))
         .route("/api/workflows/{id}/source", post(source_finish))
+        .route("/api/workflows/{id}/totp/start", post(totp_challenge))
+        .route("/api/workflows/{id}/totp", post(totp))
         .route("/api/workflows/{id}/cancel", post(cancel))
+}
+
+async fn totp_challenge(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<TotpChallenge>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_totp_challenge(&token, &id).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Totp {
+    challenge: String,
+    code: String,
+}
+
+async fn totp(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Totp>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    let started = Instant::now();
+    let result = app
+        .run_credentials(move |core| core.workflow_totp(&token, &id, &input.challenge, input.code))
+        .await;
+    credential_floor(started, true).await;
+    result.map(Json)
 }
 
 async fn passkey_start(State(app): State<App>, headers: HeaderMap) -> Result<Json<View>> {

@@ -2,8 +2,10 @@
 
 mod passkey;
 mod source;
+mod totp;
 pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
+pub use totp::TotpChallenge;
 
 use super::{
     Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
@@ -91,6 +93,8 @@ struct InFlight {
     source: Option<upstream::Attempt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     passkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    totp: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,7 +125,8 @@ impl RuntimeRun {
             else {
                 return Err(Error::conflict("Workflow definition is unavailable"));
             };
-            let checked = source::definition(source)?;
+            let checked =
+                source::definition(source, self.definition.id.as_str() == source::TOTP_WORKFLOW)?;
             if checked.definition() != &self.definition {
                 return Err(Error::conflict("Workflow definition changed"));
             }
@@ -315,6 +320,14 @@ fn evidence_authority(
     let (user, request) = authority(core, tx, run, at)?;
     match (&receipt.source, &request.source) {
         (Some(evidence), Some(pin)) => upstream::evidence_authority(tx, pin, &user, evidence),
+        (None, Some(_))
+            if receipt.proof == Proof::Totp
+                && matches!(receipt.action, Action::VerifyTotp {})
+                && request.requires_mfa
+                && user.totp_secret.is_some() =>
+        {
+            Ok(())
+        }
         (None, None) => Ok(()),
         _ => Err(Error::forbidden()),
     }
@@ -858,6 +871,7 @@ impl Core {
                     step_started_at: run.step_started_at,
                     source: None,
                     passkey: None,
+                    totp: None,
                 };
                 run.in_flight = Some(reservation.clone());
                 run.executions += 1;
@@ -1066,6 +1080,7 @@ mod tests {
                     step_started_at: run.step_started_at,
                     source: None,
                     passkey: None,
+                    totp: None,
                 });
                 run.executions = 1;
                 tx.put(RUNS, &id, &run)

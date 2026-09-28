@@ -3,7 +3,7 @@
 Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 the built-in password and passkey reauthentication workflows and an OIDC/SAML source
-reauthentication workflow for a live bearer session. All use the existing
+reauthentication workflow with local TOTP when enrolled, for a live bearer session. All use the existing
 verifiers and finalize through the W03 store boundary. They do not complete a
 downstream OIDC sign-in transaction or issue a new session. Other built-in
 verifier actions remain unconnected. The existing
@@ -15,7 +15,7 @@ It does not yet enable configured workflow execution. The W02/W03 workflow
 proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
-The source path uses a server-defined workflow and does not accept arbitrary
+The source paths use server-defined workflows and do not accept arbitrary
 configured definitions.
 
 ## Scope
@@ -147,7 +147,7 @@ matching historical evidence provenance, bindings and step attempts. An earlier
 receipt may have expired by denial time; its expiry does not make denial into
 authentication success. A spent receipt, expired run, changed account epoch or
 wrong path still fails. Supported completion finalizes the run and consumes
-receipts together through the store boundary. The password, passkey and source adapters
+receipts together through the store boundary. The password, passkey, source and TOTP adapters
 make this operation atomic and recheck live account/session authority, run
 expiry and success-proof freshness inside the writer transaction. This seam does not yet
 model a trusted upstream MFA assertion, so an upstream-authenticated account
@@ -192,8 +192,10 @@ SubjectConfirmationData and optional SessionNotOnOrAfter bounds, without clock
 skew extending any lifetime. The pinned source protocol must match its verifier
 result. `POST /api/workflows/{id}/source` with the original
 bearer session polls that reserved result; the caller supplies no proof, claims,
-signal or receipt reference. A successful completion consumes the source login,
-creates and consumes W03 evidence, and finalizes the W02 run in one transaction.
+signal or receipt reference. Verification consumes the source login and creates
+W03 evidence. For accounts without TOTP, that writer also consumes the evidence
+and finalizes the W02 run. Accounts with TOTP instead enter the local factor step;
+the upstream proof alone cannot finish that workflow.
 Source configuration changes, unlinking, mismatched accounts or sessions,
 revoked/expired authority, old assertions and replay fail closed. Cancellation
 and run expiry discard the source reservation. The ordinary source-finish API
@@ -204,9 +206,35 @@ Authentication must occur at or after that attempt starts; its proof must be
 at most 120 seconds old at completion. Workflow SAML validation uses this same
 strict lower bound for `AuthnInstant`; ordinary source logins retain their
 five-second tolerance. Protocol clock-skew allowances do not extend workflow
-proof freshness or signed assertion expiry. Accounts with local TOTP
-and OAuth-only sources remain unavailable on this path. Upstream
+proof freshness or signed assertion expiry. OAuth-only sources remain unavailable
+on this path. Upstream
 MFA assertions are not converted into local-factor proofs.
+
+## Local TOTP after source verification
+
+An account with TOTP uses the distinct, pinned
+`platform-source-totp-reauthentication` definition. It requires both source and
+TOTP evidence. The original source-only definition remains available for its
+existing pinned runs. After the source step, `POST /api/workflows/{id}/totp/start`
+returns a `workflow` view, an opaque `challenge` and its `expires_at`.
+`POST /api/workflows/{id}/totp` accepts that `challenge` and the authenticator
+`code`, using the original bearer session. The handle binds the account, epoch,
+session, request, run, definition, primary proof, current step and attempt.
+
+The executor uses the ordinary TOTP verifier, enrolled algorithm/digits/period,
+and account-wide `totp_last_step`. It rechecks the source proof's freshness and
+live account link before verification and again at completion. The factor
+counter, both evidence consumptions and the final run state commit in one
+transaction. A completion error rolls back factor consumption. This path issues
+no session, changes no session assurance, and stores no submitted code.
+
+Invalid codes spend the reserved handle and one of three attempts. Retrying
+requires a new handle; delayed submissions and handles from cancelled runs
+cannot complete it. The ordinary account lockout also applies, so cancellation
+or a new workflow does not reset failed-code counts. The factor deadline cannot
+extend the source proof's signed expiry, its 120-second freshness bound, or the
+run/request deadline. Epoch changes invalidate pending verification. The
+password-plus-TOTP default and recovery-code fallback remain unconnected.
 
 ## Bounds
 
@@ -248,8 +276,9 @@ These are not implemented or established by this slice:
   session revocation. Until then these success outcomes remain blocked. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Arbitrary configured workflows, custom stage execution, source MFA adapters,
-  invitation acceptance, and the other built-in verifiers. The password
+* Arbitrary configured workflows, custom stage execution, trusted upstream MFA
+  assertion adapters, password-plus-TOTP and recovery-code fallback, invitation
+  acceptance, and the other built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.
@@ -265,6 +294,9 @@ These are not implemented or established by this slice:
   competing completion writers on the local store. The focused passkey regression
   uses signed WebAuthn credentials to exercise session/request/run/attempt
   isolation, revoked authority, retries and competing completion writers.
+  The focused TOTP regression uses signed upstream evidence and real enrolled
+  codes to exercise bound retries, cancellation, stale/consumed source evidence,
+  account-wide replay, epoch invalidation and atomic competing completion.
   PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

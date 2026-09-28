@@ -9,12 +9,14 @@ pub struct SourceStart {
     pub authorization_url: String,
 }
 
-pub(super) fn definition(source: &Id) -> Result<Validated> {
+pub(super) const TOTP_WORKFLOW: &str = "platform-source-totp-reauthentication";
+
+pub(super) fn definition(source: &Id, totp: bool) -> Result<Validated> {
     if !cfg!(feature = "platform") {
         return Err(Error::forbidden());
     }
     let id = |value| Id::new(value).map_err(Error::internal);
-    let definition = Definition {
+    let mut definition = Definition {
         format: Format::V1,
         id: id("platform-source-reauthentication")?,
         revision: 1,
@@ -61,6 +63,34 @@ pub(super) fn definition(source: &Id) -> Result<Validated> {
             },
         ],
     };
+    // Preserve the exact original source-only definition for pinned runs.
+    // Accounts with a local factor get a distinct server-owned path whose
+    // success requires both proofs, regardless of any upstream ACR/AMR.
+    if totp {
+        definition.id = id(TOTP_WORKFLOW)?;
+        definition.limits.max_executions = 4;
+        definition.steps[0].transitions[0].to = id("totp")?;
+        definition.steps.push(Step {
+            id: id("totp")?,
+            action: Action::VerifyTotp {},
+            max_attempts: 3,
+            timeout_seconds: RECEIPT_SECONDS as u32,
+            cancellable: true,
+            transitions: vec![
+                Transition {
+                    on: Label::fixed("verified"),
+                    when: None,
+                    to: id("success")?,
+                },
+                Transition {
+                    on: Label::fixed("failed"),
+                    when: None,
+                    to: id("denied")?,
+                },
+            ],
+        });
+        definition.terminals[0].requires = vec![vec![Proof::Source, Proof::Totp]];
+    }
     let mut environment = Environment::platform();
     environment.sources.insert(source.clone());
     validate(definition, &environment).map_err(invalid_error)
@@ -95,18 +125,12 @@ impl Core {
     /// session. The caller chooses an enabled source, never a workflow or proof.
     pub fn workflow_source_start(&self, token: &str, source: &str) -> Result<SourceStart> {
         let source = Id::new(source).map_err(Error::bad)?;
-        let checked = definition(&source)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let pin = upstream::pin(tx, &source)?;
             upstream::authority(tx, &pin, &user)?;
-            // W03 currently requires a local factor for accounts with TOTP.
-            // An upstream ACR must not silently substitute for that proof.
-            if user.totp_secret.is_some() {
-                return Err(Error::conflict(
-                    "This account needs a local factor workflow",
-                ));
-            }
+            let requires_mfa = user.totp_secret.is_some();
+            let checked = definition(&source, requires_mfa)?;
             let at = now();
             if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
                 if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
@@ -152,6 +176,7 @@ impl Core {
                 step_started_at: at,
                 source: None,
                 passkey: None,
+                totp: None,
             };
             let (attempt, authorization_url) =
                 self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
@@ -165,7 +190,7 @@ impl Core {
                 session: session.id.clone(),
                 token_hash: digest(token),
                 expires_at,
-                requires_mfa: false,
+                requires_mfa,
                 source: Some(pin),
             };
             tx.put(REQUESTS, &request_id, &request)?;
@@ -198,14 +223,17 @@ impl Core {
             let pin = request.source.as_ref().ok_or_else(Error::forbidden)?;
             if reservation.step != *step
                 || reservation.passkey.is_some()
+                || reservation.totp.is_some()
                 || reservation.attempt != *attempt
                 || reservation.step_started_at != run.step_started_at
                 || checked.step(step).map(|s| &s.action)
                     != Some(&Action::VerifySource {
                         source: pin.source.clone(),
                     })
-                || user.totp_secret.is_some()
-                || request.requires_mfa
+                || ((user.totp_secret.is_some() || request.requires_mfa)
+                    && checked.definition().id.as_str() != TOTP_WORKFLOW)
+                || (checked.definition().id.as_str() == TOTP_WORKFLOW
+                    && (user.totp_secret.is_none() || !request.requires_mfa))
             {
                 return Err(Error::forbidden());
             }
