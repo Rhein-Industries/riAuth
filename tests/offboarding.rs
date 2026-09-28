@@ -677,6 +677,14 @@ struct Scim {
     patches: Arc<Mutex<Vec<(String, Option<String>, Value)>>>,
     /// Scripted `(status, apply)` replies for the next PATCH requests.
     script: Arc<Mutex<VecDeque<(u16, bool)>>>,
+    create: Option<Arc<DelayedCreate>>,
+}
+
+#[derive(Default)]
+struct DelayedCreate {
+    waiting: Notify,
+    resume: Notify,
+    keys: Mutex<Vec<String>>,
 }
 
 impl Scim {
@@ -692,7 +700,7 @@ impl Scim {
                 let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
                 sender.send(listener.local_addr().unwrap()).unwrap();
                 let app = Router::new()
-                    .route("/scim/v2/Users", get(scim_list))
+                    .route("/scim/v2/Users", get(scim_list).post(scim_create))
                     .route("/scim/v2/Users/{id}", get(scim_read).patch(scim_patch))
                     .with_state(state);
                 axum::serve(listener, app).await.unwrap();
@@ -786,6 +794,30 @@ async fn scim_read(
         Some(user) => versioned(user),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+async fn scim_create(
+    State(scim): State<Scim>,
+    headers: HeaderMap,
+    Json(mut user): Json<Value>,
+) -> Response {
+    scim.record("POST", &headers);
+    let Some(control) = &scim.create else {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    };
+    user["id"] = json!("created-alice");
+    user["meta"] = json!({"version": "1"});
+    scim.users.lock().unwrap().push(user);
+    control
+        .keys
+        .lock()
+        .unwrap()
+        .push(headers["idempotency-key"].to_str().unwrap().into());
+    control.waiting.notify_one();
+    control.resume.notified().await;
+    // Create committed, but its resource representation was lost. The worker
+    // receives no usable identity and must not create a verified ownership link.
+    StatusCode::CREATED.into_response()
 }
 
 async fn scim_patch(
@@ -2065,6 +2097,7 @@ fn p08_resolution(evidence: &str) -> Resolve {
     Resolve {
         observed: downstream::Observed::NotApplied,
         evidence: evidence.into(),
+        create_settlement: None,
     }
 }
 
@@ -2181,6 +2214,343 @@ fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
         dismissed
     );
     f.assert_snapshot(&after);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn p08_unlinked_create_cannot_escape_offboarding_before_or_after_lost_response() {
+    for disable_during_send in [true, false] {
+        let mut f = Fixture::new();
+        let session = f.user("alice");
+        f.core.create_group(&f.admin, "payroll").unwrap();
+        f.core
+            .group_member(&f.admin, "payroll", "alice", true)
+            .unwrap();
+        let alice = account(&f.core, "alice");
+        let offboard = job_id(&schedule(&f.core, &f.admin, "alice", soon(3600), "UTC"));
+        let control = Arc::new(DelayedCreate::default());
+        let scim = Scim {
+            create: Some(control.clone()),
+            ..Default::default()
+        };
+        let url = scim.serve();
+        let target = scim_target(&f, "payroll", &url, "payroll");
+        f.core.config.scim_targets.insert("payroll".into(), target);
+        let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+        let id = text(&plan, "id");
+        f.core.provisioning_apply(&f.admin, &id).unwrap();
+        let core = f.core.clone();
+        let mut worker = Some(tokio::task::spawn_blocking(move || {
+            core.provisioning_step()
+        }));
+        tokio::time::timeout(Duration::from_secs(5), control.waiting.notified())
+            .await
+            .unwrap();
+        let pinned: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+        assert_eq!(pinned["dispatch_started"], true);
+        assert_eq!(pinned["unlinked_create"]["source_job"], id);
+        assert_eq!(pinned["unlinked_create"]["target_url"], url);
+        assert_eq!(pinned["unlinked_create"]["user_id"], alice.id);
+        assert_eq!(
+            pinned["unlinked_create"]["external_id"],
+            plan["resources"][0]["body"]["externalId"]
+        );
+        assert_eq!(
+            pinned["unlinked_create"]["request_key"],
+            control.keys.lock().unwrap()[0]
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("provisioning_links")
+                .unwrap()
+                .is_empty()
+        );
+        if !disable_during_send {
+            control.resume.notify_one();
+            worker.take().unwrap().await.unwrap().unwrap();
+            let failed: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+            assert_eq!(failed["stale"], true);
+            assert_eq!(failed["uncertain"], true);
+            assert_eq!(failed["plan"]["resources"], json!([]));
+            assert!(deliveries(&f.core).is_empty());
+            // Eventual consistency may hide the committed identity. A new
+            // reviewed job must not treat that empty lookup as a safe Create.
+            let remote = scim.users.lock().unwrap().pop().unwrap();
+            let replacement = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+            f.core
+                .provisioning_apply(&f.admin, &text(&replacement, "id"))
+                .unwrap();
+            let core = f.core.clone();
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                tokio::task::spawn_blocking(move || core.provisioning_step()),
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+            scim.users.lock().unwrap().push(remote);
+            assert_eq!(control.keys.lock().unwrap().len(), 1);
+        }
+        age(&f.core, &offboard);
+        assert!(
+            f.core
+                .offboard_process("unlinked-disable", |_| BeforeCommit::Proceed)
+                .unwrap()
+        );
+        assert!(!account(&f.core, "alice").enabled);
+        assert!(f.core.me(&session).is_err());
+        let row = delivery(&f.core, "payroll", &alice);
+        assert_eq!(row["status"], "stale");
+        assert_eq!(row["uncertain"], true);
+        assert_eq!(row["remote_id"], "");
+        assert_eq!(row["unlinked_create"], pinned["unlinked_create"]);
+        let shown = f.core.offboard_get(&f.admin, &offboard).unwrap();
+        assert_eq!(shown["downstream"]["state"], "incomplete");
+        assert_eq!(reported(&shown, "payroll")["delivery_state"], "ambiguous");
+        if disable_during_send {
+            f.core
+                .store
+                .write(|tx| {
+                    let mut job: Value = tx.get("provisioning_jobs", &id)?.unwrap();
+                    job["next_attempt"] = json!(1);
+                    tx.put("provisioning_jobs", &id, &job)
+                })
+                .unwrap();
+            f.core.provisioning_step().unwrap(); // quarantine, not a second Create
+            assert_eq!(
+                p08_dismiss(&f, &f.admin, &row, "OPS-91").unwrap_err().code,
+                "conflict"
+            );
+            let quarantined: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+            assert_eq!(quarantined["lease"], pinned["lease"]);
+            control.resume.notify_one();
+            worker.take().unwrap().await.unwrap().unwrap();
+        }
+        let requests = scim.requests.lock().unwrap().len();
+        assert!(!f.core.deactivation_step().unwrap());
+        f.core.provisioning_step().unwrap();
+        assert!(
+            f.core
+                .provisioning_deactivation_retry(&f.admin, &text(&row, "id"))
+                .is_err()
+        );
+        assert_eq!(scim.requests.lock().unwrap().len(), requests);
+        assert!(scim.patches.lock().unwrap().is_empty());
+        assert_eq!(control.keys.lock().unwrap().len(), 1);
+        assert_eq!(scim.user("created-alice")["active"], true);
+        assert!(
+            f.core
+                .store
+                .list::<Value>("provisioning_links")
+                .unwrap()
+                .is_empty()
+        );
+        f.core
+            .store
+            .write(|tx| riauth::provisioning::cleanup(tx, crypto::now() + 100 * 86400))
+            .unwrap();
+        assert_eq!(delivery(&f.core, "payroll", &alice)["uncertain"], true);
+        let retained: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+        assert_eq!(retained["unlinked_create"], pinned["unlinked_create"]);
+        assert_eq!(retained["cursor"], 0);
+        assert_eq!(retained["completed"], false);
+        assert_eq!(retained["lease"], Value::Null);
+        assert_eq!(retained["dispatch_started"], false);
+    }
+}
+
+#[test]
+fn p08_unlinked_legacy_reconciliation_requires_audited_external_settlement() {
+    let (f, source_id, mut source) = p08_resolution_fixture();
+    let alice = account(&f.core, "alice");
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(deliveries(&f.core).is_empty());
+    // A pre-upgrade worker lost its response and compacted the binding. The
+    // account was disabled before this version could record prospective intent.
+    source.as_object_mut().unwrap().remove("create_tracked");
+    source.as_object_mut().unwrap().remove("dispatch_started");
+    source["plan"]["resources"] = json!([]);
+    source["item"] = json!({"index": 0, "kind": "Users", "local_id": alice.id});
+    source["lease"] = json!("abandoned-create");
+    source["next_attempt"] = json!(1);
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_jobs", &source_id, &source))
+        .unwrap();
+    assert!(!f.core.deactivation_step().unwrap());
+    let row = delivery(&f.core, "payroll", &alice);
+    let id = text(&row, "id");
+    assert_eq!(row["hold"], "unlinked_create_requires_settlement");
+    assert_eq!(row["unlinked_create"]["source_job"], source_id);
+    assert_eq!(row["external_id"], "");
+    let view = f.core.provisioning_deactivations(&f.admin).unwrap()[0].clone();
+    let input = json!({"observed": "applied", "evidence": "OPS-92: provider settled Create; every matching identity disabled",
+        "create_settlement": {"revision": view["revision"], "workers_quiesced": true, "remote_requests_settled": true}});
+    let resolve = |token: &str, key: Option<&str>, input: &Value| {
+        riauth::context::scope(
+            Some(riauth::context::RequestContext {
+                revision: Some(revision(&f.core)),
+                idempotency_key: key.map(Into::into),
+                fingerprint: crypto::digest(&input.to_string()),
+                ..Default::default()
+            }),
+            || {
+                f.core.provisioning_deactivation_resolve(
+                    token,
+                    &id,
+                    serde_json::from_value(input.clone()).unwrap(),
+                )
+            },
+        )
+    };
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        resolve(&f.admin, Some("pinned"), &input).unwrap_err().code,
+        "conflict"
+    );
+    f.assert_snapshot(&before);
+    // Recover only the abandoned worker pin, preserving the Create ambiguity.
+    let job = f.core.provisioning_jobs(&f.admin).unwrap()[0].clone();
+    let recovery = json!({"revision":job["state_revision"], "reason":"legacy_untracked", "evidence":"OPS-92 worker terminated and provider completed prior requests", "workers_quiesced":true,"remote_requests_settled":true});
+    riauth::context::scope(
+        Some(riauth::context::RequestContext {
+            revision: Some(revision(&f.core)),
+            idempotency_key: Some("recover-create".into()),
+            fingerprint: crypto::digest(&recovery.to_string()),
+            ..Default::default()
+        }),
+        || {
+            f.core.provisioning_recover_dispatch(
+                &f.admin,
+                &source_id,
+                serde_json::from_value(recovery).unwrap(),
+            )
+        },
+    )
+    .unwrap();
+    assert_eq!(delivery(&f.core, "payroll", &alice), row);
+    // Resolving what the original Create did does not resolve offboarding it.
+    f.core
+        .provisioning_resolve(
+            &f.admin,
+            &source_id,
+            p08_resolution("OPS-92 source reviewed"),
+        )
+        .unwrap();
+    assert_eq!(delivery(&f.core, "payroll", &alice)["uncertain"], true);
+    let scoped = agent(
+        &f,
+        "unlinked-reader",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+        ],
+    );
+    let before = f.snapshot().unwrap();
+    assert!(resolve(&scoped, Some("scoped"), &input).is_err());
+    assert!(resolve(&f.admin, None, &input).is_err());
+    for invalid in [
+        json!({"observed":"applied","evidence":"OPS-92"}),
+        {
+            let mut v = input.clone();
+            v["create_settlement"]["remote_requests_settled"] = json!(false);
+            v
+        },
+        {
+            let mut v = input.clone();
+            v["create_settlement"]["workers_quiesced"] = json!(false);
+            v
+        },
+        {
+            let mut v = input.clone();
+            v["create_settlement"]["revision"] = json!("stale");
+            v
+        },
+        {
+            let mut v = input.clone();
+            v["observed"] = json!("not_applied");
+            v
+        },
+    ] {
+        assert!(resolve(&f.admin, Some("invalid"), &invalid).is_err());
+    }
+    f.assert_snapshot(&before);
+    let resolved = resolve(&f.admin, Some("resolve-create"), &input).unwrap();
+    assert_eq!(resolved["delivery_state"], "resolved");
+    assert_eq!(resolved["status"], "stale");
+    assert_eq!(resolved["outcome"], Value::Null);
+    assert_eq!(resolved["delivered_at"], Value::Null);
+    assert_eq!(resolved["unlinked_create"], row["unlinked_create"]);
+    assert_eq!(
+        resolved["resolution"]["create_settlement"],
+        input["create_settlement"]
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &source_id)
+            .unwrap()
+            .unwrap()["unlinked_create_resolution"],
+        id
+    );
+    let audit = f
+        .core
+        .store
+        .list::<riauth::model::Audit>("audit")
+        .unwrap()
+        .into_iter()
+        .map(|(_, event)| event)
+        .find(|event| event.action == "provisioner.deactivate.resolve")
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(audit).unwrap()["details"]["context"]["resolution"]["create_settlement"],
+        input["create_settlement"]
+    );
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        resolve(&f.admin, Some("resolve-create"), &input).unwrap(),
+        resolved
+    );
+    f.assert_snapshot(&after);
+    f.core
+        .store
+        .write(|tx| tx.delete("users", &alice.id))
+        .unwrap();
+    let deleted = f.snapshot().unwrap();
+    assert!(resolve(&f.admin, Some("resolve-create"), &input).is_err());
+    f.assert_snapshot(&deleted);
+    assert!(!f.core.deactivation_step().unwrap());
+    assert_eq!(deliveries(&f.core).len(), 1); // no new obligation at the deleted-user epoch
+    f.core
+        .store
+        .write(|tx| riauth::provisioning::cleanup(tx, crypto::now() + 100 * 86400))
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<Value>(downstream::BUCKET, &id)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &source_id)
+            .unwrap()
+            .unwrap()["unlinked_create"]
+            .is_object()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

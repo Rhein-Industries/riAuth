@@ -1,4 +1,5 @@
-//! Durable downstream deactivation intent for linked outbound SCIM accounts.
+//! Durable downstream deactivation intent for outbound SCIM accounts, including
+//! unlinked Creates whose remote outcome was never verified.
 //!
 //! The shared account transition writes one row per linked, remotely active SCIM
 //! user account in the same transaction that disables or deletes the local
@@ -96,6 +97,31 @@ pub struct Resolution {
     pub evidence: String,
     pub by: String,
     pub at: u64,
+    /// Required to discharge an unlinked Create: an empty lookup or a client
+    /// timeout cannot establish that the original request will not commit later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_settlement: Option<CreateSettlement>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateSettlement {
+    pub revision: String,
+    pub workers_quiesced: bool,
+    pub remote_requests_settled: bool,
+}
+
+/// Prospective ownership, never a verified link. Written before an initial
+/// user Create can leave the process, and retained if its result is unknown.
+/// Empty binding fields identify legacy evidence whose snapshot was compacted.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UnlinkedCreate {
+    pub source_job: String,
+    pub target: String,
+    pub target_url: String,
+    pub user_id: String,
+    pub external_id: String,
+    pub request_key: String,
 }
 
 impl Resolution {
@@ -146,12 +172,13 @@ pub struct DispatchRecovery {
     pub previous: Value,
 }
 
-/// One target's deactivation of one linked remote account for one disable.
+/// One target's deactivation obligation for one disable. Unlinked Creates have
+/// separate source-job identities and require explicit external reconciliation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Deactivation {
-    /// Digest of the link key and the disabling epoch.
+    /// Digest of the link (or unlinked source) and the disabling epoch.
     pub id: String,
-    /// The outbound link key.
+    /// The outbound link key; it need not exist for an unlinked Create.
     pub link: String,
     pub target: String,
     pub target_url: String,
@@ -159,6 +186,7 @@ pub struct Deactivation {
     pub username: String,
     /// Account epoch committed with the disable that recorded this intent.
     pub epoch: u64,
+    /// Empty for an unlinked Create: no remote identity has been verified.
     pub remote_id: String,
     pub external_id: String,
     /// Digest of the link record this intent was derived from.
@@ -187,7 +215,7 @@ pub struct Deactivation {
     pub created_at: u64,
     #[serde(default)]
     pub delivered_at: Option<u64>,
-    /// The latest PATCH may have been applied without a verified result.
+    /// A PATCH or an unlinked Create may have applied without a verified result.
     /// Cleared when a later attempt reads the account again.
     #[serde(default)]
     pub uncertain: bool,
@@ -198,6 +226,8 @@ pub struct Deactivation {
     pub dismissal: Option<Dismissal>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dispatch_recoveries: Vec<DispatchRecovery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlinked_create: Option<UnlinkedCreate>,
 }
 
 impl Deactivation {
@@ -209,7 +239,7 @@ impl Deactivation {
         ))
     }
 
-    /// Delivery state shared with reviewed SCIM jobs. An unverified PATCH
+    /// Delivery state shared with reviewed SCIM jobs. An unverified remote write
     /// outranks every local outcome: the row is `ambiguous` until a read
     /// observes the account, or an operator attests what the target shows.
     /// An attestation that nothing is left active is `resolved`, never
@@ -322,14 +352,16 @@ pub(crate) fn enqueue_link(
             resolution: None,
             dismissal: None,
             dispatch_recoveries: existing.map_or_else(Vec::new, |row| row.dispatch_recoveries),
+            unlinked_create: None,
         };
         tx.put(BUCKET, &id, &row)?;
     }
     Ok(Some(id))
 }
 
-/// Record deactivation intent for each remotely active link of an account that
-/// is now disabled or deleted. Returns `(target, delivery id)` for each link.
+/// Record intent for every remotely active link and unresolved possible Create
+/// of an account now disabled or deleted. Returns `(target, delivery id)` for
+/// every obligation; a target may have more than one independently uncertain source.
 pub(crate) fn enqueue(
     tx: &impl IdentityTx,
     user_id: &str,
@@ -342,5 +374,110 @@ pub(crate) fn enqueue(
             recorded.push((link.target, id));
         }
     }
+    // The retained job set is bounded by the provisioning adapter. Read it in
+    // pages, with no remote I/O or admission wait in the revocation transaction.
+    let mut after = None;
+    loop {
+        let page = tx.scan::<Value>("provisioning_jobs", after.as_deref(), PAGE)?;
+        let Some((last, _)) = page.last() else { break };
+        after = Some(last.clone());
+        let full = page.len() == PAGE;
+        for (id, job) in page {
+            if let Some(create) = unlinked_create(&id, &job).filter(|c| c.user_id == user_id) {
+                let id = enqueue_unlinked(tx, &create, username, epoch)?;
+                recorded.push((create.target, id));
+            }
+        }
+        if !full {
+            break;
+        }
+    }
     Ok(recorded)
+}
+
+/// Read the small retained provenance, or conservatively recover older ambiguous
+/// user items. A tracked job without provenance never attempted an unlinked
+/// Create (or received its verified response). Legacy missing bindings do not
+/// authorize discovery, adoption or a new write.
+pub(crate) fn unlinked_create(id: &str, job: &Value) -> Option<UnlinkedCreate> {
+    if job["unlinked_create_resolution"].is_string() {
+        return None;
+    }
+    if let Some(value) = job.get("unlinked_create").filter(|value| !value.is_null()) {
+        return serde_json::from_value(value.clone()).ok();
+    }
+    if job["create_tracked"] == true
+        || !(job["uncertain"] == true
+            || job["lease"].is_string() && job["dispatch_started"] != false)
+    {
+        return None;
+    }
+    let index = job["item"]["index"]
+        .as_u64()
+        .or_else(|| job["cursor"].as_u64())? as usize;
+    let resource = &job["plan"]["resources"][index];
+    let item = if job["item"].is_object() {
+        &job["item"]
+    } else {
+        resource
+    };
+    if item["kind"] != "Users" {
+        return None;
+    }
+    let user_id = item["local_id"].as_str()?;
+    let target = job["plan"]["target"].as_str()?;
+    let key = link_key(target, "Users", user_id);
+    if !job["plan"]["managed_links"][&key].is_null()
+        || resource.is_object() && resource["body"]["active"] != true
+    {
+        return None;
+    }
+    Some(UnlinkedCreate {
+        source_job: id.into(),
+        target: target.into(),
+        target_url: String::new(),
+        user_id: user_id.into(),
+        external_id: resource["body"]["externalId"]
+            .as_str()
+            .unwrap_or_default()
+            .into(),
+        request_key: if resource.is_object() {
+            format!("ri-{id}-{}", digest(&format!("Users:{user_id}")))
+        } else {
+            String::new()
+        },
+    })
+}
+
+pub(crate) fn enqueue_unlinked(
+    tx: &impl IdentityTx,
+    create: &UnlinkedCreate,
+    username: &str,
+    epoch: u64,
+) -> Result<String> {
+    // Separate from the verified link's intent: one later link cannot settle a
+    // different Create or prove that a delayed request cannot create a duplicate.
+    let source = digest(&format!(
+        "unlinked-create\0{}\0{}",
+        create.source_job, create.user_id
+    ));
+    let id = delivery_id(&source, epoch);
+    if tx.get::<Value>(BUCKET, &id)?.is_none() {
+        let at = now();
+        tx.put(BUCKET, &id, &Deactivation {
+            id: id.clone(), link: link_key(&create.target, "Users", &create.user_id),
+            target: create.target.clone(), target_url: create.target_url.clone(),
+            user_id: create.user_id.clone(), username: username.into(), epoch,
+            remote_id: String::new(), external_id: create.external_id.clone(),
+            link_digest: String::new(), status: Status::Stale,
+            hold: Some("unlinked_create_requires_settlement".into()), attempts: 0,
+            next_attempt: at, lease_owner: None, lease_until: 0,
+            dispatch_started: Some(false), actor: None,
+            last_error: Some("An unlinked SCIM Create may have left an active remote account; settle the original request and verify every matching remote account inactive or absent before operator resolution".into()),
+            outcome: None, created_at: at, delivered_at: None, uncertain: true,
+            resolution: None, dismissal: None, dispatch_recoveries: Vec::new(),
+            unlinked_create: Some(create.clone()),
+        })?;
+    }
+    Ok(id)
 }

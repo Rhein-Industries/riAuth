@@ -602,6 +602,15 @@ pub enum ProvisionCommand {
         /// Reference for the check, such as a ticket; no secrets
         #[arg(long)]
         evidence: String,
+        /// Exact deactivation revision, required for an unlinked Create
+        #[arg(long, requires_all = ["workers_quiesced", "remote_requests_settled"])]
+        revision: Option<String>,
+        /// Attest every old Create worker is unable to resume
+        #[arg(long, requires = "revision")]
+        workers_quiesced: bool,
+        /// Attest prior Create requests cannot still commit at the provider
+        #[arg(long, requires = "revision")]
+        remote_requests_settled: bool,
     },
     /// Waive further attempts for a held, failed or stale deactivation
     DismissDeactivation {
@@ -1646,7 +1655,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             ProvisionCommand::Deactivations=>remote.call(Method::GET,"/api/provisioning/deactivations",None,true).await?,
             ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
             ProvisionCommand::Resolve{job,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/resolve",segment(&job)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
-            ProvisionCommand::ResolveDeactivation{id,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
+            ProvisionCommand::ResolveDeactivation{id,observed,evidence,revision,workers_quiesced,remote_requests_settled}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence,"create_settlement":revision.map(|revision|json!({"revision":revision,"workers_quiesced":workers_quiesced,"remote_requests_settled":remote_requests_settled}))})),true).await?,
             ProvisionCommand::DismissDeactivation{id,revision,reason,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/dismiss",segment(&id)?),Some(json!({"revision":revision,"reason":reason,"evidence":evidence})),true).await?,
             ProvisionCommand::RecoverDispatch{job,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/recover-dispatch",segment(&job)?),Some(serde_json::to_value(recovery)?),true).await?,
             ProvisionCommand::RecoverDeactivationDispatch{id,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/recover-dispatch",segment(&id)?),Some(serde_json::to_value(recovery)?),true).await?,

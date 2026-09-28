@@ -201,6 +201,85 @@ management API and CLI.
 
 ### Resolving ambiguity
 
+#### Unlinked user Creates
+
+An initial user Create can commit at a provider while its response is lost.
+Before sending that Create, riAuth persists `unlinked_create` provenance under
+the same durable dispatch fence: source job, immutable local user ID, target
+URL, external ID and request idempotency key. A disable or delete records an
+offboarding obligation from that provenance in the local revocation transaction,
+even when no verified link exists. There is no network or target-admission wait
+in that transaction. An unknown Create stops its job; another job cannot POST
+the same user to that target while this source remains unresolved, even if an
+external-ID lookup temporarily returns no account.
+
+The deactivation entrypoint also examines one retained source job per pass,
+using a separate durable cursor and fixed sweep boundary. It reconstructs
+missing obligations for already disabled or deleted users, including legacy
+ambiguous jobs with compacted snapshots. Missing legacy bindings remain unknown;
+they are never guessed from a username or the current target URL. This local
+reconciliation runs independently of reviewed provisioning and its capacity.
+It leaves existing connector due cursors and target permits intact.
+
+These obligations are `stale`, `ambiguous`, and held as
+`unlinked_create_requires_settlement`. They have no verified `remote_id` and
+cannot be retried or rebound to a later link. Each source job has its own row,
+separate from any subsequently verified linked account. A later successful
+Create response can queue ordinary linked deactivation, but does not erase an
+unlinked obligation already recorded during its send. Retention and job capacity
+eviction preserve the source provenance and these rows. Original Create
+resolution, local disable, an empty lookup, an elapsed lease, or a client timeout
+is never reported as remote offboarding success.
+
+Reconciliation of an unlinked row is an explicit administrator action:
+
+1. Stop or fence all old workers that could resume the source request. If a
+   dispatch pin remains, first use the audited abandoned-pin recovery protocol
+   below; this resolution cannot bypass it.
+2. Establish with the provider that **every original request has settled or
+   been cancelled and cannot commit later**. An unreachable provider, a single
+   GET, an empty search or a rotated local credential is insufficient.
+3. Discover every matching remote identity using retained external ID/request
+   evidence and provider records, account for duplicates and delayed visibility,
+   and verify every account inactive or absent. Apply any required disable at
+   the provider before attesting `applied` (offboarding satisfied) or `absent`.
+   An active identity leaves the obligation unresolved.
+4. Submit the fresh row revision, an idempotency key, bounded evidence, and both
+   settlement attestations to the existing resolve endpoint:
+
+```json
+{
+  "observed": "applied",
+  "evidence": "OPS-92: source requests settled; all matching accounts disabled",
+  "create_settlement": {
+    "revision": "<deactivation revision>",
+    "workers_quiesced": true,
+    "remote_requests_settled": true
+  }
+}
+```
+
+The route is `POST /api/provisioning/deactivations/{id}/resolve`, with the usual
+management `If-Match` and `Idempotency-Key` headers. The CLI equivalent is
+`riauth --idempotency-key OPS-92 provision resolve-deactivation <id> --observed applied --evidence "OPS-92: source settled; all matches disabled" --revision <revision> --workers-quiesced --remote-requests-settled`.
+Scoped agents cannot supply this infrastructure/provider attestation; an
+administrator must still pass current immutable-user read authorization.
+
+The operation retains the original ambiguity evidence and source record,
+records the proof in the row and audit, stops the source plan, and discharges
+that source's prospective obligation. It reports `resolved`, never `delivered`
+or `succeeded`, and performs no remote request. Receipt replay rechecks current
+user readability. An explicit audited dismissal remains a waiver, preserves
+ambiguity, and does not authorize a replacement Create. If external settlement
+or complete remote discovery cannot be established, keep the obligation open
+or record that waiver; do not claim remote revocation. riAuth cannot verify
+these external facts automatically. Already deleted source jobs or lost legacy
+local-user identity cannot be reconstructed from nothing and require external
+inventory review. Source and row retention can exhaust the existing job cap;
+there is no automatic evidence archival or unlinked-resolution UI in this slice.
+
+#### Other ambiguous deliveries
+
 Some ambiguity cannot be settled by any attempt: a deactivation row that is `stale`, for example because its link was removed, or `failed`, or a stopped job whose current item stayed ambiguous. For these, an operator records what the target shows:
 
 ```sh

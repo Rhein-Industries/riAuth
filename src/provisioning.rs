@@ -10,7 +10,8 @@ use crate::{
     crypto::{self, digest, now},
     error::{Error, Result},
     identity::downstream::{
-        DismissalReason, DispatchRecovery, Link, Observed, Resolution, link_key,
+        CreateSettlement, DismissalReason, DispatchRecovery, Link, Observed, Resolution,
+        UnlinkedCreate, link_key,
     },
     model::{Group, User},
     store::Tx,
@@ -338,6 +339,15 @@ struct Job {
     resolution: Option<Resolution>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     dispatch_recoveries: Vec<DispatchRecovery>,
+    /// Distinguishes a known absence of prospective ownership from legacy jobs
+    /// that did not record a Create before sending it.
+    #[serde(default)]
+    create_tracked: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unlinked_create: Option<UnlinkedCreate>,
+    /// The separately retained offboarding attestation discharging this source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unlinked_create_resolution: Option<String>,
 }
 impl Job {
     fn state_revision(&self) -> Result<String> {
@@ -428,8 +438,13 @@ fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
             }
         })
         .collect();
+    let unlinked = match &job.unlinked_create {
+        Some(create) if readable => json!(create),
+        Some(_) => json!({"requires_settlement": true}),
+        None => Value::Null,
+    };
     Ok(
-        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"state_revision":job.state_revision()?,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution,"dispatch_recoveries":recoveries}),
+        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"state_revision":job.state_revision()?,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution,"dispatch_recoveries":recoveries,"unlinked_create":unlinked}),
     )
 }
 
@@ -470,8 +485,21 @@ fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> 
     })
 }
 
+fn retain_create_provenance(job: &mut Job) {
+    // Preserve legacy prospective ownership before dropping its snapshot or
+    // resolving what Create did. Neither operation proves offboarding delivery.
+    if !job.create_tracked {
+        if let Ok(snapshot) = serde_json::to_value(&*job) {
+            job.unlinked_create =
+                crate::identity::downstream::unlinked_create(&job.plan.id, &snapshot);
+            job.create_tracked = true;
+        }
+    }
+}
+
 fn compact_terminal_job(job: &mut Job) {
     if (job.completed || job.stale) && job.lease.is_none() {
+        retain_create_provenance(job);
         job.item = delivery_item(job);
         job.total = job.total.max(job.plan.resources.len());
         job.plan.resources.clear();
@@ -508,13 +536,16 @@ fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
     let mut retained_bytes = serde_json::to_vec(next).map_err(Error::internal)?.len();
     let mut terminal = Vec::new();
     for (id, job) in &mut jobs {
-        if (job.completed || job.stale) && !job.plan.resources.is_empty() {
+        if job.completed || job.stale {
             compact_terminal_job(job);
             tx.put("provisioning_jobs", id, job)?;
         }
         let bytes = serde_json::to_vec(job).map_err(Error::internal)?.len();
         retained_bytes = retained_bytes.saturating_add(bytes);
-        if (job.completed || job.stale) && job.lease.is_none() && job.dispatch_recoveries.is_empty()
+        if (job.completed || job.stale)
+            && job.lease.is_none()
+            && job.dispatch_recoveries.is_empty()
+            && job.unlinked_create.is_none()
         {
             terminal.push((id.clone(), job.plan.expires_at, bytes));
         }
@@ -566,6 +597,13 @@ impl Core {
     }
 
     fn provisioning_job_eligible(&self, tx: &Tx<'_>, job: &Job) -> Result<bool> {
+        let unlinked = job.unlinked_create.is_some()
+            || !job.create_tracked
+                && crate::identity::downstream::unlinked_create(
+                    &job.plan.id,
+                    &serde_json::to_value(job).map_err(Error::internal)?,
+                )
+                .is_some();
         let permitted = actor(tx, &job.plan.actor)
             .and_then(|actor| {
                 actor.require(
@@ -583,6 +621,7 @@ impl Core {
             })
             .is_ok();
         Ok(permitted
+            && (!unlinked || job.lease.is_some())
             && job.plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
             && self.provisioning_fingerprint_matches(&job.plan)
             && job.plan.expires_at.saturating_add(86400) >= now()
@@ -1004,6 +1043,9 @@ impl Core {
                 item: None,
                 resolution: None,
                 dispatch_recoveries: Vec::new(),
+                create_tracked: true,
+                unlinked_create: None,
+                unlinked_create_resolution: None,
             };
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
@@ -1053,6 +1095,11 @@ impl Core {
     /// stopped and reads as `failed`, so it never reports the item delivered.
     pub fn provisioning_resolve(&self, token: &str, id: &str, input: Resolve) -> Result<Value> {
         validate_evidence(&input.evidence)?;
+        if input.create_settlement.is_some() {
+            return Err(Error::bad(
+                "Resolve unlinked offboarding intent on its deactivation row",
+            ));
+        }
         let result = self.mutation(token, |tx| {
             let mut job = tx
                 .get::<Job>("provisioning_jobs", id)?
@@ -1083,7 +1130,9 @@ impl Core {
                 evidence: input.evidence,
                 by: actor.id.clone(),
                 at: now(),
+                create_settlement: None,
             };
+            retain_create_provenance(&mut job);
             job.uncertain = false;
             job.lease = None;
             job.item = Some(item);
@@ -1110,6 +1159,7 @@ impl Core {
         self.store.read(|tx| {
             let viewer = self.principal(tx, token)?;
             if result["item"].get("local_id").is_some()
+                || result["unlinked_create"].get("user_id").is_some()
                 || result["resolution"].get("evidence").is_some()
                 || result["dispatch_recoveries"]
                     .as_array()
@@ -1205,8 +1255,9 @@ impl Core {
         // `dispatched`: a write was sent and its effect is not yet verified.
         let inspected = std::cell::Cell::new(false);
         let dispatched = std::cell::Cell::new(false);
-        let read_fence = || self.fence_provisioning(&job, false);
-        let write_fence = || self.fence_provisioning(&job, true);
+        let read_fence = || self.fence_provisioning(&job, false, false);
+        let write_fence = || self.fence_provisioning(&job, true, false);
+        let create_fence = || self.fence_provisioning(&job, true, true);
         let result = (|| {
             let mut body = resource.body.clone();
             if resource.kind == "Groups" {
@@ -1403,7 +1454,7 @@ impl Core {
                     &job.plan.target,
                     &target,
                     &http,
-                    &write_fence,
+                    &create_fence,
                     |http, token| {
                         dispatched.set(true);
                         http.post(&url)
@@ -1475,6 +1526,31 @@ impl Core {
                         kind: resource.kind.clone(),
                         local_id: resource.local_id.clone(),
                     });
+                    if current.unlinked_create.is_some() {
+                        if !dispatched.get() && !job.uncertain && job.unlinked_create.is_none() {
+                            // No Create left this attempt, or it was definitively
+                            // refused. Do not invent a new unknown remote account.
+                            current.unlinked_create = None;
+                        } else {
+                            current.stale = true;
+                            current.uncertain = true;
+                            current.error = Some("Unlinked Create outcome is unknown; inspect the original request before further provisioning. Disable records a separate durable offboarding obligation".into());
+                        }
+                    }
+                    // Also covers an old worker that first records provenance
+                    // after local revocation, or a pre-upgrade ambiguous job.
+                    compact_terminal_job(&mut current);
+                    if let Some(create) = &current.unlinked_create {
+                        let user = tx.get::<User>("users", &create.user_id)?;
+                        if user.as_ref().is_none_or(|user| !user.enabled) {
+                            let username = user.as_ref().map_or_else(
+                                || resource.body["userName"].as_str().unwrap_or_default(),
+                                |user| user.username.as_str(),
+                            );
+                            crate::identity::downstream::enqueue_unlinked(tx, create, username,
+                                user.as_ref().map_or(0, |user| user.epoch))?;
+                        }
+                    }
                     current.next_attempt = now() + 2u64.pow(current.attempts.min(12)).min(3600);
                     if !current.stale && current.attempts >= MAX_ITEM_ATTEMPTS {
                         current.stale = true;
@@ -1500,7 +1576,7 @@ impl Core {
     /// an owned, pinned lease after stop/expiry; every write (including a 401
     /// retry after refresh) must still have live authority and an unexpired lease.
     /// The pin survives auth, response handling and read-back until outcome ack.
-    fn fence_provisioning(&self, job: &Job, writing: bool) -> Result<()> {
+    fn fence_provisioning(&self, job: &Job, writing: bool, creating: bool) -> Result<()> {
         self.store.write(|tx| {
             let mut current = tx.get::<Job>("provisioning_jobs", &job.plan.id)?
                 .ok_or_else(Error::forbidden)?;
@@ -1519,8 +1595,43 @@ impl Core {
                 return Err(Error::conflict("SCIM delivery authority, lease or source changed; inspect partial results and replan"));
                 }
             }
+            let mut changed = false;
+            if creating && let Some(resource) = job.plan.resources.get(job.cursor)
+                && resource.kind == "Users" && resource.body["active"] == true
+            {
+                // A new reviewed/automatic job is not evidence that an older
+                // lost Create settled. Even an empty externalId lookup cannot
+                // authorize another POST while that source remains unresolved.
+                for (id, prior) in tx.list::<Value>("provisioning_jobs")? {
+                    if id != job.plan.id && crate::identity::downstream::unlinked_create(&id, &prior)
+                        .is_some_and(|create| create.target == job.plan.target
+                            && create.user_id == resource.local_id)
+                    {
+                        return Err(Error::conflict("A prior unlinked Create is unresolved; settle and offboard that identity before another Create"));
+                    }
+                }
+                if current.unlinked_create.is_none() {
+                // This commits under the same ownership/authority checks as
+                // the send fence. A concurrent disable either prevents Create
+                // or sees this provenance, even if its response is later lost.
+                current.unlinked_create = Some(UnlinkedCreate {
+                    source_job: job.plan.id.clone(), target: job.plan.target.clone(),
+                    target_url: self.config.scim_targets.get(&job.plan.target)
+                        .ok_or_else(Error::forbidden)?.url.clone(),
+                    user_id: resource.local_id.clone(),
+                    external_id: resource.body["externalId"].as_str().ok_or_else(remote_error)?.into(),
+                    request_key: format!("ri-{}-{}", job.plan.id,
+                        digest(&format!("{}:{}", resource.kind, resource.local_id))),
+                });
+                current.create_tracked = true;
+                changed = true;
+                }
+            }
             if current.dispatch_started != Some(true) {
                 current.dispatch_started = Some(true);
+                changed = true;
+            }
+            if changed {
                 tx.put("provisioning_jobs", &job.plan.id, &current)?;
             }
             Ok(())
@@ -1532,6 +1643,10 @@ impl Core {
             if let Some(link) = link {
                 let key = link_key(&link.target, &link.kind, &link.local_id);
                 tx.put("provisioning_links", &key, &link)?;
+                // The same attempt received a verified Create response. Any
+                // offboarding row already recorded during the send is retained;
+                // the verified link separately queues actual deactivation.
+                current.unlinked_create = None;
                 // A write dispatched before a disable can land after it. Keep
                 // deactivation intent for every active link of an inactive account.
                 if link.kind == "Users" && link.body["active"] == true {
@@ -2264,6 +2379,8 @@ fn invalidate_generation(name: &str, key: &str, generation: u64) {
 pub struct Resolve {
     pub observed: Observed,
     pub evidence: String,
+    #[serde(default)]
+    pub create_settlement: Option<CreateSettlement>,
 }
 
 /// Explicit waiver of further attempts for one reviewed deactivation row.
@@ -2416,14 +2533,18 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
         }
     }
     for (id, mut job) in tx.maintenance_page::<Job>("provisioning_jobs")? {
+        let terminal = job.completed || job.stale;
+        if terminal {
+            compact_terminal_job(&mut job);
+        }
         if (job.completed || job.stale)
             && job.lease.is_none()
             && job.dispatch_recoveries.is_empty()
+            && job.unlinked_create.is_none()
             && job.plan.expires_at + 7 * 86400 < at
         {
             tx.delete("provisioning_jobs", &id)?;
-        } else if (job.completed || job.stale) && !job.plan.resources.is_empty() {
-            compact_terminal_job(&mut job);
+        } else if terminal {
             tx.put("provisioning_jobs", &id, &job)?;
         }
     }

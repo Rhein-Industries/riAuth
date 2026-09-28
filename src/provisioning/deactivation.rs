@@ -248,6 +248,15 @@ fn verify_remote(row: &Deactivation, current: &Value) -> Result<()> {
 
 impl Core {
     fn deactivation_gate(&self, tx: &Tx<'_>, row: &Deactivation, at: u64) -> Result<Gate> {
+        if row.unlinked_create.is_some() {
+            return Ok(Gate::Close(
+                Status::Stale,
+                None,
+                Some(
+                    "Unlinked Create requires explicit request settlement and operator verification; a lookup cannot prove that no delayed Create remains",
+                ),
+            ));
+        }
         let enabled = tx
             .get::<User>("users", &row.user_id)?
             .is_some_and(|user| user.enabled);
@@ -668,6 +677,7 @@ impl Core {
     /// seen on the way are recorded. Returns whether a dispatch was attempted.
     pub fn deactivation_step(&self) -> Result<bool> {
         crate::recovery::require_serving(&self.store)?;
+        self.reconcile_unlinked_offboarding()?;
         if self
             .store
             .read(|tx| tx.due::<Value>(BUCKET, now(), 1))?
@@ -683,6 +693,53 @@ impl Core {
         let attempt = self.attempt_deactivation(&claim, &evidence);
         self.finish_deactivation(&claim, attempt, evidence.uncertain())?;
         Ok(true)
+    }
+
+    /// Repair retained pre-upgrade/abandoned Creates even when general
+    /// provisioning is stopped or saturated. One source record per pass, with
+    /// a separate bounded sweep: do not disturb connector due/admission cursors.
+    fn reconcile_unlinked_offboarding(&self) -> Result<()> {
+        const CURSOR: &str = "provisioning_unlinked_offboarding";
+        self.store.write(|tx| {
+            let after = tx.get::<String>("maintenance_cursors", CURSOR)?;
+            let end = match tx.get::<String>("maintenance_bounds", CURSOR)? {
+                Some(end) => Some(end),
+                None => tx
+                    .scan_reverse::<Value>("provisioning_jobs", None, 1)?
+                    .into_iter()
+                    .next()
+                    .map(|(id, _)| id),
+            };
+            let Some(end) = end else { return Ok(()) };
+            let next = tx
+                .scan::<Value>("provisioning_jobs", after.as_deref(), 1)?
+                .into_iter()
+                .next()
+                .filter(|(id, _)| id <= &end);
+            let Some((id, job)) = next else {
+                tx.delete("maintenance_cursors", CURSOR)?;
+                return tx.delete("maintenance_bounds", CURSOR);
+            };
+            if id == end {
+                tx.delete("maintenance_cursors", CURSOR)?;
+                tx.delete("maintenance_bounds", CURSOR)?;
+            } else {
+                tx.put("maintenance_cursors", CURSOR, &id)?;
+                tx.put("maintenance_bounds", CURSOR, &end)?;
+            }
+            if let Some(create) = crate::identity::downstream::unlinked_create(&id, &job) {
+                let user = tx.get::<User>("users", &create.user_id)?;
+                if user.as_ref().is_none_or(|user| !user.enabled) {
+                    crate::identity::downstream::enqueue_unlinked(
+                        tx,
+                        &create,
+                        user.as_ref().map_or("", |user| user.username.as_str()),
+                        user.as_ref().map_or(0, |user| user.epoch),
+                    )?;
+                }
+            }
+            Ok(())
+        })
     }
 
     /// Operator retry for a failed or stale row. It takes the current link
@@ -705,6 +762,11 @@ impl Core {
                 ));
             }
             require_settled(tx, &row)?;
+            if row.unlinked_create.is_some() {
+                return Err(Error::conflict(
+                    "An unlinked Create cannot be retried or rebound from a later link; settle its original request and resolve the offboarding intent explicitly",
+                ));
+            }
             if row.resolution.as_ref().is_some_and(Resolution::satisfied) {
                 return Err(Error::conflict(
                     "An operator resolved this deactivation; nothing is left to retry",
@@ -774,11 +836,59 @@ impl Core {
                 ));
             }
             require_settled(tx, &row)?;
+            if row.unlinked_create.is_some() {
+                if actor.agent {
+                    return Err(Error::forbidden());
+                }
+                let proof = input.create_settlement.as_ref().ok_or_else(|| Error::bad(
+                    "Unlinked Create resolution requires a reviewed create_settlement attestation",
+                ))?;
+                if !proof.workers_quiesced || !proof.remote_requests_settled {
+                    return Err(Error::bad(
+                        "Quiesce every old worker and settle every original provider request before attesting an unlinked identity inactive or absent",
+                    ));
+                }
+                if proof.revision != row.revision()? {
+                    return Err(Error::conflict("Deactivation changed; review it again"));
+                }
+                if input.observed == super::Observed::NotApplied {
+                    return Err(Error::conflict(
+                        "An active remote identity leaves this obligation unresolved; verify every matching identity inactive or absent",
+                    ));
+                }
+                if !crate::context::current().is_some_and(|context| {
+                    context.idempotency_key.as_ref().is_some_and(|key| {
+                        !key.is_empty() && key.len() <= 128 && key.bytes().all(|b| b.is_ascii_graphic())
+                    })
+                }) {
+                    return Err(Error::new(StatusCode::PRECONDITION_REQUIRED,
+                        "precondition_required", "Unlinked Create resolution requires an Idempotency-Key"));
+                }
+                let create = row.unlinked_create.as_ref().expect("checked unlinked intent");
+                if let Some(mut source) = tx.get::<Job>("provisioning_jobs", &create.source_job)? {
+                    super::retain_create_provenance(&mut source);
+                    if source.unlinked_create.as_ref().is_some_and(|retained|
+                        retained.source_job == create.source_job && retained.target == row.target
+                            && retained.user_id == row.user_id)
+                    {
+                        // Preserve the original evidence and ambiguity. Retire
+                        // only its prospective offboarding obligation, by this
+                        // separate attestation; the old active plan never resumes.
+                        source.stale = true;
+                        source.unlinked_create_resolution = Some(id.into());
+                        super::compact_terminal_job(&mut source);
+                        tx.put("provisioning_jobs", &create.source_job, &source)?;
+                    }
+                }
+            } else if input.create_settlement.is_some() {
+                return Err(Error::bad("Create settlement applies only to unlinked Create intent"));
+            }
             let resolution = Resolution {
                 observed: input.observed,
                 evidence: input.evidence,
                 by: actor.id.clone(),
                 at: now(),
+                create_settlement: input.create_settlement,
             };
             row.uncertain = false;
             row.resolution = Some(resolution.clone());
@@ -947,6 +1057,7 @@ pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
             && row.status != Status::Dismissed
             && row.lease_owner.is_none()
             && row.dispatch_recoveries.is_empty()
+            && row.unlinked_create.is_none()
             && row.next_attempt.saturating_add(RETAIN_SECONDS) < at
         {
             tx.delete(BUCKET, &id)?;
