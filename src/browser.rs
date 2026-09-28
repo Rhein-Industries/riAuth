@@ -82,37 +82,13 @@ impl Core {
     pub fn consents(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let (user, _) = self.session(tx, token)?;
-            let mut list = Vec::new();
-            for (_, client) in tx.list::<Client>("clients")? {
-                if let Some(consent) = crate::saml::consent(tx, &user.id, &client)? { list.push(consent); }
-                if let Some(consent) = tx.get::<Consent>("consents", &consent_key(&user.id, &client.id))?.filter(|c| c.expires_at > now()) {
-                    list.push(json!({"client_id":client.id,"name":client.name,"scopes":consent.scopes,"resource":consent.resource,"expires_at":consent.expires_at}));
-                }
-            }
-            Ok(json!(list))
+            Ok(json!(consents_for_user(tx, &user.id)?))
         })
     }
     pub fn revoke_consent(&self, token: &str, cid: &str) -> Result<Value> {
         self.store.write(|tx| {
             let (user, _) = self.session(tx, token)?;
-            tx.delete("consents", &consent_key(&user.id, cid))?;
-            crate::saml::revoke_consent(tx, &user.id, cid)?;
-            crate::outpost::revoke_sessions(tx, &user.id, cid)?;
-            for (_, grant) in tx.list::<crate::model::Grant>("access")?.into_iter().chain(tx.list("refresh")?) {
-                if grant.client_id == cid && grant.identity.is_some_and(|i| i.user_id == user.id) && let Some(mut family) = tx.get::<crate::model::Family>("families", &grant.family_id)? {
-                    family.revoked = true; tx.put("families", &grant.family_id, &family)?;
-                }
-            }
-            // Unredeemed authorizations for this user/client must not resurrect consent.
-            for (id, code) in tx.list::<crate::model::Code>("codes")? { if code.client_id == cid && code.identity.user_id == user.id { tx.delete("codes", &id)?; } }
-            for (id, mut device) in tx.list::<crate::model::Device>("devices")? {
-                if device.client_id == cid && matches!(&device.status, crate::model::DeviceStatus::Approved(i) if i.user_id == user.id) {
-                    device.status = crate::model::DeviceStatus::Denied; tx.put("devices", &id, &device)?;
-                }
-            }
-            crate::logout::queue_user_client(tx, &user.id, cid)?;
-            crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
-            audit(tx, &user.id, "consent.revoke", cid)?;
+            revoke_consent_for_user(tx, &user.id, cid)?;
             Ok(json!({"revoked":true,"client_id":cid}))
         })
     }
@@ -864,6 +840,48 @@ impl Core {
 
 fn consent_key(uid: &str, cid: &str) -> String {
     digest(&format!("{uid}\0{cid}"))
+}
+
+pub(crate) fn consents_for_user(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
+    let mut list = Vec::new();
+    for (_, client) in tx.list::<Client>("clients")? {
+        if let Some(consent) = crate::saml::consent(tx, user_id, &client)? {
+            list.push(consent);
+        }
+        if let Some(consent) = tx
+            .get::<Consent>("consents", &consent_key(user_id, &client.id))?
+            .filter(|c| c.expires_at > now())
+        {
+            list.push(json!({"client_id":client.id,"name":client.name,"scopes":consent.scopes,"resource":consent.resource,"expires_at":consent.expires_at}));
+        }
+    }
+    Ok(list)
+}
+
+pub(crate) fn revoke_consent_for_user(tx: &Tx<'_>, user_id: &str, cid: &str) -> Result<()> {
+    tx.delete("consents", &consent_key(user_id, cid))?;
+    crate::saml::revoke_consent(tx, user_id, cid)?;
+    crate::outpost::revoke_sessions(tx, user_id, cid)?;
+    for (_, grant) in tx.list::<crate::model::Grant>("access")?.into_iter().chain(tx.list("refresh")?) {
+        if grant.client_id == cid && grant.identity.is_some_and(|i| i.user_id == user_id) && let Some(mut family) = tx.get::<crate::model::Family>("families", &grant.family_id)? {
+            family.revoked = true; tx.put("families", &grant.family_id, &family)?;
+        }
+    }
+    // Unredeemed authorizations for this user/client must not resurrect consent.
+    for (id, code) in tx.list::<crate::model::Code>("codes")? {
+        if code.client_id == cid && code.identity.user_id == user_id {
+            tx.delete("codes", &id)?;
+        }
+    }
+    for (id, mut device) in tx.list::<crate::model::Device>("devices")? {
+        if device.client_id == cid && matches!(&device.status, crate::model::DeviceStatus::Approved(i) if i.user_id == user_id) {
+            device.status = crate::model::DeviceStatus::Denied;
+            tx.put("devices", &id, &device)?;
+        }
+    }
+    crate::logout::queue_user_client(tx, user_id, cid)?;
+    crate::ssf::enqueue(tx, user_id, crate::ssf::SESSION_REVOKED, "")?;
+    audit(tx, user_id, "consent.revoke", cid)
 }
 /// Implicit consent, or a remembered one covering these scopes and resource. prompt=consent
 /// always asks again.

@@ -1,6 +1,7 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
 pub mod admin;
 pub mod http;
+pub mod self_service;
 
 use crate::{
     browser::BrowserReply,

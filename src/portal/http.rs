@@ -139,6 +139,7 @@ pub fn routes() -> Router<App> {
         .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
         .route("/api/device/browser/{code}", get(device_browser_details))
         .route("/api/device/browser/decision", post(device_browser_decide))
+        .merge(super::self_service::http::routes())
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
