@@ -2,7 +2,6 @@ use crate::{
     config::Config,
     crypto::{self, Keys, SigningKey, digest, id, now},
     error::{Error, Result},
-    identity::signals,
     model::*,
     store::{Store, Tx},
 };
@@ -441,14 +440,12 @@ impl Core {
     }
     pub fn logout(&self, token: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (u, mut s) = self.session(tx, token)?;
-            s.revoked = true;
-            tx.put("sessions", &s.id, &s)?;
-            crate::logout::queue_session(tx, &s.id)?;
-            signals::enqueue(tx, &u.id, signals::SESSION_REVOKED, "")?;
-            audit(tx, &u.id, "session.revoke", &s.id)?;
-            let propagation=crate::saml::logout::redirect(self,tx,&s.id,None)?;
-            Ok(json!({"revoked": true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::Logout { token },
+            )
+            .map(|outcome| outcome.body)
         })
     }
     pub fn sessions(&self, token: &str) -> Result<Value> {
@@ -464,29 +461,15 @@ impl Core {
     }
     pub fn revoke_session(&self, token: &str, sid: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let actor = if token.starts_with("ri_agent_") {
-                self.management(tx, token, "session.revoke", &format!("session/{sid}"))?
-                    .id
-            } else {
-                let (user, _) = self.session(tx, token)?;
-                let target = tx
-                    .get::<Session>("sessions", sid)?
-                    .ok_or_else(|| Error::missing("Session not found"))?;
-                if target.identity.user_id != user.id && !user.admin {
-                    return Err(Error::forbidden());
-                }
-                user.id
-            };
-            let mut target = tx
-                .get::<Session>("sessions", sid)?
-                .ok_or_else(|| Error::missing("Session not found"))?;
-            target.revoked = true;
-            tx.put("sessions", sid, &target)?;
-            crate::logout::queue_session(tx, sid)?;
-            signals::enqueue(tx, &target.identity.user_id, signals::SESSION_REVOKED, "")?;
-            audit(tx, &actor, "session.revoke", sid)?;
-            let propagation=crate::saml::logout::redirect(self,tx,sid,None)?;
-            Ok(json!({"revoked":true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::BearerOne {
+                    token,
+                    target_id: sid,
+                },
+            )
+            .map(|outcome| outcome.body)
         })
     }
     pub fn list_users(&self, token: &str) -> Result<Value> {

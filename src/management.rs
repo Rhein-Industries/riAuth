@@ -12,12 +12,15 @@
 //! this seam. Agent create, rotate and revoke use the writers below, as does
 //! signing-key rotation. Inbound SCIM User and Group writes reach their shared writers.
 //! Source unlink has a separate self-service receipt scope tied to a live session.
+//! Session revocation has a live-caller receipt only when another session is targeted.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
 pub(crate) mod grants;
 mod client_policy;
 mod memberships;
+mod sessions;
+pub(crate) use sessions::{RevokeIntent, revoke_sessions};
 
 #[cfg(feature = "platform")]
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
