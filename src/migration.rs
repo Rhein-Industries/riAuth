@@ -822,6 +822,140 @@ fn claim_dictionary(expression: &str) -> Option<Vec<(&str, ClaimValue)>> {
     Some(claims)
 }
 
+/// An escaped or computed dictionary key can evaluate to `sub` even when its source text does not
+/// spell it. Keep these keys, and literal `sub` keys in otherwise unrecognized mappings, out of
+/// the manual translation path: acknowledging a mapping ID cannot preserve subject continuity.
+fn may_return_sub_claim(expression: &str) -> bool {
+    fn skip_gap(bytes: &[u8], at: &mut usize) {
+        loop {
+            match bytes.get(*at) {
+                Some(b' ' | b'\t' | b'\r' | b'\n') => *at += 1,
+                Some(b'#') => {
+                    while *at < bytes.len() && bytes[*at] != b'\n' {
+                        *at += 1;
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
+    let bytes = expression.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'#' => {
+                while at < bytes.len() && bytes[at] != b'\n' {
+                    at += 1;
+                }
+            }
+            b'"' | b'\'' => {
+                let mut spelling = Vec::new();
+                let mut escaped = false;
+                let mut dynamic = false;
+                loop {
+                    dynamic |= at > 0 && matches!(bytes[at - 1], b'f' | b'F')
+                        || at > 1
+                            && matches!(bytes[at - 2], b'f' | b'F')
+                            && matches!(bytes[at - 1], b'r' | b'R');
+                    let quote = bytes[at];
+                    let width = if bytes.get(at + 1) == Some(&quote)
+                        && bytes.get(at + 2) == Some(&quote)
+                    {
+                        3
+                    } else {
+                        1
+                    };
+                    at += width;
+                    let start = at;
+                    while at < bytes.len() {
+                        if bytes[at] == b'\\' {
+                            escaped = true;
+                            at = (at + 2).min(bytes.len());
+                        } else if bytes[at] == quote
+                            && (width == 1
+                                || (bytes.get(at + 1) == Some(&quote)
+                                    && bytes.get(at + 2) == Some(&quote)))
+                        {
+                            break;
+                        } else {
+                            at += 1;
+                        }
+                    }
+                    if at == bytes.len() {
+                        return false;
+                    }
+                    spelling.extend_from_slice(&bytes[start..at]);
+                    at += width;
+                    skip_gap(bytes, &mut at);
+                    if matches!(bytes.get(at), Some(b'"' | b'\'')) {
+                        continue;
+                    }
+                    // Python also concatenates literal fragments joined with `+` at runtime.
+                    if bytes.get(at) == Some(&b'+') {
+                        let mut next = at + 1;
+                        skip_gap(bytes, &mut next);
+                        if matches!(bytes.get(next), Some(b'"' | b'\'')) {
+                            at = next;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+                let key_position = bytes.get(at) == Some(&b':')
+                    || (bytes.get(at) == Some(&b']') && {
+                        let mut next = at + 1;
+                        skip_gap(bytes, &mut next);
+                        bytes.get(next) == Some(&b':')
+                            || bytes.get(next) == Some(&b'=')
+                                && bytes.get(next + 1) != Some(&b'=')
+                    });
+                if key_position && (spelling == b"sub" || escaped || dynamic) {
+                    return true;
+                }
+            }
+            b if b.is_ascii_alphabetic() || b == b'_' => {
+                let start = at;
+                while at < bytes.len()
+                    && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_')
+                {
+                    at += 1;
+                }
+                if &bytes[start..at] == b"sub" {
+                    let mut next = at;
+                    skip_gap(bytes, &mut next);
+                    let mut before = start;
+                    while before > 0 && bytes[before - 1].is_ascii_whitespace() {
+                        before -= 1;
+                    }
+                    let dict_argument = if before > 0 && bytes[before - 1] == b'(' {
+                        let mut end = before - 1;
+                        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+                            end -= 1;
+                        }
+                        let mut start = end;
+                        while start > 0 && bytes[start - 1].is_ascii_alphabetic() {
+                            start -= 1;
+                        }
+                        &bytes[start..end] == b"dict"
+                    } else {
+                        false
+                    };
+                    if bytes.get(next) == Some(&b':')
+                        || (dict_argument
+                            && bytes.get(next) == Some(&b'=')
+                            && bytes.get(next + 1) != Some(&b'='))
+                    {
+                        return true;
+                    }
+                }
+            }
+            _ => at += 1,
+        }
+    }
+    false
+}
+
 /// Whether each exported value reads the same in riAuth for every converted account.
 struct ClaimFacts {
     /// Every account has a non-empty Authentik name, which riAuth keeps as its display name.
@@ -848,6 +982,14 @@ fn scope_claims(
 ) -> std::result::Result<Vec<crate::model::claims::ClaimMapping>, (Classification, String)> {
     use crate::model::claims::{ClaimMapping, ClaimSource};
     let manual = |reason: String| Err((Classification::Manual, reason));
+    if may_return_sub_claim(expression) {
+        return Err((
+            Classification::Unsupported,
+            format!(
+                "Scope mapping {name} may return sub through a literal, escaped or computed key, which would change subjects this client issues"
+            ),
+        ));
+    }
     if scope.starts_with("goauthentik.io/") {
         return manual(format!(
             "Scope mapping {name} grants scope {scope}, access to Authentik's own API or client registration, which riAuth does not provide"

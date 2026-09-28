@@ -2638,8 +2638,71 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             r#"return {"\u0073ub": True}"#,
             &["openid", "legacy"][..],
             false,
-            Manual,
+            Unsupported,
             true,
+        ),
+        (
+            "opaque-sub",
+            "legacy",
+            "return {\"sub\": request.user.username.upper()}",
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "triple-sub",
+            "legacy",
+            r#"return {"""\u0073ub""": True}"#,
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "joined-sub",
+            "legacy",
+            r#"return {"s" "ub": True}"#,
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "formatted-sub",
+            "legacy",
+            r#"return {f"{'s'}ub": True}"#,
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "keyword-sub",
+            "legacy",
+            "return dict(sub=True)",
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "assigned-sub",
+            "legacy",
+            "claims = {}; claims[\"sub\"] = True; return claims",
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "ordinary-custom",
+            "legacy",
+            "return {\"region\": request.user.attributes.get(\"region\")}",
+            &["openid", "legacy"],
+            false,
+            Manual,
+            false,
         ),
         (
             "extra-groups",
@@ -2687,7 +2750,7 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             false,
         ),
     ];
-    let input = json!({
+    let mut input = json!({
         "api_version":"riauth.authentik-import/v1",
         "issuer":issuer,
         "users":[{"pk":1,"uid":"uid-alice","username":"alice","name":"Alice",
@@ -2716,6 +2779,18 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             })
         )).collect::<serde_json::Map<_, _>>()
     });
+    for cid in [
+        "escaped-sub",
+        "opaque-sub",
+        "triple-sub",
+        "joined-sub",
+        "formatted-sub",
+        "keyword-sub",
+        "assigned-sub",
+        "ordinary-custom",
+    ] {
+        input["clients"][cid]["translated_mapping_ids"] = json!([format!("m-{cid}")]);
+    }
     let report = riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
     for (cid, _, _, _, _, classification, blocking) in cases {
         let id = format!("{cid}/m-{cid}");
@@ -2725,6 +2800,9 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             "{id}"
         );
     }
+    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
+        blocker == "escaped-sub: property mapping m-escaped-sub would change subjects"
+    }));
 }
 
 #[test]
