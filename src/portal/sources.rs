@@ -8,7 +8,7 @@ use crate::{
     core::Core,
     crypto::{digest, now},
     error::{Error, Result},
-    model::{Session, User},
+    model::{Identity, Session, User},
     portal::{
         http::{browser_write_guard, portal_html},
         self_service::Binding,
@@ -33,6 +33,25 @@ const KIND: &str = "source";
 const ID: &str = "browser";
 /// A source login lasts ten minutes.
 const LOGIN_SECONDS: u64 = 600;
+
+#[cfg(feature = "test-support")]
+thread_local! {
+    static FAIL_DELIVERY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// Test-only: browser finishes on this thread fail after the source login completed and
+/// before the browser receives it, to show that the whole finish rolls back.
+#[cfg(feature = "test-support")]
+pub fn with_failed_delivery<T>(f: impl FnOnce() -> T) -> T {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            FAIL_DELIVERY.with(|flag| flag.set(false));
+        }
+    }
+    FAIL_DELIVERY.with(|flag| flag.set(true));
+    let _reset = Reset;
+    f()
+}
 
 pub fn routes() -> Router<App> {
     Router::new()
@@ -175,6 +194,14 @@ fn expired() -> Error {
         StatusCode::UNAUTHORIZED,
         "source_login_expired",
         "This sign-in has expired, was cancelled or has already finished. Start again.",
+    )
+}
+
+fn session_changed() -> Error {
+    Error::new(
+        StatusCode::CONFLICT,
+        "session_changed",
+        "This browser's sign-in changed after linking started. Sign in again, then start linking again.",
     )
 }
 
@@ -396,8 +423,10 @@ impl Core {
         Ok(review)
     }
 
-    /// Cancels, or finishes after the page's review. A sign-in becomes this browser's session
-    /// and never exposes a bearer token; a link keeps the local session that started it.
+    /// Cancels, or finishes after the page's review, in one transaction with the source
+    /// login: a link is written only while this browser is still on the exact local session
+    /// that started it, and a sign-in only together with this browser's session. A sign-in
+    /// never exposes a bearer token; a link keeps the local session that started it.
     pub fn portal_source_finish(
         &self,
         credential: Option<&str>,
@@ -413,59 +442,46 @@ impl Core {
             // Without its credential the login is unreachable; it expires on its own.
             return Ok(reply(json!({"cancelled": true}), vec![forget]));
         }
-        let review = self.portal_source_review(Some(credential))?;
-        if review["status"] != "review" {
-            return Err(Error::new(
-                StatusCode::CONFLICT,
-                "source_login_pending",
-                "The provider hasn't finished signing you in yet. Start again.",
-            ));
-        }
-        let linking = review["linking"] == true;
-        if linking {
-            // Link only while the browser still shows the account the login was started for.
-            let (user, _) = self.store.read(|tx| self.portal_session(tx, sso))?;
-            if review["local_user"]["id"] != user.id.as_str() {
+        let bind = |tx: &Tx<'_>, target: Option<&Identity>| {
+            let Some(target) = target else {
+                return Ok(());
+            };
+            let (user, session) =
+                self.portal_session(tx, sso)
+                    .map_err(|error| match error.status {
+                        StatusCode::UNAUTHORIZED => session_changed(),
+                        _ => error,
+                    })?;
+            if session.id != target.session_id
+                || session.identity.user_id != target.user_id
+                || session.identity.epoch != target.epoch
+                || user.epoch != target.epoch
+            {
+                return Err(session_changed());
+            }
+            self.linking_check(tx, &session)
+        };
+        let deliver = |tx: &Tx<'_>, linking: bool, finished: &Value| {
+            #[cfg(feature = "test-support")]
+            if FAIL_DELIVERY.with(std::cell::Cell::get) {
+                return Err(Error::internal("injected browser delivery failure"));
+            }
+            if finished["status"] != "complete" {
                 return Err(Error::new(
                     StatusCode::CONFLICT,
-                    "account_changed",
-                    "The signed-in account changed after linking started. Start linking again.",
+                    "source_login_pending",
+                    "The provider hasn't finished signing you in yet. Start again.",
                 ));
             }
-        }
-        let finished = match self.source_finish(Finish {
-            credential: credential.into(),
-            approve: true,
-            otp,
-        }) {
-            Ok(finished) => finished,
-            // A wrong code leaves the login open for another try; otherwise it has ended.
-            Err(error) if error.status == StatusCode::UNAUTHORIZED => {
-                return Err(match self.portal_source_review(Some(credential)) {
-                    Ok(_) => Error::new(
-                        StatusCode::UNAUTHORIZED,
-                        "invalid_code",
-                        "That code wasn't accepted. Enter the current code from your authenticator app, or a recovery code.",
-                    ),
-                    Err(error) => error,
-                });
-            }
-            Err(error) if error.status == StatusCode::FORBIDDEN => return Err(refused()),
-            Err(error) => return Err(error),
-        };
-        let token = zeroize::Zeroizing::new(
-            finished["session_token"]
+            let token = finished["session_token"]
                 .as_str()
-                .ok_or_else(|| Error::internal("source session missing"))?
-                .to_owned(),
-        );
-        self.store.write(|tx| {
-            let sid = tx
-                .get::<String>("session_tokens", &digest(&token))?
                 .ok_or_else(|| Error::internal("source session missing"))?;
-            // The bearer token never left this function, so the session is reachable only by
-            // this browser, as for a source stage.
-            tx.delete("session_tokens", &digest(&token))?;
+            let sid = tx
+                .get::<String>("session_tokens", &digest(token))?
+                .ok_or_else(|| Error::internal("source session missing"))?;
+            // The bearer token never leaves this transaction, so the session is reachable only
+            // by this browser, as for a source stage.
+            tx.delete("session_tokens", &digest(token))?;
             if linking {
                 // The link needs no sign-in of its own: the browser keeps its local session.
                 let mut session = tx
@@ -486,7 +502,27 @@ impl Core {
                 json!({"signed_in": true, "user": finished["user"]}),
                 cookies,
             ))
-        })
+        };
+        match self.source_finish_browser(credential, otp.as_deref(), bind, deliver) {
+            Ok(finished) => Ok(finished),
+            // A wrong code leaves the login open for another try; otherwise it has ended.
+            Err(error) if error.status == StatusCode::UNAUTHORIZED => {
+                Err(match self.portal_source_review(Some(credential)) {
+                    Ok(_) => Error::new(
+                        StatusCode::UNAUTHORIZED,
+                        "invalid_code",
+                        "That code wasn't accepted. Enter the current code from your authenticator app, or a recovery code.",
+                    ),
+                    Err(error) => error,
+                })
+            }
+            Err(error)
+                if error.status == StatusCode::FORBIDDEN && error.code == "access_denied" =>
+            {
+                Err(refused())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn portal_source_unlink(

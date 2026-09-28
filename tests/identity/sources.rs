@@ -415,3 +415,107 @@ async fn oauth_only_sources_use_pinned_userinfo_and_do_not_invent_oidc_assurance
     assert!(f.core.me(&text(&login, "session_token")).is_err());
     server.abort();
 }
+
+/// The value of cookie `name` set by a browser reply.
+fn reply_cookie(reply: &riauth::browser::BrowserReply, name: &str) -> String {
+    let prefix = format!("{name}=");
+    reply
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .and_then(|pair| pair.strip_prefix(&prefix))
+        })
+        .expect(name)
+        .to_owned()
+}
+
+#[cfg(feature = "test-support")]
+#[tokio::test]
+async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    let upstream = Upstream::new(&f).await;
+    let browser = |f: &Fixture| {
+        reply_cookie(
+            &f.core
+                .portal_password(None, "alice".into(), PASSWORD.into(), None, false)
+                .unwrap(),
+            "riauth_sso",
+        )
+    };
+    let original = browser(&f);
+    let page = f.core.portal_source_links(Some(&original)).unwrap();
+    let binding = riauth::portal::self_service::Binding {
+        expected_user_id: text(&page["user"], "id"),
+        expected_session_id: text(&page, "current_session_id"),
+    };
+    let started = f
+        .core
+        .portal_source_start(Some(&original), "upstream", Some(&binding))
+        .unwrap();
+    let cookie = reply_cookie(&started, "riauth_source");
+    let credential = cookie.split_once('.').unwrap().0.to_owned();
+    upstream
+        .callback(&f, &started.body, "subject-browser", json!({}))
+        .await;
+    let finish = |sso: &str| {
+        f.core
+            .portal_source_finish(Some(&credential), Some(sso), true, None)
+    };
+    let links = || {
+        f.core
+            .source_links(&alice)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    let sessions = || f.core.store.list::<Session>("sessions").unwrap().len();
+    let age = |seconds: u64| {
+        f.core
+            .store
+            .write(|tx| {
+                let mut session: Session =
+                    tx.get("sessions", &binding.expected_session_id)?.unwrap();
+                session.identity.auth_time = now() - seconds;
+                tx.put("sessions", &binding.expected_session_id, &session)
+            })
+            .unwrap()
+    };
+
+    // Another fresh browser session of the same account did not start this link.
+    let other = browser(&f);
+    assert_eq!(finish(&other).err().unwrap().code, "session_changed");
+    // The original session must still be a fresh local sign-in when the link is written.
+    age(riauth::signin::FRESH_SECONDS + 5);
+    assert_eq!(
+        finish(&original).err().unwrap().code,
+        "reauthentication_required"
+    );
+    assert_eq!(links(), 0);
+
+    // A failure after the proof is spent rolls back the link and the new session with it.
+    age(0);
+    let before = sessions();
+    assert!(riauth::portal::sources::with_failed_delivery(|| finish(&original)).is_err());
+    assert_eq!((links(), sessions()), (0, before));
+    assert_eq!(
+        f.core.portal_source_review(Some(&credential)).unwrap()["status"],
+        "review"
+    );
+
+    // The same login then finishes once, from the original session, which stays signed in.
+    assert_eq!(finish(&original).unwrap().body["linked"], true);
+    assert_eq!(links(), 1);
+    assert!(f.core.portal_source_links(Some(&original)).is_ok());
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&credential))
+            .unwrap_err()
+            .code,
+        "source_login_expired"
+    );
+}
