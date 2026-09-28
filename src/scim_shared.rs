@@ -40,6 +40,8 @@ pub fn response(result: Result<Value>, status: StatusCode) -> Response {
             let typ = match error.code {
                 "conflict" => "uniqueness",
                 "invalid_filter" => "invalidFilter",
+                "invalidPath" => "invalidPath",
+                "noTarget" => "noTarget",
                 "mutability" => "mutability",
                 _ => "invalidValue",
             };

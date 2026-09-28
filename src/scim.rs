@@ -10,7 +10,10 @@ use crate::{
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::{cmp::Ordering, collections::{BTreeMap, BTreeSet}};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+};
 
 pub use crate::scim_shared::{GROUP, USER, response};
 const LIST: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
@@ -141,8 +144,16 @@ pub(crate) fn record_transition(
 ) -> Result<()> {
     match bucket {
         "users" => {
-            let effective = ["username", "display_name", "email", "enabled", "password_hash"];
-            if !effective.iter().any(|field| before.and_then(|v| v.get(*field)) != after.and_then(|v| v.get(*field))) {
+            let effective = [
+                "username",
+                "display_name",
+                "email",
+                "enabled",
+                "password_hash",
+            ];
+            if !effective.iter().any(|field| {
+                before.and_then(|v| v.get(*field)) != after.and_then(|v| v.get(*field))
+            }) {
                 return Ok(());
             }
             for (id, mut record) in tx.list::<Record>("scim_users")? {
@@ -155,7 +166,11 @@ pub(crate) fn record_transition(
         "groups" => {
             let members = |value: Option<&Value>| -> Result<BTreeSet<String>> {
                 value
-                    .map(|value| serde_json::from_value::<Group>(value.clone()).map(|group| group.members).map_err(Error::internal))
+                    .map(|value| {
+                        serde_json::from_value::<Group>(value.clone())
+                            .map(|group| group.members)
+                            .map_err(Error::internal)
+                    })
                     .transpose()
                     .map(|members| members.unwrap_or_default())
             };
@@ -265,8 +280,12 @@ enum Filter {
     Present(&'static str),
     EmailPresent,
     EmailPath(Box<FilterExpr>),
-    EmailText { field: &'static str, needle: String },
+    EmailText {
+        field: &'static str,
+        needle: String,
+    },
     EmailPrimary(bool),
+    MemberValue(String),
 }
 
 enum FilterExpr {
@@ -288,7 +307,11 @@ impl FilterExpr {
 impl Filter {
     fn matches(&self, value: &Value) -> bool {
         match self {
-            Self::Text { field, needle, exact } => value[*field].as_str().is_some_and(|actual| {
+            Self::Text {
+                field,
+                needle,
+                exact,
+            } => value[*field].as_str().is_some_and(|actual| {
                 if *exact {
                     actual == needle
                 } else {
@@ -312,15 +335,19 @@ impl Filter {
             },
             Self::EmailPresent => value["emails"].as_array().is_some_and(|emails| {
                 emails.iter().any(|email| {
-                    email["value"].as_str().is_some_and(|actual| !actual.is_empty())
+                    email["value"]
+                        .as_str()
+                        .is_some_and(|actual| !actual.is_empty())
                 })
             }),
-            Self::EmailPath(expr) => value["emails"].as_array().is_some_and(|emails| {
-                emails.iter().any(|email| expr.matches(email))
-            }),
-            Self::EmailText { field, needle } => value[*field].as_str()
+            Self::EmailPath(expr) => value["emails"]
+                .as_array()
+                .is_some_and(|emails| emails.iter().any(|email| expr.matches(email))),
+            Self::EmailText { field, needle } => value[*field]
+                .as_str()
                 .is_some_and(|actual| actual.eq_ignore_ascii_case(needle)),
             Self::EmailPrimary(expected) => value["primary"].as_bool() == Some(*expected),
+            Self::MemberValue(needle) => value["value"].as_str() == Some(needle),
         }
     }
 }
@@ -333,19 +360,29 @@ enum FilterScope {
     Users,
     Groups,
     Email,
+    Member,
 }
 
 fn invalid_filter(message: &'static str) -> Error {
     Error::oauth("invalid_filter", message)
 }
 
-fn parse_filter_predicate(scope: FilterScope, field: &str, op: &str, literal: Option<&str>) -> Result<Filter> {
+fn parse_filter_predicate(
+    scope: FilterScope,
+    field: &str,
+    op: &str,
+    literal: Option<&str>,
+) -> Result<Filter> {
     let field = field.to_ascii_lowercase();
     if op.eq_ignore_ascii_case("pr") {
         return match (scope, field.as_str()) {
             (FilterScope::Users, "username") => Ok(Filter::Present("userName")),
-            (FilterScope::Users | FilterScope::Groups, "displayname") => Ok(Filter::Present("displayName")),
-            (FilterScope::Users | FilterScope::Groups, "externalid") => Ok(Filter::Present("externalId")),
+            (FilterScope::Users | FilterScope::Groups, "displayname") => {
+                Ok(Filter::Present("displayName"))
+            }
+            (FilterScope::Users | FilterScope::Groups, "externalid") => {
+                Ok(Filter::Present("externalId"))
+            }
             (FilterScope::Users | FilterScope::Groups, "id") => Ok(Filter::Present("id")),
             (FilterScope::Users, "active") => Ok(Filter::Present("active")),
             (FilterScope::Users, "emails") => Ok(Filter::Present("emails")),
@@ -360,29 +397,51 @@ fn parse_filter_predicate(scope: FilterScope, field: &str, op: &str, literal: Op
         return Err(invalid_filter("Unsupported filter operator"));
     }
     let literal = literal.ok_or_else(|| invalid_filter("Expected filter value"))?;
-    if matches!((scope, field.as_str()), (FilterScope::Users, "active") | (FilterScope::Email, "primary")) {
+    if matches!(
+        (scope, field.as_str()),
+        (FilterScope::Users, "active") | (FilterScope::Email, "primary")
+    ) {
         let active = serde_json::from_str::<bool>(literal)
             .map_err(|_| invalid_filter("Boolean filter requires true or false"))?;
-        return Ok(if scope == FilterScope::Email { Filter::EmailPrimary(active) } else { Filter::Active(active) });
+        return Ok(if scope == FilterScope::Email {
+            Filter::EmailPrimary(active)
+        } else {
+            Filter::Active(active)
+        });
     }
     let needle = serde_json::from_str::<String>(literal)
         .map_err(|_| invalid_filter("Filter value must be one quoted JSON string"))?;
     match (scope, field.as_str()) {
         (FilterScope::Users, "username") => Ok(Filter::Text {
-            field: "userName", needle, exact: false,
+            field: "userName",
+            needle,
+            exact: false,
         }),
         (FilterScope::Users | FilterScope::Groups, "displayname") => Ok(Filter::Text {
-            field: "displayName", needle, exact: false,
+            field: "displayName",
+            needle,
+            exact: false,
         }),
         (FilterScope::Users | FilterScope::Groups, "externalid") => Ok(Filter::Text {
-            field: "externalId", needle, exact: true,
+            field: "externalId",
+            needle,
+            exact: true,
         }),
         (FilterScope::Users | FilterScope::Groups, "id") => Ok(Filter::Text {
-            field: "id", needle, exact: true,
+            field: "id",
+            needle,
+            exact: true,
         }),
         (FilterScope::Users, "emails.value") => Ok(Filter::Email(needle)),
-        (FilterScope::Email, "value") => Ok(Filter::EmailText { field: "value", needle }),
-        (FilterScope::Email, "type") => Ok(Filter::EmailText { field: "type", needle }),
+        (FilterScope::Email, "value") => Ok(Filter::EmailText {
+            field: "value",
+            needle,
+        }),
+        (FilterScope::Email, "type") => Ok(Filter::EmailText {
+            field: "type",
+            needle,
+        }),
+        (FilterScope::Member, "value") => Ok(Filter::MemberValue(needle)),
         _ => Err(invalid_filter("Unsupported equality attribute")),
     }
 }
@@ -408,7 +467,10 @@ impl<'a> FilterParser<'a> {
 
     fn word(&mut self) -> &'a str {
         let start = self.pos;
-        while self.peek().is_some_and(|byte| !matches!(byte, b' ' | b'(' | b')' | b'[' | b']' | b'"')) {
+        while self
+            .peek()
+            .is_some_and(|byte| !matches!(byte, b' ' | b'(' | b')' | b'[' | b']' | b'"'))
+        {
             self.pos += 1;
         }
         &self.input[start..self.pos]
@@ -523,7 +585,9 @@ impl<'a> FilterParser<'a> {
             return Err(invalid_filter("Too many filter expressions"));
         }
         self.expressions += 1;
-        Ok(FilterExpr::Predicate(parse_filter_predicate(scope, field, op, literal)?))
+        Ok(FilterExpr::Predicate(parse_filter_predicate(
+            scope, field, op, literal,
+        )?))
     }
 }
 
@@ -535,14 +599,21 @@ fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<FilterExpr>> 
         return Err(Error::oauth("invalid_filter", "Filter too long"));
     }
     if filter.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(Error::oauth("invalid_filter", "Control characters are not allowed in filters"));
+        return Err(Error::oauth(
+            "invalid_filter",
+            "Control characters are not allowed in filters",
+        ));
     }
     let scope = match kind {
         "Users" => FilterScope::Users,
         "Groups" => FilterScope::Groups,
         _ => return Err(invalid_filter("Unsupported resource type")),
     };
-    let mut parser = FilterParser { input: filter, pos: 0, expressions: 0 };
+    let mut parser = FilterParser {
+        input: filter,
+        pos: 0,
+        expressions: 0,
+    };
     parser.spaces();
     let expr = parser.or(scope, 0)?;
     parser.spaces();
@@ -617,7 +688,9 @@ fn sort_key(value: &Value, field: SortField) -> Option<SortKey<'_>> {
         SortField::UserName => value["userName"].as_str(),
         SortField::DisplayName => value["displayName"].as_str(),
         SortField::EmailValue => value["emails"].as_array().and_then(|emails| {
-            emails.iter().find(|email| email["primary"] == true)
+            emails
+                .iter()
+                .find(|email| email["primary"] == true)
                 .or_else(|| emails.first())
                 .and_then(|email| email["value"].as_str())
         }),
@@ -632,10 +705,26 @@ fn sort_key(value: &Value, field: SortField) -> Option<SortKey<'_>> {
 fn compare_sort(left: &Value, right: &Value, spec: SortSpec) -> Ordering {
     let primary = match (sort_key(left, spec.field), sort_key(right, spec.field)) {
         (None, None) => Ordering::Equal,
-        (None, Some(_)) => if spec.descending { Ordering::Less } else { Ordering::Greater },
-        (Some(_), None) => if spec.descending { Ordering::Greater } else { Ordering::Less },
+        (None, Some(_)) => {
+            if spec.descending {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+        (Some(_), None) => {
+            if spec.descending {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        }
         (Some(SortKey::Bool(a)), Some(SortKey::Bool(b))) => {
-            if spec.descending { b.cmp(&a) } else { a.cmp(&b) }
+            if spec.descending {
+                b.cmp(&a)
+            } else {
+                a.cmp(&b)
+            }
         }
         (Some(SortKey::Text(a)), Some(SortKey::Text(b))) => {
             let order = if matches!(spec.field, SortField::Id | SortField::ExternalId) {
@@ -643,7 +732,11 @@ fn compare_sort(left: &Value, right: &Value, spec: SortSpec) -> Ordering {
             } else {
                 a.to_lowercase().cmp(&b.to_lowercase())
             };
-            if spec.descending { order.reverse() } else { order }
+            if spec.descending {
+                order.reverse()
+            } else {
+                order
+            }
         }
         _ => Ordering::Equal,
     };
@@ -666,8 +759,11 @@ enum Projection {
 
 fn projection_path(kind: &str, raw: &str) -> Result<(&'static str, Option<&'static str>)> {
     let schema = if kind == "Users" { USER } else { GROUP };
-    let path = if raw.get(..schema.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(schema))
-        && raw.as_bytes().get(schema.len()) == Some(&b':') {
+    let path = if raw
+        .get(..schema.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(schema))
+        && raw.as_bytes().get(schema.len()) == Some(&b':')
+    {
         &raw[schema.len() + 1..]
     } else {
         raw
@@ -702,10 +798,18 @@ fn projection_path(kind: &str, raw: &str) -> Result<(&'static str, Option<&'stat
     }
 }
 
-fn parse_projection(kind: &str, attributes: Option<&str>, excluded: Option<&str>) -> Result<Projection> {
+fn parse_projection(
+    kind: &str,
+    attributes: Option<&str>,
+    excluded: Option<&str>,
+) -> Result<Projection> {
     let (include, raw) = match (attributes, excluded) {
         (None, None) => return Ok(Projection::Full),
-        (Some(_), Some(_)) => return Err(Error::bad("attributes and excludedAttributes are mutually exclusive")),
+        (Some(_), Some(_)) => {
+            return Err(Error::bad(
+                "attributes and excludedAttributes are mutually exclusive",
+            ));
+        }
         (Some(raw), None) => (true, raw),
         (None, Some(raw)) => (false, raw),
     };
@@ -725,15 +829,24 @@ fn parse_projection(kind: &str, attributes: Option<&str>, excluded: Option<&str>
         }
         let (root, sub) = projection_path(kind, item)?;
         if let Some(sub) = sub {
-            match fields.entry(root).or_insert_with(|| FieldSelection::Subfields(BTreeSet::new())) {
+            match fields
+                .entry(root)
+                .or_insert_with(|| FieldSelection::Subfields(BTreeSet::new()))
+            {
                 FieldSelection::Whole => {}
-                FieldSelection::Subfields(selected) => { selected.insert(sub); }
+                FieldSelection::Subfields(selected) => {
+                    selected.insert(sub);
+                }
             }
         } else {
             fields.insert(root, FieldSelection::Whole);
         }
     }
-    Ok(if include { Projection::Include(fields) } else { Projection::Exclude(fields) })
+    Ok(if include {
+        Projection::Include(fields)
+    } else {
+        Projection::Exclude(fields)
+    })
 }
 
 fn projection_subfields(root: &str) -> &'static [&'static str] {
@@ -753,9 +866,17 @@ fn project_complex(value: Value, root: &str, selected: Option<&BTreeSet<&str>>) 
     }
     let project_object = |source: Map<String, Value>| {
         let mut projected = Map::new();
-        for field in fields.iter().copied().filter(|field| selected.is_none_or(|set| set.contains(field))) {
-            if let Some(value) = source.get(field).or_else(|| source.iter()
-                .find(|(key, _)| key.eq_ignore_ascii_case(field)).map(|(_, value)| value)) {
+        for field in fields
+            .iter()
+            .copied()
+            .filter(|field| selected.is_none_or(|set| set.contains(field)))
+        {
+            if let Some(value) = source.get(field).or_else(|| {
+                source
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(field))
+                    .map(|(_, value)| value)
+            }) {
                 projected.insert(field.to_owned(), value.clone());
             }
         }
@@ -764,17 +885,32 @@ fn project_complex(value: Value, root: &str, selected: Option<&BTreeSet<&str>>) 
     match value {
         Value::Object(source) => {
             let projected = project_object(source);
-            if projected.is_empty() && selected.is_some() { None } else { Some(Value::Object(projected)) }
+            if projected.is_empty() && selected.is_some() {
+                None
+            } else {
+                Some(Value::Object(projected))
+            }
         }
         Value::Array(items) => {
-            let projected: Vec<_> = items.into_iter().filter_map(|item| match item {
+            let projected: Vec<_> = items
+                .into_iter()
+                .filter_map(|item| match item {
                 Value::Object(source) => {
                     let projected = project_object(source);
-                    if projected.is_empty() { None } else { Some(Value::Object(projected)) }
+                        if projected.is_empty() {
+                            None
+                        } else {
+                            Some(Value::Object(projected))
+                        }
                 }
                 _ => None,
-            }).collect();
-            if projected.is_empty() && selected.is_some() { None } else { Some(Value::Array(projected)) }
+                })
+                .collect();
+            if projected.is_empty() && selected.is_some() {
+                None
+            } else {
+                Some(Value::Array(projected))
+            }
         }
         _ => None,
     }
@@ -804,28 +940,43 @@ impl Projection {
             Self::Include(_) => {
                 let mut projected = Map::new();
                 for root in ["schemas", "id"] {
-                    if let Some(required) = source.remove(root) { projected.insert(root.to_owned(), required); }
+                    if let Some(required) = source.remove(root) {
+                        projected.insert(root.to_owned(), required);
+                    }
                 }
                 for (root, selection) in fields {
-                    if matches!(*root, "schemas" | "id") { continue; }
+                    if matches!(*root, "schemas" | "id") {
+                        continue;
+                    }
                     if let Some(original) = source.remove(*root) {
                         let selected = match selection {
                             FieldSelection::Whole => Some(original),
-                            FieldSelection::Subfields(subfields) => project_complex(original, root, Some(subfields)),
+                            FieldSelection::Subfields(subfields) => {
+                                project_complex(original, root, Some(subfields))
+                            }
                         };
-                        if let Some(selected) = selected { projected.insert((*root).to_owned(), selected); }
+                        if let Some(selected) = selected {
+                            projected.insert((*root).to_owned(), selected);
+                        }
                     }
                 }
                 Value::Object(projected)
             }
             Self::Exclude(_) => {
                 for (root, selection) in fields {
-                    if matches!(*root, "schemas" | "id") { continue; }
+                    if matches!(*root, "schemas" | "id") {
+                        continue;
+                    }
                     if let Some(original) = source.remove(*root) {
                         if let FieldSelection::Subfields(excluded) = selection {
-                            let remaining = projection_subfields(root).iter().copied()
-                                .filter(|field| !excluded.contains(field)).collect();
-                            if let Some(selected) = project_complex(original, root, Some(&remaining)) {
+                            let remaining = projection_subfields(root)
+                                .iter()
+                                .copied()
+                                .filter(|field| !excluded.contains(field))
+                                .collect();
+                            if let Some(selected) =
+                                project_complex(original, root, Some(&remaining))
+                            {
                                 source.insert((*root).to_owned(), selected);
                             }
                         }
@@ -907,7 +1058,11 @@ impl Core {
     ) -> Result<()> {
         let Some(id) = id else {
             if context.and_then(|c| c.if_match.as_ref()).is_some() {
-                return Err(Error::new(StatusCode::PRECONDITION_FAILED, "precondition_failed", "No resource exists for If-Match"));
+                return Err(Error::new(
+                    StatusCode::PRECONDITION_FAILED,
+                    "precondition_failed",
+                    "No resource exists for If-Match",
+                ));
             }
             return Ok(());
         };
@@ -916,13 +1071,21 @@ impl Core {
         if let Some(context) = context {
             let supplied = context.if_match.as_deref();
             if actor.agent && supplied.is_none() {
-                return Err(Error::new(StatusCode::PRECONDITION_REQUIRED, "precondition_required", "Agent SCIM updates and deletes require resource If-Match"));
+                return Err(Error::new(
+                    StatusCode::PRECONDITION_REQUIRED,
+                    "precondition_required",
+                    "Agent SCIM updates and deletes require resource If-Match",
+                ));
             }
             if let Some(supplied) = supplied {
                 let current = self.scim_view(tx, id, &record)?;
                 let version = current["meta"]["version"].as_str().unwrap_or("");
                 if !crypto::constant_eq(supplied, version) {
-                    return Err(Error::new(StatusCode::PRECONDITION_FAILED, "precondition_failed", "SCIM resource version changed"));
+                    return Err(Error::new(
+                        StatusCode::PRECONDITION_FAILED,
+                        "precondition_failed",
+                        "SCIM resource version changed",
+                    ));
                 }
             }
         }
@@ -936,12 +1099,22 @@ impl Core {
             self.scim_view(tx, id, &record)
         })
     }
-    pub fn scim_get_projected(&self, token: &str, kind: &str, id: &str, query: ProjectionQuery) -> Result<(Value, String, String)> {
+    pub fn scim_get_projected(
+        &self,
+        token: &str,
+        kind: &str,
+        id: &str,
+        query: ProjectionQuery,
+    ) -> Result<(Value, String, String)> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
             let record = owned(tx, &actor, kind, id)?;
             require(&actor, &record, "read")?;
-            let projection = parse_projection(kind, query.attributes.as_deref(), query.excluded_attributes.as_deref())?;
+            let projection = parse_projection(
+                kind,
+                query.attributes.as_deref(),
+                query.excluded_attributes.as_deref(),
+            )?;
             let full = self.scim_view(tx, id, &record)?;
             let version = full["meta"]["version"].as_str().unwrap_or("").to_owned();
             let location = full["meta"]["location"].as_str().unwrap_or("").to_owned();
@@ -986,13 +1159,19 @@ impl Core {
         patch: bool,
     ) -> Result<Value> {
         bucket(kind)?;
-        self.mutation_checked(token, |tx, actor, context| self.scim_precondition(tx, actor, context, kind, id), |tx| {
+        self.mutation_checked(
+            token,
+            |tx, actor, context| self.scim_precondition(tx, actor, context, kind, id),
+            |tx| {
             let actor = self.principal(tx, token)?;
             let existing = id.map(|id| owned(tx, &actor, kind, id)).transpose()?;
-            let before_version = existing.as_ref().map(|record| {
+                let before_version = existing
+                    .as_ref()
+                    .map(|record| {
                 self.scim_view(tx, id.unwrap(), record)
                     .map(|value| value["meta"]["version"].clone())
-            }).transpose()?;
+                    })
+                    .transpose()?;
             let member_patch = kind == "Groups" && patch && patches_members(&input);
             let mut data = if patch {
                 let mut base = existing
@@ -1104,6 +1283,7 @@ impl Core {
                     .unwrap_or(&label)
                     .to_owned();
                 validate_display(&display)?;
+                if !patch { validate_email_entries(&data)?; }
                 let email = read_email(&data)?;
                 if user.email != email {
                     user.email_verified = false;
@@ -1209,7 +1389,9 @@ impl Core {
                 external_id,
                 data,
                 deleted: false,
-                version: existing.as_ref().map_or_else(crypto::id, |record| record.version.clone()),
+                    version: existing
+                        .as_ref()
+                        .map_or_else(crypto::id, |record| record.version.clone()),
             };
             let record_changed = existing.as_ref() != Some(&record);
             if kind == "Users" || record_changed {
@@ -1225,10 +1407,14 @@ impl Core {
                 audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
             }
             Ok(view)
-        })
+            },
+        )
     }
     pub fn scim_delete(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        self.mutation_checked(token, |tx, actor, context| self.scim_precondition(tx, actor, context, kind, Some(id)), |tx| {
+        self.mutation_checked(
+            token,
+            |tx, actor, context| self.scim_precondition(tx, actor, context, kind, Some(id)),
+            |tx| {
             let actor = self.principal(tx, token)?;
             let mut record = owned(tx, &actor, kind, id)?;
             require(&actor, &record, "write")?;
@@ -1287,7 +1473,8 @@ impl Core {
                 name(&record),
             )?;
             Ok(json!({}))
-        })
+            },
+        )
     }
 }
 fn read_email(data: &Value) -> Result<Option<String>> {
@@ -1317,17 +1504,285 @@ fn read_email(data: &Value) -> Result<Option<String>> {
     }
     Ok(primary.or(first))
 }
+fn validate_email_entries(data: &Value) -> Result<()> {
+    let Some(emails) = data.get("emails") else { return Ok(()); };
+    let emails = emails.as_array().filter(|v| v.len() <= 8)
+        .ok_or_else(|| Error::bad("emails must be an array of at most eight values"))?;
+    let mut seen = BTreeSet::new();
+    for email in emails {
+        let fields = email.as_object().ok_or_else(|| Error::bad("Email must be an object"))?;
+        if fields.keys().any(|key| !["value", "type", "primary"].contains(&key.as_str())) {
+            return Err(Error::bad("Unsupported email sub-attribute"));
+        }
+        let value = email["value"].as_str().ok_or_else(|| Error::bad("Email value missing"))?;
+        validate_email(value)?;
+        if !seen.insert(value.to_ascii_lowercase()) { return Err(Error::bad("Duplicate email value")); }
+        if email.get("primary").is_some() && !email["primary"].is_boolean() {
+            return Err(Error::bad("Email primary must be a boolean"));
+        }
+        if let Some(kind) = email.get("type") {
+            let kind = kind.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
+            if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
+                return Err(Error::bad("Invalid email type"));
+            }
+        }
+    }
+    read_email(data)?;
+    Ok(())
+}
 fn patches_members(input: &Value) -> bool {
     input["Operations"].as_array().is_some_and(|operations| {
         operations.iter().any(|op| {
             op["path"].as_str().is_some_and(|path| {
-                path.eq_ignore_ascii_case("members") || path.starts_with("members[")
+                path.eq_ignore_ascii_case("members")
+                    || path
+                        .get(..8)
+                        .is_some_and(|head| head.eq_ignore_ascii_case("members["))
             }) || op["path"].is_null()
                 && op["value"].as_object().is_some_and(|value| {
                     value.keys().any(|key| key.eq_ignore_ascii_case("members"))
                 })
         })
     })
+}
+
+// PATCH valuePaths use the same bounded expression parser as list filters, but
+// match each element in isolation. Brackets inside a JSON string are consumed
+// by FilterParser, so they cannot change the selected sub-attribute.
+fn patch_value_path(
+    path: &str,
+) -> Result<Option<(&'static str, FilterExpr, Option<&'static str>)>> {
+    if path.len() > 1024 || path.bytes().any(|b| b.is_ascii_control()) {
+        return Err(Error::oauth("invalidPath", "Invalid PATCH path"));
+    }
+    let Some((root, _)) = path.split_once('[') else {
+        return Ok(None);
+    };
+    let (field, scope) = if root.eq_ignore_ascii_case("emails") {
+        ("emails", FilterScope::Email)
+    } else if root.eq_ignore_ascii_case("members") {
+        ("members", FilterScope::Member)
+    } else {
+        return Err(Error::oauth("invalidPath", "Unsupported PATCH valuePath"));
+    };
+    let mut parser = FilterParser {
+        input: path,
+        pos: root.len() + 1,
+        expressions: 0,
+    };
+    parser.spaces();
+    let filter = parser
+        .or(scope, 0)
+        .map_err(|_| Error::oauth("invalidPath", "Invalid PATCH valuePath filter"))?;
+    parser.spaces();
+    if parser.peek() != Some(b']') {
+        return Err(Error::oauth(
+            "invalidPath",
+            "PATCH valuePath is missing a closing bracket",
+        ));
+    }
+    parser.pos += 1;
+    let tail = &path[parser.pos..];
+    let sub = if tail.is_empty() {
+        None
+    } else if let Some(tail) = tail.strip_prefix('.') {
+        match (field, tail.to_ascii_lowercase().as_str()) {
+            ("emails", "value") | ("members", "value") => Some("value"),
+            ("emails", "type") => Some("type"),
+            ("emails", "primary") => Some("primary"),
+            ("members", "display") => {
+                return Err(Error::oauth("mutability", "Member display is read-only"));
+            }
+            _ => {
+                return Err(Error::oauth(
+                    "invalidPath",
+                    "Unsupported PATCH sub-attribute",
+                ));
+            }
+        }
+    } else {
+        return Err(Error::oauth("invalidPath", "Unsupported PATCH path suffix"));
+    };
+    Ok(Some((field, filter, sub)))
+}
+
+fn patch_entry(field: &str, value: &Value) -> Result<Value> {
+    let source = value
+        .as_object()
+        .ok_or_else(|| Error::bad("Complex PATCH value must be an object"))?;
+    let mut result = Map::new();
+    for (key, value) in source {
+        let canonical = match (field, key.to_ascii_lowercase().as_str()) {
+            (_, "value") => "value",
+            ("emails", "type") => "type",
+            ("emails", "primary") => "primary",
+            ("members", "display") => {
+                return Err(Error::oauth("mutability", "Member display is read-only"));
+            }
+            _ => return Err(Error::bad("Unsupported complex PATCH sub-attribute")),
+        };
+        if result.insert(canonical.into(), value.clone()).is_some() {
+            return Err(Error::bad("Duplicate complex PATCH sub-attribute"));
+        }
+    }
+    if field == "members"
+        && result.get("value").is_some_and(|value| {
+            value.as_str().is_none_or(|id| {
+                id.is_empty() || id.len() > 256 || id.chars().any(char::is_control)
+            })
+        })
+    {
+        return Err(Error::bad("Invalid member ID"));
+    }
+    Ok(Value::Object(result))
+}
+
+fn patch_entries(field: &str, value: &Value) -> Result<Vec<Value>> {
+    let raw: Vec<&Value> = match value {
+        Value::Array(values) => values.iter().collect(),
+        Value::Object(_) => vec![value],
+        _ => return Err(Error::bad("Complex PATCH value must be an object or array")),
+    };
+    if raw.len() > if field == "emails" { 8 } else { 1000 } {
+        return Err(Error::bad("Too many complex PATCH values"));
+    }
+    raw.into_iter()
+        .map(|value| patch_entry(field, value))
+        .collect()
+}
+
+fn set_email_primary(items: &mut [Value], winner: usize) {
+    for (index, email) in items.iter_mut().enumerate() {
+        if index != winner {
+            email["primary"] = json!(false);
+        }
+    }
+}
+
+fn patch_multi_root(data: &mut Value, field: &str, operation: &str, value: &Value) -> Result<()> {
+    let incoming = patch_entries(field, value)?;
+    if operation == "replace" {
+        data[field] = json!(incoming);
+        return Ok(());
+    }
+    if data.get(field).is_none() {
+        data[field] = json!([]);
+    }
+    let current = data[field]
+        .as_array_mut()
+        .ok_or_else(|| Error::bad("Complex attribute must be an array"))?;
+    for item in incoming {
+        let key = item["value"]
+            .as_str()
+            .ok_or_else(|| Error::bad("Complex value is required"))?;
+        let duplicate = current.iter().any(|old| {
+            old["value"].as_str().is_some_and(|v| {
+                if field == "emails" {
+                    v.eq_ignore_ascii_case(key)
+                } else {
+                    v == key
+                }
+            })
+        });
+        if duplicate {
+            continue;
+        }
+        let primary = field == "emails" && item["primary"] == true;
+        current.push(item);
+        if primary {
+            let winner = current.len() - 1;
+            set_email_primary(current, winner);
+        }
+    }
+    Ok(())
+}
+
+fn patch_multi_selected(
+    data: &mut Value,
+    field: &str,
+    filter: &FilterExpr,
+    sub: Option<&str>,
+    operation: &str,
+    value: &Value,
+) -> Result<()> {
+    let current = data.get_mut(field).and_then(Value::as_array_mut);
+    let Some(current) = current else {
+        if operation == "remove" {
+            return Ok(());
+        }
+        return Err(Error::oauth("noTarget", "PATCH valuePath matched no value"));
+    };
+    let selected: Vec<usize> = current
+        .iter()
+        .enumerate()
+        .filter_map(|(i, entry)| filter.matches(entry).then_some(i))
+        .collect();
+    if selected.is_empty() {
+        if operation == "remove" {
+            return Ok(());
+        }
+        return Err(Error::oauth("noTarget", "PATCH valuePath matched no value"));
+    }
+    if operation == "remove" {
+        if let Some(sub) = sub {
+            if sub == "value" {
+                return Err(Error::oauth("mutability", "Cannot remove a required value"));
+            }
+            for &i in &selected {
+                current[i].as_object_mut().unwrap().remove(sub);
+            }
+        } else {
+            current.retain(|entry| !filter.matches(entry));
+        }
+        return Ok(());
+    }
+    let replacement = if let Some(sub) = sub {
+        if field == "members" && sub != "value" {
+            return Err(Error::oauth("mutability", "Member display is read-only"));
+        }
+        let valid = match sub {
+            "value" if field == "emails" => {
+                value.as_str().is_some_and(|v| validate_email(v).is_ok())
+            }
+            "value" => value.as_str().is_some_and(|v| {
+                !v.is_empty() && v.len() <= 256 && !v.chars().any(char::is_control)
+            }),
+            "type" => value.as_str().is_some_and(|v| {
+                !v.is_empty() && v.len() <= 64 && !v.chars().any(char::is_control)
+            }),
+            "primary" => value.is_boolean(),
+            _ => false,
+        };
+        if !valid {
+            return Err(Error::bad("Invalid complex PATCH sub-attribute value"));
+        }
+        None
+    } else {
+        Some(patch_entry(field, value)?)
+    };
+    let promote = if let Some(sub) = sub {
+        sub == "primary" && value == true
+    } else {
+        replacement
+            .as_ref()
+            .is_some_and(|value| value["primary"] == true)
+    };
+    if promote && selected.len() != 1 {
+        return Err(Error::bad("Primary email target is ambiguous"));
+    }
+    for &i in &selected {
+        if let Some(sub) = sub {
+            current[i][sub] = value.clone();
+        } else {
+            for (key, value) in replacement.as_ref().unwrap().as_object().unwrap() {
+                current[i][key] = value.clone();
+            }
+        }
+    }
+    if promote {
+        set_email_primary(current, selected[0]);
+    }
+    Ok(())
 }
 
 fn patch_resource(old: &Value, input: Value) -> Result<Value> {
@@ -1339,6 +1794,7 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
         .filter(|v| !v.is_empty() && v.len() <= 100)
         .ok_or_else(|| Error::bad("Patch needs 1–100 operations"))?;
     let mut data = old.clone();
+    let mut email_changed = false;
     for op in operations {
         let operation = op["op"].as_str().unwrap_or("").to_ascii_lowercase();
         if !["add", "replace", "remove"].contains(&operation.as_str()) {
@@ -1356,28 +1812,36 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
                         "Cannot patch read-only attributes",
                     ));
                 }
-                data[key] = value.clone();
+                if ["emails", "members"].contains(&key.as_str()) {
+                    if key == "emails" {
+                        email_changed = true;
+                    }
+                    patch_multi_root(&mut data, key, &operation, value)?;
+                } else {
+                    data[key] = value.clone();
+                }
             }
             continue;
         }
         let path = op["path"]
             .as_str()
             .ok_or_else(|| Error::bad("Invalid patch path"))?;
-        if let Some(filter) = path
-            .strip_prefix("members[")
-            .and_then(|p| p.strip_suffix(']'))
-        {
-            if operation != "remove" {
-                return Err(Error::bad("Filtered members paths support remove"));
+        if let Some((field, filter, sub)) = patch_value_path(path)? {
+            let resource_field = if old["schemas"] == json!([USER]) {
+                "emails"
+            } else {
+                "members"
+            };
+            if field != resource_field {
+                return Err(Error::oauth(
+                    "invalidPath",
+                    "ValuePath is not valid for this resource",
+                ));
             }
-            let needle = filter
-                .strip_prefix("value eq ")
-                .ok_or_else(|| Error::bad("Invalid member value filter"))?;
-            let id: String =
-                serde_json::from_str(needle).map_err(|_| Error::bad("Invalid member ID filter"))?;
-            if let Some(members) = data["members"].as_array_mut() {
-                members.retain(|m| m["value"] != id);
+            if field == "emails" {
+                email_changed = true;
             }
+            patch_multi_selected(&mut data, field, &filter, sub, &operation, &op["value"])?;
             continue;
         }
         let canonical = normalize(json!({path:op["value"]}))?;
@@ -1385,26 +1849,28 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
         if ["id", "meta", "schemas", "groups", "userName"].contains(&path.as_str()) {
             return Err(Error::oauth("mutability", "Cannot patch this attribute"));
         }
+        if path == "emails" { email_changed = true; }
         if operation == "remove" {
             data.as_object_mut().unwrap().remove(path);
-        } else if operation == "add" && path == "members" {
-            let members = value
-                .as_array()
-                .ok_or_else(|| Error::bad("members must be an array"))?;
-            if data.get(path).is_none() {
-                data[path] = json!([]);
+        } else if ["members", "emails"].contains(&path.as_str()) {
+            let resource_field = if old["schemas"] == json!([USER]) {
+                "emails"
+            } else {
+                "members"
+            };
+            if path != resource_field {
+                return Err(Error::oauth(
+                    "invalidPath",
+                    "Attribute is not valid for this resource",
+                ));
             }
-            let current = data[path]
-                .as_array_mut()
-                .ok_or_else(|| Error::bad("members must be an array"))?;
-            for m in members {
-                if !current.iter().any(|old| old["value"] == m["value"]) {
-                    current.push(m.clone());
-                }
-            }
+            patch_multi_root(&mut data, path, &operation, value)?;
         } else {
             data[path] = value.clone();
         }
+    }
+    if email_changed && old["schemas"] == json!([USER]) {
+        validate_email_entries(&data)?;
     }
     Ok(data)
 }
