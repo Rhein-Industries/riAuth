@@ -119,6 +119,16 @@ impl Upstream {
                     &format!(r#"AuthnInstant="{auth}""#),
                     &format!(r#"AuthnInstant="{}""#, at(now() - 600)),
                 );
+            } else if from == "$session-expiry" {
+                let doc = roxmltree::Document::parse(&assertion).unwrap();
+                let expiry = doc
+                    .descendants()
+                    .find_map(|n| n.attribute("SessionNotOnOrAfter"))
+                    .unwrap();
+                assertion = assertion.replace(
+                    &format!(r#"SessionNotOnOrAfter="{expiry}""#),
+                    &format!(r#"SessionNotOnOrAfter="{to}""#),
+                );
             } else {
                 assertion = assertion.replace(from, to);
             }
@@ -322,6 +332,104 @@ fn exercise(xmlsec: Option<&Path>) {
     let token = text(&logged, "session_token");
     assert_eq!(f.core.me(&token).unwrap()["user"]["username"], "alice");
     assert!(finish(&f, &credential, true).is_err());
+
+    // W03 consumes this same signed verifier output without minting a session.
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let workflow = f.core.workflow_source_start(&alice, &source.id).unwrap();
+    let url = url::Url::parse(&workflow.authorization_url).unwrap();
+    let fields: std::collections::BTreeMap<_, _> = url.query_pairs().into_owned().collect();
+    let mut request = String::new();
+    flate2::read::DeflateDecoder::new(STANDARD.decode(&fields["SAMLRequest"]).unwrap().as_slice())
+        .read_to_string(&mut request)
+        .unwrap();
+    let request = roxmltree::Document::parse(&request).unwrap();
+    assert_eq!(request.root_element().attribute("ForceAuthn"), Some("true"));
+    let session_expiry = now() + 60;
+    let workflow_response = upstream.response(
+        &source,
+        &acs,
+        request.root_element().attribute("ID").unwrap(),
+        Some(("$session-expiry", &at(session_expiry))),
+        false,
+    );
+    assert_eq!(
+        submit(&f, &source, &fields["RelayState"], &workflow_response)["completed"],
+        true
+    );
+    let login_key = digest(&fields["RelayState"]);
+    let verified: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    for (pointer, replacement) in [
+        ("/result/expires_at", json!(now())),
+        ("/result/saml_session/expires_at", json!(now())),
+        ("/result/saml_session", Value::Null),
+    ] {
+        let mut expired = verified.clone();
+        *expired.pointer_mut(pointer).unwrap() = replacement;
+        f.core
+            .store
+            .write(|tx| tx.put("source_logins", &login_key, &expired))
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_source_finish(&alice, &workflow.workflow.id)
+                .is_err()
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>("source_logins", &login_key)
+                .unwrap()
+                .is_some()
+        );
+    }
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &login_key, &verified))
+        .unwrap();
+    let completed = f
+        .core
+        .workflow_source_finish(&alice, &workflow.workflow.id)
+        .unwrap();
+    assert!(matches!(
+        completed.state,
+        riauth::workflow::RunState::Finished {
+            outcome: riauth::workflow::Outcome::Authenticated,
+            ..
+        }
+    ));
+    let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["consumed"], true);
+    assert!(receipts[0].1["expires_at"].as_u64().unwrap() <= session_expiry);
+    assert_eq!(receipts[0].1["source"]["transaction"], login_key);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &login_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .workflow_source_finish(&alice, &workflow.workflow.id)
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
     assert!(
         f.core
             .saml_source_callback(

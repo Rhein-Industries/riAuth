@@ -1,4 +1,4 @@
-//! Durable, server-owned password and OIDC source reauthentication.
+//! Durable, server-owned password and upstream source reauthentication.
 
 mod source;
 pub use source::SourceStart;

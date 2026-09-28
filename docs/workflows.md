@@ -1,8 +1,8 @@
 # Workflow definition model
 
 Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
-The server now persists bounded runs, attempts, requests and evidence, and exposes
-an Essentials password reauthentication workflow and a Platform OIDC source
+The Platform server persists bounded runs, attempts, requests and evidence, and exposes
+the built-in password reauthentication workflow and an OIDC/SAML source
 reauthentication workflow for a live bearer session. Both use the existing
 verifiers and finalize through the W03 store boundary. They do not complete a
 downstream OIDC sign-in transaction or issue a new session. Other built-in
@@ -160,11 +160,16 @@ On Platform, `POST /api/workflows/sources/{source}` with a live bearer session
 returns a `workflow` view and `authorization_url`. The executor pins the exact
 account, account epoch, session, request, definition, run, step, attempt and
 reservation nonce into the existing source login before redirecting upstream.
-It accepts enabled OIDC sources and existing explicit account links; it cannot
+It accepts enabled OIDC or SAML sources and existing explicit account links; it cannot
 provision or reattach an account. Only one workflow can be active per session.
 
 The existing OIDC callback checks the signed ID token, issuer, audience, nonce
-and authentication time. `POST /api/workflows/{id}/source` with the original
+and authentication time. The SAML ACS verifies its signed assertion, recipient,
+audience, request correlation, authentication time and replay state. SAML
+workflow receipts expire at the earliest of the assertion Conditions,
+SubjectConfirmationData and optional SessionNotOnOrAfter bounds, without clock
+skew extending any lifetime. The pinned source protocol must match its verifier
+result. `POST /api/workflows/{id}/source` with the original
 bearer session polls that reserved result; the caller supplies no proof, claims,
 signal or receipt reference. A successful completion consumes the source login,
 creates and consumes W03 evidence, and finalizes the W02 run in one transaction.
@@ -175,9 +180,9 @@ cannot use workflow-bound logins, and this path issues no session or OAuth code.
 
 This bounded workflow has one source attempt and lasts at most ten minutes.
 Authentication must occur at or after that attempt starts; its proof must be
-at most 120 seconds old at completion. OIDC clock-skew allowances do not extend
-workflow proof freshness or signed assertion expiry. Accounts with local TOTP,
-OAuth-only sources and SAML sources remain unavailable on this path. Upstream
+at most 120 seconds old at completion. Protocol clock-skew allowances do not extend
+workflow proof freshness or signed assertion expiry. Accounts with local TOTP
+and OAuth-only sources remain unavailable on this path. Upstream
 MFA assertions are not converted into local-factor proofs.
 
 ## Bounds
@@ -212,7 +217,7 @@ These are not implemented or established by this slice:
 
 * Connecting the remaining verifier actions and existing OIDC/browser sign-in,
   passkey, lifecycle, consent and embedded source-stage paths. Current W02 endpoints
-  cover password and OIDC source reauthentication for a live bearer session; each
+  cover password and OIDC/SAML source reauthentication for a live bearer session; each
   neither consumes an OIDC request nor issues a session. Endpoint parity has not
   been checked.
 * An atomic credential-mutation receipt/finalization protocol for enrollment and
@@ -220,8 +225,8 @@ These are not implemented or established by this slice:
   session revocation. Until then these success outcomes remain blocked. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Arbitrary configured workflows, custom stage execution, source MFA and SAML
-  adapters, invitation acceptance, and the other built-in verifiers. The password
+* Arbitrary configured workflows, custom stage execution, source MFA adapters,
+  invitation acceptance, and the other built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.

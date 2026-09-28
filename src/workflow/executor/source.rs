@@ -91,7 +91,7 @@ pub(super) fn discard(tx: &Tx<'_>, run: &RuntimeRun) -> Result<()> {
 }
 
 impl Core {
-    /// Start one bounded OIDC source reauthentication for the exact live bearer
+    /// Start one bounded OIDC or SAML reauthentication for the exact live bearer
     /// session. The caller chooses an enabled source, never a workflow or proof.
     pub fn workflow_source_start(&self, token: &str, source: &str) -> Result<SourceStart> {
         let source = Id::new(source).map_err(Error::bad)?;

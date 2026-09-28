@@ -34,10 +34,10 @@ pub(crate) fn pin(tx: &Tx<'_>, id: &Id) -> Result<Pin> {
         return Err(Error::forbidden());
     }
     let source = enabled(tx, id.as_str())?;
-    // This slice uses OIDC's signed auth_time and assertion expiry. OAuth-only
-    // and SAML workflows require their own bounded executor integration.
-    if source.id != id.as_str() || source.oauth_profile.is_some() || source.saml.is_some() {
-        return Err(Error::conflict("Workflow requires an OIDC source"));
+    // OIDC and SAML verifiers both preserve signed authentication time and
+    // assertion expiry. OAuth profile responses cannot supply either fact.
+    if source.id != id.as_str() || source.oauth_profile.is_some() {
+        return Err(Error::conflict("Workflow requires an OIDC or SAML source"));
     }
     Ok(Pin {
         source: id.clone(),
@@ -155,19 +155,28 @@ pub(crate) fn consume(
     let Some(identity) = &login.result else {
         return Ok(Verification::Pending);
     };
+    let source = enabled(tx, pin.source.as_str())?;
+    // The source fingerprint pins the protocol as well as its trust settings.
+    // A SAML receipt also cannot outlive the signed upstream session bound.
+    if source.saml.is_some() != identity.saml_session.is_some() {
+        return Err(Error::forbidden());
+    }
+    let session_expiry = identity
+        .saml_session
+        .as_ref()
+        .and_then(|session| session.expires_at);
     let expires_at = identity
         .expires_at
         .ok_or_else(Error::forbidden)?
-        .min(login.expires_at);
+        .min(login.expires_at)
+        .min(session_expiry.unwrap_or(u64::MAX));
     if !login.claimed
         || identity.auth_time < login.started_at
         || identity.auth_time > at
         || expires_at <= at
-        || identity.saml_session.is_some()
     {
         return Err(Error::conflict("Upstream workflow verification is stale"));
     }
-    let source = enabled(tx, pin.source.as_str())?;
     let evidence = SourceEvidence {
         source: pin.source.clone(),
         fingerprint: pin.fingerprint.clone(),

@@ -2,7 +2,7 @@
 //!
 //! The W01 definition model and W03 completion seam describe authentication,
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
-//! consumes only [`Validated`] definitions and exposes password and OIDC source
+//! consumes only [`Validated`] definitions and exposes password and upstream source
 //! reauthentication for live bearer sessions; see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
