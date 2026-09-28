@@ -2310,6 +2310,28 @@ pub fn convert(input: Import) -> Result<Value> {
                 *per_scope.entry(*scope).or_default() += 1;
             }
         }
+        let profile_claims = if resolution.settings.groups_in_profile {
+            "name, preferred_username and groups"
+        } else {
+            "name and preferred_username"
+        };
+        for (scope, claims) in [
+            ("profile", profile_claims),
+            ("groups", "groups"),
+            ("email", "email and email_verified"),
+        ] {
+            if resolution.scopes.contains(scope) && !per_scope.contains_key(scope) {
+                p.add(
+                    ItemKind::PropertyMapping,
+                    format!("{cid}/scope/{scope}"),
+                    Classification::Manual,
+                    format!(
+                        "The reviewed {scope} scope has no exported mapping for this provider, but riAuth emits {claims} when the scope is requested"
+                    ),
+                    "Review this claim expansion with the relying party, remove the reviewed scope, or export and translate its Authentik mapping",
+                );
+            }
+        }
         let mut claim_mappings = Vec::new();
         for mapping in exported_mappings.union(&resolution.translated_mapping_ids) {
             let id = format!("{cid}/{mapping}");
@@ -2327,8 +2349,9 @@ pub fn convert(input: Import) -> Result<Value> {
             let outcome = match scope_mappings.get(mapping) {
                 None => Err((
                     Classification::Unsupported,
-                    "The mapping source is unavailable, so subject continuity cannot be proved"
-                        .to_owned(),
+                    format!(
+                        "Exported property mapping {mapping} has no definition in scope_mappings; the incomplete export cannot prove subject continuity"
+                    ),
                 )),
                 Some((name, _, expression)) if !subject_safe_dictionary(expression) => Err((
                     Classification::Unsupported,
@@ -2393,9 +2416,18 @@ pub fn convert(input: Import) -> Result<Value> {
                     claim_mappings.extend(mappings);
                 }
                 Err((Classification::Unsupported, reason)) => {
+                    let missing = !scope_mappings.contains_key(mapping);
                     p.add(ItemKind::PropertyMapping, id, Classification::Unsupported, reason,
-                        "Replace it in Authentik with a provably sub-free literal dictionary return, or plan an explicit relying-party account migration; translated_mapping_ids cannot clear it")
-                        .block(format!("{cid}: property mapping {mapping} may change subjects"));
+                        if missing {
+                            "Export the complete scope_mappings collection and retry; translated_mapping_ids cannot clear a missing definition"
+                        } else {
+                            "Replace it in Authentik with a provably sub-free literal dictionary return, or plan an explicit relying-party account migration; translated_mapping_ids cannot clear it"
+                        })
+                        .block(if missing {
+                            format!("{cid}: property mapping {mapping} is missing from scope_mappings; subject continuity cannot be proved")
+                        } else {
+                            format!("{cid}: property mapping {mapping} may change subjects")
+                        });
                 }
                 Err((classification, reason)) => {
                     let item = p.add(ItemKind::PropertyMapping, id, classification, reason,

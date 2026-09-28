@@ -2464,7 +2464,7 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
             "unknown",
             vec!["m-missing"],
             vec!["openid"],
-            vec![],
+            vec!["m-missing"],
             json!([]),
         ),
     ];
@@ -2534,6 +2534,9 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
     ] {
         assert_eq!(findings(&report, PropertyMapping, id), expected, "{id}");
     }
+    assert!(report["blockers"].as_array().unwrap().contains(&json!(
+        "unknown: property mapping m-missing is missing from scope_mappings; subject continuity cannot be proved"
+    )));
     // Mapping sources are never quoted in the report.
     let rendered = report.to_string();
     for fragment in ["s3cr3t-token", "app_entitlements", "delete_none_values"] {
@@ -2758,6 +2761,15 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             Exact,
             false,
         ),
+        (
+            "unmatched-scopes",
+            "openid",
+            "return {}",
+            &["openid", "profile", "groups", "email"],
+            true,
+            Exact,
+            false,
+        ),
     ];
     let mut input = json!({
         "api_version":"riauth.authentik-import/v1",
@@ -2836,6 +2848,16 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
         findings(&report, PropertyMapping, "grouped/m-grouped-safe"),
         [(Manual, false)]
     );
+    for scope in ["profile", "groups", "email"] {
+        let id = format!("unmatched-scopes/scope/{scope}");
+        assert_eq!(findings(&report, PropertyMapping, &id), [(Manual, false)]);
+    }
+    let profile_expansion = report["items"].as_array().unwrap().iter().find(|item| {
+        item["kind"] == "property_mapping" && item["id"] == "unmatched-scopes/scope/profile"
+    }).unwrap();
+    assert!(profile_expansion["reason"].as_str().unwrap().contains(
+        "name, preferred_username and groups"
+    ));
     assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
         blocker == "escaped-sub: property mapping m-escaped-sub may change subjects"
     }));
