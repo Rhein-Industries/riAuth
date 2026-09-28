@@ -55,6 +55,16 @@ pub fn with_failed_delivery<T>(f: impl FnOnce() -> T) -> T {
 
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/portal/sources", get(list))
+        .route("/api/portal/sources/links", get(links))
+        .route("/api/portal/sources/links/{id}/unlink", post(unlink))
+        .route("/api/portal/sources/review", post(review))
+        .route("/api/portal/sources/finish", post(finish))
+        .route("/api/portal/sources/{id}/start", post(start))
+}
+
+pub fn browser_routes() -> Router<App> {
+    Router::new()
         .route("/account/sources/continue", get(page))
         .route(
             "/portal/assets/sources.js",
@@ -74,12 +84,6 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
-        .route("/api/portal/sources", get(list))
-        .route("/api/portal/sources/links", get(links))
-        .route("/api/portal/sources/links/{id}/unlink", post(unlink))
-        .route("/api/portal/sources/review", post(review))
-        .route("/api/portal/sources/finish", post(finish))
-        .route("/api/portal/sources/{id}/start", post(start))
 }
 
 async fn page(State(app): State<App>) -> Response {

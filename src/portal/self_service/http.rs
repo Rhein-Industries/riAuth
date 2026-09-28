@@ -15,6 +15,14 @@ use serde_json::Value;
 
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/portal/security", get(overview))
+        .route("/api/portal/security/sessions/revoke-all", post(revoke_all))
+        .route("/api/portal/security/sessions/{id}/revoke", post(revoke_selected))
+        .route("/api/portal/security/consents/{id}/withdraw", post(withdraw))
+}
+
+pub fn browser_routes() -> Router<App> {
+    Router::new()
         .route("/account/security", get(page))
         .route("/account/security/", get(page))
         .route(
@@ -34,16 +42,6 @@ pub fn routes() -> Router<App> {
                     include_str!("security.js"),
                 )
             }),
-        )
-        .route("/api/portal/security", get(overview))
-        .route("/api/portal/security/sessions/revoke-all", post(revoke_all))
-        .route(
-            "/api/portal/security/sessions/{id}/revoke",
-            post(revoke_selected),
-        )
-        .route(
-            "/api/portal/security/consents/{id}/withdraw",
-            post(withdraw),
         )
 }
 

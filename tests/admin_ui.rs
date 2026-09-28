@@ -132,6 +132,42 @@ async fn page_is_self_contained() {
 }
 
 #[tokio::test]
+async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
+    let fixture = Fixture::new();
+    let mut core = fixture.core.clone();
+    core.config.browser_ui = false;
+    let app = riauth::api::router(core);
+    async fn get(app: &axum::Router, path: &str) -> (StatusCode, Value) {
+        let response = app.clone().oneshot(Request::get(path)
+            .header("host", "localhost:9000")
+            .body(Body::empty()).unwrap()).await.unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, value)
+    }
+    for path in [
+        "/apps", "/admin", "/account/security", "/device", "/setup",
+        "/portal/assets/app.js", "/portal/assets/admin.js",
+        "/portal/assets/capabilities.js", "/portal/assets/signin.js",
+    ] {
+        let (status, _) = get(&app, path).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+    for path in ["/api/capabilities", "/.well-known/openid-configuration"] {
+        let (status, _) = get(&app, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+    }
+    let (status, _) = get(&app, "/api/portal").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = get(&app, "/api/admin/session").await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, root) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(root["service"], "riAuth");
+}
+
+#[tokio::test]
 async fn reads_require_an_administrator_browser_session_and_the_portal_header() {
     let fixture = Fixture::new();
     let user = fixture.user("ada");

@@ -12,6 +12,9 @@ use url::Url;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Serve the embedded browser pages and assets. API and OIDC routes remain available.
+    #[serde(default = "default_browser_ui")]
+    pub browser_ui: bool,
     /// Explicit runtime activation overrides for supported optional capabilities.
     #[serde(default, skip_serializing_if = "CapabilityActivation::is_default")]
     pub capabilities: CapabilityActivation,
@@ -260,6 +263,7 @@ impl BackupConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            browser_ui: default_browser_ui(),
             capabilities: CapabilityActivation::default(),
             proxy_listeners: Default::default(),
             radius_listeners: Default::default(),
@@ -300,6 +304,10 @@ impl Default for Config {
 
 fn default_password_history() -> u32 {
     5
+}
+
+fn default_browser_ui() -> bool {
+    true
 }
 
 pub fn validate_server_url(value: &str) -> Result<Url> {

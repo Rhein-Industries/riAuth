@@ -28,6 +28,31 @@ use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 pub fn routes() -> Router<App> {
     let routes = Router::new()
+        .route("/api/admin/session", get(session))
+        .route("/api/admin/users", get(users).post(create_user))
+        .route("/api/admin/users/passkey/start", post(passkey_admin_start))
+        .route("/api/admin/users/passkey/first", post(passkey_admin_first))
+        .route("/api/admin/users/passkey/finish", post(passkey_admin_finish))
+        .route("/api/admin/users/passkey/cancel", post(passkey_admin_cancel))
+        .route("/api/admin/users/{username}", patch(update_user))
+        .route("/api/admin/invitations", get(invitations).post(invite))
+        .route("/api/admin/invitations/{username}", axum::routing::delete(revoke_invitation))
+        .route("/api/admin/groups", get(groups).post(create_group))
+        .route("/api/admin/groups/{name}/members/{username}", put(add_member).delete(remove_member))
+        .route("/api/admin/clients", get(clients).post(create_client))
+        .route("/api/admin/clients/{id}", patch(update_client))
+        .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
+        .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
+        .route("/api/admin/clients/{id}/explain", post(explain))
+        .route("/api/admin/client-checks", post(check_client))
+        .route("/api/admin/audit", get(audit));
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(access_routes());
+    routes
+}
+
+pub fn browser_routes() -> Router<App> {
+    Router::new()
         .route("/admin", get(page))
         .route("/admin/", get(page))
         .route(
@@ -48,40 +73,6 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
-        .route("/api/admin/session", get(session))
-        .route("/api/admin/users", get(users).post(create_user))
-        .route("/api/admin/users/passkey/start", post(passkey_admin_start))
-        .route("/api/admin/users/passkey/first", post(passkey_admin_first))
-        .route(
-            "/api/admin/users/passkey/finish",
-            post(passkey_admin_finish),
-        )
-        .route(
-            "/api/admin/users/passkey/cancel",
-            post(passkey_admin_cancel),
-        )
-        .route("/api/admin/users/{username}", patch(update_user))
-        .route("/api/admin/invitations", get(invitations).post(invite))
-        .route(
-            "/api/admin/invitations/{username}",
-            axum::routing::delete(revoke_invitation),
-        )
-        .route("/api/admin/groups", get(groups).post(create_group))
-        .route(
-            "/api/admin/groups/{name}/members/{username}",
-            put(add_member).delete(remove_member),
-        )
-        .route("/api/admin/clients", get(clients).post(create_client))
-        .route("/api/admin/clients/{id}", patch(update_client))
-        .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
-        .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
-        .route("/api/admin/clients/{id}/explain", post(explain))
-        // Not under /clients/{id}: a client may be called "check".
-        .route("/api/admin/client-checks", post(check_client))
-        .route("/api/admin/audit", get(audit));
-    #[cfg(feature = "platform")]
-    let routes = routes.merge(access_routes());
-    routes
 }
 
 #[cfg(feature = "platform")]

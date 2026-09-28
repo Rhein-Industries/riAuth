@@ -3,6 +3,9 @@ issuer = "http://localhost:9000"
 listen = "127.0.0.1:9000"
 data_dir = "data"
 
+# Optional API-only mode. Browser pages and embedded assets are served by default.
+# browser_ui = false
+
 # Durations in seconds.
 access_token_ttl = 300
 refresh_token_ttl = 2592000

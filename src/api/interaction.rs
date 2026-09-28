@@ -13,7 +13,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -23,15 +23,6 @@ use webauthn_rs::prelude::PublicKeyCredential;
 
 pub(super) fn routes() -> Router<App> {
     let routes = Router::new()
-        .route(
-            "/portal/assets/signin.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("../portal/signin.js"),
-                )
-            }),
-        )
         .route("/oauth/resume/{id}/state", get(state::<false>))
         .route("/oauth/resume/{id}/password", post(password::<false>))
         .route(
@@ -52,6 +43,12 @@ pub(super) fn routes() -> Router<App> {
     #[cfg(feature = "platform")]
     let routes = routes.merge(saml_routes());
     routes
+}
+
+pub(super) fn browser_routes() -> Router<App> {
+    Router::new().route("/portal/assets/signin.js", get(|| async {
+        ([("content-type", "text/javascript; charset=utf-8")], include_str!("../portal/signin.js"))
+    }))
 }
 
 #[cfg(feature = "platform")]
@@ -79,6 +76,12 @@ fn saml_routes() -> Router<App> {
 /// keep their opener.
 /// `sso`: the browser presented an SSO cookie; without one it gets a placeholder.
 pub(super) fn interaction_page(app: &App, code: &str, command: &str, sso: bool) -> Response {
+    if !app.core.config.browser_ui {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "error": "interaction_required",
+            "error_description": "This instance does not serve browser interaction pages"
+        }))).into_response();
+    }
     let html = include_str!("../portal/signin.html")
         .replace("__CODE__", &escape(code))
         .replace("__COMMAND__", &escape(command));

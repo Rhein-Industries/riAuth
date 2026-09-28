@@ -4,6 +4,8 @@ Open `<issuer>/apps` in a browser. The server embeds the HTML, CSS, JavaScript a
 
 The portal includes a responsive application grid, list view, name/description/category search, category filters and favorites. Favorites and view preferences are saved locally per account and issuer path. Only application IDs and the view choice are stored; removing access also removes an app from the active favorite list. Storage is optional, so private browsing still works.
 
+The applications and administration shells use `GET /api/capabilities` from the running instance to present usable actions. The same browser assets serve Essentials and Platform; server authorization remains in force for every action. Set `browser_ui = false` explicitly in the server configuration for an API-only deployment. This removes embedded browser pages and assets, including the first-run setup page; `/api/setup`, management and portal JSON APIs, and OIDC routes remain mounted. Interactive OIDC approval requires a browser-enabled instance.
+
 ## Sign in
 
 An existing browser session is recognized automatically. Its HttpOnly cookie is `__Host-riauth_sso` on an https issuer and `riauth_sso` on a loopback http issuer. A browser that has no such cookie gets a placeholder value when it opens the portal or an application's sign-in page; it signs nothing in, and lets two sign-ins started at the same time in two tabs end on one session. Otherwise the portal offers three ways to sign in:

@@ -68,6 +68,7 @@
     $("avatar").textContent = ""; $("avatar").removeAttribute("title"); $("account").removeAttribute("aria-label");
     $("welcome").textContent = "Everything you need, one sign-in away."; $("access-count").textContent = "";
     $("account").hidden = true; $("signed-out-label").hidden = false;
+    $("admin-link").hidden = true;
     $("nav-all").disabled = true; $("nav-favorites").disabled = true;
     $("all-count").textContent = "—"; $("favorite-count").textContent = "—";
     $("search").value = ""; $("category").replaceChildren(new Option("All categories", ""));
@@ -115,6 +116,9 @@
     state.loading = true; const generation = state.generation;
     $("refresh").disabled = true;
     try {
+      await RiAuthCapabilities.refresh();
+      const passkeyLogin = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
+      $("passkey-login").hidden = $("auth-divider").hidden = !passkeyLogin;
       const data = await api("");
       if (generation !== state.generation) return;
       const changedUser = state.data?.user.id !== data.user.id;
@@ -128,6 +132,7 @@
       state.favorites = new Set([...state.favorites].filter((id) => accessible.has(id)));
       savePreferences(); stopRequest();
       $("account").hidden = false; $("signed-out-label").hidden = true;
+      $("admin-link").hidden = data.user.admin !== true;
       $("nav-all").disabled = false; $("nav-favorites").disabled = false;
       $("account-name").textContent = data.user.display_name;
       $("account-username").textContent = `@${data.user.username}`;
@@ -140,13 +145,13 @@
       // A password-only session cannot see applications that require MFA.
       $("mfa-notice").hidden = data.mfa !== false;
       $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security.";
-      $("mfa-action").textContent = data.mfa_available ? "Sign in with your passkey" : "Sign-in and security";
+      $("mfa-action").textContent = data.mfa_available && passkeyLogin ? "Sign in with your passkey" : "Sign-in and security";
       clearAuthError();
       const category = changedUser ? "" : $("category").value;
       $("category").replaceChildren(new Option("All categories", ""));
       [...new Set(data.apps.map((app) => app.category))].sort((a, b) => a.localeCompare(b)).forEach((name) => $("category").add(new Option(name, name)));
       $("category").value = [...$("category").options].some((option) => option.value === category) ? category : "";
-      screen("catalogue"); connection("Connected", true); render();
+      screen("catalogue"); connection("Connected", true); render(); RiAuthCapabilities.apply();
       clearTimeout(expiryTimer);
       expiryTimer = setTimeout(refresh, Math.max(1000, Math.min(30000, data.expires_at * 1000 - Date.now())));
     } catch (error) {
@@ -428,7 +433,7 @@
   }
   function securityControls() {
     const data = security.data, pending = !!security.action;
-    $("passkey-form").hidden = !data || pending || !RiAuth.passkeysAvailable() || data.passkeys.length >= data.limit;
+    $("passkey-form").hidden = !RiAuthCapabilities.usable("identity.passkeys") || !data || pending || !RiAuth.passkeysAvailable() || data.passkeys.length >= data.limit;
     for (const button of $("passkey-list").querySelectorAll("button")) button.disabled = security.busy || button.dataset.unavailable === "true";
     for (const id of ["add-passkey", "passkey-action-confirm", "reauth-passkey", "reauth-confirm", "password-change-start", "password-change-submit", "password-change-cancel", "password-current", "password-new", "password-confirm"]) $(id).disabled = security.busy;
     $("passkey-name").disabled = $("passkey-rename").disabled = security.busy;
@@ -928,7 +933,7 @@
   });
   $("mfa-action").addEventListener("click", () => {
     if (!state.data) return;
-    if (!state.data.mfa_available || !RiAuth.passkeysAvailable()) { openSecurity(state.data.mfa_available ? "mfa" : null); return; }
+    if (!state.data.mfa_available || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable()) { openSecurity(state.data.mfa_available ? "mfa" : null); return; }
     RiAuth.inFlight($("mfa-action"), async () => {
       try { await security.flows.reauth(); await refresh(); }
       catch (error) {

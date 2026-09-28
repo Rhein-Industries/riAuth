@@ -176,11 +176,12 @@ pub fn router(core: Core) -> Router {
     #[cfg(feature = "platform")]
     let ssf_document = core.ssf_metadata();
     let app = App::new(core);
+    let browser_ui = app.core.config.browser_ui;
     let routes = Router::new()
         .route("/", get(crate::portal::http::root))
         .merge(crate::portal::http::routes())
         .merge(crate::portal::admin::routes())
-        .merge(crate::bootstrap::closed_routes())
+        .merge(crate::bootstrap::closed_routes(browser_ui))
         .merge(interaction::routes())
         .route("/.well-known/openid-configuration", get(discovery))
         .route("/.well-known/oauth-authorization-server", get(discovery))
@@ -359,6 +360,13 @@ pub fn router(core: Core) -> Router {
         .route("/api/inventory/{kind}", get(inventory));
     #[cfg(feature = "platform")]
     let routes = routes.merge(platform_routes());
+    let routes = if browser_ui {
+        routes.merge(crate::portal::http::browser_routes())
+            .merge(crate::portal::admin::browser_routes())
+            .merge(interaction::browser_routes())
+    } else {
+        routes
+    };
     let routes = routes
         .fallback(provider_discovery_path)
         .layer(DefaultBodyLimit::max(32 * 1024))
@@ -1123,7 +1131,7 @@ async fn authorization_details(
         .into_owned()
         .collect();
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let handoff = app.clone();
     let result = app
         .run(move |core| {
@@ -1328,7 +1336,7 @@ async fn browser_resume(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let page = app.clone();
     let result = app
@@ -1854,7 +1862,7 @@ async fn end_session_response(
     pairs: Vec<(String, String)>,
 ) -> Result<Response> {
     let request = parse_form(pairs)?;
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let mut value = app
         .run(move |core| {
@@ -2359,7 +2367,7 @@ async fn outpost_traefik(
     headers: HeaderMap,
 ) -> Result<Response> {
     use crate::outpost::Forward;
-    let document = headers
+    let document = app.core.config.browser_ui && headers
         .get("sec-fetch-dest")
         .is_some_and(|dest| dest == "document");
     match app
@@ -2615,7 +2623,7 @@ async fn logout_request_resume(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let result = async {
         let (value, signed_in) = app
@@ -3074,7 +3082,7 @@ async fn saml_redirect(
     Path(id): Path<String>,
     RawQuery(raw): RawQuery,
 ) -> Result<Response> {
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let handoff = app.clone();
     app.run(move |core| {
@@ -3098,7 +3106,7 @@ async fn saml_post(
     {
         return Err(Error::bad("SAML POST requires form encoding"));
     }
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let handoff = app.clone();
     app.run(move |core| {
@@ -3116,7 +3124,7 @@ async fn saml_initiate(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let handoff = app.clone();
     app.run(move |core| saml_handoff(&handoff, html, core.saml_initiate(&id, sso.as_deref())?))
@@ -3128,7 +3136,7 @@ async fn saml_resume(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let html = accepts_html(&headers);
+    let html = app.core.config.browser_ui && accepts_html(&headers);
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     let page = app.clone();
     let result = app

@@ -443,14 +443,16 @@ pub(crate) fn router_with_signal(
         signal: Arc::new(Mutex::new(signal)),
         credentials: Arc::new(Semaphore::new(2)),
     };
-    Router::new()
-        .route(&format!("{base}/setup"), get(page))
-        .route(&format!("{base}/setup/"), get(page))
+    let routes = Router::new()
         .route(&format!("{base}/api/setup"), post(complete))
         .route(
             &format!("{base}/api/setup/passkey/{{action}}"),
             post(passkey),
-        )
+        );
+    let routes = if app.setup.config.browser_ui {
+        routes
+        .route(&format!("{base}/setup"), get(page))
+        .route(&format!("{base}/setup/"), get(page))
         .route(
             &format!("{base}/portal/assets/setup.js"),
             get(|| async {
@@ -487,6 +489,10 @@ pub(crate) fn router_with_signal(
                 )
             }),
         )
+    } else {
+        routes
+    };
+    routes
         .fallback(dispatch)
         .layer(DefaultBodyLimit::max(64 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), protect))
@@ -709,7 +715,7 @@ async fn dispatch(State(app): State<SetupApp>, req: Request) -> Response {
         .path()
         .trim_end_matches('/')
         .to_owned();
-    if req.method() == axum::http::Method::GET
+    if app.setup.config.browser_ui && req.method() == axum::http::Method::GET
         && [base.as_str(), &format!("{base}/"), &format!("{base}/apps")].contains(&req.uri().path())
     {
         Redirect::temporary(&format!("{base}/setup")).into_response()
@@ -722,12 +728,15 @@ fn closed() -> Error {
     Error::conflict("Instance already initialized")
 }
 
-pub(crate) fn closed_routes() -> Router<crate::api::App> {
-    Router::new()
-        .route("/setup", get(closed_page))
-        .route("/setup/", get(closed_page))
+pub(crate) fn closed_routes(browser_ui: bool) -> Router<crate::api::App> {
+    let routes = Router::new()
         .route("/api/setup", post(|| async { closed() }))
-        .route("/api/setup/passkey/{action}", post(|| async { closed() }))
+        .route("/api/setup/passkey/{action}", post(|| async { closed() }));
+    if browser_ui {
+        routes.route("/setup", get(closed_page)).route("/setup/", get(closed_page))
+    } else {
+        routes
+    }
 }
 async fn closed_page(State(app): State<crate::api::App>) -> Response {
     closed_browser_page(&app.core.cookie_path())

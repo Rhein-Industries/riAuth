@@ -18,6 +18,37 @@ use std::time::Instant;
 pub(crate) struct BrowserError;
 
 pub fn routes() -> Router<App> {
+    Router::new()
+        .route("/api/portal", get(catalogue))
+        .route("/api/portal/account/accept", post(account_accept))
+        .route("/api/portal/account/verify", post(account_verify))
+        .route("/api/portal/account/verify-request", post(account_verify_request))
+        .route("/api/portal/account/reset-request", post(account_reset_request))
+        .route("/api/portal/account/reset", post(account_reset))
+        .route("/api/portal/password", post(password_change))
+        .route("/api/portal/sign-in", post(start))
+        .route("/api/portal/sign-in/{id}", post(poll))
+        .route("/api/portal/sign-in/{id}/cancel", post(cancel))
+        .route("/api/portal/sign-out", post(sign_out))
+        .route("/api/portal/requests/{code}", get(details).post(decide))
+        .route("/api/portal/login/password", post(password_login))
+        .route("/api/portal/login/passkey/start", post(passkey_login_start))
+        .route("/api/portal/login/passkey/finish", post(passkey_login_finish))
+        .route("/api/portal/login/passkey/cancel", post(passkey_login_cancel))
+        .route("/api/portal/passkeys", get(passkeys))
+        .route("/api/portal/passkeys/registration/start", post(passkey_register_start))
+        .route("/api/portal/passkeys/registration/finish", post(passkey_register_finish))
+        .route("/api/portal/passkeys/registration/cancel", post(passkey_register_cancel))
+        .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
+        .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
+        .merge(super::mfa::routes())
+        .route("/api/device/browser/{code}", get(device_browser_details))
+        .route("/api/device/browser/decision", post(device_browser_decide))
+        .merge(super::self_service::http::routes())
+        .merge(super::sources::routes())
+}
+
+pub fn browser_routes() -> Router<App> {
     let routes = Router::new()
         .route("/apps", get(page))
         .route("/apps/", get(page))
@@ -81,54 +112,17 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
-        .route("/api/portal", get(catalogue))
-        .route("/api/portal/account/accept", post(account_accept))
-        .route("/api/portal/account/verify", post(account_verify))
         .route(
-            "/api/portal/account/verify-request",
-            post(account_verify_request),
+            "/portal/assets/capabilities.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("capabilities.js"),
+                )
+            }),
         )
-        .route(
-            "/api/portal/account/reset-request",
-            post(account_reset_request),
-        )
-        .route("/api/portal/account/reset", post(account_reset))
-        .route("/api/portal/password", post(password_change))
-        .route("/api/portal/sign-in", post(start))
-        .route("/api/portal/sign-in/{id}", post(poll))
-        .route("/api/portal/sign-in/{id}/cancel", post(cancel))
-        .route("/api/portal/sign-out", post(sign_out))
-        .route("/api/portal/requests/{code}", get(details).post(decide))
-        .route("/api/portal/login/password", post(password_login))
-        .route("/api/portal/login/passkey/start", post(passkey_login_start))
-        .route(
-            "/api/portal/login/passkey/finish",
-            post(passkey_login_finish),
-        )
-        .route(
-            "/api/portal/login/passkey/cancel",
-            post(passkey_login_cancel),
-        )
-        .route("/api/portal/passkeys", get(passkeys))
-        .route(
-            "/api/portal/passkeys/registration/start",
-            post(passkey_register_start),
-        )
-        .route(
-            "/api/portal/passkeys/registration/finish",
-            post(passkey_register_finish),
-        )
-        .route(
-            "/api/portal/passkeys/registration/cancel",
-            post(passkey_register_cancel),
-        )
-        .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
-        .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
-        .merge(super::mfa::routes())
-        .route("/api/device/browser/{code}", get(device_browser_details))
-        .route("/api/device/browser/decision", post(device_browser_decide))
-        .merge(super::self_service::http::routes())
-        .merge(super::sources::routes());
+        .merge(super::self_service::http::browser_routes())
+        .merge(super::sources::browser_routes());
     #[cfg(feature = "platform")]
     let routes = routes.merge(event_map_routes());
     routes
@@ -160,14 +154,14 @@ fn event_map_routes() -> Router<App> {
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
-    let mut response = if headers
+    let mut response = if app.core.config.browser_ui && headers
         .get("accept")
         .and_then(|h| h.to_str().ok())
         .is_some_and(|h| h.contains("text/html"))
     {
         page(State(app), headers.clone()).await
     } else {
-        Json(json!({"service":"riAuth","interface":"CLI","discovery":format!("{}.well-known/openid-configuration",app.core.cookie_path()),"portal":format!("{}apps",app.core.cookie_path())})).into_response()
+        Json(json!({"service":"riAuth","interface":"CLI","discovery":format!("{}.well-known/openid-configuration",app.core.cookie_path()),"portal":if app.core.config.browser_ui { Some(format!("{}apps",app.core.cookie_path())) } else { None }})).into_response()
     };
     response
         .headers_mut()
