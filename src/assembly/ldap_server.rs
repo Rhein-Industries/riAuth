@@ -7,7 +7,9 @@ use crate::{
     model::{Client, Group, User},
     store::Tx,
 };
-use ldap3_proto::proto::{LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope};
+use ldap3_proto::proto::{
+    LdapFilter, LdapPartialAttribute, LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope,
+};
 use serde::de::{SeqAccess, Visitor};
 use std::{
     cmp::Reverse,
@@ -104,6 +106,101 @@ fn member_of_dns(
             .map(|name| settings.group_dn(&name))
             .collect(),
     ))
+}
+
+/// Evaluate one memberOf leaf without retaining the whole hash-ordered index.
+/// The ordinary LDAP matcher supplies the exact equality/substring semantics.
+fn matches_member_of(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    user_id: &str,
+    filter: &LdapFilter,
+) -> Result<bool> {
+    let mut after = None;
+    loop {
+        let page =
+            tx.user_group_index_page(user_id, after.as_deref(), crate::store::maintenance::PAGE)?;
+        if page.is_empty() {
+            return Ok(false);
+        }
+        let full = page.len() == crate::store::maintenance::PAGE;
+        after = page.last().map(|(key, _)| key.clone());
+        for (key, name) in page {
+            if crate::crypto::digest(&name) != key {
+                return Err(Error::internal(
+                    "LDAP Group membership index has a mismatched key",
+                ));
+            }
+            let row = entry(
+                String::new(),
+                vec![("memberOf", vec![settings.group_dn(&name)])],
+            );
+            if matches_filter(filter, &row) {
+                return Ok(true);
+            }
+        }
+        if !full {
+            return Ok(false);
+        }
+    }
+}
+
+fn matches_user_filter(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    user_id: &str,
+    filter: &LdapFilter,
+    row_without_member_of: &LdapSearchResultEntry,
+    groups_enabled: bool,
+) -> Result<bool> {
+    match filter {
+        LdapFilter::And(filters) => {
+            for filter in filters {
+                if !matches_user_filter(
+                    tx,
+                    settings,
+                    user_id,
+                    filter,
+                    row_without_member_of,
+                    groups_enabled,
+                )? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        LdapFilter::Or(filters) => {
+            for filter in filters {
+                if matches_user_filter(
+                    tx,
+                    settings,
+                    user_id,
+                    filter,
+                    row_without_member_of,
+                    groups_enabled,
+                )? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        LdapFilter::Not(filter) => Ok(!matches_user_filter(
+            tx,
+            settings,
+            user_id,
+            filter,
+            row_without_member_of,
+            groups_enabled,
+        )?),
+        LdapFilter::Equality(name, _)
+        | LdapFilter::Present(name)
+        | LdapFilter::Substring(name, _)
+            if groups_enabled && name.eq_ignore_ascii_case("memberOf") =>
+        {
+            matches_member_of(tx, settings, user_id, filter)
+        }
+        _ => Ok(matches_filter(filter, row_without_member_of)),
+    }
 }
 
 struct GroupIndexCursor {
@@ -355,6 +452,17 @@ impl Core {
         query: &LdapSearchRequest,
         starttls: bool,
     ) -> Result<(Vec<LdapSearchResultEntry>, u64)> {
+        self.ldap_search_entries_with_member_limit(cid, auth, query, starttls, MAX_RESULT_BYTES)
+    }
+
+    fn ldap_search_entries_with_member_limit(
+        &self,
+        cid: &str,
+        auth: Option<&Auth>,
+        query: &LdapSearchRequest,
+        starttls: bool,
+        member_limit: usize,
+    ) -> Result<(Vec<LdapSearchResultEntry>, u64)> {
         self.store.read(|tx| {
             let (client, settings) = self.ldap_profile(tx, cid)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
@@ -451,6 +559,12 @@ impl Core {
             let mut result_bytes = 0usize;
             let mut oversized = false;
             let mut oversized_member_of = false;
+            let member_of_output = client.scopes.contains("groups")
+                && (query.attrs.is_empty()
+                    || query
+                        .attrs
+                        .iter()
+                        .any(|name| name == "*" || name.eq_ignore_ascii_case("memberOf")));
             let in_scope = |dn: &str| {
                 let child = dn.strip_suffix(&suffix);
                 match query.scope {
@@ -462,10 +576,13 @@ impl Core {
             };
             // A filtered-out entry still participates in base discovery and
             // DN collision checks, but does not occupy the result buffer.
-            let mut include = |row: LdapSearchResultEntry| {
+            let mut include = |row: LdapSearchResultEntry, matched: Option<bool>| {
                 let dn = row.dn.to_ascii_lowercase();
                 base_seen |= dn == base;
-                if in_scope(&dn) && matches_filter(&query.filter, &row) && !oversized {
+                if in_scope(&dn)
+                    && matched.unwrap_or_else(|| matches_filter(&query.filter, &row))
+                    && !oversized
+                {
                     result_bytes = result_bytes.saturating_add(row.size());
                     if result_bytes <= MAX_RESULT_BYTES {
                         rows.push(row);
@@ -474,35 +591,41 @@ impl Core {
                     }
                 }
             };
-            include(entry(
-                settings.base_dn.clone(),
-                vec![
-                    ("objectClass", vec!["top".into(), "domain".into()]),
-                    (
-                        "dc",
+            include(
+                entry(
+                    settings.base_dn.clone(),
+                    vec![
+                        ("objectClass", vec!["top".into(), "domain".into()]),
+                        (
+                            "dc",
+                            vec![
+                                settings
+                                    .base_dn
+                                    .split(',')
+                                    .next()
+                                    .unwrap()
+                                    .trim_start_matches("dc=")
+                                    .into(),
+                            ],
+                        ),
+                    ],
+                ),
+                None,
+            );
+            for ou in ["users", "groups"] {
+                include(
+                    entry(
+                        format!("ou={ou},{}", settings.base_dn),
                         vec![
-                            settings
-                                .base_dn
-                                .split(',')
-                                .next()
-                                .unwrap()
-                                .trim_start_matches("dc=")
-                                .into(),
+                            (
+                                "objectClass",
+                                vec!["top".into(), "organizationalUnit".into()],
+                            ),
+                            ("ou", vec![ou.into()]),
                         ],
                     ),
-                ],
-            ));
-            for ou in ["users", "groups"] {
-                include(entry(
-                    format!("ou={ou},{}", settings.base_dn),
-                    vec![
-                        (
-                            "objectClass",
-                            vec!["top".into(), "organizationalUnit".into()],
-                        ),
-                        ("ou", vec![ou.into()]),
-                    ],
-                ));
+                    None,
+                );
             }
             for user in users.into_values() {
                 let dn = settings.user_dn(&user.username);
@@ -514,7 +637,7 @@ impl Core {
                     ));
                 }
                 if !user_in_scope {
-                    include(entry(dn, vec![]));
+                    include(entry(dn, vec![]), Some(false));
                     continue;
                 }
                 let mut attrs = vec![
@@ -536,12 +659,40 @@ impl Core {
                 if client.scopes.contains("email") {
                     attrs.push(("mail", user.email.into_iter().collect()));
                 }
-                if client.scopes.contains("groups") {
-                    let memberships = member_of_dns(tx, &settings, &user.id, MAX_RESULT_BYTES)?;
-                    oversized_member_of |= memberships.is_none();
-                    attrs.push(("memberOf", memberships.unwrap_or_default()));
+                let mut row = entry(dn, attrs);
+                let matched = matches_user_filter(
+                    tx,
+                    &settings,
+                    &user.id,
+                    &query.filter,
+                    &row,
+                    client.scopes.contains("groups"),
+                )?;
+                if matched && member_of_output {
+                    if query.typesonly {
+                        if matches_member_of(
+                            tx,
+                            &settings,
+                            &user.id,
+                            &LdapFilter::Present("memberOf".into()),
+                        )? {
+                            row.attributes.push(LdapPartialAttribute {
+                                atype: "memberOf".into(),
+                                vals: vec![Vec::new()],
+                            });
+                        }
+                    } else {
+                        let memberships = member_of_dns(tx, &settings, &user.id, member_limit)?;
+                        oversized_member_of |= memberships.is_none();
+                        if let Some(memberships) = memberships.filter(|values| !values.is_empty()) {
+                            row.attributes.push(LdapPartialAttribute {
+                                atype: "memberOf".into(),
+                                vals: memberships.into_iter().map(String::into_bytes).collect(),
+                            });
+                        }
+                    }
                 }
-                include(entry(dn, attrs));
+                include(row, Some(matched));
             }
             if client.scopes.contains("groups") {
                 for_each_visible_group(tx, &visible, |name, member_ids| {
@@ -557,14 +708,17 @@ impl Core {
                     if !members.is_empty() {
                         let dn = settings.group_dn(&name);
                         ensure_unique_group_dn(tx, &name, &visible)?;
-                        include(entry(
-                            dn,
-                            vec![
-                                ("objectClass", vec!["top".into(), "groupOfNames".into()]),
-                                ("cn", vec![name]),
-                                ("member", members),
-                            ],
-                        ));
+                        include(
+                            entry(
+                                dn,
+                                vec![
+                                    ("objectClass", vec!["top".into(), "groupOfNames".into()]),
+                                    ("cn", vec![name]),
+                                    ("member", members),
+                                ],
+                            ),
+                            None,
+                        );
                     }
                     Ok(())
                 })?;
@@ -1387,18 +1541,103 @@ mod tests {
             member_of.last().unwrap().as_slice(),
             b"cn=group-129,ou=groups,dc=riauth,dc=test"
         );
-        // One byte below the complete projected value must signal a limit,
-        // including when the crossing occurs on a later index page.
+        // Simulate an oversized User projection at a later index page. A root
+        // result must not disclose or be blocked by that excluded User, while
+        // an included User still fails closed through the full search path.
         let one_byte_short = member_of.iter().map(Vec::len).sum::<usize>() - 1;
+        let mut domain_query = query.clone();
+        domain_query.base = "dc=riauth,dc=test".into();
+        domain_query.scope = LdapSearchScope::Subtree;
+        domain_query.filter = LdapFilter::Equality("objectClass".into(), "domain".into());
+        let (domain_rows, _) = core
+            .ldap_search_entries_with_member_limit(
+                "ldap",
+                Some(&agent),
+                &domain_query,
+                false,
+                one_byte_short,
+            )
+            .unwrap();
+        assert_eq!(domain_rows.len(), 1);
+        assert_eq!(domain_rows[0].dn, "dc=riauth,dc=test");
+        let oversized = core
+            .ldap_search_entries_with_member_limit(
+                "ldap",
+                Some(&agent),
+                &query,
+                false,
+                one_byte_short,
+            )
+            .unwrap_err();
+        assert_eq!(oversized.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(oversized.message, "LDAP result exceeds provider limit");
+        let mut uid_only = query.clone();
+        uid_only.attrs = vec!["uid".into()];
+        let (uid_rows, _) = core
+            .ldap_search_entries_with_member_limit(
+                "ldap",
+                Some(&agent),
+                &uid_only,
+                false,
+                one_byte_short,
+            )
+            .unwrap();
+        assert_eq!(uid_rows.len(), 1);
         assert!(
-            core.store
-                .read(|tx| {
-                    let (_, settings) = core.ldap_profile(tx, "ldap")?;
-                    let id: String = tx.get("usernames", "admin")?.unwrap();
-                    member_of_dns(tx, &settings, &id, one_byte_short)
-                })
+            uid_rows[0]
+                .attributes
+                .iter()
+                .all(|attribute| attribute.atype != "memberOf")
+        );
+        let mut types_only = query.clone();
+        types_only.typesonly = true;
+        let (type_rows, _) = core
+            .ldap_search_entries_with_member_limit(
+                "ldap",
+                Some(&agent),
+                &types_only,
+                false,
+                one_byte_short,
+            )
+            .unwrap();
+        assert_eq!(type_rows.len(), 1);
+        assert!(
+            type_rows[0]
+                .attributes
+                .iter()
+                .any(|attribute| attribute.atype == "memberOf")
+        );
+
+        // Boolean memberOf filters also resolve from pages without charging an
+        // excluded User's full projection.
+        let mut excluded_query = query.clone();
+        excluded_query.filter = LdapFilter::And(vec![
+            LdapFilter::Present("uid".into()),
+            LdapFilter::Not(Box::new(LdapFilter::Present("memberOf".into()))),
+        ]);
+        assert!(
+            core.ldap_search_entries_with_member_limit(
+                "ldap",
+                Some(&agent),
+                &excluded_query,
+                false,
+                one_byte_short,
+            )
+            .unwrap()
+            .0
+            .is_empty()
+        );
+        let mut member_query = query.clone();
+        member_query.filter = LdapFilter::Equality(
+            "MeMbErOf".into(),
+            "cn=group-129,ou=groups,dc=riauth,dc=test".into(),
+        );
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &member_query, false)
                 .unwrap()
-                .is_none()
+                .0
+                .len(),
+            1
         );
         assert_eq!(after.0, before.0);
         assert_eq!(after.1 - before.1, 142);
