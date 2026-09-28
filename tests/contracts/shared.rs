@@ -2903,6 +2903,117 @@ pub fn user_writers_share_management_seam(backend: Backend) {
     assert_eq!(audit_count(&f, "user.account.accept"), 1);
 }
 
+// A desired-state user write keeps its plan binding while reaching the same
+// authority, revocation and audit boundary as direct management writes.
+pub fn desired_state_user_writes_share_management_seam(backend: Backend) {
+    let f = backend.fixture();
+    let session = f.user("managed");
+    let original_user = user(&f, "managed");
+    let replacement_password = "m03-managed-password-v2-2026";
+    let writer = agent(&f, "state-user-writer", &[("user.write", "user/managed")]);
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "users": [{
+            "username": "managed",
+            "display_name": "Managed by plan",
+            "email": "managed@example.test",
+            "enabled": false,
+            "password_ref": "env:M03_MANAGED_PASSWORD",
+            "password_version": "v2"
+        }]
+    }))
+    .unwrap();
+    let pending = f.core.plan_state(&writer, manifest.clone()).unwrap();
+    assert_eq!(pending.changes.len(), 1);
+    assert_eq!(pending.changes[0].resource, "user/managed");
+    assert!(pending.changes[0].credential_change);
+    assert_eq!(audit_count(&f, "user.reconcile"), 0);
+
+    let original_agent: Agent = f
+        .core
+        .store
+        .get("agents", "state-user-writer")
+        .unwrap()
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut revoked = original_agent.clone();
+            revoked.permissions.clear();
+            tx.put("agents", "state-user-writer", &revoked)
+        })
+        .unwrap();
+    let denied_state = f.snapshot().unwrap();
+    let request = |plan| ApplyRequest {
+        plan,
+        secrets: BTreeMap::from([(
+            "env:M03_MANAGED_PASSWORD".into(),
+            replacement_password.into(),
+        )]),
+        run_id: Some("m03-state-user".into()),
+    };
+    assert!(f.core.apply_state(&writer, request(pending)).is_err());
+    assert!(f.core.plan_state(&writer, manifest.clone()).is_err());
+    f.assert_snapshot(&denied_state);
+
+    f.core
+        .store
+        .write(|tx| tx.put("agents", "state-user-writer", &original_agent))
+        .unwrap();
+    let plan = f.core.plan_state(&writer, manifest).unwrap();
+    let applied = f.core.apply_state(&writer, request(plan.clone())).unwrap();
+    assert_eq!(applied["changed"], true);
+    let managed = user(&f, "managed");
+    assert_eq!(managed.display_name, "Managed by plan");
+    assert!(!managed.enabled);
+    assert!(managed.epoch > original_user.epoch);
+    assert_ne!(managed.password_hash, original_user.password_hash);
+    assert!(crypto::password_matches(
+        replacement_password,
+        &managed.password_hash
+    ));
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("credential_versions", "user/managed")
+            .unwrap()
+            .as_deref(),
+        Some("v2")
+    );
+    assert!(f.core.me(&session).is_err());
+
+    let events = audit(&f);
+    let reconciled: Vec<_> = events
+        .iter()
+        .filter(|event| event["action"] == "user.reconcile")
+        .collect();
+    assert_eq!(reconciled.len(), 1);
+    assert_eq!(reconciled[0]["actor"], "agent:state-user-writer");
+    assert_eq!(reconciled[0]["target"], "user/managed");
+    assert_eq!(audit_count(&f, "user.update"), 0);
+    let state_applies: Vec<_> = events
+        .iter()
+        .filter(|event| event["action"] == "state.apply")
+        .collect();
+    assert_eq!(state_applies.len(), 1);
+    assert_eq!(state_applies[0]["target"], plan.plan_id);
+    assert_eq!(state_applies[0]["run_id"], "m03-state-user");
+    assert!(
+        !serde_json::to_string(&plan)
+            .unwrap()
+            .contains(replacement_password)
+    );
+    assert!(
+        !serde_json::to_string(&events)
+            .unwrap()
+            .contains(replacement_password)
+    );
+
+    let committed = f.snapshot().unwrap();
+    assert_eq!(f.core.apply_state(&writer, request(plan)).unwrap(), applied);
+    f.assert_snapshot(&committed);
+}
+
 // RI-CRED-001/002, Q02-C02: a registration response lacking user verification
 // consumes only its ceremony and cannot enroll or revoke account authority.
 pub fn passkey_registration_requires_user_verification(backend: Backend) {

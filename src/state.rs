@@ -4,7 +4,7 @@ use crate::{
         ApplyGate, ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding,
         plan_content, reconcile_plan,
     },
-    core::{Core, audit, validate_display, validate_email, validate_name},
+    core::{Core, audit, validate_display, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     model::*,
@@ -182,32 +182,7 @@ impl Manifest {
             }
         }
         for u in &self.users {
-            if u.password_disabled
-                && (u.password_ref.is_some()
-                    || u.password_hash_ref.is_some()
-                    || u.password_version.is_some())
-            {
-                return Err(Error::bad(
-                    "Password-disabled accounts cannot supply password credentials",
-                ));
-            }
-            if u.totp_ref.is_some() != u.totp_version.is_some() {
-                return Err(Error::bad(
-                    "totp_ref and totp_version must be supplied together",
-                ));
-            }
-            validate_display(&u.display_name)?;
-            if let Some(email) = &u.email {
-                validate_email(email)?;
-            }
-            if u.password_ref.is_some() && u.password_hash_ref.is_some()
-                || (u.password_ref.is_some() || u.password_hash_ref.is_some())
-                    != u.password_version.is_some()
-            {
-                return Err(Error::bad(
-                    "Provide exactly one of password_ref/password_hash_ref together with password_version",
-                ));
-            }
+            crate::management::validate_desired_user_spec(u)?;
         }
         for c in &self.clients {
             validate_display(&c.name)?;
@@ -442,7 +417,9 @@ impl Core {
         if mode.decide(&impact) == ReconciliationDecision::Eligible
             && !state_automation_safe(&plan.changes)
         {
-            return Ok(json!({"decision":"awaiting_review","mode":mode,"reason":"change_review_required","plan":plan}));
+            return Ok(
+                json!({"decision":"awaiting_review","mode":mode,"reason":"change_review_required","plan":plan}),
+            );
         }
         let view = json!(&plan);
         reconcile_plan(mode, &impact, view, |_id| {
@@ -578,7 +555,7 @@ impl Core {
     }
 }
 
-fn user_spec(u: &User) -> UserSpec {
+pub(crate) fn user_spec(u: &User) -> UserSpec {
     UserSpec {
         password_disabled: u.password_hash.is_empty(),
         totp_ref: None,
@@ -657,183 +634,16 @@ fn reconcile(
 ) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
     for spec in &manifest.users {
-        let resource = format!("user/{}", spec.username);
-        actor.require("user.write", &resource)?;
-        let existing = tx
-            .get::<String>("usernames", &spec.username)?
-            .map(|id| tx.get::<User>("users", &id))
-            .transpose()?
-            .flatten();
-        if let Some(id) = &spec.id {
-            validate_name(id)?;
-            if existing.as_ref().is_some_and(|u| &u.id != id)
-                || existing.is_none() && tx.get::<User>("users", id)?.is_some()
-            {
-                return Err(Error::conflict(
-                    "User ID already belongs to another identity or is immutable",
-                ));
-            }
+        if let Some(change) = crate::management::write_desired_user(
+            tx,
+            actor,
+            spec,
+            secrets,
+            core.config.password_history,
+            preview,
+        )? {
+            changes.push(change);
         }
-        let before = existing
-            .as_ref()
-            .map(|u| {
-                let mut view = user_spec(u);
-                if spec.id.is_none() {
-                    view.id = None;
-                }
-                value(&view)
-            })
-            .transpose()?
-            .unwrap_or(Value::Null);
-        let mut clean = spec.clone();
-        clean.password_ref = None;
-        clean.password_hash_ref = None;
-        clean.password_version = None;
-        clean.totp_ref = None;
-        clean.totp_version = None;
-        let after = value(&clean)?;
-        let password_change = existing
-            .as_ref()
-            .is_none_or(|u| u.password_hash.is_empty() != spec.password_disabled)
-            || changed_secret(tx, &resource, &spec.password_version)?;
-        let factor_resource = format!("totp/{}", spec.username);
-        let factor_change = spec.totp_ref.is_some()
-            && (existing.as_ref().is_none_or(|u| u.totp_secret.is_none())
-                || changed_secret(tx, &factor_resource, &spec.totp_version)?);
-        let credential_change = password_change || factor_change;
-        let mut secret_references = BTreeSet::new();
-        if password_change && !spec.password_disabled {
-            if let Some(existing) = &existing {
-                if existing.password_hash.is_empty()
-                    && crate::passkey::passkey_count(tx, &existing.id)? > 0
-                {
-                    return Err(Error::conflict(
-                        "Passkey-only account password recovery is an offline operator operation",
-                    ));
-                }
-            }
-            secret_references.extend(
-                spec.password_ref
-                    .iter()
-                    .chain(&spec.password_hash_ref)
-                    .cloned(),
-            );
-        }
-        if factor_change {
-            secret_references.extend(spec.totp_ref.iter().cloned());
-        }
-        if before == after && !credential_change {
-            continue;
-        }
-        if actor.agent && (spec.admin || existing.as_ref().is_some_and(|u| u.admin)) {
-            return Err(Error::forbidden());
-        }
-        let mut user = existing.clone().unwrap_or_else(|| User {
-            has_passkeys: false,
-            totp_settings: Default::default(),
-            pairwise_seed: crypto::random_token(""),
-            id: spec.id.clone().unwrap_or_else(crypto::id),
-            username: spec.username.clone(),
-            email: None,
-            display_name: spec.display_name.clone(),
-            password_hash: String::new(),
-            enabled: true,
-            admin: false,
-            epoch: 0,
-            totp_secret: None,
-            totp_pending: None,
-            totp_last_step: None,
-            created_at: now(),
-            attributes: BTreeMap::new(),
-            email_verified: false,
-            subjects: BTreeMap::new(),
-            recovery_codes: BTreeSet::new(),
-        });
-        if password_change && spec.password_disabled {
-            user.password_hash.clear();
-        }
-        if password_change && !spec.password_disabled {
-            if spec.password_ref.is_none() && spec.password_hash_ref.is_none() {
-                return Err(Error::bad(
-                    "New users require password_ref and password_version",
-                ));
-            }
-            if preview {
-                user.password_hash = "preview".into();
-            } else if spec.password_hash_ref.is_some() {
-                let imported =
-                    crypto::validate_imported_hash(secret(secrets, &spec.password_hash_ref)?)?;
-                crate::identity::password_history::record_imported_hash(
-                    tx,
-                    core.config.password_history,
-                    &user.id,
-                    &user.password_hash,
-                    &imported,
-                )?;
-                user.password_hash = imported;
-            } else {
-                let plaintext = secret(secrets, &spec.password_ref)?;
-                let hashed = crypto::password_hash(plaintext)?;
-                crate::identity::password_history::accept(
-                    tx,
-                    core.config.password_history,
-                    &user.id,
-                    &user.password_hash,
-                    plaintext,
-                    &hashed,
-                )?;
-                user.password_hash = hashed;
-            }
-            tx.put("credential_versions", &resource, &spec.password_version)?;
-            tx.delete("attempts", &spec.username)?;
-        }
-        if factor_change {
-            if !preview {
-                crate::authenticator::import(&mut user, secret(secrets, &spec.totp_ref)?)?;
-            }
-            tx.put("credential_versions", &factor_resource, &spec.totp_version)?;
-        }
-        if credential_change
-            || user.enabled != spec.enabled
-            || user.admin != spec.admin
-            || user.subjects != spec.subjects
-        {
-            user.epoch += 1;
-        }
-        user.display_name = spec.display_name.clone();
-        user.email = spec.email.clone();
-        user.email_verified = spec.email_verified;
-        user.enabled = spec.enabled;
-        user.admin = spec.admin;
-        if user.enabled
-            && user.admin
-            && user.password_hash.is_empty()
-            && crate::passkey::passkey_count(tx, &user.id)? < 2
-        {
-            return Err(Error::conflict(
-                "Passkey-only administrators require two passkeys",
-            ));
-        }
-        user.attributes = spec.attributes.clone();
-        user.subjects = spec.subjects.clone();
-        if existing.as_ref().is_some_and(|u| u.epoch != user.epoch) {
-            crate::logout::queue_user(tx, &user.id)?;
-        }
-        tx.put("users", &user.id, &user)?;
-        tx.put("usernames", &user.username, &user.id)?;
-        changes.push(Change {
-            resource,
-            action: if existing.is_some() {
-                "update"
-            } else {
-                "create"
-            }
-            .into(),
-            before,
-            after,
-            credential_change,
-            secret_references,
-        });
     }
     for spec in &manifest.groups {
         let resource = format!("group/{}", spec.name);

@@ -27,6 +27,7 @@ use crate::{
     registration::{
         InitialAccess, RegistrationAuthority, RegistrationRequest, RegistrationTemplate,
     },
+    state::{Change, UserSpec, user_spec},
     store::Tx,
 };
 use serde_json::{Value, json};
@@ -42,7 +43,7 @@ pub(crate) enum Secret<'a> {
     Supplied(&'a str),
 }
 
-/// The audit record an application write produces.
+/// The audit record a shared management write produces.
 pub(crate) enum Record<'a> {
     /// A direct write records its own action, e.g. `client.create`.
     Direct(&'a str),
@@ -208,6 +209,76 @@ fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result
     Ok(())
 }
 
+/// Persist a prepared user from either the direct or desired-state adapter.
+/// Both paths bind the username and immutable ID at the write boundary and
+/// recheck the exact user scope. A plan emits its reconciliation audit only
+/// after `state` verifies the complete set of changes against the stored plan.
+fn write_user_record(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    existing: Option<&User>,
+    user: &User,
+    record: Record<'_>,
+    signal_session_revocation: bool,
+) -> Result<()> {
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    if actor.agent && (user.admin || existing.is_some_and(|previous| previous.admin)) {
+        return Err(Error::forbidden());
+    }
+    match existing {
+        Some(previous) => {
+            if previous.id != user.id || previous.username != user.username {
+                return Err(Error::conflict("User identity is immutable"));
+            }
+            if tx.get::<String>("usernames", &user.username)?.as_deref() != Some(user.id.as_str())
+                || tx
+                    .get::<User>("users", &user.id)?
+                    .is_none_or(|current| current.username != user.username)
+            {
+                return Err(Error::conflict("User identity does not match its index"));
+            }
+        }
+        None => {
+            if tx.get::<String>("usernames", &user.username)?.is_some() {
+                return Err(Error::conflict("Username already exists"));
+            }
+            if tx.get::<User>("users", &user.id)?.is_some() {
+                return Err(Error::conflict(
+                    "User ID already belongs to another identity",
+                ));
+            }
+        }
+    }
+    if user.enabled
+        && user.admin
+        && user.password_hash.is_empty()
+        && crate::passkey::passkey_count(tx, &user.id)? < 2
+    {
+        return Err(Error::conflict(
+            "Passkey-only administrators require two passkeys",
+        ));
+    }
+    tx.put("users", &user.id, user)?;
+    if existing.is_none() || matches!(&record, Record::Plan) {
+        tx.put("usernames", &user.username, &user.id)?;
+    }
+    if existing.is_some_and(|previous| previous.epoch != user.epoch) {
+        crate::logout::queue_user(tx, &user.id)?;
+    }
+    if signal_session_revocation {
+        crate::identity::signals::enqueue(
+            tx,
+            &user.id,
+            crate::identity::signals::SESSION_REVOKED,
+            "",
+        )?;
+    }
+    if let Record::Direct(action) = record {
+        audit(tx, &actor.id, action, &user.id)?;
+    }
+    Ok(())
+}
+
 /// Direct user writes from the API, CLI and browser stay inside the caller's
 /// mutation transaction. The service rechecks exact user authority before
 /// validation, persistence, revocation and audit.
@@ -222,9 +293,6 @@ pub(crate) fn create_user(
         return Err(Error::forbidden());
     }
     let user = make_user(input)?;
-    if tx.get::<String>("usernames", &user.username)?.is_some() {
-        return Err(Error::conflict("Username already exists"));
-    }
     crate::identity::password_history::record_imported_hash(
         tx,
         password_history,
@@ -232,9 +300,7 @@ pub(crate) fn create_user(
         "",
         &user.password_hash,
     )?;
-    tx.put("users", &user.id, &user)?;
-    tx.put("usernames", &user.username, &user.id)?;
-    audit(tx, &actor.id, "user.create", &user.id)?;
+    write_user_record(tx, actor, None, &user, Record::Direct("user.create"), false)?;
     Ok(json!(UserView::from(&user)))
 }
 
@@ -247,7 +313,7 @@ pub(crate) fn update_user(
 ) -> Result<Value> {
     actor.require("user.write", &format!("user/{username}"))?;
     let mut user = user_by_name(tx, username)?;
-    let previous_epoch = user.epoch;
+    let previous = user.clone();
     if actor.agent && (user.admin || patch.admin == Some(true)) {
         return Err(Error::forbidden());
     }
@@ -319,30 +385,249 @@ pub(crate) fn update_user(
     if patch.revoke_sessions {
         user.epoch += 1;
     }
-    if user.enabled
-        && user.admin
-        && user.password_hash.is_empty()
-        && crate::passkey::passkey_count(tx, &user.id)? < 2
+    ensure_remaining_admin(tx, &user)?;
+    write_user_record(
+        tx,
+        actor,
+        Some(&previous),
+        &user,
+        Record::Direct("user.update"),
+        patch.revoke_sessions,
+    )?;
+    Ok(json!(UserView::from(&user)))
+}
+
+/// Validate the user-specific part of a desired-state manifest. Planning and
+/// the transaction-level writer use the same rules for credential references.
+pub(crate) fn validate_desired_user_spec(spec: &UserSpec) -> Result<()> {
+    if spec.password_disabled
+        && (spec.password_ref.is_some()
+            || spec.password_hash_ref.is_some()
+            || spec.password_version.is_some())
     {
-        return Err(Error::conflict(
-            "Passkey-only administrators require two passkeys",
+        return Err(Error::bad(
+            "Password-disabled accounts cannot supply password credentials",
         ));
     }
-    ensure_remaining_admin(tx, &user)?;
-    tx.put("users", &user.id, &user)?;
-    if user.epoch != previous_epoch {
-        crate::logout::queue_user(tx, &user.id)?;
+    if spec.totp_ref.is_some() != spec.totp_version.is_some() {
+        return Err(Error::bad(
+            "totp_ref and totp_version must be supplied together",
+        ));
     }
-    if patch.revoke_sessions {
-        crate::identity::signals::enqueue(
-            tx,
-            &user.id,
-            crate::identity::signals::SESSION_REVOKED,
-            "",
-        )?;
+    validate_display(&spec.display_name)?;
+    if let Some(email) = &spec.email {
+        validate_email(email)?;
     }
-    audit(tx, &actor.id, "user.update", &user.id)?;
-    Ok(json!(UserView::from(&user)))
+    if spec.password_ref.is_some() && spec.password_hash_ref.is_some()
+        || (spec.password_ref.is_some() || spec.password_hash_ref.is_some())
+            != spec.password_version.is_some()
+    {
+        return Err(Error::bad(
+            "Provide exactly one of password_ref/password_hash_ref together with password_version",
+        ));
+    }
+    Ok(())
+}
+
+fn desired_secret<'a>(
+    secrets: &'a std::collections::BTreeMap<String, String>,
+    reference: &Option<String>,
+) -> Result<&'a str> {
+    reference
+        .as_ref()
+        .and_then(|key| secrets.get(key))
+        .map(String::as_str)
+        .ok_or_else(|| Error::bad("Required secret value was not supplied"))
+}
+
+fn user_version_changed(tx: &Tx<'_>, resource: &str, version: &Option<String>) -> Result<bool> {
+    Ok(match version {
+        Some(version) => {
+            tx.get::<String>("credential_versions", resource)?.as_ref() != Some(version)
+        }
+        None => false,
+    })
+}
+
+/// Stage one desired-state user and return its plan Change. The caller owns
+/// the stored plan, preview rollback, final whole-manifest claims/admin checks,
+/// comparison with the reviewed Change set, and the enclosing reconcile audit.
+/// This writer owns user authority, identity binding, credential changes,
+/// persistence and revocation inside that same transaction.
+pub(crate) fn write_desired_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    spec: &UserSpec,
+    secrets: &std::collections::BTreeMap<String, String>,
+    password_history: u32,
+    preview: bool,
+) -> Result<Option<Change>> {
+    let resource = format!("user/{}", spec.username);
+    actor.require("user.write", &resource)?;
+    validate_name(&spec.username)?;
+    validate_desired_user_spec(spec)?;
+    let existing = tx
+        .get::<String>("usernames", &spec.username)?
+        .map(|id| tx.get::<User>("users", &id))
+        .transpose()?
+        .flatten();
+    if let Some(id) = &spec.id {
+        validate_name(id)?;
+        if existing.as_ref().is_some_and(|user| &user.id != id)
+            || existing.is_none() && tx.get::<User>("users", id)?.is_some()
+        {
+            return Err(Error::conflict(
+                "User ID already belongs to another identity or is immutable",
+            ));
+        }
+    }
+    let before = existing
+        .as_ref()
+        .map(|user| {
+            let mut view = user_spec(user);
+            if spec.id.is_none() {
+                view.id = None;
+            }
+            serde_json::to_value(&view).map_err(Error::internal)
+        })
+        .transpose()?
+        .unwrap_or(Value::Null);
+    let mut clean = spec.clone();
+    clean.password_ref = None;
+    clean.password_hash_ref = None;
+    clean.password_version = None;
+    clean.totp_ref = None;
+    clean.totp_version = None;
+    let after = serde_json::to_value(&clean).map_err(Error::internal)?;
+    let password_change = existing
+        .as_ref()
+        .is_none_or(|user| user.password_hash.is_empty() != spec.password_disabled)
+        || user_version_changed(tx, &resource, &spec.password_version)?;
+    let factor_resource = format!("totp/{}", spec.username);
+    let factor_change = spec.totp_ref.is_some()
+        && (existing
+            .as_ref()
+            .is_none_or(|user| user.totp_secret.is_none())
+            || user_version_changed(tx, &factor_resource, &spec.totp_version)?);
+    let credential_change = password_change || factor_change;
+    let mut secret_references = BTreeSet::new();
+    if password_change && !spec.password_disabled {
+        if let Some(user) = &existing {
+            if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
+                return Err(Error::conflict(
+                    "Passkey-only account password recovery is an offline operator operation",
+                ));
+            }
+        }
+        secret_references.extend(
+            spec.password_ref
+                .iter()
+                .chain(&spec.password_hash_ref)
+                .cloned(),
+        );
+    }
+    if factor_change {
+        secret_references.extend(spec.totp_ref.iter().cloned());
+    }
+    if before == after && !credential_change {
+        return Ok(None);
+    }
+    if actor.agent && (spec.admin || existing.as_ref().is_some_and(|user| user.admin)) {
+        return Err(Error::forbidden());
+    }
+    let mut user = existing.clone().unwrap_or_else(|| User {
+        has_passkeys: false,
+        totp_settings: Default::default(),
+        pairwise_seed: crypto::random_token(""),
+        id: spec.id.clone().unwrap_or_else(crypto::id),
+        username: spec.username.clone(),
+        email: None,
+        display_name: spec.display_name.clone(),
+        password_hash: String::new(),
+        enabled: true,
+        admin: false,
+        epoch: 0,
+        totp_secret: None,
+        totp_pending: None,
+        totp_last_step: None,
+        created_at: now(),
+        attributes: Default::default(),
+        email_verified: false,
+        subjects: Default::default(),
+        recovery_codes: Default::default(),
+    });
+    if password_change && spec.password_disabled {
+        user.password_hash.clear();
+    }
+    if password_change && !spec.password_disabled {
+        if spec.password_ref.is_none() && spec.password_hash_ref.is_none() {
+            return Err(Error::bad(
+                "New users require password_ref and password_version",
+            ));
+        }
+        if preview {
+            user.password_hash = "preview".into();
+        } else if spec.password_hash_ref.is_some() {
+            let imported =
+                crypto::validate_imported_hash(desired_secret(secrets, &spec.password_hash_ref)?)?;
+            crate::identity::password_history::record_imported_hash(
+                tx,
+                password_history,
+                &user.id,
+                &user.password_hash,
+                &imported,
+            )?;
+            user.password_hash = imported;
+        } else {
+            let plaintext = desired_secret(secrets, &spec.password_ref)?;
+            let hashed = crypto::password_hash(plaintext)?;
+            crate::identity::password_history::accept(
+                tx,
+                password_history,
+                &user.id,
+                &user.password_hash,
+                plaintext,
+                &hashed,
+            )?;
+            user.password_hash = hashed;
+        }
+        tx.put("credential_versions", &resource, &spec.password_version)?;
+        tx.delete("attempts", &spec.username)?;
+    }
+    if factor_change {
+        if !preview {
+            crate::authenticator::import(&mut user, desired_secret(secrets, &spec.totp_ref)?)?;
+        }
+        tx.put("credential_versions", &factor_resource, &spec.totp_version)?;
+    }
+    if credential_change
+        || user.enabled != spec.enabled
+        || user.admin != spec.admin
+        || user.subjects != spec.subjects
+    {
+        user.epoch += 1;
+    }
+    user.display_name = spec.display_name.clone();
+    user.email = spec.email.clone();
+    user.email_verified = spec.email_verified;
+    user.enabled = spec.enabled;
+    user.admin = spec.admin;
+    user.attributes = spec.attributes.clone();
+    user.subjects = spec.subjects.clone();
+    write_user_record(tx, actor, existing.as_ref(), &user, Record::Plan, false)?;
+    Ok(Some(Change {
+        resource,
+        action: if existing.is_some() {
+            "update"
+        } else {
+            "create"
+        }
+        .into(),
+        before,
+        after,
+        credential_change,
+        secret_references,
+    }))
 }
 
 /// Issue or reissue an invitation. Proof rotation and mail enqueueing are

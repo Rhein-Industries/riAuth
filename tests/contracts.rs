@@ -55,6 +55,7 @@ backend_contract!(account_proof_supersession_and_expiry);
 backend_contract!(verification_proof_binding_and_replay);
 backend_contract!(invitation_acceptance_revalidates_creator);
 backend_contract!(user_writers_share_management_seam);
+backend_contract!(desired_state_user_writes_share_management_seam);
 backend_contract!(passkey_registration_requires_user_verification);
 #[cfg(feature = "test-support")]
 backend_contract!(passkey_management_requires_fresh_mfa);
