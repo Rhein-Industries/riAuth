@@ -81,8 +81,18 @@ impl Seed {
             }
             if key.starts_with("users/") {
                 let restored_user = after.get(key).expect("restored user missing");
-                for field in ["id", "username", "subjects", "pairwise_seed", "password_hash"] {
-                    assert_eq!(restored_user.get(field), value.get(field), "restored {key}/{field} changed");
+                for field in [
+                    "id",
+                    "username",
+                    "subjects",
+                    "pairwise_seed",
+                    "password_hash",
+                ] {
+                    assert_eq!(
+                        restored_user.get(field),
+                        value.get(field),
+                        "restored {key}/{field} changed"
+                    );
                 }
                 assert_eq!(
                     restored_user["epoch"].as_u64().unwrap(),
@@ -1125,4 +1135,98 @@ fn measure_backup_memory() {
         }
         other => panic!("unknown mode {other}"),
     }
+}
+
+/// The HTTP export streams under backpressure, holds the single export slot,
+/// stops when its client hangs up, and a complete body verifies and restores.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_stream_backpressures_cancels_on_disconnect_and_restores() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use std::time::{Duration, Instant};
+    use tower::ServiceExt;
+
+    // Several MiB of records, far more than the export's 1 MiB queue.
+    let seed = Seed::new(3000);
+    let before = seed.snapshot();
+    let key = riauth::crypto::random_token("");
+    let app = riauth::api::router(seed.fixture.core.clone());
+    let request = |token: Option<&str>| {
+        let mut request = Request::post("/api/operations/backup/stream")
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            request = request.header("authorization", format!("Bearer {token}"));
+        }
+        request
+            .body(Body::from(
+                serde_json::json!({"encryption_key": key}).to_string(),
+            ))
+            .unwrap()
+    };
+
+    // Callers without the backup permission get an error, never archive bytes.
+    let denied = app.clone().oneshot(request(None)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    let forbidden = app
+        .clone()
+        .oneshot(request(Some(&seed.alice)))
+        .await
+        .unwrap();
+    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+    // Read only the first chunk: the export then waits on its full queue.
+    let admin = seed.fixture.admin.clone();
+    let mut stalled = app.clone().oneshot(request(Some(&admin))).await.unwrap();
+    assert_eq!(stalled.status(), StatusCode::OK);
+    assert_eq!(
+        stalled.headers()["x-riauth-backup-format"],
+        "riauth.backup/v3"
+    );
+    let first = stalled
+        .body_mut()
+        .frame()
+        .await
+        .unwrap()
+        .unwrap()
+        .into_data()
+        .unwrap();
+    assert!(first.starts_with(MAGIC));
+    let busy = app.clone().oneshot(request(Some(&admin))).await.unwrap();
+    assert_eq!(busy.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    // Hanging up cancels the export well before the 60 second stall timeout.
+    drop(stalled);
+    let started = Instant::now();
+    let complete = loop {
+        let response = app.clone().oneshot(request(Some(&admin))).await.unwrap();
+        if response.status() == StatusCode::OK {
+            break response;
+        }
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "a disconnected export kept its slot"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    let bytes = complete.into_body().collect().await.unwrap().to_bytes();
+
+    // The complete body authenticates as a whole and restores as before.
+    let directory = tempfile::tempdir().unwrap();
+    let key_path = key_file(directory.path(), "http", &key);
+    let archive_path = archive(directory.path(), "http", &bytes);
+    let verified = riauth::operations::stream::verify_file(
+        &archive_path,
+        &riauth::crypto::read_key(&key_path).unwrap(),
+        StreamOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(verified.summary.bytes, bytes.len() as u64);
+    assert!(verified.summary.records >= 3000);
+    let output = directory.path().join("restored");
+    riauth::operations::restore(&archive_path, &key_path, &output, None).unwrap();
+    seed.assert_restored(&output, &before);
 }

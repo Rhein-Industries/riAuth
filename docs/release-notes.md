@@ -1,3 +1,20 @@
+# Unreleased streamed backup export (R01)
+
+- `riauth backup` now streams a `riauth.backup/v3` archive from the new
+  `POST /api/operations/backup/stream` route instead of a buffered v2 JSON
+  document limited to 64 MiB. The archive is written to a private file beside
+  `--out` and published under that name only after every frame, the trailer
+  and the transcript authenticate with the backup key; `--out` is never
+  overwritten, and a failed or cancelled transfer leaves nothing there.
+- For `riauth backup`, `--request-timeout` now bounds each wait for data rather
+  than the whole transfer; `--max-bytes` caps the archive (default 4 GiB).
+- The export holds one read snapshot, streams through a bounded queue, runs one
+  at a time per process, and stops when its client disconnects or stalls. The
+  optional `[backup]` table sets its archive and frame quotas, stall timeout and
+  maximum duration. See [streamed backup export](operations.md#streamed-backup-export).
+- `POST /api/operations/backup` still returns v2 JSON for existing API clients.
+  Restore reads v1, v2 and v3 archives as before.
+
 # Unreleased browser password change and recovery (U04)
 
 - The applications portal's **Sign-in and security** dialog (formerly **Passkeys
@@ -62,8 +79,8 @@
   `riauth recovery complete --recovery-id <id> --persistent-credentials-reconciled` records that
   restored persistent credentials were reconciled. See [recovery](recovery.md).
 - R04 does not change the backup formats or logical storage schema 3. Restore
-  accepts v1 and v2 archives and the opt-in `riauth.backup/v3` stream produced
-  by `Core::backup_stream`; the server and CLI still create v2 archives.
+  accepts v1 and v2 archives and `riauth.backup/v3` streams, which
+  `riauth backup` now writes (R01).
   Restores and rollbacks now sign every user out.
 
 # Unreleased migration identity continuity (G02)

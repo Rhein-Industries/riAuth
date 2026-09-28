@@ -311,7 +311,10 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/operations/prometheus` | Authenticated Prometheus text metrics |
 | GET | `/api/operations/mail` | Redacted email-delivery state |
 | GET | `/api/operations/logout` | Logout delivery state |
-| POST | `/api/operations/backup` | Base64url `encryption_key`; encrypted complete snapshot |
+| POST | `/api/operations/backup/stream` | Base64url `encryption_key`, optional lower `max_archive_bytes`; streams an encrypted complete snapshot as `riauth.backup/v3` |
+| POST | `/api/operations/backup` | Legacy: base64url `encryption_key`; encrypted complete snapshot as `riauth.backup/v2` JSON of at most 64 MiB |
+
+Both backup routes need `operations.backup` on `operations/backup`. The streaming route reports authorization, key and quota failures, and 503 while another export runs, as JSON errors before the archive starts. A 200 response is `application/octet-stream` with `X-riAuth-Backup-Format: riauth.backup/v3` and the effective `X-riAuth-Backup-Max-Bytes`. A later failure aborts the body rather than ending it, so accept an archive only after it authenticates through its trailer, as `riauth backup` does. See [streamed backup export](operations.md#streamed-backup-export).
 
 Workspace and Entra plans expose `removal_impact` with `disabled_users`, `missing_users`, `removed_memberships`, and `review_required`. Any previously linked user missing from the snapshot, any mapped-group membership removal, a full linked-user disable, or a large partial disable requires confirmation. For a plan with `review_required: true`, inspect its `changes` and send `X-riAuth-Confirm-Cloud-Removals: <plan-id>` with the apply request. The exact stored plan ID is required; the server re-fetches the directory and rejects a changed snapshot or impact.
 

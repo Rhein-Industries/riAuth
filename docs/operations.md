@@ -89,13 +89,13 @@ riauth-maintenance init --database-key-file database.key
 riauth serve
 ```
 
-While the service runs, use the same working directory in another terminal to sign in, generate a **separate backup key**, and take a backup. `backup` is an authenticated request to the running service; `restore` is a local offline operation that creates a new directory. Keep the backup key in your recovery secret store. The longer request deadline is useful for stores that exceed the default 30 seconds:
+While the service runs, use the same working directory in another terminal to sign in, generate a **separate backup key**, and take a backup. `backup` is an authenticated request to the running service; `restore` is a local offline operation that creates a new directory. Keep the backup key in your recovery secret store. `backup` streams the archive into a private file beside `--out` and gives it that name only after the whole archive authenticates:
 
 ```sh
 riauth login admin
 riauth-maintenance keygen --out backup.key
-riauth --request-timeout 300 backup --key-file backup.key --out backup.json
-riauth-maintenance restore --backup backup.json --key-file backup.key \
+riauth backup --key-file backup.key --out backup.riauth
+riauth-maintenance restore --backup backup.riauth --key-file backup.key \
   --out restored --database-key-file database.key
 # For a new, dedicated PostgreSQL database, add:
 #   --postgres-config deployment-private/postgres.json
@@ -105,7 +105,7 @@ Check the new `restored/` directory and the command's `verified` and `storage` r
 
 Restore applies the [restored-state policy](recovery.md): it invalidates every restored session, grant and pending proof, advances account epochs, and gates serving (`"serving_allowed": false`) until `riauth recovery complete --recovery-id <id> --persistent-credentials-reconciled` records that restored persistent credentials were reconciled. To rehearse service recovery, make the external keys and referenced files available in an isolated environment, then test administrator login, JWKS and representative application flows with the restored configuration. Do not expose a second server under the live issuer. For a remote service, use `riauth --server https://id.example.com` for `login` and `backup`; the account running `restore` needs read access to the archive and keys.
 
-Backup takes a consistent database read snapshot while the server runs and encrypts the configuration and records with AES-256-GCM. The default backup uses authenticated chunks (`riauth.backup/v2`); the opt-in R01 writer produces authenticated `riauth.backup/v3` streams. Restore also accepts the earlier single-blob `riauth.backup/v1` envelope. For v3 it authenticates the entire stream before opening a target, then authenticates every frame again during import and compares the final transcript. Restore validates schema/issuer, requires a new output directory, applies the restored-state policy, checks signing keys and an enabled administrator, and reopens the restored store. A v2 manifest authenticates the chunk order, count and digests so truncated or reordered archives fail validation. The `verified` result covers these local checks, not a password or application login or access to external credentials and services. The restored configuration cannot serve until recovery reconciliation is attested.
+Backup takes a consistent database read snapshot while the server runs and encrypts the configuration and records with AES-256-GCM. `riauth backup` and `POST /api/operations/backup/stream` produce framed, authenticated `riauth.backup/v3` streams; the legacy `POST /api/operations/backup` endpoint still returns authenticated JSON chunks (`riauth.backup/v2`) of at most 64 MiB. Restore also accepts the earlier single-blob `riauth.backup/v1` envelope. For v3 it authenticates the entire stream before opening a target, then authenticates every frame again during import and compares the final transcript. Restore validates schema/issuer, requires a new output directory, applies the restored-state policy, checks signing keys and an enabled administrator, and reopens the restored store. A v2 manifest authenticates the chunk order, count and digests so truncated or reordered archives fail validation. The `verified` result covers these local checks, not a password or application login or access to external credentials and services. The restored configuration cannot serve until recovery reconciliation is attested.
 
 The backup key, optional live-storage key and contents of external credential/certificate files are not included in the backup. Restore preserves their configuration references; re-provision and review those paths before starting the recovered service. Vault private keys remain in Vault. Losing the corresponding key makes those encrypted data unrecoverable. Record values are encrypted at rest; record names, sizes and access patterns are not hidden. Encryption does not protect a running compromised process. Backups contain operational secrets and should be treated as complete instance credentials.
 
@@ -226,7 +226,7 @@ older writers before upgrading and keep a verified pre-upgrade backup. See the
 index values are encrypted but timestamp/hash keys expose scheduling metadata.
 
 Backup creation seals pages of up to 128 records inside one consistent snapshot.
-The current writer limits serialized plaintext pages to 8 MiB and the complete
+The legacy v2 JSON writer limits serialized plaintext pages to 8 MiB and the complete
 encrypted JSON archive to 64 MiB. Restore accepts older v2 chunks with larger
 plaintext pages within that archive ceiling; v1 restore also materializes its
 complete plaintext payload. Oversized backups fail explicitly; they do not truncate records.
@@ -234,9 +234,9 @@ The encrypted chunks, manifest and final JSON response remain buffered within th
 archive bound. Restore rejects oversized files before reading them and decrypts
 one chunk at a time without retaining decoded ciphertext copies. Version-1
 archives remain readable within the archive limit; new backups use version 2.
-`restore` also recognises the framed `riauth.backup/v3` stream by its leading
-magic. That format is currently produced only by the library API
-(`Core::backup_stream`); the server endpoint and `riauth backup` still write v2.
+`riauth backup` and the streaming endpoint write the framed `riauth.backup/v3`
+format, which `restore` recognises by its leading magic; only the legacy JSON
+endpoint still writes v2.
 A v3 archive is a sequence of AES-256-GCM frames whose associated data binds the
 archive identity, frame position and kind, closed by a trailer that commits to the
 record and frame counts and a transcript hash. Restore authenticates the complete
@@ -248,9 +248,54 @@ and value bytes before decoding, and restore/index validation scans one record
 at a time. These checks do not establish a bound on process memory: decoded
 JSON, redb caching and the restore write transaction still need peak-RSS
 measurement on representative and adversarial data.
+### Streamed backup export
+
+`POST /api/operations/backup/stream` needs `operations.backup` on
+`operations/backup` and sends one consistent snapshot as a v3 archive while it
+is sealed. Authorization, the key and the quota are checked before the response
+starts, so those failures are ordinary JSON errors; a process runs one export at
+a time and answers 503 while another is running. The export hands frames to the
+connection through a bounded queue of at most 1 MiB, so a slow client slows the
+export rather than growing server memory. A client that disconnects cancels the
+export and ends its read snapshot. The export is also cancelled when the client
+accepts no data for `stall_timeout_seconds`, or is still running after
+`max_duration_seconds`. The export holds a redb read transaction or a PostgreSQL
+`REPEATABLE READ` transaction and pooled connection for its whole duration. A
+failure after the response started aborts the body instead of ending it, and
+the partial archive has no trailer, which verification and restore reject. The
+server logs the start of each export's transfer, its progress every 10 seconds,
+and its completion (stream ID, frames, records, bytes) or abort reason.
+
+Server quotas live in an optional `[backup]` table; put it after all top-level keys:
+
+```toml
+[backup]
+max_archive_bytes = 4294967296   # 1 MiB through 4 GiB (default 4 GiB)
+max_frame_bytes = 8388608        # 4 KiB through 8 MiB (default 8 MiB)
+stall_timeout_seconds = 60       # 5 through 3600
+max_duration_seconds = 3600      # 60 through 86400
+```
+
+A request may lower the archive quota with `max_archive_bytes`; it cannot raise
+it. An archive that would exceed the quota stops before the frame that crosses it.
+
+`riauth backup` writes the stream to a new `0600` file beside `--out`, enforces
+`--max-bytes` (default 4 GiB) while receiving, syncs the file, then
+authenticates every frame, the record order, the trailer's counts and transcript,
+EOF, schema and issuer with the backup key, as `restore` does before it creates
+output. Only a verified archive is linked under `--out`, which is never
+overwritten. Interrupted, oversized, cancelled (Ctrl-C) or unverifiable
+transfers leave nothing under `--out`. The result reports `verified`,
+`stream_id`, `frames`, `records`, `bytes`, `transcript` and `issuer`; the stream
+ID matches the server's completion log. On an interactive terminal without
+`--json`, progress appears on stderr.
+
 The CLI deadline is configurable with `--request-timeout SECONDS` or
 `RIAUTH_REQUEST_TIMEOUT` (default 30, range 1..=86,400), including body receipt.
-Measure HTTP backup and CLI restore with representative records, external keys, and the intended storage configuration. Record archive size, elapsed time, peak memory, and whether the restored service can sign in and serve applications. Set the request timeout from measured backup time when the default 30 seconds is insufficient. Keep results with the recovery procedure and repeat them after storage, configuration, or data-volume changes.
+For `riauth backup` it bounds the connection and each wait for more data
+instead; the transfer has no total deadline, and the server's
+`max_duration_seconds` bounds the export.
+Measure HTTP backup and CLI restore with representative records, external keys, and the intended storage configuration. Record archive size, elapsed time, peak memory, and whether the restored service can sign in and serve applications. Set `backup.max_duration_seconds` from measured backup time when the default hour is insufficient. Keep results with the recovery procedure and repeat them after storage, configuration, or data-volume changes.
 
 ## Release verification
 

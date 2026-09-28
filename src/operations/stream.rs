@@ -76,7 +76,7 @@ impl Default for StreamLimits {
 }
 
 impl StreamLimits {
-    fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         if !(MIN_FRAME_BYTES..=MAX_FRAME_BYTES).contains(&self.max_frame_bytes)
             || !((MAGIC.len() + 16) as u64..=MAX_ARCHIVE_BYTES).contains(&self.max_archive_bytes)
         {
@@ -219,8 +219,17 @@ struct FrameWriter<'w, 'o> {
 }
 
 impl FrameWriter<'_, '_> {
+    /// A sink that fails because its reader went away reports the
+    /// cancellation, not a server fault.
+    fn sink_failed(&self, error: std::io::Error) -> Error {
+        check_cancel(self.options.cancel)
+            .err()
+            .unwrap_or_else(|| Error::internal(error))
+    }
     fn emit(&mut self, data: &[u8]) -> Result<()> {
-        self.out.write_all(data).map_err(Error::internal)?;
+        if let Err(error) = self.out.write_all(data) {
+            return Err(self.sink_failed(error));
+        }
         self.transcript.update(data);
         self.bytes += data.len() as u64;
         Ok(())
@@ -402,7 +411,9 @@ impl Core {
             })
             .map_err(Error::internal)?;
             writer.frame(TRAILER, &trailer)?;
-            writer.out.flush().map_err(Error::internal)?;
+            if let Err(error) = writer.out.flush() {
+                return Err(writer.sink_failed(error));
+            }
             Ok(StreamSummary {
                 api_version: BACKUP_V3,
                 created_at,
@@ -513,7 +524,9 @@ struct Scanned {
     config: Config,
     created_at: u64,
     stream_id: [u8; 16],
+    frames: u64,
     records: u64,
+    bytes: u64,
     transcript: String,
     schema: Option<Value>,
     issuer: Option<Value>,
@@ -585,7 +598,7 @@ fn scan(
                 {
                     return Err(invalid());
                 }
-                let stream_id = reader.stream_id;
+                let (stream_id, frames, bytes) = (reader.stream_id, reader.frames, reader.bytes);
                 options.report(reader.progress(phase, records));
                 options.check()?;
                 reader.finish()?;
@@ -594,7 +607,9 @@ fn scan(
                     config: header.config,
                     created_at: header.created_at,
                     stream_id,
+                    frames,
                     records,
+                    bytes,
                     transcript,
                     schema,
                     issuer,
@@ -609,6 +624,53 @@ fn open(path: &Path) -> Result<BufReader<std::fs::File>> {
     Ok(BufReader::new(
         std::fs::File::open(path).map_err(Error::internal)?,
     ))
+}
+
+/// A v3 archive that authenticated completely, with the issuer it restores.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct VerifiedArchive {
+    #[serde(flatten)]
+    pub summary: StreamSummary,
+    pub issuer: String,
+}
+
+/// Authenticate a complete archive without importing it: every frame, record
+/// order, the trailer's counts and transcript, EOF after the trailer, and the
+/// schema and issuer checks restore applies before it creates any output.
+/// The summary equals the one [`Core::backup_stream`] returned for the archive.
+pub fn verify_archive(
+    input: impl Read,
+    key: &[u8; 32],
+    mut options: StreamOptions<'_>,
+) -> Result<VerifiedArchive> {
+    options.limits.validate()?;
+    let scanned = scan(input, key, &mut options, Phase::Verify, |_, _| Ok(()))?;
+    if !schema_supported(scanned.schema.as_ref()) {
+        return Err(Error::bad("Unsupported backup schema"));
+    }
+    if scanned.issuer.as_ref() != Some(&json!(scanned.config.issuer)) {
+        return Err(Error::bad("Backup issuer mismatch"));
+    }
+    Ok(VerifiedArchive {
+        summary: StreamSummary {
+            api_version: BACKUP_V3,
+            created_at: scanned.created_at,
+            stream_id: URL_SAFE_NO_PAD.encode(scanned.stream_id),
+            frames: scanned.frames,
+            records: scanned.records,
+            bytes: scanned.bytes,
+            transcript: scanned.transcript,
+        },
+        issuer: scanned.config.issuer,
+    })
+}
+
+pub fn verify_file(
+    path: &Path,
+    key: &[u8; 32],
+    options: StreamOptions<'_>,
+) -> Result<VerifiedArchive> {
+    verify_archive(open(path)?, key, options)
 }
 
 pub(super) fn is_stream_archive(path: &Path) -> Result<bool> {

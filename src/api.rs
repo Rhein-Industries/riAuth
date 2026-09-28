@@ -1,3 +1,4 @@
+pub(crate) mod backup;
 mod server;
 pub(crate) use server::serve_bootstrap;
 #[cfg(feature = "platform")]
@@ -52,6 +53,8 @@ pub struct App {
     /// Forward-auth checks run on their own permits, so proxied page loads never starve the workers.
     forward: Arc<Semaphore>,
     probes: Arc<Semaphore>,
+    /// One streamed backup export at a time; each pins a storage read snapshot.
+    backups: Arc<Semaphore>,
     rates: Arc<Mutex<RateTable>>,
     stats: Arc<Stats>,
 }
@@ -63,6 +66,7 @@ impl App {
             credentials: Arc::new(Semaphore::new(4)),
             forward: Arc::new(Semaphore::new(16)),
             probes: Arc::new(Semaphore::new(2)),
+            backups: Arc::new(Semaphore::new(1)),
             rates: Arc::new(Mutex::new(RateTable::new(crate::store::RATE_WINDOWS))),
             stats: Arc::new(Stats::default()),
         }
@@ -339,6 +343,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/operations/metrics", get(metrics))
         .route("/api/operations/prometheus", get(prometheus))
         .route("/api/operations/backup", post(backup))
+        .route("/api/operations/backup/stream", post(backup::stream))
         .route("/api/inventory/{kind}", get(inventory));
     #[cfg(feature = "platform")]
     let routes = routes.merge(platform_routes());

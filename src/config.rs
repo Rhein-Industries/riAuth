@@ -86,6 +86,9 @@ pub struct Config {
     /// their built-in limits.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rate_limits: BTreeMap<String, u32>,
+    /// Streamed backup export quotas. Omitted means the built-in defaults.
+    #[serde(default, skip_serializing_if = "BackupConfig::is_default")]
+    pub backup: BackupConfig,
 }
 
 /// Every HTTP rate-limit category that `rate_limits` may override.
@@ -152,6 +155,88 @@ impl AlertWebhook {
     }
 }
 
+/// Quotas for streamed `riauth.backup/v3` exports over HTTP. Omitted members
+/// keep their defaults; a request may ask for a smaller archive quota only.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackupConfig {
+    /// Largest archive one export may send, including framing.
+    #[serde(default = "default_backup_archive_bytes")]
+    pub max_archive_bytes: u64,
+    /// Largest plaintext of one sealed frame; every record must fit in one.
+    #[serde(default = "default_backup_frame_bytes")]
+    pub max_frame_bytes: usize,
+    /// Abort an export whose client accepts no data for this long.
+    #[serde(default = "default_backup_stall_timeout")]
+    pub stall_timeout_seconds: u64,
+    /// Abort an export still running after this long. An export holds one
+    /// storage read snapshot for its whole duration.
+    #[serde(default = "default_backup_duration")]
+    pub max_duration_seconds: u64,
+}
+
+/// Smallest configurable archive quota; a real instance never fits below it.
+const MIN_BACKUP_ARCHIVE_BYTES: u64 = 1024 * 1024;
+
+fn default_backup_archive_bytes() -> u64 {
+    crate::operations::stream::MAX_ARCHIVE_BYTES
+}
+fn default_backup_frame_bytes() -> usize {
+    crate::operations::stream::MAX_FRAME_BYTES
+}
+fn default_backup_stall_timeout() -> u64 {
+    60
+}
+fn default_backup_duration() -> u64 {
+    3600
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            max_archive_bytes: default_backup_archive_bytes(),
+            max_frame_bytes: default_backup_frame_bytes(),
+            stall_timeout_seconds: default_backup_stall_timeout(),
+            max_duration_seconds: default_backup_duration(),
+        }
+    }
+}
+
+impl BackupConfig {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    pub fn validate(&self) -> anyhow::Result<()> {
+        use crate::operations::stream::{MAX_ARCHIVE_BYTES, MAX_FRAME_BYTES, MIN_FRAME_BYTES};
+        if !(MIN_BACKUP_ARCHIVE_BYTES..=MAX_ARCHIVE_BYTES).contains(&self.max_archive_bytes) {
+            bail!(
+                "backup.max_archive_bytes must be from {MIN_BACKUP_ARCHIVE_BYTES} through {MAX_ARCHIVE_BYTES}"
+            );
+        }
+        if !(MIN_FRAME_BYTES..=MAX_FRAME_BYTES).contains(&self.max_frame_bytes) {
+            bail!(
+                "backup.max_frame_bytes must be from {MIN_FRAME_BYTES} through {MAX_FRAME_BYTES}"
+            );
+        }
+        if !(5..=3600).contains(&self.stall_timeout_seconds) {
+            bail!("backup.stall_timeout_seconds must be from 5 through 3600");
+        }
+        if !(60..=86_400).contains(&self.max_duration_seconds) {
+            bail!("backup.max_duration_seconds must be from 60 through 86400");
+        }
+        Ok(())
+    }
+    /// The server's ceiling for one export; `requested` may only lower the archive quota.
+    pub fn limits(&self, requested: Option<u64>) -> crate::operations::stream::StreamLimits {
+        crate::operations::stream::StreamLimits {
+            max_archive_bytes: requested.map_or(self.max_archive_bytes, |bytes| {
+                bytes.min(self.max_archive_bytes)
+            }),
+            max_frame_bytes: self.max_frame_bytes,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -187,6 +272,7 @@ impl Default for Config {
             device_trust: None,
             alert_webhook: None,
             rate_limits: BTreeMap::new(),
+            backup: BackupConfig::default(),
         }
     }
 }
@@ -341,6 +427,7 @@ impl Config {
                 bail!("Rate limit {category} must be from 1 through 100000 requests per minute");
             }
         }
+        self.backup.validate()?;
         let url = validate_server_url(&self.issuer)?;
         if self.tls_cert_file.is_some() != self.tls_key_file.is_some()
             || self.tls_cert_file.is_some() && url.scheme() != "https"

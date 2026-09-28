@@ -1,3 +1,4 @@
+mod backup;
 pub mod local;
 mod transport;
 mod usb;
@@ -259,11 +260,18 @@ pub enum Command {
     /// Generate a private encryption key file
     Keygen(local::KeygenArgs),
     /// Take a consistent encrypted backup of the running instance
+    ///
+    /// Streams a riauth.backup/v3 archive into a new private file and publishes it under --out
+    /// only after the whole archive authenticates with the backup key. For this command
+    /// --request-timeout bounds each wait for data, not the whole transfer.
     Backup {
         #[arg(long)]
         key_file: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Largest archive to accept, in bytes; the server's own quota also applies
+        #[arg(long, default_value_t = crate::operations::stream::MAX_ARCHIVE_BYTES, value_parser = clap::value_parser!(u64).range(32..=4_294_967_296))]
+        max_bytes: u64,
     },
     /// Restore and verify a backup in a new directory, without starting a server
     Restore(local::RestoreArgs),
@@ -1391,12 +1399,9 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
         Command::Doctor => remote.call(Method::GET, "/api/operations/doctor", None, true).await?,
-        Command::Backup { key_file, out } => {
-            if out.exists() { bail!("Backup output already exists"); }
-            let key = crate::config::read_private_secret(&key_file,128)?;
-            let result = remote.call(Method::POST, "/api/operations/backup", Some(json!({"encryption_key": key.trim()})), true).await?;
-            write_private(&out, &serde_json::to_vec(&result)?, false)?;
-            json!({"backup_file": out, "created_at": result["created_at"], "encrypted": true})
+        Command::Backup { key_file, out, max_bytes } => {
+            let transfer = backup::Transfer { ca_cert: cli.ca_cert.as_deref(), idle_timeout: Duration::from_secs(cli.request_timeout), max_bytes };
+            backup::download(&remote, &transfer, &key_file, &out).await?
         }
         Command::Get { kind, name } => remote.call(Method::GET, &format!("/api/resources/{}/{}", segment(&kind)?, segment(&name)?), None, true).await?,
         Command::Consents { revoke } => if let Some(id) = revoke { remote.call(Method::DELETE, &format!("/api/consents/{}", segment(&id)?), None, true).await? } else { remote.call(Method::GET, "/api/consents", None, true).await? },
