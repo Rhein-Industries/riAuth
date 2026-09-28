@@ -603,6 +603,19 @@ pub enum ProvisionCommand {
         #[arg(long)]
         evidence: String,
     },
+    /// Waive further attempts for a held, failed or stale deactivation
+    DismissDeactivation {
+        id: String,
+        /// Exact revision from provision deactivations
+        #[arg(long)]
+        revision: String,
+        /// remote_absent or permanently_unverifiable
+        #[arg(long, value_parser = ["remote_absent", "permanently_unverifiable"])]
+        reason: String,
+        /// Evidence reference for the waiver, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+    },
 }
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
@@ -1603,6 +1616,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
             ProvisionCommand::Resolve{job,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/resolve",segment(&job)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
             ProvisionCommand::ResolveDeactivation{id,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
+            ProvisionCommand::DismissDeactivation{id,revision,reason,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/dismiss",segment(&id)?),Some(json!({"revision":revision,"reason":reason,"evidence":evidence})),true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
                 let path = format!("/api/provisioning/targets/{}/plan",segment(&target)?);

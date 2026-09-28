@@ -13,6 +13,12 @@
 
 # Unreleased reliable delivery outcomes (P08)
 
+- Operators can dismiss held, failed or stale deactivation rows using
+  `provision dismiss-deactivation` with a row revision, idempotency key, reason
+  and evidence. This requires target write/read and account read authority.
+  Dismissed intent and evidence remain retained; original ambiguity stays
+  visible and offboarding never reports the waiver as remote success. In-flight
+  delivery and satisfied resolutions cannot be waived.
 - Outbound SCIM jobs and offboarding deactivation rows report `delivery_state`:
   `pending`, `ambiguous`, `succeeded`, `failed`, and `cancelled` for superseded
   deactivations. A write is `ambiguous` only after it was sent without a

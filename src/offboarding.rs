@@ -242,8 +242,10 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
                 "last_error": row.last_error,
                 "delivered_at": row.delivered_at,
                 "resolution": row.resolution,
+                "uncertain": row.uncertain,
+                "dismissal": row.dismissal,
             }),
-            // Terminal rows are retained for 90 days.
+            // Ordinary terminal rows are retained for 90 days; waivers persist.
             None => json!({"target": target, "delivery": id, "status": "expired"}),
         });
     }

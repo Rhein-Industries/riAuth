@@ -61,13 +61,15 @@ pub enum Status {
     Stale,
     /// Attempts are exhausted; the remote state may be unknown.
     Failed,
+    /// An operator waived further attempts with evidence, without remote success.
+    Dismissed,
 }
 
 impl Status {
     pub fn terminal(self) -> bool {
         matches!(
             self,
-            Self::Delivered | Self::Superseded | Self::Stale | Self::Failed
+            Self::Delivered | Self::Superseded | Self::Stale | Self::Failed | Self::Dismissed
         )
     }
 }
@@ -101,6 +103,26 @@ impl Resolution {
     pub fn satisfied(&self) -> bool {
         self.observed != Observed::NotApplied
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DismissalReason {
+    RemoteAbsent,
+    PermanentlyUnverifiable,
+}
+
+/// A waiver of this intent's further attempts, not an observation that resolves
+/// an uncertain write. Kept with the original intent even after audit retention.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Dismissal {
+    pub reason: DismissalReason,
+    pub evidence: String,
+    pub by: String,
+    pub at: u64,
+    pub previous_status: Status,
+    /// Revision of the exact row the operator reviewed before dismissal.
+    pub revision: String,
 }
 
 /// One target's deactivation of one linked remote account for one disable.
@@ -147,18 +169,32 @@ pub struct Deactivation {
     /// Operator attestation that closed an ambiguity riAuth could not resolve.
     #[serde(default)]
     pub resolution: Option<Resolution>,
+    #[serde(default)]
+    pub dismissal: Option<Dismissal>,
 }
 
 impl Deactivation {
+    /// Binds operator review to every persisted field, including worker changes
+    /// that do not advance the configuration revision.
+    pub fn revision(&self) -> Result<String> {
+        Ok(digest(
+            &serde_json::to_string(self).map_err(Error::internal)?,
+        ))
+    }
+
     /// Delivery state shared with reviewed SCIM jobs. An unverified PATCH
     /// outranks every local outcome: the row is `ambiguous` until a read
     /// observes the account, or an operator attests what the target shows.
     /// An attestation that nothing is left active is `resolved`, never
-    /// `succeeded`. Otherwise `succeeded` (confirmed inactive), `cancelled`
+    /// `succeeded`. A waiver preserves ambiguity, or reads as `dismissed`.
+    /// Otherwise `succeeded` (confirmed inactive), `cancelled`
     /// (enabled again), `failed` (stale or exhausted) or `pending`.
     pub fn delivery_state(&self) -> &'static str {
         if self.uncertain {
             return "ambiguous";
+        }
+        if self.status == Status::Dismissed {
+            return "dismissed";
         }
         if self.resolution.as_ref().is_some_and(Resolution::satisfied) {
             return "resolved";
@@ -168,6 +204,7 @@ impl Deactivation {
             Status::Superseded => "cancelled",
             Status::Pending | Status::Running => "pending",
             Status::Stale | Status::Failed => "failed",
+            Status::Dismissed => "dismissed",
         }
     }
 }
@@ -209,7 +246,9 @@ pub(crate) fn user_links(tx: &impl IdentityTx, user_id: &str) -> Result<Vec<(Str
 
 /// Ensure intent for one link the target last reported active. A pending or
 /// running row for this disable is kept; a terminal one is re-armed, because
-/// the link was written active again after that outcome. Returns the row ID.
+/// the link was written active again after that outcome. A dismissed row keeps
+/// its waiver and evidence for this exact disable; a new epoch has a new ID.
+/// Returns the row ID.
 pub(crate) fn enqueue_link(
     tx: &impl IdentityTx,
     key: &str,
@@ -224,7 +263,7 @@ pub(crate) fn enqueue_link(
     let open = tx
         .get::<Value>(BUCKET, &id)?
         .and_then(|value| serde_json::from_value::<Deactivation>(value).ok())
-        .is_some_and(|row| !row.status.terminal());
+        .is_some_and(|row| !row.status.terminal() || row.status == Status::Dismissed);
     if !open {
         let at = now();
         let row = Deactivation {
@@ -251,6 +290,7 @@ pub(crate) fn enqueue_link(
             delivered_at: None,
             uncertain: false,
             resolution: None,
+            dismissal: None,
         };
         tx.put(BUCKET, &id, &row)?;
     }

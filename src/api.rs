@@ -297,6 +297,10 @@ pub fn router(core: Core) -> Router {
             post(provisioning_deactivation_resolve),
         )
         .route(
+            "/api/provisioning/deactivations/{id}/dismiss",
+            post(provisioning_deactivation_dismiss),
+        )
+        .route(
             "/api/reconciliation/schedules",
             get(reconciliation_schedules),
         )
@@ -3201,6 +3205,19 @@ async fn provisioning_deactivation_resolve(
     let token = bearer(&headers)?;
     app.run(move |core| {
         core.provisioning_deactivation_resolve(&token, &id, input)
+            .map(Json)
+    })
+    .await
+}
+async fn provisioning_deactivation_dismiss(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::provisioning::DismissDeactivation>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.provisioning_deactivation_dismiss(&token, &id, input)
             .map(Json)
     })
     .await

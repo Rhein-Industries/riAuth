@@ -1617,6 +1617,383 @@ fn operator_resolution_needs_scoped_evidence_and_never_reports_delivery() {
     assert_eq!(audited[0]["resolution"]["evidence"], observed);
 }
 
+/// P08 waiver contract: scoped, revision-bound and idempotent dismissal stops
+/// attempts while preserving uncertainty, durable intent and audited evidence.
+#[test]
+fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    let payroll = Scim::default();
+    let url = payroll.serve();
+    let target = scim_target(&f, "payroll", &url, "payroll");
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert("payroll".into(), ReconciliationMode::Automatic);
+    for name in ["alice", "bob", "carol"] {
+        f.user(name);
+        f.core
+            .group_member(&f.admin, "payroll", name, true)
+            .unwrap();
+        linked(
+            &f,
+            &payroll,
+            "payroll",
+            &url,
+            &account(&f.core, name),
+            &format!("p-{name}"),
+        );
+    }
+    let controller = agent(
+        &f,
+        "payroll-controller",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let credential_file = f._dir.path().join("controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    f.core.config.reconciliation_controllers.insert(
+        "scim/payroll".into(),
+        ControllerConfig {
+            agent_id: "payroll-controller".into(),
+            credential_file,
+            interval_seconds: 3600,
+        },
+    );
+    let operator = agent(
+        &f,
+        "payroll-operator",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+        ],
+    );
+    let denied = [
+        agent(
+            &f,
+            "write-only",
+            &[("provisioner.sync", "provisioner/payroll")],
+        ),
+        agent(
+            &f,
+            "wrong-target",
+            &[
+                ("provisioner.sync", "provisioner/wiki"),
+                ("provisioner.read", "*"),
+                ("user.read", "*"),
+            ],
+        ),
+        agent(
+            &f,
+            "wrong-user",
+            &[
+                ("provisioner.sync", "provisioner/payroll"),
+                ("provisioner.read", "provisioner/payroll"),
+                ("user.read", "user/bob"),
+            ],
+        ),
+        agent(
+            &f,
+            "read-only",
+            &[
+                ("provisioner.read", "provisioner/payroll"),
+                ("user.read", "user/alice"),
+            ],
+        ),
+    ];
+    let offboard = job_id(&schedule(&f.core, &f.admin, "alice", soon(3600), "UTC"));
+    age(&f.core, &offboard);
+    f.core.cleanup().unwrap();
+    let alice = account(&f.core, "alice");
+    payroll.script.lock().unwrap().push_back((503, true));
+    assert!(f.core.deactivation_step().unwrap());
+    let before = listed(&f, &alice);
+    assert_eq!(before["delivery_state"], "ambiguous");
+    assert_eq!(before["hold"], "retry");
+    let id = text(&before, "id");
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let post = |f: &Fixture, token: &str, id: &str, key: Option<&str>, input: &Value| {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/provisioning/deactivations/{id}/dismiss"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .header("if-match", format!("\"{}\"", revision(&f.core)));
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        let request = request
+            .body(Body::from(serde_json::to_vec(input).unwrap()))
+            .unwrap();
+        runtime.block_on(async {
+            let response = riauth::api::router(f.core.clone())
+                .oneshot(request)
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            // Deserialization errors from Axum are plain text.
+            (
+                status,
+                serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+            )
+        })
+    };
+    let mut input = json!({
+        "revision": before["revision"],
+        "reason": "permanently_unverifiable",
+        "evidence": "Retired payroll tenant cannot be inspected; exception OPS-42",
+    });
+    let snapshot = f.snapshot().unwrap();
+    for token in &denied {
+        assert_eq!(
+            post(&f, token, &id, Some("dismiss-denied"), &input).0,
+            StatusCode::FORBIDDEN
+        );
+        f.assert_http_mutation_snapshot(&snapshot);
+    }
+    // Humans also need explicit idempotency and an exact row revision.
+    assert_eq!(
+        post(&f, &f.admin, &id, None, &input).0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert!(
+        f.core
+            .provisioning_deactivation_dismiss(
+                &f.admin,
+                &id,
+                serde_json::from_value(input.clone()).unwrap()
+            )
+            .is_err()
+    );
+    for field in ["reason", "evidence", "revision"] {
+        let mut missing = input.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert_eq!(
+            post(&f, &operator, &id, Some("missing"), &missing).0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    for evidence in ["", "   ", "Bearer abc", "line\nbreak", &"x".repeat(281)] {
+        let mut invalid = input.clone();
+        invalid["evidence"] = json!(evidence);
+        assert_eq!(
+            post(&f, &operator, &id, Some("invalid"), &invalid).0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let mut invalid = input.clone();
+    invalid["reason"] = json!("succeeded");
+    assert_eq!(
+        post(&f, &operator, &id, Some("invalid"), &invalid).0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    f.assert_http_mutation_snapshot(&snapshot);
+
+    // A worker change invalidates review even without a configuration change.
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        post(&f, &operator, &id, Some("stale-review"), &input).0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&snapshot);
+    input["revision"] = listed(&f, &alice)["revision"].clone();
+    let original = delivery(&f.core, "payroll", &alice);
+
+    // Running/finished rows and satisfied resolutions cannot be waived. An
+    // expired running lease must first be settled by the existing worker.
+    for (status, hold, lease, resolved) in [
+        ("running", Value::Null, json!("worker"), false),
+        ("delivered", Value::Null, Value::Null, false),
+        ("superseded", Value::Null, Value::Null, false),
+        ("pending", Value::Null, Value::Null, false),
+        ("pending", json!("retry"), json!("worker"), false),
+        ("stale", Value::Null, Value::Null, true),
+    ] {
+        let mut row = original.clone();
+        row["status"] = json!(status);
+        row["hold"] = hold;
+        row["lease_owner"] = lease;
+        row["lease_until"] = json!(1);
+        if resolved {
+            row["resolution"] = json!({"observed": "absent", "evidence": "OPS-41", "by": "operator", "at": crypto::now()});
+        }
+        f.core
+            .store
+            .write(|tx| tx.put(downstream::BUCKET, &id, &row))
+            .unwrap();
+        let mut reviewed = input.clone();
+        reviewed["revision"] = listed(&f, &alice)["revision"].clone();
+        let snapshot = f.snapshot().unwrap();
+        assert_eq!(
+            post(&f, &operator, &id, Some("unsafe-state"), &reviewed).0,
+            StatusCode::CONFLICT
+        );
+        f.assert_http_mutation_snapshot(&snapshot);
+    }
+    f.core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, &id, &original))
+        .unwrap();
+
+    // Stopping a reviewed job does not bypass its in-flight settle window.
+    let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+    let job = text(&plan, "id");
+    f.core
+        .provisioning_apply_confirmed(&f.admin, &job, Some(&job))
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get("provisioning_jobs", &job)?.unwrap();
+            row["lease"] = json!("reviewed-worker");
+            row["next_attempt"] = json!(crypto::now() + 60);
+            tx.put("provisioning_jobs", &job, &row)
+        })
+        .unwrap();
+    f.core.provisioning_stop(&f.admin, &job).unwrap();
+    for deadline in [crypto::now() + 60, crypto::now() - 1] {
+        f.core
+            .store
+            .write(|tx| {
+                let mut row: Value = tx.get("provisioning_jobs", &job)?.unwrap();
+                row["next_attempt"] = json!(deadline);
+                tx.put("provisioning_jobs", &job, &row)
+            })
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        assert_eq!(
+            post(&f, &operator, &id, Some("dismiss"), &input).0,
+            StatusCode::CONFLICT
+        );
+        f.assert_http_mutation_snapshot(&snapshot);
+    }
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get("provisioning_jobs", &job)?.unwrap();
+            row["next_attempt"] = json!(crypto::now() - 31);
+            tx.put("provisioning_jobs", &job, &row)
+        })
+        .unwrap();
+    let requests = payroll.requests.lock().unwrap().len();
+    let (status, dismissed) = post(&f, &operator, &id, Some("dismiss"), &input);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(dismissed["status"], "dismissed");
+    assert_eq!(dismissed["delivery_state"], "ambiguous");
+    assert_eq!(dismissed["uncertain"], true);
+    assert_eq!(dismissed["delivered_at"], Value::Null);
+    assert_ne!(dismissed["revision"], input["revision"]);
+    let mut expected = original.clone();
+    expected["status"] = json!("dismissed");
+    expected["dismissal"] = dismissed["dismissal"].clone();
+    assert_eq!(delivery(&f.core, "payroll", &alice), expected);
+    assert_eq!(dismissed["dismissal"]["previous_status"], "pending");
+    assert_eq!(dismissed["dismissal"]["by"], "agent:payroll-operator");
+    assert_eq!(dismissed["dismissal"]["revision"], input["revision"]);
+    let audit = audit_context(&f.core, "provisioner.deactivate.dismiss");
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0]["delivery"], id);
+    assert_eq!(audit[0]["dismissal"], dismissed["dismissal"]);
+
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        post(&f, &operator, &id, Some("dismiss"), &input).1,
+        dismissed
+    );
+    let mut changed = input.clone();
+    changed["evidence"] = json!("Another ticket");
+    assert_eq!(
+        post(&f, &operator, &id, Some("dismiss"), &changed).0,
+        StatusCode::CONFLICT
+    );
+    changed["revision"] = dismissed["revision"].clone();
+    assert_eq!(
+        post(&f, &operator, &id, Some("new-dismiss"), &changed).0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_retry(&operator, &id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_resolve(
+                &operator,
+                &id,
+                serde_json::from_value(json!({"observed": "absent", "evidence": "OPS-43"}))
+                    .unwrap()
+            )
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_http_mutation_snapshot(&snapshot);
+    assert!(!f.core.deactivation_step().unwrap());
+    assert_eq!(payroll.requests.lock().unwrap().len(), requests);
+    let job_view = f.core.offboard_get(&f.admin, &offboard).unwrap();
+    assert_eq!(job_view["downstream"]["state"], "incomplete");
+    assert_eq!(
+        reported(&job_view, "payroll")["dismissal"],
+        dismissed["dismissal"]
+    );
+
+    // next_attempt=1 is beyond ordinary retention. Restart and cleanup retain
+    // this exact intent, which no longer consumes a delivery queue slot.
+    f = f.reopen_with(|_| {});
+    f.core.cleanup().unwrap();
+    assert_eq!(deliveries(&f.core), vec![expected]);
+    assert!(!f.core.deactivation_step().unwrap());
+    assert_eq!(
+        f.core
+            .store
+            .read(|tx| tx.queue_stats(downstream::BUCKET, crypto::now()))
+            .unwrap()
+            .pending,
+        0
+    );
+
+    // Another offboarding execution advances the epoch even for a disabled
+    // account. It records fresh work alongside the earlier waiver.
+    let again = job_id(&schedule(&f.core, &f.admin, "alice", soon(3600), "UTC"));
+    age(&f.core, &again);
+    f.core.cleanup().unwrap();
+    let rows = deliveries(&f.core);
+    assert_eq!(rows.len(), 2);
+    let fresh = rows.iter().find(|row| row["id"] != id).unwrap();
+    assert_eq!(fresh["status"], "pending");
+    assert_eq!(fresh["dismissal"], Value::Null);
+    assert!(fresh["epoch"].as_u64().unwrap() > alice.epoch);
+    // A held row with no ambiguous write can be waived for a missing identity.
+    f.core.config.reconciliation_controllers.clear();
+    assert!(!f.core.deactivation_step().unwrap());
+    let fresh_id = text(fresh, "id");
+    let reviewed = f.core.provisioning_deactivations(&f.admin).unwrap();
+    let reviewed = reviewed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == fresh_id)
+        .unwrap();
+    let absent = json!({"revision": reviewed["revision"], "reason": "remote_absent", "evidence": "Identity removed from payroll; OPS-44"});
+    let (status, waived) = post(&f, &operator, &fresh_id, Some("absent"), &absent);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(waived["delivery_state"], "dismissed");
+    assert_eq!(waived["uncertain"], false);
+    assert_eq!(waived["outcome"], Value::Null);
+    assert_eq!(waived["delivered_at"], Value::Null);
+    assert_eq!(payroll.requests.lock().unwrap().len(), requests);
+}
+
 #[test]
 fn execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent() {
     let f = Fixture::new();

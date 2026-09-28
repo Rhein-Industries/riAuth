@@ -9,7 +9,7 @@ use crate::{
     core::{Core, audit, audit_with},
     crypto::{self, digest, now},
     error::{Error, Result},
-    identity::downstream::{Link, Observed, Resolution, link_key},
+    identity::downstream::{DismissalReason, Link, Observed, Resolution, link_key},
     model::{Group, User},
     store::Tx,
 };
@@ -2119,6 +2119,15 @@ fn invalidate_generation(name: &str, key: &str, generation: u64) {
 #[serde(deny_unknown_fields)]
 pub struct Resolve {
     pub observed: Observed,
+    pub evidence: String,
+}
+
+/// Explicit waiver of further attempts for one reviewed deactivation row.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DismissDeactivation {
+    pub revision: String,
+    pub reason: DismissalReason,
     pub evidence: String,
 }
 

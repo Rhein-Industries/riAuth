@@ -314,6 +314,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/provisioning/deactivations` | Newest per-target offboarding deactivation outcomes and `delivery_state`; `provisioner.read` on the target and `user.read` on the account |
 | POST | `/api/provisioning/deactivations/{id}/retry` | Re-evaluate a failed or stale deactivation against the current link; `provisioner.sync` |
 | POST | `/api/provisioning/deactivations/{id}/resolve`, `/api/provisioning/jobs/{id}/resolve` | Record operator evidence (`observed`, `evidence`) for ambiguity no attempt can settle; `provisioner.sync` plus read access to the named account or item |
+| POST | `/api/provisioning/deactivations/{id}/dismiss` | Waive a held, failed or stale row with its exact `revision`, `reason` (`remote_absent` or `permanently_unverifiable`) and `evidence`; requires `Idempotency-Key`, `provisioner.sync`, `provisioner.read` on the target and `user.read` on the account |
 | GET, POST | `/api/keys` | List/import/generate signing-key domains |
 | POST | `/api/keys/rotate` | Authorized signing-key rotation |
 | POST | `/api/state/plan` | Versioned manifest; redacted immutable plan |

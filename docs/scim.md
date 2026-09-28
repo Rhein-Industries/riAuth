@@ -137,15 +137,17 @@ The delivery worker handles one due row at a time and never records a remote out
 Rows also report `delivery_state`, derived in this order:
 
 1. `ambiguous` while `uncertain` is set, whatever the `status`. A PATCH was sent and its effect is unknown.
-2. `resolved` when an operator attested `applied` or `absent` for an ambiguity no attempt could settle. This is never `succeeded`.
-3. `succeeded` for `delivered`.
-4. `cancelled` for `superseded`.
-5. `pending` for `pending` or `running`, covering holds and retries that changed nothing.
-6. `failed` for `stale` or `failed`.
+   Dismissing the row preserves this ambiguity.
+2. `dismissed` for an operator waiver without an uncertain write. This never means remote success.
+3. `resolved` when an operator attested `applied` or `absent` for an ambiguity no attempt could settle. This is never `succeeded`.
+4. `succeeded` for `delivered`.
+5. `cancelled` for `superseded`.
+6. `pending` for `pending` or `running`, covering holds and retries that changed nothing.
+7. `failed` for `stale` or `failed`.
 
 `uncertain` is cleared only by an attempt that reads the account, or by a reviewed job's verified link. A refused PATCH is retried as `pending`. An account enabled again after an unverified PATCH does not close as `superseded` straight away. The row stays `pending` and `ambiguous` until the controller reads the account once, without writing. It then closes as `superseded` with outcome `remote_inactive` (that PATCH was applied, so a reviewed plan must reactivate the account) or `remote_active`. If the account is disabled again during that read, the row resumes delivery. `riauth provision retry-deactivation <id>` (`POST /api/provisioning/deactivations/{id}/retry`) takes a failed or stale row, re-binds it to the current link and evaluates it again. If a reviewed plan has delivered the disable since then, the row closes as delivered; if the account was re-enabled, it is superseded. The retry needs `provisioner.sync` on the target and is audited as `provisioner.deactivate.retry`. Its response is the full row only for a caller who could list it (`provisioner.read` on the target and `user.read` on the account). Otherwise it is limited to `id`, `target`, `status`, `delivery_state`, `hold`, `attempts` and `next_attempt`.
 
-Held rows stay `pending`; `hold` names the reason: `awaiting_controller`, `awaiting_controller_authority`, `target_unconfigured`, `manual_mode`, `guarded_removal`, `removal_review_required`, `awaiting_prior_delivery` or `retry`. They are re-evaluated at an interval that grows with age to one hour, and they count as pending in the delivery queue metrics. The backlog alert therefore also reports offboarded accounts that are still active downstream. Delivery never rewrites managed links, so reviewed plans still count the departure until they deliver it. A reviewed plan made while the account was enabled cannot reactivate it: its job goes stale at that account. A write that was dispatched before the disable and lands after it records new intent. Terminal rows are kept for 90 days.
+Held rows stay `pending`; `hold` names the reason: `awaiting_controller`, `awaiting_controller_authority`, `target_unconfigured`, `manual_mode`, `guarded_removal`, `removal_review_required`, `awaiting_prior_delivery` or `retry`. They are re-evaluated at an interval that grows with age to one hour, and they count as pending in the delivery queue metrics. The backlog alert therefore also reports offboarded accounts that are still active downstream. Delivery never rewrites managed links, so reviewed plans still count the departure until they deliver it. A reviewed plan made while the account was enabled cannot reactivate it: its job goes stale at that account. A write that was dispatched before the disable and lands after it records new intent. Terminal rows are kept for 90 days, except dismissed rows, whose intent and waiver remain retained.
 
 ### Resolving ambiguity
 
@@ -169,5 +171,45 @@ The effect depends on the record:
 - **Deactivation, `applied` or `absent`:** the row reads as `resolved`, never as delivered or succeeded, and it can no longer be retried.
 - **Deactivation, `not_applied`:** the row reads as `failed`. It can be retried if its link still exists.
 - **Stopped job:** it stays stopped and reads as `failed`. A fresh reviewed plan delivers the remaining work.
+
+### Dismissing an undeliverable intent
+
+When a remote identity is gone or remote state is permanently unverifiable, an
+operator can waive further attempts on one held, failed or stale deactivation:
+
+```sh
+riauth --idempotency-key OPS-42 provision dismiss-deactivation <id> \
+  --revision <row-revision> --reason permanently_unverifiable \
+  --evidence "Retired payroll tenant cannot be inspected; exception OPS-42"
+```
+
+Read `revision` from `provision deactivations` immediately before deciding. It
+binds every persisted field of that row, including worker changes. The HTTP
+route is `POST /api/provisioning/deactivations/{id}/dismiss`, with body
+`{"revision":"...","reason":"permanently_unverifiable","evidence":"..."}`
+and a required `Idempotency-Key` header. Reasons are `remote_absent` and
+`permanently_unverifiable`; evidence follows the same 1–280 character and
+credential restrictions as resolution. Both humans and agents need the row
+revision and key. Agents also supply the usual configuration `If-Match`
+(`--if-revision`). An exact retry replays its receipt without another audit
+event; changing the request under the same key conflicts.
+
+Dismissal needs `provisioner.sync` and `provisioner.read` on the target plus
+`user.read` on the named account. Running rows, delivered or superseded rows,
+satisfied resolutions, and targets with a live or settling reviewed-job lease
+cannot be dismissed. Stopping that job does not bypass its settle window.
+
+The row becomes `status: dismissed` and leaves the automatic queue. Its original
+identity, epoch, hold, attempts, error, outcome and `uncertain` flag stay intact.
+The waiver records reason, evidence, actor, time, prior status and reviewed row
+revision, also audited as `provisioner.deactivate.dismiss`. A previously
+ambiguous row stays `delivery_state: ambiguous`; otherwise it reads as
+`dismissed`. The offboarding summary remains `incomplete` once no targets are
+pending. Dismissal performs no remote request or managed-link update.
+
+The intent and waiver survive cleanup and restart. Retry and resolve reject a
+dismissed row; repeated enqueue for the same disable preserves it. A new disable
+epoch records a separate intent, and reviewed provisioning plans remain
+available for subsequent reconciliation.
 
 `riauth provision deactivations` (`GET /api/provisioning/deactivations`) lists the newest 1000 rows. Agents need `provisioner.read` on the target and `user.read` on the account. Delivery remains at least once: two overlapping attempts can each send the same disable, and a remote change made outside riAuth after delivery is not observed.

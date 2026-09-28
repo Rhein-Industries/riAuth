@@ -10,8 +10,8 @@
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
 use super::{
-    Job, Resolve, Target, authorized, discard_body, refused, rejected, remote_error, scim_json,
-    stale_lease_settling, validate_evidence,
+    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, refused, rejected,
+    remote_error, scim_json, stale_lease_settling, validate_evidence,
 };
 use crate::{
     agent::Principal,
@@ -19,7 +19,9 @@ use crate::{
     core::{Core, audit, audit_with},
     crypto::{self, digest, now},
     error::{Error, Result},
-    identity::downstream::{BUCKET, Deactivation, LINKS, Link, Resolution, Status, link_digest},
+    identity::downstream::{
+        BUCKET, Deactivation, Dismissal, LINKS, Link, Resolution, Status, link_digest,
+    },
     model::User,
     store::Tx,
 };
@@ -729,6 +731,93 @@ impl Core {
         })
     }
 
+    /// Waive further attempts without changing what is known about delivery.
+    /// The row, its ambiguity and the evidence survive cleanup and cannot be
+    /// retried or resolved. A later disable records a separate intent.
+    pub fn provisioning_deactivation_dismiss(
+        &self,
+        token: &str,
+        id: &str,
+        input: DismissDeactivation,
+    ) -> Result<Value> {
+        validate_evidence(&input.evidence)?;
+        if !crate::context::current().is_some_and(|context| {
+            context.idempotency_key.as_ref().is_some_and(|key| {
+                !key.is_empty() && key.len() <= 128 && key.bytes().all(|b| b.is_ascii_graphic())
+            })
+        }) {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Dismissal requires an Idempotency-Key and the reviewed row revision",
+            ));
+        }
+        self.mutation(token, |tx| {
+            let mut row = tx
+                .get::<Deactivation>(BUCKET, id)?
+                .ok_or_else(|| Error::missing("Deactivation not found"))?;
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{}", row.target),
+            )?;
+            if !actor.allows("provisioner.read", &format!("provisioner/{}", row.target))
+                || !actor.allows("user.read", &format!("user/{}", row.username))
+            {
+                return Err(Error::forbidden());
+            }
+            if input.revision != row.revision()? {
+                return Err(Error::conflict(
+                    "Deactivation changed; inspect it again before dismissal",
+                ));
+            }
+            if !(row.status == Status::Pending && row.hold.is_some()
+                || matches!(row.status, Status::Failed | Status::Stale))
+                || row.resolution.as_ref().is_some_and(Resolution::satisfied)
+            {
+                return Err(Error::conflict(
+                    "Only a held, failed or stale unresolved deactivation can be dismissed",
+                ));
+            }
+            let at = now();
+            if row.lease_owner.is_some()
+                || row.lease_until > at
+                || tx.list::<Job>("provisioning_jobs")?.iter().any(|(_, job)| {
+                    job.plan.target == row.target
+                        && !job.completed
+                        && job.lease.is_some()
+                        && (job.next_attempt > at || stale_lease_settling(job, at))
+                })
+            {
+                return Err(Error::conflict(
+                    "Delivery is still in flight; wait for its lease to settle",
+                ));
+            }
+            let dismissal = Dismissal {
+                reason: input.reason,
+                evidence: input.evidence.trim().into(),
+                by: actor.id.clone(),
+                at,
+                previous_status: row.status,
+                revision: input.revision,
+            };
+            // Do not use close(): a waiver is not a remote observation. Keep
+            // uncertainty, hold, attempts, error, outcome and identity intact.
+            row.status = Status::Dismissed;
+            row.dismissal = Some(dismissal.clone());
+            tx.put(BUCKET, id, &row)?;
+            audit_with(
+                tx,
+                &actor.id,
+                "provisioner.deactivate.dismiss",
+                &format!("{}/{}", row.target, row.username),
+                Some(json!({"delivery": id, "dismissal": dismissal})),
+            )?;
+            row_view(&row)
+        })
+    }
+
     /// The newest per-target deactivation outcomes the caller may read. Rows
     /// name accounts, so agents need both the target's and the user's read scope.
     pub fn provisioning_deactivations(&self, token: &str) -> Result<Value> {
@@ -753,6 +842,7 @@ impl Core {
 
 fn row_view(row: &Deactivation) -> Result<Value> {
     let mut view = serde_json::to_value(row).map_err(Error::internal)?;
+    view["revision"] = json!(row.revision()?);
     view["delivery_state"] = json!(row.delivery_state());
     Ok(view)
 }
@@ -778,7 +868,10 @@ fn row_view_for(row: &Deactivation, viewer: &Principal) -> Result<Value> {
 
 pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, row) in tx.maintenance_page::<Deactivation>(BUCKET)? {
-        if row.status.terminal() && row.next_attempt.saturating_add(RETAIN_SECONDS) < at {
+        if row.status.terminal()
+            && row.status != Status::Dismissed
+            && row.next_attempt.saturating_add(RETAIN_SECONDS) < at
+        {
             tx.delete(BUCKET, &id)?;
         }
     }
