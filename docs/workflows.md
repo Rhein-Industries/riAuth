@@ -2,7 +2,8 @@
 
 Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, and W06 Platform authoring.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
-password, passkey and OIDC/SAML source reauthentication for a live bearer session.
+password, passkey and OIDC/SAML source reauthentication, plus request-bound
+configured OIDC consent, for a live bearer session.
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
@@ -10,8 +11,8 @@ issues a new session. Connected credential mutations cover passkey enrollment
 authorized by a fresh existing-passkey proof, mail-proven password recovery,
 and first-password or first-passkey invitation acceptance. Their real verifiers
 finalize the credential, proof consumption and epoch change atomically.
-Ordinary sign-in, other enrollment, consent and source-stage paths are unchanged;
-browser recovery and invitation acceptance
+Ordinary sign-in, other enrollment, browser consent and source-stage paths are
+unchanged; browser recovery and invitation acceptance
 keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -21,12 +22,13 @@ Platform now starts four active configured authentication shapes: local password
 alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
+Platform also supports the exact configured consent shape described below.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 The source paths use server-defined workflows and do not accept arbitrary
 configured definitions. Configured enrollment, recovery, custom stages and
-other authentication chains remain unconnected.
+other authentication chains or consent shapes remain unconnected.
 
 ## Scope
 
@@ -296,6 +298,39 @@ its pinned definition across server restarts. The password-only shape refuses
 accounts with enrolled TOTP; both password/MFA shapes require it. The passkey
 shape requires an enrolled passkey. All four are reauthentication only: they issue
 neither a new session nor a downstream OIDC code.
+
+## Configured OIDC consent
+
+Platform accepts an active configured `consent` definition only with two steps:
+`session` (`resume_session`) routes `verified` to `consent` and `failed` to
+`denied`; `consent` (`request_consent`) routes `granted` to `success`
+(`consent_granted`) and `denied` to `denied`. Routes are unconditional, and
+success requires `[["session", "consent"]]`. Both steps allow one attempt; the
+run lasts at most 120 seconds and the consent step at most 120 seconds. The
+live session, prepared transaction or request references can expire sooner. The
+generic `POST /api/workflows/configured/{workflow}` does not start consent.
+The built-in example above has different limits and is not this configured path.
+
+Prepare an OIDC `Authorization` for the same live bearer session, review its
+client and scopes, then send the complete JSON with `transaction_id` and no
+`decision` to `POST /api/workflows/configured/{workflow}/consent`. It rejects
+requests needing reauthentication, silent or account-selection prompts, browser
+bindings and embedded source stages. With the same bearer, send
+`{"approve":true}` or `{"approve":false}` to
+`POST /api/workflows/{id}/consent`. `GET /api/workflows/{id}` resumes the run;
+`POST /api/workflows/{id}/cancel` cancels it. The final view's
+`authorization_response` contains the existing issuer's code callback on
+approval or denial callback without a code.
+
+The executor pins the account and epoch, live session, OIDC request hash and
+client, prepared transaction, workflow request, run and definition. It emits
+session proof from the live session; only the explicit approval emits consent
+proof. Completion consumes the one-use transaction and bound receipts in the
+same write as the existing issuer's response. Ordinary authorization cannot use
+a reserved request, even without its transaction ID. Expiry and cancellation
+discard the pending transaction; completed and closed runs retain replay
+protection. No new session or remembered consent grant is created. Browser and
+remembered-consent adapters are not connected.
 
 ## Downstream OIDC completion
 
@@ -639,11 +674,12 @@ not require a revision increase.
 These are not implemented or established by this slice:
 
 * Connecting the remaining verifier actions and existing OIDC/browser sign-in,
-  lifecycle, consent and embedded source-stage paths. Current W02 endpoints
-  cover password, passkey and OIDC/SAML source reauthentication for a live bearer
-  session. Password/MFA, passkey and source/MFA chains consume a prepared terminal
-  OIDC request atomically; browser integration and changing a SAML session's
-  logout association remain unconnected.
+  lifecycle, browser/remembered consent and embedded source-stage paths. Current
+  W02 endpoints cover password, passkey and OIDC/SAML source reauthentication,
+  plus the exact configured OIDC consent path, for a live bearer session.
+  Password/MFA, passkey and source/MFA chains consume a prepared terminal OIDC
+  request atomically; browser integration and changing a SAML session's logout
+  association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
   authorized passkey enrollment, mail-proven password reset and invitation
@@ -652,7 +688,7 @@ These are not implemented or established by this slice:
   paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Configured enrollment, recovery, other authentication chains,
+* Configured enrollment, recovery, other authentication or consent chains,
   custom stage execution, and the other built-in verifiers. The configured local
   verifier paths store attempt timing, enforce retry and run bounds, cancellation
   and expiry, and recheck account, session, request and receipt authority in the
