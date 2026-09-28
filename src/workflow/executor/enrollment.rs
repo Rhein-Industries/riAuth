@@ -106,10 +106,12 @@ fn verified_session(
     let RunState::Active { step, .. } = &run.record.state else {
         return Err(Error::forbidden());
     };
-    if run.record.binding.workflow.as_str() != PASSKEY_ENROLLMENT
+    if (run.record.binding.workflow.as_str() != PASSKEY_ENROLLMENT
+        && !supported_configured_passkey_enrollment(checked.definition()))
         || !user.has_passkeys
         || request.source.is_some()
         || request.authorization.is_some()
+        || request.consent.is_some()
         || run.credential_mutation.is_some()
         || run.record.steps.len() != 2
         || checked.step(step).map(|s| &s.action)
@@ -176,9 +178,10 @@ impl Verified {
             signal: Label::fixed("completed"),
             evidence: Some(self.evidence.id.clone()),
         });
-        expected == *run
-            && run.binding.workflow.as_str() == PASSKEY_ENROLLMENT
-            && terminal.outcome == super::super::Outcome::Enrolled
+        // Only verified_session can construct this capability, after checking
+        // the built-in or exact configured enrollment definition. The recorded
+        // binding is included in the full before/after comparison.
+        expected == *run && terminal.outcome == super::super::Outcome::Enrolled
     }
 
     pub(super) fn commit(

@@ -20,7 +20,8 @@ use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
     RunBinding, RunState, Target, Validated, builtin, configured_password_path,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
-    supported_configured_consent, supported_configured_passkey, validate,
+    supported_configured_consent, supported_configured_passkey,
+    supported_configured_passkey_enrollment, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -165,6 +166,7 @@ impl RuntimeRun {
             checked
         } else if configured_password_path(&self.definition).is_some()
             || supported_configured_passkey(&self.definition)
+            || supported_configured_passkey_enrollment(&self.definition)
             || supported_configured_consent(&self.definition)
         {
             validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
@@ -883,7 +885,7 @@ impl CompletionStore for TxCompletion<'_, '_> {
 }
 
 impl Core {
-    /// Start one active, operator-configured local verifier reauthentication
+    /// Start one active, operator-configured local verifier or passkey enrollment
     /// workflow. The definition is loaded from validated server configuration;
     /// the caller supplies only its identifier, never actions or transitions.
     pub fn workflow_configured_start(&self, token: &str, workflow: &str) -> Result<View> {
@@ -896,7 +898,8 @@ impl Core {
         let checked = validate(configured.definition.clone(), &Environment::platform())
             .map_err(invalid_error)?;
         if (configured_password_path(checked.definition()).is_none()
-            && !supported_configured_passkey(checked.definition()))
+            && !supported_configured_passkey(checked.definition())
+            && !supported_configured_passkey_enrollment(checked.definition()))
             || checked.definition().id.as_str() != workflow
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
@@ -958,6 +961,8 @@ impl Core {
             let checked = mfa_definition.as_ref().unwrap_or(checked);
             let configured_password = configured_password_path(checked.definition());
             let configured_passkey = supported_configured_passkey(checked.definition());
+            let configured_enrollment =
+                supported_configured_passkey_enrollment(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
@@ -975,7 +980,8 @@ impl Core {
             if (matches!(
                 checked.definition().id.as_str(),
                 PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
-            ) || configured_passkey)
+            ) || configured_passkey
+                || configured_enrollment)
                 && !user.has_passkeys
             {
                 return Err(Error::conflict(
@@ -1071,7 +1077,10 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
-            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT || configured_consent {
+            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
+                || configured_enrollment
+                || configured_consent
+            {
                 enrollment::resume_session(self, tx, checked, &mut run, at)?;
             }
             run.view(checked)

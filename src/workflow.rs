@@ -209,6 +209,80 @@ pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
             .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
 }
 
+/// The existing UV passkey verifier and registration mutation support one
+/// configured enrollment path. No transition can skip either live-session or
+/// fresh-factor evidence, or complete without the registration capability.
+pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Enrollment
+        || definition.steps.len() != 3
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 1_200
+        || definition.limits.max_executions > 16
+    {
+        return false;
+    }
+    let [session, passkey, enroll] = definition.steps.as_slice() else {
+        return false;
+    };
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Enrolled);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes = |step: &Step, verified: &'static str, target: &Id, failed: &Id| {
+        step.transitions.len() == 2
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(verified) && &transition.to == target
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && &transition.to == failed
+            })
+    };
+    session.id.as_str() == "session"
+        && passkey.id.as_str() == "passkey"
+        && enroll.id.as_str() == "enroll"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(passkey.action, Action::VerifyPasskey {})
+        && matches!(
+            enroll.action,
+            Action::EnrollCredential {
+                credential: Credential::Passkey
+            }
+        )
+        && session.max_attempts == 1
+        && passkey.max_attempts <= 3
+        && enroll.max_attempts == 1
+        && session.timeout_seconds <= 60
+        && passkey.timeout_seconds <= 300
+        && enroll.timeout_seconds <= 300
+        && session.cancellable
+        && passkey.cancellable
+        && enroll.cancellable
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 3
+        && [Proof::Session, Proof::Passkey, Proof::Enrolled]
+            .into_iter()
+            .all(|proof| success.requires[0].contains(&proof))
+        && routes(session, "verified", &passkey.id, &denied.id)
+        && routes(passkey, "verified", &enroll.id, &denied.id)
+        && routes(enroll, "completed", &success.id, &denied.id)
+}
+
 /// A configured consent decision has one live-session proof and one explicit
 /// user decision. Its success terminal cannot be reached by a static signal.
 pub(crate) fn supported_configured_consent(definition: &Definition) -> bool {

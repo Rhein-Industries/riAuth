@@ -23,12 +23,14 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
+It supports one configured enrollment shape: a live session, fresh verified
+existing passkey, and passkey registration in that order.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 The source paths use server-defined workflows and do not accept arbitrary
-configured definitions. Configured enrollment, recovery, custom stages and
-other authentication chains or consent shapes remain unconnected.
+configured definitions. Other configured enrollment shapes, recovery, custom
+stages and other authentication chains or consent shapes remain unconnected.
 
 ## Scope
 
@@ -459,6 +461,20 @@ adapter below. First-passkey enrollment through a password/TOTP session and
 other credential mutations still require their own bound adapters. Persisted
 mutation receipts alone cannot enable those success outcomes.
 
+An active configured definition can start the same complete server path at
+`POST /api/workflows/configured/{workflow}`. It must have exactly the
+`session → passkey → enroll` steps (`resume_session`, `verify_passkey`, then
+`enroll_credential: passkey`), unconditional verified/completed routes in that
+order, failed routes to denial, and one enrolled terminal requiring session,
+passkey and enrolled proofs. The run lasts at most 1,200 seconds, with at most
+16 executions, passkey retries bounded to three, a 120-second maximum success
+proof age, and cancellable steps. The existing `/passkey/start`, `/passkey`,
+`/passkey-enrollment/start` and `/passkey-enrollment` run endpoints perform the
+real ceremonies. The definition and request remain pinned across restart;
+cancellation or expiry discards a pending ceremony, and completion uses the
+same atomic epoch change and session revocation described above. Config,
+start and resume reject other configured enrollment shapes.
+
 ## Password recovery finalization
 
 On Platform, the existing explicit browser/CLI reset submission executes the
@@ -716,7 +732,7 @@ These are not implemented or established by this slice:
   paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Configured enrollment, recovery, other authentication or consent chains,
+* Other configured enrollment, recovery, authentication or consent chains,
   custom stage execution, and the other built-in verifiers. The configured local
   verifier paths store attempt timing, enforce retry and run bounds, cancellation
   and expiry, and recheck account, session, request and receipt authority in the
