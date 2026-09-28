@@ -92,8 +92,8 @@ pub struct SourceSpec {
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Link {
     pub(crate) source: String,
-    issuer: String,
-    subject: String,
+    pub(crate) issuer: String,
+    pub(crate) subject: String,
     pub(crate) user_id: String,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
@@ -108,40 +108,15 @@ pub(crate) fn reconcile_link(
     actor: &Principal,
     spec: &LinkSpec,
 ) -> Result<Option<crate::state::Change>> {
-    let source = enabled(tx, &spec.source)?;
-    actor.require("source.write", &format!("source/{}", spec.source))?;
-    actor.require("user.write", &format!("user/{}", spec.username))?;
-    let user = crate::core::user_by_name(tx, &spec.username)?;
-    if user.admin && (actor.agent || !source.allow_admin_login) {
-        return Err(Error::forbidden());
-    }
-    if spec.subject.is_empty()
-        || spec.subject.len() > 255
-        || spec.subject.chars().any(char::is_control)
-    {
-        return Err(Error::bad("Invalid source subject"));
-    }
-    let id = link_key(&spec.source, &source.issuer, &spec.subject);
-    if let Some(link) = tx.get::<Link>("source_links", &id)? {
-        if link.user_id != user.id {
-            return Err(Error::conflict(
-                "Source identity already belongs to another local account",
-            ));
-        }
+    let written = crate::management::write_source_link(
+        tx,
+        crate::management::SourceLinkAuthority::Plan { actor, spec },
+    )?;
+    if !written.created {
         return Ok(None);
     }
-    tx.put(
-        "source_links",
-        &id,
-        &Link {
-            source: spec.source.clone(),
-            issuer: source.issuer,
-            subject: spec.subject.clone(),
-            user_id: user.id,
-        },
-    )?;
     Ok(Some(crate::state::Change {
-        resource: format!("source_link/{id}"),
+        resource: format!("source_link/{}", written.id),
         action: "create".into(),
         before: Value::Null,
         after: json!(spec),
@@ -968,16 +943,17 @@ impl Core {
         }
         tx.put("users", &user.id, &user)?;
         tx.put("usernames", &user.username, &user.id)?;
-        tx.put(
-            "source_links",
-            &link_id,
-            &Link {
-                source: source.id.clone(),
-                issuer: source.issuer.clone(),
-                subject: identity.subject.clone(),
-                user_id: user.id.clone(),
+        let link_id = crate::management::write_source_link(
+            tx,
+            crate::management::SourceLinkAuthority::VerifiedLogin {
+                source_id: &source.id,
+                source_fingerprint: &pending.fingerprint,
+                user_id: &user.id,
+                subject: &identity.subject,
+                approved: approve,
             },
-        )?;
+        )?
+        .id;
         let session_token = crypto::random_token("ri_session_");
         let sid = crypto::id();
         let mut amr = vec!["federated".into()];
@@ -1424,12 +1400,12 @@ pub(crate) fn links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
         .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
         .collect())
 }
-fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
+pub(crate) fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
     tx.get::<Source>("sources", id)?
         .filter(|s| s.enabled)
         .ok_or_else(|| Error::missing("Enabled source not found"))
 }
-fn link_key(source: &str, issuer: &str, subject: &str) -> String {
+pub(crate) fn link_key(source: &str, issuer: &str, subject: &str) -> String {
     digest(&format!("{source}\0{issuer}\0{subject}"))
 }
 pub fn validate_identity(tx: &Tx<'_>, identity: &Identity) -> Result<()> {

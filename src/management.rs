@@ -21,7 +21,9 @@ mod client_creation;
 mod client_policy;
 mod memberships;
 mod sessions;
+mod source_links;
 pub(crate) use sessions::{RevokeIntent, revoke_sessions};
+pub(crate) use source_links::{SourceLinkAuthority, write_source_link};
 
 #[cfg(feature = "platform")]
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};

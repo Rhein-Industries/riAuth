@@ -126,6 +126,105 @@ async fn source_account_linking_requires_fresh_local_identity_and_unlink_revokes
 }
 
 #[tokio::test]
+async fn desired_state_and_verified_login_share_source_link_ownership_without_reassignment() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let link_count = |token: &str| {
+        f.core
+            .source_links(token)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    let mut upstream = Upstream::new(&f).await;
+    upstream.source.auto_provision = false;
+    f.core
+        .source_put(
+            &f.admin,
+            riauth::source::SourceInput {
+                source: upstream.source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+
+    let spec = json!({"source":"upstream","username":"alice","subject":"planned"});
+    let manifest: riauth::state::Manifest = serde_json::from_value(json!({
+        "api_version":"riauth/v1", "source_links":[spec]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+    let request = || riauth::state::ApplyRequest {
+        plan: plan.clone(),
+        secrets: Default::default(),
+        run_id: None,
+    };
+    let applied = f
+        .core
+        .apply_state_confirmed(&f.admin, request(), Some(&plan.plan_id))
+        .unwrap();
+    assert_eq!(f.core.apply_state(&f.admin, request()).unwrap(), applied);
+    assert_eq!(link_count(&alice), 1);
+
+    // A real verified upstream response uses the planned link without moving
+    // it or creating another row. Completion is still one-use.
+    let existing = upstream.start(&f, None);
+    upstream.callback(&f, &existing, "planned", json!({})).await;
+    assert_eq!(
+        upstream.finish(&f, &existing, false).unwrap()["status"],
+        "review"
+    );
+    assert_eq!(
+        upstream.finish(&f, &existing, true).unwrap()["user"]["id"],
+        f.core.me(&alice).unwrap()["user"]["id"]
+    );
+    assert!(upstream.finish(&f, &existing, true).is_err());
+    assert_eq!(link_count(&alice), 1);
+
+    let collision = upstream.start(&f, Some(&bob));
+    upstream
+        .callback(&f, &collision, "planned", json!({}))
+        .await;
+    assert!(upstream.finish(&f, &collision, true).is_err());
+    assert_eq!(link_count(&bob), 0);
+
+    let new_link = upstream.start(&f, Some(&alice));
+    upstream
+        .callback(&f, &new_link, "consented", json!({}))
+        .await;
+    assert_eq!(
+        upstream.finish(&f, &new_link, false).unwrap()["status"],
+        "review"
+    );
+    assert_eq!(link_count(&alice), 1);
+    upstream.finish(&f, &new_link, true).unwrap();
+    assert_eq!(link_count(&alice), 2);
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    let count = |action: &str| {
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action && event["target"] == "upstream")
+            .count()
+    };
+    assert_eq!(count("source.login"), 1);
+    assert_eq!(count("source.link"), 1);
+    let action_count = |action: &str| {
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action)
+            .count()
+    };
+    assert_eq!(action_count("source_link.reconcile"), 1);
+    assert_eq!(action_count("state.apply"), 1);
+}
+
+#[tokio::test]
 async fn source_manifests_are_redacted_atomic_idempotent_and_permission_checked() {
     let f = Fixture::new();
     let upstream = Upstream::new(&f).await;
