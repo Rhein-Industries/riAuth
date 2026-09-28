@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Approve a device · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/device.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#device-main">Skip to device approval</a>
+<main class="standalone" id="device-main">
+  <div class="auth-panel signin-shell">
+    <div class="signin-brand"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true"><p class="eyebrow">RIAUTH</p></div>
+
+    <section id="device-enter" aria-labelledby="device-enter-title">
+      <h1 id="device-enter-title" tabindex="-1">Approve a device</h1>
+      <p>Enter the code shown on the device you want to connect.</p>
+      <p id="device-enter-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      <form id="device-code-form" novalidate>
+        <div class="field"><label for="device-code">Device code</label><input id="device-code" name="user_code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="XXXXX-XXXXX" required></div>
+        <button class="button primary" id="device-code-submit" type="submit">Continue</button>
+      </form>
+      <p class="field-hint">Check that the code here matches the one on your device before you approve.</p>
+    </section>
+
+    <section id="device-loading" aria-labelledby="device-loading-title" hidden>
+      <h1 id="device-loading-title" tabindex="-1">Checking your code…</h1>
+      <p><span class="spinner" aria-hidden="true"></span></p>
+    </section>
+
+    <section id="device-signin" aria-labelledby="device-signin-title" hidden>
+      <h1 id="device-signin-title" tabindex="-1">Sign in to review this request</h1>
+      <p id="device-signin-reason">Your code is ready. Sign in to see which application is asking for access.</p>
+      <div class="account-line"><span>Code <strong id="device-signin-code"></strong></span></div>
+      <p id="device-signin-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      <button class="button primary" id="device-passkey" type="button" hidden>Sign in with a passkey</button>
+      <p class="divider" id="device-signin-divider" hidden><span>or</span></p>
+      <form id="device-signin-form" novalidate>
+        <div class="field"><label for="device-username">Username</label><input id="device-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
+        <div class="field"><label for="device-password">Password</label><input id="device-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div>
+        <div class="field"><label for="device-otp">Authenticator or recovery code (if enabled)</label><input id="device-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="device-otp-hint"><span class="field-hint" id="device-otp-hint">Enter a code if your account or this application requires one.</span></div>
+        <button class="button primary" id="device-signin-submit" type="submit">Sign in</button>
+      </form>
+      <button class="text-button" id="device-signin-back" type="button">Use another device code</button>
+    </section>
+
+    <section id="device-review" aria-labelledby="device-review-title" hidden>
+      <h1 id="device-review-title" tabindex="-1">Review device access</h1>
+      <p>Only approve if this code matches the one shown on your device.</p>
+      <div class="account-line"><span>Device code</span><strong id="device-review-code"></strong></div>
+      <div class="account-line"><span>Signed in as <strong id="device-account"></strong></span><button class="text-button" id="device-switch-account" type="button">Use another account</button></div>
+      <p class="eyebrow">REGISTERED APPLICATION</p>
+      <h2 id="device-application"></h2>
+      <p class="field-hint" id="device-client-id"></p>
+      <p>riAuth matched this application to its registered client ID. It requests access to:</p>
+      <ul class="consent-list" id="device-scopes"></ul>
+      <div id="device-claims-section" hidden><h2>Claims shared</h2><ul class="consent-list" id="device-claims"></ul></div>
+      <p class="field-hint" id="device-resource" hidden></p>
+      <p class="field-hint" id="device-expiry" hidden></p>
+      <div class="notice" id="device-requirement" hidden><span id="device-requirement-text"></span><button class="text-button" id="device-reauth" type="button" hidden>Sign in again</button></div>
+      <p id="device-review-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      <p><button class="button primary" id="device-approve" type="button">Approve device</button> <button class="button secondary" id="device-deny" type="button">Reject request</button></p>
+      <button class="text-button" id="device-change-code" type="button">Use another device code</button>
+    </section>
+
+    <section id="device-finished" aria-labelledby="device-finished-title" hidden>
+      <h1 id="device-finished-title" tabindex="-1"></h1>
+      <p id="device-finished-text"></p>
+      <button class="button secondary" id="device-start-again" type="button">Enter another code</button>
+    </section>
+    <div class="sr-only" role="status" aria-live="polite" id="device-announcement"></div>
+    <noscript><p>JavaScript is needed to review and decide a device request in this browser.</p></noscript>
+  </div>
+</main>
+</body>
+</html>

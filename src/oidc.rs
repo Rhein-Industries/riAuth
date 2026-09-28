@@ -494,48 +494,118 @@ impl Core {
             let device = Device { resource:request.resource,client_id: client.id, user_code_hash: user_hash.clone(), scopes, expires_at: now() + lifetime, last_poll_at: None, interval: 5, status: DeviceStatus::Pending };
             tx.put("devices", &digest(&device_code), &device)?;
             tx.put("device_users", &user_hash, &digest(&device_code))?;
-            Ok(json!({"device_code": device_code, "user_code": user_code, "verification_uri": format!("{}/device", self.config.issuer.trim_end_matches('/')), "expires_in": lifetime, "interval": 5}))
+            let verification_uri = format!("{}/device", self.config.issuer.trim_end_matches('/'));
+            let verification_uri_complete = format!("{verification_uri}?user_code={user_code}");
+            Ok(json!({"device_code": device_code, "user_code": user_code, "verification_uri": verification_uri,
+                "verification_uri_complete": verification_uri_complete,
+                "expires_in": lifetime, "interval": 5}))
         })
     }
     pub fn device_details(&self, token: &str, user_code: &str) -> Result<Value> {
         self.store.read(|tx| {
             self.session(tx, token)?;
             let (_, device) = lookup_device(tx, user_code)?;
+            if !matches!(device.status, DeviceStatus::Pending) {
+                return Err(Error::conflict("Device request already decided"));
+            }
             let client = get_client(tx, &device.client_id)?;
-            Ok(json!({"client_id": client.id, "application": client.name, "scopes": device.scopes, "resource":device.resource,"expires_at": device.expires_at, "require_mfa": client.require_mfa}))
+            Ok(json!({"client_id": client.id, "application": client.name, "scopes": device.scopes,
+                "claims": device_claim_names(&client, &device.scopes), "resource":device.resource,
+                "expires_at": device.expires_at, "require_mfa": client.require_mfa}))
+        })
+    }
+    /// Read-only review for the signed-in browser. The review value binds the code and
+    /// the session shown on this page; a later account switch cannot approve as another user.
+    pub fn device_browser_details(&self, sso: Option<&str>, user_code: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let session = self.browser_session(tx, sso)?.ok_or_else(Error::unauthorized)?;
+            let (key, device) = lookup_device(tx, user_code)?;
+            if !matches!(device.status, DeviceStatus::Pending) {
+                return Err(Error::conflict("Device request already decided"));
+            }
+            let client = get_client(tx, &device.client_id)?;
+            let user = self.identity_user(tx, &session.identity)?;
+            let stale = device_authentication_stale(&session);
+            let approval_allowed = match self.device_approval_policy(tx, &client, &device, &session) {
+                Ok(()) => !stale,
+                Err(error) if error.status.is_server_error() => return Err(error),
+                Err(_) => false,
+            };
+            let normalized = crypto::normalize_code(user_code)?;
+            let shown_code = format!("{}-{}", &normalized[..5], &normalized[5..]);
+            Ok(json!({
+                "user_code": shown_code,
+                "application": {"client_id": client.id, "name": client.name},
+                "scopes": device.scopes,
+                "claims": device_claim_names(&client, &device.scopes),
+                "resource": device.resource,
+                "expires_at": device.expires_at,
+                "account": crate::signin::account_json(&user, &session),
+                "session_ref": crate::signin::session_ref(&key, &session.id),
+                "approval_allowed": approval_allowed,
+                "reauthentication_required": stale,
+                "require_mfa": client.require_mfa
+            }))
         })
     }
     pub fn device_decide(&self, token: &str, user_code: &str, approve: bool) -> Result<Value> {
         self.store.write(|tx| {
             let (_, session) = self.session(tx, token)?;
-            let (key, mut device) = lookup_device(tx, user_code)?;
-            if !matches!(device.status, DeviceStatus::Pending) {
-                return Err(Error::conflict("Device request already decided"));
-            }
-            let client = get_client(tx, &device.client_id)?;
-            if approve {
-                let user = self.authorize_identity(tx, &client, &session.identity)?;
-                crate::claims::enforce(tx, &client, &user, &session.identity, &device.scopes)?;
-                if !device.scopes.is_subset(&client.scopes) {
-                    return Err(Error::forbidden());
-                }
-                device.status = DeviceStatus::Approved(session.identity.clone());
-            } else {
-                device.status = DeviceStatus::Denied;
-            }
-            tx.put("devices", &key, &device)?;
-            audit(
-                tx,
-                &session.identity.user_id,
-                if approve {
-                    "device.approved"
-                } else {
-                    "device.denied"
-                },
-                &device.client_id,
-            )?;
-            Ok(json!({"approved": approve}))
+            self.device_decide_in(tx, &session, user_code, approve, None)
         })
+    }
+    pub fn device_browser_decide(
+        &self,
+        sso: Option<&str>,
+        user_code: &str,
+        approve: bool,
+        session_ref: &str,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let session = self.browser_session(tx, sso)?.ok_or_else(Error::unauthorized)?;
+            self.device_decide_in(tx, &session, user_code, approve, Some(session_ref))
+        })
+    }
+    fn device_decide_in(
+        &self,
+        tx: &Tx<'_>,
+        session: &Session,
+        user_code: &str,
+        approve: bool,
+        review: Option<&str>,
+    ) -> Result<Value> {
+        let (key, mut device) = lookup_device(tx, user_code)?;
+        if !matches!(device.status, DeviceStatus::Pending) {
+            return Err(Error::conflict("Device request already decided"));
+        }
+        if let Some(review) = review
+            && !crypto::constant_eq(review, &crate::signin::session_ref(&key, &session.id))
+        {
+            return Err(Error::new(StatusCode::CONFLICT, "account_changed", "Review this device request again with the current account"));
+        }
+        let client = get_client(tx, &device.client_id)?;
+        if approve {
+            if device_authentication_stale(session) {
+                return Err(Error::new(StatusCode::FORBIDDEN, "reauthentication_required", "Sign in again before approving this device request"));
+            }
+            self.device_approval_policy(tx, &client, &device, session)?;
+            device.status = DeviceStatus::Approved(session.identity.clone());
+        } else {
+            device.status = DeviceStatus::Denied;
+        }
+        tx.put("devices", &key, &device)?;
+        audit(tx, &session.identity.user_id,
+            if approve { "device.approved" } else { "device.denied" }, &device.client_id)?;
+        Ok(json!({"approved": approve}))
+    }
+    fn device_approval_policy(&self, tx: &Tx<'_>, client: &Client, device: &Device, session: &Session) -> Result<()> {
+        let user = self.authorize_identity(tx, client, &session.identity)?;
+        if !device.scopes.is_subset(&client.scopes) {
+            return Err(Error::forbidden());
+        }
+        crate::claims::enforce(tx, client, &user, &session.identity, &device.scopes)?;
+        let claims = crate::claims::mapped_claims(tx, &user, client, &device.scopes)?;
+        crate::assurance::enforce(client, &session.identity, None, &Default::default(), &claims)
     }
     pub fn token(&self, request: TokenRequest) -> Result<Value> {
         if request.audience.is_some() && request.grant_type != crate::exchange::TOKEN_EXCHANGE {
@@ -1321,6 +1391,32 @@ fn lookup_device(tx: &Tx<'_>, code: &str) -> Result<(String, Device)> {
         return Err(Error::bad("Device request expired"));
     }
     Ok((key, device))
+}
+fn device_authentication_stale(session: &Session) -> bool {
+    session.identity.auth_time == 0
+        || now().saturating_sub(session.identity.auth_time) > crate::signin::FRESH_SECONDS
+}
+/// Claim names visible to a device client for these scopes. The review discloses
+/// names, never claim values, before the user consents.
+fn device_claim_names(client: &Client, scopes: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut names = BTreeSet::from([
+        "sub".to_owned(), "auth_time".to_owned(), "acr".to_owned(), "amr".to_owned(),
+    ]);
+    if scopes.contains("profile") {
+        names.extend(["name".to_owned(), "preferred_username".to_owned()]);
+    }
+    if scopes.contains("email") {
+        names.extend(["email".to_owned(), "email_verified".to_owned()]);
+    }
+    if scopes.contains("groups") || client.settings.groups_in_profile && scopes.contains("profile") {
+        names.insert("groups".to_owned());
+    }
+    for mapping in &client.settings.claim_mappings {
+        if scopes.contains(&mapping.scope) {
+            names.insert(mapping.claim.clone());
+        }
+    }
+    names
 }
 fn required<'a>(field: &'a Option<String>, name: &str) -> Result<&'a str> {
     field

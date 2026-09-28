@@ -21,6 +21,17 @@ pub fn routes() -> Router<App> {
         .route("/apps", get(page))
         .route("/apps/", get(page))
         .route("/apps/launch", get(launch))
+        .route("/device", get(device_page))
+        .route("/device/", get(device_page))
+        .route(
+            "/portal/assets/device.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("device.js"),
+                )
+            }),
+        )
         .route(
             "/portal/assets/app.css",
             get(|| async {
@@ -99,6 +110,8 @@ pub fn routes() -> Router<App> {
             post(passkey_register_finish),
         )
         .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
+        .route("/api/device/browser/{code}", get(device_browser_details))
+        .route("/api/device/browser/decision", post(device_browser_decide))
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -120,6 +133,14 @@ pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
 pub async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
     let mut response = portal_html(include_str!("index.html"), &app, true);
     if crate::api::sso_cookie(&app, &headers).is_none() {
+        placeholder_sso(&app, &mut response);
+    }
+    response
+}
+
+async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
+    let mut response = portal_html(include_str!("device.html"), &app, true);
+    if sso_cookie(&app, &headers).is_none() {
         placeholder_sso(&app, &mut response);
     }
     response
@@ -496,6 +517,40 @@ async fn details(
     let token = crate::api::bearer(&headers)?;
     app.run(move |core| core.portal_request(&token, &code).map(Json))
         .await
+}
+async fn device_browser_details(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> Result<Json<Value>> {
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| core.device_browser_details(sso.as_deref(), &code).map(Json))
+        .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeviceBrowserDecision {
+    user_code: String,
+    approve: bool,
+    session_ref: String,
+}
+async fn device_browser_decide(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<DeviceBrowserDecision>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.device_browser_decide(
+            sso.as_deref(),
+            &input.user_code,
+            input.approve,
+            &input.session_ref,
+        )
+        .map(Json)
+    })
+    .await
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

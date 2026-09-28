@@ -40,8 +40,8 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET | `/oauth/authorize` | Query authorization request; JSON details for the CLI, or `303` to `/oauth/resume/{id}` for `Accept: text/html` (with `Vary: Accept`) |
 | POST | `/oauth/authorize` | Form request plus `decision`; end-user CLI bearer and any required authentication transaction |
 | GET | `/oauth/resume/{id}` | With its binding cookie: HTML gets the sign-in page while undecided; JSON gets the terminal instructions and `Refresh`. Once decided, delivers the callback **once** (302 or form post) and deletes the request, its code index and any leftover proof |
-| POST | `/oauth/device/code` | Form client authentication and optional scope |
-| GET | `/device` | Terminal device-approval instructions |
+| POST | `/oauth/device/code` | Form client authentication and optional scope; returns `verification_uri` and `verification_uri_complete` for browser approval |
+| GET | `/device` | Browser code-entry and approval page; `?user_code=CODE` pre-fills the code without taking a decision |
 | POST | `/oauth/token` | Form client authentication plus grant parameters; every grant for a proxy client is refused with 400 `unauthorized_client` (its codes are redeemed only inside riAuth) |
 | POST | `/oauth/par` | Authenticated pushed authorization request |
 | POST | `/oauth/register` | Restricted RFC 7591 registration using an initial access credential |
@@ -208,7 +208,9 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | DELETE | `/api/source-links/{id}` | Unlink own upstream identity and revoke associated sessions |
 | POST | `/api/device-trust/challenge`, `/api/device-trust/verify` | End-user bearer; nonce challenge and pinned local JWT verification; see [ENT-06](enterprise/ENT-06.md) |
 | GET | `/api/device/{code}` | Review device request |
-| POST | `/api/device/decision` | `user_code`, `approve`; enforce identity/client policy |
+| POST | `/api/device/decision` | `user_code`, `approve`; enforce fresh identity/client policy |
+| GET | `/api/device/browser/{code}` | SSO-cookie review of verified client, scopes, claim names, account and request-bound `session_ref`; read-only |
+| POST | `/api/device/browser/decision` | SSO-cookie `user_code`, `approve`, `session_ref`; same-origin write guard and one-time decision |
 | GET | `/api/consents` | Current user's remembered application consent |
 | DELETE | `/api/consents/{id}` | Revoke current user's consent and grants for this client |
 

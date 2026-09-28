@@ -204,7 +204,6 @@ pub fn router(core: Core) -> Router {
         .route("/api/registration", get(registration_templates).post(create_registration))
         .route("/api/registration/{id}", axum::routing::delete(revoke_registration))
         .route("/oauth/device/code", post(device_start))
-        .route("/device", get(|| async { Json(json!({"instruction": "Use `riauth login`, then `riauth device approve <user-code>` to review the application and requested scopes in your terminal."})) }))
         .route("/oauth/userinfo", get(userinfo).post(userinfo))
         .route("/oauth/introspect", post(introspect))
         .route("/oauth/revoke", post(revoke))
