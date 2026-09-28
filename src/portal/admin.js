@@ -11,7 +11,9 @@
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
   const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
-  const platform = () => RiAuthCapabilities.usable("access.temporary_entitlements");
+  // The routes can read and revoke retained grants after approver rules are removed.
+  const accessRoutes = () => RiAuthCapabilities.compiled("access.temporary_entitlements");
+  const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
@@ -207,8 +209,8 @@
       const me = await api("GET", "admin/session");
       const [clients, users, groups, requests, grants, audit, invites] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
-        platform() ? api("GET", "admin/access/requests") : Promise.resolve([]),
-        platform() ? api("GET", "admin/access/grants") : Promise.resolve([]),
+        accessRoutes() ? api("GET", "admin/access/requests") : Promise.resolve([]),
+        accessRoutes() ? api("GET", "admin/access/grants") : Promise.resolve([]),
         api("GET", "admin/audit?limit=50"),
         api("GET", "admin/invitations"),
       ]);
@@ -247,8 +249,8 @@
     $("count-groups").textContent = data.groups.length;
     const waiting = pending().length;
     const badge = $("count-security");
-    badge.hidden = !platform();
-    if (platform()) {
+    badge.hidden = !accessRoutes();
+    if (accessRoutes()) {
       badge.textContent = waiting;
       badge.classList.toggle("attention", waiting > 0);
       badge.setAttribute("aria-label", `${waiting} access ${waiting === 1 ? "request" : "requests"} waiting for review`);
@@ -1463,7 +1465,7 @@
       { label: "Actions", cell: (u) => h("button", { class: "text-button", type: "button", "aria-label": `Remove ${u.username} from ${name}`, onclick: (event) => member(event.currentTarget, name, u.username, false) }, "Remove") },
     ], members, "No members yet.", (u) => `${u.display_name} ${u.username}`);
     const apps = data.clients.filter((c) => c.allowed_groups.includes(name)).sort((a, b) => byName(a.name, b.name));
-    const temporary = platform() ? activeGrants().filter((grant) => grant.group === name) : [];
+    const temporary = accessRoutes() ? activeGrants().filter((grant) => grant.group === name) : [];
     const node = h("div", {},
       heading("GROUP", name, `${members.length} ${members.length === 1 ? "member" : "members"}`),
       h("div", { class: "detail-grid" },
@@ -1500,9 +1502,10 @@
       { label: "Reason", cell: (r) => r.reason },
       { label: "Duration", cell: (r) => duration(r.ttl) },
       { label: "Requested", cell: (r) => when(r.created_at) },
-      { label: "Decision", cell: (r) => h("span", { class: "row-actions" },
+      { label: "Decision", cell: (r) => accessDecisions() ? h("span", { class: "row-actions" },
         h("button", { class: "button primary small", type: "button", "aria-label": `Approve ${r.username} for ${r.group}`, onclick: () => decide(r, true) }, "Approve"),
-        h("button", { class: "button secondary small", type: "button", "aria-label": `Deny ${r.username} for ${r.group}`, onclick: () => decide(r, false) }, "Deny")) },
+        h("button", { class: "button secondary small", type: "button", "aria-label": `Deny ${r.username} for ${r.group}`, onclick: () => decide(r, false) }, "Deny"))
+        : "Configure approver rules to decide this request." },
     ], waiting, "No access requests are waiting for review.", (r) => `${r.username} ${r.group} ${r.reason}`);
     const active = table("Active temporary access", [
       { label: "Person", cell: (g) => personName(userById(g.user_id)) },
@@ -1522,7 +1525,7 @@
     return { waiting, grants, requests, active };
   }
   function security() {
-    const access = platform() ? accessSecurity() : null;
+    const access = accessRoutes() ? accessSecurity() : null;
     const admins = data.users.filter((u) => u.admin && u.enabled);
     const unprotected = admins.filter((u) => !u.mfa_enabled);
     const actor = (id) => {
@@ -1539,15 +1542,15 @@
       const section = document.getElementById(target); section.scrollIntoView({ block: "start" }); section.querySelector("h2").focus();
     } }, h("strong", {}, String(count)), h("span", {}, label));
     const node = h("div", {},
-      heading("SECURITY", "Security", platform() ? "Reviews waiting on an administrator, temporary access and recent changes." : "Administrator sign-in and recent changes."),
+      heading("SECURITY", "Security", accessRoutes() ? "Reviews waiting on an administrator, temporary access and recent changes." : "Administrator sign-in and recent changes."),
       h("div", { class: "stats" },
-        platform() ? stat("Waiting for review", access.waiting.length, access.waiting.length ? "attention" : "", "review") : null,
-        platform() ? stat("Temporary access", access.grants.length, "", "temporary") : null,
+        accessRoutes() ? stat("Waiting for review", access.waiting.length, access.waiting.length ? "attention" : "", "review") : null,
+        accessRoutes() ? stat("Temporary access", access.grants.length, "", "temporary") : null,
         stat("Administrators", admins.length, "", "admins"),
         stat("Administrators without MFA", unprotected.length, unprotected.length ? "warn" : "ok", "admins")),
-      platform() ? h("section", { class: "admin-section", id: "review", "aria-labelledby": "review-title" }, h("h2", { id: "review-title", tabindex: "-1" }, "Waiting for review"),
+      accessRoutes() ? h("section", { class: "admin-section", id: "review", "aria-labelledby": "review-title" }, h("h2", { id: "review-title", tabindex: "-1" }, "Waiting for review"),
         h("p", { class: "field-hint" }, "People asking for temporary group access. Only approvers configured for a group can decide."), access.requests.node) : null,
-      platform() ? h("section", { class: "admin-section", id: "temporary", "aria-labelledby": "temporary-title" }, h("h2", { id: "temporary-title", tabindex: "-1" }, "Temporary access"), access.active.node) : null,
+      accessRoutes() ? h("section", { class: "admin-section", id: "temporary", "aria-labelledby": "temporary-title" }, h("h2", { id: "temporary-title", tabindex: "-1" }, "Temporary access"), access.active.node) : null,
       h("section", { class: "admin-section", id: "admins", "aria-labelledby": "admins-title" }, h("h2", { id: "admins-title", tabindex: "-1" }, "Administrators"),
         unprotected.length ? h("p", { class: "notice warn-notice" }, `${unprotected.length} ${unprotected.length === 1 ? "administrator has" : "administrators have"} no passkey or authenticator app. Ask them to add one from Your applications.`) : null,
         h("ul", { class: "chip-list" }, admins.map((u) => h("li", { class: "chip" }, link(hash("people", u.username), personName(u)), u.mfa_enabled ? badge("MFA on", "ok") : badge("No MFA", "warn"))))),

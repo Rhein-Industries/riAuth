@@ -5,6 +5,7 @@
   const base = document.querySelector('meta[name="riauth-base"]').content;
   let current = null;
   const usable = (name) => current?.feature_states?.[name]?.usable === true;
+  const compiled = (name) => current?.feature_states?.[name]?.compiled === true;
   async function refresh() {
     current = null;
     apply();
@@ -32,5 +33,5 @@
       node.toggleAttribute("data-capability-disabled", !usable(node.dataset.capability));
     }
   }
-  window.RiAuthCapabilities = { refresh, usable, apply };
+  window.RiAuthCapabilities = { refresh, usable, compiled, apply };
 })();

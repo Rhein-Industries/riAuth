@@ -206,6 +206,91 @@ async fn reads_require_an_administrator_browser_session_and_the_portal_header() 
     assert!(session.get("password_hash").is_none());
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn retained_grant_is_visible_and_revocable_after_approver_rules_are_removed() {
+    use riauth::{config::Config, pam::NewAccessRequest};
+
+    let fixture = Fixture::new();
+    fixture.core.create_group(&fixture.admin, "ops").unwrap();
+    let requester = fixture.user("ada");
+    let approver = fixture.user("reviewer");
+    let mut config: Config = fixture.core.config.clone();
+    config
+        .pam_approvers
+        .insert("ops".into(), ["reviewer".into()].into());
+    let Fixture { _dir, core, admin } = fixture;
+    drop(core);
+    let core = Core::open(config.clone()).unwrap();
+    let request = core
+        .request_access(
+            &requester,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Release support".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = core
+        .decide_access(&approver, request["id"].as_str().unwrap(), true)
+        .unwrap();
+    let grant_id = decision["grant"]["id"].as_str().unwrap().to_owned();
+    drop(core);
+
+    config.pam_approvers.clear();
+    let core = Core::open(config).unwrap();
+    assert_eq!(core.me(&requester).unwrap()["groups"], json!(["ops"]));
+    let admin_cookie = sso_cookie(&core, &admin);
+    let app = riauth::api::router(core.clone());
+    let (status, _, capabilities) = send(&app, "/api/capabilities", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let feature = &capabilities["feature_states"]["access.temporary_entitlements"];
+    assert_eq!(feature["compiled"], true);
+    assert_eq!(feature["usable"], false);
+
+    let read = Call {
+        cookie: Some(&admin_cookie),
+        portal: true,
+        ..Default::default()
+    };
+    let (status, _, grants) = send(&app, "/api/admin/access/grants", read).await;
+    assert_eq!(status, StatusCode::OK, "{grants}");
+    assert!(
+        grants
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|grant| grant["id"] == grant_id)
+    );
+    let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        script
+            .as_str()
+            .unwrap()
+            .contains("RiAuthCapabilities.compiled(\"access.temporary_entitlements\")")
+    );
+
+    let origin = origin(&core);
+    let write = Call {
+        method: "POST",
+        cookie: Some(&admin_cookie),
+        portal: true,
+        origin: Some(&origin),
+        ..Default::default()
+    };
+    let (status, _, revoked) = send(
+        &app,
+        &format!("/api/admin/access/grants/{grant_id}/revoke"),
+        write,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{revoked}");
+    assert!(revoked["revoked_at"].is_u64());
+    assert_eq!(core.me(&requester).unwrap()["groups"], json!([]));
+}
+
 #[tokio::test]
 async fn browser_credential_cannot_be_presented_as_a_bearer_token() {
     let fixture = Fixture::new();
