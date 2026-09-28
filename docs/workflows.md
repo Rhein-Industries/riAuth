@@ -16,6 +16,7 @@ keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
+That policy does not itself select or execute workflow definitions.
 Platform now starts four active configured authentication shapes: local password
 alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
@@ -597,7 +598,9 @@ starter requires a resumed session before a consent decision; the sensitive-acti
 starter requires a session and password proof, with a TOTP route when enrolled.
 The editor shows the canonical `riauth.workflow/v1` JSON and uses the existing
 server model and manifest planner to validate the entire definition before saving.
-Its graph preview is static: it never executes credentials, verifiers, or sessions.
+Its graph and validation plan are static previews: they never execute credentials,
+verifiers, or sessions. Saving a definition does not activate it or make an unsupported
+shape executable; the server selects only supported shapes from its runtime configuration.
 Existing conditional routes and action fields remain in the canonical draft,
 but the browser editor does not yet author new conditions, custom stages, or
 source references. Changing an action rebuilds that step's signal routes, so
@@ -611,7 +614,8 @@ that path for one definition at a time. Definitions require Platform and
 require `workflow.read`. A changed definition must increase its revision.
 Omitting a workflow leaves it unchanged. Persisted configured definitions are
 authoring data; the W02 configured executor uses active definitions from
-`config.toml` for its supported password and Password→TOTP paths.
+`config.toml` for its four supported authentication paths. Applying a definition
+in the authoring store does not activate it or make arbitrary graphs executable.
 Essentials does not show workflow authoring and rejects configured definitions.
 
 `workflow::defaults()` returns seven `builtin` definitions: passkey sign-in,

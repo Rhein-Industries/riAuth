@@ -138,7 +138,8 @@ test('consent and sensitive-action definitions edit through the canonical plan a
   for (const [index, definition] of workflows.entries()) {
     await page.goto(`${origin}/admin#/workflows/${definition.id}`);
     await expect(page.getByRole('heading', { level: 1, name: `Edit ${definition.id}` })).toBeVisible();
-    await expect(page.getByText('Runtime journeys still use server-owned definitions.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Saving a definition does not run it or make unsupported shapes executable.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Runtime use depends on the active server-supported executor shape.', { exact: false })).toBeVisible();
     await page.locator('.workflow-graph button').nth(1).click();
     const action = page.locator('.workflow-controls select').first();
     await action.selectOption(definition.category === 'consent' ? 'resume_session' : 'verify_passkey');
@@ -171,7 +172,7 @@ test('consent and sensitive-action starters show canonical proof paths before sa
   for (const category of ['consent', 'sensitive_action']) {
     await page.goto(`${origin}/admin#/workflows/new`);
     await page.getByRole('button', { name: `Start ${category} workflow template` }).click();
-    await expect(page.getByText('The graph is a static preview and does not execute credentials.', { exact: false })).toBeVisible();
+    await expect(page.getByText('The graph and validation plan are static previews; they do not execute credentials.', { exact: false })).toBeVisible();
     const definition = JSON.parse(await page.locator('.settings-json').textContent());
     expect(definition).toMatchObject({ format: 'riauth.workflow/v1', category, origin: 'configured', revision: 1,
       entry: 'session', terminals: [{ outcome: category === 'consent' ? 'consent_granted' : 'action_authorized' }, { outcome: 'denied' }] });

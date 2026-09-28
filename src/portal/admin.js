@@ -1969,7 +1969,7 @@
         { id: "denied", outcome: "denied", requires: [] }] };
   }
   const workflowRuntimeNotice = () => h("p", { class: "notice warn-notice" },
-    "Configured workflow execution is not supported yet. Runtime journeys still use server-owned definitions. The graph is a static preview and does not execute credentials.");
+    "The graph and validation plan are static previews; they do not execute credentials. Saving a definition does not activate it or make unsupported shapes executable. The server selects only supported shapes from its runtime configuration.");
   function workflows() {
     const rows = [...data.workflows].sort((a, b) => byName(a.id, b.id));
     return { node: h("div", {}, heading("PLATFORM", "Workflows", "Author and validate configured definitions. Shipped Essentials journeys stay managed by the server.",
