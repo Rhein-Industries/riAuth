@@ -46,6 +46,8 @@ mod saml;
 #[cfg(feature = "platform")]
 mod saml_logout;
 mod session_protocol;
+mod signin;
+pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
 #[cfg(feature = "platform")]
 mod ssf;
 #[cfg(feature = "platform")]
