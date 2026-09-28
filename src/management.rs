@@ -14,6 +14,7 @@
 //! authority, not a management principal.
 
 pub(crate) mod grants;
+mod memberships;
 
 #[cfg(feature = "platform")]
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
@@ -116,6 +117,95 @@ pub(crate) struct GroupWrite {
     pub(crate) changed: bool,
 }
 
+fn requires_membership_review(config: &Config, name: &str) -> bool {
+    config.reviewed_membership_groups.contains(name) || config.pam_approvers.contains_key(name)
+}
+
+fn require_group_review(config: &Config, name: &str, reviewed: bool) -> Result<()> {
+    if !reviewed && requires_membership_review(config, name) {
+        return Err(Error::conflict(
+            "Privileged group membership requires a reviewed membership change",
+        ));
+    }
+    Ok(())
+}
+
+const MEMBERSHIP_HOLDERS: &str = "reviewed_membership_holders";
+
+/// Durable M04 credential fence, retained across recovery with the memberships.
+/// Check the live group as well, so obsolete index entries cannot confer authority.
+pub(crate) fn has_reviewed_membership(tx: &Tx<'_>, user_id: &str) -> Result<bool> {
+    let groups = tx
+        .get::<BTreeSet<String>>(MEMBERSHIP_HOLDERS, user_id)?
+        .unwrap_or_default();
+    for name in groups {
+        if tx
+            .get::<Group>("groups", &name)?
+            .is_some_and(|g| g.name == name && g.members.contains(user_id))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn persist_group(tx: &Tx<'_>, group: &Group, reviewed: bool) -> Result<()> {
+    let before = tx
+        .get::<Group>("groups", &group.name)?
+        .map(|g| g.members)
+        .unwrap_or_default();
+    for member in before.difference(&group.members) {
+        let mut groups = tx
+            .get::<BTreeSet<String>>(MEMBERSHIP_HOLDERS, member)?
+            .unwrap_or_default();
+        if groups.remove(&group.name) {
+            if groups.is_empty() {
+                tx.delete(MEMBERSHIP_HOLDERS, member)?;
+            } else {
+                tx.put(MEMBERSHIP_HOLDERS, member, &groups)?;
+            }
+        }
+    }
+    if reviewed {
+        for member in &group.members {
+            let mut groups = tx
+                .get::<BTreeSet<String>>(MEMBERSHIP_HOLDERS, member)?
+                .unwrap_or_default();
+            groups.insert(group.name.clone());
+            if groups.len() > 128 {
+                return Err(Error::conflict(
+                    "A person may hold at most 128 reviewed group memberships",
+                ));
+            }
+            tx.put(MEMBERSHIP_HOLDERS, member, &groups)?;
+        }
+    }
+    tx.put("groups", &group.name, group)
+}
+
+/// The upstream source adapter validates its fresh identity and source binding.
+/// It may populate ordinary groups, but cannot confer permanent privileged access.
+pub(crate) fn write_source_memberships(
+    config: &Config,
+    tx: &Tx<'_>,
+    groups: &BTreeSet<String>,
+    user_id: &str,
+) -> Result<()> {
+    for name in groups {
+        let mut group = tx
+            .get::<Group>("groups", name)?
+            .ok_or_else(|| Error::bad("Source group was removed"))?;
+        if group.name != *name {
+            return Err(Error::conflict("Group identity does not match its key"));
+        }
+        if group.members.insert(user_id.into()) {
+            require_group_review(config, name, false)?;
+            persist_group(tx, &group, false)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "platform")]
 pub(crate) enum ScimGroupIntent<'a> {
     Create(&'a BTreeSet<String>),
@@ -131,13 +221,29 @@ pub(crate) enum ScimGroupIntent<'a> {
 /// group write or audit. Creation conflicts even when a caller repeats a name
 /// without an idempotency receipt, including a SCIM tombstone's local row.
 pub(crate) fn write_group(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     name: &str,
     intent: GroupIntent<'_>,
     record: GroupAudit<'_>,
 ) -> Result<GroupWrite> {
+    write_group_inner(config, tx, actor, name, intent, record, false)
+}
+
+// Only this service and its review executor can reach the reviewed write. No
+// transport, plan, connector or SCIM intent can assert that approval occurred.
+fn write_group_inner(
+    config: &Config,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    name: &str,
+    intent: GroupIntent<'_>,
+    record: GroupAudit<'_>,
+    reviewed: bool,
+) -> Result<GroupWrite> {
     let resource = format!("group/{name}");
+    let require_review = || require_group_review(config, name, reviewed);
     match intent {
         GroupIntent::Create(members) => {
             actor.require("group.write", &resource)?;
@@ -149,11 +255,14 @@ pub(crate) fn write_group(
                 return Err(Error::conflict("Group already exists"));
             }
             validate_group_members(tx, members)?;
+            if !members.is_empty() {
+                require_review()?;
+            }
             let group = Group {
                 name: name.into(),
                 members: members.clone(),
             };
-            tx.put("groups", name, &group)?;
+            persist_group(tx, &group, reviewed)?;
             audit_group(tx, actor, record)?;
             Ok(GroupWrite {
                 group,
@@ -167,8 +276,9 @@ pub(crate) fn write_group(
             validate_group_members(tx, members)?;
             let changed = group.members != *members;
             if changed {
+                require_review()?;
                 group.members = members.clone();
-                tx.put("groups", name, &group)?;
+                persist_group(tx, &group, reviewed)?;
                 audit_group(tx, actor, record)?;
             }
             Ok(GroupWrite { group, changed })
@@ -186,7 +296,8 @@ pub(crate) fn write_group(
                 group.members.remove(user_id)
             };
             if changed {
-                tx.put("groups", name, &group)?;
+                require_review()?;
+                persist_group(tx, &group, reviewed)?;
                 audit_group(tx, actor, record)?;
             }
             Ok(GroupWrite { group, changed })
@@ -208,7 +319,8 @@ pub(crate) fn write_group(
                 group.members.remove(user_id)
             };
             if changed {
-                tx.put("groups", name, &group)?;
+                require_review()?;
+                persist_group(tx, &group, reviewed)?;
                 audit_group(tx, actor, record)?;
             }
             Ok(GroupWrite { group, changed })
@@ -227,7 +339,7 @@ pub(crate) fn write_group(
             let mut group = existing_group(tx, name)?;
             let changed = group.members.remove(user_id);
             if changed {
-                tx.put("groups", name, &group)?;
+                persist_group(tx, &group, false)?;
                 audit_group(tx, actor, record)?;
             }
             Ok(GroupWrite { group, changed })
@@ -240,6 +352,7 @@ pub(crate) fn write_group(
 /// resource record, ETag and receipt stay in the caller's transaction.
 #[cfg(feature = "platform")]
 pub(crate) fn write_scim_group(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     name: &str,
@@ -251,6 +364,7 @@ pub(crate) fn write_scim_group(
     let action = match intent {
         ScimGroupIntent::Create(members) => {
             write_group(
+                config,
                 tx,
                 actor,
                 name,
@@ -265,6 +379,7 @@ pub(crate) fn write_scim_group(
         } => {
             let changed = if let Some(members) = members {
                 write_group(
+                    config,
                     tx,
                     actor,
                     name,
@@ -280,6 +395,7 @@ pub(crate) fn write_scim_group(
         }
         ScimGroupIntent::Delete(members) => {
             write_group(
+                config,
                 tx,
                 actor,
                 name,
@@ -1693,6 +1809,7 @@ pub(crate) fn revoke_invitation(tx: &Tx<'_>, actor: &Principal, username: &str) 
 /// that adds group membership and activates the account. Proof retirement,
 /// password policy and the enclosing acceptance audit remain with lifecycle.
 pub(crate) fn accept_invitation(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     user: &mut User,
@@ -1705,6 +1822,7 @@ pub(crate) fn accept_invitation(
     }
     for name in groups {
         write_group(
+            config,
             tx,
             actor,
             name,

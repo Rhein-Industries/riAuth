@@ -32,8 +32,8 @@ pub struct GrantChangeBinding {
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct Authority {
-    id: String,
+pub(super) struct Authority {
+    pub(super) id: String,
     epoch: u64,
 }
 
@@ -121,7 +121,11 @@ fn authority(tx: &Tx<'_>, user_id: &str) -> Result<Authority> {
     })
 }
 
-fn full_administrator(core: &Core, tx: &Tx<'_>, token: &str) -> Result<(Principal, Authority)> {
+pub(super) fn full_administrator(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+) -> Result<(Principal, Authority)> {
     let actor = core.principal(tx, token)?;
     if actor.agent || actor.delegated {
         return Err(Error::forbidden());
@@ -131,7 +135,7 @@ fn full_administrator(core: &Core, tx: &Tx<'_>, token: &str) -> Result<(Principa
     Ok((actor, current))
 }
 
-fn revalidate_authority(tx: &Tx<'_>, expected: &Authority) -> Result<()> {
+pub(super) fn revalidate_authority(tx: &Tx<'_>, expected: &Authority) -> Result<()> {
     if authority(tx, &expected.id)? != *expected {
         return Err(Error::conflict("Reviewed change actor authority changed"));
     }

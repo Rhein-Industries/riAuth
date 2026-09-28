@@ -975,13 +975,12 @@ impl Core {
                     "Provisioned username already exists; explicit linking is required",
                 ));
             }
-            for name in &source.groups {
-                let mut group = tx
-                    .get::<Group>("groups", name)?
-                    .ok_or_else(|| Error::bad("Source group was removed"))?;
-                group.members.insert(created.id.clone());
-                tx.put("groups", name, &group)?;
-            }
+            crate::management::write_source_memberships(
+                &self.config,
+                tx,
+                &source.groups,
+                &created.id,
+            )?;
             audit(
                 tx,
                 &format!("source:{}", source.id),

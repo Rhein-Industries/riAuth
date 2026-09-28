@@ -80,6 +80,16 @@ pub struct Group {
     pub members: BTreeSet<String>,
 }
 
+/// Complete durable membership, expressed as exact usernames and bound to
+/// stable user IDs by the shared review service.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupMembershipInput {
+    pub members: Vec<String>,
+}
+
+pub type GroupChangeBinding = crate::delegation::GrantChangeBinding;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
     pub id: String,

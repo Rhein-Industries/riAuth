@@ -1595,7 +1595,7 @@ impl Core {
                         metadata_changed: record_changed,
                     }
                 };
-                crate::management::write_scim_group(tx, &actor, &label, intent)?;
+                crate::management::write_scim_group(&self.config, tx, &actor, &label, intent)?;
             }
             if kind == "Users" || record_changed {
                 tx.put(bucket(kind)?, &id, &record)?;
@@ -1636,6 +1636,7 @@ impl Core {
                 for (key, group) in tx.list::<Group>("groups")? {
                     if group.members.contains(&user.id) {
                         crate::management::write_group(
+                            &self.config,
                             tx,
                             &actor,
                             &key,
@@ -1652,6 +1653,7 @@ impl Core {
                 let members =
                     owner_scoped_group_members(tx, &actor, &record.local_id, BTreeSet::new())?;
                 crate::management::write_scim_group(
+                    &self.config,
                     tx,
                     &actor,
                     &record.local_id,

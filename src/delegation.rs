@@ -157,7 +157,10 @@ pub(crate) fn mark_credential_exposure(tx: &Tx<'_>, actor: &Principal, user: &Us
     if actor.id == user.id {
         return Ok(());
     }
-    if user.admin || !stored(tx, &user.id)?.is_empty() {
+    if user.admin
+        || !stored(tx, &user.id)?.is_empty()
+        || crate::management::has_reviewed_membership(tx, &user.id)?
+    {
         return Err(Error::forbidden());
     }
     if credential_exposure(tx, &user.id)?.is_none() {
@@ -278,6 +281,7 @@ pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<
                                         .values()
                                         .any(|names| names.contains(name))
                                     && stored(tx, &user.id)?.is_empty()
+                                    && !crate::management::has_reviewed_membership(tx, &user.id)?
                             } else {
                                 false
                             }
@@ -335,6 +339,7 @@ pub(crate) fn bind(
                     .values()
                     .any(|names| names.contains(name))
                 || !stored(tx, &target.id)?.is_empty()
+                || crate::management::has_reviewed_membership(tx, &target.id)?
             {
                 return Err(Error::forbidden());
             }

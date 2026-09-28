@@ -825,6 +825,7 @@ fn reconcile(
             crate::management::GroupIntent::ReplaceMembers(&members)
         };
         crate::management::write_group(
+            &core.config,
             tx,
             actor,
             &spec.name,

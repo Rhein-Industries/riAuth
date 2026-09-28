@@ -85,6 +85,10 @@ pub struct Config {
     /// Group name to usernames allowed to approve a temporary entitlement for that group.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pam_approvers: BTreeMap<String, BTreeSet<String>>,
+    /// Durable membership in these groups requires exact-content review in
+    /// both editions. Platform PAM groups are also protected automatically.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub reviewed_membership_groups: BTreeSet<String>,
     /// HTTPS client-certificate login. Absent means the listener keeps `with_no_client_auth`.
     #[serde(default)]
     pub client_certificates: Option<crate::mtls::ClientCertAuth>,
@@ -397,6 +401,7 @@ impl Default for Config {
             database_key_file: None,
             trusted_proxies: Vec::new(),
             pam_approvers: BTreeMap::new(),
+            reviewed_membership_groups: BTreeSet::new(),
             client_certificates: None,
             device_trust: None,
             alert_webhook: None,
@@ -568,6 +573,12 @@ impl Config {
                 .any(|ip| ip.is_unspecified() || ip.is_multicast())
         {
             bail!("Configure at most 64 explicit trusted proxy IP addresses");
+        }
+        if self.reviewed_membership_groups.len() > 64 {
+            bail!("Configure at most 64 reviewed membership groups");
+        }
+        for group in &self.reviewed_membership_groups {
+            crate::core::validate_name(group)?;
         }
         if self.pam_approvers.len() > 64 {
             bail!("Configure at most 64 privileged access approver rules");

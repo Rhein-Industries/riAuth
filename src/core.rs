@@ -533,6 +533,7 @@ impl Core {
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "group.write", &format!("group/{name}"))?;
             let written = crate::management::write_group(
+                &self.config,
                 tx,
                 &actor,
                 name,
@@ -556,6 +557,7 @@ impl Core {
             let actor = self.management(tx, token, "group.members", &format!("group/{name}"))?;
             let user = user_by_name(tx, username)?;
             let written = crate::management::write_group(
+                &self.config,
                 tx,
                 &actor,
                 name,

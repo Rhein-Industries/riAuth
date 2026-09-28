@@ -82,10 +82,9 @@ refreshed. Server error bodies are not echoed into the page. Proposal fields use
 text nodes, and malformed responses cannot enable actions. No proposal or
 credential is saved in browser storage.
 
-This browser continuation deliberately leaves `src/management/grants.rs` and the
-M04 authorization/provenance files unchanged. Source `3e45a0c` remains held for
-integration pending M04's legacy agent-exposure provenance fence; this UI does
-not resolve or bypass that hold.
+The grant service and browser continuation were integrated as `87a3a26` and
+`5bd6b83`, including the accepted M04 legacy agent-exposure provenance fence.
+The next bounded class is [reviewed privileged group membership](reviewed-group-memberships.md).
 
 At accepted snapshot `0c0e1cf`, the browser continuation shares only
 `src/portal/admin.js` and `src/portal/admin.css` with accepted changes since the
@@ -141,14 +140,16 @@ and Platform use this same implementation and policy.
 
 ## Remaining resource classes and integration boundaries
 
-This is not the complete generic M05 workflow. Review is implemented only for
-privileged delegated human grant-set replacement. The following management
+This is not the complete generic M05 workflow. Review covers privileged delegated
+human grant-set replacement and bounded protected group membership. The following management
 resource classes retain their previous behavior and have no M05 author/reviewer/
 executor workflow:
 
 - User creation, administrator promotion/demotion, disable, credentials, factors,
   support recovery, invitations and scheduled offboarding.
-- Groups and memberships, including temporary PAM access and entitlement policy.
+- Group lifecycle and policy changes, larger membership sets, and temporary PAM
+  access/entitlement policy. Protected durable membership up to 128 members now
+  uses [the shared group review service](reviewed-group-memberships.md).
 - Applications/clients and their credentials, registration templates and tokens.
 - Agents, their permissions, parent bindings, credential rotation and revocation.
 - Federation sources/source links, directory/Workspace/Entra configuration and

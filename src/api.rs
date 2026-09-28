@@ -359,6 +359,26 @@ pub fn router(core: Core) -> Router {
             "/api/delegated-grant-changes/{id}/cancel",
             post(cancel_human_grant_change),
         )
+        .route(
+            "/api/groups/{name}/membership-changes",
+            post(stage_group_membership),
+        )
+        .route(
+            "/api/group-membership-changes/{id}",
+            get(group_membership_change),
+        )
+        .route(
+            "/api/group-membership-changes/{id}/approve",
+            post(approve_group_membership_change),
+        )
+        .route(
+            "/api/group-membership-changes/{id}/execute",
+            post(execute_group_membership_change),
+        )
+        .route(
+            "/api/group-membership-changes/{id}/cancel",
+            post(cancel_group_membership_change),
+        )
         .route("/api/groups", get(groups).post(create_group))
         .route(
             "/api/groups/{name}/members/{username}",
@@ -1909,6 +1929,31 @@ macro_rules! grant_change_handler {
 grant_change_handler!(approve_human_grant_change);
 grant_change_handler!(execute_human_grant_change);
 grant_change_handler!(cancel_human_grant_change);
+
+async fn stage_group_membership(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(input): Json<crate::model::GroupMembershipInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_group_membership(&token, &name, input).map(Json))
+        .await
+}
+async fn group_membership_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.group_membership_change(&token, &id).map(Json))
+        .await
+}
+// Both review classes accept only the immutable canonical digest.
+grant_change_handler!(approve_group_membership_change);
+grant_change_handler!(execute_group_membership_change);
+grant_change_handler!(cancel_group_membership_change);
+
 #[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);
 session_handler!(groups, list_groups);

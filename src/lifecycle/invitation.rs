@@ -193,7 +193,13 @@ impl Verified {
         )?;
         // Keep the existing management writer's live scoped authority and group
         // checks. It activates the account and advances exactly one epoch.
-        crate::management::accept_invitation(tx, &actor, &mut user, &self.pin.proof.groups)?;
+        crate::management::accept_invitation(
+            &core.config,
+            tx,
+            &actor,
+            &mut user,
+            &self.pin.proof.groups,
+        )?;
         if user.epoch != to_epoch {
             return Err(Error::conflict("Invitation credential epoch changed"));
         }

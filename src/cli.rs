@@ -1,6 +1,7 @@
 mod backup;
 mod grants;
 pub mod local;
+mod memberships;
 mod transport;
 mod usb;
 use transport::{Remote, SavedSession};
@@ -929,6 +930,11 @@ pub enum OffboardCommand {
 }
 #[derive(Subcommand)]
 pub enum GroupCommand {
+    /// Review exact durable membership of configured privileged groups
+    Review {
+        #[command(subcommand)]
+        command: memberships::ReviewCommand,
+    },
     List,
     Create { name: String },
     AddMember { group: String, username: String },
@@ -1970,6 +1976,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Offboard { command } => run_offboard(&remote, command).await?,
         Command::Ssf { command } => run_ssf(&remote, command).await?,
         Command::Group { command } => match command {
+            GroupCommand::Review { command } => memberships::run(&remote, command).await?,
             GroupCommand::List => remote.call(Method::GET, "/api/groups", None, true).await?,
             GroupCommand::Create { name } => {
                 remote

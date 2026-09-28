@@ -62,7 +62,30 @@ pub fn routes() -> Router<App> {
             post(cancel_human_grant_change),
         )
         .route("/api/admin/invitations", get(invitations).post(invite))
-        .route("/api/admin/invitations/{username}", axum::routing::delete(revoke_invitation))
+        .route(
+            "/api/admin/invitations/{username}",
+            axum::routing::delete(revoke_invitation),
+        )
+        .route(
+            "/api/admin/groups/{name}/membership-changes",
+            post(stage_group_membership),
+        )
+        .route(
+            "/api/admin/group-membership-changes/{id}",
+            get(group_membership_change),
+        )
+        .route(
+            "/api/admin/group-membership-changes/{id}/approve",
+            post(approve_group_membership_change),
+        )
+        .route(
+            "/api/admin/group-membership-changes/{id}/execute",
+            post(execute_group_membership_change),
+        )
+        .route(
+            "/api/admin/group-membership-changes/{id}/cancel",
+            post(cancel_group_membership_change),
+        )
         .route("/api/admin/groups", get(groups).post(create_group))
         .route("/api/admin/groups/{name}/members/{username}", put(add_member).delete(remove_member))
         .route("/api/admin/clients", get(clients).post(create_client))
@@ -405,6 +428,30 @@ macro_rules! grant_change_handler {
 grant_change_handler!(approve_human_grant_change);
 grant_change_handler!(execute_human_grant_change);
 grant_change_handler!(cancel_human_grant_change);
+
+async fn stage_group_membership(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(input): Json<crate::model::GroupMembershipInput>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.stage_group_membership(&token, &name, input).map(Json))
+        .await
+}
+async fn group_membership_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.group_membership_change(&token, &id).map(Json))
+        .await
+}
+// Both review classes accept only the immutable canonical digest.
+grant_change_handler!(approve_group_membership_change);
+grant_change_handler!(execute_group_membership_change);
+grant_change_handler!(cancel_group_membership_change);
 
 /// Access review is limited to administrators here; `pam` still decides who may approve.
 #[cfg(feature = "platform")]

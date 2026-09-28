@@ -791,7 +791,10 @@ impl Core {
             self.directory_snapshot_actor(tx, token, id, directory, &actor.id, revision,
                 &fingerprint, &authority_digest)?;
             let impact = removal_impact(tx, id, &snapshot.users)?;
-            Ok((reconcile(tx, &actor, id, directory, &snapshot)?, impact))
+            Ok((
+                reconcile(&self.config, tx, &actor, id, directory, &snapshot)?,
+                impact,
+            ))
         })?;
         self.store.write(|tx| {
             let current_actor = self.directory_snapshot_actor(tx, token, id, directory,
@@ -982,6 +985,7 @@ impl Core {
             }
             .validate(tx, &actor, &plan)?;
             let changes = reconcile(
+                &self.config,
                 tx,
                 &actor,
                 &plan.directory,
@@ -1173,6 +1177,7 @@ fn removal_impact(tx: &Tx<'_>, directory: &str, entries: &[Entry]) -> Result<Rem
 }
 
 fn reconcile(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
     id: &str,
@@ -1251,6 +1256,7 @@ fn reconcile(
             crate::management::check_directory_user_owner(tx, actor, owner, &user)?;
         }
         let groups_changed = membership(
+            config,
             tx,
             actor,
             id,
@@ -1320,6 +1326,7 @@ fn reconcile(
         }
         crate::management::check_directory_user_owner(tx, actor, owner, &user)?;
         let groups_changed = membership(
+            config,
             tx,
             actor,
             id,
@@ -1356,6 +1363,7 @@ fn reconcile(
     Ok(changes)
 }
 fn membership(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
     directory_id: &str,
@@ -1373,6 +1381,7 @@ fn membership(
             return Err(Error::bad("LDAP mappings require an existing local group"));
         }
         changed |= crate::management::write_group(
+            config,
             tx,
             actor,
             name,

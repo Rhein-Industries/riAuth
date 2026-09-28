@@ -1490,6 +1490,7 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
 }
 
 fn membership(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
     scope: &str,
@@ -1517,6 +1518,7 @@ fn membership(
             ));
         }
         changed |= crate::management::write_group(
+            config,
             tx,
             actor,
             name,
@@ -1571,6 +1573,7 @@ fn authorize_reconcile(
 }
 
 fn reconcile(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
     settings: &Settings,
@@ -1650,6 +1653,7 @@ fn reconcile(
             .map(|binding| binding.groups.clone())
             .unwrap_or_default();
         let groups_changed = membership(
+            config,
             tx,
             actor,
             &scope,
@@ -1739,6 +1743,7 @@ fn reconcile(
         crate::management::check_cloud_user_owner(tx, actor, owner, &user)?;
         let previous = user.clone();
         let groups_changed = membership(
+            config,
             tx,
             actor,
             &scope,
@@ -2261,7 +2266,7 @@ impl Core {
                 &snapshot_prior.2,
             )?;
             let impact = removal_impact(tx, &settings, &entries)?;
-            let changes = reconcile(tx, &actor, &settings, &entries)?;
+            let changes = reconcile(&self.config, tx, &actor, &settings, &entries)?;
             Ok((changes, impact))
         })?;
         self.store.write(|tx| {
@@ -2514,7 +2519,7 @@ impl Core {
                 reviewed_plan,
             }
             .validate(tx, &actor, &plan)?;
-            let changes = reconcile(tx, &actor, &settings, &plan.entries)?;
+            let changes = reconcile(&self.config, tx, &actor, &settings, &plan.entries)?;
             if changes != plan.changes {
                 return Err(Error::conflict(
                     "Cloud directory plan no longer matches local state",
