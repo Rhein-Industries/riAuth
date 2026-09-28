@@ -1,20 +1,24 @@
-//! Bounded password-hash history. Plaintext passwords are never stored.
+//! Bounded password-hash history shared by every password writer.
+//!
+//! Plaintext passwords are never stored. The caller supplies its current
+//! transaction through the identity persistence port so the history update
+//! commits or rolls back with the corresponding user record.
+use super::persistence::IdentityTx;
 use crate::{
     crypto,
     error::{Error, Result},
-    store::Tx,
 };
 use std::collections::BTreeSet;
 
 const BUCKET: &str = "password_history";
 
-fn load(tx: &Tx<'_>, user_id: &str) -> Result<Vec<String>> {
+fn load(tx: &impl IdentityTx, user_id: &str) -> Result<Vec<String>> {
     let mut history = tx.get::<Vec<String>>(BUCKET, user_id)?.unwrap_or_default();
     history.retain(|hash| !hash.is_empty());
     Ok(history)
 }
 
-fn save(tx: &Tx<'_>, user_id: &str, history: &[String]) -> Result<()> {
+fn save(tx: &impl IdentityTx, user_id: &str, history: &[String]) -> Result<()> {
     if history.is_empty() {
         tx.delete(BUCKET, user_id)
     } else {
@@ -64,7 +68,7 @@ fn retain(history: &mut Vec<String>, current_hash: &str, hash: &str, limit: u32)
 }
 
 pub(crate) fn accept(
-    tx: &Tx<'_>,
+    tx: &impl IdentityTx,
     limit: u32,
     user_id: &str,
     current_hash: &str,
@@ -83,7 +87,7 @@ pub(crate) fn accept(
 }
 
 pub(crate) fn record_imported_hash(
-    tx: &Tx<'_>,
+    tx: &impl IdentityTx,
     limit: u32,
     user_id: &str,
     current_hash: &str,
@@ -98,7 +102,7 @@ pub(crate) fn record_imported_hash(
 }
 
 pub(crate) fn note_rehash(
-    tx: &Tx<'_>,
+    tx: &impl IdentityTx,
     limit: u32,
     user_id: &str,
     old_hash: &str,

@@ -39,7 +39,6 @@ pub mod operations;
 pub mod outpost;
 pub mod pam;
 pub mod passkey;
-pub mod password_history;
 pub mod portal;
 pub mod postgres_store;
 pub mod provider;

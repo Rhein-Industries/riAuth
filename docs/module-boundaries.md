@@ -377,3 +377,34 @@ through `Grant.exchange: ExchangeGrant`. Other model fields still embed
 authenticator, claims and source types. This scoped move does not establish
 independent crates, a management/API contract, standalone client build or
 Essentials/Platform assembly parity.
+
+## Wave 7: password history policy behind the identity transaction port
+
+[identity/password_history.rs](../src/identity/password_history.rs) owns the
+production password reuse, imported-hash and transparent rehash policy. Its
+read/write functions now accept `IdentityTx`, already implemented by storage's
+`Tx`, instead of importing `store::Tx` directly. Core, account lifecycle,
+desired-state reconciliation and SCIM password writes call the identity policy
+in their existing transactions. The policy still uses the `password_history`
+collection, the same limit and hash comparison rules, and the same error for a
+reused password. No storage format, schema, public response or transaction
+ordering changed.
+
+The checker scans **99 Rust source files** before and after the move. It guards
+the absence of the old protocol-root implementation and still requires zero
+identity references to storage or protocol adapters. The focused graph delta
+is:
+
+| Explicit source edge | Before | Wave 7 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 33 | 32 |
+| `identity -> storage` | 0 | 0 |
+| `storage -> identity` | 1 | 1 |
+| `model -> protocol` | 1 | 1 |
+
+The remaining A03 work includes the model's embedded protocol records,
+storage's identity transition hook, 32 protocol files still naming storage,
+management's direct Core/storage use, and API/server and client coupling to
+Core. Separate crate contracts and both distribution assemblies remain to be
+established. The source checker counts explicit crate-root references; it does
+not prove dependency acyclicity or runtime behavior.

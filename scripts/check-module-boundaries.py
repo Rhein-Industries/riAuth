@@ -26,7 +26,7 @@ PROTOCOL = {
     "assurance", "authenticator", "authorization", "browser", "claims",
     "cloud_directory", "device_trust", "directory", "dpop", "event_map",
     "exchange", "issuer", "jose", "keyring", "ldap_server", "logout",
-    "mtls", "oidc", "outpost", "pam", "passkey", "password_history",
+    "mtls", "oidc", "outpost", "pam", "passkey",
     "portal", "provider", "proxy_server", "radius", "response", "saml",
     "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
 }
@@ -208,9 +208,12 @@ def main() -> None:
     parser.add_argument("--json", type=Path, help="write the measured graph to this path")
     args = parser.parse_args()
     paths = sorted(SRC.rglob("*.rs"))
+    legacy_password_history = SRC / "password_history.rs"
     module_groups = {root_module(path): group(root_module(path)) for path in paths}
     edges = collections.defaultdict(set)
     errors = []
+    if legacy_password_history.exists():
+        errors.append("src/password_history.rs: password history policy belongs in identity")
     for path in paths:
         source_module = root_module(path)
         source_group = module_groups[source_module]
@@ -275,6 +278,7 @@ def main() -> None:
                 "core" in references(path)
                 for path in paths if root_module(path) == "context"
             ),
+            "password_history_adapter_files": int(legacy_password_history.exists()),
         },
     }
     if args.json:

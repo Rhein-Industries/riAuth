@@ -496,7 +496,7 @@ fn reconcile(
             } else if spec.password_hash_ref.is_some() {
                 let imported =
                     crypto::validate_imported_hash(secret(secrets, &spec.password_hash_ref)?)?;
-                crate::password_history::record_imported_hash(
+                crate::identity::password_history::record_imported_hash(
                     tx,
                     core.config.password_history,
                     &user.id,
@@ -507,7 +507,7 @@ fn reconcile(
             } else {
                 let plaintext = secret(secrets, &spec.password_ref)?;
                 let hashed = crypto::password_hash(plaintext)?;
-                crate::password_history::accept(
+                crate::identity::password_history::accept(
                     tx,
                     core.config.password_history,
                     &user.id,

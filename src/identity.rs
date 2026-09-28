@@ -5,6 +5,7 @@
 //! existing call sites; this module has no direct dependency on Core or SSF transport.
 pub mod agent_credentials;
 pub mod logout_queue;
+pub(crate) mod password_history;
 pub mod persistence;
 pub mod signals;
 pub(crate) mod windows_credentials;

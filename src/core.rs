@@ -132,7 +132,7 @@ impl Core {
                 },
             )?;
             tx.put("meta", "dummy_hash", &dummy)?;
-            crate::password_history::record_imported_hash(
+            crate::identity::password_history::record_imported_hash(
                 tx,
                 config.password_history,
                 &user.id,
@@ -263,7 +263,7 @@ impl Core {
             }
             let mut u = user.unwrap();
             if let Some(hash) = upgraded.clone() {
-                crate::password_history::note_rehash(
+                crate::identity::password_history::note_rehash(
                     tx,
                     self.config.password_history,
                     &u.id,
@@ -329,7 +329,7 @@ impl Core {
         self.store.write(|tx| {
             let mut user = user_by_name(tx, username)?;
             let hashed = crypto::password_hash(password)?;
-            crate::password_history::accept(
+            crate::identity::password_history::accept(
                 tx,
                 self.config.password_history,
                 &user.id,
@@ -438,7 +438,7 @@ impl Core {
             if tx.get::<String>("usernames", &user.username)?.is_some() {
                 return Err(Error::conflict("Username already exists"));
             }
-            crate::password_history::record_imported_hash(
+            crate::identity::password_history::record_imported_hash(
                 tx,
                 self.config.password_history,
                 &user.id,
@@ -461,7 +461,7 @@ impl Core {
             }
             if let Some(password) = patch.password {
                 let hashed = crypto::password_hash(&password)?;
-                crate::password_history::accept(
+                crate::identity::password_history::accept(
                     tx,
                     self.config.password_history,
                     &user.id,
@@ -774,7 +774,7 @@ impl Core {
             if verified.id != user.id {
                 return Err(Error::forbidden());
             }
-            crate::password_history::accept(
+            crate::identity::password_history::accept(
                 tx,
                 self.config.password_history,
                 &user.id,

@@ -449,7 +449,7 @@ impl Core {
                         .as_str()
                         .ok_or_else(|| Error::bad("password must be a string"))?;
                     let hashed = crypto::password_hash(plaintext)?;
-                    crate::password_history::accept(
+                    crate::identity::password_history::accept(
                         tx,
                         self.config.password_history,
                         &user.id,

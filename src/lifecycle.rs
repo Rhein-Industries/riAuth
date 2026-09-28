@@ -639,7 +639,7 @@ impl Core {
                 let plaintext = password
                     .as_deref()
                     .ok_or_else(|| Error::bad("New password required"))?;
-                crate::password_history::accept(
+                crate::identity::password_history::accept(
                     tx,
                     self.config.password_history,
                     &user.id,
