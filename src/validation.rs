@@ -15,3 +15,22 @@ pub fn validate_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+
+pub(crate) fn validate_display(name: &str) -> Result<()> {
+    if name.is_empty() || name.len() > 200 || name.chars().any(char::is_control) {
+        return Err(Error::bad(
+            "Display name must be 1–200 bytes without control characters",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_email(email: &str) -> Result<()> {
+    if email.len() > 254
+        || !email.contains('@')
+        || email.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(Error::bad("Invalid email address"));
+    }
+    Ok(())
+}

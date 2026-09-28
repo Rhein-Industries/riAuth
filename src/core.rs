@@ -1143,23 +1143,7 @@ pub(crate) fn user_by_name(tx: &Tx<'_>, username: &str) -> Result<User> {
 #[doc(hidden)]
 pub use crate::identity::require_factor_session;
 pub use crate::validation::validate_name;
-pub(crate) fn validate_display(name: &str) -> Result<()> {
-    if name.is_empty() || name.len() > 200 || name.chars().any(char::is_control) {
-        return Err(Error::bad(
-            "Display name must be 1–200 bytes without control characters",
-        ));
-    }
-    Ok(())
-}
-pub(crate) fn validate_email(email: &str) -> Result<()> {
-    if email.len() > 254
-        || !email.contains('@')
-        || email.chars().any(|c| c.is_control() || c.is_whitespace())
-    {
-        return Err(Error::bad("Invalid email address"));
-    }
-    Ok(())
-}
+pub(crate) use crate::validation::{validate_display, validate_email};
 pub(crate) fn make_user(input: NewUser) -> Result<User> {
     validate_name(&input.username)?;
     if let Some(email) = &input.email {

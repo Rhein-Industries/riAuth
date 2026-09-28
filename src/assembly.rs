@@ -5,6 +5,11 @@ mod authorization;
 mod claims;
 #[cfg(feature = "platform")]
 mod device_trust;
+mod directory;
+pub use directory::cleanup as directory_cleanup;
+pub(crate) use directory::{
+    manages as directory_manages, validate_identity as directory_validate_identity,
+};
 #[cfg(feature = "platform")]
 mod event_map;
 mod exchange;
