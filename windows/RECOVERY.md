@@ -46,7 +46,8 @@ reenabling the user does not restore those device credentials.
 1. Revoke the device remotely and clear local state as above. The installer
    refuses uninstall while any entry remains in
    `%ProgramData%\RiAuth\DeviceHost`; inspect unexpected files only after
-   confirming remote revocation.
+   confirming remote revocation. Complete any pending installer update before
+   uninstalling.
 2. Run the pinned-signer `Install-DeviceHost.ps1 -Action Uninstall` from a
    trusted signed release as an elevated 64-bit PowerShell 7 administrator.
    Independently check the script's Authenticode signer before execution as
@@ -55,13 +56,29 @@ reenabling the user does not restore those device credentials.
    It deregisters the provider and removes the host together. If LogonUI still
    holds the DLL open, the script reports any retained quarantine path; finish
    cleanup after a restart and confirm registration is absent.
-3. For an update failure, use a Windows system provider to enter the machine.
-   Inspect the installer error and recorded backup paths before retrying the
-   same verified bundle or a previously signed bundle from the pinned signer.
-   The installer attempts to restore the prior signed binaries and registry
-   registration. If LogonUI has the provider DLL open, restart, sign in using a
-   Windows system provider, and retry. Do not manually replace a registered
-   provider DLL with an unverified file.
+3. For an interrupted update, use a Windows system provider to enter the
+   machine, independently check the installer signature, and retry `-Action
+   Update -BundlePath .` from the **same** verified bundle. A pending-update
+   record binds the retry to its original version and hashes. The installer
+   checks canonical, staged, and backup files, finishes the update, and clears
+   the record only after registration, metadata, and cleanup verify. If
+   LogonUI holds the DLL open, restart and retry from the same bundle.
+4. A release installed with the earlier installer had no pending-update
+   record. The corrected installer can recover a single recognizable stage or
+   backup generation when registry metadata and file hashes establish a safe
+   state. It restores the prior pair if the earlier update attempted to reuse
+   the same version with different bytes. Mixed registry metadata, absent
+   hash metadata, or ambiguous files stop for operator investigation. Keep the
+   old and target signed bundles available; do not manually replace or delete
+   registered binaries.
+5. To deliberately install older binaries after recovery, prepare a signed
+   recovery bundle that contains this corrected installer, the intended older
+   host and provider, and a lower numeric version. Use the pinned release
+   signer, then supply `-AllowDowngrade -RecoveryReason '<specific reason>'`
+   with `-Action Update`. The installer requires a Windows Application warning
+   event before changing files and retains the highest installed version as
+   the floor for later ordinary updates. Do not execute an old installer that
+   lacks the version check.
 
 Signer rotation and an expired or unavailable signing certificate need a
 separate authorized recovery plan. Normal updates require the originally

@@ -29,7 +29,8 @@ cmake --build .\build\credential-provider --config Release
 Build a signed release on Windows with PowerShell 7 and a trusted code-signing
 certificate. The builder signs the host, provider, and installer with the same
 certificate, then signs a manifest containing their exact SHA-256 hashes. It
-publishes a four-file directory and a ZIP containing those same files:
+publishes a four-file directory and a ZIP containing those same files. Release
+versions use canonical numeric `major.minor.patch` components:
 
 ```powershell
 $pin = '<40-hex release certificate thumbprint>'
@@ -53,13 +54,29 @@ if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate -or $sig.Signer
 
 Use the same external script-signature check before update or uninstall, with
 the pinned thumbprint from `HKLM:\SOFTWARE\RiAuth\DeviceHost`. The first install
-pins the signer and the signed host/provider hashes there. For updates, extract the new release to
-its own empty directory and run its installer with `-Action Update -BundlePath
-.`. Update verifies the pinned signer, manifest, hashes, current installation,
-and staged files before swapping binaries; it attempts rollback on failure.
+pins the signer, hashes, and highest installed version there. For updates,
+extract the new release to its own empty directory and run its installer with
+`-Action Update -BundlePath .`. Update verifies the pinned signer, manifest,
+hashes, current installation, and staged files before swapping binaries.
+Repeated installation of the same version and hashes is a no-op. A different
+bundle under the currently installed version is rejected. Ordinary updates cannot go below
+the highest installed version; that floor remains after a downgrade.
+
+An authorized recovery downgrade uses `-Action Update -BundlePath .
+-AllowDowngrade -RecoveryReason '<specific reason>'`. The installer writes a
+Windows Application warning event with the operator, old and target versions,
+target hashes, and reason before changing files; event failure blocks the
+downgrade. This protects updates run through this installer. An older signed
+installer from a previous release lacks this check, so preventing an
+administrator from executing old installer code requires Windows application
+control or a separate trusted updater.
+
 The bundle always includes the native provider. A prior signed installation
 without hash metadata, with or without the provider, requires
-`-AllowLegacySignedInstall` for an explicit migration. The script does not
+`-AllowLegacySignedInstall` for an explicit migration. A prior hash-bound
+installation with a nonnumeric release label remains uninstallable, but its
+order against a numeric version is unknown; migration requires the audited
+`-AllowDowngrade -RecoveryReason` path. The script does not
 disable Windows system credential providers or install a service.
 
 ## Device lifecycle

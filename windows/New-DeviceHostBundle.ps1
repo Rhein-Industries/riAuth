@@ -101,8 +101,14 @@ if (-not $IsWindows) {
     throw 'Bundle signing requires Windows Authenticode support.'
 }
 $pin = Normalize-Thumbprint $SignerThumbprint
-if ($ReleaseVersion -cnotmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
-    throw 'ReleaseVersion must be a short version identifier without whitespace or path characters.'
+if ($ReleaseVersion.Length -gt 64 -or
+    $ReleaseVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+    throw 'ReleaseVersion must be canonical major.minor.patch decimal components.'
+}
+try {
+    $null = [Version]::Parse($ReleaseVersion)
+} catch {
+    throw 'ReleaseVersion components must fit in a signed 32-bit integer.'
 }
 if (-not [string]::IsNullOrWhiteSpace($TimestampServer)) {
     $timestampUri = $null

@@ -34,7 +34,11 @@ param(
 
     [string] $SignerThumbprint,
 
-    [switch] $AllowLegacySignedInstall
+    [switch] $AllowLegacySignedInstall,
+
+    [switch] $AllowDowngrade,
+
+    [string] $RecoveryReason
 )
 
 Set-StrictMode -Version Latest
@@ -47,6 +51,50 @@ function Normalize-Thumbprint {
         throw 'SignerThumbprint must be a 40-digit certificate thumbprint.'
     }
     return $normalized
+}
+
+function ConvertTo-ReleaseVersion {
+    param([Parameter(Mandatory = $true)][string] $Value)
+    if ($Value.Length -gt 64 -or
+        $Value -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+        throw 'Bundle version must be canonical major.minor.patch decimal components.'
+    }
+    try {
+        return [Version]::Parse($Value)
+    } catch {
+        throw 'Bundle version components must fit in a signed 32-bit integer.'
+    }
+}
+
+function Test-CanonicalReleaseVersion {
+    param([Parameter(Mandatory = $true)][string] $Value)
+    if ($Value.Length -gt 64 -or
+        $Value -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+        return $false
+    }
+    $parsed = $null
+    return [Version]::TryParse($Value, [ref] $parsed)
+}
+
+function Write-DowngradeIntent {
+    param(
+        [Parameter(Mandatory = $true)][string] $CurrentVersion,
+        [Parameter(Mandatory = $true)][string] $HighestVersion,
+        [Parameter(Mandatory = $true)][string] $TargetVersion,
+        [Parameter(Mandatory = $true)][string] $TargetHostSha256,
+        [Parameter(Mandatory = $true)][string] $TargetProviderSha256,
+        [Parameter(Mandatory = $true)][string] $Reason
+    )
+    $eventCreate = Join-Path $env:SystemRoot 'System32\eventcreate.exe'
+    if (-not (Test-Path -LiteralPath $eventCreate -PathType Leaf)) {
+        throw 'Windows eventcreate.exe is unavailable; refusing an unaudited downgrade.'
+    }
+    $operator = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $description = "riAuth DeviceHost recovery by $operator; installed=$CurrentVersion; highest=$HighestVersion; target=$TargetVersion; host_sha256=$TargetHostSha256; provider_sha256=$TargetProviderSha256; reason=$Reason"
+    $output = & $eventCreate /L APPLICATION /T WARNING /ID 801 /SO RiAuthDeviceHost /D $description 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not write the Windows Application downgrade audit event; refusing update: $output"
+    }
 }
 
 function Assert-SignedBy {
@@ -160,9 +208,10 @@ function Read-SignedBundle {
     }
     if ($manifest['format'] -cne 'riauth-windows-device-bundle/v1' -or
         $manifest['provider_clsid'] -cne $ExpectedProviderClsid -or
-        $manifest['version'] -cnotmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
+        $manifest['version'] -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
         throw 'The signed bundle format, version or provider CLSID is invalid.'
     }
+    $null = ConvertTo-ReleaseVersion $manifest['version']
     foreach ($key in @('host_sha256', 'provider_sha256', 'installer_sha256')) {
         if ($manifest[$key] -cnotmatch '^[0-9A-F]{64}$') {
             throw "The signed bundle has an invalid $key value."
@@ -182,6 +231,7 @@ function Read-SignedBundle {
         Version = $manifest['version']
         HostSha256 = $manifest['host_sha256']
         ProviderSha256 = $manifest['provider_sha256']
+        InstallerSha256 = $manifest['installer_sha256']
     }
 }
 
@@ -217,7 +267,12 @@ function Get-InstalledHashes {
     $hostHash = $key.GetValue('HostSha256')
     $providerHash = $key.GetValue('ProviderSha256')
     $version = $key.GetValue('BundleVersion')
+    $hadHighestVersion = $key.GetValueNames() -contains 'HighestBundleVersion'
+    $highestVersion = $key.GetValue('HighestBundleVersion')
     if ($null -eq $hostHash -and $null -eq $providerHash -and $null -eq $version) {
+        if ($hadHighestVersion) {
+            throw 'Highest bundle version exists without installed bundle metadata.'
+        }
         if (-not $AllowLegacySignedInstall) {
             throw 'Installed hashes are absent. A signed legacy installation requires -AllowLegacySignedInstall for migration or removal.'
         }
@@ -225,8 +280,26 @@ function Get-InstalledHashes {
     }
     if ($hostHash -cnotmatch '^[0-9A-F]{64}$' -or
         $providerHash -cnotmatch '^[0-9A-F]{64}$' -or
-        [string]::IsNullOrWhiteSpace($version)) {
+        $version -isnot [string] -or
+        $version -cnotmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
         throw 'Installed bundle hash/version registry values are incomplete or invalid.'
+    }
+    # The first signed-bundle builder accepted opaque release labels. Their
+    # hash metadata remains trustworthy, but their order cannot be inferred.
+    $isOpaqueVersion = -not (Test-CanonicalReleaseVersion $version)
+    if ($hadHighestVersion) {
+        if ($isOpaqueVersion) {
+            throw 'An opaque installed version cannot have a numeric version floor.'
+        }
+        $currentParsed = ConvertTo-ReleaseVersion $version
+        $highestParsed = ConvertTo-ReleaseVersion $highestVersion
+        if ($highestParsed.CompareTo($currentParsed) -lt 0) {
+            throw 'Highest bundle version is older than the installed bundle version.'
+        }
+    } elseif (-not $isOpaqueVersion) {
+        # Bundles installed before the version floor existed start at their
+        # verified current version, without silently lowering that baseline.
+        $highestVersion = $version
     }
     if (-not $HasProvider) {
         throw 'Installed bundle metadata exists without a registered credential provider.'
@@ -235,6 +308,9 @@ function Get-InstalledHashes {
         HostSha256 = $hostHash
         ProviderSha256 = $providerHash
         Version = $version
+        HighestVersion = $highestVersion
+        HadHighestVersion = $hadHighestVersion
+        IsOpaqueVersion = $isOpaqueVersion
     }
 }
 
@@ -243,8 +319,12 @@ function Set-InstalledHashes {
         [Parameter(Mandatory = $true)][string] $RegistryKey,
         [Parameter(Mandatory = $true)][string] $HostSha256,
         [Parameter(Mandatory = $true)][string] $ProviderSha256,
-        [Parameter(Mandatory = $true)][string] $Version
+        [Parameter(Mandatory = $true)][string] $Version,
+        [Parameter(Mandatory = $true)][string] $HighestVersion
     )
+    # Advance the floor first. A power loss between registry writes must never
+    # make a newer installed version appear to be the highest permitted one.
+    New-ItemProperty -LiteralPath $RegistryKey -Name 'HighestBundleVersion' -PropertyType String -Value $HighestVersion -Force | Out-Null
     New-ItemProperty -LiteralPath $RegistryKey -Name 'HostSha256' -PropertyType String -Value $HostSha256 -Force | Out-Null
     New-ItemProperty -LiteralPath $RegistryKey -Name 'ProviderSha256' -PropertyType String -Value $ProviderSha256 -Force | Out-Null
     New-ItemProperty -LiteralPath $RegistryKey -Name 'BundleVersion' -PropertyType String -Value $Version -Force | Out-Null
@@ -257,13 +337,21 @@ function Restore-InstalledHashes {
     )
     if ($null -eq $Previous) {
         $key = Get-Item -LiteralPath $RegistryKey
-        foreach ($name in @('HostSha256', 'ProviderSha256', 'BundleVersion')) {
+        foreach ($name in @('HostSha256', 'ProviderSha256', 'BundleVersion', 'HighestBundleVersion')) {
             if ($key.GetValueNames() -contains $name) {
                 Remove-ItemProperty -LiteralPath $RegistryKey -Name $name
             }
         }
+    } elseif ($Previous.HadHighestVersion) {
+        Set-InstalledHashes -RegistryKey $RegistryKey -HostSha256 $Previous.HostSha256 -ProviderSha256 $Previous.ProviderSha256 -Version $Previous.Version -HighestVersion $Previous.HighestVersion
     } else {
-        Set-InstalledHashes -RegistryKey $RegistryKey -HostSha256 $Previous.HostSha256 -ProviderSha256 $Previous.ProviderSha256 -Version $Previous.Version
+        $key = Get-Item -LiteralPath $RegistryKey
+        if ($key.GetValueNames() -contains 'HighestBundleVersion') {
+            Remove-ItemProperty -LiteralPath $RegistryKey -Name 'HighestBundleVersion'
+        }
+        New-ItemProperty -LiteralPath $RegistryKey -Name 'HostSha256' -PropertyType String -Value $Previous.HostSha256 -Force | Out-Null
+        New-ItemProperty -LiteralPath $RegistryKey -Name 'ProviderSha256' -PropertyType String -Value $Previous.ProviderSha256 -Force | Out-Null
+        New-ItemProperty -LiteralPath $RegistryKey -Name 'BundleVersion' -PropertyType String -Value $Previous.Version -Force | Out-Null
     }
 }
 
@@ -437,6 +525,537 @@ function Get-InstalledProviderState {
     return $true
 }
 
+function Write-PendingUpdate {
+    param(
+        [Parameter(Mandatory = $true)][string] $RegistryKey,
+        [Parameter(Mandatory = $true)] $Update
+    )
+    $fields = @(
+        'riauth-update/v1', $Update.Nonce,
+        $(if ($Update.OldHasProvider) { '1' } else { '0' }),
+        $(if ($Update.OldHadMetadata) { '1' } else { '0' }),
+        $Update.OldHostSha256, $Update.OldProviderSha256,
+        $Update.OldVersion, $Update.OldHighestVersion,
+        $(if ($Update.OldHadHighestVersion) { '1' } else { '0' }),
+        $Update.NewHostSha256, $Update.NewProviderSha256,
+        $Update.NewVersion, $Update.NewHighestVersion,
+        $Update.NewInstallerSha256
+    )
+    $key = Get-Item -LiteralPath $RegistryKey
+    if ($key.GetValueNames() -contains 'PendingUpdate') {
+        throw 'A pending device host update already exists.'
+    }
+    # One registry value is the write-ahead record. Flush it before the first
+    # copy or rename, including the stage files, so retry can classify every
+    # interrupted state without trusting incomplete bundle metadata.
+    $key.SetValue('PendingUpdate', ($fields -join '|'), [Microsoft.Win32.RegistryValueKind]::String)
+    $key.Flush()
+}
+
+function Read-PendingUpdate {
+    param([Parameter(Mandatory = $true)][string] $RegistryKey)
+    $key = Get-Item -LiteralPath $RegistryKey
+    $raw = $key.GetValue('PendingUpdate')
+    if ($null -eq $raw) { return $null }
+    if ($raw -isnot [string]) { throw 'Pending update record is not a string.' }
+    $fields = $raw.Split('|')
+    if ($fields.Count -ne 14 -or $fields[0] -cne 'riauth-update/v1' -or
+        $fields[1] -cnotmatch '^[0-9a-f]{32}$' -or
+        $fields[2] -cnotmatch '^[01]$' -or $fields[3] -cnotmatch '^[01]$' -or
+        $fields[4] -cnotmatch '^[0-9A-F]{64}$' -or
+        $fields[5] -cnotmatch '^(-|[0-9A-F]{64})$' -or
+        $fields[8] -cnotmatch '^[01]$' -or
+        $fields[9] -cnotmatch '^[0-9A-F]{64}$' -or
+        $fields[10] -cnotmatch '^[0-9A-F]{64}$' -or
+        $fields[13] -cnotmatch '^[0-9A-F]{64}$') {
+        throw 'Pending update record is malformed.'
+    }
+    $oldHasProvider = $fields[2] -ceq '1'
+    $oldHadMetadata = $fields[3] -ceq '1'
+    $oldHadHighestVersion = $fields[8] -ceq '1'
+    if (($oldHasProvider -and $fields[5] -ceq '-') -or
+        (-not $oldHasProvider -and $fields[5] -cne '-') -or
+        ($oldHadMetadata -and -not $oldHasProvider) -or
+        (-not $oldHadMetadata -and ($fields[6] -cne '-' -or $fields[7] -cne '-' -or $oldHadHighestVersion))) {
+        throw 'Pending update record has inconsistent prior installation state.'
+    }
+    $newVersion = ConvertTo-ReleaseVersion $fields[11]
+    $newHighestVersion = ConvertTo-ReleaseVersion $fields[12]
+    if ($oldHadMetadata) {
+        if ($fields[6] -cnotmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
+            throw 'Pending update has an invalid previous version label.'
+        }
+        $oldOpaqueVersion = -not (Test-CanonicalReleaseVersion $fields[6])
+        if ($oldOpaqueVersion) {
+            if ($oldHadHighestVersion -or $fields[7] -cne '-') {
+                throw 'Pending update has an ambiguous opaque prior version floor.'
+            }
+            # The prior signer and hashes can be checked, but v1 opaque labels
+            # cannot be compared with the canonical target release version.
+            $expectedHighest = $fields[11]
+        } else {
+            $oldVersion = ConvertTo-ReleaseVersion $fields[6]
+            $oldHighestVersion = ConvertTo-ReleaseVersion $fields[7]
+            if ($oldHighestVersion.CompareTo($oldVersion) -lt 0 -or
+                (-not $oldHadHighestVersion -and $fields[7] -cne $fields[6])) {
+                throw 'Pending update has an invalid previous version floor.'
+            }
+            $expectedHighest = if ($newVersion.CompareTo($oldHighestVersion) -gt 0) { $fields[11] } else { $fields[7] }
+        }
+    } else {
+        $expectedHighest = $fields[11]
+    }
+    if ($fields[12] -cne $expectedHighest -or $newHighestVersion.CompareTo($newVersion) -lt 0) {
+        throw 'Pending update would lower the recorded version floor.'
+    }
+    return [pscustomobject]@{
+        Nonce = $fields[1]
+        OldHasProvider = $oldHasProvider
+        OldHadMetadata = $oldHadMetadata
+        OldHostSha256 = $fields[4]
+        OldProviderSha256 = $fields[5]
+        OldVersion = $fields[6]
+        OldHighestVersion = $fields[7]
+        OldHadHighestVersion = $oldHadHighestVersion
+        NewHostSha256 = $fields[9]
+        NewProviderSha256 = $fields[10]
+        NewVersion = $fields[11]
+        NewHighestVersion = $fields[12]
+        NewInstallerSha256 = $fields[13]
+    }
+}
+
+function Clear-PendingUpdate {
+    param([Parameter(Mandatory = $true)][string] $RegistryKey)
+    Remove-ItemProperty -LiteralPath $RegistryKey -Name 'PendingUpdate'
+    (Get-Item -LiteralPath $RegistryKey).Flush()
+}
+
+function Get-UpdatePayloadState {
+    param(
+        [Parameter(Mandatory = $true)][string] $LiteralPath,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint,
+        [Parameter(Mandatory = $true)][string] $NewHash,
+        [string] $OldHash,
+        [switch] $Provider
+    )
+    if (-not (Test-Path -LiteralPath $LiteralPath)) { return 'missing' }
+    Assert-NoReparsePoint -LiteralPath $LiteralPath
+    if (-not (Test-Path -LiteralPath $LiteralPath -PathType Leaf)) {
+        throw "Update payload path is not a file: $LiteralPath"
+    }
+    Assert-SignedBy -LiteralPath $LiteralPath -ExpectedThumbprint $ExpectedThumbprint
+    if ($Provider) { Assert-X64NativeDll -LiteralPath $LiteralPath }
+    $hash = (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($hash -ceq $NewHash) { return 'new' }
+    if ($OldHash -and $hash -ceq $OldHash) { return 'old' }
+    throw "Installed update payload matches neither recorded signed version: $LiteralPath"
+}
+
+function Assert-UpdateEntries {
+    param(
+        [Parameter(Mandatory = $true)][string] $Directory,
+        [Parameter(Mandatory = $true)] $Update
+    )
+    $allowed = @(
+        'RiAuth.DeviceHost.exe', 'RiAuth.CredentialProvider.dll',
+        "RiAuth.DeviceHost.stage.$($Update.Nonce).exe",
+        "RiAuth.DeviceHost.backup.$($Update.Nonce).exe",
+        "RiAuth.CredentialProvider.stage.$($Update.Nonce).dll"
+    )
+    if ($Update.OldHasProvider) {
+        $allowed += "RiAuth.CredentialProvider.backup.$($Update.Nonce).dll"
+    }
+    foreach ($entry in @(Get-ChildItem -LiteralPath $Directory -Force)) {
+        if ($entry.PSIsContainer -or -not ($allowed -ccontains $entry.Name)) {
+            throw "Unexpected installation entry during pending update: $($entry.FullName)"
+        }
+        Assert-NoReparsePoint -LiteralPath $entry.FullName
+    }
+}
+
+function Assert-UpdateRegistryValues {
+    param(
+        [Parameter(Mandatory = $true)][string] $RegistryKey,
+        [Parameter(Mandatory = $true)] $Update,
+        [Parameter(Mandatory = $true)][string] $ExpectedClsid
+    )
+    $key = Get-Item -LiteralPath $RegistryKey
+    $allowed = @{
+        HostSha256 = @($Update.NewHostSha256)
+        ProviderSha256 = @($Update.NewProviderSha256)
+        BundleVersion = @($Update.NewVersion)
+        HighestBundleVersion = @($Update.NewHighestVersion)
+    }
+    if ($Update.OldHadMetadata) {
+        $allowed.HostSha256 += $Update.OldHostSha256
+        $allowed.ProviderSha256 += $Update.OldProviderSha256
+        $allowed.BundleVersion += $Update.OldVersion
+        if ($Update.OldHadHighestVersion) {
+            $allowed.HighestBundleVersion += $Update.OldHighestVersion
+        }
+    }
+    foreach ($name in @('HostSha256', 'ProviderSha256', 'BundleVersion', 'HighestBundleVersion')) {
+        if ($Update.OldHadMetadata -and
+            $name -in @('HostSha256', 'ProviderSha256', 'BundleVersion') -and
+            -not ($key.GetValueNames() -contains $name)) {
+            throw "Pending update is missing prior registry metadata: $name"
+        }
+        if ($key.GetValueNames() -contains $name) {
+            if (-not ($allowed[$name] -ccontains $key.GetValue($name))) {
+                throw "Pending update found unexpected registry value: $name"
+            }
+        }
+    }
+    $marker = $key.GetValue('CredentialProviderClsid')
+    if (($null -ne $marker -and $marker -cne $ExpectedClsid) -or
+        ($Update.OldHasProvider -and $marker -cne $ExpectedClsid)) {
+        throw 'Pending update found an unexpected provider marker.'
+    }
+}
+
+function Complete-ProviderRegistration {
+    param(
+        [Parameter(Mandatory = $true)][string] $ClassKey,
+        [Parameter(Mandatory = $true)][string] $InprocKey,
+        [Parameter(Mandatory = $true)][string] $ProviderKey,
+        [Parameter(Mandatory = $true)][string] $DllPath
+    )
+    foreach ($entry in @(
+        @{ Path = $ClassKey; Name = ''; Value = 'RiAuth Credential Provider' },
+        @{ Path = $InprocKey; Name = ''; Value = $DllPath },
+        @{ Path = $InprocKey; Name = 'ThreadingModel'; Value = 'Apartment' },
+        @{ Path = $ProviderKey; Name = ''; Value = 'RiAuth' }
+    )) {
+        if (-not (Test-Path -LiteralPath $entry.Path)) {
+            New-Item -Path $entry.Path | Out-Null
+        }
+        $key = Get-Item -LiteralPath $entry.Path
+        $actual = $key.GetValue($entry.Name)
+        if ($null -ne $actual -and $actual -cne $entry.Value) {
+            throw "A foreign provider registration blocks update recovery: $($entry.Path)"
+        }
+        if ($null -eq $actual) {
+            $key.SetValue($entry.Name, $entry.Value, [Microsoft.Win32.RegistryValueKind]::String)
+            $key.Flush()
+        }
+    }
+    Assert-ProviderRegistration -ClassKey $ClassKey -InprocKey $InprocKey -ProviderKey $ProviderKey -DllPath $DllPath
+}
+
+function Assert-CompatibleProviderRegistration {
+    param(
+        [Parameter(Mandatory = $true)][string] $ClassKey,
+        [Parameter(Mandatory = $true)][string] $InprocKey,
+        [Parameter(Mandatory = $true)][string] $ProviderKey,
+        [Parameter(Mandatory = $true)][string] $DllPath,
+        [Parameter(Mandatory = $true)][bool] $OldHasProvider
+    )
+    if ($OldHasProvider) {
+        # An ordinary update never changes provider registration. Missing or
+        # foreign entries are not an interrupted binary swap.
+        Assert-ProviderRegistration -ClassKey $ClassKey -InprocKey $InprocKey -ProviderKey $ProviderKey -DllPath $DllPath
+        return
+    }
+    # A legacy host-only migration may have stopped partway through adding
+    # these keys. Accept absent values, but never overwrite a foreign value.
+    foreach ($entry in @(
+        @{ Path = $ClassKey; Name = ''; Value = 'RiAuth Credential Provider' },
+        @{ Path = $InprocKey; Name = ''; Value = $DllPath },
+        @{ Path = $InprocKey; Name = 'ThreadingModel'; Value = 'Apartment' },
+        @{ Path = $ProviderKey; Name = ''; Value = 'RiAuth' }
+    )) {
+        if (Test-Path -LiteralPath $entry.Path) {
+            $actual = (Get-Item -LiteralPath $entry.Path).GetValue($entry.Name)
+            if ($null -ne $actual -and $actual -cne $entry.Value) {
+                throw "A foreign provider registration blocks update recovery: $($entry.Path)"
+            }
+        }
+    }
+}
+
+function Complete-PendingUpdate {
+    param(
+        [Parameter(Mandatory = $true)] $Update,
+        [Parameter(Mandatory = $true)] $Bundle,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint
+    )
+    if ($Bundle.Version -cne $Update.NewVersion -or
+        $Bundle.HostSha256 -cne $Update.NewHostSha256 -or
+        $Bundle.ProviderSha256 -cne $Update.NewProviderSha256 -or
+        $Bundle.InstallerSha256 -cne $Update.NewInstallerSha256) {
+        throw 'Pending update requires the exact originally verified signed bundle.'
+    }
+    Assert-NoReparsePoint -LiteralPath $installDirectory
+    Assert-UpdateEntries -Directory $installDirectory -Update $Update
+    Assert-UpdateRegistryValues -RegistryKey $registryKey -Update $Update -ExpectedClsid $providerClsid
+    Assert-CompatibleProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll -OldHasProvider $Update.OldHasProvider
+    $hostStage = Join-Path $installDirectory "RiAuth.DeviceHost.stage.$($Update.Nonce).exe"
+    $hostBackup = Join-Path $installDirectory "RiAuth.DeviceHost.backup.$($Update.Nonce).exe"
+    $providerStage = Join-Path $installDirectory "RiAuth.CredentialProvider.stage.$($Update.Nonce).dll"
+    $providerBackup = Join-Path $installDirectory "RiAuth.CredentialProvider.backup.$($Update.Nonce).dll"
+
+    $hostState = Get-UpdatePayloadState -LiteralPath $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -OldHash $Update.OldHostSha256 -NewHash $Update.NewHostSha256
+    $providerOldHash = if ($Update.OldHasProvider) { $Update.OldProviderSha256 } else { $null }
+    $providerState = Get-UpdatePayloadState -LiteralPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -OldHash $providerOldHash -NewHash $Update.NewProviderSha256 -Provider
+    $hostBackupState = Get-UpdatePayloadState -LiteralPath $hostBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $Update.OldHostSha256
+    $providerBackupState = if ($Update.OldHasProvider) {
+        Get-UpdatePayloadState -LiteralPath $providerBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $Update.OldProviderSha256 -Provider
+    } else { 'missing' }
+    if (($hostState -eq 'missing' -and $hostBackupState -eq 'missing') -or
+        ($Update.OldHasProvider -and $providerState -eq 'missing' -and $providerBackupState -eq 'missing')) {
+        throw 'Pending update lost both the installed file and its signed backup.'
+    }
+    # A crash during Copy-Item can leave an incomplete stage. It is never
+    # activated; replace only this exact journal-owned path from the verified
+    # bundle. A backup or canonical payload with invalid bytes always fails.
+    foreach ($stage in @(
+        @{ Path = $hostStage; Hash = $Update.NewHostSha256; Provider = $false },
+        @{ Path = $providerStage; Hash = $Update.NewProviderSha256; Provider = $true }
+    )) {
+        if (Test-Path -LiteralPath $stage.Path) {
+            Assert-NoReparsePoint -LiteralPath $stage.Path
+            if (-not (Test-Path -LiteralPath $stage.Path -PathType Leaf)) {
+                throw "Pending update stage is not a file: $($stage.Path)"
+            }
+            try {
+                $null = Get-UpdatePayloadState -LiteralPath $stage.Path -ExpectedThumbprint $ExpectedThumbprint -NewHash $stage.Hash -Provider:($stage.Provider)
+            } catch {
+                Remove-Item -LiteralPath $stage.Path -Force
+            }
+        }
+    }
+    if ($hostState -ne 'new') {
+        if ($hostState -eq 'old') {
+            if ($hostBackupState -eq 'missing') {
+                Move-Item -LiteralPath $installedExecutable -Destination $hostBackup
+            } else {
+                Remove-Item -LiteralPath $installedExecutable -Force
+            }
+        }
+        if (-not (Test-Path -LiteralPath $hostStage)) {
+            Copy-Item -LiteralPath $Bundle.Host -Destination $hostStage
+        }
+        Assert-InstalledPayload -Executable $hostStage -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $Update.NewHostSha256
+        Move-Item -LiteralPath $hostStage -Destination $installedExecutable
+    }
+    Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $Update.NewHostSha256
+    if ($providerState -ne 'new') {
+        if ($providerState -eq 'old') {
+            if ($providerBackupState -eq 'missing') {
+                Move-Item -LiteralPath $installedProviderDll -Destination $providerBackup
+            } else {
+                Remove-Item -LiteralPath $installedProviderDll -Force
+            }
+        }
+        if (-not (Test-Path -LiteralPath $providerStage)) {
+            Copy-Item -LiteralPath $Bundle.Provider -Destination $providerStage
+        }
+        $null = Get-UpdatePayloadState -LiteralPath $providerStage -ExpectedThumbprint $ExpectedThumbprint -NewHash $Update.NewProviderSha256 -Provider
+        Move-Item -LiteralPath $providerStage -Destination $installedProviderDll
+    }
+    $null = Get-UpdatePayloadState -LiteralPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -NewHash $Update.NewProviderSha256 -Provider
+    if (-not $Update.OldHasProvider) {
+        New-ItemProperty -LiteralPath $registryKey -Name 'CredentialProviderClsid' -PropertyType String -Value $providerClsid -Force | Out-Null
+        Complete-ProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll
+    }
+    Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $Update.NewProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
+    Set-InstalledHashes -RegistryKey $registryKey -HostSha256 $Update.NewHostSha256 -ProviderSha256 $Update.NewProviderSha256 -Version $Update.NewVersion -HighestVersion $Update.NewHighestVersion
+    $verified = Get-InstalledHashes -RegistryKey $registryKey -HasProvider $true -AllowLegacySignedInstall $false
+    if ($verified.HostSha256 -cne $Update.NewHostSha256 -or
+        $verified.ProviderSha256 -cne $Update.NewProviderSha256 -or
+        $verified.Version -cne $Update.NewVersion -or
+        $verified.HighestVersion -cne $Update.NewHighestVersion) {
+        throw 'Pending update did not establish the recorded installed metadata.'
+    }
+    foreach ($path in @($hostStage, $providerStage, $hostBackup, $providerBackup)) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+    Clear-PendingUpdate -RegistryKey $registryKey
+}
+
+function Restore-UnjournaledPayload {
+    param(
+        [Parameter(Mandatory = $true)][string] $CanonicalPath,
+        [Parameter(Mandatory = $true)][string] $BackupPath,
+        [Parameter(Mandatory = $true)][string] $OldHash,
+        [Parameter(Mandatory = $true)][string] $AttemptedHash,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint,
+        [switch] $Provider
+    )
+    $state = Get-UpdatePayloadState -LiteralPath $CanonicalPath -ExpectedThumbprint $ExpectedThumbprint -OldHash $OldHash -NewHash $AttemptedHash -Provider:$Provider
+    if ($OldHash -ceq $AttemptedHash -and $state -eq 'new') { $state = 'old' }
+    $backupState = Get-UpdatePayloadState -LiteralPath $BackupPath -ExpectedThumbprint $ExpectedThumbprint -NewHash $OldHash -Provider:$Provider
+    if ($state -ne 'old') {
+        if ($backupState -eq 'missing') {
+            throw "Cannot restore the prior signed payload without its hash-matching backup: $CanonicalPath"
+        }
+        if ($state -eq 'new') { Remove-Item -LiteralPath $CanonicalPath -Force }
+        Move-Item -LiteralPath $BackupPath -Destination $CanonicalPath
+    }
+    $null = Get-UpdatePayloadState -LiteralPath $CanonicalPath -ExpectedThumbprint $ExpectedThumbprint -NewHash $OldHash -Provider:$Provider
+}
+
+function Recover-UnjournaledUpdate {
+    param(
+        [Parameter(Mandatory = $true)] $Bundle,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint
+    )
+    # Releases before the write-ahead record could leave stage/backup files in
+    # the install directory. Accept only one recognizable nonce and complete
+    # registry metadata; ambiguous older states need operator investigation.
+    Assert-NoReparsePoint -LiteralPath $installDirectory
+    $entries = @(Get-ChildItem -LiteralPath $installDirectory -Force)
+    $nonces = @()
+    foreach ($entry in $entries) {
+        if ($entry.Name -cmatch '^RiAuth\.(?:DeviceHost|CredentialProvider)\.(?:stage|backup)\.([0-9a-f]{32})\.(?:exe|dll)$') {
+            $nonces += $Matches[1]
+        }
+    }
+    $nonces = @($nonces | Sort-Object -Unique)
+    if ($nonces.Count -eq 0) { return $null }
+    if ($nonces.Count -ne 1) {
+        throw 'Unjournaled update contains multiple backup/stage generations; recovery requires operator investigation.'
+    }
+    $hasProvider = Get-InstalledProviderState -RegistryKey $registryKey -ExpectedClsid $providerClsid -DllPath $installedProviderDll -ClassKey $providerClassKey -ProviderKey $providerRegistryKey
+    $metadata = Get-InstalledHashes -RegistryKey $registryKey -HasProvider $hasProvider -AllowLegacySignedInstall ([bool]$AllowLegacySignedInstall)
+    if ($null -eq $metadata -or -not $hasProvider) {
+        throw 'Unjournaled legacy update has no complete version/hash baseline; restore it from a verified release before retrying.'
+    }
+    $newHighestVersion = if ($metadata.IsOpaqueVersion -or
+        (ConvertTo-ReleaseVersion $Bundle.Version).CompareTo((ConvertTo-ReleaseVersion $metadata.HighestVersion)) -gt 0) {
+        $Bundle.Version
+    } else { $metadata.HighestVersion }
+    $record = [pscustomobject]@{
+        Nonce = $nonces[0]
+        OldHasProvider = $true
+        OldHadMetadata = $true
+        OldHostSha256 = $metadata.HostSha256
+        OldProviderSha256 = $metadata.ProviderSha256
+        OldVersion = $metadata.Version
+        OldHighestVersion = if ($metadata.IsOpaqueVersion) { '-' } else { $metadata.HighestVersion }
+        OldHadHighestVersion = $metadata.HadHighestVersion
+        NewHostSha256 = $Bundle.HostSha256
+        NewProviderSha256 = $Bundle.ProviderSha256
+        NewVersion = $Bundle.Version
+        NewHighestVersion = $newHighestVersion
+        NewInstallerSha256 = $Bundle.InstallerSha256
+    }
+    Assert-UpdateEntries -Directory $installDirectory -Update $record
+    $hostStage = Join-Path $installDirectory "RiAuth.DeviceHost.stage.$($record.Nonce).exe"
+    $hostBackup = Join-Path $installDirectory "RiAuth.DeviceHost.backup.$($record.Nonce).exe"
+    $providerStage = Join-Path $installDirectory "RiAuth.CredentialProvider.stage.$($record.Nonce).dll"
+    $providerBackup = Join-Path $installDirectory "RiAuth.CredentialProvider.backup.$($record.Nonce).dll"
+
+    if ($metadata.Version -ceq $Bundle.Version -and
+        $metadata.HostSha256 -ceq $Bundle.HostSha256 -and
+        $metadata.ProviderSha256 -ceq $Bundle.ProviderSha256) {
+        # The old installer committed metadata and the new pair, then failed
+        # to delete backups. These unused backups have no recorded old hash;
+        # verify their pinned signatures before deleting them, never restore
+        # or execute them.
+        Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $Bundle.HostSha256
+        Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $Bundle.ProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
+        foreach ($stage in @(
+            @{ Path = $hostStage; Hash = $Bundle.HostSha256; Provider = $false },
+            @{ Path = $providerStage; Hash = $Bundle.ProviderSha256; Provider = $true }
+        )) {
+            if (Test-Path -LiteralPath $stage.Path) {
+                $null = Get-UpdatePayloadState -LiteralPath $stage.Path -ExpectedThumbprint $ExpectedThumbprint -NewHash $stage.Hash -Provider:($stage.Provider)
+            }
+        }
+        foreach ($backup in @(
+            @{ Path = $hostBackup; Provider = $false },
+            @{ Path = $providerBackup; Provider = $true }
+        )) {
+            if (Test-Path -LiteralPath $backup.Path) {
+                Assert-NoReparsePoint -LiteralPath $backup.Path
+                Assert-SignedBy -LiteralPath $backup.Path -ExpectedThumbprint $ExpectedThumbprint
+                if ($backup.Provider) { Assert-X64NativeDll -LiteralPath $backup.Path }
+            }
+        }
+        foreach ($path in @($hostStage, $providerStage, $hostBackup, $providerBackup)) {
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        }
+        return "Removed verified residue from completed bundle $($Bundle.Version)."
+    }
+
+    if ($metadata.Version -ceq $Bundle.Version) {
+        # The old installer could republish different bytes under one version.
+        # Never finish that replacement. Restore the registry-bound prior pair
+        # from exact signed backups, then remove the abandoned stage files.
+        Assert-ProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll
+        foreach ($stage in @($hostStage, $providerStage)) {
+            if (Test-Path -LiteralPath $stage) {
+                Assert-NoReparsePoint -LiteralPath $stage
+                if (-not (Test-Path -LiteralPath $stage -PathType Leaf)) {
+                    throw "Interrupted update stage is not a file: $stage"
+                }
+                # A crash during Copy-Item can leave an incomplete stage. It
+                # is discarded after the old canonical pair is verified.
+            }
+        }
+        $oldHostState = Get-UpdatePayloadState -LiteralPath $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -OldHash $metadata.HostSha256 -NewHash $Bundle.HostSha256
+        $oldProviderState = Get-UpdatePayloadState -LiteralPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -OldHash $metadata.ProviderSha256 -NewHash $Bundle.ProviderSha256 -Provider
+        $oldHostBackupState = Get-UpdatePayloadState -LiteralPath $hostBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $metadata.HostSha256
+        $oldProviderBackupState = Get-UpdatePayloadState -LiteralPath $providerBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $metadata.ProviderSha256 -Provider
+        if (($oldHostState -ne 'old' -and $metadata.HostSha256 -cne $Bundle.HostSha256 -and $oldHostBackupState -eq 'missing') -or
+            ($oldHostState -eq 'missing' -and $oldHostBackupState -eq 'missing') -or
+            ($oldProviderState -ne 'old' -and $metadata.ProviderSha256 -cne $Bundle.ProviderSha256 -and $oldProviderBackupState -eq 'missing') -or
+            ($oldProviderState -eq 'missing' -and $oldProviderBackupState -eq 'missing')) {
+            throw 'Interrupted same-version update cannot restore both prior signed files; no files were changed.'
+        }
+        Restore-UnjournaledPayload -CanonicalPath $installedExecutable -BackupPath $hostBackup -OldHash $metadata.HostSha256 -AttemptedHash $Bundle.HostSha256 -ExpectedThumbprint $ExpectedThumbprint
+        Restore-UnjournaledPayload -CanonicalPath $installedProviderDll -BackupPath $providerBackup -OldHash $metadata.ProviderSha256 -AttemptedHash $Bundle.ProviderSha256 -ExpectedThumbprint $ExpectedThumbprint -Provider
+        Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $metadata.HostSha256
+        Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -ExpectedHash $metadata.ProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
+        foreach ($path in @($hostStage, $providerStage, $hostBackup, $providerBackup)) {
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        }
+        return "Restored verified prior bundle $($metadata.Version) after an interrupted same-version replacement."
+    }
+
+    if ($metadata.IsOpaqueVersion) {
+        # There is no defensible ordering between an older opaque label and
+        # this numeric target. Require explicit audited intent before using
+        # the still-verifiable prior signatures and hashes for recovery.
+        $needsRecovery = $true
+        $highestForAudit = 'unknown-opaque-prior'
+    } else {
+        $currentVersion = ConvertTo-ReleaseVersion $metadata.Version
+        $targetVersion = ConvertTo-ReleaseVersion $Bundle.Version
+        if ($targetVersion.CompareTo($currentVersion) -eq 0) {
+            throw 'Unjournaled update has a different bundle under the same release version.'
+        }
+        $needsRecovery = $targetVersion.CompareTo((ConvertTo-ReleaseVersion $metadata.HighestVersion)) -lt 0
+        $highestForAudit = $metadata.HighestVersion
+    }
+    if ($needsRecovery) {
+        if (-not $AllowDowngrade) {
+            throw 'Unjournaled update has a lower or unordered prior version; audited recovery intent is required.'
+        }
+        Write-DowngradeIntent -CurrentVersion $metadata.Version -HighestVersion $highestForAudit -TargetVersion $Bundle.Version -TargetHostSha256 $Bundle.HostSha256 -TargetProviderSha256 $Bundle.ProviderSha256 -Reason $RecoveryReason
+    } elseif ($AllowDowngrade) {
+        throw '-AllowDowngrade is permitted only below the highest installed version.'
+    }
+    Assert-ProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll
+    $hostState = Get-UpdatePayloadState -LiteralPath $installedExecutable -ExpectedThumbprint $ExpectedThumbprint -OldHash $metadata.HostSha256 -NewHash $Bundle.HostSha256
+    $providerState = Get-UpdatePayloadState -LiteralPath $installedProviderDll -ExpectedThumbprint $ExpectedThumbprint -OldHash $metadata.ProviderSha256 -NewHash $Bundle.ProviderSha256 -Provider
+    $hostBackupState = Get-UpdatePayloadState -LiteralPath $hostBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $metadata.HostSha256
+    $providerBackupState = Get-UpdatePayloadState -LiteralPath $providerBackup -ExpectedThumbprint $ExpectedThumbprint -NewHash $metadata.ProviderSha256 -Provider
+    if (($hostState -eq 'missing' -and $hostBackupState -eq 'missing') -or
+        ($providerState -eq 'missing' -and $providerBackupState -eq 'missing')) {
+        throw 'Unjournaled update has lost an installed file and its expected signed backup.'
+    }
+    # Stage bytes may be incomplete after power loss. Complete-PendingUpdate
+    # validates or replaces only the journal-owned stage from the signed bundle.
+    Write-PendingUpdate -RegistryKey $registryKey -Update $record
+    Complete-PendingUpdate -Update $record -Bundle $Bundle -ExpectedThumbprint $ExpectedThumbprint
+    return "Recovered unjournaled update and completed signed bundle $($Bundle.Version)."
+}
+
 if (-not $IsWindows) {
     throw 'The device host installer runs only on Windows.'
 }
@@ -484,6 +1103,19 @@ if ($Action -in @('Install', 'Verify')) {
 }
 if ($AllowLegacySignedInstall -and $Action -notin @('Update', 'Uninstall')) {
     throw '-AllowLegacySignedInstall is available only for update or uninstall of a signed legacy installation.'
+}
+if ($AllowDowngrade -ne $PSBoundParameters.ContainsKey('RecoveryReason')) {
+    throw 'A downgrade requires both -AllowDowngrade and -RecoveryReason.'
+}
+if ($AllowDowngrade) {
+    if ($Action -ne 'Update') {
+        throw '-AllowDowngrade is available only for update.'
+    }
+    if ($RecoveryReason -ne $RecoveryReason.Trim() -or
+        $RecoveryReason.Length -lt 8 -or $RecoveryReason.Length -gt 256 -or
+        $RecoveryReason -match '[\x00-\x1F\x7F]') {
+        throw 'RecoveryReason must be 8 to 256 visible characters with no leading or trailing whitespace.'
+    }
 }
 
 if ($Action -eq 'Verify') {
@@ -537,7 +1169,7 @@ try {
             New-Item -Path $registryKey | Out-Null
             New-ItemProperty -LiteralPath $registryKey -Name 'SignerThumbprint' -PropertyType String -Value $pin | Out-Null
             New-ItemProperty -LiteralPath $registryKey -Name 'CredentialProviderClsid' -PropertyType String -Value $providerClsid | Out-Null
-            Set-InstalledHashes -RegistryKey $registryKey -HostSha256 $bundle.HostSha256 -ProviderSha256 $bundle.ProviderSha256 -Version $bundle.Version
+            Set-InstalledHashes -RegistryKey $registryKey -HostSha256 $bundle.HostSha256 -ProviderSha256 $bundle.ProviderSha256 -Version $bundle.Version -HighestVersion $bundle.Version
             $providerRegistrationStarted = $true
             New-ProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll
             Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $pin -ExpectedHash $bundle.ProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
@@ -573,6 +1205,17 @@ try {
     } elseif ($Action -eq 'Update') {
         $pin = Get-PinnedSigner -RegistryKey $registryKey
         $bundle = Read-SignedBundle -Directory $BundlePath -ExpectedThumbprint $pin -ExpectedProviderClsid $providerClsid
+        $pendingUpdate = Read-PendingUpdate -RegistryKey $registryKey
+        if ($null -ne $pendingUpdate) {
+            Complete-PendingUpdate -Update $pendingUpdate -Bundle $bundle -ExpectedThumbprint $pin
+            Write-Output "Recovered and completed signed bundle update $($bundle.Version) with pinned signer $pin"
+            return
+        }
+        $unjournaledRecovery = Recover-UnjournaledUpdate -Bundle $bundle -ExpectedThumbprint $pin
+        if ($null -ne $unjournaledRecovery) {
+            Write-Output $unjournaledRecovery
+            return
+        }
         Assert-NoReparsePoint -LiteralPath $installDirectory
         $hasProvider = Get-InstalledProviderState -RegistryKey $registryKey -ExpectedClsid $providerClsid -DllPath $installedProviderDll -ClassKey $providerClassKey -ProviderKey $providerRegistryKey
         $previousHashes = Get-InstalledHashes -RegistryKey $registryKey -HasProvider $hasProvider -AllowLegacySignedInstall ([bool]$AllowLegacySignedInstall)
@@ -593,15 +1236,69 @@ try {
         if ($null -ne $previousHashes -and $hasProvider -and $previousHashes.HostSha256 -ceq $bundle.HostSha256 -and
             $previousHashes.ProviderSha256 -ceq $bundle.ProviderSha256 -and
             $previousHashes.Version -ceq $bundle.Version) {
+            if ($AllowDowngrade) {
+                throw '-AllowDowngrade cannot be used for an idempotent update.'
+            }
             Write-Output "Bundle $($bundle.Version) is already installed and verified."
             return
         }
 
+        if ($null -ne $previousHashes -and $previousHashes.IsOpaqueVersion) {
+            # Signed bundles before the numeric version contract accepted
+            # labels such as v1. Their order is unknown, so migration needs
+            # the same audited recovery intent as a known downgrade.
+            $needsRecovery = $true
+            $highestForAudit = 'unknown-opaque-prior'
+        } elseif ($null -ne $previousHashes) {
+            $currentVersion = ConvertTo-ReleaseVersion $previousHashes.Version
+            $highestVersion = ConvertTo-ReleaseVersion $previousHashes.HighestVersion
+            $targetVersion = ConvertTo-ReleaseVersion $bundle.Version
+            if ($targetVersion.CompareTo($currentVersion) -eq 0) {
+                throw 'A different signed bundle cannot replace the same release version.'
+            }
+            $needsRecovery = $targetVersion.CompareTo($highestVersion) -lt 0
+            $highestForAudit = $previousHashes.HighestVersion
+        } else {
+            # A legacy signed installation has no version from which to infer
+            # a downgrade. Its explicit migration gate is handled above.
+            $needsRecovery = $false
+        }
+        if ($needsRecovery) {
+            if (-not $AllowDowngrade) {
+                throw "Bundle $($bundle.Version) is below the highest installed version or follows an unordered legacy label. Supply audited recovery intent to update."
+            }
+            Write-DowngradeIntent -CurrentVersion $previousHashes.Version -HighestVersion $highestForAudit -TargetVersion $bundle.Version -TargetHostSha256 $bundle.HostSha256 -TargetProviderSha256 $bundle.ProviderSha256 -Reason $RecoveryReason
+        } elseif ($AllowDowngrade) {
+            throw '-AllowDowngrade is permitted only for a bundle below the highest installed version.'
+        }
+
+        $newHighestVersion = if ($null -eq $previousHashes -or $previousHashes.IsOpaqueVersion -or
+            (ConvertTo-ReleaseVersion $bundle.Version).CompareTo((ConvertTo-ReleaseVersion $previousHashes.HighestVersion)) -gt 0) {
+            $bundle.Version
+        } else {
+            $previousHashes.HighestVersion
+        }
         $nonce = [guid]::NewGuid().ToString('N')
         $stagedExecutable = Join-Path $installDirectory "RiAuth.DeviceHost.stage.$nonce.exe"
         $backupExecutable = Join-Path $installDirectory "RiAuth.DeviceHost.backup.$nonce.exe"
         $stagedProviderDll = Join-Path $installDirectory "RiAuth.CredentialProvider.stage.$nonce.dll"
         $backupProviderDll = Join-Path $installDirectory "RiAuth.CredentialProvider.backup.$nonce.dll"
+        $updateRecord = [pscustomobject]@{
+            Nonce = $nonce
+            OldHasProvider = [bool]$hasProvider
+            OldHadMetadata = $null -ne $previousHashes
+            OldHostSha256 = (Get-FileHash -LiteralPath $installedExecutable -Algorithm SHA256).Hash.ToUpperInvariant()
+            OldProviderSha256 = if ($hasProvider) { (Get-FileHash -LiteralPath $installedProviderDll -Algorithm SHA256).Hash.ToUpperInvariant() } else { '-' }
+            OldVersion = if ($null -ne $previousHashes) { $previousHashes.Version } else { '-' }
+            OldHighestVersion = if ($null -ne $previousHashes -and -not $previousHashes.IsOpaqueVersion) { $previousHashes.HighestVersion } else { '-' }
+            OldHadHighestVersion = $null -ne $previousHashes -and $previousHashes.HadHighestVersion
+            NewHostSha256 = $bundle.HostSha256
+            NewProviderSha256 = $bundle.ProviderSha256
+            NewVersion = $bundle.Version
+            NewHighestVersion = $newHighestVersion
+            NewInstallerSha256 = $bundle.InstallerSha256
+        }
+        Write-PendingUpdate -RegistryKey $registryKey -Update $updateRecord
         $oldHostMoved = $false
         $newHostMoved = $false
         $oldProviderMoved = $false
@@ -637,7 +1334,7 @@ try {
                 New-ProviderRegistration -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey -DllPath $installedProviderDll
             }
             Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $pin -ExpectedHash $bundle.ProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
-            Set-InstalledHashes -RegistryKey $registryKey -HostSha256 $bundle.HostSha256 -ProviderSha256 $bundle.ProviderSha256 -Version $bundle.Version
+            Set-InstalledHashes -RegistryKey $registryKey -HostSha256 $bundle.HostSha256 -ProviderSha256 $bundle.ProviderSha256 -Version $bundle.Version -HighestVersion $newHighestVersion
         } catch {
             $failure = $_
             try {
@@ -659,6 +1356,10 @@ try {
                     Remove-Item -LiteralPath $installedProviderDll -Force
                 }
                 if ($oldProviderMoved) {
+                    Assert-SignedBy -LiteralPath $backupProviderDll -ExpectedThumbprint $pin
+                    Assert-NoReparsePoint -LiteralPath $backupProviderDll
+                    Assert-Sha256 -LiteralPath $backupProviderDll -ExpectedHash $updateRecord.OldProviderSha256
+                    Assert-X64NativeDll -LiteralPath $backupProviderDll
                     Move-Item -LiteralPath $backupProviderDll -Destination $installedProviderDll
                     Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $pin -ExpectedHash $oldProviderHash -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
                 }
@@ -666,38 +1367,45 @@ try {
                     Remove-Item -LiteralPath $installedExecutable -Force
                 }
                 if ($oldHostMoved) {
+                    Assert-InstalledPayload -Executable $backupExecutable -ExpectedThumbprint $pin -ExpectedHash $updateRecord.OldHostSha256
                     Move-Item -LiteralPath $backupExecutable -Destination $installedExecutable
                     Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $pin -ExpectedHash $oldHostHash
                 }
                 Restore-InstalledHashes -RegistryKey $registryKey -Previous $previousHashes
+                Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $pin -ExpectedHash $updateRecord.OldHostSha256
+                if ($hasProvider) {
+                    Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $pin -ExpectedHash $updateRecord.OldProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
+                }
+                foreach ($path in @($stagedExecutable, $stagedProviderDll, $backupExecutable, $backupProviderDll)) {
+                    if (Test-Path -LiteralPath $path) {
+                        Remove-Item -LiteralPath $path -Force
+                    }
+                }
+                Clear-PendingUpdate -RegistryKey $registryKey
             } catch {
                 throw "Update failed ($failure); rollback also failed ($_). Inspect signed backups at $backupExecutable and $backupProviderDll"
             }
             throw $failure
-        } finally {
-            if (Test-Path -LiteralPath $stagedExecutable) {
-                try { Remove-Item -LiteralPath $stagedExecutable -Force } catch {
-                    Write-Warning "Staged executable requires cleanup: $stagedExecutable ($_)"
+        }
+        try {
+            Assert-InstalledPayload -Executable $installedExecutable -ExpectedThumbprint $pin -ExpectedHash $bundle.HostSha256
+            Assert-InstalledProvider -DllPath $installedProviderDll -ExpectedThumbprint $pin -ExpectedHash $bundle.ProviderSha256 -ClassKey $providerClassKey -InprocKey $providerInprocKey -ProviderKey $providerRegistryKey
+            foreach ($path in @($stagedExecutable, $stagedProviderDll, $backupExecutable, $backupProviderDll)) {
+                if (Test-Path -LiteralPath $path) {
+                    Remove-Item -LiteralPath $path -Force
                 }
             }
-            if (Test-Path -LiteralPath $stagedProviderDll) {
-                try { Remove-Item -LiteralPath $stagedProviderDll -Force } catch {
-                    Write-Warning "Staged provider requires cleanup: $stagedProviderDll ($_)"
-                }
-            }
-        }
-        try { Remove-Item -LiteralPath $backupExecutable -Force } catch {
-            Write-Warning "Update installed, but the signed backup could not be removed: $backupExecutable ($_)"
-        }
-        if ($oldProviderMoved) {
-            try { Remove-Item -LiteralPath $backupProviderDll -Force } catch {
-                Write-Warning "Update installed, but the signed provider backup could not be removed: $backupProviderDll ($_)"
-            }
+            Clear-PendingUpdate -RegistryKey $registryKey
+        } catch {
+            throw "New bundle is installed, but update cleanup is pending ($_). Retry the same signed bundle to complete recovery."
         }
         Write-Output "Updated bundle $($bundle.Version): $installedExecutable and provider $installedProviderDll with pinned signer $pin"
     } else {
         $pin = Get-PinnedSigner -RegistryKey $registryKey
         Assert-SignedBy -LiteralPath $PSCommandPath -ExpectedThumbprint $pin
+        if ($null -ne (Read-PendingUpdate -RegistryKey $registryKey)) {
+            throw 'A signed update is pending. Retry that exact bundle to complete verified recovery before uninstalling.'
+        }
         Assert-NoReparsePoint -LiteralPath $installDirectory
         $hasProvider = Get-InstalledProviderState -RegistryKey $registryKey -ExpectedClsid $providerClsid -DllPath $installedProviderDll -ClassKey $providerClassKey -ProviderKey $providerRegistryKey
         $installedHashes = Get-InstalledHashes -RegistryKey $registryKey -HasProvider $hasProvider -AllowLegacySignedInstall ([bool]$AllowLegacySignedInstall)
