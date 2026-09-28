@@ -14,7 +14,7 @@ use std::{
 };
 
 const MAX_SELECTED_USERS: usize = 2000;
-const MAX_STALE_MEMBER_READS: usize = crate::store::maintenance::PAGE;
+const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
 
 fn retain_selected(users: &mut BTreeMap<String, User>, id: &str, user: User) -> Result<()> {
     if user.id != id {
@@ -181,26 +181,26 @@ impl Core {
             let self_user = authorize(self, tx, cid, auth)?;
             // Visit only members of the configured visibility groups. Retain
             // at most the provider's selected-user limit, ordered by User key;
-            // a group may contain many stale member IDs. After one page's worth
-            // of misses, scan Users in pages for this group instead of making
-            // another point read for every missing ID.
+            // a group may contain many missing or disabled member IDs. After
+            // one page's worth of User point reads, scan Users in pages for
+            // this group rather than making more member lookups.
             let mut users = BTreeMap::new();
             for name in &settings.search_groups {
                 let group = tx
                     .get::<Group>("groups", name)?
                     .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
-                let mut stale_reads = 0;
+                let mut point_reads = 0;
                 let mut scan_users = false;
                 for id in &group.members {
                     if self_user.as_ref().is_some_and(|me| me.id != *id) || users.contains_key(id) {
                         continue;
                     }
+                    if point_reads == MAX_MEMBER_POINT_READS {
+                        scan_users = true;
+                        break;
+                    }
+                    point_reads += 1;
                     let Some(user) = tx.get::<User>("users", id)? else {
-                        stale_reads += 1;
-                        if stale_reads == MAX_STALE_MEMBER_READS {
-                            scan_users = true;
-                            break;
-                        }
                         continue;
                     };
                     retain_selected(&mut users, id, user)?;
@@ -757,6 +757,15 @@ mod tests {
 
     #[test]
     fn ldap_search_caps_stale_member_reads_and_pages_fallback() {
+        assert_member_lookup_fallback(false);
+    }
+
+    #[test]
+    fn ldap_search_caps_disabled_member_reads_and_pages_fallback() {
+        assert_member_lookup_fallback(true);
+    }
+
+    fn assert_member_lookup_fallback(disabled_members: bool) {
         let directory = tempfile::tempdir().unwrap();
         let password = "test-password-for-fixtures-only";
         let core = Core::initialize(
@@ -820,12 +829,18 @@ mod tests {
             .write(|tx| {
                 let admin_id: String = tx.get("usernames", "admin")?.unwrap();
                 let template: User = tx.get("users", &admin_id)?.unwrap();
-                for index in 0..130 {
+                let mut members = BTreeSet::new();
+                let other_count = if disabled_members { 256 } else { 130 };
+                for index in 0..other_count {
                     let mut other = template.clone();
                     other.id = format!("other-{index:03}");
                     other.username = other.id.clone();
                     other.admin = false;
+                    other.enabled = !disabled_members;
                     tx.put("users", &other.id, &other)?;
+                    if disabled_members {
+                        members.insert(other.id);
+                    }
                 }
                 let mut selected = template;
                 selected.id = "z-selected".into();
@@ -833,10 +848,11 @@ mod tests {
                 selected.admin = false;
                 tx.put("users", &selected.id, &selected)?;
                 let mut group: Group = tx.get("groups", "directory")?.unwrap();
-                group.members = (0..2100)
-                    .map(|index| format!("stale-{index:04}"))
-                    .chain([admin_id, selected.id])
-                    .collect();
+                if !disabled_members {
+                    members.extend((0..2100).map(|index| format!("stale-{index:04}")));
+                }
+                members.extend([admin_id, selected.id]);
+                group.members = members;
                 tx.put("groups", "directory", &group)
             })
             .unwrap();
@@ -868,12 +884,12 @@ mod tests {
             scans.scans(ReadContext::Read, true).sum(),
         );
         assert!(
-            after.0 - before.0 <= MAX_STALE_MEMBER_READS as u64 + 32,
-            "stale IDs must not cause thousands of point reads"
+            after.0 - before.0 <= MAX_MEMBER_POINT_READS as u64 + 32,
+            "non-retained members must not cause unbounded point reads"
         );
         assert_eq!(after.1, before.1, "no unbounded bucket read");
-        assert_eq!(after.2 - before.2, 5);
-        assert_eq!(after.3 - before.3, 135);
+        assert_eq!(after.2 - before.2, if disabled_members { 6 } else { 5 });
+        assert_eq!(after.3 - before.3, if disabled_members { 261 } else { 135 });
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(dns.len(), 6);
