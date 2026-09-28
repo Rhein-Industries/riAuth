@@ -16,21 +16,25 @@ pub enum ReviewCommand {
         file: PathBuf,
     },
     Change {
+        #[arg(allow_hyphen_values = true)]
         id: String,
     },
     Approve {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
     Execute {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
     Cancel {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
 }
@@ -72,4 +76,25 @@ pub(super) async fn run(remote: &Remote, command: ReviewCommand) -> Result<Value
         ),
     };
     remote.call(method, &path, body, true).await
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    #[test]
+    fn generated_hyphen_prefixed_identifiers_parse() {
+        assert!(
+            crate::cli::Cli::try_parse_from([
+                "riauth",
+                "client",
+                "endpoint-review",
+                "approve",
+                "-Oproposal",
+                "--digest",
+                "-Ddigest",
+            ])
+            .is_ok()
+        );
+    }
 }
