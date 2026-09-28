@@ -38,7 +38,9 @@ This is a Vault Transit integration, not an assertion that the configured Vault 
 
 Encrypted database backups preserve the remote signer name, version and public pin,
 plus configuration file references. They cannot restore the Vault key or bearer
-credential. Re-provision the exact signer and test issuance during recovery; a
-successful local restore/JWKS check alone does not prove that Vault can sign.
+credential. Restore never contacts Vault, and a server without the matching signer
+starts but answers token requests with `signer_unavailable`. Re-provision the exact
+signer and test issuance during recovery; a successful local restore/JWKS check
+alone does not prove that Vault can sign. See [disaster recovery](disaster-recovery.md).
 `riauth_signing_errors_total` and the optional signing-failure alert signal report
 process-local signing failures; see [operations](operations.md).

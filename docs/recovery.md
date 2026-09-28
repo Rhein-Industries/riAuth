@@ -6,6 +6,8 @@ one-time codes, consents and credentials that were revoked or used after the sna
 was taken. This guide defines what riAuth does when older state may be in use, and
 what the operator must still do. It implements Q01 [RI-STORE-004](security/invariants.md#ri-store-004-restore-rollback-cannot-be-mistaken-for-current-revocation-state)
 and the A02 recovery default in the [product contracts](roadmap/product-contracts.md).
+The [disaster recovery runbook](disaster-recovery.md) covers the surrounding steps:
+what to keep outside the archive, which binary to use and the complete restore order.
 
 ## Policy `riauth.recovery/v1`
 
@@ -39,7 +41,7 @@ source uses a collection name that the policy does not classify.
 
 - **`riauth restore`** applies the policy before it verifies and writes the restored
   instance. The command output contains `"serving_allowed": false` and the recovery
-  summary. All v1 and v2 archives are handled the same way.
+  summary. v1 and v2 archives and v3 streams are handled the same way.
 - **PostgreSQL lineage change.** On first initialization, riAuth records the cluster
   system identifier, the database OID and the record-table OID in
   `meta/storage_lineage`. If a store is opened and its records now live in a different

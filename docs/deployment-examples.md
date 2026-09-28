@@ -215,4 +215,5 @@ traffic. Database promotion without lost commits still requires the database
 operator's fencing and verification; use the restored-state procedure when
 commit loss is possible.
 Keep encrypted riAuth backups, the distinct backup key, PostgreSQL backups,
-TLS/CA material, configuration and external secrets in the recovery plan.
+TLS/CA material, configuration and external secrets in the recovery plan; the
+[disaster recovery runbook](disaster-recovery.md) lists them and the restore order.
