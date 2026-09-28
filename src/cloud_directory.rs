@@ -1089,6 +1089,39 @@ fn membership(
     Ok(changed)
 }
 
+// Check the resources that reconciliation can touch before reporting plan or
+// snapshot conflicts. Reconcile repeats these checks at each write boundary.
+fn authorize_reconcile(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    settings: &Settings,
+    snapshot: &[Entry],
+) -> Result<()> {
+    actor.require("directory.sync", &settings.resource())?;
+    for entry in snapshot {
+        actor.require("user.write", &format!("user/{}", entry.username))?;
+        for group in &entry.groups {
+            if settings.groups.contains_key(group) {
+                actor.require("group.members", &format!("group/{group}"))?;
+            }
+        }
+    }
+    for (_, binding) in tx.list::<Binding>("cloud_directory_bindings")? {
+        if binding.kind != settings.kind || binding.directory != settings.id {
+            continue;
+        }
+        if let Some(user) = tx.get::<User>("users", &binding.user_id)? {
+            actor.require("user.write", &format!("user/{}", user.username))?;
+        }
+        for group in &binding.groups {
+            if settings.groups.contains_key(group) {
+                actor.require("group.members", &format!("group/{group}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn reconcile(
     tx: &Tx<'_>,
     actor: &Principal,
@@ -1557,8 +1590,11 @@ impl Core {
         }
         let settings = self.cloud_settings(kind, &plan.directory)?;
         self.store.read(|tx| {
-            self.management(tx, token, "directory.sync", &settings.resource())
-                .map(|_| ())
+            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+            if !plan.applied {
+                authorize_reconcile(tx, &actor, &settings, &plan.entries)?;
+            }
+            Ok(())
         })?;
         if !plan.applied {
             if plan.expires_at <= now() || plan.fingerprint != settings.fingerprint {
@@ -1593,6 +1629,7 @@ impl Core {
             if plan.applied {
                 return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
             }
+            authorize_reconcile(tx, &actor, &settings, &plan.entries)?;
             if actor.id != plan.actor
                 || plan.expires_at <= now()
                 || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)

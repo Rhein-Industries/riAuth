@@ -2314,8 +2314,8 @@ fn configure_cloud(f: &mut Fixture, remote: &cloud_mock::Mock) {
 
 // RI-CON-001/002, RI-MGT-004, RI-STORE-001, Q02-C06/C08: a real loopback
 // connector produces a durable plan. Malformed, partial and changed snapshots
-// cannot apply it. A permission loss on the second entry must roll back the
-// first staged account, bindings, plan state and audit on every backend.
+// cannot apply it. Permission loss denies before the fetch; an independent
+// second-entry conflict rolls back the first staged account on every backend.
 pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
     let remote = cloud_mock::Mock::new();
     let mut f = backend.fixture();
@@ -2415,8 +2415,8 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         .unwrap()
         .permissions;
     // There is no agent permission-edit endpoint. Model a live reduction at
-    // the existing authority record so apply passes its directory check but
-    // fails after staging the first of two users.
+    // the existing authority record. The plan remains readable, but apply
+    // must deny the missing user.write scope before consulting the feed.
     f.core
         .store
         .write(|tx| {
@@ -2430,16 +2430,15 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         })
         .unwrap();
     let before_denied = f.snapshot().unwrap();
-    assert_eq!(
-        f.core
-            .cloud_apply(&syncer, "workspace", &plan_id)
-            .unwrap_err()
-            .code,
-        "access_denied"
-    );
-    f.assert_snapshot_except(&before_denied, |key| {
-        key.starts_with("cloud_directory_runs/")
-    });
+    let hits_before_denied = remote.users_hits();
+    let denied = f
+        .core
+        .cloud_apply(&syncer, "workspace", &plan_id)
+        .unwrap_err();
+    assert_eq!(denied.code, "access_denied");
+    assert_eq!(denied.message, "Access denied");
+    assert_eq!(remote.users_hits(), hits_before_denied);
+    f.assert_snapshot(&before_denied);
     assert!(
         f.core
             .store
@@ -2470,8 +2469,85 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         .store
         .write(|tx| {
             let mut actor: Agent = tx.get("agents", "syncer")?.unwrap();
-            actor.permissions = original_permissions;
+            actor.permissions = original_permissions.clone();
             tx.put("agents", "syncer", &actor)
+        })
+        .unwrap();
+    // Even a permission addition that preserves all required scopes changes
+    // the reviewed authority. A new plan is required before any write.
+    f.core
+        .store
+        .write(|tx| {
+            let mut actor: Agent = tx.get("agents", "syncer")?.unwrap();
+            actor.permissions.push(Permission {
+                action: "audit.read".into(),
+                resource: "*".into(),
+            });
+            tx.put("agents", "syncer", &actor)
+        })
+        .unwrap();
+    let before_changed_authority = f.snapshot().unwrap();
+    let changed_authority = f
+        .core
+        .cloud_apply(&syncer, "workspace", &plan_id)
+        .unwrap_err();
+    assert_eq!(changed_authority.code, "conflict");
+    assert_eq!(
+        changed_authority.message,
+        "Connector plan content or authority changed; create and review a new plan"
+    );
+    f.assert_snapshot_except(&before_changed_authority, |key| {
+        key.starts_with("cloud_directory_runs/")
+    });
+    f.core
+        .store
+        .write(|tx| {
+            let mut actor: Agent = tx.get("agents", "syncer")?.unwrap();
+            actor.permissions = original_permissions.clone();
+            tx.put("agents", "syncer", &actor)
+        })
+        .unwrap();
+
+    // Reserve the second name directly without advancing the plan's global
+    // revision. Reconciliation stages Alice, then detects Bob's collision.
+    let mut occupied_bob = user(&f, "local");
+    occupied_bob.id = crypto::id();
+    occupied_bob.username = "cloud-bob".into();
+    f.core
+        .store
+        .write(|tx| {
+            tx.put("users", &occupied_bob.id, &occupied_bob)?;
+            tx.put("usernames", "cloud-bob", &occupied_bob.id)
+        })
+        .unwrap();
+    let before_collision = f.snapshot().unwrap();
+    let collision = f
+        .core
+        .cloud_apply(&syncer, "workspace", &plan_id)
+        .unwrap_err();
+    assert_eq!(collision.code, "conflict");
+    assert_eq!(
+        collision.message,
+        "Cloud directory username collides with an existing account; accounts are never automatically linked"
+    );
+    f.assert_snapshot_except(&before_collision, |key| {
+        key.starts_with("cloud_directory_runs/")
+    });
+    assert!(
+        f.core
+            .store
+            .get::<String>("usernames", "cloud-alice")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(user(&f, "cloud-bob").id, occupied_bob.id);
+    assert_eq!(audit_count(&f, "user.cloud_directory_sync"), 0);
+    assert_eq!(audit_count(&f, "cloud_directory.apply"), 0);
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("usernames", "cloud-bob")?;
+            tx.delete("users", &occupied_bob.id)
         })
         .unwrap();
     let applied = f.core.cloud_apply(&syncer, "workspace", &plan_id).unwrap();
