@@ -52,6 +52,14 @@
   create anything through it. A deployment with such a data directory must
   stop every process using it and move the directory to local storage, or
   migrate to PostgreSQL from a local copy.
+- Startup opens the redb file itself and checks the open file again against a
+  fresh mount table before redb uses it, on Linux through the mount of the
+  open descriptor. A mount that changes during the open, such as an automount,
+  fails with `storage_not_exclusive`, and a file created for that open is
+  removed. `recovery status` and `transition-preflight` confirm file-lock
+  enforcement the way startup does, using a scratch database they create and
+  remove beside the store; they open the store itself only read-only and fail
+  closed where they cannot create the scratch file.
 
 # Unreleased durable offboarding delivery (P04)
 

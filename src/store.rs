@@ -2,7 +2,7 @@ pub mod maintenance;
 mod ownership;
 mod prepared;
 #[doc(hidden)]
-pub use ownership::{require_local_in, shared_filesystem};
+pub use ownership::{open_owner_in, require_local_in, shared_filesystem};
 #[cfg(feature = "test-support")]
 pub use prepared::with_prepared_pause;
 use prepared::{Prepared, Range};
@@ -218,9 +218,7 @@ impl Store {
         key: Option<Zeroizing<[u8; 32]>>,
         transitions: Arc<dyn RecordTransitions>,
     ) -> Result<Self> {
-        ownership::require_local(path)?;
-        let db = Database::create(path).map_err(|error| ownership::open_error(path, error))?;
-        ownership::require_exclusive(path)?;
+        let db = ownership::open_owner(path)?;
         let tx = db.begin_write().map_err(Error::internal)?;
         {
             let records = tx.open_table(RECORDS).map_err(Error::internal)?;
@@ -350,7 +348,8 @@ impl Store {
         if !path.try_exists().map_err(Error::internal)? {
             return f("redb", None);
         }
-        ownership::require_local(&path)?;
+        let checked = ownership::require_local(&path)?;
+        ownership::require_lock_support(&path, &checked)?;
         // Read-only: never repairs, formats or re-permissions the file.
         let db = redb::ReadOnlyDatabase::open(&path).map_err(|error| match error {
             redb::DatabaseError::RepairAborted => Error::conflict(
@@ -358,6 +357,7 @@ impl Store {
             ),
             error => ownership::open_error(&path, error),
         })?;
+        ownership::reopened(&path, &checked, None)?;
         let transaction = db.begin_read().map_err(Error::internal)?;
         let encoding = match transaction.open_table(FORMAT) {
             Ok(table) => table

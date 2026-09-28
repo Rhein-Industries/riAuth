@@ -146,3 +146,125 @@ fn redb_checks_the_resolved_location_and_refuses_dangling_links() {
     require_local_in(&mountinfo, &local.join("store.redb")).unwrap();
     drop(Store::open(&local.join("store.redb")).unwrap());
 }
+
+// Opening can trigger an automount or cross a mount replaced since the check, so
+// the opened file is checked again against a fresh table, on Linux through the
+// mount of its descriptor, before redb uses it. Any change fails closed, and a
+// file created for the refused open is removed.
+#[test]
+fn redb_rechecks_the_opened_mount_and_fails_closed_on_changes() {
+    use riauth::store::open_owner_in;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().canonicalize().unwrap().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let file = data.join("riauth.redb");
+    let point = data
+        .display()
+        .to_string()
+        .replace('\\', "\\134")
+        .replace(' ', "\\040");
+    let local = "22 1 8:1 / / rw - ext4 /dev/sda1 rw\n".to_owned();
+    let autofs = format!("{local}30 22 0:40 / {point} rw - autofs systemd-1 rw\n");
+    let automounted = format!("{autofs}31 30 0:41 / {point} rw - nfs4 filer:/riauth rw\n");
+    let replaced = format!("{local}32 22 8:1 /srv {point} rw - ext4 /dev/sda1 rw\n");
+    let elsewhere = format!("{local}33 22 0:42 / /exports rw - nfs4 filer:/x rw\n");
+    let refused = |result: riauth::error::Result<()>, reason: &str| {
+        let error = result.unwrap_err();
+        assert_eq!(
+            (error.status, error.code),
+            (StatusCode::BAD_REQUEST, "storage_not_exclusive")
+        );
+        assert!(error.message.contains(reason), "{}", error.message);
+        // Only a file this open created is removed.
+        assert!(!cfg!(unix) || !file.exists());
+    };
+
+    // The reviewed race: autofs was checked, and the open itself mounted NFS.
+    refused(open_owner_in(&file, &autofs, &automounted, None), "changed");
+    refused(
+        open_owner_in(&file, &autofs, &automounted, Some("31")),
+        "changed",
+    );
+    // A mount replaced after the check fails closed even when it is local.
+    refused(
+        open_owner_in(&file, &local, &replaced, Some("32")),
+        "changed",
+    );
+    // The descriptor's own mount decides when the path still looks local.
+    refused(open_owner_in(&file, &local, &elsewhere, Some("33")), "nfs4");
+    // A descriptor on a mount the fresh table does not list fails closed.
+    refused(open_owner_in(&file, &local, &local, Some("99")), "changed");
+
+    // Unchanged local storage opens, by path and by the descriptor's mount.
+    open_owner_in(&file, &local, &elsewhere, Some("22")).unwrap();
+    open_owner_in(&file, &local, &local, None).unwrap();
+    // An existing store refused after a change stays in place and opens later.
+    let error = open_owner_in(&file, &local, &replaced, None).unwrap_err();
+    assert_eq!(error.code, "storage_not_exclusive");
+    assert!(file.is_file());
+    drop(Store::open(&file).unwrap());
+}
+
+// Inspection cannot take the store's writer lock without risking a repair, so it
+// asks startup's lock question of a scratch database beside the store, leaves the
+// store untouched and fails closed when it cannot ask.
+#[test]
+fn redb_inspection_checks_lock_support_without_touching_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = Config {
+        data_dir: dir.path().into(),
+        ..Default::default()
+    };
+    Store::from_config(&config)
+        .unwrap()
+        .write(|tx| tx.put("authority", "revoked", &true))
+        .unwrap();
+    let names = || {
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let (listed, bytes) = (
+        names(),
+        std::fs::read(dir.path().join("riauth.redb")).unwrap(),
+    );
+    let revoked = Store::inspect(&config, |_, tx| {
+        tx.unwrap().get::<bool>("authority", "revoked")
+    })
+    .unwrap();
+    assert_eq!(revoked, Some(true));
+    assert_eq!(names(), listed);
+    assert_eq!(
+        std::fs::read(dir.path().join("riauth.redb")).unwrap(),
+        bytes
+    );
+
+    // Without a scratch database the question has no answer: fail closed.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |mode| {
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        mode(0o500);
+        // A superuser can still write there; the refusal needs a real denial.
+        if std::fs::File::create(dir.path().join("probe")).is_err() {
+            let error = Store::inspect(&config, |_, _| Ok(())).unwrap_err();
+            assert_eq!(error.code, "storage_not_exclusive");
+            assert!(
+                error.message.contains("scratch database"),
+                "{}",
+                error.message
+            );
+        }
+        mode(0o700);
+        let _ = std::fs::remove_file(dir.path().join("probe"));
+        assert_eq!(
+            std::fs::read(dir.path().join("riauth.redb")).unwrap(),
+            bytes
+        );
+    }
+}

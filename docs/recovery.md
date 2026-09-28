@@ -90,9 +90,10 @@ riauth --config riauth.toml recovery complete \
   --recovery-id <pending.id from status> --persistent-credentials-reconciled
 ```
 
-`status` is read-only: it does not open the store. It never creates a missing
-redb file or PostgreSQL schema, migrates, stamps lineage or applies a lineage
-recovery. A store that was never initialized reports `"initialized": false` and
+`status` is read-only: it does not open the store for writing. It never creates a
+missing redb file or PostgreSQL schema, migrates, stamps lineage or applies a
+lineage recovery. Beside an existing redb store it creates and removes a scratch
+database to confirm that the filesystem enforces file locks, as startup does. A store that was never initialized reports `"initialized": false` and
 `"serving_allowed": false`. A redb file that was not closed cleanly is reported,
 not repaired. `complete` succeeds only for the pending recovery whose ID
 was reviewed. If a newer recovery replaced it, for example after a lineage change,
