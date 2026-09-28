@@ -366,6 +366,97 @@ fn bind_directory(f: &mut Fixture, username: &str) {
         .unwrap();
 }
 
+/// A history-policy rejection must keep its ordinary browser/CLI error contract
+/// even when it occurs after workflow receipts are prepared for consumption.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_password_reset_history_reuse_preserves_error_and_retry() {
+    let mut f = Fixture::new();
+    with_mail(&mut f);
+    f.core.config.password_history = 2;
+    f.user("history-reset");
+    verify_email(&f, "history-reset");
+    f.core
+        .update_user(
+            &f.admin,
+            "history-reset",
+            UserPatch {
+                password: Some(CHANGED.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let session = f
+        .core
+        .login("history-reset".into(), CHANGED.into(), None)
+        .unwrap();
+    let bearer = text(&session, "session_token");
+    let before = user(&f, "history-reset");
+    f.core.account_reset_request("history-reset").unwrap();
+    let (_, code) = reset_mail(&f, "history-reset").pop().unwrap();
+    let snapshot = f.snapshot().unwrap();
+
+    // This is a previous password in history, not the current password.
+    let rejected = f
+        .core
+        .account_complete(code.clone(), Purpose::Reset, Some(PASSWORD.into()))
+        .unwrap_err();
+    assert_eq!(rejected.status, StatusCode::BAD_REQUEST);
+    assert_eq!(rejected.code, "invalid_request");
+    assert_eq!(rejected.message, "Password was used recently");
+    f.assert_snapshot(&snapshot);
+
+    let app = api::router(f.core.clone());
+    let request = |password: &str| {
+        post(
+            "/api/portal/account/reset",
+            None,
+            json!({"token":code,"password":password}),
+        )
+    };
+    let rejected = call(&app, request(PASSWORD)).await;
+    assert_eq!(rejected.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        rejected.body,
+        json!({
+            "error":"invalid_request", "error_description":"Password was used recently",
+        })
+    );
+    assert!(rejected.headers.get("set-cookie").is_none());
+    // Includes the mail proof/index, history, account epoch, sessions, revocation
+    // effects and all workflow rows: the failed writer must change none of them.
+    f.assert_http_mutation_snapshot(&snapshot);
+    assert!(f.core.me(&bearer).is_ok());
+
+    // The same proof remains usable after the client supplies a new password.
+    let fresh = "fresh-history-recovery-password-2026";
+    let completed = call(&app, request(fresh)).await;
+    assert_eq!(completed.status, StatusCode::OK);
+    assert_eq!(
+        completed.body,
+        json!({"completed":true,"login_required":true})
+    );
+    assert!(completed.headers.get("set-cookie").is_none());
+    assert!(proof(&f, &code).is_none());
+    assert_eq!(user(&f, "history-reset").epoch, before.epoch + 1);
+    assert!(f.core.me(&bearer).is_err());
+    let runs = f.core.store.list::<Value>("workflow_runs").unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].1["record"]["state"]["outcome"], "recovered");
+    let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(receipts.len(), 2);
+    assert!(
+        receipts
+            .iter()
+            .all(|(_, receipt)| receipt["consumed"] == true)
+    );
+    let snapshot = f.snapshot().unwrap();
+    let replay = call(&app, request(fresh)).await;
+    assert_eq!(replay.status, StatusCode::GONE);
+    assert_eq!(replay.body["error"], "account_code_used");
+    f.assert_http_mutation_snapshot(&snapshot);
+}
+
 /// Recovery binds the actual mail request to one account/epoch and commits the
 /// W03 path, password change, proof consumption and revocation together.
 #[cfg(feature = "platform")]

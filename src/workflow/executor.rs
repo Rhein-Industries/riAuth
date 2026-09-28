@@ -541,10 +541,16 @@ fn finish_step_with_mutation(
                 tx,
                 at,
                 mutation,
+                mutation_error: None,
             };
             checked
                 .complete(&run.record.id, &terminal.id, &mut adapter)
-                .map_err(invalid_error)?;
+                .map_err(|invalid| {
+                    adapter
+                        .mutation_error
+                        .take()
+                        .unwrap_or_else(|| invalid_error(invalid))
+                })?;
             *run = load_runtime(tx, &run.record.id)?;
         }
     }
@@ -675,6 +681,9 @@ struct TxCompletion<'a, 'b> {
     tx: &'a Tx<'b>,
     at: u64,
     mutation: Option<mutation::Pending>,
+    // The model's Invalid type has no HTTP semantics. Preserve the real
+    // mutation's error until it leaves the enclosing writer and rolls back.
+    mutation_error: Option<Error>,
 }
 
 fn storage_invalid(error: Error) -> Invalid {
@@ -822,7 +831,14 @@ impl CompletionStore for TxCompletion<'_, '_> {
                     .take()
                     .ok_or_else(|| fail(Code::MutationPending, "run", "Missing verified mutation"))?
                     .commit(self.core, self.tx, run, terminal, evidence)
-                    .map_err(storage_invalid)?,
+                    .map_err(|error| {
+                        self.mutation_error = Some(error);
+                        fail(
+                            Code::MutationPending,
+                            "mutation",
+                            "Credential mutation was rejected",
+                        )
+                    })?,
             );
         }
         current.record.state = RunState::Finished {
