@@ -275,6 +275,8 @@ def main() -> None:
             errors.append("src/logout.rs: logout protocol refers directly to storage, Core or assembly")
         if path == SRC / "mtls.rs" and refs & (STORAGE | {"core", "assembly"}):
             errors.append("src/mtls.rs: client-certificate protocol refers directly to storage, Core or assembly")
+        if path == SRC / "portal/self_service.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/portal/self_service.rs: browser self-service refers directly to storage, Core or assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -456,6 +458,12 @@ def main() -> None:
             ),
             "mtls_core_reference_files": int(
                 "core" in references(SRC / "mtls.rs")
+            ),
+            "portal_self_service_storage_reference_files": int(
+                bool(references(SRC / "portal/self_service.rs") & STORAGE)
+            ),
+            "portal_self_service_core_reference_files": int(
+                "core" in references(SRC / "portal/self_service.rs")
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

@@ -18,6 +18,7 @@ pub(crate) use mtls::clear_user_binding;
 mod oidc;
 pub(crate) mod passkey;
 mod password;
+mod portal_self_service;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;
