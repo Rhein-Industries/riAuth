@@ -41,12 +41,16 @@ async fn full_user_writes_reject_invalid_email_entries_atomically() {
     let app = riauth::api::router(f.core.clone());
     let path = "/scim/v2/Users";
     let valid = json!({"schemas":[scim::USER],"userName":"email-write-user",
-        "emails":[{"value":"first@example.test","type":"work","primary":true,
+        "emails":[{"Value":"first@example.test","Type":"work","Primary":true,
                    "extra":"preserve"}]});
     let invalid_emails = [
         json!([{"value":"first@example.test"},{"value":"FIRST@example.test"}]),
         json!([{"value":"first@example.test","type":7}]),
         json!([{"value":"first@example.test","primary":"true"}]),
+        json!([{"Value":"first@example.test","Type":7}]),
+        json!([{"Value":"first@example.test","Primary":"true"}]),
+        json!([{"Value":"first@example.test","type":"work","Type":"home"}]),
+        json!([{"value":"first@example.test","Value":"second@example.test"}]),
     ];
     let before_create = f.snapshot().unwrap();
     for emails in &invalid_emails {
@@ -59,7 +63,8 @@ async fn full_user_writes_reject_invalid_email_entries_atomically() {
 
     let (status, created) = request(&app, Method::POST, path, &token, None, Some(&valid)).await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(created["emails"][0]["extra"], "preserve");
+    assert_eq!(created["emails"], json!([{"value":"first@example.test","type":"work",
+        "primary":true,"extra":"preserve"}]));
     let resource_path = format!("{path}/{}", text(&created, "id"));
     let before_replace = f.snapshot().unwrap();
     for emails in &invalid_emails {
@@ -70,8 +75,16 @@ async fn full_user_writes_reject_invalid_email_entries_atomically() {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{emails}");
         f.assert_http_mutation_snapshot(&before_replace);
     }
+    let mut replacement = valid.clone();
+    replacement["emails"] = json!([{"VaLuE":"second@example.test","TyPe":"home",
+        "PrImArY":true,"other":"kept"}]);
+    let (status, replaced) = request(&app, Method::PUT, &resource_path, &token,
+        Some(version(&created)), Some(&replacement)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replaced["emails"], json!([{"value":"second@example.test","type":"home",
+        "primary":true,"other":"kept"}]));
     let current = f.core.scim_get(&token, "Users", created["id"].as_str().unwrap()).unwrap();
-    assert_eq!(current, created);
+    assert_eq!(current, replaced);
 }
 
 #[tokio::test]

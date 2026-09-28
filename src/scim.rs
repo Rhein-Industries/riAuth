@@ -1469,6 +1469,7 @@ impl Core {
                 // PATCH validates changed email entries in patch_resource. Full
                 // creates and replacements must enforce the same typed schema.
                 if !patch {
+                    normalize_email_entries(&mut data)?;
                     validate_email_entries(&data)?;
                 }
                 let email = read_email(&data)?;
@@ -1672,6 +1673,29 @@ impl Core {
             },
         )
     }
+}
+fn normalize_email_entries(data: &mut Value) -> Result<()> {
+    let Some(emails) = data.get_mut("emails") else { return Ok(()); };
+    let emails = emails.as_array_mut()
+        .ok_or_else(|| Error::bad("emails must be an array of at most eight values"))?;
+    for email in emails {
+        let fields = email.as_object_mut()
+            .ok_or_else(|| Error::bad("Email entry must be an object"))?;
+        let mut normalized = Map::new();
+        for (key, value) in std::mem::take(fields) {
+            let canonical = match key.to_ascii_lowercase().as_str() {
+                "value" => "value".to_owned(),
+                "type" => "type".to_owned(),
+                "primary" => "primary".to_owned(),
+                _ => key,
+            };
+            if normalized.insert(canonical, value).is_some() {
+                return Err(Error::bad("Duplicate case-insensitive email sub-attribute"));
+            }
+        }
+        *fields = normalized;
+    }
+    Ok(())
 }
 fn read_email(data: &Value) -> Result<Option<String>> {
     let Some(emails) = data.get("emails") else {
