@@ -47,6 +47,54 @@ fn clean_platform_activation_blocks_essentials_preflight_without_mutation() {
 }
 
 #[test]
+fn already_essentials_source_has_no_executable_transition_plan() {
+    let dir = TempDir::new().unwrap();
+    let config = Config {
+        data_dir: dir.path().join("instance"),
+        ..Default::default()
+    };
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: "fixture-password-only".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    core.store
+        .write(|tx| {
+            let mut provenance: Value = tx.get("meta", "edition_provenance")?.unwrap();
+            assert_eq!(provenance["platform_dependencies"], json!({}));
+            provenance["last_activated_edition"] = json!("essentials");
+            tx.put("meta", "edition_provenance", &provenance)
+        })
+        .unwrap();
+    let before = core.store.read(|tx| tx.snapshot()).unwrap();
+    drop(core);
+
+    let plan = riauth::edition::plan(&config, riauth::edition::Target::Essentials).unwrap();
+    assert_eq!(plan["ready"], false);
+    assert!(plan["transition_token"].is_null());
+    assert!(plan["blockers"].as_array().unwrap().iter().any(|issue| {
+        issue["resource"] == "meta/edition_provenance"
+            && issue["reason"]
+                .as_str()
+                .unwrap()
+                .contains("marked Platform source")
+    }));
+    let error = riauth::edition::activate(&config, riauth::edition::Target::Essentials, "stale")
+        .unwrap_err();
+    assert!(error.message.contains("meta/edition_provenance"), "{error}");
+    assert_eq!(
+        Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn maintenance_preflight_reports_all_edition_blockers_without_changing_the_store() {
     let dir = TempDir::new().unwrap();
     let config = Config {

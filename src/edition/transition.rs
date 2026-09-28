@@ -77,6 +77,18 @@ fn assess(
             record.last_activated_edition == Target::Platform
                 && record.platform_dependencies.is_empty()
         });
+        if mode == Inspection::ExplicitTransition
+            && let Some(record) = &provenance
+            && record.last_activated_edition != Target::Platform
+        {
+            issues.push(blocker(
+                "meta/edition_provenance",
+                format!(
+                    "Last activated edition is {}; explicit Platform to Essentials transition requires a marked Platform source",
+                    record.last_activated_edition.name()
+                ),
+            ));
+        }
         match schema {
             Some(version) if version == crate::upgrade::SCHEMA => {}
             Some(version) => issues.push(blocker(
