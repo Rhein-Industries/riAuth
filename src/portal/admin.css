@@ -176,3 +176,21 @@ details summary{cursor:pointer;font-size:12px;font-weight:600;color:#4f3bb0;marg
   .wizard-step .step-label{font-size:11px}
 }
 @media(forced-colors:active){.check,.step-number,.check-level{border:1px solid CanvasText}}
+/* Exact-content delegated grant review. Keep fingerprints and stable IDs readable. */
+.grant-review>h2{margin:24px 0 12px}
+.grant-detail{display:grid;gap:20px;margin-top:20px}
+.grant-detail[aria-busy=true]{opacity:.7}
+.grant-comparison{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.grant-list{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.grant-list li,.grant-identity{display:flex;flex-direction:column;gap:4px;min-width:0}
+.grant-list code,.grant-facts code{overflow-wrap:anywhere;font:12px/1.6 ui-monospace,monospace}
+.grant-facts{margin:16px 0;grid-template-columns:minmax(110px,.35fr) minmax(0,1fr)}
+.grant-facts dd{min-width:0}
+.grant-rows{display:grid;gap:12px}
+.grant-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;align-items:end;gap:12px;padding:12px;background:#fafbfd;border:1px solid var(--line);border-radius:8px}
+.grant-row .field{margin:0}
+.grant-review .admin-card>.field input{width:100%;padding:10px;border:1px solid #868ca1;border-radius:8px;font-size:13px;min-height:44px}
+.grant-review .admin-form{margin-top:20px}
+.grant-review .form-error{margin-bottom:16px}
+.grant-review button:disabled{cursor:not-allowed}
+@media(max-width:760px){.grant-comparison,.grant-row{grid-template-columns:1fr}.grant-facts{grid-template-columns:1fr}.grant-facts dt{margin-top:10px}}

@@ -6,7 +6,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", security: "Security" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", security: "Security", "grant-review": "Reviewed grants" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
@@ -168,6 +168,7 @@
   // them. Every session or account transition drops them, the views that rendered them and
   // any open secret or confirmation dialog, so a later account in this tab can't see them.
   function forget() {
+    RiAuthGrantReview.reset();
     draft = null; captureWizard = null;
     $("view").replaceChildren();
     $("secret-value").value = "";
@@ -260,6 +261,7 @@
       badge.setAttribute("aria-label", `${waiting} access ${waiting === 1 ? "request" : "requests"} waiting for review`);
     }
     document.querySelector('[data-section="operations"]').hidden = !cloudAvailable() || !data.directories.length;
+    document.querySelector('[data-section="grant-review"]').hidden = !data.me?.user?.admin;
   }
 
   // ---- Routing -----------------------------------------------------------------------------
@@ -278,6 +280,7 @@
   function render(options = {}) {
     if (!loaded) return;
     const { section, id } = route();
+    RiAuthGrantReview.reset();
     // A refresh re-renders the open step; keep what was typed since the last Continue.
     if (captureWizard) { try { captureWizard(); } catch { /* a partial step is re-read on Continue */ } captureWizard = null; }
     // A created application's one-time secret is dropped once the wizard route is left; an
@@ -288,7 +291,10 @@
       item.classList.toggle("active", active);
       if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
     }
-    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], security: [security, null, null] }[section];
+    const grantReview = (id) => RiAuthGrantReview.view({ id, api, h, me: data.me, users: data.users,
+      identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
+      sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
+    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");

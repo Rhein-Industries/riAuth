@@ -31,7 +31,8 @@ account's grants immediately.
 | Cancel | `POST /api/delegated-grant-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
 Browser JSON uses the same paths with `/api/admin` in place of `/api`, behind
-the existing portal read/write guards. There is no new browser review page.
+the existing portal read/write guards. The administration page's **Reviewed
+grants** section (`/admin#/grant-review`) stages and reviews these changes.
 
 Set and stage accept the existing JSON grant array, for example:
 
@@ -46,6 +47,52 @@ complete revocation. The stage response contains `proposal`, `digest`, `status`,
 session with the returned ID and digest. Approve, execute and cancel accept only
 `{"digest":"..."}`; additional fields are rejected. There is no edit operation:
 cancel and stage a new proposal when intent changes.
+
+### Browser review
+
+A full administrator can load one exact recipient, inspect the current grants,
+and edit the complete proposed replacement (at most 32 rows). Removing all rows
+proposes complete revocation. Acknowledging the replacement and selecting **Stage
+exact change** opens its immutable review page; it does not assign or revoke
+grants. The server still decides which changes need review. This UI does not add
+an immediate-write path or change the grant authorization rules.
+
+The review page shows exact before/after grants and bound target identities,
+author, every reviewer, executor, timestamps, expiry, canonical digest, management
+revision, resource fingerprint and policy fingerprint. Its review link carries
+only the proposal ID. A different authorized administrator opens the link or
+enters that ID, checks the content and selects **Approve exact change**. A third
+administrator checks the same page and selects **Execute once**. Participant
+separation disables inappropriate controls; the existing service enforces it.
+
+The page distinguishes awaiting review, approved, executed, cancelled, expired,
+stale and unknown-outcome states. The management revision is refreshed on load
+and checked again before action. Expiry indicators use the browser clock; the
+server enforces the actual deadline. A policy or actor change not represented by
+that revision is checked by the existing service at action time, and a rejection
+closes the view's approval/execution controls. Refreshing an open proposal does
+not certify its dependencies. Stale work can still be cancelled; changed intent
+requires a new proposal and review.
+
+Every action checks the current browser identity before posting. Session loss
+clears the view, and an account change requires a fresh view. Lost staging
+responses keep the original request key, revision and exact body for explicit
+retry. Lost decision responses disable further decisions until status is
+refreshed. Server error bodies are not echoed into the page. Proposal fields use
+text nodes, and malformed responses cannot enable actions. No proposal or
+credential is saved in browser storage.
+
+This browser continuation deliberately leaves `src/management/grants.rs` and the
+M04 authorization/provenance files unchanged. Source `3e45a0c` remains held for
+integration pending M04's legacy agent-exposure provenance fence; this UI does
+not resolve or bypass that hold.
+
+At accepted snapshot `0c0e1cf`, the browser continuation shares only
+`src/portal/admin.js` and `src/portal/admin.css` with accepted changes since the
+common base. Those changes add policy simulation and connector scheduling in
+different sections; integration must preserve both sets of additions. No M04
+provenance-fence file is edited by this continuation. No merge was attempted, so
+combined-tree behavior remains an integration check.
 
 ## Binding and transaction contract
 
@@ -113,7 +160,7 @@ executor workflow:
 - Desired-state manifests/plans as a general multi-resource review workflow.
 
 Review roles currently use full administrators; configurable quorums, delegated
-reviewer/executor roles, notifications, a browser review page, dedicated standalone
+reviewer/executor roles, notifications, a searchable review inbox, dedicated standalone
 `riauthctl` commands and finer-grained invalidation are follow-up work. Existing
 PAM approvals and immutable connector/state plans keep their separate contracts.
 
@@ -150,3 +197,28 @@ After extending the policy fingerprint to capability/signer/reconciliation
 configuration, the reviewed-grant regression passed again in each edition.
 Only these focused checks were run. PostgreSQL execution was not exercised;
 the service uses the existing shared store writer contract for both backends.
+
+Browser continuation validation (2026-09-28):
+
+```text
+cargo build --locked --offline --example portal_fixture
+cargo test --locked --offline --test reviewed_grants_browser
+cargo test --locked --offline --no-default-features --features essentials --test reviewed_grants_browser
+node node_modules/@playwright/test/cli.js test grant-review.spec.js --project=chromium --workers=1 --reporter=line --output=/tmp/riauth-m05-ui-browser-results
+```
+
+All Cargo commands used the shared accepted worktree's `target` directory with
+two build jobs, incremental compilation disabled and dev/test debug info disabled.
+The browser command ran from `tools/browser`, reusing the existing browser
+dependencies and writing artifacts under `/tmp`. No broad suite was run.
+
+The fixture build passed. The focused browser API regression passed in Platform
+and Essentials (one test each): browser/headless routing, session/origin guards,
+exact-content binding, participant separation, atomic refusal, one-time execution
+and its audit. Both Chromium scenarios passed: grant and complete revoke, lost
+staging/execute responses, exact retry keys, digest-only decisions, replay,
+revision staleness, cancellation, expiry, safe errors, account switching and
+session loss. The review page passed axe WCAG 2 A/AA and 2.1 AA checks and a
+320-pixel reflow assertion; desktop and mobile screenshots were inspected.
+JavaScript syntax checks, formatting of the new Rust test and `git diff --check`
+also passed. Firefox, WebKit and PostgreSQL were not exercised in this continuation.
