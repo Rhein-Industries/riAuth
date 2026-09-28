@@ -1,10 +1,16 @@
 use super::*;
+#[cfg(feature = "platform")]
 use axum::Extension;
+#[cfg(feature = "platform")]
 use axum_server::accept::Accept;
+#[cfg(feature = "platform")]
 use futures_util::future::BoxFuture;
 use std::io;
+#[cfg(feature = "platform")]
 use tokio::io::{AsyncRead, AsyncWrite};
+#[cfg(feature = "platform")]
 use tokio_rustls::server::TlsStream;
+#[cfg(feature = "platform")]
 use tower::Layer;
 
 struct AbortTasks(Vec<tokio::task::JoinHandle<()>>);
@@ -201,6 +207,7 @@ pub async fn tls_configuration(
             )))
         }
         _ => {
+            #[cfg(feature = "platform")]
             if let Some(profile) = &config.client_certificates {
                 let profile = profile.clone();
                 tokio::task::spawn_blocking(move || profile.material().map(|_| ()))
@@ -232,6 +239,7 @@ async fn tls_server(
             rustls::crypto::aws_lc_rs::default_provider(),
         ))
         .with_safe_default_protocol_versions()?;
+        #[cfg(feature = "platform")]
         let config = if let Some(profile) = client {
             let material = profile
                 .material()
@@ -251,6 +259,15 @@ async fn tls_server(
                 .with_no_client_auth()
                 .with_single_cert(certificates, private_key)?
         };
+        #[cfg(not(feature = "platform"))]
+        let config = {
+            if client.is_some() {
+                anyhow::bail!("Client-certificate login requires the Platform build");
+            }
+            builder
+                .with_no_client_auth()
+                .with_single_cert(certificates, private_key)?
+        };
         Ok(config)
     })
     .await?
@@ -258,17 +275,20 @@ async fn tls_server(
 
 /// TLS service that records the peer certificate after the handshake.
 /// Deployments without `client_certificates` still use `with_no_client_auth`.
+#[cfg(feature = "platform")]
 #[derive(Clone)]
 pub struct ClientCertAcceptor {
     inner: axum_server::tls_rustls::RustlsAcceptor,
 }
 
+#[cfg(feature = "platform")]
 impl ClientCertAcceptor {
     pub fn new(inner: axum_server::tls_rustls::RustlsAcceptor) -> Self {
         Self { inner }
     }
 }
 
+#[cfg(feature = "platform")]
 impl<I, S> Accept<I, S> for ClientCertAcceptor
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -294,11 +314,23 @@ where
     }
 }
 
+#[cfg(feature = "platform")]
 pub fn into_rustls_server(
     listener: std::net::TcpListener,
     tls: axum_server::tls_rustls::RustlsConfig,
 ) -> io::Result<axum_server::Server<std::net::SocketAddr, ClientCertAcceptor>> {
     Ok(axum_server::from_tcp_rustls(listener, tls)?.map(ClientCertAcceptor::new))
+}
+
+/// Essentials uses axum-server's ordinary TLS acceptor; no certificate capture
+/// or client-certificate verifier is linked into this server assembly.
+#[cfg(not(feature = "platform"))]
+pub fn into_rustls_server(
+    listener: std::net::TcpListener,
+    tls: axum_server::tls_rustls::RustlsConfig,
+) -> io::Result<axum_server::Server<std::net::SocketAddr, axum_server::tls_rustls::RustlsAcceptor>>
+{
+    axum_server::from_tcp_rustls(listener, tls)
 }
 
 async fn shutdown() {

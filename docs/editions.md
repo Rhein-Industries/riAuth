@@ -32,6 +32,16 @@ federation using ordinary OIDC/OAuth, LDAP synchronization/password
 authentication, outbound SCIM, PostgreSQL, and advanced OIDC profiles remain
 available in both.
 
+The custom TLS acceptor that captures client certificates now compiles only in
+Platform. Essentials uses the ordinary native TLS acceptor with no client
+certificate verifier; its direct `tokio-rustls` dependency is optional under
+`platform`. The direct `hmac` and `time` dependencies used by RADIUS, SAML and
+offboarding are also optional. These crates can still appear transitively
+through shared dependencies. Windows-device revocation and SSF delivery creation
+are Platform-only runtime paths. Essentials retains their stored record shapes
+and rejects unexpected Windows or SSF rows if a shared security transition or
+maintenance pass encounters them after startup preflight.
+
 Cloud Workspace/Entra synchronization, inbound SCIM, Windows login, device-trust
 verification, temporary-access approval, scheduled offboarding and Vault Transit
 signing engines also compile only in Platform. Shared configuration, temporary

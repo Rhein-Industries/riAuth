@@ -15,7 +15,7 @@ keywords = ["identity", "oidc", "saml", "sso"]
 # Preserve the existing source-build behavior. Release artifacts select an edition explicitly.
 default = ["platform"]
 essentials = []
-platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "futures-util/sink"]
+platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "dep:tokio-rustls", "dep:hmac", "dep:time", "futures-util/sink"]
 terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []
@@ -54,14 +54,14 @@ webauthn-rs = { version = "=0.5.5", default-features = false, features = ["dange
 webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["usb", "ui-cli"] }
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["codec"], optional = true }
-tokio-rustls = "0.26"
+tokio-rustls = { version = "0.26", optional = true }
 ldap3_proto = { version = "0.8.1", features = ["serde"], optional = true }
 md-5 = { version = "0.11", optional = true }
-hmac = "0.13"
+hmac = { version = "0.13", optional = true }
 risaml = { version = "0.7", default-features = false, features = ["crypto-aws-lc"], optional = true }
 roxmltree = { version = "0.21", optional = true }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"], optional = true }
-time = { version = "0.3", features = ["formatting", "parsing"] }
+time = { version = "0.3", features = ["formatting", "parsing"], optional = true }
 x509-parser = { version = "0.18", optional = true }
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "aws-lc-rs"] }
 postgres = "0.19.14"

@@ -4,11 +4,11 @@
 //! the caller's transaction; signing, disclosure checks and delivery stay in the
 //! SSF adapter. All event producers share the transaction's deduplication set.
 use super::persistence::IdentityTx;
-use crate::{
-    crypto::{self, now},
-    error::Result,
-    model::jwk::PublicJwks,
-};
+#[cfg(feature = "platform")]
+use crate::crypto::{self, now};
+#[cfg(not(feature = "platform"))]
+use crate::error::Error;
+use crate::{error::Result, model::jwk::PublicJwks};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -67,6 +67,7 @@ pub struct Delivery {
     pub jti: String,
 }
 
+#[cfg(feature = "platform")]
 pub(crate) fn enqueue(
     tx: &impl IdentityTx,
     user_id: &str,
@@ -109,4 +110,30 @@ pub(crate) fn enqueue(
         }
     }
     Ok(())
+}
+
+/// Essentials has no SSF transmitter. Startup preflight rejects these buckets;
+/// check again at the shared transition boundary so a later incompatible write
+/// cannot silently suppress a security notification.
+#[cfg(not(feature = "platform"))]
+pub(crate) fn ensure_absent(tx: &impl IdentityTx) -> Result<()> {
+    for bucket in ["ssf_streams", "ssf_deliveries", "ssf_jti"] {
+        if !tx.scan::<serde_json::Value>(bucket, None, 1)?.is_empty() {
+            return Err(Error::bad("Stored SSF state requires the Platform build"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "platform"))]
+pub(crate) fn enqueue(
+    tx: &impl IdentityTx,
+    _user_id: &str,
+    event: &str,
+    _credential_type: &str,
+) -> Result<()> {
+    if !SUPPORTED.contains(&event) {
+        return Ok(());
+    }
+    ensure_absent(tx)
 }

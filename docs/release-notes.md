@@ -53,6 +53,11 @@
 - Essentials also compiles out the Workspace/Entra, inbound SCIM, Windows login,
   device-trust, temporary-access, offboarding and external-signing engines. A
   retained remote signing key now blocks downgrade before any listener starts.
+- The native TLS client-certificate acceptor, Windows credential effects and SSF
+  delivery creation now compile only in Platform. Essentials keeps ordinary
+  native TLS and rejects unexpected Windows or SSF state during shared security
+  transitions and maintenance. Direct TLS, RADIUS and SAML-only dependencies
+  are selected by the additive Platform feature.
 
 # Unreleased management changes
 

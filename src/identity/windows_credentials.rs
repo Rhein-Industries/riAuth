@@ -32,6 +32,7 @@ pub(crate) struct SignInTicket {
 /// Revoke every device and outstanding sign-in ticket for a user.
 /// The shared user transition invokes this in the disable transaction. Its caller's
 /// audit event records the device changes with the original mutation actor.
+#[cfg(feature = "platform")]
 pub(crate) fn revoke_user(tx: &impl IdentityTx, user_id: &str) -> Result<()> {
     let device_ids = tx
         .list::<Device>(DEVICES)?
@@ -58,6 +59,7 @@ pub(crate) fn revoke_user(tx: &impl IdentityTx, user_id: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "platform")]
 pub(crate) fn cleanup(tx: &impl IdentityTx, at: u64) -> Result<()> {
     for (id, ticket) in tx.maintenance_page::<SignInTicket>(TICKETS)? {
         if ticket.expires_at <= at {
@@ -65,4 +67,29 @@ pub(crate) fn cleanup(tx: &impl IdentityTx, at: u64) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The Platform device adapter cannot be run by Essentials. A row arriving
+/// after startup preflight must stop a shared account transition or maintenance
+/// pass rather than be ignored or deleted by the smaller edition.
+#[cfg(not(feature = "platform"))]
+fn require_absent(tx: &impl IdentityTx) -> Result<()> {
+    if !tx.scan::<Device>(DEVICES, None, 1)?.is_empty()
+        || !tx.scan::<SignInTicket>(TICKETS, None, 1)?.is_empty()
+    {
+        return Err(Error::bad(
+            "Stored Windows login state requires the Platform build",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "platform"))]
+pub(crate) fn revoke_user(tx: &impl IdentityTx, _user_id: &str) -> Result<()> {
+    require_absent(tx)
+}
+
+#[cfg(not(feature = "platform"))]
+pub(crate) fn cleanup(tx: &impl IdentityTx, _at: u64) -> Result<()> {
+    require_absent(tx)
 }
