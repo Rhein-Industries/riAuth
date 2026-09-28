@@ -1887,7 +1887,27 @@ macro_rules! session_handler {
 session_handler!(me, me);
 session_handler!(logout, logout);
 session_handler!(sessions, sessions);
-session_handler!(users, list_users);
+#[derive(Default, Deserialize)]
+struct UserListQuery {
+    limit: Option<usize>,
+    cursor: Option<String>,
+}
+async fn users(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<UserListQuery>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        if query.limit.is_some() || query.cursor.is_some() {
+            core.list_users_page(&token, query.limit.unwrap_or(100), query.cursor)
+                .map(Json)
+        } else {
+            core.list_users(&token).map(Json)
+        }
+    })
+    .await
+}
 async fn human_grants(
     State(app): State<App>,
     headers: HeaderMap,

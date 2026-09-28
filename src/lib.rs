@@ -131,6 +131,7 @@ pub mod ssf;
 pub mod state;
 pub mod store;
 pub mod telemetry;
+mod user_listing;
 pub mod upgrade;
 mod validation;
 #[cfg(feature = "platform")]

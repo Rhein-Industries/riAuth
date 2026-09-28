@@ -251,7 +251,8 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | Method | Route | Contract |
 | --- | --- | --- |
 | GET | `/api/capabilities` | Public `riauth.capabilities/v2` instance snapshot: `features` contains only locally usable profiles; `feature_states` separates compiled, enabled, configured and usable with redacted reasons. Permissions and schemas remain build catalogs. External peer health and caller authorization are separate. |
-| GET, POST | `/api/users` | Visible users / create user |
+| GET, POST | `/api/users` | Existing visible-user array / create user |
+| GET | `/api/users?limit=100&cursor=...` | Opt-in JSON user pages; `items`, `next_cursor`, `limit`, `revision` |
 | PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset |
 | GET, POST | `/api/groups` | Visible groups / create group |
 | PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member |
@@ -329,6 +330,8 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/operations/logout` | Logout delivery state |
 | POST | `/api/operations/backup/stream` | Base64url `encryption_key`, optional lower `max_archive_bytes`; streams an encrypted complete snapshot as `riauth.backup/v3` |
 | POST | `/api/operations/backup` | Legacy: base64url `encryption_key`; encrypted complete snapshot as `riauth.backup/v2` JSON of at most 64 MiB |
+
+`GET /api/users` without `limit` or `cursor` keeps its array response. A request with either parameter uses the paged response. Set `limit` from 1 to 100 (default 100 when continuing) and repeat the same limit with each `next_cursor` until it is null. Pages follow stored user-key order and apply `user.read` to each row. A page may have no visible items and still return a cursor: each request examines at most 10,000 records in batches of at most 128. Cursors are encrypted, valid for one hour, and bound to the credential, page size, configuration revision, User-record generation and current grants or agent permissions. A changed collection or authorization state returns HTTP 409; restart from the first page. `GET /api/inventory/users` and CSV exports retain their separate cursor contracts.
 
 Both backup routes need `operations.backup` on `operations/backup`. The streaming route reports authorization, key and quota failures, and 503 while another export runs, as JSON errors before the archive starts. A 200 response is `application/octet-stream` with `X-riAuth-Backup-Format: riauth.backup/v3` and the effective `X-riAuth-Backup-Max-Bytes`. A later failure aborts the body rather than ending it, so accept an archive only after it authenticates through its trailer, as `riauth backup` does. See [streamed backup export](operations.md#streamed-backup-export).
 

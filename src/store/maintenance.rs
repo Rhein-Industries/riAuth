@@ -125,6 +125,16 @@ impl Tx<'_> {
                     .ok_or_else(|| Error::internal("SCIM user generation exhausted"))?;
                 self.put("provisioning_user_generation", "all", &generation)?;
             }
+            // JSON user-list cursors cover every UserView field, including
+            // factors and attributes omitted from the provisioning projection.
+            if before.as_ref() != after {
+                let generation = self
+                    .get::<u64>("user_listing_generation", "all")?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("User listing generation exhausted"))?;
+                self.put("user_listing_generation", "all", &generation)?;
+            }
         }
         if bucket == "groups" {
             let before = self.get::<crate::model::Group>(bucket, id)?;
