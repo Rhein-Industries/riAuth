@@ -611,3 +611,36 @@ Twenty-nine protocol files still name storage directly, including the larger
 OIDC, SAML, SSF, source, session and device-trust adapters. Management and API
 methods still couple to Core and storage; separate crate contracts and
 reviewed distribution assembly parity remain A03 work.
+
+## Wave 14: device-trust transaction and Core boundary
+
+[Device trust](../src/device_trust.rs) now receives pinned verifier
+configuration and the session, verification and cleanup records it needs
+through `DeviceTrustContext` and `DeviceTrustTx`. The concrete
+[server assembly](../src/assembly/device_trust.rs) maps those reads and deletes
+to the same collections in the caller's transaction. It also owns the existing
+`Core::device_challenge` and `Core::device_verify` entry points, with their
+challenge lookup, used marker, device binding, verification write and audit
+record still committed together. The public record layouts and Core method
+signatures remain unchanged.
+
+The protocol verifier and assembled Core methods still validate the pinned
+key and JWT claims, session owner and epoch, challenge lifetime, device
+identity and freshness. Cleanup keeps the original `used` and expiry
+comparisons and retains verification records while their sessions are active.
+The accepted Platform gate on audit map assembly remains in
+[assembly.rs](../src/assembly.rs); this slice adds no edition gate.
+
+The source scan covers 131 Rust files before and 132 after this cut. It now
+guards device trust against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 14 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 29 | 28 |
+| `protocol -> Core` | 32 | 31 |
+| `server_assembly -> protocol` | 6 | 7 |
+| `server_assembly -> storage` | 6 | 7 |
+
+Twenty-eight protocol files still name storage directly. Session, source,
+OIDC, SAML and SSF adapters remain large cuts; management and API still
+depend on Core/storage, and separate crate contracts remain A03 work.

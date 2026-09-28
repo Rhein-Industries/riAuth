@@ -1,6 +1,7 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
 mod claims;
+mod device_trust;
 #[cfg(feature = "platform")]
 mod event_map;
 mod issuer;
