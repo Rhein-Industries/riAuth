@@ -161,45 +161,36 @@ impl Core {
                 return Ok((rows, revision));
             }
             let self_user = authorize(self, tx, cid, auth)?;
-            // ldap_profile checked these names in this snapshot. Read only the
-            // configured visibility groups, not the entire Group bucket.
-            let mut selected = BTreeSet::new();
+            // Visit only members of the configured visibility groups. Retain
+            // at most the provider's selected-user limit, ordered by User key;
+            // a group may contain arbitrarily many stale member IDs.
+            let mut users = BTreeMap::new();
             for name in &settings.search_groups {
                 let group = tx
                     .get::<Group>("groups", name)?
                     .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
-                selected.extend(group.members);
-            }
-            let mut users = Vec::new();
-            let mut after = None;
-            loop {
-                let page =
-                    tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
-                if page.is_empty() {
-                    break;
-                }
-                let full = page.len() == crate::store::maintenance::PAGE;
-                after = page.last().map(|(key, _)| key.clone());
-                for (_, user) in page {
-                    if user.enabled
-                        && selected.contains(&user.id)
-                        && self_user.as_ref().is_none_or(|me| me.id == user.id)
-                        && users.len() <= 2000
-                    {
-                        users.push(user);
+                for id in &group.members {
+                    if self_user.as_ref().is_some_and(|me| me.id != *id) || users.contains_key(id) {
+                        continue;
+                    }
+                    let Some(user) = tx.get::<User>("users", id)? else {
+                        continue;
+                    };
+                    if user.id != *id {
+                        return Err(Error::conflict("LDAP group member User binding mismatch"));
+                    }
+                    if user.enabled {
+                        users.insert(id.clone(), user);
+                        if users.len() > 2000 {
+                            return Err(Error::bad(
+                                "LDAP profile supports at most 2000 selected users",
+                            ));
+                        }
                     }
                 }
-                if !full {
-                    break;
-                }
-            }
-            if users.len() > 2000 {
-                return Err(Error::bad(
-                    "LDAP profile supports at most 2000 selected users",
-                ));
             }
             let visible: BTreeMap<_, _> = users
-                .iter()
+                .values()
                 .map(|u| (u.id.clone(), u.username.clone()))
                 .collect();
             let mut rows = Vec::new();
@@ -260,7 +251,7 @@ impl Core {
                     ],
                 ));
             }
-            for user in users {
+            for user in users.into_values() {
                 let dn = settings.user_dn(&user.username);
                 if !unique.insert(dn.to_ascii_lowercase()) {
                     return Err(Error::conflict(
@@ -636,10 +627,10 @@ mod tests {
         assert_eq!(after.0, before.0, "search must not list either bucket");
         assert_eq!(
             after.1 - before.1,
-            6,
-            "two pages per bucket and two membership reads"
+            4,
+            "two Group pages and two membership reads"
         );
-        assert_eq!(after.2 - before.2, 270);
+        assert_eq!(after.2 - before.2, 136);
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert_eq!(dns.len(), 7);
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -718,6 +709,135 @@ mod tests {
         assert!(
             core.ldap_search_entries("ldap", Some(&agent), &query, false)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn ldap_search_retains_only_existing_selected_users_among_stale_members() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "groups"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let agent = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "sparse-ldap-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            agent["credential"]["token"].as_str().unwrap().into(),
+        ));
+        core.store
+            .write(|tx| {
+                let admin_id: String = tx.get("usernames", "admin")?.unwrap();
+                let template: User = tx.get("users", &admin_id)?.unwrap();
+                for index in 0..130 {
+                    let mut other = template.clone();
+                    other.id = format!("other-{index:03}");
+                    other.username = other.id.clone();
+                    other.admin = false;
+                    tx.put("users", &other.id, &other)?;
+                }
+                let mut selected = template;
+                selected.id = "z-selected".into();
+                selected.username = "selected".into();
+                selected.admin = false;
+                tx.put("users", &selected.id, &selected)?;
+                let mut group: Group = tx.get("groups", "directory")?.unwrap();
+                group.members = (0..2100)
+                    .map(|index| format!("stale-{index:04}"))
+                    .chain([admin_id, selected.id])
+                    .collect();
+                tx.put("groups", "directory", &group)
+            })
+            .unwrap();
+
+        let query = LdapSearchRequest {
+            base: "dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::Subtree,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("objectClass".into()),
+            attrs: vec![],
+        };
+        let scans = &core.store.telemetry().reads;
+        let before = (
+            scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).sum(),
+        );
+        let (rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let after = (
+            scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).sum(),
+        );
+        assert_eq!(after.0, before.0, "no full User bucket read");
+        assert_eq!(after.1 - before.1, 3, "one Group and two membership rows");
+        let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
+        assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(dns.len(), 6);
+        let group = rows
+            .iter()
+            .find(|row| row.dn == "cn=directory,ou=groups,dc=riauth,dc=test")
+            .unwrap();
+        assert_eq!(
+            group
+                .attributes
+                .iter()
+                .find(|attribute| attribute.atype == "member")
+                .unwrap()
+                .vals
+                .len(),
+            2
         );
     }
 }
