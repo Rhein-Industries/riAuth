@@ -1,16 +1,15 @@
 //! RADIUS PAP/EAP-TLS with mandatory Message-Authenticator, duplicate handling and RadSec.
 pub mod eap;
 use crate::{
-    core::{Core, audit, validate_name},
-    crypto::{digest, now},
+    core::{Core, validate_name},
+    crypto::digest,
     error::{Error, Result},
-    model::{Client, Identity, Session, User},
+    model::{Client, User},
     store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
 use md5::{Digest, Md5};
-use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -73,7 +72,7 @@ impl Settings {
         }
         Ok(())
     }
-    fn attributes(&self, user: &User) -> Result<Vec<(u8, Vec<u8>)>> {
+    pub(crate) fn attributes(&self, user: &User) -> Result<Vec<(u8, Vec<u8>)>> {
         let mut attrs = Vec::new();
         for attr in &self.reply {
             let (vendor, code, value) = match attr {
@@ -170,8 +169,8 @@ pub(crate) fn secret(nas: &Nas, tls: bool) -> Result<zeroize::Zeroizing<String>>
     }
     Ok(zeroize::Zeroizing::new(value.into()))
 }
-type WireAttributes = Vec<(u8, Vec<u8>)>;
-struct Packet {
+pub(crate) type WireAttributes = Vec<(u8, Vec<u8>)>;
+pub(crate) struct Packet {
     identifier: u8,
     authenticator: [u8; 16],
     attrs: Vec<(u8, Vec<u8>)>,
@@ -223,7 +222,7 @@ fn decode(bytes: &[u8], secret: &[u8]) -> Result<Packet> {
     })
 }
 impl Packet {
-    fn attr(&self, code: u8) -> Option<&[u8]> {
+    pub(crate) fn attr(&self, code: u8) -> Option<&[u8]> {
         self.attrs
             .iter()
             .find(|(t, _)| *t == code)
@@ -256,7 +255,12 @@ impl Packet {
                 .to_owned(),
         ))
     }
-    fn response(&self, code: u8, secret: &[u8], attributes: Vec<(u8, Vec<u8>)>) -> Result<Vec<u8>> {
+    pub(crate) fn response(
+        &self,
+        code: u8,
+        secret: &[u8],
+        attributes: Vec<(u8, Vec<u8>)>,
+    ) -> Result<Vec<u8>> {
         let mut bytes = vec![code, self.identifier, 0, 0];
         bytes.extend(self.authenticator);
         bytes.extend([80, 18]);
@@ -286,34 +290,14 @@ impl Packet {
         Ok(bytes)
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Cached {
-    expires_at: u64,
-    client_id: String,
-    client_fingerprint: String,
-    attributes_fingerprint: Option<String>,
-    response: Option<Vec<u8>>,
-    identity: Option<Identity>,
+pub(crate) enum RadiusClaim {
+    Cached(Option<Vec<u8>>),
+    New,
 }
-fn fingerprint(client: &Client) -> Result<String> {
+pub(crate) fn fingerprint(client: &Client) -> Result<String> {
     Ok(digest(
         &serde_json::to_string(client).map_err(Error::internal)?,
     ))
-}
-fn close(tx: &Tx<'_>, identity: Option<&Identity>) -> Result<()> {
-    if let Some(identity) = identity
-        && let Some(mut session) = tx.get::<Session>("sessions", &identity.session_id)?
-    {
-        session.revoked = true;
-        tx.put("sessions", &session.id, &session)?;
-        crate::ssf::enqueue(
-            tx,
-            &session.identity.user_id,
-            crate::ssf::SESSION_REVOKED,
-            "",
-        )?;
-    }
-    Ok(())
 }
 impl Core {
     fn radius_packet(
@@ -332,64 +316,8 @@ impl Core {
             digest(&secret),
             URL_SAFE_NO_PAD.encode(bytes)
         ));
-        enum Claim {
-            Cached(Option<Vec<u8>>),
-            New,
-        }
-        let claim = self.store.write(|tx| {
-            let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
-            let fp = fingerprint(&client)?;
-            if let Some(mut cached) = tx.get::<Cached>("radius_requests", &key)? {
-                if cached.expires_at > now() {
-                    if cached.client_id != nas.client_id
-                        || cached.client_fingerprint != fp
-                        || match cached.identity.as_ref() {
-                            None => false,
-                            Some(identity) => match self.radius_identity(tx, &client, identity) {
-                                Ok(user) => {
-                                    let mut attrs = settings.attributes(&user)?;
-                                    if packet.attr(79).is_some() {
-                                        attrs.push((1, user.username.as_bytes().to_vec()));
-                                    }
-                                    cached.attributes_fingerprint.as_deref()
-                                        != Some(&digest(
-                                            &serde_json::to_string(&attrs)
-                                                .map_err(Error::internal)?,
-                                        ))
-                                }
-                                Err(e) if e.status.is_server_error() => return Err(e),
-                                Err(_) => true,
-                            },
-                        }
-                    {
-                        close(tx, cached.identity.as_ref())?;
-                        cached.identity = None;
-                        cached.response =
-                            Some(packet.response(3, secret.as_bytes(), eap::failure(&packet))?);
-                        tx.put("radius_requests", &key, &cached)?;
-                    }
-                    return Ok(Claim::Cached(cached.response));
-                }
-                close(tx, cached.identity.as_ref())?;
-            }
-            if tx.list::<Cached>("radius_requests")?.len() >= 10000 {
-                return Err(Error::conflict("RADIUS duplicate cache is full"));
-            }
-            tx.put(
-                "radius_requests",
-                &key,
-                &Cached {
-                    expires_at: now() + 90,
-                    client_id: nas.client_id.clone(),
-                    client_fingerprint: fp,
-                    attributes_fingerprint: None,
-                    response: None,
-                    identity: None,
-                },
-            )?;
-            Ok(Claim::New)
-        })?;
-        if let Claim::Cached(reply) = claim {
+        let claim = self.radius_claim(&nas.client_id, &key, &packet, secret.as_bytes())?;
+        if let RadiusClaim::Cached(reply) = claim {
             return Ok(reply);
         }
         if packet.attr(79).is_some() {
@@ -452,56 +380,15 @@ impl Core {
             return Ok(None);
         }
         let token = authenticated.ok().map(zeroize::Zeroizing::new);
-        let result = self.store.write(|tx| {
-            let mut cached = tx
-                .get::<Cached>("radius_requests", &key)?
-                .filter(|c| c.expires_at > now() && c.response.is_none())
-                .ok_or_else(|| Error::conflict("RADIUS request expired"))?;
-            let allowed = (|| -> Result<(Identity, WireAttributes)> {
-                let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
-                if fingerprint(&client)? != cached.client_fingerprint {
-                    return Err(Error::forbidden());
-                }
-                let (_, session) = self.session(
-                    tx,
-                    token
-                        .as_deref()
-                        .map(|s| s.as_str())
-                        .ok_or_else(Error::unauthorized)?,
-                )?;
-                let user = self.radius_identity(tx, &client, &session.identity)?;
-                Ok((session.identity, settings.attributes(&user)?))
-            })();
-            let (code, attrs) = match allowed {
-                Ok((identity, attrs)) => {
-                    cached.identity = Some(identity);
-                    cached.attributes_fingerprint = Some(digest(
-                        &serde_json::to_string(&attrs).map_err(Error::internal)?,
-                    ));
-                    (2, attrs)
-                }
-                Err(e) if e.status.is_server_error() => return Err(e),
-                Err(_) => (3, vec![]),
-            };
-            let response = packet.response(code, secret.as_bytes(), attrs)?;
-            cached.response = Some(response.clone());
-            tx.put("radius_requests", &key, &cached)?;
-            audit(
-                tx,
-                cached
-                    .identity
-                    .as_ref()
-                    .map(|i| i.user_id.as_str())
-                    .unwrap_or("anonymous"),
-                if code == 2 {
-                    "radius.accept"
-                } else {
-                    "radius.reject"
-                },
-                &format!("{listener_id}/{nas_id}"),
-            )?;
-            Ok((Some(response), code == 2))
-        });
+        let result = self.radius_pap_commit(
+            listener_id,
+            nas_id,
+            &nas.client_id,
+            &key,
+            &packet,
+            secret.as_bytes(),
+            token.as_deref().map(|s| s.as_str()),
+        );
         if !result.as_ref().is_ok_and(|(_, ok)| *ok)
             && let Some(token) = token
         {
@@ -525,73 +412,24 @@ impl Core {
             eap::Outcome::Accept(identity, _) => Some(identity.clone()),
             _ => None,
         };
-        let result = self.store.write(|tx| {
-            let mut cached = tx
-                .get::<Cached>("radius_requests", key)?
-                .filter(|c| c.expires_at > now() && c.response.is_none())
-                .ok_or_else(|| Error::conflict("RADIUS request expired"))?;
-            let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
-            let unchanged = settings.eap_tls && fingerprint(&client)? == cached.client_fingerprint;
-            let (code, attrs) = if !unchanged {
-                (3, eap::failure(packet))
-            } else {
-                match outcome {
-                    eap::Outcome::Challenge(attrs) => (11, attrs),
-                    eap::Outcome::Reject(attrs) => (3, attrs),
-                    eap::Outcome::Accept(identity, protocol_attrs) => {
-                        match self.radius_identity(tx, &client, &identity) {
-                            Ok(user) => {
-                                let mut attrs = settings.attributes(&user)?;
-                                attrs.push((1, user.username.as_bytes().to_vec()));
-                                cached.attributes_fingerprint = Some(digest(
-                                    &serde_json::to_string(&attrs).map_err(Error::internal)?,
-                                ));
-                                cached.identity = Some(identity);
-                                attrs.extend(protocol_attrs);
-                                (2, attrs)
-                            }
-                            Err(e) if e.status.is_server_error() => return Err(e),
-                            Err(_) => (3, eap::failure(packet)),
-                        }
-                    }
-                }
-            };
-            let response = packet.response(code, secret, attrs)?;
-            cached.response = Some(response.clone());
-            tx.put("radius_requests", key, &cached)?;
-            if code != 11 {
-                audit(
-                    tx,
-                    cached
-                        .identity
-                        .as_ref()
-                        .map(|i| i.user_id.as_str())
-                        .unwrap_or("anonymous"),
-                    if code == 2 {
-                        "radius.accept"
-                    } else {
-                        "radius.reject"
-                    },
-                    &format!("{listener}/{nas_id}"),
-                )?;
-            }
-            Ok((Some(response), code == 2))
-        });
+        let result = self.radius_eap_commit(
+            listener,
+            nas_id,
+            &nas.client_id,
+            key,
+            packet,
+            secret,
+            outcome,
+        );
         if !result.as_ref().is_ok_and(|(_, accepted)| *accepted) && identity.is_some() {
-            let _ = self.store.write(|tx| close(tx, identity.as_ref()));
+            let _ = self.radius_close(identity.as_ref());
         }
         result.map(|(response, _)| response)
     }
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     eap::cleanup(tx, at)?;
-    for (id, cached) in tx.maintenance_page::<Cached>("radius_requests")? {
-        if cached.expires_at < at {
-            close(tx, cached.identity.as_ref())?;
-            tx.delete("radius_requests", &id)?;
-        }
-    }
-    Ok(())
+    Core::radius_cleanup_cache(tx, at)
 }
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,

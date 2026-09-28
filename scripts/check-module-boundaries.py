@@ -306,6 +306,8 @@ def main() -> None:
                 r"\bfn\s+(?:client|radius_identity)\s*\(", radius_source
             ):
                 errors.append("src/radius.rs: RADIUS client or identity read belongs in assembly")
+            if re.search(r"\.\s*store\s*\.\s*write\s*\(", radius_source):
+                errors.append("src/radius.rs: RADIUS replay or close write belongs in assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

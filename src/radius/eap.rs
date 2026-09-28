@@ -440,7 +440,7 @@ struct Conversation {
 pub(super) struct Engine {
     conversations: Mutex<BTreeMap<String, Conversation>>,
 }
-pub(super) enum Outcome {
+pub(crate) enum Outcome {
     Challenge(WireAttributes),
     Accept(Identity, WireAttributes),
     Reject(WireAttributes),
@@ -493,7 +493,7 @@ fn attributes(eap: Vec<u8>, state: Option<&str>) -> WireAttributes {
     }
     attrs
 }
-pub(super) fn failure(request: &Packet) -> WireAttributes {
+pub(crate) fn failure(request: &Packet) -> WireAttributes {
     message(request)
         .map(|m| attributes(packet(4, m[1], None, &[]), None))
         .unwrap_or_default()
@@ -753,7 +753,7 @@ impl Engine {
             }
             Err(error) => {
                 if let Some(identity) = &c.identity {
-                    let _ = core.store.write(|tx| super::close(tx, Some(identity)));
+                    let _ = core.radius_close(Some(identity));
                 }
                 if error.status.is_server_error() {
                     Err(error)
