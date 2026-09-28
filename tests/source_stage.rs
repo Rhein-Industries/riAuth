@@ -1668,12 +1668,12 @@ impl Upstream {
 
 fn stage_client(f: &Fixture, require_mfa: bool) {
     f.client("app", false);
+    common::client_policy::replace(&f.core, &f.admin, "app", None, Some(require_mfa));
     f.core
         .update_client(
             &f.admin,
             "app",
             ClientPatch {
-                require_mfa: Some(require_mfa),
                 settings: Some(ProviderSettings {
                     source_stage: Some("upstream".into()),
                     ..Default::default()

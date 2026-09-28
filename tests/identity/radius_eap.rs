@@ -1053,32 +1053,14 @@ async fn openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocatio
         3
     );
     // A local certificate is not silently treated as either a password or MFA proof.
-    f.core
-        .update_client(
-            &f.admin,
-            "network",
-            ClientPatch {
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&f.core, &f.admin, "network", None, Some(true));
     assert_eq!(
         handshake(&mut nas, TlsPeer::new(&ca, Some((&user, &user_key)), true))
             .await
             .0[0],
         3
     );
-    f.core
-        .update_client(
-            &f.admin,
-            "network",
-            ClientPatch {
-                require_mfa: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&f.core, &f.admin, "network", None, Some(false));
     let (accepted, last, _) =
         handshake(&mut nas, TlsPeer::new(&ca, Some((&user, &user_key)), true)).await;
     assert_eq!(accepted[0], 2);

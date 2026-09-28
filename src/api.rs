@@ -385,6 +385,11 @@ pub fn router(core: Core) -> Router {
             axum::routing::put(add_member).delete(remove_member),
         )
         .route("/api/clients", get(clients).post(create_client))
+        .route("/api/clients/{id}/policy-changes", post(stage_client_policy))
+        .route("/api/client-policy-changes/{id}", get(client_policy_change))
+        .route("/api/client-policy-changes/{id}/approve", post(approve_client_policy_change))
+        .route("/api/client-policy-changes/{id}/execute", post(execute_client_policy_change))
+        .route("/api/client-policy-changes/{id}/cancel", post(cancel_client_policy_change))
         .route("/api/clients/{id}", axum::routing::patch(update_client))
         .route(
             "/api/clients/{id}/rotate-secret",
@@ -1949,10 +1954,33 @@ async fn group_membership_change(
     app.run(move |core| core.group_membership_change(&token, &id).map(Json))
         .await
 }
-// Both review classes accept only the immutable canonical digest.
+// Every review class accepts only the immutable canonical digest.
 grant_change_handler!(approve_group_membership_change);
 grant_change_handler!(execute_group_membership_change);
 grant_change_handler!(cancel_group_membership_change);
+
+async fn stage_client_policy(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::model::ClientPolicyInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_client_policy(&token, &id, input).map(Json))
+        .await
+}
+async fn client_policy_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.client_policy_change(&token, &id).map(Json))
+        .await
+}
+grant_change_handler!(approve_client_policy_change);
+grant_change_handler!(execute_client_policy_change);
+grant_change_handler!(cancel_client_policy_change);
 
 #[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);

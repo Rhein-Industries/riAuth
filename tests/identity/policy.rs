@@ -939,16 +939,13 @@ fn group_policy_is_checked_again_at_refresh_userinfo_and_proxy() {
     f.client("app", false);
     let alice = f.user("alice");
     f.core.create_group(&f.admin, "developers").unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                allowed_groups: Some(strings(&["developers"])),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(strings(&["developers"])),
+        None,
+    );
     assert!(
         f.core
             .authorize(&alice, f.request("app", &crypto::random_token("")))

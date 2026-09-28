@@ -10,7 +10,6 @@ use riauth::{
     agent::{NewAgent, Permission},
     core::Core,
     delegation::{GrantInput, HumanRole},
-    model::ClientPatch,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -115,16 +114,13 @@ async fn scoped_simulation_requires_group_and_source_reads_and_never_persists_a_
     f.user("alice");
     f.client("app", false);
     f.core.create_group(&f.admin, "eng").unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                allowed_groups: Some(["eng".to_owned()].into()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(["eng".to_owned()].into()),
+        None,
+    );
     f.core.group_member(&f.admin, "eng", "alice", true).unwrap();
     let agent = |id: &str, group_read: bool| {
         let mut permissions = vec![
@@ -201,16 +197,13 @@ async fn browser_simulation_has_the_same_decision_and_scoped_authority_as_the_ap
     f.user("alice");
     f.client("app", false);
     f.core.create_group(&f.admin, "eng").unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                allowed_groups: Some(["eng".to_owned()].into()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(["eng".to_owned()].into()),
+        None,
+    );
     f.core
         .set_human_grants(
             &f.admin,

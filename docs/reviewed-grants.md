@@ -141,7 +141,9 @@ and Platform use this same implementation and policy.
 ## Remaining resource classes and integration boundaries
 
 This is not the complete generic M05 workflow. Review covers privileged delegated
-human grant-set replacement and bounded protected group membership. The following management
+human grant-set replacement, bounded protected group membership, and existing-client
+`allowed_groups` / `require_mfa` changes through [client policy review](reviewed-client-policy.md).
+The following management
 resource classes retain their previous behavior and have no M05 author/reviewer/
 executor workflow:
 
@@ -150,7 +152,10 @@ executor workflow:
 - Group lifecycle and policy changes, larger membership sets, and temporary PAM
   access/entitlement policy. Protected durable membership up to 128 members now
   uses [the shared group review service](reviewed-group-memberships.md).
-- Applications/clients and their credentials, registration templates and tokens.
+- Client creation/initial policy, other provider settings (conditional access/claims,
+  scopes, redirects, grants, issuer/sector), enable/disable, credentials,
+  registration templates and tokens. Existing-client `allowed_groups` and
+  `require_mfa` changes now require exact review.
 - Agents, their permissions, parent bindings, credential rotation and revocation.
 - Federation sources/source links, directory/Workspace/Entra configuration and
   reconciliation plans, inbound/outbound SCIM and reconciliation controllers.

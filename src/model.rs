@@ -90,6 +90,17 @@ pub struct GroupMembershipInput {
 
 pub type GroupChangeBinding = crate::delegation::GrantChangeBinding;
 
+/// Complete replacement of the two reviewed access-policy fields. Creation,
+/// other client settings and credentials keep their separate contracts.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientPolicyInput {
+    pub allowed_groups: BTreeSet<String>,
+    pub require_mfa: bool,
+}
+
+pub type ClientPolicyBinding = crate::delegation::GrantChangeBinding;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
     pub id: String,

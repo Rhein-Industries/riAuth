@@ -944,18 +944,13 @@ async fn application_diagnostics_explain_what_blocks_sign_in() {
     let app = riauth::api::router(fixture.core.clone());
     let origin = origin(&fixture.core);
     fixture.core.create_group(&fixture.admin, "eng").unwrap();
-    fixture
-        .core
-        .update_client(
-            &fixture.admin,
-            "code",
-            riauth::model::ClientPatch {
-                allowed_groups: Some(["eng".to_owned()].into()),
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(
+        &fixture.core,
+        &fixture.admin,
+        "code",
+        Some(["eng".to_owned()].into()),
+        Some(true),
+    );
     let read = |cookie| Call {
         cookie: Some(cookie),
         portal: true,
@@ -1027,17 +1022,7 @@ async fn application_diagnostics_explain_what_blocks_sign_in() {
     );
 
     // A completed token exchange shows up as activity.
-    fixture
-        .core
-        .update_client(
-            &fixture.admin,
-            "code",
-            riauth::model::ClientPatch {
-                require_mfa: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&fixture.core, &fixture.admin, "code", None, Some(false));
     fixture.tokens("code", &ada, secret);
     let (_, _, report) = send(&app, diagnostics, read(&admin)).await;
     let activity = checks_named(&report, "activity")[0];

@@ -104,16 +104,7 @@ fn totp_requires_confirmation_prevents_replay_and_satisfies_policy() {
     let f = Fixture::new();
     f.client("app", false);
     let alice = f.user("alice");
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&f.core, &f.admin, "app", None, Some(true));
     assert!(
         f.core
             .authorize(&alice, f.request("app", &crypto::random_token("")))

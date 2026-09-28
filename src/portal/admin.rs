@@ -89,6 +89,11 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/groups", get(groups).post(create_group))
         .route("/api/admin/groups/{name}/members/{username}", put(add_member).delete(remove_member))
         .route("/api/admin/clients", get(clients).post(create_client))
+        .route("/api/admin/clients/{id}/policy-changes", post(stage_client_policy))
+        .route("/api/admin/client-policy-changes/{id}", get(client_policy_change))
+        .route("/api/admin/client-policy-changes/{id}/approve", post(approve_client_policy_change))
+        .route("/api/admin/client-policy-changes/{id}/execute", post(execute_client_policy_change))
+        .route("/api/admin/client-policy-changes/{id}/cancel", post(cancel_client_policy_change))
         .route("/api/admin/clients/{id}", patch(update_client))
         .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
         .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
@@ -448,10 +453,33 @@ async fn group_membership_change(
     app.run(move |core| core.group_membership_change(&token, &id).map(Json))
         .await
 }
-// Both review classes accept only the immutable canonical digest.
+// Every review class accepts only the immutable canonical digest.
 grant_change_handler!(approve_group_membership_change);
 grant_change_handler!(execute_group_membership_change);
 grant_change_handler!(cancel_group_membership_change);
+
+async fn stage_client_policy(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::model::ClientPolicyInput>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.stage_client_policy(&token, &id, input).map(Json))
+        .await
+}
+async fn client_policy_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.client_policy_change(&token, &id).map(Json))
+        .await
+}
+grant_change_handler!(approve_client_policy_change);
+grant_change_handler!(execute_client_policy_change);
+grant_change_handler!(cancel_client_policy_change);
 
 /// Access review is limited to administrators here; `pam` still decides who may approve.
 #[cfg(feature = "platform")]

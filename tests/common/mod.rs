@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod backend;
+pub mod client_policy;
 #[cfg(feature = "platform")]
 pub mod security;
 

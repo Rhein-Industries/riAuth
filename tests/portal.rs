@@ -1,3 +1,6 @@
+#[path = "common/client_policy.rs"]
+mod client_policy;
+
 use axum::{
     Router,
     body::Body,
@@ -353,16 +356,7 @@ fn portal_inherits_live_access_without_admin_bypass_or_information_leaks() {
         )
         .unwrap();
     f.client("mfa", metadata(), &[]);
-    f.core
-        .update_client(
-            &f.admin,
-            "mfa",
-            ClientPatch {
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    client_policy::replace(&f.core, &f.admin, "mfa", None, Some(true));
     let mut acr = metadata();
     acr.default_acr_values.push(riauth::assurance::MFA.into());
     f.client("acr", acr, &[]);
