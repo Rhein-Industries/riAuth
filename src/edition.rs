@@ -300,6 +300,8 @@ pub const PLATFORM_ACTIONS: &[&str] = &[
     "device.enroll",
     "ssf.manage",
     "ssf.configure",
+    "workflow.read",
+    "workflow.write",
 ];
 
 const PLATFORM_BUCKETS: &[&str] = &[
@@ -330,6 +332,7 @@ const PLATFORM_BUCKETS: &[&str] = &[
     "scim_groups",
     "ssf_streams",
     "ssf_deliveries",
+    "workflow_definitions",
     "ssf_jti",
     "saml_subjects",
     "saml_sessions",

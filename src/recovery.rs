@@ -150,6 +150,7 @@ const RETAINED: &[&str] = &[
     "invitation_reservations",
     "groups",
     "sources",
+    "workflow_definitions",
     "saml_subjects",
     "directory_users",
     "directory_bindings",

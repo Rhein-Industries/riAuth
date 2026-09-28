@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, and W06 Platform authoring.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication for a live bearer session.
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
@@ -34,8 +34,9 @@ The executor consumes only `Validated` definitions and connects the completion
 boundary to trusted verification and durable storage.
 
 The JSON Schema is published as `workflow` through `riauth schema workflow` and
-`GET /api/schema/workflow`, alongside the existing schemas. Publishing the schema
-does not mean any API accepts workflow definitions.
+`GET /api/schema/workflow`, alongside the existing schemas. Platform management
+accepts configured definitions in desired-state manifests; verifier execution
+does not yet select them.
 
 ## Shape
 
@@ -532,6 +533,25 @@ most 32 steps, 8 terminals, 12 transitions per step and 64 KiB per document.
 
 ## Essentials and Platform
 
+Platform administration now has a **Workflows** section with authentication,
+enrollment and recovery starters. It edits steps, actions, attempt and time limits,
+entry, and route destinations in a static graph, then validates the complete
+`riauth.workflow/v1` definition with the existing model before saving. The
+preview never executes a verifier or issues a session. Existing conditional
+routes retain their conditions, but the browser editor does not yet author new
+conditions, custom stages, source references, consent, or sensitive-action
+journeys. The canonical JSON is visible for review.
+
+The same definition can be supplied in a desired-state `riauth/v1` manifest's
+`workflows` array. `POST /api/state/plan`, apply, and export use the shared
+plan, revision, audit, and permission boundary. The browser routes delegate to
+that path for one definition at a time. Definitions require Platform and
+`workflow.write` for the exact `workflow/<id>` target; export and browser list
+require `workflow.read`. A changed definition must increase its revision.
+Omitting a workflow leaves it unchanged. Persisted configured definitions are
+authoring data; current W02 execution still uses shipped server-owned journeys.
+Essentials does not show workflow authoring and rejects configured definitions.
+
 `workflow::defaults()` returns seven `builtin` definitions: passkey sign-in,
 password sign-in with TOTP and recovery-code fallback, passkey enrollment after
 fresh verification, invitation passkey enrollment, password reset by mail proof,
@@ -565,8 +585,8 @@ These are not implemented or established by this slice:
   and other initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Configured enrollment, recovery, authentication chains beyond Password→TOTP,
-  custom stage execution, and the other built-in verifiers. The configured password
+* Execution of configured enrollment, recovery, and authentication chains beyond
+  Password→TOTP, custom stages, and the other built-in verifiers. The configured password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.

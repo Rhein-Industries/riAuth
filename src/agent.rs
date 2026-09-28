@@ -57,6 +57,8 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("session.revoke", "session"),
     ("device.enroll", "device"),
     ("state.read", "state"),
+    ("workflow.read", "workflow"),
+    ("workflow.write", "workflow"),
     ("operations.read", "operations"),
     ("operations.backup", "operations"),
     ("ssf.manage", "ssf"),

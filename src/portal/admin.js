@@ -6,11 +6,11 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
-  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], deliveries: [], deliveryLoadedAt: 0, mail: false, lifetime: 0 };
+  const data = { me: null, revision: 0, clients: [], users: [], groups: [], workflows: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], deliveries: [], deliveryLoadedAt: 0, mail: false, lifetime: 0 };
   // The routes can read and revoke retained grants after approver rules are removed.
   const accessRoutes = () => !!data.me?.user?.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
   const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
@@ -18,6 +18,7 @@
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
+  let workflowDraft = null, workflowPlan = null, workflowSelection = 0;
   const operationLoads = new Set();
 
   class ApiError extends Error {
@@ -171,6 +172,7 @@
     RiAuthGrantReview.reset();
     draft = null; captureWizard = null;
     data.deliveries = []; data.deliveryLoadedAt = 0;
+    workflowDraft = null; workflowPlan = null;
     $("view").replaceChildren();
     $("secret-value").value = "";
     for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
@@ -198,7 +200,7 @@
     $("gate-title").textContent = content[1]; $("gate-text").textContent = content[2];
     $("gate-link").textContent = content[3]; $("gate-retry").hidden = !content[4];
     $("account").hidden = kind !== "forbidden" || !who;
-    for (const id of ["count-applications", "count-people", "count-groups", "count-deliveries", "count-security"]) $(id).textContent = "—";
+    for (const id of ["count-applications", "count-people", "count-groups", "count-workflows", "count-deliveries", "count-security"]) $(id).textContent = "—";
     connection(kind === "offline" ? "Offline" : "Not signed in");
     screen("gate"); $("gate-title").focus();
   }
@@ -212,7 +214,7 @@
       await RiAuthCapabilities.refresh();
       const me = await api("GET", "admin/session");
       const canReadAccess = me.user.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
-      const [clients, users, groups, requests, grants, audit, invites, directories, deliveries] = await Promise.all([
+      const [clients, users, groups, requests, grants, audit, invites, directories, deliveries, workflows] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
         canReadAccess ? api("GET", "admin/access/requests") : Promise.resolve([]),
         canReadAccess ? api("GET", "admin/access/grants") : Promise.resolve([]),
@@ -220,10 +222,11 @@
         api("GET", "admin/invitations"),
         cloudAvailable() ? api("GET", "admin/cloud-directories") : Promise.resolve([]),
         api("GET", "admin/provisioning/deactivations"),
+        me.edition === "platform" ? api("GET", "admin/workflows") : Promise.resolve([]),
       ]);
       if (run !== generation) return;
-      if (draft && draft.owner !== me.user.id) forget();
-      Object.assign(data, { me, revision: me.revision, clients, users, groups, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000 });
+      if ((draft && draft.owner !== me.user.id) || (data.me && data.me.user.id !== me.user.id)) forget();
+      Object.assign(data, { me, revision: me.revision, clients, users, groups, workflows, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000 });
       Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -255,6 +258,8 @@
     $("count-people").textContent = data.users.length;
     $("count-groups").textContent = data.groups.length;
     $("count-deliveries").textContent = data.deliveries.length;
+    $("count-workflows").textContent = data.workflows.length;
+    document.querySelector('[data-section="workflows"]').hidden = data.me?.edition !== "platform";
     const waiting = pending().length;
     const badge = $("count-security");
     badge.hidden = !accessRoutes();
@@ -276,7 +281,7 @@
     const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map((part) => {
       try { return decodeURIComponent(part); } catch { return ""; }
     });
-    const section = Object.hasOwn(SECTIONS, parts[0]) && (parts[0] !== "operations" || (cloudAvailable() && data.directories.length)) ? parts[0] : "applications";
+    const section = Object.hasOwn(SECTIONS, parts[0]) && (parts[0] !== "operations" || (cloudAvailable() && data.directories.length)) && (parts[0] !== "workflows" || data.me?.edition === "platform") ? parts[0] : "applications";
     lastRoute = { section, id: parts[1] || null };
     return lastRoute;
   }
@@ -297,7 +302,7 @@
     const grantReview = (id) => RiAuthGrantReview.view({ id, api, h, me: data.me, users: data.users,
       identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
       sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
-    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
+    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -1900,6 +1905,143 @@
       h("section", { class: "admin-section", "aria-labelledby": "activity-title" }, h("div", { class: "section-heading" }, h("h2", { id: "activity-title" }, "Recent activity"),
         RiAuthCapabilities.usable("audit.self_hosted_event_map") ? h("a", { class: "text-button", href: `${base}events` }, "Open the event map") : null), activity.node));
     return { node };
+  }
+
+  // ---- Platform workflow definitions -------------------------------------------------------
+  // These are canonical riauth.workflow/v1 objects. Preview only asks the shared
+  // manifest planner to validate them; it never starts an authentication run.
+  const workflowActions = {
+    authentication: ["identify", "verify_password", "verify_passkey", "verify_totp", "verify_recovery_code"],
+    enrollment: ["resume_session", "verify_password", "verify_passkey", "verify_totp", "verify_email", "enroll_credential"],
+    recovery: ["identify", "verify_email", "verify_totp", "verify_recovery_code", "reset_password"],
+  };
+  const workflowSignals = (type) => type === "identify" ? ["completed"] : type === "enroll_credential" || type === "reset_password" ? ["completed", "failed"] : ["verified", "failed"];
+  const workflowAction = (type, category) => type === "verify_email" ? { type, purpose: category === "recovery" ? "reset" : "invitation" } : type === "enroll_credential" ? { type, credential: "passkey" } : { type };
+  const workflowStep = (id, action, good, attempts = 3) => ({ id, action, max_attempts: attempts,
+    timeout_seconds: 300, cancellable: action.type !== "enroll_credential" && action.type !== "reset_password",
+    transitions: workflowSignals(action.type).map((on) => ({ on, to: on === "failed" ? "denied" : good })) });
+  function workflowTemplate(category) {
+    const steps = category === "authentication" ? [
+      { ...workflowStep("password", workflowAction("verify_password", category), "success"), transitions: [
+        { on: "verified", when: { type: "account_has", credential: "totp" }, to: "totp" },
+        { on: "verified", when: { type: "request_requires_mfa" }, to: "denied" },
+        { on: "verified", to: "success" }, { on: "failed", to: "denied" }] },
+      { ...workflowStep("totp", workflowAction("verify_totp", category), "success"), transitions: [
+        { on: "verified", to: "success" }, { on: "failed", to: "recovery-code" }] },
+      workflowStep("recovery-code", workflowAction("verify_recovery_code", category), "success"),
+    ] : category === "enrollment" ? [
+      workflowStep("session", workflowAction("resume_session", category), "passkey", 1),
+      workflowStep("passkey", workflowAction("verify_passkey", category), "enroll"),
+      workflowStep("enroll", workflowAction("enroll_credential", category), "success", 1),
+    ] : [
+      workflowStep("email", workflowAction("verify_email", category), "reset", 1),
+      workflowStep("reset", workflowAction("reset_password", category), "success", 1),
+    ];
+    const outcome = { authentication: "authenticated", enrollment: "enrolled", recovery: "recovered" }[category];
+    return { format: "riauth.workflow/v1", id: `platform-${category}`, revision: 1, category,
+      origin: "configured", entry: steps[0].id, limits: { max_duration_seconds: 900, max_executions: 12 }, steps,
+      terminals: [{ id: "success", outcome, requires: [], ...(category === "authentication" ? {} : { max_proof_age_seconds: 300 }) },
+        { id: "denied", outcome: "denied", requires: [] }] };
+  }
+  function workflows() {
+    const rows = [...data.workflows].sort((a, b) => byName(a.id, b.id));
+    return { node: h("div", {}, heading("PLATFORM", "Workflows", "Author and validate configured definitions. Shipped Essentials journeys stay managed by the server.",
+      link(hash("workflows", "new"), "New workflow", { class: "button primary" })),
+      table("Configured workflows", [
+        { label: "Workflow", cell: (row) => link(hash("workflows", row.id), row.id) },
+        { label: "Journey", cell: (row) => row.category.replaceAll("_", " ") },
+        { label: "Revision", cell: (row) => String(row.revision) },
+        { label: "Steps", cell: (row) => String(row.steps.length) },
+      ], rows, "No configured workflows yet. Start from a template.", (row) => row.id).node) };
+  }
+  function workflowTemplates() {
+    return { crumb: "New workflow", node: h("div", {}, heading("PLATFORM", "Choose a template", "Each template starts as a configured canonical definition. Validation runs before save."),
+      h("div", { class: "workflow-templates" }, ["authentication", "enrollment", "recovery"].map((category) =>
+        h("button", { class: "admin-card workflow-template", type: "button", onclick: () => {
+          workflowDraft = workflowTemplate(category); workflowPlan = null; workflowSelection = 0;
+          location.hash = hash("workflows", "draft"); render({ focus: true });
+        } }, h("strong", {}, category[0].toUpperCase() + category.slice(1)),
+        h("span", {}, ({ authentication: "Password, TOTP and recovery code", enrollment: "Session, passkey and new passkey", recovery: "Email proof and password reset" })[category]))))) };
+  }
+  function workflowEditor(id) {
+    if (id !== "draft" && (!workflowDraft || workflowDraft.id !== id)) {
+      const existing = data.workflows.find((row) => row.id === id);
+      if (!existing) return missing("workflows", "Workflow");
+      workflowDraft = structuredClone(existing); workflowDraft.revision += 1;
+      workflowPlan = null; workflowSelection = 0;
+    }
+    if (!workflowDraft) return missing("workflows", "Workflow");
+    const definition = workflowDraft;
+    const editingExisting = id !== "draft";
+    const selected = definition.steps[workflowSelection] || definition.steps[0];
+    const targetIds = [...definition.steps.map((step) => step.id), ...definition.terminals.map((terminal) => terminal.id)];
+    const options = (values, selectedValue) => values.map((value) => h("option", { value, selected: value === selectedValue }, value.replaceAll("_", " ")));
+    const change = (update) => { update(); workflowPlan = null; render(); };
+    const field = (label, input) => h("div", { class: "field" }, h("label", {}, label), input);
+    const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
+    const graph = h("div", { class: "workflow-graph", "aria-label": "Workflow route preview" },
+      definition.steps.map((step, index) => h("button", { class: `workflow-node ${index === workflowSelection ? "selected" : ""}`, type: "button",
+        onclick: () => { workflowSelection = index; render(); }, "aria-pressed": index === workflowSelection },
+        h("strong", {}, step.id), h("small", {}, step.action.type.replaceAll("_", " ")),
+        h("span", {}, step.transitions.map((transition) => `${transition.on}${transition.when ? " if condition" : ""} → ${transition.to}`).join(" · ")))),
+      definition.terminals.map((terminal) => h("div", { class: "workflow-node terminal" }, h("strong", {}, terminal.id), h("small", {}, terminal.outcome.replaceAll("_", " ")))));
+    const controls = h("div", { class: "admin-card workflow-controls" }, h("h2", {}, `Edit ${selected.id}`),
+      field("Step ID", h("input", { value: selected.id, maxlength: "64", spellcheck: "false", onchange: (event) => change(() => {
+        const old = selected.id, next = event.target.value.trim(); selected.id = next;
+        if (definition.entry === old) definition.entry = next;
+        for (const step of definition.steps) for (const transition of step.transitions) if (transition.to === old) transition.to = next;
+      }) })),
+      field("Action", h("select", { onchange: (event) => change(() => {
+        selected.action = workflowAction(event.target.value, definition.category);
+        selected.transitions = workflowSignals(selected.action.type).map((on) => ({ on, to: on === "failed" ? "denied" : "success" }));
+      }) }, options(workflowActions[definition.category], selected.action.type))),
+      h("div", { class: "field-row" },
+        field("Max attempts", h("input", { type: "number", min: "1", max: "5", value: selected.max_attempts, onchange: (event) => change(() => { selected.max_attempts = Number(event.target.value); }) })),
+        field("Timeout (seconds)", h("input", { type: "number", min: "1", max: "3600", value: selected.timeout_seconds, onchange: (event) => change(() => { selected.timeout_seconds = Number(event.target.value); }) }))),
+      h("label", { class: "checkbox" }, h("input", { type: "checkbox", checked: selected.cancellable,
+        onchange: (event) => change(() => { selected.cancellable = event.target.checked; }) }), "Can cancel this step"),
+      h("h3", {}, "Routes"), selected.transitions.map((transition) => h("div", { class: "workflow-route" },
+        h("span", {}, transition.on, transition.when ? " · conditional" : ""),
+        h("select", { "aria-label": `${transition.on} destination`, onchange: (event) => change(() => { transition.to = event.target.value; }) }, options(targetIds, transition.to)))),
+      h("p", { class: "field-hint" }, "Conditional routes from an existing definition keep their conditions. The server checks every possible path."),
+      h("div", { class: "form-actions" },
+        h("button", { class: "button secondary", type: "button", onclick: () => change(() => {
+          const next = `step-${definition.steps.length + 1}`;
+          definition.steps.push(workflowStep(next, workflowAction(workflowActions[definition.category][0], definition.category), "success", 1));
+          workflowSelection = definition.steps.length - 1;
+        }) }, "Add step"),
+        h("button", { class: "button secondary", type: "button", disabled: definition.steps.length === 1 || definition.entry === selected.id || definition.steps.some((step) => step.transitions.some((route) => route.to === selected.id)),
+          onclick: () => change(() => { definition.steps.splice(workflowSelection, 1); workflowSelection = 0; }) }, "Remove step")));
+    const preview = h("div", { class: "admin-card" }, h("h2", {}, "Validate and save"),
+      h("p", { class: "field-hint" }, "This is a static route preview. It does not run verifiers, issue sessions, or change live flows."),
+      field("Workflow ID", h("input", { value: definition.id, readOnly: editingExisting, maxlength: "64", spellcheck: "false",
+        onchange: (event) => change(() => { definition.id = event.target.value.trim(); }) })),
+      field("Entry step", h("select", { onchange: (event) => change(() => { definition.entry = event.target.value; }) }, options(definition.steps.map((step) => step.id), definition.entry))),
+      h("div", { class: "field-row" },
+        field("Run limit (seconds)", h("input", { type: "number", min: "1", max: "86400", value: definition.limits.max_duration_seconds,
+          onchange: (event) => change(() => { definition.limits.max_duration_seconds = Number(event.target.value); }) })),
+        field("Execution limit", h("input", { type: "number", min: "1", max: "64", value: definition.limits.max_executions,
+          onchange: (event) => change(() => { definition.limits.max_executions = Number(event.target.value); }) }))),
+      h("p", { class: "field-hint" }, `Revision ${definition.revision}. Entry: ${definition.entry}. Success: ${definition.terminals[0].outcome}.`),
+      h("details", {}, h("summary", {}, "Canonical definition JSON"), h("pre", { class: "settings-json" }, JSON.stringify(definition, null, 2))),
+      workflowPlan ? h("p", { class: "notice" }, `Server validation passed. Plan ${workflowPlan.plan_id} has ${workflowPlan.changes.length} change(s) and expires in 15 minutes.`) : null,
+      status, h("div", { class: "form-actions" },
+        h("button", { class: "button secondary", type: "button", onclick: async (event) => {
+          event.currentTarget.disabled = true; status.hidden = true;
+          try { workflowPlan = await api("POST", "admin/workflows/plan", definition); render(); }
+          catch (error) { showError(status, error); event.currentTarget.disabled = false; }
+        } }, "Validate and preview"),
+        workflowPlan ? h("button", { class: "button primary", type: "button", onclick: async (event) => {
+          event.currentTarget.disabled = true; status.hidden = true;
+          try {
+            await api("POST", "admin/workflows/apply", { plan: workflowPlan, secrets: {}, run_id: null });
+            workflowDraft = null; workflowPlan = null;
+            await saved(`Saved workflow ${definition.id}.`, hash("workflows", definition.id));
+          } catch (error) { showError(status, error); event.currentTarget.disabled = false; }
+        } }, "Save definition") : null));
+    return { crumb: editingExisting ? definition.id : "New workflow", node: h("div", {},
+      heading("PLATFORM WORKFLOW", editingExisting ? `Edit ${definition.id}` : "New workflow", "Select a step in the route map, edit it, then validate the entire definition before saving."),
+      h("div", { class: "workflow-editor" }, h("div", {}, graph, preview), controls)) };
   }
 
   // ---- Wiring ------------------------------------------------------------------------------

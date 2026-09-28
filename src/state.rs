@@ -28,6 +28,9 @@ pub struct Manifest {
     pub clients: Vec<ClientSpec>,
     #[serde(default)]
     pub sources: Vec<crate::source::SourceSpec>,
+    /// Platform-authored canonical definitions. Omission leaves stored workflows unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workflows: Vec<crate::workflow::Definition>,
     /// The riAuth issuer this manifest was prepared for. When set, planning and applying fail
     /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -151,6 +154,7 @@ impl Manifest {
             + self.groups.len()
             + self.clients.len()
             + self.sources.len()
+            + self.workflows.len()
             + self.source_links.len()
             > 1000
         {
@@ -198,6 +202,15 @@ impl Manifest {
                 return Err(Error::bad(
                     "Source secret_ref and secret_version must be supplied together",
                 ));
+            }
+        }
+        if !self.workflows.is_empty() && !cfg!(feature = "platform") {
+            return Err(Error::bad("Configured workflows require Platform"));
+        }
+        let mut workflow_ids = BTreeSet::new();
+        for definition in &self.workflows {
+            if !workflow_ids.insert(definition.id.as_str()) {
+                return Err(Error::bad("Duplicate workflow in manifest"));
             }
         }
         Ok(())
@@ -274,7 +287,7 @@ fn state_removal_impact(tx: &Tx<'_>, manifest: &Manifest) -> Result<RemovalImpac
 fn state_automation_safe(changes: &[Change]) -> bool {
     changes.iter().all(|change| {
         let kind = change.resource.split('/').next().unwrap_or("");
-        if matches!(kind, "client" | "source" | "source_link") {
+        if matches!(kind, "client" | "source" | "source_link" | "workflow") {
             return false;
         }
         if kind == "user" {
@@ -318,6 +331,9 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     for spec in &plan.manifest.sources {
         actor.require("source.write", &format!("source/{}", spec.source.id))?;
     }
+    for definition in &plan.manifest.workflows {
+        actor.require("workflow.write", &format!("workflow/{}", definition.id))?;
+    }
     for spec in &plan.manifest.source_links {
         actor.require("source.write", &format!("source/{}", spec.source))?;
         actor.require("user.write", &format!("user/{}", spec.username))?;
@@ -339,6 +355,7 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
                 }
             }
             "source" => actor.require("source.write", resource)?,
+            "workflow" => actor.require("workflow.write", resource)?,
             "source_link" => {
                 let source = change.after["source"]
                     .as_str()
@@ -554,7 +571,26 @@ impl Core {
             let clients = tx.list::<Client>("clients")?.into_iter().filter(|(_, c)| actor.allows("client.read", &format!("client/{}", c.id))).map(|(_, c)| client_spec(&c)).collect();
             let sources = tx.list::<crate::source::Source>("sources")?.into_iter().filter(|(_, s)| actor.allows("source.read", &format!("source/{}",s.id))).map(|(_,source)| crate::source::SourceSpec{source,secret_ref:None,secret_version:None}).collect();
             let source_links=crate::source::export_links(tx,&actor)?;
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, issuer: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            let workflows = tx
+                .list::<crate::workflow::Definition>("workflow_definitions")?
+                .into_iter()
+                .filter(|(_, d)| actor.allows("workflow.read", &format!("workflow/{}", d.id)))
+                .map(|(_, d)| d)
+                .collect();
+            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, issuer: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+        })
+    }
+    /// Browser list uses the same scoped authority as manifest export.
+    pub fn list_workflow_definitions(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let definitions: Vec<_> = tx
+                .list::<crate::workflow::Definition>("workflow_definitions")?
+                .into_iter()
+                .filter(|(_, d)| actor.allows("workflow.read", &format!("workflow/{}", d.id)))
+                .map(|(_, d)| d)
+                .collect();
+            Ok(json!(definitions))
         })
     }
 }
@@ -846,6 +882,45 @@ fn reconcile(
     for spec in &manifest.source_links {
         if let Some(change) = crate::source::reconcile_link(tx, actor, spec)? {
             changes.push(change);
+        }
+    }
+    if !manifest.workflows.is_empty() {
+        let mut environment = crate::workflow::Environment::platform();
+        for (_, source) in tx.list::<crate::source::Source>("sources")? {
+            if source.enabled {
+                environment.sources.insert(
+                    crate::workflow::Id::new(&source.id)
+                        .map_err(|_| Error::bad("Invalid source identifier"))?,
+                );
+            }
+        }
+        for definition in &manifest.workflows {
+            let resource = format!("workflow/{}", definition.id);
+            actor.require("workflow.write", &resource)?;
+            if definition.canonical_json().len() > crate::workflow::MAX_DOCUMENT_BYTES {
+                return Err(Error::bad("Workflow document exceeds 64 KiB"));
+            }
+            let validated = crate::workflow::validate(definition.clone(), &environment)
+                .map_err(|error| Error::bad(format!("Workflow {}: {}", definition.id, error)))?;
+            let existing = tx.get::<crate::workflow::Definition>(
+                "workflow_definitions",
+                definition.id.as_str(),
+            )?;
+            if existing.as_ref() == Some(definition) {
+                continue;
+            }
+            if existing.as_ref().is_some_and(|old| definition.revision <= old.revision) {
+                return Err(Error::conflict("Workflow revision must increase when the definition changes"));
+            }
+            tx.put("workflow_definitions", definition.id.as_str(), validated.definition())?;
+            changes.push(Change {
+                resource,
+                action: if existing.is_some() { "update" } else { "create" }.into(),
+                before: existing.as_ref().map(value).transpose()?.unwrap_or(Value::Null),
+                after: value(definition)?,
+                credential_change: false,
+                secret_references: BTreeSet::new(),
+            });
         }
     }
     for (_, user) in tx.list::<User>("users")? {

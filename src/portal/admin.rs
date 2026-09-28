@@ -79,8 +79,65 @@ pub fn routes() -> Router<App> {
         )
         .route("/api/admin/audit", get(audit));
     #[cfg(feature = "platform")]
-    let routes = routes.merge(access_routes()).merge(cloud_routes());
+    let routes = routes
+        .merge(access_routes())
+        .merge(cloud_routes())
+        .merge(workflow_routes());
     routes
+}
+
+#[cfg(feature = "platform")]
+fn workflow_routes() -> Router<App> {
+    Router::new()
+        .route("/api/admin/workflows", get(workflows))
+        .route("/api/admin/workflows/plan", post(workflow_plan))
+        .route("/api/admin/workflows/apply", post(workflow_apply))
+}
+
+#[cfg(feature = "platform")]
+async fn workflows(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.list_workflow_definitions(&token).map(Json))
+        .await
+}
+
+#[cfg(feature = "platform")]
+async fn workflow_plan(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(definition): Json<crate::workflow::Definition>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    let manifest = crate::state::Manifest {
+        api_version: "riauth/v1".into(),
+        workflows: vec![definition],
+        ..Default::default()
+    };
+    app.run(move |core| core.plan_state(&token, manifest).map(|plan| Json(json!(plan))))
+        .await
+}
+
+#[cfg(feature = "platform")]
+async fn workflow_apply(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<crate::state::ApplyRequest>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    // This browser surface only applies a single workflow. The shared plan
+    // remains bound to the actor, revision, manifest, and exact stored hash.
+    if input.plan.manifest.workflows.len() != 1
+        || !input.plan.manifest.users.is_empty()
+        || !input.plan.manifest.groups.is_empty()
+        || !input.plan.manifest.clients.is_empty()
+        || !input.plan.manifest.sources.is_empty()
+        || !input.plan.manifest.source_links.is_empty()
+        || !input.secrets.is_empty()
+    {
+        return Err(Error::bad("Workflow editor applies one workflow only"));
+    }
+    app.run(move |core| core.apply_state(&token, input).map(Json))
+        .await
 }
 
 pub fn browser_routes() -> Router<App> {
