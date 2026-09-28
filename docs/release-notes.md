@@ -1,3 +1,11 @@
+# Unreleased Essentials and Platform assembly
+
+- Added explicit additive `essentials` and `platform` Cargo features. The draft
+  release build now creates separate server archives and container images from
+  one revision, with edition-aware capability discovery and pre-serving rejection
+  of unsupported configuration and retained Platform state. See [server editions](editions.md)
+  for commands and remaining assembly limits.
+
 # Unreleased management changes
 
 - `PATCH /api/clients/{id}` and `riauth client update` now reject a settings

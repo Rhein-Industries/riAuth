@@ -4,10 +4,14 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src ./src
 COPY assets/riauth-mark.svg ./assets/riauth-mark.svg
-RUN cargo build --release --locked
+ARG RIAUTH_EDITION=essentials
+RUN case "$RIAUTH_EDITION" in essentials|platform) ;; *) exit 2;; esac \
+    && cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 LABEL org.opencontainers.image.source="https://github.com/Rhein-Industries/riAuth"
+ARG RIAUTH_EDITION=essentials
+LABEL org.riauth.edition="$RIAUTH_EDITION"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 riauth && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin riauth \
     && install -d -o 10001 -g 10001 -m 0700 /data

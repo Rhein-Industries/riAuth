@@ -22,7 +22,7 @@ use std::time::Instant;
 use webauthn_rs::prelude::PublicKeyCredential;
 
 pub(super) fn routes() -> Router<App> {
-    Router::new()
+    let routes = Router::new()
         .route(
             "/portal/assets/signin.js",
             get(|| async {
@@ -47,6 +47,16 @@ pub(super) fn routes() -> Router<App> {
             post(passkey_cancel::<false>),
         )
         .route("/oauth/resume/{id}/decision", post(decision::<false>))
+        .route("/oauth/logout/resume/{id}/state", get(logout_state))
+        .route("/oauth/logout/resume/{id}/decision", post(logout_decision));
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(saml_routes());
+    routes
+}
+
+#[cfg(feature = "platform")]
+fn saml_routes() -> Router<App> {
+    Router::new()
         .route("/saml/resume/{id}/state", get(state::<true>))
         .route("/saml/resume/{id}/password", post(password::<true>))
         .route(
@@ -62,8 +72,6 @@ pub(super) fn routes() -> Router<App> {
             post(passkey_cancel::<true>),
         )
         .route("/saml/resume/{id}/decision", post(decision::<true>))
-        .route("/oauth/logout/resume/{id}/state", get(logout_state))
-        .route("/oauth/logout/resume/{id}/decision", post(logout_decision))
 }
 
 /// The sign-in, consent and sign-out page. It never refreshes itself: signin.js polls the

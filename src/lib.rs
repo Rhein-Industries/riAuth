@@ -1,4 +1,6 @@
 #![recursion_limit = "256"]
+#[cfg(not(feature = "essentials"))]
+compile_error!("Select --features essentials or --features platform for a server build");
 pub mod agent;
 pub mod api;
 mod assembly;
@@ -18,6 +20,7 @@ pub mod crypto;
 pub mod device_trust;
 pub mod directory;
 pub mod dpop;
+pub mod edition;
 pub mod encryption;
 pub mod error;
 pub mod event_map;
@@ -27,6 +30,11 @@ pub mod issuer;
 pub mod jose;
 pub mod keyring;
 pub mod kms;
+mod ldap_listener;
+#[cfg(feature = "platform")]
+pub mod ldap_server;
+#[cfg(not(feature = "platform"))]
+#[path = "ldap_server_essentials.rs"]
 pub mod ldap_server;
 pub mod lifecycle;
 pub mod logout;
@@ -44,6 +52,7 @@ pub mod portal;
 pub mod postgres_store;
 pub mod provider;
 pub mod provisioning;
+mod proxy_listener;
 pub mod radius;
 pub mod recovery;
 pub mod registration;
@@ -66,4 +75,8 @@ pub mod workflow;
 
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
+#[cfg(feature = "platform")]
+pub mod proxy_server;
+#[cfg(not(feature = "platform"))]
+#[path = "proxy_server_essentials.rs"]
 pub mod proxy_server;

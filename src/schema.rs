@@ -30,7 +30,26 @@ pub const NAMES: &[&str] = &[
     "cli-result",
     "workflow",
 ];
+const PLATFORM_NAMES: &[&str] = &[
+    "radius-certificate",
+    "windows-device",
+    "windows-login",
+    "client-certificate",
+    "cloud-directory-plan",
+];
+
+pub fn available_names() -> Vec<&'static str> {
+    NAMES
+        .iter()
+        .copied()
+        .filter(|name| cfg!(feature = "platform") || !PLATFORM_NAMES.contains(name))
+        .collect()
+}
+
 pub fn schema(name: &str) -> Result<Value> {
+    if !available_names().contains(&name) {
+        return Err(Error::missing("Unknown schema; see capabilities.schemas"));
+    }
     Ok(match name {
         "radius-certificate" => json!(schemars::schema_for!(crate::radius::eap::CertificateInput)),
         "windows-device" => json!(schemars::schema_for!(crate::windows_login::EnrollDevice)),

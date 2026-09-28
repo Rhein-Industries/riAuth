@@ -1,0 +1,189 @@
+//! Artifact assembly and downgrade preflight. Both editions use the same Core,
+//! identity store, authorization checks, revocation rules and credential code.
+use crate::{
+    config::Config,
+    error::{Error, Result},
+    model::{Client, ProviderSettings},
+    source::Source,
+    store::Store,
+};
+use serde_json::Value;
+
+pub const NAME: &str = if cfg!(feature = "platform") {
+    "platform"
+} else {
+    "essentials"
+};
+
+pub const PLATFORM_ACTIONS: &[&str] = &[
+    "ldap.search",
+    "certificate.read",
+    "certificate.write",
+    "mtls.read",
+    "mtls.bind",
+    "radius.enroll",
+    "user.offboard",
+    "access.read",
+    "device.enroll",
+    "ssf.manage",
+    "ssf.configure",
+];
+
+pub fn action_available(action: &str) -> bool {
+    cfg!(feature = "platform") || !PLATFORM_ACTIONS.contains(&action)
+}
+
+/// A shared directory action must not acquire cloud-directory authority merely
+/// because an Essentials deployment is later upgraded to Platform.
+pub fn agent_permission_available(action: &str, resource: &str) -> bool {
+    action_available(action)
+        && (cfg!(feature = "platform")
+            || !(resource.starts_with("workspace/")
+                || resource.starts_with("entra/")
+                || resource == "*" && matches!(action, "directory.read" | "directory.sync")))
+}
+
+pub fn validate_config(config: &Config) -> anyhow::Result<()> {
+    if cfg!(feature = "platform") {
+        return Ok(());
+    }
+    for (present, field) in [
+        (!config.proxy_listeners.is_empty(), "proxy_listeners"),
+        (!config.radius_listeners.is_empty(), "radius_listeners"),
+        (!config.ldap_listeners.is_empty(), "ldap_listeners"),
+        (
+            !config.workspace_directories.is_empty(),
+            "workspace_directories",
+        ),
+        (!config.entra_directories.is_empty(), "entra_directories"),
+        (!config.signers.is_empty(), "signers"),
+        (!config.pam_approvers.is_empty(), "pam_approvers"),
+        (config.client_certificates.is_some(), "client_certificates"),
+        (config.device_trust.is_some(), "device_trust"),
+    ] {
+        if present {
+            anyhow::bail!("{field} requires the Platform build");
+        }
+    }
+    for key in ["saml", "forward_auth", "outpost_start"] {
+        if config.rate_limits.contains_key(key) {
+            anyhow::bail!("rate_limits.{key} requires the Platform build");
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_client_settings(settings: &ProviderSettings) -> Result<()> {
+    if cfg!(feature = "platform") {
+        return Ok(());
+    }
+    for (present, field) in [
+        (settings.saml.is_some(), "saml"),
+        (settings.radius.is_some(), "radius"),
+        (settings.ldap.is_some(), "ldap"),
+        (settings.proxy.is_some(), "proxy"),
+        (settings.source_stage.is_some(), "source_stage"),
+        (settings.require_device_trust, "require_device_trust"),
+    ] {
+        if present {
+            return Err(Error::bad(format!(
+                "Client setting {field} requires the Platform build"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_source(source: &Source) -> Result<()> {
+    if !cfg!(feature = "platform") && source.saml.is_some() {
+        return Err(Error::bad("SAML source requires the Platform build"));
+    }
+    Ok(())
+}
+
+/// Refuse a downgrade before starting any network listener or background worker.
+/// Historical Platform records are retained for an explicit migration; silently
+/// ignoring them could resurrect jobs or authority after a later upgrade.
+pub fn validate_store(store: &Store) -> Result<()> {
+    if cfg!(feature = "platform") {
+        return Ok(());
+    }
+    store.read(|tx| {
+        for (_, client) in tx.list::<Client>("clients")? {
+            validate_client_settings(&client.settings)?;
+        }
+        for (_, source) in tx.list::<Source>("sources")? {
+            validate_source(&source)?;
+        }
+        for (_, agent) in tx.list::<crate::agent::Agent>("agents")? {
+            if agent.parent_user.is_some()
+                || agent.permissions.iter().any(|permission| {
+                    !crate::agent::ACTIONS
+                        .iter()
+                        .any(|(action, _)| *action == permission.action)
+                        || !agent_permission_available(&permission.action, &permission.resource)
+                })
+            {
+                return Err(Error::bad(
+                    "Stored agent ownership or permissions require the Platform build",
+                ));
+            }
+        }
+        // Audited against recovery::{INVALIDATED, REPLAY_CACHES, RECONCILE,
+        // RETAINED}: include persistent bindings and pending authority alike.
+        for bucket in [
+            "access_requests",
+            "access_grants",
+            "offboard_jobs",
+            "windows_devices",
+            "windows_tickets",
+            "device_challenges",
+            "device_verifications",
+            "mtls_bindings",
+            "mtls_users",
+            "mtls_fingerprints",
+            "mtls_san_emails",
+            "mtls_san_uris",
+            "mtls_logins",
+            "radius_certificates",
+            "radius_certificate_ids",
+            "radius_requests",
+            "radius_eap_identities",
+            "cloud_directory_bindings",
+            "cloud_directory_users",
+            "cloud_directory_runs",
+            "cloud_directory_plans",
+            "scim_users",
+            "scim_groups",
+            "ssf_streams",
+            "ssf_deliveries",
+            "ssf_jti",
+            "saml_subjects",
+            "saml_sessions",
+            "saml_source_sessions",
+            "saml_requests",
+            "saml_codes",
+            "saml_consents",
+            "saml_replays",
+            "saml_source_replays",
+            "saml_logout_flows",
+            "saml_logout_sessions",
+            "proxy_pending",
+            "proxy_sessions",
+            "source_stages",
+            "source_stage_requests",
+        ] {
+            if crate::recovery::classify(bucket).is_none() {
+                return Err(Error::internal(
+                    "Platform edition collection missing from recovery policy",
+                ));
+            }
+            if !tx.scan::<Value>(bucket, None, 1)?.is_empty() {
+                return Err(Error::bad(format!(
+                    "Stored {bucket} requires the Platform build or an explicit migration"
+                )));
+            }
+        }
+        Ok(())
+    })
+}

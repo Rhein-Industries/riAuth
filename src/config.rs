@@ -206,6 +206,7 @@ pub fn validate_server_url(value: &str) -> Result<Url> {
 
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        crate::edition::validate_config(self)?;
         if self.proxy_listeners.len() > 16 {
             bail!("Configure at most 16 proxy listeners");
         }

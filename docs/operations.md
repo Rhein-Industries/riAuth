@@ -1,5 +1,10 @@
 # Deployment, backup and recovery
 
+The [server editions guide](editions.md) gives the explicit Essentials and Platform
+build commands and the downgrade preflight. The Dockerfile defaults to Essentials;
+use `--build-arg RIAUTH_EDITION=platform` when the deployment needs Platform
+adapters.
+
 This is the v0.1 operator runbook. The default redb backend has one owning process, snapshot reads and serialized commits. PostgreSQL supports multiple service processes with shared sessions, replay state, rate limits and delivery leases; see [availability](availability.md). Database election, replication policy and fencing belong to the deployment. Do not start two servers against the same redb file.
 
 `riauth-maintenance` provides the offline `init`, `prepare-setup`, `restore`, `recover-admin`, `migrate-postgres`, `keygen`, and `import-authentik` commands. Build it with `cargo build --locked --bin riauth-maintenance`; the default build has no terminal USB dependency. It accepts local configuration and output flags, but has no server URL, session, or HTTP administration commands. Stop the server before operations that need exclusive local database access. The existing `riauth` executable still accepts these local commands during this transition; `riauth serve` and authenticated commands such as `login`, `backup`, `plan`, `apply`, and `status` keep their current paths. The separate [riauthctl](../crates/riauthctl/README.md) supports remote status, identity, inventory, and reviewed plan/apply; other management commands remain in the legacy executable until parity review is complete.

@@ -53,6 +53,7 @@ pub fn grant_allowed(client: &Client, grant: &str) -> Result<()> {
 
 pub fn validate_settings(client: &Client) -> Result<()> {
     let s = &client.settings;
+    crate::edition::validate_client_settings(s)?;
     if let Some(app) = &s.app {
         app.validate(client)?;
     }

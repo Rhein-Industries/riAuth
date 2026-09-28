@@ -82,11 +82,13 @@ pub struct Principal {
 }
 impl Principal {
     pub fn allows(&self, action: &str, resource: &str) -> bool {
-        !self.agent
-            || self
-                .permissions
-                .iter()
-                .any(|p| p.action == action && (p.resource == resource || p.resource == "*"))
+        crate::edition::action_available(action)
+            && (!self.agent
+                || self.permissions.iter().any(|p| {
+                    crate::edition::agent_permission_available(&p.action, &p.resource)
+                        && p.action == action
+                        && (p.resource == resource || p.resource == "*")
+                }))
     }
     pub fn require(&self, action: &str, resource: &str) -> Result<()> {
         if self.allows(action, resource) {
@@ -174,6 +176,9 @@ impl Core {
         validate_name(&input.id)?;
         if let Some(parent) = &input.parent {
             validate_name(parent)?;
+            if !cfg!(feature = "platform") {
+                return Err(Error::bad("Parent-owned agents require the Platform build"));
+            }
         }
         if !(60..=2_592_000).contains(&input.ttl)
             || input.permissions.is_empty()
@@ -186,6 +191,7 @@ impl Core {
         for permission in &input.permissions {
             let (_, kind) = ACTIONS
                 .iter()
+                .filter(|(action, _)| crate::edition::action_available(action))
                 .find(|(a, _)| *a == permission.action)
                 .ok_or_else(|| Error::bad("Unknown agent permission"))?;
             if permission.resource != "*" {
@@ -206,6 +212,12 @@ impl Core {
                     ));
                 }
                 validate_name(name)?;
+            }
+            if !crate::edition::agent_permission_available(&permission.action, &permission.resource)
+            {
+                return Err(Error::bad(
+                    "Agent permission resource requires the Platform build",
+                ));
             }
         }
         self.mutation(token, |tx| {
@@ -292,9 +304,129 @@ pub(crate) fn audit_parent(
         .and_then(|agent| agent.parent_user))
 }
 
+pub const FEATURES: &[&str] = &[
+    "portal.user_applications",
+    "portal.terminal_sign_in",
+    "audit.self_hosted_event_map",
+    "saml.idp_signed_browser_sso",
+    "saml.sp_initiated_logout",
+    "saml.logout_fanout",
+    "saml.upstream_logout",
+    "saml.assertion_encryption",
+    "radius.pap",
+    "radius.radsec",
+    "radius.eap_tls",
+    "agents.certificate_bindings",
+    "directory.ldap_provider",
+    "proxy.forward_auth_sso",
+    "proxy.shared_domain_sso",
+    "proxy.reverse_proxy",
+    "directory.ldap_sync",
+    "identity.ldap_authentication",
+    "identity.passkeys",
+    "identity.email_verification",
+    "identity.invitations",
+    "identity.email_password_reset",
+    "operations.postgresql",
+    "operations.shared_rate_limits",
+    "operations.native_tls",
+    "operations.vault_transit_signing",
+    "oidc.par",
+    "oidc.jar",
+    "oidc.jarm",
+    "oidc.claims_requests",
+    "oidc.dpop",
+    "oidc.bound_key",
+    "oidc.pairwise_subjects",
+    "oidc.resource_indicators",
+    "oidc.key_domains",
+    "oidc.jwe",
+    "oidc.provider_issuers",
+    "oidc.frontchannel_logout",
+    "oidc.session_management",
+    "identity.oidc_sources",
+    "identity.saml_sources",
+    "identity.oauth_sources",
+    "identity.source_linking",
+    "identity.totp_import",
+    "agents.source_manifests",
+    "directory.scim_inbound",
+    "directory.scim_outbound",
+    "operations.prometheus",
+    "operations.schema_migrations",
+    "oidc.private_key_jwt",
+    "oidc.federated_machine_grants",
+    "oidc.token_exchange",
+    "oidc.dynamic_registration",
+    "oidc.code.pkce_s256",
+    "oidc.device",
+    "oidc.refresh_rotation",
+    "oidc.native_redirects",
+    "oidc.request_bound_reauthentication",
+    "agents.scoped_credentials",
+    "agents.plan_apply",
+    "agents.atomic_idempotency",
+    "agents.conditional_mutations",
+    "agents.audit_run_id",
+    "agents.schema",
+    "oidc.browser_terminal_handoff",
+    "oidc.rp_logout",
+    "oidc.backchannel_logout",
+    "oidc.claim_mappings",
+    "oidc.scope_policies",
+    "oidc.provider_settings",
+    "oidc.cors",
+    "operations.encrypted_backup_restore",
+    "operations.encrypted_storage",
+    "identity.recovery_codes",
+    "identity.self_password_change",
+    "access.temporary_entitlements",
+    "identity.scheduled_offboarding",
+    "operations.audit_review",
+    "operations.csv_export",
+    "identity.windows_device_login",
+    "agents.parent_ownership",
+    "directory.workspace_sync",
+    "directory.entra_sync",
+    "identity.https_client_certificates",
+    "identity.device_trust",
+    "ssf.push",
+];
+
+pub const PLATFORM_FEATURES: &[&str] = &[
+    "audit.self_hosted_event_map",
+    "saml.idp_signed_browser_sso",
+    "saml.sp_initiated_logout",
+    "saml.logout_fanout",
+    "saml.upstream_logout",
+    "saml.assertion_encryption",
+    "radius.pap",
+    "radius.radsec",
+    "radius.eap_tls",
+    "agents.certificate_bindings",
+    "directory.ldap_provider",
+    "proxy.forward_auth_sso",
+    "proxy.shared_domain_sso",
+    "proxy.reverse_proxy",
+    "operations.vault_transit_signing",
+    "identity.saml_sources",
+    "directory.scim_inbound",
+    "access.temporary_entitlements",
+    "identity.scheduled_offboarding",
+    "identity.windows_device_login",
+    "agents.parent_ownership",
+    "directory.workspace_sync",
+    "directory.entra_sync",
+    "identity.https_client_certificates",
+    "identity.device_trust",
+    "ssf.push",
+];
+
 pub fn capabilities() -> Value {
     json!({"schema_version": "riauth.capabilities/v1", "version": env!("CARGO_PKG_VERSION"),
-        "interface": "cli", "permissions": ACTIONS.iter().map(|(action, resource_kind)| json!({"action": action, "resource_kind": resource_kind})).collect::<Vec<_>>(),
-        "features": ["portal.user_applications", "portal.terminal_sign_in", "audit.self_hosted_event_map", "saml.idp_signed_browser_sso", "saml.sp_initiated_logout", "saml.logout_fanout", "saml.upstream_logout", "saml.assertion_encryption", "radius.pap", "radius.radsec", "radius.eap_tls", "agents.certificate_bindings", "directory.ldap_provider", "proxy.forward_auth_sso", "proxy.shared_domain_sso", "proxy.reverse_proxy", "directory.ldap_sync", "identity.ldap_authentication", "identity.passkeys", "identity.email_verification", "identity.invitations", "identity.email_password_reset", "operations.postgresql", "operations.shared_rate_limits", "operations.native_tls", "operations.vault_transit_signing", "oidc.par", "oidc.jar", "oidc.jarm", "oidc.claims_requests", "oidc.dpop", "oidc.bound_key", "oidc.pairwise_subjects", "oidc.resource_indicators", "oidc.key_domains", "oidc.jwe", "oidc.provider_issuers", "oidc.frontchannel_logout", "oidc.session_management", "identity.oidc_sources", "identity.saml_sources", "identity.oauth_sources", "identity.source_linking", "identity.totp_import", "agents.source_manifests", "directory.scim_inbound", "directory.scim_outbound", "operations.prometheus", "operations.schema_migrations", "oidc.private_key_jwt", "oidc.federated_machine_grants", "oidc.token_exchange", "oidc.dynamic_registration", "oidc.code.pkce_s256", "oidc.device", "oidc.refresh_rotation", "oidc.native_redirects", "oidc.request_bound_reauthentication", "agents.scoped_credentials", "agents.plan_apply", "agents.atomic_idempotency", "agents.conditional_mutations", "agents.audit_run_id", "agents.schema", "oidc.browser_terminal_handoff", "oidc.rp_logout", "oidc.backchannel_logout", "oidc.claim_mappings", "oidc.scope_policies", "oidc.provider_settings", "oidc.cors", "operations.encrypted_backup_restore", "operations.encrypted_storage", "identity.recovery_codes", "identity.self_password_change", "access.temporary_entitlements", "identity.scheduled_offboarding", "operations.audit_review", "operations.csv_export", "identity.windows_device_login", "agents.parent_ownership", "directory.workspace_sync", "directory.entra_sync", "identity.https_client_certificates", "identity.device_trust", "ssf.push"],
-        "schemas": crate::schema::NAMES, "cli_result_schema": "riauth.cli/v1", "error_exit_codes": {"operation_failed": 1, "usage": 2, "authentication": 3, "permission": 4, "conflict": 5, "retryable": 6}})
+        "interface": "server", "edition": crate::edition::NAME,
+        "build_features": if cfg!(feature = "platform") { vec!["essentials", "platform"] } else { vec!["essentials"] },
+        "permissions": ACTIONS.iter().filter(|(action, _)| crate::edition::action_available(action)).map(|(action, resource_kind)| json!({"action": action, "resource_kind": resource_kind})).collect::<Vec<_>>(),
+        "features": FEATURES.iter().copied().filter(|feature| cfg!(feature = "platform") || !PLATFORM_FEATURES.contains(feature)).collect::<Vec<_>>(),
+        "schemas": crate::schema::available_names(), "cli_result_schema": "riauth.cli/v1", "error_exit_codes": {"operation_failed": 1, "usage": 2, "authentication": 3, "permission": 4, "conflict": 5, "retryable": 6}})
 }

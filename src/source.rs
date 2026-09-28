@@ -215,6 +215,7 @@ pub struct Finish {
 
 impl Source {
     pub fn validate(&self) -> Result<()> {
+        crate::edition::validate_source(self)?;
         validate_name(&self.id)?;
         validate_display(&self.name)?;
         if let Some(settings) = &self.saml {

@@ -1,5 +1,6 @@
 mod server;
 pub(crate) use server::serve_bootstrap;
+#[cfg(feature = "platform")]
 pub(crate) use server::tls_files;
 pub use server::{into_rustls_server, serve, tls_configuration};
 
@@ -7,16 +8,18 @@ mod interaction;
 mod observability;
 mod probes;
 mod rates;
+#[cfg(feature = "platform")]
 mod workflow;
 use observability::{Permits, Stats, metrics, observe, prometheus};
 #[doc(hidden)]
 pub use rates::RateTable;
 
+#[cfg(feature = "platform")]
+use crate::offboarding::{RescheduleRequest, ScheduleRequest};
 use crate::{
     core::Core,
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch},
-    offboarding::{RescheduleRequest, ScheduleRequest},
     oidc::{TokenRequest, client_credentials_from_headers, parse_form},
 };
 use axum::{
@@ -166,6 +169,7 @@ pub fn router(core: Core) -> Router {
         .trim_end_matches('/')
         .to_owned();
     let metadata = core.discovery();
+    #[cfg(feature = "platform")]
     let ssf_document = core.ssf_metadata();
     let app = App::new(core);
     let routes = Router::new()
@@ -174,38 +178,27 @@ pub fn router(core: Core) -> Router {
         .merge(crate::portal::admin::routes())
         .merge(crate::bootstrap::closed_routes())
         .merge(interaction::routes())
-        .merge(workflow::routes())
-        .route("/scim/v2/ServiceProviderConfig", get(||async{crate::scim::response(crate::scim::metadata("ServiceProviderConfig"),StatusCode::OK)}))
-        .route("/scim/v2/ResourceTypes", get(||async{crate::scim::response(crate::scim::metadata("ResourceTypes"),StatusCode::OK)}))
-        .route("/scim/v2/Schemas", get(||async{crate::scim::response(crate::scim::metadata("Schemas"),StatusCode::OK)}))
-        .route("/scim/v2/Schemas/{id}", get(|Path(id):Path<String>|async move{crate::scim::response(crate::scim::metadata(&id),StatusCode::OK)}))
-        .route("/scim/v2/{kind}", get(scim_list).post(scim_create))
-        .route("/scim/v2/{kind}/.search", post(scim_search))
-        .route("/scim/v2/{kind}/{id}", get(scim_get).put(scim_replace).patch(scim_patch).delete(scim_delete))
         .route("/.well-known/openid-configuration", get(discovery))
         .route("/.well-known/oauth-authorization-server", get(discovery))
-        .route("/.well-known/ssf-configuration", get(ssf_configuration))
         .route("/oauth/jwks", get(jwks))
-        .route("/oauth/authorize", get(authorization_details).post(authorize))
+        .route(
+            "/oauth/authorize",
+            get(authorization_details).post(authorize),
+        )
         .route("/oauth/resume/{id}", get(browser_resume))
-        .route("/saml/sources/{id}/metadata", get(saml_source_metadata))
-        .route("/api/saml/sources/{id}/metadata", get(saml_source_metadata_json))
-        .route("/saml/sources/{id}/acs", post(saml_source_acs).layer(DefaultBodyLimit::max(96*1024)))
-        .route("/saml/logout/{ticket}", get(saml_logout_next))
-        .route("/saml/logout/{ticket}/status", get(saml_logout_status))
-        .route("/saml/sources/{id}/slo", get(saml_source_logout_redirect).post(saml_source_logout_post))
-        .route("/saml/{id}/metadata", get(saml_metadata))
-        .route("/api/saml/{id}/metadata", get(saml_metadata_json))
-        .route("/saml/{id}/sso", get(saml_redirect).post(saml_post))
-        .route("/saml/{id}/init", get(saml_initiate))
-        .route("/saml/resume/{id}", get(saml_resume))
         .route("/api/authorization/{code}", get(browser_details))
         .route("/api/authorization/decision", post(browser_decide))
         .route("/oauth/token", post(token))
         .route("/oauth/register", post(dynamic_register))
         .route("/oauth/par", post(push_authorization))
-        .route("/api/registration", get(registration_templates).post(create_registration))
-        .route("/api/registration/{id}", axum::routing::delete(revoke_registration))
+        .route(
+            "/api/registration",
+            get(registration_templates).post(create_registration),
+        )
+        .route(
+            "/api/registration/{id}",
+            axum::routing::delete(revoke_registration),
+        )
         .route("/oauth/device/code", post(device_start))
         .route("/oauth/userinfo", get(userinfo).post(userinfo))
         .route("/oauth/introspect", post(introspect))
@@ -213,82 +206,89 @@ pub fn router(core: Core) -> Router {
         .route("/oauth/logout", get(end_session_get).post(end_session_post))
         .route("/oauth/logout/resume/{id}", get(logout_request_resume))
         .route("/api/logout-requests/{code}", get(logout_request_details))
-        .route("/api/logout-requests/{code}/decision", post(logout_request_decide))
+        .route(
+            "/api/logout-requests/{code}/decision",
+            post(logout_request_decide),
+        )
         .route("/oauth/session/iframe", get(session_iframe))
         .route("/oauth/session/check", post(session_check))
         .route("/api/login", post(login))
-        .route("/api/login/certificate", post(certificate_login))
-        .route("/api/certificates", get(client_certificates).post(client_certificate_bind))
-        .route("/api/certificates/{id}", axum::routing::delete(client_certificate_revoke))
         .route("/api/account/verify-request", post(account_verify_request))
         .route("/api/account/reset-request", post(account_reset_request))
         .route("/api/account/complete", post(account_complete))
         .route("/api/account/invitations", post(account_invite))
-        .route("/api/account/invitations/{username}", axum::routing::delete(account_invitation_revoke))
+        .route(
+            "/api/account/invitations/{username}",
+            axum::routing::delete(account_invitation_revoke),
+        )
         .route("/api/operations/mail", get(mail_deliveries))
         .route("/api/provisioning/targets", get(provisioning_targets))
-        .route("/api/provisioning/targets/{id}/plan", post(provisioning_plan))
+        .route(
+            "/api/provisioning/targets/{id}/plan",
+            post(provisioning_plan),
+        )
         .route("/api/provisioning/plans/{id}", get(provisioning_plan_get))
-        .route("/api/provisioning/plans/{id}/apply", post(provisioning_apply))
+        .route(
+            "/api/provisioning/plans/{id}/apply",
+            post(provisioning_apply),
+        )
         .route("/api/provisioning/jobs", get(provisioning_jobs))
-        .route("/api/radius/certificates", get(radius_certificates).post(radius_certificate_bind))
-        .route("/api/radius/certificates/{id}", axum::routing::delete(radius_certificate_revoke))
-        .route("/api/windows-devices", get(windows_devices).post(windows_device_enroll))
-        .route("/api/windows-devices/login", post(windows_device_login))
-        .route("/api/windows-devices/tickets/redeem", post(windows_ticket_redeem))
-        .route("/api/windows-devices/offline/verify", post(windows_offline_verify))
-        .route("/api/windows-devices/{id}", axum::routing::delete(windows_device_revoke))
         .route("/api/directories", get(directories))
         .route("/api/directories/{id}/plan", post(directory_plan))
         .route("/api/directory-plans/{id}", get(directory_plan_get))
         .route("/api/directory-plans/{id}/apply", post(directory_apply))
-        .route("/api/workspace-directories", get(workspace_directories))
-        .route("/api/workspace-directories/{id}/plan", post(workspace_plan))
-        .route("/api/workspace-directory-plans/{id}", get(workspace_plan_get))
-        .route("/api/workspace-directory-plans/{id}/apply", post(workspace_apply))
-        .route("/api/entra-directories", get(entra_directories))
-        .route("/api/entra-directories/{id}/plan", post(entra_plan))
-        .route("/api/entra-directory-plans/{id}", get(entra_plan_get))
-        .route("/api/entra-directory-plans/{id}/apply", post(entra_apply))
         .route("/api/sources", get(source_list).post(source_put))
         .route("/api/sources/{id}/start", post(source_start))
         .route("/api/source-login/finish", post(source_finish))
         .route("/api/source-links", get(source_links))
-        .route("/api/source-links/{id}", axum::routing::delete(source_unlink))
-        .route("/oauth/sources/{id}/callback", get(source_callback))
         .route(
-            "/oauth/source-stages/{id}/resume",
-            get(source_stage_resume).post(source_stage_resume_post),
+            "/api/source-links/{id}",
+            axum::routing::delete(source_unlink),
         )
-        .route("/oauth/source-stages/{id}/cancel", post(source_stage_cancel))
+        .route("/oauth/sources/{id}/callback", get(source_callback))
         .route("/api/logout", post(logout))
         .route("/api/me", get(me))
         .route("/api/sessions", get(sessions))
         .route("/api/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/api/users", get(users).post(create_user))
         .route("/api/users/{username}", axum::routing::patch(update_user))
-        .route("/api/offboard/jobs", get(offboard_jobs).post(offboard_schedule))
-        .route("/api/offboard/jobs/{id}", get(offboard_job))
-        .route("/api/offboard/jobs/{id}/reschedule", post(offboard_reschedule))
-        .route("/api/offboard/jobs/{id}/cancel", post(offboard_cancel))
         .route("/api/groups", get(groups).post(create_group))
-        .route("/api/groups/{name}/members/{username}", axum::routing::put(add_member).delete(remove_member))
-        .route("/api/access/requests", get(access_requests).post(access_request_create))
-        .route("/api/access/requests/{id}/approve", post(access_approve))
-        .route("/api/access/requests/{id}/deny", post(access_deny))
-        .route("/api/access/grants", get(access_grants))
-        .route("/api/access/grants/{id}/revoke", post(access_revoke))
+        .route(
+            "/api/groups/{name}/members/{username}",
+            axum::routing::put(add_member).delete(remove_member),
+        )
         .route("/api/clients", get(clients).post(create_client))
         .route("/api/clients/{id}", axum::routing::patch(update_client))
-        .route("/api/clients/{id}/rotate-secret", post(rotate_client_secret))
+        .route(
+            "/api/clients/{id}/rotate-secret",
+            post(rotate_client_secret),
+        )
         .route("/api/mfa/enroll", post(mfa_begin))
         .route("/api/passkeys", get(passkeys))
-        .route("/api/passkeys/{id}", axum::routing::delete(passkey_remove).patch(passkey_rename))
-        .route("/api/passkey/registration/start", post(passkey_register_start))
-        .route("/api/passkey/registration/finish", post(passkey_register_finish))
-        .route("/api/passkey/registration/cancel", post(passkey_register_cancel))
-        .route("/api/passkey/authentication/start", post(passkey_login_start))
-        .route("/api/passkey/authentication/finish", post(passkey_login_finish))
+        .route(
+            "/api/passkeys/{id}",
+            axum::routing::delete(passkey_remove).patch(passkey_rename),
+        )
+        .route(
+            "/api/passkey/registration/start",
+            post(passkey_register_start),
+        )
+        .route(
+            "/api/passkey/registration/finish",
+            post(passkey_register_finish),
+        )
+        .route(
+            "/api/passkey/registration/cancel",
+            post(passkey_register_cancel),
+        )
+        .route(
+            "/api/passkey/authentication/start",
+            post(passkey_login_start),
+        )
+        .route(
+            "/api/passkey/authentication/finish",
+            post(passkey_login_finish),
+        )
         .route("/api/mfa/confirm", post(mfa_confirm))
         .route("/api/mfa/recovery-codes", post(recovery_codes))
         .route("/api/password", post(change_password))
@@ -298,42 +298,40 @@ pub fn router(core: Core) -> Router {
         .route("/api/audit/review", get(audit_review))
         .route("/api/reports/users.csv", get(users_csv))
         .route("/api/reports/audit.csv", get(audit_csv))
-        .route("/api/audit/map", get(audit_map))
         .route("/api/keys/rotate", post(rotate_key))
         .route("/api/keys", get(key_domains).post(configure_key))
-        .route("/api/capabilities", get(|| async { Json(crate::agent::capabilities()) }))
+        .route(
+            "/api/capabilities",
+            get(|| async { Json(crate::agent::capabilities()) }),
+        )
         .route("/api/agents", get(list_agents).post(create_agent))
         .route("/api/agents/{id}", axum::routing::delete(revoke_agent))
         .route("/api/agents/{id}/rotate", post(rotate_agent))
         .route("/api/resources/{kind}/{name}", get(get_resource))
         .route("/api/consents", get(consents))
         .route("/api/consents/{id}", axum::routing::delete(revoke_consent))
-        .route("/api/state/plan", post(plan_state).layer(DefaultBodyLimit::max(2 * 1024 * 1024)))
-        .route("/api/state/apply", post(apply_state).layer(DefaultBodyLimit::max(2 * 1024 * 1024)))
+        .route(
+            "/api/state/plan",
+            post(plan_state).layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route(
+            "/api/state/apply",
+            post(apply_state).layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
         .route("/api/state/export", get(export_state))
         .route("/api/state/revision", get(revision))
         .route("/api/schema/{name}", get(schema))
         .route("/api/policy/explain", post(explain))
         .route("/api/state/plans/{id}", get(plan_status))
         .route("/api/operations/logout", get(logout_deliveries))
-        .route("/api/device-trust/challenge", post(device_trust_challenge))
-        .route("/api/device-trust/verify", post(device_trust_verify))
-        .route("/api/ssf/streams", get(ssf_config_streams).post(ssf_config_stream_create).patch(ssf_config_stream_patch).put(ssf_config_stream_put).delete(ssf_config_stream_delete))
-        .route("/api/ssf/admin/streams", get(ssf_streams).post(ssf_stream_create))
-        .route("/api/ssf/admin/streams/{id}", axum::routing::delete(ssf_stream_delete))
-        .route("/api/ssf/admin/streams/{id}/subjects", axum::routing::put(ssf_stream_subjects))
-        .route("/api/ssf/events", post(ssf_events).layer(DefaultBodyLimit::disable()))
         .route("/api/operations/doctor", get(doctor))
         .route("/api/operations/metrics", get(metrics))
         .route("/api/operations/prometheus", get(prometheus))
         .route("/api/operations/backup", post(backup))
-        .route("/api/inventory/{kind}", get(inventory))
-        .route("/api/proxy/auth", get(proxy_auth))
-        .route("/outpost/{id}/auth", get(outpost_auth))
-        .route("/outpost/{id}/traefik", get(outpost_traefik))
-        .route("/outpost/{id}/start", get(outpost_start))
-        .route("/outpost/{id}/callback", get(outpost_callback))
-        .route("/outpost/{id}/logout", post(outpost_logout))
+        .route("/api/inventory/{kind}", get(inventory));
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(platform_routes());
+    let routes = routes
         .fallback(provider_discovery_path)
         .layer(DefaultBodyLimit::max(32 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), protect))
@@ -350,7 +348,7 @@ pub fn router(core: Core) -> Router {
     if prefix.is_empty() {
         routes
     } else {
-        Router::new()
+        let prefixed = Router::new()
             .route(
                 &format!("{prefix}/"),
                 get(crate::portal::http::root)
@@ -364,20 +362,192 @@ pub fn router(core: Core) -> Router {
                     let metadata = metadata.clone();
                     async move { Json(metadata) }
                 }),
-            )
-            .route(
-                &format!("/.well-known/ssf-configuration{prefix}"),
-                get(move || {
-                    let document = ssf_document.clone();
-                    async move { Json(document) }
-                }),
-            )
+            );
+        #[cfg(feature = "platform")]
+        let prefixed = prefixed.route(
+            &format!("/.well-known/ssf-configuration{prefix}"),
+            get(move || {
+                let document = ssf_document.clone();
+                async move { Json(document) }
+            }),
+        );
+        prefixed
             .nest(&prefix, routes)
             .fallback(move |request: Request| {
                 let app = app.clone();
                 async move { provider_discovery_path(State(app), request).await }
             })
     }
+}
+
+#[cfg(feature = "platform")]
+fn platform_routes() -> Router<App> {
+    Router::new()
+        .merge(workflow::routes())
+        .route(
+            "/scim/v2/ServiceProviderConfig",
+            get(|| async {
+                crate::scim::response(
+                    crate::scim::metadata("ServiceProviderConfig"),
+                    StatusCode::OK,
+                )
+            }),
+        )
+        .route(
+            "/scim/v2/ResourceTypes",
+            get(|| async {
+                crate::scim::response(crate::scim::metadata("ResourceTypes"), StatusCode::OK)
+            }),
+        )
+        .route(
+            "/scim/v2/Schemas",
+            get(|| async {
+                crate::scim::response(crate::scim::metadata("Schemas"), StatusCode::OK)
+            }),
+        )
+        .route(
+            "/scim/v2/Schemas/{id}",
+            get(|Path(id): Path<String>| async move {
+                crate::scim::response(crate::scim::metadata(&id), StatusCode::OK)
+            }),
+        )
+        .route("/scim/v2/{kind}", get(scim_list).post(scim_create))
+        .route("/scim/v2/{kind}/.search", post(scim_search))
+        .route(
+            "/scim/v2/{kind}/{id}",
+            get(scim_get)
+                .put(scim_replace)
+                .patch(scim_patch)
+                .delete(scim_delete),
+        )
+        .route("/.well-known/ssf-configuration", get(ssf_configuration))
+        .route("/saml/sources/{id}/metadata", get(saml_source_metadata))
+        .route(
+            "/api/saml/sources/{id}/metadata",
+            get(saml_source_metadata_json),
+        )
+        .route(
+            "/saml/sources/{id}/acs",
+            post(saml_source_acs).layer(DefaultBodyLimit::max(96 * 1024)),
+        )
+        .route("/saml/logout/{ticket}", get(saml_logout_next))
+        .route("/saml/logout/{ticket}/status", get(saml_logout_status))
+        .route(
+            "/saml/sources/{id}/slo",
+            get(saml_source_logout_redirect).post(saml_source_logout_post),
+        )
+        .route("/saml/{id}/metadata", get(saml_metadata))
+        .route("/api/saml/{id}/metadata", get(saml_metadata_json))
+        .route("/saml/{id}/sso", get(saml_redirect).post(saml_post))
+        .route("/saml/{id}/init", get(saml_initiate))
+        .route("/saml/resume/{id}", get(saml_resume))
+        .route("/api/login/certificate", post(certificate_login))
+        .route(
+            "/api/certificates",
+            get(client_certificates).post(client_certificate_bind),
+        )
+        .route(
+            "/api/certificates/{id}",
+            axum::routing::delete(client_certificate_revoke),
+        )
+        .route(
+            "/api/radius/certificates",
+            get(radius_certificates).post(radius_certificate_bind),
+        )
+        .route(
+            "/api/radius/certificates/{id}",
+            axum::routing::delete(radius_certificate_revoke),
+        )
+        .route(
+            "/api/windows-devices",
+            get(windows_devices).post(windows_device_enroll),
+        )
+        .route("/api/windows-devices/login", post(windows_device_login))
+        .route(
+            "/api/windows-devices/tickets/redeem",
+            post(windows_ticket_redeem),
+        )
+        .route(
+            "/api/windows-devices/offline/verify",
+            post(windows_offline_verify),
+        )
+        .route(
+            "/api/windows-devices/{id}",
+            axum::routing::delete(windows_device_revoke),
+        )
+        .route("/api/workspace-directories", get(workspace_directories))
+        .route("/api/workspace-directories/{id}/plan", post(workspace_plan))
+        .route(
+            "/api/workspace-directory-plans/{id}",
+            get(workspace_plan_get),
+        )
+        .route(
+            "/api/workspace-directory-plans/{id}/apply",
+            post(workspace_apply),
+        )
+        .route("/api/entra-directories", get(entra_directories))
+        .route("/api/entra-directories/{id}/plan", post(entra_plan))
+        .route("/api/entra-directory-plans/{id}", get(entra_plan_get))
+        .route("/api/entra-directory-plans/{id}/apply", post(entra_apply))
+        .route(
+            "/oauth/source-stages/{id}/resume",
+            get(source_stage_resume).post(source_stage_resume_post),
+        )
+        .route(
+            "/oauth/source-stages/{id}/cancel",
+            post(source_stage_cancel),
+        )
+        .route(
+            "/api/offboard/jobs",
+            get(offboard_jobs).post(offboard_schedule),
+        )
+        .route("/api/offboard/jobs/{id}", get(offboard_job))
+        .route(
+            "/api/offboard/jobs/{id}/reschedule",
+            post(offboard_reschedule),
+        )
+        .route("/api/offboard/jobs/{id}/cancel", post(offboard_cancel))
+        .route(
+            "/api/access/requests",
+            get(access_requests).post(access_request_create),
+        )
+        .route("/api/access/requests/{id}/approve", post(access_approve))
+        .route("/api/access/requests/{id}/deny", post(access_deny))
+        .route("/api/access/grants", get(access_grants))
+        .route("/api/access/grants/{id}/revoke", post(access_revoke))
+        .route("/api/audit/map", get(audit_map))
+        .route("/api/device-trust/challenge", post(device_trust_challenge))
+        .route("/api/device-trust/verify", post(device_trust_verify))
+        .route(
+            "/api/ssf/streams",
+            get(ssf_config_streams)
+                .post(ssf_config_stream_create)
+                .patch(ssf_config_stream_patch)
+                .put(ssf_config_stream_put)
+                .delete(ssf_config_stream_delete),
+        )
+        .route(
+            "/api/ssf/admin/streams",
+            get(ssf_streams).post(ssf_stream_create),
+        )
+        .route(
+            "/api/ssf/admin/streams/{id}",
+            axum::routing::delete(ssf_stream_delete),
+        )
+        .route(
+            "/api/ssf/admin/streams/{id}/subjects",
+            axum::routing::put(ssf_stream_subjects),
+        )
+        .route(
+            "/api/ssf/events",
+            post(ssf_events).layer(DefaultBodyLimit::disable()),
+        )
+        .route("/api/proxy/auth", get(proxy_auth))
+        .route("/outpost/{id}/auth", get(outpost_auth))
+        .route("/outpost/{id}/traefik", get(outpost_traefik))
+        .route("/outpost/{id}/start", get(outpost_start))
+        .route("/outpost/{id}/callback", get(outpost_callback))
+        .route("/outpost/{id}/logout", post(outpost_logout))
 }
 
 async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Response {
@@ -672,6 +842,7 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
     response
 }
 
+#[cfg(feature = "platform")]
 async fn scim_list(
     State(app): State<App>,
     headers: HeaderMap,
@@ -686,6 +857,7 @@ async fn scim_list(
     .await;
     crate::scim::response(result, StatusCode::OK)
 }
+#[cfg(feature = "platform")]
 async fn scim_search(
     State(app): State<App>,
     headers: HeaderMap,
@@ -706,6 +878,7 @@ async fn scim_search(
     .await;
     crate::scim::response(result, StatusCode::OK)
 }
+#[cfg(feature = "platform")]
 async fn scim_get(
     State(app): State<App>,
     headers: HeaderMap,
@@ -718,6 +891,7 @@ async fn scim_get(
     .await;
     crate::scim::response(result, StatusCode::OK)
 }
+#[cfg(feature = "platform")]
 async fn scim_create(
     State(app): State<App>,
     headers: HeaderMap,
@@ -732,6 +906,7 @@ async fn scim_create(
     .await;
     crate::scim::response(result, StatusCode::CREATED)
 }
+#[cfg(feature = "platform")]
 async fn scim_replace(
     State(app): State<App>,
     headers: HeaderMap,
@@ -746,6 +921,7 @@ async fn scim_replace(
     .await;
     crate::scim::response(result, StatusCode::OK)
 }
+#[cfg(feature = "platform")]
 async fn scim_patch(
     State(app): State<App>,
     headers: HeaderMap,
@@ -760,6 +936,7 @@ async fn scim_patch(
     .await;
     crate::scim::response(result, StatusCode::OK)
 }
+#[cfg(feature = "platform")]
 async fn scim_delete(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1171,10 +1348,12 @@ async fn login(State(app): State<App>, Json(input): Json<Login>) -> Result<Json<
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "platform")]
 struct CertificateLogin {
     #[serde(default)]
     transaction_id: Option<String>,
 }
+#[cfg(feature = "platform")]
 async fn certificate_login(
     State(app): State<App>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -1399,16 +1578,19 @@ fn source_stage_redirect(core: &Core, value: Value) -> Result<Response> {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "platform")]
 struct StageReference {
     authorization_id: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "platform")]
 struct StageResume {
     authorization_id: String,
     #[serde(default)]
     otp: Option<String>,
 }
+#[cfg(feature = "platform")]
 async fn source_stage_resume(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -1419,6 +1601,7 @@ async fn source_stage_resume(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn source_stage_resume_post(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -1429,6 +1612,7 @@ async fn source_stage_resume_post(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn source_stage_cancel(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -1437,6 +1621,7 @@ async fn source_stage_cancel(
     app.run(move |core| stage_result(core.source_stage_cancel(&id, &input.authorization_id)?))
         .await
 }
+#[cfg(feature = "platform")]
 fn stage_result(value: Value) -> Result<Response> {
     if let Some(location) = value["redirect_uri"].as_str() {
         if value["status"] == "local_factor_required" || value["status"] == "pending" {
@@ -1461,6 +1646,7 @@ session_handler!(me, me);
 session_handler!(logout, logout);
 session_handler!(sessions, sessions);
 session_handler!(users, list_users);
+#[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);
 session_handler!(groups, list_groups);
 session_handler!(clients, list_clients);
@@ -1680,6 +1866,7 @@ async fn update_user(
     app.run(move |core| core.update_user(&token, &username, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn offboard_job(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1689,6 +1876,7 @@ async fn offboard_job(
     app.run(move |core| core.offboard_get(&token, &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn offboard_schedule(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1698,6 +1886,7 @@ async fn offboard_schedule(
     app.run(move |core| core.offboard_schedule(&token, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn offboard_reschedule(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1708,6 +1897,7 @@ async fn offboard_reschedule(
     app.run(move |core| core.offboard_reschedule(&token, &id, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn offboard_cancel(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1752,6 +1942,7 @@ async fn remove_member(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn access_request_create(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1761,11 +1952,13 @@ async fn access_request_create(
     app.run(move |core| core.request_access(&token, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn access_requests(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.list_access_requests(&token).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn access_approve(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1775,6 +1968,7 @@ async fn access_approve(
     app.run(move |core| core.decide_access(&token, &id, true).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn access_deny(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1784,11 +1978,13 @@ async fn access_deny(
     app.run(move |core| core.decide_access(&token, &id, false).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn access_grants(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.list_access_grants(&token).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn access_revoke(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1939,11 +2135,13 @@ async fn audit_csv(
     csv_response(page, "audit.csv")
 }
 #[derive(Deserialize)]
+#[cfg(feature = "platform")]
 struct AuditMapQuery {
     since: Option<u64>,
     until: Option<u64>,
     action: Option<String>,
 }
+#[cfg(feature = "platform")]
 async fn audit_map(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1968,9 +2166,11 @@ async fn audit_map(
     }
 }
 #[derive(Deserialize)]
+#[cfg(feature = "platform")]
 struct ProxyQuery {
     client_id: String,
 }
+#[cfg(feature = "platform")]
 async fn proxy_auth(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1994,9 +2194,11 @@ async fn proxy_auth(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "platform")]
 struct ProxyStart {
     rd: String,
 }
+#[cfg(feature = "platform")]
 async fn outpost_start(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2007,6 +2209,7 @@ async fn outpost_start(
         .await
         .and_then(browser_response)
 }
+#[cfg(feature = "platform")]
 async fn outpost_callback(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2020,6 +2223,7 @@ async fn outpost_callback(
         .await
         .and_then(browser_response)
 }
+#[cfg(feature = "platform")]
 async fn outpost_auth(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2043,6 +2247,7 @@ async fn outpost_auth(
     )
     .await
 }
+#[cfg(feature = "platform")]
 async fn outpost_traefik(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2083,6 +2288,7 @@ async fn outpost_traefik(
         Err(error) => Err(error),
     }
 }
+#[cfg(feature = "platform")]
 async fn outpost_logout(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2543,16 +2749,19 @@ async fn directory_apply(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn workspace_directories(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.cloud_directories(&token, "workspace").map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn entra_directories(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.cloud_directories(&token, "entra").map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn workspace_plan(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2562,6 +2771,7 @@ async fn workspace_plan(
     app.run(move |core| core.cloud_plan(&token, "workspace", &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn entra_plan(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2571,6 +2781,7 @@ async fn entra_plan(
     app.run(move |core| core.cloud_plan(&token, "entra", &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn workspace_plan_get(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2580,6 +2791,7 @@ async fn workspace_plan_get(
     app.run(move |core| core.cloud_plan_get(&token, "workspace", &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn entra_plan_get(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2589,6 +2801,7 @@ async fn entra_plan_get(
     app.run(move |core| core.cloud_plan_get(&token, "entra", &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn workspace_apply(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2602,6 +2815,7 @@ async fn workspace_apply(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn entra_apply(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2648,6 +2862,7 @@ async fn provisioning_apply(
     .await
 }
 
+#[cfg(feature = "platform")]
 fn saml_response(reply: crate::saml::Reply) -> Result<Response> {
     match reply {
         crate::saml::Reply::LogoutPage(value) => crate::response::logout(value),
@@ -2669,6 +2884,7 @@ fn saml_response(reply: crate::saml::Reply) -> Result<Response> {
         }
     }
 }
+#[cfg(feature = "platform")]
 async fn saml_metadata(State(app): State<App>, Path(id): Path<String>) -> Result<Response> {
     app.run(move |core| {
         Ok((
@@ -2682,6 +2898,7 @@ async fn saml_metadata(State(app): State<App>, Path(id): Path<String>) -> Result
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn saml_metadata_json(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2698,6 +2915,7 @@ async fn saml_metadata_json(
     .await
 }
 /// With HTML Accept, a request that needs the browser continues on its resume page.
+#[cfg(feature = "platform")]
 fn saml_handoff(app: &App, html: bool, reply: crate::saml::Reply) -> Result<Response> {
     match reply {
         crate::saml::Reply::Waiting(reply) if html => {
@@ -2710,6 +2928,7 @@ fn saml_handoff(app: &App, html: bool, reply: crate::saml::Reply) -> Result<Resp
         reply => saml_response(reply).map(vary_accept),
     }
 }
+#[cfg(feature = "platform")]
 async fn saml_redirect(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2725,6 +2944,7 @@ async fn saml_redirect(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn saml_post(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2751,6 +2971,7 @@ async fn saml_post(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn saml_initiate(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2762,6 +2983,7 @@ async fn saml_initiate(
     app.run(move |core| saml_handoff(&handoff, html, core.saml_initiate(&id, sso.as_deref())?))
         .await
 }
+#[cfg(feature = "platform")]
 async fn saml_resume(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2793,9 +3015,13 @@ async fn saml_resume(
     })
 }
 
+#[cfg(feature = "platform")]
 session_handler!(radius_certificates, radius_certificates);
+#[cfg(feature = "platform")]
 session_handler!(windows_devices, windows_devices);
+#[cfg(feature = "platform")]
 session_handler!(client_certificates, client_certificate_list);
+#[cfg(feature = "platform")]
 async fn radius_certificate_bind(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2805,6 +3031,7 @@ async fn radius_certificate_bind(
     app.run(move |core| core.radius_certificate_bind(&token, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn radius_certificate_revoke(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2814,6 +3041,7 @@ async fn radius_certificate_revoke(
     app.run(move |core| core.radius_certificate_revoke(&token, &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn windows_device_enroll(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2823,6 +3051,7 @@ async fn windows_device_enroll(
     app.run(move |core| core.windows_device_enroll(&token, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn windows_device_revoke(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2832,6 +3061,7 @@ async fn windows_device_revoke(
     app.run(move |core| core.windows_device_revoke(&token, &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn windows_device_login(
     State(app): State<App>,
     Json(input): Json<crate::windows_login::WindowsLogin>,
@@ -2839,6 +3069,7 @@ async fn windows_device_login(
     app.run(move |core| core.windows_login(input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn windows_ticket_redeem(
     State(app): State<App>,
     Json(input): Json<crate::windows_login::RedeemTicket>,
@@ -2846,6 +3077,7 @@ async fn windows_ticket_redeem(
     app.run(move |core| core.windows_ticket_redeem(&input.ticket).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn windows_offline_verify(
     State(app): State<App>,
     Json(input): Json<crate::windows_login::OfflineVerify>,
@@ -2856,6 +3088,7 @@ async fn windows_offline_verify(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn client_certificate_bind(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2865,6 +3098,7 @@ async fn client_certificate_bind(
     app.run(move |core| core.client_certificate_bind(&token, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn client_certificate_revoke(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2875,6 +3109,7 @@ async fn client_certificate_revoke(
         .await
 }
 
+#[cfg(feature = "platform")]
 async fn saml_source_metadata(State(app): State<App>, Path(id): Path<String>) -> Result<Response> {
     let xml = app.run(move |core| core.saml_source_metadata(&id)).await?;
     Ok((
@@ -2886,6 +3121,7 @@ async fn saml_source_metadata(State(app): State<App>, Path(id): Path<String>) ->
     )
         .into_response())
 }
+#[cfg(feature = "platform")]
 async fn saml_source_acs(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2898,6 +3134,7 @@ async fn saml_source_acs(
     .await
 }
 
+#[cfg(feature = "platform")]
 async fn saml_source_metadata_json(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2916,10 +3153,12 @@ async fn saml_source_metadata_json(
     .await
 }
 
+#[cfg(feature = "platform")]
 async fn saml_logout_next(State(app): State<App>, Path(ticket): Path<String>) -> Result<Response> {
     app.run(move |core| saml_response(core.saml_logout_next(&ticket)?))
         .await
 }
+#[cfg(feature = "platform")]
 async fn saml_logout_status(
     State(app): State<App>,
     Path(ticket): Path<String>,
@@ -2927,6 +3166,7 @@ async fn saml_logout_status(
     app.run(move |core| core.saml_logout_status(&ticket).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn saml_source_logout_redirect(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2937,6 +3177,7 @@ async fn saml_source_logout_redirect(
     })
     .await
 }
+#[cfg(feature = "platform")]
 async fn saml_source_logout_post(
     State(app): State<App>,
     Path(id): Path<String>,
@@ -2955,9 +3196,11 @@ async fn saml_source_logout_post(
         .await
 }
 
+#[cfg(feature = "platform")]
 async fn ssf_configuration(State(app): State<App>) -> Json<Value> {
     Json(app.core.ssf_metadata())
 }
+#[cfg(feature = "platform")]
 async fn device_trust_challenge(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.device_challenge(&token).map(Json))
@@ -2965,9 +3208,11 @@ async fn device_trust_challenge(State(app): State<App>, headers: HeaderMap) -> R
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "platform")]
 struct DeviceTrustToken {
     token: String,
 }
+#[cfg(feature = "platform")]
 async fn device_trust_verify(
     State(app): State<App>,
     headers: HeaderMap,
@@ -2977,6 +3222,7 @@ async fn device_trust_verify(
     app.run(move |core| core.device_verify(&token, &input.token).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 fn ssf_caller(headers: &HeaderMap) -> Result<crate::ssf::SsfAuth> {
     let header = headers
         .get("authorization")
@@ -2995,9 +3241,11 @@ fn ssf_caller(headers: &HeaderMap) -> Result<crate::ssf::SsfAuth> {
     }
 }
 #[derive(Deserialize)]
+#[cfg(feature = "platform")]
 struct SsfStreamQuery {
     stream_id: Option<String>,
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_streams(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3013,6 +3261,7 @@ async fn ssf_config_streams(
         .insert("cache-control", HeaderValue::from_static("no-store"));
     Ok(response)
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_stream_create(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3028,6 +3277,7 @@ async fn ssf_config_stream_create(
         .insert("cache-control", HeaderValue::from_static("no-store"));
     Ok(response)
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_stream_patch(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3035,6 +3285,7 @@ async fn ssf_config_stream_patch(
 ) -> Result<Response> {
     ssf_config_stream_update(app, headers, input, false).await
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_stream_put(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3042,6 +3293,7 @@ async fn ssf_config_stream_put(
 ) -> Result<Response> {
     ssf_config_stream_update(app, headers, input, true).await
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_stream_update(
     app: App,
     headers: HeaderMap,
@@ -3058,6 +3310,7 @@ async fn ssf_config_stream_update(
         .insert("cache-control", HeaderValue::from_static("no-store"));
     Ok(response)
 }
+#[cfg(feature = "platform")]
 async fn ssf_config_stream_delete(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3075,10 +3328,12 @@ async fn ssf_config_stream_delete(
         .insert("cache-control", HeaderValue::from_static("no-store"));
     Ok(response)
 }
+#[cfg(feature = "platform")]
 async fn ssf_streams(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let auth = ssf_caller(&headers)?;
     app.run(move |core| core.ssf_list(&auth).map(Json)).await
 }
+#[cfg(feature = "platform")]
 async fn ssf_stream_create(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3088,6 +3343,7 @@ async fn ssf_stream_create(
     let value = app.run(move |core| core.ssf_create(&auth, input)).await?;
     Ok((StatusCode::CREATED, Json(value)).into_response())
 }
+#[cfg(feature = "platform")]
 async fn ssf_stream_delete(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3097,6 +3353,7 @@ async fn ssf_stream_delete(
     app.run(move |core| core.ssf_delete(&auth, &id).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn ssf_stream_subjects(
     State(app): State<App>,
     headers: HeaderMap,
@@ -3107,6 +3364,7 @@ async fn ssf_stream_subjects(
     app.run(move |core| core.ssf_bind_subjects(&auth, &id, input).map(Json))
         .await
 }
+#[cfg(feature = "platform")]
 async fn ssf_events(State(app): State<App>, request: Request) -> Result<Response> {
     let content_type = request
         .headers()
@@ -3150,6 +3408,7 @@ async fn ssf_events(State(app): State<App>, request: Request) -> Result<Response
     }
 }
 
+#[cfg(feature = "platform")]
 fn ssf_delivery_error(code: &str, description: &str) -> Response {
     let mut response = (
         StatusCode::BAD_REQUEST,

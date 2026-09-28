@@ -40,13 +40,14 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: write
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
-      RIAUTH_CI_IMAGE: riauth:release-${{ github.run_id }}-${{ github.run_attempt }}
+      RIAUTH_ESSENTIALS_IMAGE: riauth:essentials-${{ github.run_id }}-${{ github.run_attempt }}
+      RIAUTH_PLATFORM_IMAGE: riauth:platform-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,18 +67,33 @@ jobs:
           export RIAUTH_COMMIT
           test "$(uname -m)" = x86_64
           python3 scripts/generate-third-party-notices.py --check
-          cargo build --release --locked --no-default-features --bins
+          cargo build --release --locked --no-default-features --features essentials --bins --target-dir target/essentials
+          cargo build --release --locked --no-default-features --features platform --bins --target-dir target/platform
           cargo build --manifest-path crates/riauthctl/Cargo.toml --release --locked --no-default-features
           crates/riauthctl/target/release/riauthctl --version
-          docker build -t "$RIAUTH_CI_IMAGE" .
-          docker run --rm "$RIAUTH_CI_IMAGE" --json capabilities
-          docker run --rm --entrypoint cat "$RIAUTH_CI_IMAGE" /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md
-          docker run --rm --entrypoint test "$RIAUTH_CI_IMAGE" -r /usr/share/doc/libssl3t64/copyright
+          docker build --build-arg RIAUTH_EDITION=essentials -t "$RIAUTH_ESSENTIALS_IMAGE" .
+          docker build --build-arg RIAUTH_EDITION=platform -t "$RIAUTH_PLATFORM_IMAGE" .
+          for edition in essentials platform; do
+            if [ "$edition" = essentials ]; then image="$RIAUTH_ESSENTIALS_IMAGE"; else image="$RIAUTH_PLATFORM_IMAGE"; fi
+            docker run --rm "$image" --json capabilities | python3 -c 'import json,sys; expected=sys.argv[1]; result=json.load(sys.stdin); assert result["ok"] and result["data"]["edition"] == expected' "$edition"
+            docker run --rm --entrypoint cat "$image" /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md
+            docker run --rm --entrypoint test "$image" -r /usr/share/doc/libssl3t64/copyright
+          done
           scripts/package-release.sh
+          docker image rm "$RIAUTH_ESSENTIALS_IMAGE" "$RIAUTH_PLATFORM_IMAGE"
+          docker load --input target/dist/riauth-essentials-linux-x86_64.docker.tar.gz
+          docker load --input target/dist/riauth-platform-linux-x86_64.docker.tar.gz
+          python3 scripts/check-edition-artifacts.py \
+            --essentials-archive target/dist/riauth-essentials-linux-x86_64.tar.gz \
+            --platform-archive target/dist/riauth-platform-linux-x86_64.tar.gz \
+            --essentials-image "$RIAUTH_ESSENTIALS_IMAGE" \
+            --platform-image "$RIAUTH_PLATFORM_IMAGE"
           cd target/dist
           sha256sum --check SHA256SUMS
-          tar -xOzf riauth-linux-x86_64.tar.gz LICENSE | cmp - ../../LICENSE
-          tar -xOzf riauth-linux-x86_64.tar.gz THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
+          for edition in essentials platform; do
+            tar -xOzf "riauth-$edition-linux-x86_64.tar.gz" LICENSE | cmp - ../../LICENSE
+            tar -xOzf "riauth-$edition-linux-x86_64.tar.gz" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
+          done
           tar -xOzf riauthctl-linux-x86_64.tar.gz LICENSE | cmp - ../../LICENSE
           tar -xOzf riauthctl-linux-x86_64.tar.gz THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
       - name: Create a draft release for maintainer review

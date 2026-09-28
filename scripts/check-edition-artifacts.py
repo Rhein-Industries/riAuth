@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""Focused smoke checks against the exact A05 release archives and loaded images."""
+
+import argparse
+import json
+import pathlib
+import socket
+import subprocess
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+
+PASSWORD = "a05-artifact-smoke-password"
+PLATFORM_ROUTES = ("/scim/v2/ServiceProviderConfig", "/.well-known/ssf-configuration")
+
+
+def run(*args, input=None, timeout=30):
+    result = subprocess.run(args, input=input, text=True, capture_output=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f"{args[0]} failed ({result.returncode}): {result.stderr.strip()}")
+    return result.stdout
+
+
+def port():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def request(base, path, body=None, token=None):
+    headers = {"Content-Type": "application/json"} if body is not None else {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    payload = json.dumps(body).encode() if body is not None else None
+    call = urllib.request.Request(base + path, data=payload, headers=headers)
+    try:
+        with urllib.request.urlopen(call, timeout=5) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read()
+
+
+def wait_ready(base, alive):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if not alive():
+            raise RuntimeError("server exited before readiness")
+        try:
+            if request(base, "/readyz")[0] == 200:
+                return
+        except (OSError, TimeoutError):
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("server did not become ready")
+
+
+def capabilities(binary, edition):
+    envelope = json.loads(run(str(binary), "--json", "capabilities"))
+    data = envelope["data"]
+    assert envelope["ok"] and data["edition"] == edition
+    assert data["build_features"] == (["essentials"] if edition == "essentials" else ["essentials", "platform"])
+    return data
+
+
+def check_routes(base, edition):
+    expected = 404 if edition == "essentials" else 200
+    for route in PLATFORM_ROUTES:
+        actual, _ = request(base, route)
+        assert actual == expected, f"{edition} {route}: expected {expected}, got {actual}"
+
+
+def token(base):
+    status, body = request(base, "/api/login", {"username": "admin", "password": PASSWORD})
+    assert status == 200, f"login returned {status}"
+    return json.loads(body)["session_token"]
+
+
+def post_agent(base, bearer, identifier, permission, parent=None):
+    body = {"id": identifier, "ttl": 3600, "permissions": [permission]}
+    if parent is not None:
+        body["parent"] = parent
+    return request(base, "/api/agents", body, bearer)[0]
+
+
+def check_agent_boundary(base):
+    bearer = token(base)
+    cases = (
+        ("parent", {"action": "user.read", "resource": "user/admin"}, "missing-parent"),
+        ("workspace", {"action": "directory.read", "resource": "workspace/example"}, None),
+        ("entra", {"action": "directory.sync", "resource": "entra/example"}, None),
+        ("wildcard", {"action": "directory.read", "resource": "*"}, None),
+    )
+    for identifier, permission, parent in cases:
+        status = post_agent(base, bearer, f"a05-{identifier}", permission, parent)
+        assert status == 400, f"Essentials accepted {identifier} agent ({status})"
+
+
+def create_platform_state(base):
+    status = post_agent(
+        base, token(base), "a05-platform-state", {"action": "user.offboard", "resource": "*"}
+    )
+    assert status == 200, f"Platform agent creation returned {status}"
+
+
+def archive_binary(archive, edition, directory):
+    destination = directory / edition
+    destination.mkdir()
+    with tarfile.open(archive, "r:gz") as source:
+        member = source.getmember("riauth")
+        assert member.isfile(), f"{archive} has no server binary"
+        with source.extractfile(member) as payload, (destination / "riauth").open("wb") as output:
+            while chunk := payload.read(1024 * 1024):
+                output.write(chunk)
+    binary = destination / "riauth"
+    binary.chmod(0o700)
+    capabilities(binary, edition)
+    return binary
+
+
+def stop(process):
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def archive_server(binary, config, log):
+    with log.open("wb") as output:
+        process = subprocess.Popen([str(binary), "--config", str(config), "serve"], stdout=output, stderr=output)
+    return process
+
+
+def check_archives(essentials, platform, directory):
+    binaries = {
+        edition: archive_binary(archive, edition, directory)
+        for edition, archive in (("essentials", essentials), ("platform", platform))
+    }
+    for edition, binary in binaries.items():
+        root = directory / f"{edition}-instance"
+        root.mkdir()
+        config = root / "riauth.toml"
+        listen = port()
+        base = f"http://127.0.0.1:{listen}"
+        run(str(binary), "--config", str(config), "--json", "--non-interactive", "init",
+            "--issuer", base, "--listen", f"127.0.0.1:{listen}",
+            "--data-dir", str(root / "data"), "--password-stdin", input=PASSWORD + "\n")
+        log = root / "server.log"
+        server = archive_server(binary, config, log)
+        try:
+            wait_ready(base, lambda: server.poll() is None)
+            check_routes(base, edition)
+            if edition == "essentials":
+                check_agent_boundary(base)
+            else:
+                create_platform_state(base)
+        except Exception as error:
+            raise RuntimeError(f"{error}; server log: {log.read_text(errors='replace')[-4000:]}") from error
+        finally:
+            stop(server)
+        if edition == "platform":
+            downgrade = subprocess.run(
+                [str(binaries["essentials"]), "--config", str(config), "--json", "serve"],
+                text=True, capture_output=True, timeout=15,
+            )
+            output = downgrade.stdout + downgrade.stderr
+            assert downgrade.returncode and "Stored agent" in output and "Platform build" in output, output
+    print("Native archives: edition, route, agent issuance and downgrade checks passed")
+
+
+def docker(*args, input=None, timeout=30):
+    return run("docker", *args, input=input, timeout=timeout)
+
+
+def check_image(edition, image, volume, listen):
+    base = f"http://127.0.0.1:{listen}"
+    issuer = f"https://127.0.0.1:{listen}"
+    docker("run", "--rm", "-i", "-v", f"{volume}:/data", image,
+           "--json", "--non-interactive", "init", "--issuer", issuer,
+           "--listen", "0.0.0.0:9000", "--data-dir", "/data", "--password-stdin",
+           input=PASSWORD + "\n", timeout=60)
+    container = f"riauth-a05-{edition}-{listen}"
+    docker("run", "-d", "--name", container, "-p", f"127.0.0.1:{listen}:9000",
+           "-v", f"{volume}:/data", image, "serve")
+    try:
+        wait_ready(base, lambda: docker("inspect", "--format", "{{.State.Running}}", container).strip() == "true")
+        check_routes(base, edition)
+        if edition == "essentials":
+            check_agent_boundary(base)
+        else:
+            create_platform_state(base)
+    except Exception as error:
+        raise RuntimeError(f"{error}; container log: {docker('logs', container)[-4000:]}") from error
+    finally:
+        docker("rm", "-f", container)
+
+
+def check_images(essentials, platform):
+    images = {"essentials": essentials, "platform": platform}
+    volumes = {}
+    try:
+        for edition, image in images.items():
+            volume = f"riauth-a05-{edition}-{port()}"
+            volumes[edition] = volume
+            docker("volume", "create", volume)
+            label = docker("image", "inspect", "--format", '{{index .Config.Labels "org.riauth.edition"}}', image).strip()
+            assert label == edition, f"{image} edition label is {label}"
+            check_image(edition, image, volume, port())
+        downgrade = subprocess.run(
+            ["docker", "run", "--rm", "-v", f"{volumes['platform']}:/data", essentials,
+             "--json", "serve"], text=True, capture_output=True, timeout=20,
+        )
+        output = downgrade.stdout + downgrade.stderr
+        assert downgrade.returncode and "Stored agent" in output and "Platform build" in output, output
+    finally:
+        for volume in volumes.values():
+            docker("volume", "rm", "-f", volume)
+    print("Loaded images: edition, route, agent issuance and downgrade checks passed")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--essentials-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--platform-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--essentials-image")
+    parser.add_argument("--platform-image")
+    args = parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix="riauth-a05-") as temporary:
+        check_archives(args.essentials_archive, args.platform_archive, pathlib.Path(temporary))
+    if args.essentials_image or args.platform_image:
+        if not (args.essentials_image and args.platform_image):
+            parser.error("both image names are required")
+        check_images(args.essentials_image, args.platform_image)
+
+
+if __name__ == "__main__":
+    main()

@@ -16,14 +16,20 @@ impl Drop for AbortTasks {
     }
 }
 struct Workers {
+    #[cfg(feature = "platform")]
     _ldap: crate::ldap_server::Servers,
+    #[cfg(feature = "platform")]
     _radius: crate::radius::Servers,
+    #[cfg(feature = "platform")]
     _proxy: crate::proxy_server::Servers,
     _tasks: AbortTasks,
 }
 async fn start_workers(core: Core) -> anyhow::Result<Workers> {
+    #[cfg(feature = "platform")]
     let _ldap_servers = crate::ldap_server::start(core.clone()).await?;
+    #[cfg(feature = "platform")]
     let _radius_servers = crate::radius::start(core.clone()).await?;
+    #[cfg(feature = "platform")]
     let _proxy_servers = crate::proxy_server::start(core.clone()).await?;
     let maintenance_core = core.clone();
     let delivery_core = core.clone();
@@ -57,8 +63,10 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
             if let Err(error) = crate::logout::deliver(delivery_core.clone()).await {
                 tracing::warn!(%error, "Logout delivery failed; retrying");
             }
-            if let Err(error) = crate::ssf::deliver(delivery_core.clone()).await {
-                tracing::warn!(%error, "SSF delivery failed; retrying");
+            if cfg!(feature = "platform") {
+                if let Err(error) = crate::ssf::deliver(delivery_core.clone()).await {
+                    tracing::warn!(%error, "SSF delivery failed; retrying");
+                }
             }
         }
     });
@@ -78,8 +86,11 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
         }
     });
     Ok(Workers {
+        #[cfg(feature = "platform")]
         _ldap: _ldap_servers,
+        #[cfg(feature = "platform")]
         _radius: _radius_servers,
+        #[cfg(feature = "platform")]
         _proxy: _proxy_servers,
         _tasks: AbortTasks(vec![
             maintenance,
@@ -188,6 +199,7 @@ pub async fn tls_configuration(
         }
     }
 }
+#[cfg(feature = "platform")]
 pub(crate) async fn tls_files(
     cert: std::path::PathBuf,
     key: std::path::PathBuf,

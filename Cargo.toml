@@ -12,7 +12,10 @@ readme = "README.md"
 keywords = ["identity", "oidc", "saml", "sso"]
 
 [features]
-default = []
+# Preserve the existing source-build behavior. Release artifacts select an edition explicitly.
+default = ["platform"]
+essentials = []
+platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util"]
 terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []
@@ -50,7 +53,7 @@ webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["
 futures-util = { version = "0.3", features = ["sink"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-rustls = "0.26"
-ldap3_proto = { version = "0.8.1", features = ["serde"] }
+ldap3_proto = { version = "0.8.1", features = ["serde"], optional = true }
 md-5 = "0.11"
 hmac = "0.13"
 risaml = { version = "0.7", default-features = false, features = ["crypto-aws-lc"] }
@@ -65,8 +68,8 @@ webpki-roots = "1"
 ldap3 = { version = "0.12.1", default-features = false, features = ["sync", "tls-rustls-aws-lc-rs"] }
 zeroize = "1.9"
 psl = "2.1.238"
-hyper = { version = "1", features = ["http1", "server"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
+hyper = { version = "1", features = ["http1", "server"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
 sha1 = "0.11"
 tower = { version = "0.5", features = ["util"] }
 

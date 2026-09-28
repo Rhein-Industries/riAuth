@@ -42,8 +42,8 @@ jobs:
       - run: cargo test --all-targets --features test-support,fuzzing --locked
       - name: Check build without terminal USB
         run: |
-          cargo build --no-default-features --locked --bins
-          cargo test --no-default-features --locked --test cli usb_commands_fail_locally_without_feature -- --exact
+          cargo build --no-default-features --features essentials --locked --bins
+          cargo test --no-default-features --features essentials --locked --test cli usb_commands_fail_locally_without_feature -- --exact
       - name: Check standalone riauthctl and its dependency closure
         run: |
           cargo fmt --manifest-path crates/riauthctl/Cargo.toml --all -- --check

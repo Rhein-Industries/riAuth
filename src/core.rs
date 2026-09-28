@@ -166,6 +166,9 @@ impl Core {
                 "Configured issuer does not match the initialized instance",
             ));
         }
+        // Edition compatibility is read-only and must run before either migration
+        // or restored-lineage reconciliation mutates shared state.
+        crate::edition::validate_store(&store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
         let dummy = store
