@@ -9,8 +9,8 @@
 //! record are decided here, inside the caller's transaction.
 //!
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
-//! this seam. Agent create, rotate and revoke use the writers below. Inbound
-//! SCIM User and Group writes reach their shared writers.
+//! this seam. Agent create, rotate and revoke use the writers below, as does
+//! signing-key rotation. Inbound SCIM User and Group writes reach their shared writers.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -27,10 +27,10 @@ use crate::{
     agent::{ACTIONS, Agent, NewAgent, Principal, parent_active},
     config::Config,
     core::{
-        Core, audit, ensure_remaining_admin, make_user, revoke_client_grants, user_by_name,
+        Core, audit, ensure_remaining_admin, keys, make_user, revoke_client_grants, user_by_name,
         validate_client, validate_display, validate_email, validate_name,
     },
-    crypto::{self, digest, now},
+    crypto::{self, RetiredKey, SigningKey, digest, now},
     directory::{Binding as DirectoryBinding, binding_key as directory_binding_key},
     error::{Error, Result},
     jose::ClientAuthMethod,
@@ -266,6 +266,46 @@ pub(crate) fn revoke_agent(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> R
     tx.delete("agent_tokens", &agent.token_hash)?;
     audit(tx, &actor.id, "agent.revoke", id)?;
     Ok(agent.view())
+}
+
+/// Authorize the current actor and rotate the signing key with its retirement
+/// window and scoped audit in the caller's mutation transaction.
+pub(crate) fn rotate_signing_key(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    replacement: SigningKey,
+) -> Result<Value> {
+    let actor = core.management(tx, token, "key.rotate", "key/signing")?;
+    let mut keys = keys(tx)?;
+    keys.retired.retain(|key| key.expires_at > now());
+    if keys.retired.len() >= 32 {
+        return Err(Error::conflict(
+            "32 retained signing keys remain in use; wait for their retention windows before rotating",
+        ));
+    }
+    let expires_at = tx
+        .list::<crate::logout::RpSession>("rp_sessions")?
+        .iter()
+        .map(|(_, rp)| rp.expires_at.saturating_add(3600))
+        .max()
+        .unwrap_or(0)
+        .max(now() + 3720);
+    // Retain verification keys for recent RP logout hints as well as unexpired JWTs.
+    keys.retired.push(RetiredKey {
+        jwk: keys.active.jwk()?,
+        expires_at,
+    });
+    keys.active = replacement;
+    tx.put("meta", "keys", &keys)?;
+    crate::delegation::audit_scoped(
+        tx,
+        &actor,
+        "signing_key.rotate",
+        &keys.active.kid,
+        "key/signing",
+    )?;
+    Ok(json!({"kid": keys.active.kid}))
 }
 
 fn requires_membership_review(config: &Config, name: &str) -> bool {

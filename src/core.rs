@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    crypto::{self, Keys, RetiredKey, SigningKey, digest, id, now},
+    crypto::{self, Keys, SigningKey, digest, id, now},
     error::{Error, Result},
     identity::signals,
     model::*,
@@ -831,20 +831,7 @@ impl Core {
         })?;
         let replacement = SigningKey::generate()?;
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "key.rotate", "key/signing")?;
-            let mut keys = keys(tx)?;
-            keys.retired.retain(|key| key.expires_at > now());
-            if keys.retired.len() >= 32 { return Err(Error::conflict("32 retained signing keys remain in use; wait for their retention windows before rotating")); }
-            let expires_at = tx.list::<crate::logout::RpSession>("rp_sessions")?.iter().map(|(_, rp)| rp.expires_at.saturating_add(3600)).max().unwrap_or(0).max(now() + 3720);
-            // Retain verification keys for recent RP logout hints as well as unexpired JWTs.
-            keys.retired.push(RetiredKey {
-                jwk: keys.active.jwk()?,
-                expires_at,
-            });
-            keys.active = replacement;
-            tx.put("meta", "keys", &keys)?;
-            crate::delegation::audit_scoped(tx, &actor, "signing_key.rotate", &keys.active.kid, "key/signing")?;
-            Ok(json!({"kid": keys.active.kid}))
+            crate::management::rotate_signing_key(self, tx, token, replacement)
         })
     }
     pub fn cleanup(&self) -> Result<()> {
