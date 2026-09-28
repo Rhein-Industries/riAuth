@@ -13,6 +13,24 @@ use std::{
     net::IpAddr,
 };
 
+const MAX_SELECTED_USERS: usize = 2000;
+const MAX_STALE_MEMBER_READS: usize = crate::store::maintenance::PAGE;
+
+fn retain_selected(users: &mut BTreeMap<String, User>, id: &str, user: User) -> Result<()> {
+    if user.id != id {
+        return Err(Error::conflict("LDAP group member User binding mismatch"));
+    }
+    if user.enabled {
+        users.insert(id.to_owned(), user);
+        if users.len() > MAX_SELECTED_USERS {
+            return Err(Error::bad(
+                "LDAP profile supports at most 2000 selected users",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result<Option<User>> {
     let (client, _) = core.ldap_profile(tx, cid)?;
     match auth {
@@ -163,28 +181,53 @@ impl Core {
             let self_user = authorize(self, tx, cid, auth)?;
             // Visit only members of the configured visibility groups. Retain
             // at most the provider's selected-user limit, ordered by User key;
-            // a group may contain arbitrarily many stale member IDs.
+            // a group may contain many stale member IDs. After one page's worth
+            // of misses, scan Users in pages for this group instead of making
+            // another point read for every missing ID.
             let mut users = BTreeMap::new();
             for name in &settings.search_groups {
                 let group = tx
                     .get::<Group>("groups", name)?
                     .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
+                let mut stale_reads = 0;
+                let mut scan_users = false;
                 for id in &group.members {
                     if self_user.as_ref().is_some_and(|me| me.id != *id) || users.contains_key(id) {
                         continue;
                     }
                     let Some(user) = tx.get::<User>("users", id)? else {
+                        stale_reads += 1;
+                        if stale_reads == MAX_STALE_MEMBER_READS {
+                            scan_users = true;
+                            break;
+                        }
                         continue;
                     };
-                    if user.id != *id {
-                        return Err(Error::conflict("LDAP group member User binding mismatch"));
-                    }
-                    if user.enabled {
-                        users.insert(id.clone(), user);
-                        if users.len() > 2000 {
-                            return Err(Error::bad(
-                                "LDAP profile supports at most 2000 selected users",
-                            ));
+                    retain_selected(&mut users, id, user)?;
+                }
+                if scan_users {
+                    let mut after = None;
+                    loop {
+                        let page = tx.scan::<User>(
+                            "users",
+                            after.as_deref(),
+                            crate::store::maintenance::PAGE,
+                        )?;
+                        if page.is_empty() {
+                            break;
+                        }
+                        let full = page.len() == crate::store::maintenance::PAGE;
+                        after = page.last().map(|(key, _)| key.clone());
+                        for (id, user) in page {
+                            if group.members.contains(&id)
+                                && self_user.as_ref().is_none_or(|me| me.id == id)
+                                && !users.contains_key(&id)
+                            {
+                                retain_selected(&mut users, &id, user)?;
+                            }
+                        }
+                        if !full {
+                            break;
                         }
                     }
                 }
@@ -713,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn ldap_search_retains_only_existing_selected_users_among_stale_members() {
+    fn ldap_search_caps_stale_member_reads_and_pages_fallback() {
         let directory = tempfile::tempdir().unwrap();
         let password = "test-password-for-fixtures-only";
         let core = Core::initialize(
@@ -810,18 +853,27 @@ mod tests {
         };
         let scans = &core.store.telemetry().reads;
         let before = (
+            scans.points(ReadContext::Read),
             scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).count(),
             scans.scans(ReadContext::Read, true).sum(),
         );
         let (rows, _) = core
             .ldap_search_entries("ldap", Some(&agent), &query, false)
             .unwrap();
         let after = (
+            scans.points(ReadContext::Read),
             scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).count(),
             scans.scans(ReadContext::Read, true).sum(),
         );
-        assert_eq!(after.0, before.0, "no full User bucket read");
-        assert_eq!(after.1 - before.1, 3, "one Group and two membership rows");
+        assert!(
+            after.0 - before.0 <= MAX_STALE_MEMBER_READS as u64 + 32,
+            "stale IDs must not cause thousands of point reads"
+        );
+        assert_eq!(after.1, before.1, "no unbounded bucket read");
+        assert_eq!(after.2 - before.2, 5);
+        assert_eq!(after.3 - before.3, 135);
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(dns.len(), 6);
