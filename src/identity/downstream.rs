@@ -125,6 +125,27 @@ pub struct Dismissal {
     pub revision: String,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DispatchRecoveryReason {
+    WorkerLost,
+    LegacyUntracked,
+}
+
+/// An administrator's external quiescence attestation, not a remote outcome.
+/// Keep the retired pin and its previous state with the durable intent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DispatchRecovery {
+    pub reason: DispatchRecoveryReason,
+    pub evidence: String,
+    pub workers_quiesced: bool,
+    pub remote_requests_settled: bool,
+    pub by: String,
+    pub at: u64,
+    pub revision: String,
+    pub previous: Value,
+}
+
 /// One target's deactivation of one linked remote account for one disable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Deactivation {
@@ -151,6 +172,10 @@ pub struct Deactivation {
     pub lease_owner: Option<String>,
     #[serde(default)]
     pub lease_until: u64,
+    /// Set durably before any OAuth/SCIM send; only the owner acknowledges it.
+    /// Missing on legacy leases, whose settlement cannot be inferred from time.
+    #[serde(default)]
+    pub dispatch_started: Option<bool>,
     /// Scoped controller principal of the latest dispatch attempt.
     #[serde(default)]
     pub actor: Option<String>,
@@ -171,6 +196,8 @@ pub struct Deactivation {
     pub resolution: Option<Resolution>,
     #[serde(default)]
     pub dismissal: Option<Dismissal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dispatch_recoveries: Vec<DispatchRecovery>,
 }
 
 impl Deactivation {
@@ -260,10 +287,12 @@ pub(crate) fn enqueue_link(
         return Ok(None);
     }
     let id = delivery_id(key, epoch);
-    let open = tx
+    let existing = tx
         .get::<Value>(BUCKET, &id)?
-        .and_then(|value| serde_json::from_value::<Deactivation>(value).ok())
-        .is_some_and(|row| !row.status.terminal() || row.status == Status::Dismissed);
+        .and_then(|value| serde_json::from_value::<Deactivation>(value).ok());
+    let open = existing.as_ref().is_some_and(|row| {
+        !row.status.terminal() || row.status == Status::Dismissed || row.lease_owner.is_some()
+    });
     if !open {
         let at = now();
         let row = Deactivation {
@@ -283,6 +312,7 @@ pub(crate) fn enqueue_link(
             next_attempt: at,
             lease_owner: None,
             lease_until: 0,
+            dispatch_started: Some(false),
             actor: None,
             last_error: None,
             outcome: None,
@@ -291,6 +321,7 @@ pub(crate) fn enqueue_link(
             uncertain: false,
             resolution: None,
             dismissal: None,
+            dispatch_recoveries: existing.map_or_else(Vec::new, |row| row.dispatch_recoveries),
         };
         tx.put(BUCKET, &id, &row)?;
     }

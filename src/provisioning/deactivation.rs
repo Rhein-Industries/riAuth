@@ -10,8 +10,8 @@
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
 use super::{
-    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, lease_unsettled, refused,
-    rejected, remote_error, scim_json, validate_evidence,
+    DismissDeactivation, Job, Resolve, Target, authorized_fenced, discard_body, lease_unsettled,
+    refused, rejected, remote_error, scim_json, validate_evidence,
 };
 use crate::{
     agent::Principal,
@@ -29,8 +29,7 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 use std::cell::Cell;
 
-/// Covers three bounded SCIM requests, each with a token acquisition and one
-/// 401 retry at the 10-second request timeout.
+/// Admission deadline only: expiry never settles a started or legacy attempt.
 const LEASE_SECONDS: u64 = 180;
 const MAX_ATTEMPTS: u32 = 5;
 const PRIOR_DELIVERY_SECONDS: u64 = 30;
@@ -161,6 +160,22 @@ fn departures(tx: &Tx<'_>, target: &str) -> Result<(usize, usize)> {
 fn release(row: &mut Deactivation) {
     row.lease_owner = None;
     row.lease_until = 0;
+    row.dispatch_started = Some(false);
+}
+
+fn require_settled(tx: &Tx<'_>, row: &Deactivation) -> Result<()> {
+    if row.lease_owner.is_some()
+        || row.lease_until > now()
+        || tx
+            .list::<Job>("provisioning_jobs")?
+            .iter()
+            .any(|(_, job)| job.plan.target == row.target && lease_unsettled(job, now()))
+    {
+        return Err(Error::conflict(
+            "Delivery is still in flight; wait for its worker to acknowledge settlement",
+        ));
+    }
+    Ok(())
 }
 
 fn hold(
@@ -343,6 +358,26 @@ impl Core {
                 if !(expired || row.status == Status::Pending && row.next_attempt <= at) {
                     return Ok(None);
                 }
+                if row.lease_owner.is_some() {
+                    if row.lease_until > at {
+                        return Ok(None);
+                    }
+                    if row.dispatch_started != Some(false) {
+                        // Quarantine without close()/release(): the old owner may
+                        // still be in OAuth refresh, a send or response handling.
+                        // This local fence must also run while it owns the target
+                        // permit; no new dispatch is admitted or attempt consumed.
+                        row.status = Status::Failed;
+                        row.uncertain = true;
+                        row.hold = Some("awaiting_dispatch_ack".into());
+                        row.last_error = Some("Lease expired after dispatch; awaiting the worker's settlement acknowledgement".into());
+                        row.next_attempt = at;
+                        tx.put(BUCKET, &row.id, &row)?;
+                        return Ok(None);
+                    }
+                    // A provably unstarted owner loses admission at expiry.
+                    release(&mut row);
+                }
                 let Some(target) = background.try_target(
                     crate::background::Job::Deactivation,
                     &scope(&row.target),
@@ -350,14 +385,12 @@ impl Core {
                     return Ok(None);
                 };
                 if expired && row.attempts >= MAX_ATTEMPTS {
-                    // The expired worker may have sent its PATCH.
-                    row.uncertain = true;
                     close(
                         tx,
                         &mut row,
                         Status::Failed,
                         None,
-                        Some("The worker lease expired after the final attempt; the remote state may be unknown".into()),
+                        Some("The unstarted worker lease expired after the final attempt; inspect prior outcomes".into()),
                         at,
                     )?;
                     return Ok(None);
@@ -371,6 +404,7 @@ impl Core {
                         row.status = Status::Running;
                         row.hold = None;
                         row.lease_owner = Some(owner.into());
+                        row.dispatch_started = Some(false);
                         row.lease_until = at.saturating_add(LEASE_SECONDS);
                         row.next_attempt = row.lease_until;
                         row.attempts = row.attempts.saturating_add(1);
@@ -391,49 +425,59 @@ impl Core {
         })
     }
 
-    /// Recheck lease, account, link, configuration and scoped authority. Accepted
-    /// remote writes cannot be rolled back, so this runs right before dispatch.
-    fn fence_deactivation(&self, claim: &Claim) -> Result<()> {
-        self.store.read(|tx| {
-            let current = tx
+    /// Pin before every OAuth/SCIM send. Verification may finish under the owned
+    /// pin after expiry; every write needs live admission even after auth refresh.
+    fn fence_deactivation(&self, claim: &Claim, writing: bool) -> Result<()> {
+        self.store.write(|tx| {
+            let mut current = tx
                 .get::<Deactivation>(BUCKET, &claim.row.id)?
                 .ok_or_else(|| Error::conflict("Deactivation lease lost"))?;
-            if current.status != Status::Running
-                || current.lease_owner.as_deref() != Some(&claim.owner)
-                || current.lease_until <= now()
-            {
+            if current.lease_owner.as_deref() != Some(&claim.owner) {
                 return Err(Error::conflict("Deactivation lease lost"));
             }
-            if !claim.verify
-                && tx
-                    .get::<User>("users", &claim.row.user_id)?
-                    .is_some_and(|user| user.enabled)
-            {
-                return Err(Error::conflict(
-                    "The account was enabled again before dispatch",
-                ));
+            if writing || current.dispatch_started != Some(true) {
+                if current.status != Status::Running
+                    || current.lease_until <= now()
+                    || writing && claim.verify
+                {
+                    return Err(Error::conflict("Deactivation lease expired or stopped"));
+                }
+                if !claim.verify
+                    && tx
+                        .get::<User>("users", &claim.row.user_id)?
+                        .is_some_and(|user| user.enabled)
+                {
+                    return Err(Error::conflict(
+                        "The account was enabled again before dispatch",
+                    ));
+                }
+                let link = tx
+                    .get::<Link>(LINKS, &claim.row.link)?
+                    .ok_or_else(|| Error::conflict("The outbound link changed before dispatch"))?;
+                let actor = crate::reconciliation::controller_agent(
+                    tx,
+                    &self.config,
+                    &scope(&claim.row.target),
+                )?;
+                if actor.id != claim.actor.id {
+                    return Err(Error::conflict(
+                        "Controller authority changed before dispatch",
+                    ));
+                }
+                claim
+                    .binding
+                    .validate(tx, &actor, &authority_content(self, &claim.row, &link)?)
+                    .map_err(|_| {
+                        Error::conflict(
+                            "Controller authority, configuration or link changed before dispatch",
+                        )
+                    })?;
             }
-            let link = tx
-                .get::<Link>(LINKS, &claim.row.link)?
-                .ok_or_else(|| Error::conflict("The outbound link changed before dispatch"))?;
-            let actor = crate::reconciliation::controller_agent(
-                tx,
-                &self.config,
-                &scope(&claim.row.target),
-            )?;
-            if actor.id != claim.actor.id {
-                return Err(Error::conflict(
-                    "Controller authority changed before dispatch",
-                ));
+            if current.dispatch_started != Some(true) {
+                current.dispatch_started = Some(true);
+                tx.put(BUCKET, &current.id, &current)?;
             }
-            claim
-                .binding
-                .validate(tx, &actor, &authority_content(self, &claim.row, &link)?)
-                .map_err(|_| {
-                    Error::conflict(
-                        "Controller authority, configuration or link changed before dispatch",
-                    )
-                })
+            Ok(())
         })
     }
 
@@ -462,7 +506,8 @@ impl Core {
             .get(&row.target)
             .cloned()
             .ok_or_else(|| Error::conflict("The SCIM target is no longer configured"))?;
-        self.fence_deactivation(claim)?;
+        let read_fence = || self.fence_deactivation(claim, false);
+        let write_fence = || self.fence_deactivation(claim, true);
         let http = target.http()?;
         let mut url = url::Url::parse(&format!("{}/Users", target.url.trim_end_matches('/')))
             .map_err(Error::internal)?;
@@ -470,11 +515,18 @@ impl Core {
             .map_err(|_| remote_error())?
             .push(&row.remote_id);
         let read = || {
-            let response = authorized(self, &row.target, &target, &http, |http, token| {
-                http.get(url.clone())
-                    .bearer_auth(token)
-                    .header("accept", "application/scim+json")
-            })?;
+            let response = authorized_fenced(
+                self,
+                &row.target,
+                &target,
+                &http,
+                &read_fence,
+                |http, token| {
+                    http.get(url.clone())
+                        .bearer_auth(token)
+                        .header("accept", "application/scim+json")
+                },
+            )?;
             if response.status() == reqwest::StatusCode::NOT_FOUND {
                 return Err(stale(
                     "The linked remote account is missing; inspect the target before replanning",
@@ -502,20 +554,26 @@ impl Core {
         // response reads back inactive and is not sent again, and an unchanged
         // version replays the identical request under the same key.
         let key = idempotency_key(&row.id, row.epoch, &etag);
-        self.fence_deactivation(claim)?;
-        evidence.dispatched.set(true);
         let patch = json!({
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
             "Operations": [{"op": "replace", "value": {"active": false}}],
         });
-        let response = authorized(self, &row.target, &target, &http, |http, token| {
-            http.patch(url.clone())
-                .bearer_auth(token)
-                .header("if-match", etag.clone())
-                .header("idempotency-key", key.clone())
-                .header("content-type", "application/scim+json")
-                .json(&patch)
-        })?;
+        let response = authorized_fenced(
+            self,
+            &row.target,
+            &target,
+            &http,
+            &write_fence,
+            |http, token| {
+                evidence.dispatched.set(true);
+                http.patch(url.clone())
+                    .bearer_auth(token)
+                    .header("if-match", etag.clone())
+                    .header("idempotency-key", key.clone())
+                    .header("content-type", "application/scim+json")
+                    .json(&patch)
+            },
+        )?;
         if refused(&response) {
             // Processed and refused: not applied. A changed version is re-read.
             evidence.dispatched.set(false);
@@ -549,7 +607,10 @@ impl Core {
                 return Ok(());
             };
             // Only the leasing worker records an outcome for its attempt.
-            if row.status != Status::Running || row.lease_owner.as_deref() != Some(&claim.owner) {
+            let quarantined = row.status == Status::Failed
+                && row.hold.as_deref() == Some("awaiting_dispatch_ack");
+            if !(row.status == Status::Running || quarantined)
+                || row.lease_owner.as_deref() != Some(&claim.owner) {
                 return Ok(());
             }
             if let Some(uncertain) = uncertain {
@@ -578,6 +639,8 @@ impl Core {
                     row.next_attempt = at;
                     tx.put(BUCKET, &row.id, &row)
                 }
+                Attempt::Stale(message) | Attempt::Retry(message) | Attempt::Hold(_, message)
+                    if quarantined => close(tx, &mut row, Status::Failed, None, Some(bounded(&message)), at),
                 Attempt::Stale(message) => close(tx, &mut row, Status::Stale, None, Some(bounded(&message)), at),
                 Attempt::Hold(reason, message) => {
                     row.attempts = row.attempts.saturating_sub(1);
@@ -641,6 +704,7 @@ impl Core {
                     "Only a failed or stale deactivation can be retried",
                 ));
             }
+            require_settled(tx, &row)?;
             if row.resolution.as_ref().is_some_and(Resolution::satisfied) {
                 return Err(Error::conflict(
                     "An operator resolved this deactivation; nothing is left to retry",
@@ -709,6 +773,7 @@ impl Core {
                     "Only an ambiguous stale or failed deactivation can be resolved",
                 ));
             }
+            require_settled(tx, &row)?;
             let resolution = Resolution {
                 observed: input.observed,
                 evidence: input.evidence,
@@ -778,17 +843,7 @@ impl Core {
                 ));
             }
             let at = now();
-            if row.lease_owner.is_some()
-                || row.lease_until > at
-                || tx
-                    .list::<Job>("provisioning_jobs")?
-                    .iter()
-                    .any(|(_, job)| job.plan.target == row.target && lease_unsettled(job, at))
-            {
-                return Err(Error::conflict(
-                    "Delivery is still in flight; wait for its worker to acknowledge settlement",
-                ));
-            }
+            require_settled(tx, &row)?;
             let dismissal = Dismissal {
                 reason: input.reason,
                 evidence: input.evidence.trim().into(),
@@ -818,7 +873,7 @@ impl Core {
     /// Authorize the retained response's immutable identity against its current
     /// user, keeping the exact cached result and retry semantics when readable.
     /// Write-only retry responses contain no account details and stay minimal.
-    fn deactivation_response(&self, token: &str, result: Value) -> Result<Value> {
+    pub(super) fn deactivation_response(&self, token: &str, result: Value) -> Result<Value> {
         self.store.read(|tx| {
             let viewer = self.principal(tx, token)?;
             if result.get("user_id").is_some() {
@@ -851,7 +906,7 @@ impl Core {
     }
 }
 
-fn row_view(row: &Deactivation) -> Result<Value> {
+pub(super) fn row_view(row: &Deactivation) -> Result<Value> {
     let mut view = serde_json::to_value(row).map_err(Error::internal)?;
     view["revision"] = json!(row.revision()?);
     view["delivery_state"] = json!(row.delivery_state());
@@ -877,7 +932,7 @@ fn row_view_for(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<V
 
 /// The recorded username is historical evidence, never an authorization key.
 /// A rename or reuse of that name must not transfer access to this identity.
-fn row_readable(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<bool> {
+pub(super) fn row_readable(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<bool> {
     if !viewer.allows("provisioner.read", &format!("provisioner/{}", row.target)) {
         return Ok(false);
     }
@@ -890,6 +945,8 @@ pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, row) in tx.maintenance_page::<Deactivation>(BUCKET)? {
         if row.status.terminal()
             && row.status != Status::Dismissed
+            && row.lease_owner.is_none()
+            && row.dispatch_recoveries.is_empty()
             && row.next_attempt.saturating_add(RETAIN_SECONDS) < at
         {
             tx.delete(BUCKET, &id)?;

@@ -26,8 +26,13 @@ use riauth::{
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
+use tokio::sync::Notify;
 
 fn add_user(f: &Fixture, username: &str, admin: bool) {
     f.core
@@ -717,6 +722,39 @@ impl Scim {
 fn versioned(user: &Value) -> Response {
     let etag = format!("\"{}\"", user["meta"]["version"].as_str().unwrap());
     (StatusCode::OK, [(header::ETAG, etag)], Json(user.clone())).into_response()
+}
+
+#[derive(Default)]
+struct DelayedAuth {
+    requests: AtomicUsize,
+    waiting: Notify,
+    resume: Notify,
+}
+
+async fn delayed_auth() -> (Arc<DelayedAuth>, String, tokio::task::JoinHandle<()>) {
+    async fn token(State(auth): State<Arc<DelayedAuth>>) -> Response {
+        match auth.requests.fetch_add(1, Ordering::SeqCst) {
+            0 => {} // Initial access token for reads and the first PATCH.
+            1 => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            2 => {
+                auth.waiting.notify_one();
+                auth.resume.notified().await;
+            }
+            _ => panic!("Unexpected extra token request"),
+        }
+        Json(
+            json!({"access_token": "p08-fence-access", "token_type": "Bearer", "expires_in": 3600}),
+        )
+        .into_response()
+    }
+    let auth = Arc::new(DelayedAuth::default());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let token_url = format!("http://{}/token", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/token", axum::routing::post(token))
+        .with_state(auth.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (auth, token_url, server)
 }
 
 async fn scim_list(
@@ -2147,42 +2185,7 @@ fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged() {
-    use std::{
-        sync::atomic::{AtomicUsize, Ordering},
-        time::Duration,
-    };
-    use tokio::sync::Notify;
-
-    #[derive(Default)]
-    struct Auth {
-        requests: AtomicUsize,
-        waiting: Notify,
-        resume: Notify,
-    }
-    async fn token(State(auth): State<Arc<Auth>>) -> Response {
-        match auth.requests.fetch_add(1, Ordering::SeqCst) {
-            0 => {} // Initial access token for reads and the first PATCH.
-            1 => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-            2 => {
-                // Pause the OAuth retry after the SCIM 401 and first refresh
-                // failure. No wall-clock sleep is needed to cross lease expiry.
-                auth.waiting.notify_one();
-                auth.resume.notified().await;
-            }
-            _ => panic!("Unexpected extra token request"),
-        }
-        Json(
-            json!({"access_token": "p08-fence-access", "token_type": "Bearer", "expires_in": 3600}),
-        )
-        .into_response()
-    }
-    let auth = Arc::new(Auth::default());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let token_url = format!("http://{}/token", listener.local_addr().unwrap());
-    let app = Router::new()
-        .route("/token", axum::routing::post(token))
-        .with_state(auth.clone());
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let (auth, token_url, server) = delayed_auth().await;
 
     let mut f = Fixture::new();
     f.user("alice");
@@ -2342,6 +2345,410 @@ async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged(
         dismissed
     );
     f.assert_snapshot(&after);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn p08_deactivation_delayed_auth_retry_retains_the_final_attempt_pin() {
+    const TARGET: &str = "p08-deactivation-race";
+    let (auth, token_url, server) = delayed_auth().await;
+    let mut f = Fixture::new();
+    let alice_session = f.user("alice");
+    let bob_session = f.user("bob");
+    let (alice, bob) = (account(&f.core, "alice"), account(&f.core, "bob"));
+    let scim = Scim::default();
+    let url = scim.serve();
+    let mut target = scim_target(&f, TARGET, &url, "payroll");
+    target.oauth = Some(riauth::provisioning::Oauth {
+        token_url,
+        grant: riauth::provisioning::OauthGrant::ClientCredentials,
+        client_id: "deactivation-fence".into(),
+        client_secret_file: target.token_file.take(),
+        refresh_token_file: None,
+        scope: None,
+        audience: None,
+        ca_file: None,
+    });
+    f.core.config.scim_targets.insert(TARGET.into(), target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(TARGET.into(), ReconciliationMode::Automatic);
+    let credential = agent(
+        &f,
+        "deactivation-controller",
+        &[("provisioner.sync", &format!("provisioner/{TARGET}"))],
+    );
+    let credential_file = f._dir.path().join("deactivation-controller");
+    write_private(&credential_file, credential.as_bytes(), false).unwrap();
+    f.core.config.reconciliation_controllers.insert(
+        format!("scim/{TARGET}"),
+        ControllerConfig {
+            agent_id: "deactivation-controller".into(),
+            credential_file,
+            interval_seconds: 3600,
+        },
+    );
+    linked(&f, &scim, TARGET, &url, &alice, "p-alice");
+    linked(&f, &scim, TARGET, &url, &bob, "p-bob");
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&alice_session).is_err());
+    let id = text(&delivery(&f.core, TARGET, &alice), "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get(downstream::BUCKET, &id)?.unwrap();
+            row["attempts"] = json!(4); // Next claim is the final permitted attempt.
+            tx.put(downstream::BUCKET, &id, &row)
+        })
+        .unwrap();
+    scim.script.lock().unwrap().push_back((401, false));
+    let core = f.core.clone();
+    let worker = tokio::task::spawn_blocking(move || core.deactivation_step());
+    tokio::time::timeout(Duration::from_secs(5), auth.waiting.notified())
+        .await
+        .unwrap();
+    assert_eq!(auth.requests.load(Ordering::SeqCst), 3);
+    assert_eq!(scim.patches.lock().unwrap().len(), 1);
+    let owned = delivery(&f.core, TARGET, &alice);
+    assert_eq!(owned["dispatch_started"], true);
+    assert_eq!(owned["attempts"], 5);
+    f.core
+        .store
+        .write(|tx| {
+            let mut row = owned.clone();
+            row["lease_until"] = json!(crypto::now() - 3600);
+            row["next_attempt"] = json!(1);
+            tx.put(downstream::BUCKET, &id, &row)
+        })
+        .unwrap();
+    assert!(!f.core.deactivation_step().unwrap());
+    let held = delivery(&f.core, TARGET, &alice);
+    assert_eq!(held["status"], "failed");
+    assert_eq!(held["hold"], "awaiting_dispatch_ack");
+    assert_eq!(held["lease_owner"], owned["lease_owner"]);
+    assert_eq!(held["dispatch_started"], true);
+    assert_eq!(held["uncertain"], true);
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &held, "OPS-81").unwrap_err().code,
+        "conflict"
+    );
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_resolve(&f.admin, &id, p08_resolution("OPS-81"))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_retry(&f.admin, &id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_snapshot(&before);
+
+    // Retention must not drop a quarantined pin.
+    f.core
+        .store
+        .write(|tx| riauth::provisioning::cleanup(tx, crypto::now() + 100 * 86400))
+        .unwrap();
+    assert_eq!(delivery(&f.core, TARGET, &alice), held);
+    // Local revocation still commits while the OAuth response is blocked.
+    f.core
+        .update_user(
+            &f.admin,
+            "bob",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&bob_session).is_err());
+    assert_eq!(delivery(&f.core, TARGET, &bob)["status"], "pending");
+
+    auth.resume.notify_one();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), worker)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+    );
+    server.abort();
+    assert_eq!(scim.patches.lock().unwrap().len(), 1);
+    assert_eq!(scim.user("p-alice")["active"], true);
+    let settled = delivery(&f.core, TARGET, &alice);
+    assert!(settled["lease_owner"].is_null());
+    assert_eq!(settled["dispatch_started"], false);
+    assert_eq!(settled["status"], "failed");
+    assert_eq!(settled["uncertain"], true);
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_resolve(&f.admin, &id, p08_resolution("OPS-81"))
+            .unwrap()["delivery_state"],
+        "failed"
+    );
+    let resolved = delivery(&f.core, TARGET, &alice);
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &resolved, "OPS-81").unwrap()["delivery_state"],
+        "dismissed"
+    );
+}
+
+#[test]
+fn p08_abandoned_dispatch_recovery_requires_reviewed_quiescence_and_stays_ambiguous() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    // The same recovery contract covers deactivation/reviewed jobs and pins
+    // written before dispatch tracking existed. No worker is alive in this fixture.
+    for is_job in [false, true] {
+        for legacy in [false, true] {
+            let (f, job_id, mut job) = p08_resolution_fixture();
+            let mut row = p08_ambiguous_deactivation(&f);
+            let alice = account(&f.core, "alice");
+            let scoped = agent(
+                &f,
+                "recovery-reader",
+                &[
+                    ("provisioner.sync", "provisioner/payroll"),
+                    ("provisioner.read", "provisioner/payroll"),
+                    ("user.read", "user/alice"),
+                ],
+            );
+            let (bucket, id, collection) = if is_job {
+                job["lease"] = json!("abandoned-worker");
+                job["next_attempt"] = json!(1);
+                job["stale"] = json!(false);
+                job["uncertain"] = json!(false);
+                ("provisioning_jobs", job_id, "jobs")
+            } else {
+                row["status"] = json!("running");
+                row["lease_owner"] = json!("abandoned-worker");
+                row["lease_until"] = json!(1);
+                row["next_attempt"] = json!(1);
+                row["uncertain"] = json!(false);
+                (downstream::BUCKET, text(&row, "id"), "deactivations")
+            };
+            let mut pinned = if is_job { job } else { row };
+            if legacy {
+                pinned.as_object_mut().unwrap().remove("dispatch_started");
+            } else {
+                pinned["dispatch_started"] = json!(true);
+            }
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, &id, &pinned))
+                .unwrap();
+            let revision = || {
+                if is_job {
+                    text(
+                        &f.core.provisioning_jobs(&f.admin).unwrap()[0],
+                        "state_revision",
+                    )
+                } else {
+                    text(&listed(&f, &alice), "revision")
+                }
+            };
+            let input = json!({
+                "revision":revision(),
+                "reason":if legacy { "legacy_untracked" } else { "worker_lost" },
+                "workers_quiesced":true, "remote_requests_settled":true,
+                "evidence":"OPS-82: old nodes terminated and fenced; provider confirmed prior requests drained",
+            });
+            let post = |token: &str, key: Option<&str>, input: &Value| {
+                let mut request = Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/provisioning/{collection}/{id}/recover-dispatch"
+                    ))
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .header("if-match", format!("\"{}\"", self::revision(&f.core)));
+                if let Some(key) = key {
+                    request = request.header("idempotency-key", key);
+                }
+                let request = request
+                    .body(Body::from(serde_json::to_vec(input).unwrap()))
+                    .unwrap();
+                runtime.block_on(async {
+                    let response = riauth::api::router(f.core.clone())
+                        .oneshot(request)
+                        .await
+                        .unwrap();
+                    let status = response.status();
+                    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+                    (
+                        status,
+                        serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+                    )
+                })
+            };
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                post(&f.admin, None, &input).0,
+                StatusCode::PRECONDITION_REQUIRED
+            );
+            assert_eq!(
+                post(&scoped, Some("agent-denied"), &input).0,
+                StatusCode::FORBIDDEN
+            );
+            for field in ["workers_quiesced", "remote_requests_settled"] {
+                let mut invalid = input.clone();
+                invalid[field] = json!(false);
+                assert_eq!(
+                    post(&f.admin, Some("no-proof"), &invalid).0,
+                    StatusCode::BAD_REQUEST
+                );
+            }
+            let mut invalid = input.clone();
+            invalid["revision"] = json!("stale-review");
+            assert_eq!(
+                post(&f.admin, Some("stale"), &invalid).0,
+                StatusCode::CONFLICT
+            );
+            invalid = input.clone();
+            invalid["evidence"] = json!("x".repeat(281));
+            assert_eq!(
+                post(&f.admin, Some("oversized"), &invalid).0,
+                StatusCode::BAD_REQUEST
+            );
+            f.assert_http_mutation_snapshot(&before);
+
+            // A fresh revision alone cannot recover a live or provably unstarted lease.
+            for unstarted in [false, true] {
+                let mut ineligible = pinned.clone();
+                if unstarted {
+                    ineligible["dispatch_started"] = json!(false);
+                } else {
+                    ineligible[if is_job {
+                        "next_attempt"
+                    } else {
+                        "lease_until"
+                    }] = json!(crypto::now() + 3600);
+                }
+                f.core
+                    .store
+                    .write(|tx| tx.put(bucket, &id, &ineligible))
+                    .unwrap();
+                let mut request = input.clone();
+                request["revision"] = json!(revision());
+                let before = f.snapshot().unwrap();
+                assert_eq!(
+                    post(&f.admin, Some("ineligible"), &request).0,
+                    StatusCode::CONFLICT
+                );
+                f.assert_http_mutation_snapshot(&before);
+            }
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, &id, &pinned))
+                .unwrap();
+            let (status, recovered) = post(&f.admin, Some("recover"), &input);
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(recovered["delivery_state"], "ambiguous");
+            let stored: Value = f.core.store.get(bucket, &id).unwrap().unwrap();
+            assert_eq!(stored["dispatch_started"], false);
+            assert_eq!(stored["uncertain"], true);
+            assert!(stored[if is_job { "lease" } else { "lease_owner" }].is_null());
+            if is_job {
+                assert_eq!(stored["stale"], true);
+                assert_eq!(stored["completed"], false);
+                assert_eq!(stored["cursor"], pinned["cursor"]);
+            } else {
+                assert_eq!(stored["status"], "stale");
+                assert_eq!(stored["remote_id"], pinned["remote_id"]);
+                assert_eq!(stored["outcome"], pinned["outcome"]);
+                assert_eq!(stored["attempts"], pinned["attempts"]);
+            }
+            let recovery = &stored["dispatch_recoveries"][0];
+            assert_eq!(stored["dispatch_recoveries"].as_array().unwrap().len(), 1);
+            assert_eq!(recovery["revision"], input["revision"]);
+            assert_eq!(recovery["evidence"], input["evidence"]);
+            assert_eq!(recovery["workers_quiesced"], true);
+            assert_eq!(recovery["remote_requests_settled"], true);
+            assert_eq!(
+                recovery["previous"][if is_job { "lease" } else { "lease_owner" }],
+                "abandoned-worker"
+            );
+            let action = if is_job {
+                "provisioner.recover_dispatch"
+            } else {
+                "provisioner.deactivate.recover_dispatch"
+            };
+            let audits = audit_context(&f.core, action);
+            assert_eq!(audits.len(), 1);
+            assert_eq!(audits[0]["attestation"], *recovery);
+            // Recovery itself neither queues remote work nor reports delivery.
+            let after = f.snapshot().unwrap();
+            assert!(!f.core.deactivation_step().unwrap());
+            f.core.provisioning_step().unwrap();
+            assert_eq!(
+                post(&f.admin, Some("recover"), &input),
+                (StatusCode::OK, recovered.clone())
+            );
+            f.assert_http_mutation_snapshot(&after);
+            let mut changed = input.clone();
+            changed["evidence"] = json!("different evidence");
+            assert_eq!(
+                post(&f.admin, Some("recover"), &changed).0,
+                StatusCode::CONFLICT
+            );
+
+            // Receipt access still follows the actual live identity. Restoring
+            // readability replays exactly without repeating recovery or audit.
+            f.core
+                .store
+                .write(|tx| tx.delete("users", &alice.id))
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                post(&f.admin, Some("recover"), &input).0,
+                StatusCode::FORBIDDEN
+            );
+            f.assert_http_mutation_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("users", &alice.id, &alice))
+                .unwrap();
+            assert_eq!(
+                post(&f.admin, Some("recover"), &input),
+                (StatusCode::OK, recovered)
+            );
+            f.core
+                .store
+                .write(|tx| riauth::provisioning::cleanup(tx, crypto::now() + 100 * 86400))
+                .unwrap();
+            assert_eq!(
+                f.core.store.get::<Value>(bucket, &id).unwrap().unwrap()["dispatch_recoveries"][0],
+                *recovery
+            );
+            // The separate operator resolution remains available after recovery.
+            let resolved = if is_job {
+                f.core
+                    .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-82"))
+            } else {
+                f.core
+                    .provisioning_deactivation_resolve(&f.admin, &id, p08_resolution("OPS-82"))
+            }
+            .unwrap();
+            assert_eq!(resolved["delivery_state"], "failed");
+        }
+    }
 }
 
 #[test]

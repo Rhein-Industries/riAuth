@@ -9,7 +9,9 @@ use crate::{
     core::{Core, audit, audit_with},
     crypto::{self, digest, now},
     error::{Error, Result},
-    identity::downstream::{DismissalReason, Link, Observed, Resolution, link_key},
+    identity::downstream::{
+        DismissalReason, DispatchRecovery, Link, Observed, Resolution, link_key,
+    },
     model::{Group, User},
     store::Tx,
 };
@@ -24,6 +26,8 @@ use std::{
 };
 use zeroize::{Zeroize, Zeroizing};
 mod deactivation;
+mod dispatch_recovery;
+pub use dispatch_recovery::RecoverDispatch;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
@@ -332,6 +336,13 @@ struct Job {
     /// Operator attestation that closed the item's ambiguity after the job stopped.
     #[serde(default)]
     resolution: Option<Resolution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dispatch_recoveries: Vec<DispatchRecovery>,
+}
+impl Job {
+    fn state_revision(&self) -> Result<String> {
+        crate::connector_guard::hash(self)
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Item {
@@ -406,8 +417,19 @@ fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
         Some(resolution) => json!({"observed": resolution.observed, "at": resolution.at}),
         None => Value::Null,
     };
+    let recoveries: Vec<_> = job
+        .dispatch_recoveries
+        .iter()
+        .map(|recovery| {
+            if readable {
+                json!(recovery)
+            } else {
+                json!({"reason": recovery.reason, "at": recovery.at})
+            }
+        })
+        .collect();
     Ok(
-        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution}),
+        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"state_revision":job.state_revision()?,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution,"dispatch_recoveries":recoveries}),
     )
 }
 
@@ -492,7 +514,8 @@ fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
         }
         let bytes = serde_json::to_vec(job).map_err(Error::internal)?.len();
         retained_bytes = retained_bytes.saturating_add(bytes);
-        if (job.completed || job.stale) && job.lease.is_none() {
+        if (job.completed || job.stale) && job.lease.is_none() && job.dispatch_recoveries.is_empty()
+        {
             terminal.push((id.clone(), job.plan.expires_at, bytes));
         }
     }
@@ -980,6 +1003,7 @@ impl Core {
                 uncertain: false,
                 item: None,
                 resolution: None,
+                dispatch_recoveries: Vec::new(),
             };
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
@@ -1087,6 +1111,13 @@ impl Core {
             let viewer = self.principal(tx, token)?;
             if result["item"].get("local_id").is_some()
                 || result["resolution"].get("evidence").is_some()
+                || result["dispatch_recoveries"]
+                    .as_array()
+                    .is_some_and(|records| {
+                        records
+                            .iter()
+                            .any(|record| record.get("evidence").is_some())
+                    })
             {
                 let target = result["target"].as_str().ok_or_else(Error::forbidden)?;
                 let item: Item = serde_json::from_value(result["item"].clone())
@@ -2096,16 +2127,6 @@ fn discard_body(response: reqwest::blocking::Response) {
     let _ = response.take(65_537).read_to_end(&mut ignored);
     ignored.zeroize();
 }
-fn authorized(
-    core: &Core,
-    name: &str,
-    target: &Target,
-    http: &reqwest::blocking::Client,
-    build: impl Fn(&reqwest::blocking::Client, &str) -> reqwest::blocking::RequestBuilder,
-) -> Result<reqwest::blocking::Response> {
-    authorized_fenced(core, name, target, http, &|| Ok(()), build)
-}
-
 /// The fence covers token acquisition (including its retry) and every SCIM
 /// send. A 401 is never permission to reuse an earlier dispatch check.
 fn authorized_fenced(
@@ -2397,6 +2418,7 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, mut job) in tx.maintenance_page::<Job>("provisioning_jobs")? {
         if (job.completed || job.stale)
             && job.lease.is_none()
+            && job.dispatch_recoveries.is_empty()
             && job.plan.expires_at + 7 * 86400 < at
         {
             tx.delete("provisioning_jobs", &id)?;

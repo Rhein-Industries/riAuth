@@ -616,7 +616,38 @@ pub enum ProvisionCommand {
         #[arg(long)]
         evidence: String,
     },
+    /// Recover an abandoned reviewed-job dispatch after external quiescence
+    RecoverDispatch {
+        job: String,
+        #[command(flatten)]
+        recovery: DispatchRecoveryArgs,
+    },
+    /// Recover an abandoned deactivation dispatch after external quiescence
+    RecoverDeactivationDispatch {
+        id: String,
+        #[command(flatten)]
+        recovery: DispatchRecoveryArgs,
+    },
 }
+
+#[derive(Args, Serialize)]
+pub struct DispatchRecoveryArgs {
+    /// Exact state_revision (job) or revision (deactivation) from a fresh listing
+    #[arg(long)]
+    revision: String,
+    #[arg(long, value_parser = ["worker_lost", "legacy_untracked"])]
+    reason: String,
+    /// Reference proving worker quiescence and prior provider request settlement
+    #[arg(long)]
+    evidence: String,
+    /// Attest every old worker, including suspended/legacy nodes, cannot resume
+    #[arg(long, required = true)]
+    workers_quiesced: bool,
+    /// Attest no prior provider request can still commit; not a success claim
+    #[arg(long, required = true)]
+    remote_requests_settled: bool,
+}
+
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
     List,
@@ -1617,6 +1648,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             ProvisionCommand::Resolve{job,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/resolve",segment(&job)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
             ProvisionCommand::ResolveDeactivation{id,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
             ProvisionCommand::DismissDeactivation{id,revision,reason,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/dismiss",segment(&id)?),Some(json!({"revision":revision,"reason":reason,"evidence":evidence})),true).await?,
+            ProvisionCommand::RecoverDispatch{job,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/recover-dispatch",segment(&job)?),Some(serde_json::to_value(recovery)?),true).await?,
+            ProvisionCommand::RecoverDeactivationDispatch{id,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/recover-dispatch",segment(&id)?),Some(serde_json::to_value(recovery)?),true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
                 let path = format!("/api/provisioning/targets/{}/plan",segment(&target)?);

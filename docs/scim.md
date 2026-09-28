@@ -126,8 +126,9 @@ OAuth or SCIM request. The fence remains through token acquisition, 401 refresh,
 every retry, response handling and verification reads. Each send checks the
 owned lease; each write also rechecks current authority, source and lease expiry
 after credential acquisition. Verification reads can finish under the owned
-fence after stop or expiry. Only the owning worker's outcome transaction clears
-the fence. A 60-second lease or any elapsed grace cannot prove settlement.
+fence after stop or expiry. During ordinary delivery, only the owning worker's
+outcome transaction clears the fence. A 60-second lease or any elapsed grace
+cannot prove settlement.
 Acknowledgement means that worker has finished the attempt and cannot send
 again. A timed-out request can still have an unknown remote outcome; it remains
 ambiguous and is never reported as success.
@@ -137,9 +138,8 @@ old worker cannot acquire the fence after expiry or replacement. A started or
 legacy untracked lease is held for acknowledgement, retained through cleanup,
 and blocks replacement delivery and dismissal. A claimant marks such an expired
 attempt stopped and ambiguous without taking its lease. If that worker crashed,
-the hold can persist indefinitely; there is no time-only or operator force-clear
-API. Recovery of a lost acknowledgement needs external worker quiescence and an
-audited recovery mechanism that is not yet implemented. Stop pre-fence worker
+the hold persists until [audited dispatch recovery](#recovering-an-abandoned-dispatch)
+records external quiescence. There is no time-only force-clear. Stop pre-fence worker
 versions before upgrading; mixed-version workers cannot enforce this protocol.
 
 Disabling or deleting a linked account records deactivation intent for each target; see [offboarding deactivation](#offboarding-deactivation). Provisioning tests exercise a second riAuth HTTP instance, conditional updates, preserved unmanaged attributes, groups, deactivation and permission revocation.
@@ -155,6 +155,17 @@ The delivery worker handles one due row at a time and never records a remote out
 3. Dispatch requires a [scoped controller](removal-safeguards.md) declared for `scim/<target>`. Its agent's live `provisioner.sync` authority on `provisioner/<target>` is checked, and its credential file is read afresh and must authenticate as that agent. A deactivation is a removal, so the target's reconciliation mode applies. `manual-review` and `guarded-automatic` hold the row until a reviewed plan delivers the disable. `automatic` dispatches unless the shared P03 floor, counted over every previously delivered active link whose account is now disabled or deleted, requires review. A reviewed job holding a live lease or unacknowledged dispatch on the target delays dispatch until it settles.
 4. The claim binds the controller authority, controller and target configuration, and link digest. That binding, the lease, the link and the account state are rechecked immediately before the conditional request. The worker reads the linked account, requires its `id`, `externalId` and a boolean `active`, and sends `PATCH active=false` only if the target still reports it active. The request carries `If-Match` and an idempotency key derived from the row, its epoch and that exact version. A retry of the identical request reuses the key. A retry after the version changed sends a new key, because some targets reject a reused key with a different precondition. A `204` is read back. Only the leasing worker records `delivered` (`deactivated` or `already_inactive`), a retry, or after five attempts `failed`. A missing remote account or a changed remote binding is `stale`.
 
+Deactivation attempts persist their own `dispatch_started` pin before the first
+OAuth or SCIM send. The pin covers refresh, retries and verification; every
+actual send rechecks ownership and every PATCH rechecks live admission after
+authentication. The 180-second lease limits admission, not settlement. An
+expired started or legacy lease becomes `failed`, `uncertain: true`, with
+`hold: awaiting_dispatch_ack`, retaining the lease even on the final attempt.
+Another claimant cannot take it. Retry, resolution, dismissal, intent enqueueing
+and cleanup cannot clear it. The owning worker can still acknowledge its result;
+otherwise use the explicit recovery protocol below. No network operation or
+wait is added to the transaction that revokes the account locally.
+
 Rows also report `delivery_state`, derived in this order:
 
 1. `ambiguous` while `uncertain` is set, whatever the `status`. A PATCH was sent and its effect is unknown.
@@ -168,7 +179,7 @@ Rows also report `delivery_state`, derived in this order:
 
 `uncertain` is cleared only by an attempt that reads the account, or by a reviewed job's verified link. A refused PATCH is retried as `pending`. An account enabled again after an unverified PATCH does not close as `superseded` straight away. The row stays `pending` and `ambiguous` until the controller reads the account once, without writing. It then closes as `superseded` with outcome `remote_inactive` (that PATCH was applied, so a reviewed plan must reactivate the account) or `remote_active`. If the account is disabled again during that read, the row resumes delivery. `riauth provision retry-deactivation <id>` (`POST /api/provisioning/deactivations/{id}/retry`) takes a failed or stale row, re-binds it to the current link and evaluates it again. If a reviewed plan has delivered the disable since then, the row closes as delivered; if the account was re-enabled, it is superseded. The retry needs `provisioner.sync` on the target and is audited as `provisioner.deactivate.retry`. Its response is the full row only for a caller who could list it (`provisioner.read` on the target and `user.read` on the account). Otherwise it is limited to `id`, `target`, `status`, `delivery_state`, `hold`, `attempts` and `next_attempt`.
 
-Held rows stay `pending`; `hold` names the reason: `awaiting_controller`, `awaiting_controller_authority`, `target_unconfigured`, `manual_mode`, `guarded_removal`, `removal_review_required`, `awaiting_prior_delivery` or `retry`. They are re-evaluated at an interval that grows with age to one hour, and they count as pending in the delivery queue metrics. The backlog alert therefore also reports offboarded accounts that are still active downstream. Delivery never rewrites managed links, so reviewed plans still count the departure until they deliver it. A reviewed plan made while the account was enabled cannot reactivate it: its job goes stale at that account. A write that was dispatched before the disable and lands after it records new intent. Terminal rows are kept for 90 days, except dismissed rows, whose intent and waiver remain retained.
+Ordinary held rows stay `pending`; `hold` names the reason: `awaiting_controller`, `awaiting_controller_authority`, `target_unconfigured`, `manual_mode`, `guarded_removal`, `removal_review_required`, `awaiting_prior_delivery` or `retry`. They are re-evaluated at an interval that grows with age to one hour, and they count as pending in the delivery queue metrics. The backlog alert therefore also reports offboarded accounts that are still active downstream. Delivery never rewrites managed links, so reviewed plans still count the departure until they deliver it. A reviewed plan made while the account was enabled cannot reactivate it: its job goes stale at that account. A write that was dispatched before the disable and lands after it records new intent. Terminal rows are kept for 90 days, except dismissed rows, pinned rows and rows with dispatch recovery history, which remain retained.
 
 ### Operator view
 
@@ -210,6 +221,64 @@ The effect depends on the record:
 - **Deactivation, `applied` or `absent`:** the row reads as `resolved`, never as delivered or succeeded, and it can no longer be retried.
 - **Deactivation, `not_applied`:** the row reads as `failed`. It can be retried if its link still exists.
 - **Stopped job:** it stays stopped and reads as `failed`. A fresh reviewed plan delivers the remaining work.
+
+### Recovering an abandoned dispatch
+
+A crashed worker or an older worker without dispatch tracking can leave a pin
+that never receives acknowledgement. Recovery is an **administrator-only**
+management action; scoped agents cannot attest infrastructure or provider
+quiescence. It requires all of the following external work, recorded in evidence:
+
+1. Terminate or fence every old worker that could resume the attempt, including
+   suspended, partitioned and legacy nodes, and prevent those processes from
+   restarting. Pausing a scheduler or waiting for lease expiry is insufficient.
+2. Establish with the provider that prior requests have finished or were
+   cancelled and cannot commit later. Revoke old remote credentials or otherwise
+   fence old request authority as needed. A local credential-file change, a
+   single GET, a timeout or provider unreachability is not this proof.
+3. Read the pinned record again and submit its exact revision, reason and
+   evidence with an idempotency key and both explicit attestations below.
+
+riAuth checks authority, identity readability, revision, expiry, pin state and
+the required attestations. It cannot independently verify that external workers
+and provider requests have been quiesced. If either fact cannot be established,
+keep the pin; do not attest it. Expiry only identifies a recovery candidate.
+
+```sh
+riauth --idempotency-key OPS-82 provision recover-deactivation-dispatch <id> \
+  --revision <revision> --reason worker_lost \
+  --workers-quiesced --remote-requests-settled \
+  --evidence "OPS-82: old nodes fenced; provider confirmed prior requests drained"
+```
+
+For reviewed jobs, use `provision recover-dispatch <job-id>` and the listing's
+`state_revision` (the separate `revision` is the plan's configuration revision).
+The routes are `POST /api/provisioning/deactivations/{id}/recover-dispatch` and
+`POST /api/provisioning/jobs/{id}/recover-dispatch`, with body:
+
+```json
+{"revision":"...","reason":"worker_lost","workers_quiesced":true,"remote_requests_settled":true,"evidence":"OPS-82"}
+```
+
+Reasons are `worker_lost` and `legacy_untracked`; the latter requires a lease
+without dispatch tracking. Evidence has the same 1–280 character limit and
+credential restrictions as resolution. A missing idempotency key, live lease,
+stale revision, unstarted lease or missing attestation is rejected. Receipt
+replays recheck the current identity's readability and never repeat recovery.
+
+Recovery retires the old owner, leaves `uncertain: true`, and records the old
+pin/state, reviewed revision, reason, evidence, administrator and time in
+`dispatch_recoveries` and an audit event (`provisioner.deactivate.recover_dispatch`
+or `provisioner.recover_dispatch`, under `details.context.attestation`). The
+deactivation stays `stale` with `hold: recovered_dispatch`; a reviewed job stays
+stopped with its cursor unchanged. Neither is queued, resolved, dismissed or
+reported delivered by recovery. Inspect the remote identity before a separate
+resolution, dismissal, explicit retry or newly reviewed plan. Retries read the
+remote account before writing. Recovery history survives retention and
+re-enqueueing; at 16 entries per record, further recovery fails closed without
+discarding evidence. Reviewed jobs with recovery history are exempt from
+capacity eviction; if retained evidence fills the job capacity, new jobs are
+refused instead of deleting that history.
 
 ### Dismissing an undeliverable intent
 
