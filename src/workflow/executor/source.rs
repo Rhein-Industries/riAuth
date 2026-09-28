@@ -223,6 +223,7 @@ impl Core {
                 requires_mfa,
                 source: Some(pin.clone()),
                 authorization: None,
+                recovery: None,
             };
             if let Some(authorization) = &authorization {
                 authorization::bind(tx, &run.record, &mut request, authorization, at)?;

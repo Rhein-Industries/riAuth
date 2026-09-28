@@ -349,7 +349,7 @@ impl Core {
                 Label::fixed("completed"),
                 Some(evidence),
                 at,
-                Some(mutation),
+                Some(mutation::Pending::Enrollment(mutation)),
             )?;
             run.view(&checked)
         })

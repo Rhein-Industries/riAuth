@@ -366,6 +366,306 @@ fn bind_directory(f: &mut Fixture, username: &str) {
         .unwrap();
 }
 
+/// Recovery binds the actual mail request to one account/epoch and commits the
+/// W03 path, password change, proof consumption and revocation together.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_password_reset_is_account_bound_atomic_and_one_use() {
+    let mut f = Fixture::new();
+    with_mail(&mut f);
+    f.client("app", false);
+    let initial = f.user("reset-owner");
+    f.user("reset-other");
+    verify_email(&f, "reset-owner");
+    verify_email(&f, "reset-other");
+    let (_totp, owner) = enroll_totp(&f, &initial, "reset-owner");
+    let recovery = f.core.recovery_codes(&owner).unwrap();
+    let access = f.tokens("app", &owner, None);
+    let before = user(&f, "reset-owner");
+    let other = user(&f, "reset-other");
+    f.core.account_reset_request("reset-owner").unwrap();
+    f.core.account_reset_request("reset-other").unwrap();
+    let (_, code) = reset_mail(&f, "reset-owner").pop().unwrap();
+    let (_, other_code) = reset_mail(&f, "reset-other").pop().unwrap();
+    let hash = digest(&code);
+    let original = proof(&f, &code).unwrap();
+    let complete = || {
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(CHANGED.into()))
+    };
+
+    // Even matching live account/email/epoch fields cannot retarget a proof to
+    // another user's recovery request. Its latest-proof index is authoritative.
+    let mut wrong_account = original.clone();
+    wrong_account["user_id"] = json!(other.id);
+    wrong_account["email"] = json!(other.email);
+    wrong_account["epoch"] = json!(other.epoch);
+    f.core
+        .store
+        .write(|tx| tx.put("account_proofs", &hash, &wrong_account))
+        .unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert!(complete().is_err());
+    f.assert_snapshot(&snapshot);
+    f.core
+        .store
+        .write(|tx| tx.put("account_proofs", &hash, &original))
+        .unwrap();
+
+    let latest_key = format!("{}:reset", before.id);
+    for (bucket, key, pointer, value) in [
+        (
+            "account_latest",
+            latest_key.as_str(),
+            "",
+            json!(digest(&other_code)),
+        ),
+        ("account_proofs", hash.as_str(), "/expires_at", json!(now())),
+        ("account_proofs", hash.as_str(), "/purpose", json!("invite")),
+        (
+            "users",
+            before.id.as_str(),
+            "/epoch",
+            json!(before.epoch + 1),
+        ),
+    ] {
+        let saved: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+        let mut changed = saved.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &changed))
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        assert!(complete().is_err(), "{bucket}{pointer}");
+        f.assert_snapshot(&snapshot);
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &saved))
+            .unwrap();
+    }
+    // Password policy runs inside the completion writer. A rejected replacement
+    // must leave the mail proof, workflow rows, history and authority untouched.
+    let snapshot = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(PASSWORD.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&snapshot);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_runs")
+            .unwrap()
+            .is_empty()
+    );
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let staged = f.core.store.list::<Value>("browser_logins").unwrap();
+    let codes = f.core.store.list::<Value>("codes").unwrap();
+    let app = api::router(f.core.clone());
+    let request = || {
+        post(
+            "/api/portal/account/reset",
+            None,
+            json!({"token":code,"password":CHANGED}),
+        )
+    };
+    // Rendering the reset page has no mutation or proof-consumption side effect.
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        call(&app, get("/account/reset", None)).await.status,
+        StatusCode::OK
+    );
+    f.assert_http_mutation_snapshot(&snapshot);
+    let (first, second) = tokio::join!(call(&app, request()), call(&app, request()));
+    let results = [first, second];
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| r.status == StatusCode::OK)
+            .count(),
+        1
+    );
+    let winner = results.iter().find(|r| r.status == StatusCode::OK).unwrap();
+    let loser = results.iter().find(|r| r.status != StatusCode::OK).unwrap();
+    assert_eq!(winner.body, json!({"completed":true,"login_required":true}));
+    assert!(winner.headers.get("set-cookie").is_none());
+    assert_eq!(loser.body["error"], "account_code_used");
+    assert!(proof(&f, &code).is_none());
+    assert!(proof(&f, &other_code).is_some());
+    let after = user(&f, "reset-owner");
+    assert_eq!(after.epoch, before.epoch + 1);
+    assert_eq!(after.totp_secret, before.totp_secret);
+    assert_eq!(after.recovery_codes, before.recovery_codes);
+    assert_eq!(after.has_passkeys, before.has_passkeys);
+    assert_eq!(user(&f, "reset-other").password_hash, other.password_hash);
+    assert_eq!(user(&f, "reset-other").epoch, other.epoch);
+    assert!(f.core.me(&owner).is_err());
+    assert!(f.core.userinfo(&text(&access, "access_token")).is_err());
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("browser_logins").unwrap(),
+        staged
+    );
+    assert_eq!(f.core.store.list::<Value>("codes").unwrap(), codes);
+    assert_eq!(audits(&f, "user.account.reset"), 1);
+
+    let runs = f.core.store.list::<Value>("workflow_runs").unwrap();
+    assert_eq!(runs.len(), 1);
+    let (run_id, run) = &runs[0];
+    assert_eq!(run["record"]["state"]["outcome"], "recovered");
+    assert!(run["record"]["session"].is_null());
+    assert_eq!(run["record"]["account"], before.id);
+    assert_eq!(run["record"]["account_epoch"], before.epoch);
+    assert_eq!(run["record"]["request"], format!("reset:{hash}"));
+    assert_eq!(run["credential_mutation"]["from_epoch"], before.epoch);
+    assert_eq!(run["credential_mutation"]["to_epoch"], after.epoch);
+    assert_eq!(
+        run["credential_mutation"]["recovery_request"],
+        run["record"]["request"]
+    );
+    assert!(run.get("authorization_response").is_none());
+    let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(receipts.len(), 2);
+    for (_, receipt) in receipts {
+        assert_eq!(receipt["run"], *run_id);
+        assert_eq!(receipt["account"], before.id);
+        assert_eq!(receipt["account_epoch"], before.epoch);
+        assert_eq!(receipt["request"], run["record"]["request"]);
+        assert_eq!(receipt["binding"], run["record"]["binding"]);
+        assert_eq!(receipt["consumed"], true);
+        assert!(matches!(
+            receipt["proof"].as_str(),
+            Some("reset_email" | "password_reset")
+        ));
+    }
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(complete().unwrap_err().code, "account_code_used");
+    f.assert_snapshot(&snapshot);
+    assert!(
+        f.core
+            .login("reset-owner".into(), CHANGED.into(), None)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .login(
+                "reset-owner".into(),
+                CHANGED.into(),
+                Some(recovery["recovery_codes"][0].as_str().unwrap().into())
+            )
+            .is_ok()
+    );
+
+    // Accepted assisted-recovery policy is part of the same bound mutation:
+    // only the original verified address may clear support-exposed factors.
+    let assisted = f.user("reset-assisted");
+    verify_email(&f, "reset-assisted");
+    let (_, assisted_mfa) = enroll_totp(&f, &assisted, "reset-assisted");
+    f.core.recovery_codes(&assisted_mfa).unwrap();
+    enroll_passkey(&f, &assisted_mfa);
+    let assisted_before = user(&f, "reset-assisted");
+    let mut exposure = json!({"verified_email":"wrong-address@example.test","actor_id":"support-fixture","at":now()});
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "support_credential_exposure",
+                &assisted_before.id,
+                &exposure,
+            )
+        })
+        .unwrap();
+    f.core.account_reset_request("reset-assisted").unwrap();
+    let (_, assisted_code) = reset_mail(&f, "reset-assisted").pop().unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(assisted_code.clone(), Purpose::Reset, Some(CHANGED.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&snapshot);
+    exposure["verified_email"] = json!(assisted_before.email);
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "support_credential_exposure",
+                &assisted_before.id,
+                &exposure,
+            )
+        })
+        .unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(assisted_code.clone(), Purpose::Reset, Some(PASSWORD.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&snapshot);
+    let done = call(
+        &app,
+        post(
+            "/api/portal/account/reset",
+            None,
+            json!({"token":assisted_code,"password":CHANGED}),
+        ),
+    )
+    .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert_eq!(
+        done.body,
+        json!({"completed":true,"login_required":true,"factors_reset":true})
+    );
+    assert!(done.headers.get("set-cookie").is_none());
+    let assisted_after = user(&f, "reset-assisted");
+    assert_eq!(assisted_after.epoch, assisted_before.epoch + 1);
+    assert!(assisted_after.totp_secret.is_none());
+    assert!(assisted_after.recovery_codes.is_empty());
+    assert!(!assisted_after.has_passkeys);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("passkeys")
+            .unwrap()
+            .iter()
+            .all(|(_, key)| key["user_id"] != assisted_before.id)
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &assisted_before.id)
+            .unwrap()
+            .is_none()
+    );
+    let assisted_run = f
+        .core
+        .store
+        .list::<Value>("workflow_runs")
+        .unwrap()
+        .into_iter()
+        .find(|(_, run)| run["record"]["account"] == assisted_before.id)
+        .unwrap()
+        .1;
+    assert_eq!(assisted_run["record"]["state"]["outcome"], "recovered");
+    assert_eq!(assisted_run["credential_mutation"]["factors_reset"], true);
+    assert_eq!(
+        assisted_run["credential_mutation"]["to_epoch"],
+        assisted_after.epoch
+    );
+    assert_eq!(
+        f.core
+            .account_complete(assisted_code, Purpose::Reset, Some(CHANGED.into()))
+            .unwrap_err()
+            .code,
+        "account_code_used"
+    );
+}
+
 /// E06.1/E06.3, RI-CRED-003: the emailed browser link survives scanners, works once,
 /// replaces only the password, keeps every factor required and ends old authority.
 #[tokio::test]

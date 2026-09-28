@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 
+#[cfg(feature = "platform")]
+pub(crate) mod workflow;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MailConfig {
@@ -96,7 +99,7 @@ impl MailConfig {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Purpose {
     Verify,
@@ -112,7 +115,7 @@ impl Purpose {
         }
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Proof {
     purpose: Purpose,
     user_id: String,
@@ -191,6 +194,50 @@ pub(crate) fn email(value: &str) -> Result<()> {
 }
 fn proof_key(user: &User, purpose: Purpose) -> String {
     format!("{}:{}", user.id, purpose.name())
+}
+
+/// The recovery request, proof and live account must still name the same
+/// credential epoch. A replaced proof cannot consume another request's index.
+fn reset_authority(tx: &Tx<'_>, hash: &str, proof: &Proof, at: u64) -> Result<User> {
+    let user: User = tx
+        .get("users", &proof.user_id)?
+        .ok_or_else(Error::forbidden)?;
+    let exposure = crate::delegation::support_exposure(tx, &user.id)?;
+    if proof.purpose != Purpose::Reset
+        || proof.expires_at <= at
+        || !user.enabled
+        || !user.email_verified
+        || user.epoch != proof.epoch
+        || user.email.as_deref() != Some(proof.email.as_str())
+        || tx
+            .get::<String>("account_latest", &proof_key(&user, Purpose::Reset))?
+            .as_deref()
+            != Some(hash)
+        || crate::password::Kind::of(tx, &user)? != crate::password::Kind::Local
+        || exposure.as_ref().is_some_and(|exposure| {
+            exposure.verified_email.as_deref() != Some(proof.email.as_str())
+        })
+    {
+        return Err(Error::forbidden());
+    }
+    Ok(user)
+}
+
+/// Preserve assisted-recovery policy in both ordinary and workflow completion.
+/// Call only in the same writer after verifying the original recovery address.
+fn reset_exposed_factors(tx: &Tx<'_>, user: &mut User) -> Result<bool> {
+    if crate::delegation::support_exposure(tx, &user.id)?.is_none() {
+        return Ok(false);
+    }
+    crate::passkey::clear(tx, &user.id)?;
+    user.has_passkeys = false;
+    user.recovery_codes.clear();
+    user.totp_secret = None;
+    user.totp_pending = None;
+    user.totp_last_step = None;
+    user.totp_settings = Default::default();
+    tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
+    Ok(true)
 }
 fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
     if let Some(proof) = tx.get::<Proof>("account_proofs", hash)? {
@@ -734,31 +781,37 @@ impl Core {
                 Ok(())
             };
             let local = crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local;
+            #[cfg(not(feature = "platform"))]
             let mut factors_reset = false;
+            #[cfg(feature = "platform")]
+            let factors_reset = false;
             match purpose {
                 Purpose::Verify if user.enabled => user.email_verified = true,
                 // Ordinary reset keeps factors. A target exposed to help desk
                 // loses factors and must enroll fresh ones after this proof.
                 Purpose::Reset if user.enabled && user.email_verified && local => {
-                    let exposure = crate::delegation::support_exposure(tx, &user.id)?;
-                    if exposure.as_ref().is_some_and(|exposure| {
-                        exposure.verified_email.as_deref() != Some(proof.email.as_str())
-                    }) {
-                        return Err(Error::forbidden());
+                    reset_authority(tx, &hash, &proof, now())?;
+                    #[cfg(feature = "platform")]
+                    {
+                        let verified = workflow::VerifiedReset::new(
+                            tx,
+                            hash,
+                            proof,
+                            password
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                            password_hash
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                        )?;
+                        return self.complete_password_reset_workflow(tx, verified);
                     }
-                    apply_password(&mut user)?;
-                    if exposure.is_some() {
-                        crate::passkey::clear(tx, &user.id)?;
-                        user.has_passkeys = false;
-                        user.recovery_codes.clear();
-                        user.totp_secret = None;
-                        user.totp_pending = None;
-                        user.totp_last_step = None;
-                        user.totp_settings = Default::default();
-                        tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
-                        factors_reset = true;
+                    #[cfg(not(feature = "platform"))]
+                    {
+                        apply_password(&mut user)?;
+                        factors_reset = reset_exposed_factors(tx, &mut user)?;
+                        user.epoch = user.epoch.checked_add(1).ok_or_else(Error::forbidden)?;
                     }
-                    user.epoch += 1;
                 }
                 Purpose::Invite
                     if !user.enabled && !user.admin && user.password_hash.is_empty() =>

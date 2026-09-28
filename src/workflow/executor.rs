@@ -2,9 +2,11 @@
 
 pub(crate) mod authorization;
 mod enrollment;
+mod mutation;
 mod passkey;
 mod password;
 mod recovery;
+mod reset;
 mod source;
 mod totp;
 pub use passkey::PasskeyChallenge;
@@ -38,6 +40,7 @@ const ACTIVE_SESSIONS: &str = "workflow_active_sessions";
 const PASSWORD_WORKFLOW: &str = "essentials-password-sign-in";
 const PASSKEY_WORKFLOW: &str = "essentials-passkey-sign-in";
 const PASSKEY_ENROLLMENT: &str = "essentials-passkey-enrollment";
+const PASSWORD_RESET: &str = "essentials-password-reset";
 const RECEIPT_SECONDS: u64 = 120;
 const RETAIN_FINAL_SECONDS: u64 = 7 * 86_400;
 
@@ -74,6 +77,8 @@ struct RequestAuthority {
     source: Option<upstream::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     authorization: Option<authorization::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery: Option<crate::lifecycle::workflow::Pin>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -127,7 +132,7 @@ struct RuntimeRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     authorization_response: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    credential_mutation: Option<crate::passkey::workflow::Mutation>,
+    credential_mutation: Option<mutation::Completed>,
 }
 
 impl RuntimeRun {
@@ -137,7 +142,7 @@ impl RuntimeRun {
         // on every resume so a changed or corrupt row cannot alter routing.
         let checked = if matches!(
             self.definition.id.as_str(),
-            PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
+            PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT | PASSWORD_RESET
         ) {
             validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
         } else if self.definition.id.as_str() == password::TOTP_WORKFLOW {
@@ -251,6 +256,10 @@ fn authority(
     let request = tx
         .get::<RequestAuthority>(REQUESTS, &run.request)?
         .ok_or_else(Error::forbidden)?;
+    if request.recovery.is_some() {
+        let user = reset::authority(tx, run, &request, at)?;
+        return Ok((user, request));
+    }
     let sid = run.session.as_deref().ok_or_else(Error::forbidden)?;
     if request.id != run.request
         || request.run != run.id
@@ -426,7 +435,7 @@ fn finish_step_with_mutation(
     signal: Label,
     evidence: Option<StoredEvidence>,
     at: u64,
-    mutation: Option<enrollment::Verified>,
+    mutation: Option<mutation::Pending>,
 ) -> Result<()> {
     let RunState::Active { step, attempt } = &run.record.state else {
         return Err(Error::conflict("Workflow run is already final"));
@@ -652,7 +661,7 @@ struct TxCompletion<'a, 'b> {
     core: &'a Core,
     tx: &'a Tx<'b>,
     at: u64,
-    mutation: Option<enrollment::Verified>,
+    mutation: Option<mutation::Pending>,
 }
 
 fn storage_invalid(error: Error) -> Invalid {
@@ -925,6 +934,7 @@ impl Core {
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW,
                 source: None,
                 authorization: None,
+                recovery: None,
             };
             if let Some(authorization) = authorization.as_ref() {
                 authorization::bind(tx, &run.record, &mut request, authorization, at)?;

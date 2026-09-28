@@ -8,9 +8,10 @@ verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
 issues a new session. Other built-in
 verifier actions remain unconnected except passkey enrollment authorized by a
-fresh existing-passkey proof, which finalizes the credential and epoch change
-atomically. The existing ordinary
-sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
+fresh existing-passkey proof and password recovery through the existing mail
+verifier. Both finalize the credential and epoch change atomically. Ordinary
+sign-in, enrollment, consent and source-stage paths are unchanged; browser
+recovery keeps its existing response and requires a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
@@ -275,9 +276,39 @@ and `credential_epoch`. Previous sessions cannot resume or reuse the result.
 Sign in again after enrollment.
 
 This slice supports adding a passkey after verification of an existing passkey.
-First-passkey enrollment through password/TOTP, invitation enrollment, password
-reset and other credential mutations still require their own bound adapters.
+First-passkey enrollment through password/TOTP, invitation enrollment and other
+credential mutations still require their own bound adapters.
 Persisted mutation receipts alone cannot enable any of those success outcomes.
+
+## Password recovery finalization
+
+On Platform, the existing explicit browser/CLI reset submission executes the
+shipped password-reset workflow inside its writer transaction. The real mail
+verifier pins the proof digest, reset purpose, intended immutable account ID,
+verified email, current account epoch and exact `account_latest` recovery request.
+Factor or credential changes that advance the epoch invalidate an older link;
+a replaced request or proof retargeted to another account cannot complete.
+Assisted recovery also pins the current support-exposure record and requires
+the address verified before the support change to match the mail proof.
+
+Identification creates no proof. The verified reset-mail receipt and password
+mutation receipt bind to the same request, run/version, account and epoch, with
+no authenticated session. Only the in-memory mail-verifier capability can
+authorize the password mutation. Password history policy, proof retirement,
+receipt consumption, E-to-E+1, existing logout/revocation effects and the final
+`recovered` state commit together. The epoch is written before revocation is
+queued. Failure rolls back the entire transaction; concurrent submissions yield
+one success and the existing used-link error for the loser.
+
+This preserves scanner-safe GETs, explicit reset POSTs, the existing JSON response
+and password-policy retry behavior. No session, staged login, authentication
+success or authorization code is created. Ordinary reset retains enrolled
+factors, which remain required at the next sign-in. Assisted recovery retains
+the accepted policy of removing exposed passkeys, TOTP and recovery codes and
+returning `factors_reset: true`; that removal and clearing the support-exposure
+record commit with the same epoch transition. Essentials keeps its ordinary
+reset path and also rejects a proof whose current recovery-request index no
+longer matches.
 
 ## Source reauthentication
 
@@ -411,8 +442,9 @@ These are not implemented or established by this slice:
   logout association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey enrollment: first-passkey/password/TOTP enrollment,
-  invitations and password reset remain blocked pending their real adapters. A
+  authorized passkey enrollment and mail-proven password reset:
+  first-passkey/password/TOTP enrollment and invitations remain blocked pending
+  their real adapters. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Arbitrary configured workflows, custom stage execution, invitation
