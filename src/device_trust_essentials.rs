@@ -1,5 +1,5 @@
 //! Shared config shape with no device verifier or challenge engine.
-pub use crate::device_trust_types::{Challenge, DeviceVerification, TrustConfig};
+pub use crate::device_trust_types::{Challenge, DeviceVerification, TrustConfig, MAX_FRESHNESS};
 
 pub fn validate_config(_config: &TrustConfig) -> anyhow::Result<()> {
     anyhow::bail!("Device trust requires the Platform build")

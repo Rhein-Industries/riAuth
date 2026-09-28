@@ -5,7 +5,6 @@ use std::path::PathBuf;
 #[cfg(feature = "platform")]
 pub const CHALLENGE_TTL: u64 = 120;
 pub const DEFAULT_FRESHNESS: u64 = 300;
-#[cfg(feature = "platform")]
 pub const MAX_FRESHNESS: u64 = 3600;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
