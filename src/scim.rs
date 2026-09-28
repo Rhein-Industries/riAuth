@@ -243,48 +243,93 @@ fn normalize(mut value: Value) -> Result<Value> {
     }
     Ok(Value::Object(normalized))
 }
-fn filter_matches(value: &Value, filter: Option<&str>) -> Result<bool> {
+enum Filter {
+    Text {
+        field: &'static str,
+        needle: String,
+        exact: bool,
+    },
+    Email(String),
+    Active(bool),
+}
+
+impl Filter {
+    fn matches(&self, value: &Value) -> bool {
+        match self {
+            Self::Text { field, needle, exact } => value[*field].as_str().is_some_and(|actual| {
+                if *exact {
+                    actual == needle
+                } else {
+                    actual.eq_ignore_ascii_case(needle)
+                }
+            }),
+            Self::Email(needle) => value["emails"].as_array().is_some_and(|emails| {
+                emails.iter().any(|email| {
+                    email["value"]
+                        .as_str()
+                        .is_some_and(|actual| actual.eq_ignore_ascii_case(needle))
+                })
+            }),
+            Self::Active(expected) => value["active"].as_bool() == Some(*expected),
+        }
+    }
+}
+
+fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Filter>> {
     let Some(filter) = filter else {
-        return Ok(true);
+        return Ok(None);
     };
     if filter.len() > 1024 {
         return Err(Error::oauth("invalid_filter", "Filter too long"));
     }
-    let mut parts = filter.splitn(3, ' ');
-    let field = parts.next().unwrap_or("");
-    let op = parts.next().unwrap_or("");
-    let needle = parts.next().unwrap_or("");
-    let field = match field.to_ascii_lowercase().as_str() {
-        "username" => "userName",
-        "externalid" => "externalId",
-        "displayname" => "displayName",
-        "id" => "id",
-        _ => {
-            return Err(Error::oauth(
-                "invalid_filter",
-                "Supported filters: userName/externalId/displayName/id eq JSON-string",
-            ));
-        }
-    };
-    if !op.eq_ignore_ascii_case("eq") {
-        return Err(Error::oauth(
-            "invalid_filter",
-            "Only eq filters are supported",
-        ));
+    if filter.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(Error::oauth("invalid_filter", "Control characters are not allowed in filters"));
     }
-    let needle: String = serde_json::from_str(needle).map_err(|_| {
-        Error::oauth(
-            "invalid_filter",
-            "Filter value must be a quoted JSON string",
-        )
-    })?;
-    Ok(value[field].as_str().is_some_and(|v| {
-        if field == "externalId" || field == "id" {
-            v == needle
-        } else {
-            v.eq_ignore_ascii_case(&needle)
+    // One attribute, one `eq`, and one literal. Only ASCII spaces may separate
+    // tokens; serde_json enforces complete JSON string/boolean literal parsing.
+    let filter = filter.trim_matches(' ');
+    let (field, rest) = filter
+        .split_once(' ')
+        .ok_or_else(|| Error::oauth("invalid_filter", "Expected attribute eq value"))?;
+    let (op, literal) = rest
+        .trim_start_matches(' ')
+        .split_once(' ')
+        .ok_or_else(|| Error::oauth("invalid_filter", "Expected attribute eq value"))?;
+    let literal = literal.trim_matches(' ');
+    if !op.eq_ignore_ascii_case("eq") || literal.is_empty() {
+        return Err(Error::oauth("invalid_filter", "Only one eq expression is supported"));
+    }
+    let field = field.to_ascii_lowercase();
+    if field == "active" {
+        if kind != "Users" {
+            return Err(Error::oauth("invalid_filter", "active is a User filter"));
         }
-    }))
+        let active = serde_json::from_str::<bool>(literal)
+            .map_err(|_| Error::oauth("invalid_filter", "active requires true or false"))?;
+        return Ok(Some(Filter::Active(active)));
+    }
+    let needle = serde_json::from_str::<String>(literal)
+        .map_err(|_| Error::oauth("invalid_filter", "Filter value must be one quoted JSON string"))?;
+    let parsed = match field.as_str() {
+        "username" if kind == "Users" => Filter::Text {
+            field: "userName", needle, exact: false,
+        },
+        "displayname" => Filter::Text {
+            field: "displayName", needle, exact: false,
+        },
+        "externalid" => Filter::Text {
+            field: "externalId", needle, exact: true,
+        },
+        "id" => Filter::Text {
+            field: "id", needle, exact: true,
+        },
+        "emails.value" if kind == "Users" => Filter::Email(needle),
+        _ => return Err(Error::oauth(
+            "invalid_filter",
+            "Supported fields: displayName, externalId, id, and User userName, emails.value, active",
+        )),
+    };
+    Ok(Some(parsed))
 }
 
 impl Core {
@@ -388,14 +433,15 @@ impl Core {
     pub fn scim_list(&self, token: &str, kind: &str, query: Query) -> Result<Value> {
         self.store.read(|tx|{
         let actor=self.principal(tx,token)?;
-        // Validate unsupported filters even when the collection is empty.
-        filter_matches(&json!({}),query.filter.as_deref())?;
+        bucket(kind)?;
+        // Parse once, including when the collection is empty.
+        let filter=parse_filter(kind,query.filter.as_deref())?;
         let start=query.start_index.unwrap_or(1).max(1);let count=query.count.unwrap_or(100).min(1000);
         let mut values=Vec::new();
         for (id,record) in tx.list::<Record>(bucket(kind)?)? {
             if record.deleted || record.owner!=actor.id || require(&actor,&record,"read").is_err(){continue;}
             let value=self.scim_view(tx,&id,&record)?;
-            if filter_matches(&value,query.filter.as_deref())?{values.push(value);}
+            if filter.as_ref().is_none_or(|filter| filter.matches(&value)){values.push(value);}
         }
         let total=values.len();let page:Vec<_>=values.into_iter().skip(start-1).take(count).collect();
         Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
@@ -845,10 +891,9 @@ pub(crate) fn fuzz_resource(input: Value) {
 
 #[cfg(feature = "fuzzing")]
 pub(crate) fn fuzz_filter(filter: &str) {
-    let _ = filter_matches(
-        &json!({"userName":"fuzz-user","id":"fuzz-id"}),
-        Some(filter),
-    );
+    let _ = parse_filter("Users", Some(filter)).map(|parsed| {
+        parsed.is_none_or(|parsed| parsed.matches(&json!({"userName":"fuzz-user","id":"fuzz-id"})))
+    });
 }
 
 #[cfg(test)]
