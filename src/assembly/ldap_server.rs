@@ -1121,4 +1121,153 @@ mod tests {
             axum::http::StatusCode::CONFLICT
         );
     }
+
+    #[test]
+    fn ldap_group_dn_fold_index_backfills_on_v4_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = Config {
+            data_dir: directory.path().into(),
+            ..Default::default()
+        };
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            config.clone(),
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "groups"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let created = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "v4-ldap-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            created["credential"]["token"].as_str().unwrap().into(),
+        ));
+        let fold = format!("index_group_dn_folds/{}", crate::crypto::digest("team"));
+        let directory_fold = format!(
+            "index_group_dn_folds/{}",
+            crate::crypto::digest("directory")
+        );
+        let prior_revision = core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+        core.store
+            .write(|tx| {
+                let id: String = tx.get("usernames", "admin")?.unwrap();
+                for name in ["TEAM", "team"] {
+                    tx.put(
+                        "groups",
+                        name,
+                        &Group {
+                            name: name.into(),
+                            members: [id.clone()].into(),
+                        },
+                    )?;
+                }
+                let mut directory: Group = tx.get("groups", "directory")?.unwrap();
+                directory.members.insert(id);
+                tx.put("groups", "directory", &directory)?;
+                assert_eq!(tx.group_dn_fold_page("team", None)?, ["TEAM", "team"]);
+
+                // Model a coherent v4 activation with no v5-only fold entries.
+                let mut activation: serde_json::Value =
+                    tx.get("meta", "version_activation")?.unwrap();
+                activation["index_version"] = serde_json::json!(4);
+                tx.put("meta", "version_activation", &activation)?;
+                tx.put("meta", "index_version", &4u32)?;
+                tx.delete(&fold, "TEAM")?;
+                tx.delete(&fold, "team")?;
+                tx.delete(&directory_fold, "directory")?;
+                assert!(tx.group_dn_fold_page("team", None)?.is_empty());
+                assert!(tx.group_dn_fold_page("directory", None)?.is_empty());
+                Ok(())
+            })
+            .unwrap();
+        drop(core);
+
+        // Only Core::open may rebuild these rows; a direct rebuild would miss
+        // the startup migration and activation-preflight contract.
+        let core = Core::open(config).unwrap();
+        assert_eq!(
+            core.store.get::<u32>("meta", "index_version").unwrap(),
+            Some(5)
+        );
+        let activation: serde_json::Value = core
+            .store
+            .get("meta", "version_activation")
+            .unwrap()
+            .unwrap();
+        assert_eq!(activation["index_version"], 5);
+        assert_eq!(
+            core.store
+                .read(|tx| tx.group_dn_fold_page("team", None))
+                .unwrap(),
+            ["TEAM", "team"]
+        );
+        assert_eq!(
+            core.store
+                .read(|tx| tx.group_dn_fold_page("directory", None))
+                .unwrap(),
+            ["directory"]
+        );
+        assert_eq!(
+            core.store.get::<u64>("meta", "revision").unwrap(),
+            Some(prior_revision + 1)
+        );
+        let query = LdapSearchRequest {
+            base: "ou=users,dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::OneLevel,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("uid".into()),
+            attrs: vec![],
+        };
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
+        );
+    }
 }
