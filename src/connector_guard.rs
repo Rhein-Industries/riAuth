@@ -170,7 +170,19 @@ fn authority(tx: &Tx<'_>, actor: &Principal) -> Result<String> {
         let user = tx
             .get::<User>("users", &actor.id)?
             .ok_or_else(Error::forbidden)?;
-        serde_json::json!([user.id, user.enabled, user.admin, user.epoch])
+        if actor.delegated {
+            serde_json::json!([
+                user.id,
+                user.enabled,
+                user.admin,
+                user.epoch,
+                actor.grants,
+                tx.get::<u64>("human_grant_generations", &actor.id)?
+                    .unwrap_or(0),
+            ])
+        } else {
+            serde_json::json!([user.id, user.enabled, user.admin, user.epoch])
+        }
     };
     hash(&(&actor.id, actor.agent, permissions, delegation))
 }

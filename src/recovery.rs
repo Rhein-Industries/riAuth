@@ -54,6 +54,8 @@ pub const INVALIDATED: &[&str] = &[
     "mtls_logins",
     "radius_eap_identities",
     "device_verifications",
+    // A restored snapshot cannot prove a human grant was not revoked later.
+    "human_grants",
     // OAuth grants, families and one-time codes.
     "access",
     "refresh",
@@ -176,6 +178,7 @@ const RETAINED: &[&str] = &[
     "maintenance_bounds",
     "password_history",
     "credential_versions",
+    "human_grant_generations",
     "scim_oauth_cache",
     "agent_tokens",
     "registration_tokens",

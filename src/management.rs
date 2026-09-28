@@ -79,6 +79,13 @@ pub(crate) enum GroupIntent<'a> {
         user_id: &'a str,
         present: bool,
     },
+    /// Membership of a user imported by this exact connector. The connector
+    /// adapter checks configured group mappings and user ownership first.
+    DirectoryMember {
+        user_id: &'a str,
+        present: bool,
+        scope: &'a str,
+    },
     /// Dependent cleanup for an already disabled identity. This only removes
     /// that identity and is authorized by its exact user.write scope.
     #[cfg(feature = "platform")]
@@ -90,7 +97,15 @@ pub(crate) enum GroupIntent<'a> {
 
 /// Some adapters finish other records before emitting one enclosing audit.
 pub(crate) enum GroupAudit<'a> {
-    OnChange { action: &'a str, target: &'a str },
+    OnChange {
+        action: &'a str,
+        target: &'a str,
+    },
+    Scoped {
+        action: &'a str,
+        target: &'a str,
+        scope: &'a str,
+    },
     Deferred,
 }
 
@@ -164,6 +179,28 @@ pub(crate) fn write_group(
             }
             Ok(GroupWrite { group, changed })
         }
+        GroupIntent::DirectoryMember {
+            user_id,
+            present,
+            scope,
+        } => {
+            actor.require_directory_group(scope, name)?;
+            validate_name(name)?;
+            let mut group = existing_group(tx, name)?;
+            if present {
+                validate_group_member(tx, user_id)?;
+            }
+            let changed = if present {
+                group.members.insert(user_id.into())
+            } else {
+                group.members.remove(user_id)
+            };
+            if changed {
+                tx.put("groups", name, &group)?;
+                audit_group(tx, actor, record)?;
+            }
+            Ok(GroupWrite { group, changed })
+        }
         #[cfg(feature = "platform")]
         GroupIntent::OffboardMember { user_id, username } => {
             actor.require("user.write", &format!("user/{username}"))?;
@@ -211,8 +248,16 @@ fn validate_group_members(tx: &Tx<'_>, members: &BTreeSet<String>) -> Result<()>
 }
 
 fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result<()> {
-    if let GroupAudit::OnChange { action, target } = record {
-        audit(tx, &actor.id, action, target)?;
+    match record {
+        GroupAudit::OnChange { action, target } => audit(tx, &actor.id, action, target)?,
+        GroupAudit::Scoped {
+            action,
+            target,
+            scope,
+        } => {
+            crate::delegation::audit_scoped(tx, actor, action, target, scope)?;
+        }
+        GroupAudit::Deferred => {}
     }
     Ok(())
 }
@@ -454,7 +499,7 @@ pub(crate) fn check_cloud_user_owner(
     user: &User,
 ) -> Result<()> {
     actor.require("directory.sync", &cloud_resource(owner))?;
-    actor.require("user.write", &format!("user/{}", user.username))?;
+    actor.require_directory_user(&cloud_resource(owner), &user.username, Some(&user.id))?;
     require_cloud_owner(tx, owner, Some(user))?;
     if user.admin {
         return Err(Error::conflict(
@@ -479,7 +524,7 @@ pub(crate) fn stage_cloud_user(
     user: &User,
 ) -> Result<()> {
     actor.require("directory.sync", &cloud_resource(owner))?;
-    actor.require("user.write", &format!("user/{}", user.username))?;
+    actor.require_directory_user(&cloud_resource(owner), &user.username, Some(&user.id))?;
     validate_name(&user.username)?;
     validate_display(&user.display_name)?;
     if let Some(email) = &user.email {
@@ -558,7 +603,11 @@ pub(crate) fn check_directory_user_owner(
     user: &User,
 ) -> Result<()> {
     actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
-    actor.require("user.write", &format!("user/{}", user.username))?;
+    actor.require_directory_user(
+        &format!("directory/{}", owner.directory),
+        &user.username,
+        Some(&user.id),
+    )?;
     require_directory_owner(tx, owner, Some(user))?;
     if tx.get::<String>("usernames", &user.username)?.as_deref() != Some(user.id.as_str()) {
         return Err(Error::conflict(
@@ -578,7 +627,11 @@ pub(crate) fn stage_directory_user(
     user: &User,
 ) -> Result<()> {
     actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
-    actor.require("user.write", &format!("user/{}", user.username))?;
+    actor.require_directory_user(
+        &format!("directory/{}", owner.directory),
+        &user.username,
+        Some(&user.id),
+    )?;
     validate_name(&user.username)?;
     validate_display(&user.display_name)?;
     if let Some(email) = &user.email {
@@ -631,6 +684,9 @@ fn write_user_record(
     };
     #[cfg(not(feature = "platform"))]
     let cloud_owner: Option<()> = None;
+    let directory_scope = directory_owner.map(|owner| format!("directory/{}", owner.directory));
+    #[cfg(feature = "platform")]
+    let directory_scope = directory_scope.or_else(|| cloud_owner.map(cloud_resource));
     if let Some(owner) = directory_owner {
         actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
     }
@@ -643,10 +699,17 @@ fn write_user_record(
     } else {
         "user.write"
     };
-    if let Some(previous) = existing {
-        actor.require(action, &format!("user/{}", previous.username))?;
+    if let Some(scope) = directory_scope {
+        if let Some(previous) = existing {
+            actor.require_directory_user(&scope, &previous.username, Some(&previous.id))?;
+        }
+        actor.require_directory_user(&scope, &user.username, Some(&user.id))?;
+    } else {
+        if let Some(previous) = existing {
+            actor.require(action, &format!("user/{}", previous.username))?;
+        }
+        actor.require(action, &format!("user/{}", user.username))?;
     }
-    actor.require(action, &format!("user/{}", user.username))?;
     if (actor.agent || actor.delegated)
         && (user.admin || existing.is_some_and(|previous| previous.admin))
     {
@@ -831,23 +894,42 @@ fn write_user_record(
                 audit(tx, &actor.id, action, &user.id)?;
             }
         }
-        UserRecord::DirectorySync(_) => {
-            audit(tx, &actor.id, "user.directory_sync", &user.username)?;
-        }
-        UserRecord::DirectoryDisable(_) => {
-            audit(tx, &actor.id, "user.directory_disable", &user.username)?;
-        }
-        #[cfg(feature = "platform")]
-        UserRecord::CloudSync(_, _) => {
-            audit(tx, &actor.id, "user.cloud_directory_sync", &user.username)?;
-        }
-        #[cfg(feature = "platform")]
-        UserRecord::CloudDisable(_, _) => {
-            audit(
+        UserRecord::DirectorySync(owner) => {
+            crate::delegation::audit_scoped(
                 tx,
-                &actor.id,
+                actor,
+                "user.directory_sync",
+                &user.username,
+                &format!("directory/{}", owner.directory),
+            )?;
+        }
+        UserRecord::DirectoryDisable(owner) => {
+            crate::delegation::audit_scoped(
+                tx,
+                actor,
+                "user.directory_disable",
+                &user.username,
+                &format!("directory/{}", owner.directory),
+            )?;
+        }
+        #[cfg(feature = "platform")]
+        UserRecord::CloudSync(owner, _) => {
+            crate::delegation::audit_scoped(
+                tx,
+                actor,
+                "user.cloud_directory_sync",
+                &user.username,
+                &cloud_resource(owner),
+            )?;
+        }
+        #[cfg(feature = "platform")]
+        UserRecord::CloudDisable(owner, _) => {
+            crate::delegation::audit_scoped(
+                tx,
+                actor,
                 "user.cloud_directory_disable",
                 &user.username,
+                &cloud_resource(owner),
             )?;
         }
         UserRecord::Plan => {}
@@ -939,7 +1021,11 @@ pub(crate) fn update_user(
     password_history: u32,
 ) -> Result<Value> {
     actor.require(
-        if actor.delegated { "user.support" } else { "user.write" },
+        if actor.delegated {
+            "user.support"
+        } else {
+            "user.write"
+        },
         &format!("user/{username}"),
     )?;
     let mut user = user_by_name(tx, username)?;

@@ -688,7 +688,13 @@ impl Core {
                 }
             }
             tx.put("directory_plans", &plan.id, &plan)?;
-            audit(tx, &actor.id, "directory.plan", id)?;
+            crate::delegation::audit_scoped(
+                tx,
+                &actor,
+                "directory.plan",
+                id,
+                &format!("directory/{id}"),
+            )?;
             Ok(json!(plan))
         })
     }
@@ -780,7 +786,13 @@ impl Core {
             }
             plan.applied = true;
             tx.put("directory_plans", id, &plan)?;
-            audit(tx, &actor.id, "directory.apply", &plan.directory)?;
+            crate::delegation::audit_scoped(
+                tx,
+                &actor,
+                "directory.apply",
+                &plan.directory,
+                &format!("directory/{}", plan.directory),
+            )?;
             Ok(json!({"id":id,"applied":true,"changes":changes}))
         })
     }
@@ -973,7 +985,7 @@ fn reconcile(
     }
     let mut changes = Vec::new();
     for entry in &snapshot.users {
-        actor.require("user.write", &format!("user/{}", entry.username))?;
+        actor.require_directory_user(&format!("directory/{id}"), &entry.username, None)?;
         let old = remaining.remove(&entry.external_id);
         let owner = crate::management::DirectoryUserOwner {
             directory: id,
@@ -1007,7 +1019,7 @@ fn reconcile(
             }
         };
         let previous = old.as_ref().map(|_| user.clone());
-        actor.require("user.write", &format!("user/{}", user.username))?;
+        actor.require_directory_user(&format!("directory/{id}"), &user.username, Some(&user.id))?;
         if user.admin || !user.password_hash.is_empty() {
             return Err(Error::conflict(
                 "LDAP may only manage non-administrator directory accounts",
@@ -1029,6 +1041,7 @@ fn reconcile(
         let groups_changed = membership(
             tx,
             actor,
+            id,
             &user.id,
             old.as_ref().map(|b| &b.groups),
             &entry.groups,
@@ -1089,13 +1102,19 @@ fn reconcile(
             external_id: &binding.external_id,
         };
         let previous = user.clone();
-        actor.require("user.write", &format!("user/{}", user.username))?;
+        actor.require_directory_user(&format!("directory/{id}"), &user.username, Some(&user.id))?;
         if user.admin {
             return Err(Error::conflict("LDAP cannot disable an administrator"));
         }
         crate::management::check_directory_user_owner(tx, actor, owner, &user)?;
-        let groups_changed =
-            membership(tx, actor, &user.id, Some(&binding.groups), &BTreeSet::new())?;
+        let groups_changed = membership(
+            tx,
+            actor,
+            id,
+            &user.id,
+            Some(&binding.groups),
+            &BTreeSet::new(),
+        )?;
         if user.enabled || groups_changed {
             user.enabled = false;
             user.epoch += 1;
@@ -1127,6 +1146,7 @@ fn reconcile(
 fn membership(
     tx: &Tx<'_>,
     actor: &Principal,
+    directory_id: &str,
     uid: &str,
     old: Option<&BTreeSet<String>>,
     desired: &BTreeSet<String>,
@@ -1134,8 +1154,9 @@ fn membership(
     let empty = BTreeSet::new();
     let old = old.unwrap_or(&empty);
     let mut changed = false;
+    let scope = format!("directory/{directory_id}");
     for name in old.union(desired) {
-        actor.require("group.members", &format!("group/{name}"))?;
+        actor.require_directory_group(&scope, name)?;
         if tx.get::<Group>("groups", name)?.is_none() {
             return Err(Error::bad("LDAP mappings require an existing local group"));
         }
@@ -1143,13 +1164,15 @@ fn membership(
             tx,
             actor,
             name,
-            crate::management::GroupIntent::Member {
+            crate::management::GroupIntent::DirectoryMember {
                 user_id: uid,
                 present: desired.contains(name),
+                scope: &scope,
             },
-            crate::management::GroupAudit::OnChange {
+            crate::management::GroupAudit::Scoped {
                 action: "group.directory_membership",
                 target: name,
+                scope: &scope,
             },
         )?
         .changed;

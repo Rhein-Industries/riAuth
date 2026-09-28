@@ -51,13 +51,18 @@ A full human administrator can replace another enabled, non-administrator's dele
 ```json
 [
   {"role":"help_desk","scope":"user/alice"},
-  {"role":"application_owner","scope":"client/reports"}
+  {"role":"application_owner","scope":"client/reports"},
+  {"role":"directory_operator","scope":"directory/staff"},
+  {"role":"auditor","scope":"audit/events"},
+  {"role":"security_administrator","scope":"key/signing"}
 ]
 ```
 
 `help_desk` may read its selected ordinary account and update its display name, email, enabled state, password, MFA reset, or sessions through the existing user update API. It cannot create an account; change administrator status, attributes, subjects or email verification; update itself; or update an administrator, another delegated person or a configured privileged-access approver. `application_owner` may read its selected client and update its name, redirect URIs, portal presentation, allowed browser origins and post-logout redirect URIs. It cannot create clients, rotate credentials, change sign-in policy, scopes, enabled state or other provider settings. Both roles can read the configuration revision for conditional writes. Their direct HTTP mutations require `If-Match`; the CLI's `--if-revision` sends the same header. The existing CLI user and client commands, direct API routes and browser administration routes all call the same server management methods. The browser page has not yet been tailored to hide unsupported controls.
 
-The full administrator role and scoped agents retain their current behavior. Directory operator, auditor and security administrator human roles are later M04 work; grants do not confer those permissions. Desired-state plan/apply remains unavailable to delegated humans in this slice.
+`directory_operator` reads and reconciles one configured LDAP directory (`directory/<id>`) or, in Platform, one Workspace or Entra directory (`workspace/<id>` or `entra/<id>`). Reconciliation may change only accounts owned by that connector and their configured group memberships; direct user and group APIs remain unavailable. The operator cannot synchronize their own account. A change to the connector configuration invalidates the old grant. Reviewed plans bind the current grant generation and are checked again at apply. `auditor` reads the single audit stream at `audit/events`, including review, CSV and Platform event map routes; it cannot write. `security_administrator` reads and configures one existing signing domain at `key/<id>`; `key/signing` also permits rotation of the primary signing key. It cannot create a new signing domain or manage other domains.
+
+Each role can read the configuration revision. Grant changes, directory writes and key writes record the actor and selected scope. The full administrator role and scoped agents retain their current behavior. Grant assignment and revocation remain full-administrator operations through the existing API or browser endpoints. The browser controls have not yet been tailored to these roles, and the CLI has no dedicated grant-control command; existing remote management commands use the same server checks. Desired-state plan/apply remains unavailable to delegated humans.
 
 ## Desired state
 

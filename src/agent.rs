@@ -87,7 +87,9 @@ impl Principal {
     pub fn allows(&self, action: &str, resource: &str) -> bool {
         crate::edition::action_available(action)
             && (if self.delegated {
-                self.grants.iter().any(|grant| grant.allows(action, resource))
+                self.grants
+                    .iter()
+                    .any(|grant| grant.allows(action, resource))
             } else if self.agent {
                 self.permissions.iter().any(|p| {
                     crate::edition::agent_permission_available(&p.action, &p.resource)
@@ -103,6 +105,34 @@ impl Principal {
             Ok(())
         } else {
             Err(Error::forbidden())
+        }
+    }
+
+    /// A directory operator's write authority is confined to a reviewed
+    /// connector sync. Direct user and group APIs still require their own
+    /// permissions; agents retain their existing combined permission checks.
+    pub(crate) fn require_directory_user(
+        &self,
+        scope: &str,
+        username: &str,
+        user_id: Option<&str>,
+    ) -> Result<()> {
+        if self.delegated {
+            self.require("directory.sync", scope)?;
+            if user_id == Some(self.id.as_str()) {
+                return Err(Error::forbidden());
+            }
+            Ok(())
+        } else {
+            self.require("user.write", &format!("user/{username}"))
+        }
+    }
+
+    pub(crate) fn require_directory_group(&self, scope: &str, name: &str) -> Result<()> {
+        if self.delegated {
+            self.require("directory.sync", scope)
+        } else {
+            self.require("group.members", &format!("group/{name}"))
         }
     }
 }

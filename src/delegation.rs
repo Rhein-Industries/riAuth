@@ -1,9 +1,10 @@
-//! Exact, live human management grants. The stored target id prevents a reused
-//! username from inheriting a help-desk grant after an account is renamed.
+//! Exact, live human management grants. Stored target identities prevent a
+//! reused name or changed directory configuration from inheriting a grant.
 use crate::{
     agent::Principal,
     config::Config,
     core::{Core, audit_with_details, user_by_name, validate_name},
+    crypto::{Keys, digest},
     error::{Error, Result},
     model::{Client, User},
     store::Tx,
@@ -19,13 +20,16 @@ const BUCKET: &str = "human_grants";
 pub enum HumanRole {
     HelpDesk,
     ApplicationOwner,
+    DirectoryOperator,
+    Auditor,
+    SecurityAdministrator,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrantInput {
     pub role: HumanRole,
-    /// Exactly `user/<username>` or `client/<client_id>`; wildcards are refused.
+    /// One exact, existing role target; wildcards and kind-wide scopes are refused.
     pub scope: String,
 }
 
@@ -46,6 +50,14 @@ impl HumanGrant {
                     HumanRole::HelpDesk => matches!(action, "user.read" | "user.support"),
                     HumanRole::ApplicationOwner => {
                         matches!(action, "client.read" | "client.owner_update")
+                    }
+                    HumanRole::DirectoryOperator => {
+                        matches!(action, "directory.read" | "directory.sync")
+                    }
+                    HumanRole::Auditor => action == "audit.read",
+                    HumanRole::SecurityAdministrator => {
+                        matches!(action, "key.read" | "key.write")
+                            || action == "key.rotate" && resource == "key/signing"
                     }
                 }
     }
@@ -94,6 +106,13 @@ pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<
                     false
                 }
             }
+            HumanRole::DirectoryOperator => {
+                directory_target(config, &grant.scope)? == Some(grant.target_id.clone())
+            }
+            HumanRole::Auditor => grant.scope == "audit/events" && grant.target_id == "events",
+            HumanRole::SecurityAdministrator => {
+                key_target(tx, &grant.scope)? == Some(grant.target_id.clone())
+            }
         };
         if valid {
             result.push(grant);
@@ -129,6 +148,13 @@ fn bind(tx: &Tx<'_>, config: &Config, input: GrantInput, holder_id: &str) -> Res
                 .ok_or_else(|| Error::missing("Client not found"))?
                 .id
         }
+        (HumanRole::DirectoryOperator, "directory" | "workspace" | "entra") => {
+            directory_target(config, &input.scope)?
+                .ok_or_else(|| Error::missing("Directory not configured"))?
+        }
+        (HumanRole::Auditor, "audit") if name == "events" => "events".into(),
+        (HumanRole::SecurityAdministrator, "key") => key_target(tx, &input.scope)?
+            .ok_or_else(|| Error::missing("Signing key domain not found"))?,
         _ => return Err(Error::forbidden()),
     };
     Ok(HumanGrant {
@@ -136,6 +162,45 @@ fn bind(tx: &Tx<'_>, config: &Config, input: GrantInput, holder_id: &str) -> Res
         scope: input.scope,
         target_id,
     })
+}
+
+/// Configuration is the identity of a directory target. Replacing or removing
+/// the configured connector invalidates its old grant on the next request.
+fn directory_target(config: &Config, scope: &str) -> Result<Option<String>> {
+    let Some((kind, id)) = scope.split_once('/') else {
+        return Ok(None);
+    };
+    let entry = match kind {
+        "directory" => config.directories.get(id).map(serde_json::to_value),
+        #[cfg(feature = "platform")]
+        "workspace" => config
+            .workspace_directories
+            .get(id)
+            .map(serde_json::to_value),
+        #[cfg(feature = "platform")]
+        "entra" => config.entra_directories.get(id).map(serde_json::to_value),
+        _ => None,
+    };
+    entry
+        .transpose()
+        .map_err(Error::internal)?
+        .map(|value| {
+            serde_json::to_string(&value)
+                .map(|text| digest(&text))
+                .map_err(Error::internal)
+        })
+        .transpose()
+}
+
+fn key_target(tx: &Tx<'_>, scope: &str) -> Result<Option<String>> {
+    let Some(id) = scope.strip_prefix("key/") else {
+        return Ok(None);
+    };
+    if id == "signing" || tx.get::<Keys>("key_domains", id)?.is_some() {
+        Ok(Some(id.into()))
+    } else {
+        Ok(None)
+    }
 }
 
 impl Core {
@@ -176,6 +241,11 @@ impl Core {
             } else {
                 tx.put(BUCKET, &holder.id, &bound)?;
             }
+            let generation = tx
+                .get::<u64>("human_grant_generations", &holder.id)?
+                .unwrap_or(0)
+                .saturating_add(1);
+            tx.put("human_grant_generations", &holder.id, &generation)?;
             audit_with_details(
                 tx,
                 &actor.id,
@@ -213,4 +283,18 @@ pub(crate) fn audit_for(
         )
         .unwrap_or(Value::Null);
     audit_with_details(tx, &actor.id, action, target, json!({"delegation": detail}))
+}
+
+pub(crate) fn audit_scoped(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    action: &str,
+    target: &str,
+    scope: &str,
+) -> Result<()> {
+    if actor.delegated {
+        audit_for(tx, actor, action, target, scope)
+    } else {
+        crate::core::audit(tx, &actor.id, action, target)
+    }
 }

@@ -33,22 +33,26 @@ impl Core {
         token: &str,
         f: impl FnOnce(&Tx<'_>) -> Result<Value>,
     ) -> Result<Value> {
-        self.mutation_checked(token, |tx, actor, context| {
-            if let Some(c) = context {
-                if (actor.agent || actor.delegated) && c.revision.is_none() {
-                    return Err(Error::new(
-                        StatusCode::PRECONDITION_REQUIRED,
-                        "precondition_required",
-                        "Scoped mutations require If-Match with the current revision",
-                    ));
+        self.mutation_checked(
+            token,
+            |tx, actor, context| {
+                if let Some(c) = context {
+                    if (actor.agent || actor.delegated) && c.revision.is_none() {
+                        return Err(Error::new(
+                            StatusCode::PRECONDITION_REQUIRED,
+                            "precondition_required",
+                            "Scoped mutations require If-Match with the current revision",
+                        ));
+                    }
+                    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                    if c.revision.is_some_and(|r| r != revision) {
+                        return Err(Error::conflict("Configuration revision changed"));
+                    }
                 }
-                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                if c.revision.is_some_and(|r| r != revision) {
-                    return Err(Error::conflict("Configuration revision changed"));
-                }
-            }
-            Ok(())
-        }, f)
+                Ok(())
+            },
+            f,
+        )
     }
 
     /// Use the same authorization, idempotency receipt, and atomic writer with
@@ -56,7 +60,11 @@ impl Core {
     pub(crate) fn mutation_checked(
         &self,
         token: &str,
-        check: impl FnOnce(&Tx<'_>, &crate::agent::Principal, Option<&crate::context::RequestContext>) -> Result<()>,
+        check: impl FnOnce(
+            &Tx<'_>,
+            &crate::agent::Principal,
+            Option<&crate::context::RequestContext>,
+        ) -> Result<()>,
         f: impl FnOnce(&Tx<'_>) -> Result<Value>,
     ) -> Result<Value> {
         self.store.write(|tx| {
@@ -69,7 +77,7 @@ impl Core {
             // Keep the established agent/admin receipt representation stable.
             // A delegated human's current grants form a separate replay scope.
             let permissions = if actor.delegated {
-                json!({"human_grants": actor.grants})
+                json!({"human_grants": actor.grants, "generation": tx.get::<u64>("human_grant_generations", &actor.id)?.unwrap_or(0)})
             } else {
                 serde_json::to_value(&actor.permissions).map_err(Error::internal)?
             };
@@ -767,7 +775,7 @@ impl Core {
             });
             keys.active = replacement;
             tx.put("meta", "keys", &keys)?;
-            audit(tx, &actor.id, "signing_key.rotate", &keys.active.kid)?;
+            crate::delegation::audit_scoped(tx, &actor, "signing_key.rotate", &keys.active.kid, "key/signing")?;
             Ok(json!({"kid": keys.active.kid}))
         })
     }

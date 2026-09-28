@@ -1,7 +1,7 @@
 //! Concrete signing key persistence and management operations.
 
 use crate::{
-    core::{Core, audit, keys, validate_name},
+    core::{Core, keys, validate_name},
     crypto::{Keys, RetiredKey, SigningKey, now},
     error::{Error, Result},
     keyring::{self, KeyInput, KeyringTx},
@@ -70,7 +70,7 @@ impl Core {
             }
             let keys = Keys { active:replacement, retired };
             if input.id == "signing" { tx.put("meta","keys",&keys)?; } else { tx.put("key_domains",&input.id,&keys)?; }
-            audit(tx,&actor.id,"signing_key.configure",&input.id)?;
+            crate::delegation::audit_scoped(tx, &actor, "signing_key.configure", &input.id, &format!("key/{}", input.id))?;
             Ok(json!({"id":input.id,"active":keys.active.jwk()?,"retained_verification_keys":keys.retired.len()}))
         })
     }

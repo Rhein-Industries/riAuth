@@ -31,17 +31,17 @@ impl Core {
         })
     }
 
-    /// Browser administrators already hold every human management permission.
-    /// Agents have no portal cookie; they use [`Self::audit_map`].
+    /// The browser cookie enters the same live management check as bearer API
+    /// requests, including a delegated auditor's exact audit/events grant.
     pub fn audit_map_browser(&self, cookie: Option<&str>, query: MapQuery) -> Result<Value> {
         self.store.read(|tx| {
-            let session = self
-                .browser_session(tx, cookie)?
-                .ok_or_else(Error::unauthorized)?;
-            let user = self.identity_user(tx, &session.identity)?;
-            if !user.admin {
-                return Err(Error::forbidden());
-            }
+            let cookie = cookie.ok_or_else(Error::unauthorized)?;
+            self.management(
+                tx,
+                &crate::agent::browser_credential(cookie),
+                "audit.read",
+                "audit/events",
+            )?;
             event_map::aggregate(tx, &query.normalize()?)
         })
     }

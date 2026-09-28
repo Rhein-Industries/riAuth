@@ -8,7 +8,7 @@ use crate::{
     connector_guard::{
         ApplyGate, Pagination, ReconciliationMode, ReviewBinding, plan_content, reconcile_plan,
     },
-    core::{Core, audit, validate_display, validate_email, validate_name},
+    core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{Group, User},
@@ -1308,6 +1308,7 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
 fn membership(
     tx: &Tx<'_>,
     actor: &Principal,
+    scope: &str,
     uid: &str,
     allow: &BTreeSet<String>,
     old: &BTreeSet<String>,
@@ -1325,7 +1326,7 @@ fn membership(
         .collect();
     let mut changed = false;
     for name in old.union(&desired) {
-        actor.require("group.members", &format!("group/{name}"))?;
+        actor.require_directory_group(scope, name)?;
         if tx.get::<Group>("groups", name)?.is_none() {
             return Err(Error::bad(
                 "Cloud directory mappings require an existing local group",
@@ -1335,13 +1336,15 @@ fn membership(
             tx,
             actor,
             name,
-            crate::management::GroupIntent::Member {
+            crate::management::GroupIntent::DirectoryMember {
                 user_id: uid,
                 present: desired.contains(name),
+                scope,
             },
-            crate::management::GroupAudit::OnChange {
+            crate::management::GroupAudit::Scoped {
                 action: "group.cloud_directory_membership",
                 target: name,
+                scope,
             },
         )?
         .changed;
@@ -1358,11 +1361,12 @@ fn authorize_reconcile(
     snapshot: &[Entry],
 ) -> Result<()> {
     actor.require("directory.sync", &settings.resource())?;
+    let scope = settings.resource();
     for entry in snapshot {
-        actor.require("user.write", &format!("user/{}", entry.username))?;
+        actor.require_directory_user(&scope, &entry.username, None)?;
         for group in &entry.groups {
             if settings.groups.contains_key(group) {
-                actor.require("group.members", &format!("group/{group}"))?;
+                actor.require_directory_group(&scope, group)?;
             }
         }
     }
@@ -1371,11 +1375,11 @@ fn authorize_reconcile(
             continue;
         }
         if let Some(user) = tx.get::<User>("users", &binding.user_id)? {
-            actor.require("user.write", &format!("user/{}", user.username))?;
+            actor.require_directory_user(&scope, &user.username, Some(&user.id))?;
         }
         for group in &binding.groups {
             if settings.groups.contains_key(group) {
-                actor.require("group.members", &format!("group/{group}"))?;
+                actor.require_directory_group(&scope, group)?;
             }
         }
     }
@@ -1389,6 +1393,7 @@ fn reconcile(
     snapshot: &[Entry],
 ) -> Result<Vec<Change>> {
     actor.require("directory.sync", &settings.resource())?;
+    let scope = settings.resource();
     let allow: BTreeSet<_> = settings.groups.keys().cloned().collect();
     let mut remaining: BTreeMap<_, _> = tx
         .list::<Binding>("cloud_directory_bindings")?
@@ -1407,7 +1412,7 @@ fn reconcile(
     let mut changes = Vec::new();
     for entry in snapshot {
         let old = remaining.remove(&entry.external_id);
-        actor.require("user.write", &format!("user/{}", entry.username))?;
+        actor.require_directory_user(&scope, &entry.username, None)?;
         let owner = crate::management::CloudUserOwner {
             kind: settings.kind,
             directory: &settings.id,
@@ -1460,8 +1465,15 @@ fn reconcile(
             .as_ref()
             .map(|binding| binding.groups.clone())
             .unwrap_or_default();
-        let groups_changed =
-            membership(tx, actor, &user.id, &allow, &previous_groups, &entry.groups)?;
+        let groups_changed = membership(
+            tx,
+            actor,
+            &scope,
+            &user.id,
+            &allow,
+            &previous_groups,
+            &entry.groups,
+        )?;
         let email_changed = user.email != entry.email;
         let display_changed = user.display_name != entry.display_name;
         let enabling = !entry.disabled && !user.enabled;
@@ -1545,6 +1557,7 @@ fn reconcile(
         let groups_changed = membership(
             tx,
             actor,
+            &scope,
             &user.id,
             &allow,
             &binding.groups,
@@ -1976,7 +1989,13 @@ impl Core {
                 }
             }
             tx.put("cloud_directory_plans", &plan.id, &plan)?;
-            audit(tx, &actor.id, "cloud_directory.plan", &settings.resource())?;
+            crate::delegation::audit_scoped(
+                tx,
+                &actor,
+                "cloud_directory.plan",
+                &settings.resource(),
+                &settings.resource(),
+            )?;
             Ok(json!(plan))
         })
     }
@@ -2058,7 +2077,13 @@ impl Core {
             }
             plan.applied = true;
             tx.put("cloud_directory_plans", id, &plan)?;
-            audit(tx, &actor.id, "cloud_directory.apply", &settings.resource())?;
+            crate::delegation::audit_scoped(
+                tx,
+                &actor,
+                "cloud_directory.apply",
+                &settings.resource(),
+                &settings.resource(),
+            )?;
             Ok(json!({"id": id, "applied": true, "changes": changes}))
         })
     }
