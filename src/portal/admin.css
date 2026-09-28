@@ -217,7 +217,7 @@ details summary{cursor:pointer;font-size:12px;font-weight:600;color:#4f3bb0;marg
 .grant-review .form-error{margin-bottom:16px}
 .grant-review button:disabled{cursor:not-allowed}
 .membership-review textarea{box-sizing:border-box;width:100%;min-height:160px;padding:10px;border:1px solid #868ca1;border-radius:8px;font:14px/1.6 ui-monospace,monospace}
-.client-creation-review textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #868ca1;border-radius:8px;font:14px/1.6 ui-monospace,monospace}
+.client-creation-review textarea,.client-policy-review textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #868ca1;border-radius:8px;font:14px/1.6 ui-monospace,monospace}
 .creation-content{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:12px/1.6 ui-monospace,monospace;background:#f7f8fc;padding:14px;border:1px solid var(--line);border-radius:8px}
 .client-creation-review .grant-facts dd{overflow-wrap:anywhere;white-space:pre-wrap}
 @media(max-width:760px){.grant-comparison,.grant-row{grid-template-columns:1fr}.grant-facts{grid-template-columns:1fr}.grant-facts dt{margin-top:10px}}

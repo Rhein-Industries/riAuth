@@ -23,8 +23,8 @@ Reviewers and executors send only the returned digest, never replacement content
 | Cancel | `POST /api/client-policy-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
 Browser JSON uses `/api/admin` instead of `/api` under the existing browser
-session/origin guards. This slice provides guarded browser endpoints; a dedicated
-client policy review page remains follow-up work. The existing client editor and
+session/origin guards. **Applications → application → Review access policy**
+opens the browser workflow described below. The existing client editor and
 setup-check endpoint cannot bypass review. The CLI uses the existing remote
 transport, scoped `If-Match` checks, request IDs and idempotency receipts.
 
@@ -40,6 +40,49 @@ M04 authority checks include credential-exposure fences and security epochs.
 One independent approval is required; at most eight reviewers are retained.
 Every recorded reviewer must still be authorized at execution. Any live full
 administrator may cancel an unfinished proposal, including stale work.
+
+## Browser review
+
+The **Reviewed access policies** page (`/admin#/client-policy-review`) stages
+changes for an existing human sign-in application or opens a shared change ID.
+The application's Access card shows its current policy and links here; ordinary
+**Save changes** no longer offers or sends the two reviewed fields. Non-policy
+edits and explicit secret rotation keep their existing paths.
+
+**Load current policy** reads the browser session/revision before and after the
+client snapshot. The form shows both complete fields before and after, including
+empty groups and removal of MFA. It requires an explicit acknowledgement before
+staging. In-page refresh keeps the unsent content and original revision, clears
+the acknowledgement, and never silently rebases. Loading current policy explicitly
+replaces that draft. A full document reload discards unsent intent.
+
+Stage posts only `allowed_groups` and `require_mfa` with the captured revision.
+The immutable review page displays exact before/after JSON, resource, digest,
+dependency fingerprints, author/reviewer/executor IDs, timestamps and expiry.
+Approve, execute and cancel post only the digest through the existing guarded
+JSON routes. Actions distinguish pending, approved, stale, expired, cancelled,
+executed and unknown outcomes. Browser freshness checks are advisory; the shared
+service remains authoritative inside its transaction.
+
+A lost staging response locks the original content, revision and request key.
+Late responses from a view replaced by refresh cannot clear that recovery intent.
+An uncertain decision stays bound to its original proposal, digest, action,
+revision and key across in-page refresh. **Recover same request** uses that exact
+receipt request, never a fresh execution. Malformed or altered response content
+cannot confirm an approval or enable another action. No policy action issues,
+rotates or displays a secret. Ordinary rotation's existing one-time secret
+display and erasure remain intact, and rotation invalidates pending policy review.
+
+Drafts and pending decisions remain only in tab memory and are bound to the
+opaque admin session marker. Refresh, focus, and action pre/post checks discard
+them on account or session changes, including same-account sign-out/sign-in.
+No drafts, keys or secrets use browser storage. Server error bodies are not
+rendered; fixed messages explain authorization, freshness and uncertain results.
+The UI requires a full administrator, recognizes providers absent from the
+running build, and blocks policies requiring unavailable device trust. Inspection
+and cancellation remain available when a provider is unavailable. Live server
+validation also enforces all other provider and capability rules. Service clients
+do not offer these human-access controls.
 
 ## Transaction and dependency contract
 
@@ -112,21 +155,12 @@ bounded creation review, other existing-client provider settings
 sector), enable/disable, credentials, registration templates and registration
 tokens. The complete remaining M05 resource inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).
-Configurable quorums, delegated review roles, a client review page, shared review
+Configurable quorums, delegated review roles, shared review
 inbox/notifications and finer invalidation remain outside this slice.
 
-The existing source branch was clean at `ee3dfb5`. Its browser membership patch
-matched accepted `f90a687` by stable patch ID. Recovery ref
-`refs/riwork-recovery/m05-before-client-policy-ee3dfb5` preserves that source tip;
-only this branch was aligned to clean accepted `f2b9522` before editing.
-
-Accepted advanced to clean `09ded8d` during implementation. The only shared
-changed file is `src/management.rs`: accepted adds agent creation, rotation and
-revocation writers near the top; this slice adds a child module and changes the
-existing client checker/writer. These are separate sections. No merge was
-attempted; integration must retain both additions and run the focused checks on
-the combined tree. The new fixture helper and its callers do not overlap that
-accepted delta.
+The browser continuation starts from clean, accepted source `6b77997`. It adds
+presentation and regression coverage without changing the shared policy writer,
+M03/M04 authority checks, W02 consent or source-link behavior. No merge was made.
 
 ## Focused checks
 
@@ -135,22 +169,23 @@ live authority, client/group/config drift, expiry, stage/execute receipts, repla
 atomic refusals, direct Core/API/browser/state/CLI bypass attempts and actual CLI
 stage/approve/execute over HTTP. It checks both policy directions and preserves
 ordinary owner/scoped edits, preconditions, rotation and untouched client fields.
-The existing application-management tests check no-op edits and registration
-retry behavior. These checks run in both editions:
+The browser-API regression checks the script and headless routing, portal header
+and origin guards on every transition, exact stage/approve/execute receipts,
+single consumption, and preservation of credentials and all non-policy fields.
+Both focused regressions run in both editions:
 
 ```text
-cargo check --locked --offline --lib --bin riauth
-cargo test --locked --offline --features test-support --test reviewed_client_policy --test application_management
-cargo check --locked --offline --no-default-features --features essentials --lib --bin riauth
-cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_policy --test application_management
+cargo build --locked --offline --example portal_fixture
+cargo test --locked --offline --features test-support --test reviewed_client_policy
+cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_policy
+node node_modules/@playwright/test/cli.js test client-policy-review.spec.js client-creation-review.spec.js --project=chromium --workers=1 --reporter=line --output=/tmp/riauth-m05-policy-ui-results
 ```
 
-Use the shared accepted Cargo target, `CARGO_INCREMENTAL=0`, two build jobs and
-dev/test debug info disabled. Both builds and all three focused tests passed in
-each edition. Essentials reports three existing dead-code warnings in the
-workflow passkey assembly and Core runtime field. A stale shared-target library
-was rebuilt from this source after an initial test compile could not see the new
-methods; no shared target was cleaned and no separate target was created.
+The browser command runs from `tools/browser` using existing dependencies. Cargo
+uses the shared accepted target, `CARGO_INCREMENTAL=0`, two build jobs and dev/test
+debug info disabled. The Platform fixture build and both Rust regressions passed
+in each edition. Essentials reports the three existing dead-code warnings in the
+workflow passkey assembly and Core runtime field. No separate target was created.
 
 Older policy/sign-in fixtures now use `tests/common/client_policy.rs` to stage,
 approve and execute with separate live administrators. Their own assertions stay
@@ -159,19 +194,16 @@ updates application diagnostics, policy simulation, portal access, live group
 policy contracts, TOTP, EAP-TLS and upstream source-stage setup. No other client
 field has gained a review requirement.
 
-Additional focused fixture checks passed: two policy simulations in both
-editions, and these eight Platform cases (all other tests filtered out):
+Nine Chromium cases passed: four policy-review cases and the five existing
+creation-review cases. Policy coverage includes exact tightening and loosening,
+lost staging/execution responses, retired staging errors, altered approval
+responses, original-request recovery, participant separation, stale draft revisions, explicit reloading,
+rotation invalidation and secret erasure, cancellation, expiry, fixed errors,
+same-account session changes, unavailable providers and malformed proposals.
+Ordinary name edits are verified to send no policy fields. Creation review still
+checks advanced disclosure, session clearing and late-response secret suppression.
 
-| Target | Selection | Passed |
-|---|---|---:|
-| `admin_ui` | `application_diagnostics_explain_what_blocks_sign_in` | 1 |
-| `portal` | `portal_inherits_live_access_without_admin_bypass_or_information_leaks` | 1 |
-| `identity` | `totp_requires_confirmation_prevents_replay_and_satisfies_policy`, `group_policy_is_checked_again_at_refresh_userinfo_and_proxy`, `openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocation` | 3 |
-| `contracts` | `live_group_policy_revalidation::redb` (plain and encrypted) | 2 |
-| `source_stage` | `local_totp_is_still_required_when_upstream_is_not_mfa` | 1 |
-
-These use `cargo test --locked --offline --features test-support --test <target>`
-with the listed filters. Essentials simulation uses
-`--no-default-features --features essentials,test-support`. New Rust files pass
-`rustfmt --check`; `git diff --check` passes. No broad suite, browser engine or
-PostgreSQL integration run was performed.
+Axe WCAG 2 A/AA and 2.1 AA, 320-pixel reflow, JavaScript syntax, Rust test
+formatting and `git diff --check` passed. Desktop and mobile screenshots were
+inspected. No broad suite, Firefox, WebKit or PostgreSQL run was performed for
+this browser continuation.

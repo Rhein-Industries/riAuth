@@ -148,7 +148,8 @@ async fn call(
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     (
         status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into())),
     )
 }
 
@@ -179,6 +180,196 @@ async fn cli(f: &Fixture, server: &str, token: &str, args: &[&str]) -> (i32, Val
         .unwrap();
     let value = serde_json::from_slice(&output.stdout).expect("CLI JSON response");
     (output.status.code().unwrap(), value)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn browser_policy_review_keeps_csrf_exact_receipts_and_credentials() {
+    let f = Fixture::new();
+    let reviewer = administrator(&f, "browser-reviewer");
+    let executor = administrator(&f, "browser-executor");
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.client("app", true);
+    let before = serde_json::to_value(client(&f)).unwrap();
+    let cookies = [&f.admin, &reviewer, &executor].map(|token| cookie(&f.core, token));
+    let auth = cookies
+        .each_ref()
+        .map(|cookie| Auth::Browser(cookie, Some("http://localhost:9000")));
+    let app = riauth::api::router(f.core.clone());
+    let asset = "/portal/assets/client-policy-review.js";
+    let script = call(&app, "GET", asset, auth[0], Value::Null, None, None).await;
+    assert_eq!(script.0, StatusCode::OK);
+    assert!(
+        script
+            .1
+            .as_str()
+            .unwrap()
+            .contains("RiAuthClientPolicyReview")
+    );
+    assert!(
+        call(&app, "GET", "/admin", auth[0], Value::Null, None, None)
+            .await
+            .1
+            .as_str()
+            .unwrap()
+            .contains(asset)
+    );
+    let mut headless = f.core.clone();
+    headless.config.browser_ui = false;
+    assert_eq!(
+        call(
+            &riauth::api::router(headless),
+            "GET",
+            asset,
+            auth[0],
+            Value::Null,
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+
+    let at = revision(&f);
+    let stage = "/api/admin/clients/app/policy-changes";
+    let staged = call(
+        &app,
+        "POST",
+        stage,
+        auth[0],
+        json!(input()),
+        Some(at),
+        Some("browser-stage"),
+    )
+    .await;
+    assert_eq!(staged.0, StatusCode::OK);
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            stage,
+            auth[0],
+            json!(input()),
+            Some(at),
+            Some("browser-stage")
+        )
+        .await,
+        staged
+    );
+    assert_eq!(serde_json::to_value(client(&f)).unwrap(), before);
+    let change = &staged.1;
+    let endpoint = format!("/api/admin/client-policy-changes/{}", id(change));
+    let digest = json!(binding(change));
+    // The new browser UI must use the same portal write guard at every transition.
+    for path in [
+        stage.to_owned(),
+        format!("{endpoint}/approve"),
+        format!("{endpoint}/execute"),
+        format!("{endpoint}/cancel"),
+    ] {
+        let body = if path == stage {
+            json!(input())
+        } else {
+            digest.clone()
+        };
+        for origin in [None, Some("http://attacker.example")] {
+            let snapshot = f.snapshot().unwrap();
+            assert_eq!(
+                call(
+                    &app,
+                    "POST",
+                    &path,
+                    Auth::Browser(&cookies[1], origin),
+                    body.clone(),
+                    Some(at),
+                    None
+                )
+                .await
+                .0,
+                StatusCode::FORBIDDEN
+            );
+            f.assert_http_mutation_snapshot(&snapshot);
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&path)
+                    .header("host", "localhost:9000")
+                    .header("origin", "http://localhost:9000")
+                    .header("cookie", format!("riauth_sso={}", cookies[1]))
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "missing portal header: {path}"
+        );
+    }
+    for (action, actor, status) in [
+        ("approve", auth[1], "approved"),
+        ("execute", auth[2], "executed"),
+    ] {
+        let path = format!("{endpoint}/{action}");
+        let response = call(
+            &app,
+            "POST",
+            &path,
+            actor,
+            digest.clone(),
+            Some(at),
+            Some(action),
+        )
+        .await;
+        assert_eq!(response.0, StatusCode::OK, "{}", response.1);
+        assert_eq!(response.1["status"], status);
+        assert_eq!(response.1["proposal"], change["proposal"]);
+        assert_eq!(response.1["digest"], change["digest"]);
+        assert_eq!(
+            call(
+                &app,
+                "POST",
+                &path,
+                actor,
+                digest.clone(),
+                Some(at),
+                Some(action)
+            )
+            .await,
+            response
+        );
+        assert!(response.1.get("client_secret").is_none());
+    }
+    let after = serde_json::to_value(client(&f)).unwrap();
+    let mut expected = before;
+    expected["allowed_groups"] = json!(["staff"]);
+    expected["require_mfa"] = json!(true);
+    assert_eq!(
+        after, expected,
+        "all credentials and non-policy settings are preserved"
+    );
+    assert_eq!(revision(&f), at + 1);
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "POST",
+            &format!("{endpoint}/execute"),
+            auth[2],
+            digest,
+            None,
+            Some("fresh-replay")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&snapshot);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -239,7 +239,8 @@ checks cover WCAG 2 A/AA and 2.1 AA and 320-pixel reflow. Firefox, WebKit and
 PostgreSQL peer checks remain separate.
 
 Remaining browser gaps are editing the rest of the service's allowed creation
-settings, existing-client access-policy review UI, and a shared review inbox.
+settings and a shared review inbox. Existing-client access-policy review now has
+a [browser flow](reviewed-client-policy.md#browser-review).
 Advanced/initially-disabled creation, supplied initial credentials, configurable
 quorums and delegated review roles retain the boundaries described above.
 
