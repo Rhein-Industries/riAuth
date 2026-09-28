@@ -15,7 +15,12 @@
   stale deactivation against the current link with
   `riauth provision retry-deactivation <id>`
   (`POST /api/provisioning/deactivations/{id}/retry`). Both need
-  `provisioner.sync` on the target and are audited.
+  `provisioner.sync` on the target and are audited. Their responses, like
+  job lists, name an account only to a caller with `provisioner.read` on the
+  target and `user.read` (or `group.read`) on that account.
+- `ambiguous` outranks every other state. An account enabled again after an
+  unverified PATCH stays `ambiguous` until one read of the remote account
+  records `remote_inactive` or `remote_active`; nothing is written.
 
 # Unreleased durable offboarding delivery (P04)
 

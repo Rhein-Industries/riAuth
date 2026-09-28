@@ -1227,6 +1227,196 @@ fn delivery_outcomes_separate_refused_ambiguous_retried_and_stopped_work() {
         .unwrap();
 }
 
+/// Write-scoped operator actions return outcomes, not account identity: the
+/// full row or stuck item needs the same read scopes as the listings.
+#[test]
+fn write_scoped_operator_actions_do_not_disclose_account_identity() {
+    let mut f = Fixture::new();
+    f.user("alice");
+    let payroll = Scim::default();
+    let url = payroll.serve();
+    let target = scim_target(&f, "payroll", &url, "payroll");
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    let alice = account(&f.core, "alice");
+    linked(&f, &payroll, "payroll", &url, &alice, "p-alice");
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let writer = agent(
+        &f,
+        "payroll-writer",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let reader = agent(
+        &f,
+        "payroll-reader",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+        ],
+    );
+    let stale = |f: &Fixture| {
+        let mut row = delivery(&f.core, "payroll", &alice);
+        row["status"] = json!("stale");
+        let id = row["id"].as_str().unwrap().to_owned();
+        f.core
+            .store
+            .write(|tx| tx.put(downstream::BUCKET, &id, &row))
+            .unwrap();
+        id
+    };
+
+    let id = stale(&f);
+    let minimal = f
+        .core
+        .provisioning_deactivation_retry(&writer, &id)
+        .unwrap();
+    assert_eq!(minimal["delivery_state"], "pending");
+    let fields: BTreeSet<_> = minimal.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        fields,
+        BTreeSet::from(
+            [
+                "attempts",
+                "delivery_state",
+                "hold",
+                "id",
+                "next_attempt",
+                "status",
+                "target"
+            ]
+            .map(String::from)
+        )
+    );
+    for secret in [alice.id.as_str(), "alice", "p-alice", "offboarding-test"] {
+        assert!(!minimal.to_string().contains(secret), "{secret}: {minimal}");
+    }
+    let id = stale(&f);
+    let full = f
+        .core
+        .provisioning_deactivation_retry(&reader, &id)
+        .unwrap();
+    assert_eq!(full["username"], "alice");
+    assert_eq!(full["remote_id"], "p-alice");
+
+    // A stopped job names its stuck item only to a reader of that account.
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    let plan = f.core.provisioning_plan(&reader, "payroll").unwrap();
+    let plan_id = text(&plan, "id");
+    f.core
+        .provisioning_apply_confirmed(&reader, &plan_id, Some(&plan_id))
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut job: Value = tx.get("provisioning_jobs", &plan_id)?.unwrap();
+            job["item"] = json!({"index": 0, "kind": "Users", "local_id": alice.id});
+            tx.put("provisioning_jobs", &plan_id, &job)
+        })
+        .unwrap();
+    let stopped = f.core.provisioning_stop(&writer, &plan_id).unwrap();
+    assert_eq!(stopped["item"], json!({"index": 0, "kind": "Users"}));
+    assert!(!stopped.to_string().contains(&alice.id));
+    let visible = f.core.provisioning_stop(&reader, &plan_id).unwrap();
+    assert_eq!(visible["item"]["local_id"], alice.id.as_str());
+    let lister = agent(
+        &f,
+        "payroll-lister",
+        &[("provisioner.read", "provisioner/payroll")],
+    );
+    let jobs = f.core.provisioning_jobs(&lister).unwrap();
+    assert_eq!(jobs[0]["item"], json!({"index": 0, "kind": "Users"}));
+}
+
+/// An unverified PATCH stays ambiguous across a local re-enable until a read
+/// observes the account; only then does the row report cancelled, and the
+/// read never writes.
+#[test]
+fn reenabled_account_keeps_an_unverified_deactivation_ambiguous_until_read() {
+    let mut f = Fixture::new();
+    for name in ["alice", "bob", "carol"] {
+        f.user(name);
+    }
+    let payroll = Scim::default();
+    let url = payroll.serve();
+    let target = scim_target(&f, "payroll", &url, "payroll");
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert("payroll".into(), ReconciliationMode::Automatic);
+    let controller = agent(
+        &f,
+        "payroll_controller",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let credential_file = f._dir.path().join("payroll-controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    let controller = ControllerConfig {
+        agent_id: "payroll_controller".into(),
+        credential_file,
+        interval_seconds: 3600,
+    };
+    f.core
+        .config
+        .reconciliation_controllers
+        .insert("scim/payroll".into(), controller.clone());
+    for name in ["alice", "bob", "carol"] {
+        let user = account(&f.core, name);
+        linked(&f, &payroll, "payroll", &url, &user, &format!("p-{name}"));
+    }
+    payroll.script.lock().unwrap().push_back((503, true));
+    let enabled = |value| riauth::model::UserPatch {
+        enabled: Some(value),
+        ..Default::default()
+    };
+    f.core
+        .update_user(&f.admin, "alice", enabled(false))
+        .unwrap();
+    let alice = account(&f.core, "alice");
+    assert!(f.core.deactivation_step().unwrap());
+    assert_eq!(listed(&f, &alice)["delivery_state"], "ambiguous");
+    assert_eq!(payroll.user("p-alice")["active"], false);
+
+    // Re-enabling does not turn an unverified PATCH into a cancellation, even
+    // while nothing can read the account.
+    f.core
+        .update_user(&f.admin, "alice", enabled(true))
+        .unwrap();
+    f.core
+        .config
+        .reconciliation_controllers
+        .remove("scim/payroll");
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    assert!(!f.core.deactivation_step().unwrap());
+    let held = listed(&f, &alice);
+    assert_eq!(held["status"], "pending");
+    assert_eq!(held["hold"], "awaiting_controller");
+    assert_eq!(held["delivery_state"], "ambiguous");
+
+    // A read resolves it: the PATCH had been applied, and nothing new is sent.
+    f.core
+        .config
+        .reconciliation_controllers
+        .insert("scim/payroll".into(), controller);
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    assert!(f.core.deactivation_step().unwrap());
+    let resolved = listed(&f, &alice);
+    assert_eq!(resolved["status"], "superseded");
+    assert_eq!(resolved["outcome"], "remote_inactive");
+    assert_eq!(resolved["uncertain"], false);
+    assert_eq!(resolved["delivery_state"], "cancelled");
+    assert_eq!(payroll.patches.lock().unwrap().len(), 1);
+}
+
 #[test]
 fn execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent() {
     let f = Fixture::new();

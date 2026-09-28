@@ -116,14 +116,17 @@ pub struct Deactivation {
 }
 
 impl Deactivation {
-    /// Delivery state shared with reviewed SCIM jobs: `succeeded` only after
-    /// confirmation, `ambiguous` while an unverified PATCH may have been applied,
-    /// `cancelled` when re-enabling superseded the intent.
+    /// Delivery state shared with reviewed SCIM jobs. An unverified PATCH
+    /// outranks every local outcome: the row is `ambiguous` until a read
+    /// observes the account, and only then `succeeded` (confirmed inactive),
+    /// `cancelled` (enabled again), `failed` (stale or exhausted) or `pending`.
     pub fn delivery_state(&self) -> &'static str {
+        if self.uncertain {
+            return "ambiguous";
+        }
         match self.status {
             Status::Delivered => "succeeded",
             Status::Superseded => "cancelled",
-            _ if self.uncertain => "ambiguous",
             Status::Pending | Status::Running => "pending",
             Status::Stale | Status::Failed => "failed",
         }

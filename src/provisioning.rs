@@ -276,8 +276,35 @@ fn delivery_state(job: &Job) -> &'static str {
         "pending"
     }
 }
-fn job_view(job: &Job) -> Value {
-    json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":job.item})
+/// The stuck item's local ID names a user or group, so it is shown only to a
+/// viewer who may read the target and that user or group; others see its
+/// position and kind.
+fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
+    let item = match &job.item {
+        Some(item) => {
+            let mut view = json!({"index": item.index, "kind": item.kind});
+            if item_readable(tx, viewer, &job.plan.target, item)? {
+                view["local_id"] = json!(item.local_id);
+            }
+            view
+        }
+        None => Value::Null,
+    };
+    Ok(
+        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item}),
+    )
+}
+fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> Result<bool> {
+    if !viewer.allows("provisioner.read", &format!("provisioner/{target}")) {
+        return Ok(false);
+    }
+    Ok(match item.kind.as_str() {
+        "Users" => tx
+            .get::<User>("users", &item.local_id)?
+            .is_some_and(|user| viewer.allows("user.read", &format!("user/{}", user.username))),
+        "Groups" => viewer.allows("group.read", &format!("group/{}", item.local_id)),
+        _ => false,
+    })
 }
 
 fn compact_terminal_job(job: &mut Job) {
@@ -407,7 +434,7 @@ impl Core {
         target.validate()?;
         let mode = self.provisioning_mode(target_id);
         let (active, settling) = self.store.write(|tx| {
-            self.management(
+            let caller = self.management(
                 tx,
                 token,
                 "provisioner.sync",
@@ -431,7 +458,7 @@ impl Core {
                     continue;
                 }
                 if self.provisioning_job_eligible(tx, &job)? {
-                    active = Some(job_view(&job));
+                    active = Some(job_view(tx, &job, &caller)?);
                     continue;
                 }
                 job.stale = true;
@@ -631,7 +658,7 @@ impl Core {
                 if actor.id != job.plan.actor {
                     return Err(Error::forbidden());
                 }
-                return Ok(job_view(&job));
+                return job_view(tx, &job, &actor);
             }
             let plan = tx
                 .get::<Plan>("provisioning_plans", id)?
@@ -690,7 +717,7 @@ impl Core {
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.apply", &job.plan.target)?;
-            Ok(job_view(&job))
+            job_view(tx, &job, &actor)
         })
     }
     /// Operator stop for an unfinished job; it releases the target for a fresh
@@ -708,7 +735,7 @@ impl Core {
                 &format!("provisioner/{}", job.plan.target),
             )?;
             if job.completed || job.stale {
-                return Ok(job_view(&job));
+                return job_view(tx, &job, &actor);
             }
             job.stale = true;
             job.error = Some(
@@ -723,22 +750,24 @@ impl Core {
             compact_terminal_job(&mut job);
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.stop", &job.plan.target)?;
-            Ok(job_view(&job))
+            job_view(tx, &job, &actor)
         })
     }
     pub fn provisioning_jobs(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<Job>("provisioning_jobs")?
-                    .into_iter()
-                    .filter(|(_, j)| actor.allows(
+            let views = tx
+                .list::<Job>("provisioning_jobs")?
+                .into_iter()
+                .filter(|(_, j)| {
+                    actor.allows(
                         "provisioner.read",
-                        &format!("provisioner/{}", j.plan.target)
-                    ))
-                    .map(|(_, j)| job_view(&j))
-                    .collect::<Vec<_>>()
-            ))
+                        &format!("provisioner/{}", j.plan.target),
+                    )
+                })
+                .map(|(_, j)| job_view(tx, &j, &actor))
+                .collect::<Result<Vec<_>>>()?;
+            Ok(Value::Array(views))
         })
     }
     fn claim_provisioning(&self) -> Result<Option<Job>> {

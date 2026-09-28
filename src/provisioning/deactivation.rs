@@ -40,11 +40,15 @@ enum Gate {
     /// Nothing is sent; the row stays pending with this reason until the delay.
     Hold(&'static str, Option<u64>),
     Close(Status, Option<&'static str>, Option<&'static str>),
-    Dispatch(Principal, ReviewBinding),
+    /// Claim under this authority. `true` reads the account only: it was
+    /// enabled again after an unverified PATCH.
+    Dispatch(Principal, ReviewBinding, bool),
 }
 
 enum Attempt {
     Delivered(&'static str),
+    /// A verification read observed the account (`remote_active` or `remote_inactive`).
+    Verified(&'static str),
     /// Pre-dispatch authority failure: nothing was sent and no attempt is used.
     Hold(&'static str, String),
     Stale(String),
@@ -56,6 +60,8 @@ struct Claim {
     owner: String,
     actor: Principal,
     binding: ReviewBinding,
+    /// Read the account only; never PATCH it.
+    verify: bool,
 }
 
 /// What one attempt learned about the remote account.
@@ -181,11 +187,19 @@ fn close(
     row.outcome = outcome.map(Into::into);
     row.last_error = error;
     row.delivered_at = (status == Status::Delivered).then_some(at);
+    // Delivery and every recorded outcome follow a verified remote read. Any
+    // other close keeps an earlier unverified PATCH visible as ambiguous.
+    if status == Status::Delivered || outcome.is_some() {
+        row.uncertain = false;
+    }
     release(row);
     row.next_attempt = at;
     tx.put(BUCKET, &row.id, row)?;
     let actor = match (&row.actor, outcome) {
-        (Some(actor), Some("deactivated" | "already_inactive")) => actor.clone(),
+        (
+            Some(actor),
+            Some("deactivated" | "already_inactive" | "remote_active" | "remote_inactive"),
+        ) => actor.clone(),
         _ => WORKER.into(),
     };
     audit(
@@ -216,14 +230,16 @@ fn verify_remote(row: &Deactivation, current: &Value) -> Result<()> {
 
 impl Core {
     fn deactivation_gate(&self, tx: &Tx<'_>, row: &Deactivation, at: u64) -> Result<Gate> {
-        if tx
+        let enabled = tx
             .get::<User>("users", &row.user_id)?
-            .is_some_and(|user| user.enabled)
-        {
+            .is_some_and(|user| user.enabled);
+        // Re-enabling cancels the intent, but an earlier PATCH whose effect is
+        // unknown must be observed before the row can report cancelled.
+        if enabled && !row.uncertain {
             return Ok(Gate::Close(
                 Status::Superseded,
                 None,
-                Some("The account was enabled again before delivery; nothing was sent"),
+                Some("The account was enabled again before delivery; no deactivation was applied"),
             ));
         }
         let Some(link) = tx.get::<Link>(LINKS, &row.link)? else {
@@ -248,11 +264,11 @@ impl Core {
         }
         if link.body["active"] == false {
             // Reviewed jobs write a link only after a verified remote read-back.
-            return Ok(Gate::Close(
-                Status::Delivered,
-                Some("reviewed_delivery"),
-                None,
-            ));
+            return Ok(if enabled {
+                Gate::Close(Status::Superseded, Some("remote_inactive"), None)
+            } else {
+                Gate::Close(Status::Delivered, Some("reviewed_delivery"), None)
+            });
         }
         match self.config.scim_targets.get(&row.target) {
             Some(target) if target.url == row.target_url => {}
@@ -271,6 +287,15 @@ impl Core {
         let scope = scope(&row.target);
         if !self.config.reconciliation_controllers.contains_key(&scope) {
             return Ok(Gate::Hold("awaiting_controller", None));
+        }
+        if enabled {
+            // Nothing is written, so review policy and prior deliveries do not apply.
+            let Ok(actor) = crate::reconciliation::controller_agent(tx, &self.config, &scope)
+            else {
+                return Ok(Gate::Hold("awaiting_controller_authority", None));
+            };
+            let binding = ReviewBinding::new(tx, &actor, &authority_content(self, row, &link)?)?;
+            return Ok(Gate::Dispatch(actor, binding, true));
         }
         // A deactivation is a removal: manual and guarded modes wait for review,
         // and automatic mode keeps the shared P03 floor over all departures.
@@ -304,7 +329,7 @@ impl Core {
             return Ok(Gate::Hold("awaiting_controller_authority", None));
         };
         let binding = ReviewBinding::new(tx, &actor, &authority_content(self, row, &link)?)?;
-        Ok(Gate::Dispatch(actor, binding))
+        Ok(Gate::Dispatch(actor, binding, false))
     }
 
     fn claim_deactivation(&self, owner: &str) -> Result<Option<Claim>> {
@@ -333,7 +358,7 @@ impl Core {
                     Gate::Close(status, outcome, error) => {
                         close(tx, &mut row, status, outcome, error.map(Into::into), at)?;
                     }
-                    Gate::Dispatch(actor, binding) => {
+                    Gate::Dispatch(actor, binding, verify) => {
                         row.status = Status::Running;
                         row.hold = None;
                         row.lease_owner = Some(owner.into());
@@ -347,6 +372,7 @@ impl Core {
                             owner: owner.into(),
                             actor,
                             binding,
+                            verify,
                         }));
                     }
                 }
@@ -368,9 +394,10 @@ impl Core {
             {
                 return Err(Error::conflict("Deactivation lease lost"));
             }
-            if tx
-                .get::<User>("users", &claim.row.user_id)?
-                .is_some_and(|user| user.enabled)
+            if !claim.verify
+                && tx
+                    .get::<User>("users", &claim.row.user_id)?
+                    .is_some_and(|user| user.enabled)
             {
                 return Err(Error::conflict(
                     "The account was enabled again before dispatch",
@@ -409,6 +436,7 @@ impl Core {
             return Attempt::Hold("awaiting_controller_authority", bounded(&error.message));
         }
         match self.dispatch_deactivation(claim, evidence) {
+            Ok(outcome) if claim.verify => Attempt::Verified(outcome),
             Ok(outcome) => Attempt::Delivered(outcome),
             Err(error) if error.code == "deactivation_stale" => Attempt::Stale(error.message),
             Err(error) if error.code == "conflict" => Attempt::Retry(error.message),
@@ -447,6 +475,13 @@ impl Core {
         let (current, etag) = read()?;
         verify_remote(row, &current)?;
         evidence.inspected.set(true);
+        if claim.verify {
+            return Ok(if current["active"] == false {
+                "remote_inactive"
+            } else {
+                "remote_active"
+            });
+        }
         if current["active"] == false {
             return Ok("already_inactive");
         }
@@ -514,6 +549,24 @@ impl Core {
                 Attempt::Delivered(outcome) => {
                     row.uncertain = false;
                     close(tx, &mut row, Status::Delivered, Some(outcome), None, at)
+                }
+                Attempt::Verified(outcome)
+                    if tx
+                        .get::<User>("users", &row.user_id)?
+                        .is_some_and(|user| user.enabled) =>
+                {
+                    close(tx, &mut row, Status::Superseded, Some(outcome), None, at)
+                }
+                Attempt::Verified(_) => {
+                    // Disabled again while verifying: the intent is live once more,
+                    // now with the account's state known.
+                    row.uncertain = false;
+                    row.status = Status::Pending;
+                    row.hold = None;
+                    row.attempts = row.attempts.saturating_sub(1);
+                    release(&mut row);
+                    row.next_attempt = at;
+                    tx.put(BUCKET, &row.id, &row)
                 }
                 Attempt::Stale(message) => close(tx, &mut row, Status::Stale, None, Some(bounded(&message)), at),
                 Attempt::Hold(reason, message) => {
@@ -606,7 +659,7 @@ impl Core {
                 "provisioner.deactivate.retry",
                 &format!("{}/{}", row.target, row.username),
             )?;
-            row_view(&row)
+            row_view_for(&row, &actor)
         })
     }
 
@@ -636,6 +689,25 @@ fn row_view(row: &Deactivation) -> Result<Value> {
     let mut view = serde_json::to_value(row).map_err(Error::internal)?;
     view["delivery_state"] = json!(row.delivery_state());
     Ok(view)
+}
+
+/// A full row names the account and its remote identity, so it needs the
+/// listing's read scopes; a caller with only write authority sees the outcome.
+fn row_view_for(row: &Deactivation, viewer: &Principal) -> Result<Value> {
+    if viewer.allows("provisioner.read", &format!("provisioner/{}", row.target))
+        && viewer.allows("user.read", &format!("user/{}", row.username))
+    {
+        return row_view(row);
+    }
+    Ok(json!({
+        "id": row.id,
+        "target": row.target,
+        "status": row.status,
+        "delivery_state": row.delivery_state(),
+        "hold": row.hold,
+        "attempts": row.attempts,
+        "next_attempt": row.next_attempt,
+    }))
 }
 
 pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
