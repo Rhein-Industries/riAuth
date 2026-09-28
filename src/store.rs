@@ -413,6 +413,19 @@ fn decode<T: DeserializeOwned>(key: Option<&[u8; 32]>, name: &str, value: &[u8])
     }
 }
 
+fn oversized_snapshot_record(max_raw_bytes: usize) -> Error {
+    let size = if max_raw_bytes.is_multiple_of(1024 * 1024) {
+        format!("{} MiB", max_raw_bytes / (1024 * 1024))
+    } else if max_raw_bytes.is_multiple_of(1024) {
+        format!("{} KiB", max_raw_bytes / 1024)
+    } else {
+        format!("{max_raw_bytes} bytes")
+    };
+    Error::bad(format!(
+        "Backup record exceeds snapshot page limit of {max_raw_bytes} bytes ({size})"
+    ))
+}
+
 /// Replace values whose names carry secrets, passwords, tokens, hashes, or key
 /// material. `[redacted]` and `[changed]` markers are preserved.
 pub(crate) fn redact_audit_value(value: &mut Value) {
@@ -904,14 +917,17 @@ impl Tx<'_> {
             .collect()
         })
     }
-    /// One page of the whole keyspace, strictly after `after`.
+    /// One page of the whole keyspace, strictly after `after`. The sum of
+    /// stored key and value bytes never exceeds `max_raw_bytes`; an oversized
+    /// first record is an error, so callers cannot mistake it for EOF.
     /// Repeat inside the same read transaction for a consistent scan.
-    pub(crate) fn snapshot_page(
+    pub(crate) fn snapshot_page_bounded(
         &self,
         after: Option<&str>,
         limit: usize,
+        max_raw_bytes: usize,
     ) -> Result<Vec<(String, Value)>> {
-        let page = self.snapshot_page_raw(after, limit)?;
+        let page = self.snapshot_page_raw_bounded(after, limit, max_raw_bytes)?;
         self.telemetry
             .snapshot_records
             .fetch_add(page.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -922,41 +938,75 @@ impl Tx<'_> {
             })
             .collect()
     }
-    fn snapshot_page_raw(
+    fn snapshot_page_raw_bounded(
         &self,
         after: Option<&str>,
         limit: usize,
+        max_raw_bytes: usize,
     ) -> Result<Vec<(String, Vec<u8>)>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
-        if self.prepared.borrow().is_some() {
+        if max_raw_bytes == 0 {
+            return Err(Error::bad("Snapshot page byte limit must be positive"));
+        }
+        if self.prepared.borrow().is_some()
+            || !matches!(
+                self.transaction,
+                Transaction::Read(_) | Transaction::Postgres(_, false)
+            )
+        {
             return Err(Error::internal(
                 "Paged snapshots require an ordinary read transaction",
             ));
         }
         if let Transaction::Postgres(transaction, _) = &self.transaction {
-            let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+            // Read metadata first. A LIMIT-only value query could materialize
+            // 128 arbitrarily large legacy values before Rust can reject them.
+            // Store::read holds a REPEATABLE READ transaction across both queries.
+            let limit = i64::try_from(limit.min(maintenance::PAGE)).map_err(Error::internal)?;
+            let max_bytes = i64::try_from(max_raw_bytes).map_err(Error::internal)?;
             let mut transaction = transaction.borrow_mut();
-            let rows = if let Some(after) = after {
+            let metadata = if let Some(after) = after {
                 transaction.query(
-                    "SELECT key,value FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT $2",
-                    &[&after.as_bytes(), &limit],
+                    "WITH candidates AS MATERIALIZED (SELECT key, octet_length(key)::bigint + octet_length(value)::bigint AS record_bytes FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT $2), sized AS (SELECT key, record_bytes, sum(record_bytes) OVER (ORDER BY key) AS total_bytes, row_number() OVER (ORDER BY key) AS ordinal FROM candidates) SELECT CASE WHEN total_bytes <= $3::bigint THEN key ELSE NULL END, record_bytes FROM sized WHERE total_bytes <= $3::bigint OR ordinal = 1 ORDER BY ordinal",
+                    &[&after.as_bytes(), &limit, &max_bytes],
                 )
             } else {
                 transaction.query(
-                    "SELECT key,value FROM riauth_store.records_v1 ORDER BY key LIMIT $1",
-                    &[&limit],
+                    "WITH candidates AS MATERIALIZED (SELECT key, octet_length(key)::bigint + octet_length(value)::bigint AS record_bytes FROM riauth_store.records_v1 ORDER BY key LIMIT $1), sized AS (SELECT key, record_bytes, sum(record_bytes) OVER (ORDER BY key) AS total_bytes, row_number() OVER (ORDER BY key) AS ordinal FROM candidates) SELECT CASE WHEN total_bytes <= $2::bigint THEN key ELSE NULL END, record_bytes FROM sized WHERE total_bytes <= $2::bigint OR ordinal = 1 ORDER BY ordinal",
+                    &[&limit, &max_bytes],
                 )
             }
             .map_err(crate::postgres_store::unavailable)?;
-            return rows
+            let keys: Vec<Vec<u8>> = metadata
                 .into_iter()
                 .map(|row| {
-                    Ok((
-                        String::from_utf8(row.get(0)).map_err(Error::internal)?,
-                        row.get(1),
-                    ))
+                    row.get::<_, Option<Vec<u8>>>(0)
+                        .ok_or_else(|| oversized_snapshot_record(max_raw_bytes))
+                })
+                .collect::<Result<_>>()?;
+            let (Some(first), Some(last)) = (keys.first(), keys.last()) else {
+                return Ok(Vec::new());
+            };
+            let rows = transaction
+                .query(
+                    "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key <= $2 ORDER BY key",
+                    &[first, last],
+                )
+                .map_err(crate::postgres_store::unavailable)?;
+            if rows.len() != keys.len() {
+                return Err(Error::internal("Snapshot changed during page read"));
+            }
+            return rows
+                .into_iter()
+                .zip(keys)
+                .map(|(row, expected)| {
+                    let key: Vec<u8> = row.get(0);
+                    if key != expected {
+                        return Err(Error::internal("Snapshot changed during page read"));
+                    }
+                    Ok((String::from_utf8(key).map_err(Error::internal)?, row.get(1)))
                 })
                 .collect();
         }
@@ -964,12 +1014,26 @@ impl Tx<'_> {
             // `\0` is the inclusive successor used by bucket scans; it excludes `after`.
             let start = after.map(|key| format!("{key}\0")).unwrap_or_default();
             let iter = table.range(start.as_str()..).map_err(Error::internal)?;
-            iter.take(limit)
-                .map(|entry| {
-                    let (key, value) = entry.map_err(Error::internal)?;
-                    Ok((key.value().to_owned(), value.value().to_vec()))
-                })
-                .collect::<Result<Vec<_>>>()
+            let mut page = Vec::new();
+            let mut used = 0usize;
+            for entry in iter.take(limit.min(maintenance::PAGE)) {
+                let (key, value) = entry.map_err(Error::internal)?;
+                let bytes = key
+                    .value()
+                    .len()
+                    .checked_add(value.value().len())
+                    .and_then(|bytes| used.checked_add(bytes))
+                    .ok_or_else(|| oversized_snapshot_record(max_raw_bytes))?;
+                if bytes > max_raw_bytes {
+                    if page.is_empty() {
+                        return Err(oversized_snapshot_record(max_raw_bytes));
+                    }
+                    break;
+                }
+                used = bytes;
+                page.push((key.value().to_owned(), value.value().to_vec()));
+            }
+            Ok(page)
         })
     }
     pub fn snapshot(&self) -> Result<BTreeMap<String, Value>> {
@@ -1017,5 +1081,99 @@ impl Tx<'_> {
                 })
                 .collect()
         })
+    }
+}
+
+#[cfg(test)]
+mod snapshot_paging_tests {
+    use super::*;
+
+    #[test]
+    fn page_budget_counts_keys_and_values_before_decoding() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        store
+            .write(|tx| {
+                tx.put("page", "a", &"alpha")?;
+                tx.put("page", "b", &"bravo")?;
+                Ok(())
+            })
+            .unwrap();
+        let first_bytes = "page/a".len() + serde_json::to_vec("alpha").unwrap().len();
+        let second_bytes = "page/b".len() + serde_json::to_vec("bravo").unwrap().len();
+        store
+            .read(|tx| {
+                let first = tx.snapshot_page_bounded(None, 128, first_bytes)?;
+                assert_eq!(
+                    first,
+                    vec![("page/a".into(), Value::String("alpha".into()))]
+                );
+                let second = tx.snapshot_page_bounded(Some("page/a"), 128, second_bytes)?;
+                assert_eq!(
+                    second,
+                    vec![("page/b".into(), Value::String("bravo".into()))]
+                );
+                let both = tx.snapshot_page_bounded(None, 128, first_bytes + second_bytes)?;
+                assert_eq!(both.len(), 2);
+                assert!(tx.snapshot_page_bounded(Some("page/b"), 128, 1)?.is_empty());
+                Ok(())
+            })
+            .unwrap();
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(None, 128, first_bytes - 1))
+            .unwrap_err();
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(error.message.contains("snapshot page limit"));
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(Some("page/a"), 128, second_bytes - 1))
+            .unwrap_err();
+        assert!(error.message.contains("snapshot page limit"));
+    }
+
+    #[test]
+    fn oversized_legacy_value_is_rejected_before_json_decode() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        let Backend::Redb(db) = &store.db else {
+            unreachable!()
+        };
+        let transaction = db.begin_write().unwrap();
+        {
+            let mut table = transaction.open_table(RECORDS).unwrap();
+            table
+                .insert("legacy/oversized", vec![b'!'; 4096].as_slice())
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(None, 128, 1024))
+            .unwrap_err();
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(error.message.contains("snapshot page limit"));
+    }
+
+    #[test]
+    fn pages_keep_one_read_snapshot_during_a_concurrent_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        store.write(|tx| tx.put("page", "a", &1u8)).unwrap();
+        store.write(|tx| tx.put("page", "c", &3u8)).unwrap();
+        store
+            .read(|tx| {
+                let first = tx.snapshot_page_bounded(None, 1, 1024)?;
+                assert_eq!(first[0].0, "page/a");
+                store.write(|writer| writer.put("page", "b", &2u8))?;
+                let second = tx.snapshot_page_bounded(Some(&first[0].0), 1, 1024)?;
+                assert_eq!(second[0].0, "page/c");
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            store
+                .read(|tx| tx.snapshot_page_bounded(Some("page/a"), 1, 1024))
+                .unwrap()[0]
+                .0,
+            "page/b"
+        );
     }
 }

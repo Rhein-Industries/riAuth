@@ -1010,4 +1010,97 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
     let backup = reopened.backup(&admin, &backup_key).unwrap();
     assert_eq!(backup["encrypted"], true);
     assert!(!backup.to_string().contains(PASSWORD));
+
+    // Exercise the v3 snapshot pager on PostgreSQL with enough raw bytes to
+    // require a byte boundary before the 128-record count boundary.
+    let payload = "p".repeat(72 * 1024);
+    reopened
+        .store
+        .write(|tx| {
+            for index in 0..140 {
+                tx.put(
+                    "audit",
+                    &format!("pg-stream-{index:03}"),
+                    &serde_json::json!({"payload": payload.as_str()}),
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let mut stream = Vec::new();
+    let callback_store = reopened.store.clone();
+    let mut inserted_during_export = false;
+    let mut on_progress = |progress: &riauth::operations::stream::Progress| {
+        if progress.frames == 1 && !inserted_during_export {
+            callback_store
+                .write(|tx| tx.put("audit", "pg-stream-late", &"after snapshot"))
+                .unwrap();
+            inserted_during_export = true;
+        }
+    };
+    let summary = reopened
+        .backup_stream(
+            &admin,
+            &backup_key,
+            &mut stream,
+            riauth::operations::stream::StreamOptions {
+                progress: Some(&mut on_progress),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(inserted_during_export);
+    assert!(summary.records >= 140);
+    assert!(
+        !stream
+            .windows(PASSWORD.len())
+            .any(|bytes| bytes == PASSWORD.as_bytes())
+    );
+    let archive = local.path().join("postgres-stream.backup");
+    std::fs::write(&archive, &stream).unwrap();
+    let backup_key_file = local.path().join("backup.key");
+    riauth::config::write_private(&backup_key_file, backup_key.as_bytes(), false).unwrap();
+    let restored_dir = local.path().join("postgres-stream-restored");
+    riauth::operations::restore(&archive, &backup_key_file, &restored_dir, None).unwrap();
+    let restored = Core::open(Config::load(&restored_dir.join("riauth.toml")).unwrap()).unwrap();
+    assert_eq!(restored.store.backend(), "redb");
+    assert!(
+        restored
+            .store
+            .get::<String>("audit", "pg-stream-late")
+            .unwrap()
+            .is_none()
+    );
+    for index in [0, 139] {
+        let value = restored
+            .store
+            .get::<Value>("audit", &format!("pg-stream-{index:03}"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(value["payload"].as_str().unwrap().len(), payload.len());
+    }
+    assert_eq!(restored.jwks().unwrap(), keys);
+    assert!(restored.me(&admin).is_ok());
+
+    // An old store may contain a value larger than the new stream's page
+    // budget. It must fail explicitly before that value joins a fetched page.
+    reopened
+        .store
+        .write(|tx| {
+            tx.put(
+                "audit",
+                "pg-stream-oversized",
+                &serde_json::json!({"payload": "x".repeat(8 * 1024 * 1024)}),
+            )
+        })
+        .unwrap();
+    let error = reopened
+        .backup_stream(
+            &admin,
+            &backup_key,
+            &mut Vec::new(),
+            riauth::operations::stream::StreamOptions::default(),
+        )
+        .unwrap_err();
+    assert!(error.message.contains("snapshot page limit"), "{error:?}");
 }

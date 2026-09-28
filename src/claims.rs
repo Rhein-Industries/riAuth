@@ -105,6 +105,24 @@ pub fn subject(user: &User, client: &Client) -> String {
 }
 
 pub fn validate_user(tx: &Tx<'_>, user: &User) -> Result<()> {
+    validate_user_paged(tx, user, crate::store::maintenance::PAGE, &|| Ok(()))
+}
+
+/// Validate a user while allowing offline restore to abort a long subject scan.
+pub fn validate_user_checked(
+    tx: &Tx<'_>,
+    user: &User,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
+    validate_user_paged(tx, user, 1, check)
+}
+
+fn validate_user_paged(
+    tx: &Tx<'_>,
+    user: &User,
+    page_size: usize,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<()> {
     if serde_json::to_vec(&user.attributes)
         .map_err(Error::internal)?
         .len()
@@ -128,11 +146,23 @@ pub fn validate_user(tx: &Tx<'_>, user: &User) -> Result<()> {
         let client = tx
             .get::<Client>("clients", cid)?
             .ok_or_else(|| Error::bad("Subject mapping references an unknown client"))?;
-        if tx.list::<User>("users")?.iter().any(|(_, other)| {
-            other.id != user.id
-                && (other.id == *subject || self::subject(other, &client) == *subject)
-        }) {
-            return Err(Error::conflict("Subject already belongs to another user"));
+        let mut after = None;
+        loop {
+            // The checked restore path decodes just one imported user at a time;
+            // an imported user can approach the archive's per-frame limit.
+            check()?;
+            let users = tx.scan::<User>("users", after.as_deref(), page_size)?;
+            if users.is_empty() {
+                break;
+            }
+            for (id, other) in users {
+                if other.id != user.id
+                    && (other.id == *subject || self::subject(&other, &client) == *subject)
+                {
+                    return Err(Error::conflict("Subject already belongs to another user"));
+                }
+                after = Some(id);
+            }
         }
     }
     Ok(())

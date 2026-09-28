@@ -225,6 +225,20 @@ The encrypted chunks, manifest and final JSON response remain buffered within th
 archive bound. Restore rejects oversized files before reading them and decrypts
 one chunk at a time without retaining decoded ciphertext copies. Version-1
 archives remain readable within the archive limit; new backups use version 2.
+`restore` also recognises the framed `riauth.backup/v3` stream by its leading
+magic. That format is currently produced only by the library API
+(`Core::backup_stream`); the server endpoint and `riauth backup` still write v2.
+A v3 archive is a sequence of AES-256-GCM frames whose associated data binds the
+archive identity, frame position and kind, closed by a trailer that commits to the
+record and frame counts and a transcript hash. Restore authenticates the complete
+stream and validates schema and issuer before creating the output directory, then
+re-reads and re-authenticates it while importing. The codec bounds its frame
+buffers and applies configurable archive and frame quotas (default 4 GiB and
+8 MiB), progress callbacks and cancellation. Source paging checks stored key
+and value bytes before decoding, and restore/index validation scans one record
+at a time. These checks do not establish a bound on process memory: decoded
+JSON, redb caching and the restore write transaction still need peak-RSS
+measurement on representative and adversarial data.
 The CLI deadline is configurable with `--request-timeout SECONDS` or
 `RIAUTH_REQUEST_TIMEOUT` (default 30, range 1..=86,400), including body receipt.
 Measure HTTP backup and CLI restore with representative records, external keys, and the intended storage configuration. Record archive size, elapsed time, peak memory, and whether the restored service can sign in and serve applications. Set the request timeout from measured backup time when the default 30 seconds is insufficient. Keep results with the recovery procedure and repeat them after storage, configuration, or data-volume changes.

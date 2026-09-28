@@ -16,6 +16,10 @@ Before moving an application to riAuth, record its exact issuer and subject cont
 
 Rehearse backup restore in an isolated environment with the real external keys and referenced files. Verify administrator access, JWKS, representative applications, and the rollback path. Record the tested commit or binary hash, configuration, peer versions, results, and measured recovery time and data loss. See [release limitations](limitations.md) for profiles needing particular care.
 
+## Backup memory measurement
+
+`scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.
+
 ## Contention characterization
 
 `scripts/characterize-contention.sh` builds the `contention` tests in release mode with two compiler jobs and runs a modest workload over 505 directory users and 100 groups: password logins, logins beside continuous maintenance passes, session reads, unbounded user listings, user creation alone and beside logins, and logout/SSF delivery passes over empty queues. Background passes run back to back, not at the server's intervals. It prints JSON for each phase with operation latency percentiles and the change in every runtime measurement. `--postgres` runs it against one disposable loopback PostgreSQL node and adds a pool and advisory-lock wait test; `--out FILE` also writes the report. Set `RIAUTH_CHARACTERIZE_ENCRYPTED=1` for encrypted storage and `RIAUTH_CHARACTERIZE_SCALE` to multiply the work. Keep the commit, build profile, backend, encryption and password-hash parameters from the report with any result. The numbers are local observations for comparing revisions under the same settings, not throughput claims.

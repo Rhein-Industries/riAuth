@@ -16,6 +16,8 @@ use std::{
     time::Duration,
 };
 
+pub mod stream;
+
 const BACKUP_V1: &str = "riauth.backup/v1";
 const BACKUP_V2: &str = "riauth.backup/v2";
 const MANIFEST_AAD: &[u8] = b"riauth.backup/v2/manifest";
@@ -107,7 +109,11 @@ impl Core {
             let mut archive_bytes = 512usize;
             let mut after: Option<String> = None;
             loop {
-                let page = tx.snapshot_page(after.as_deref(), crate::store::maintenance::PAGE)?;
+                let page = tx.snapshot_page_bounded(
+                    after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?;
                 if page.is_empty() {
                     break;
                 }
@@ -278,6 +284,15 @@ pub fn restore(
     output: &Path,
     database_key_file: Option<PathBuf>,
 ) -> Result<Value> {
+    if stream::is_stream_archive(backup_file)? {
+        return stream::restore_stream(
+            backup_file,
+            key_file,
+            output,
+            database_key_file,
+            stream::StreamOptions::default(),
+        );
+    }
     let file = std::fs::File::open(backup_file).map_err(Error::internal)?;
     if file.metadata().map_err(Error::internal)?.len() > MAX_BACKUP_BYTES as u64 {
         return Err(Error::bad("Backup archive exceeds 64 MiB"));
@@ -325,13 +340,19 @@ fn restore_v1(
         return Err(Error::bad("Backup issuer mismatch"));
     }
     let records = backup.records;
-    commit_restore(backup.config, output, database_key_file, move |tx| {
-        for (name, value) in records {
-            let (bucket, id) = split_record_key(&name)?;
-            tx.import_record(bucket, id, &value)?;
-        }
-        Ok(())
-    })
+    commit_restore(
+        backup.config,
+        output,
+        database_key_file,
+        move |tx| {
+            for (name, value) in records {
+                let (bucket, id) = split_record_key(&name)?;
+                tx.import_record(bucket, id, &value)?;
+            }
+            Ok(())
+        },
+        || Ok(()),
+    )
 }
 
 struct ChunkedBackup {
@@ -352,32 +373,39 @@ fn restore_v2(
     let chunks = envelope["chunks"].as_array().unwrap();
     let record_count = loaded.record_count;
     let key = *key;
-    commit_restore(loaded.config, output, database_key_file, move |tx| {
-        let mut imported = 0u64;
-        for (index, encoded) in chunks[..chunks.len() - 1].iter().enumerate() {
-            let ciphertext = URL_SAFE_NO_PAD
-                .decode(encoded.as_str().unwrap())
-                .map_err(|_| Error::bad("Invalid backup ciphertext"))?;
-            let plaintext = crypto::unseal(&key, record_chunk_aad(index).as_bytes(), &ciphertext)?;
-            let chunk: RecordsChunk = serde_json::from_slice(&plaintext)
-                .map_err(|_| Error::bad("Backup payload is invalid"))?;
-            if chunk.kind != "records" || chunk.index != index as u64 {
-                return Err(Error::bad("Backup payload is invalid"));
-            }
-            for (name, value) in chunk.records {
-                let (bucket, id) = split_record_key(&name)?;
-                if tx.get::<Value>(bucket, id)?.is_some() {
+    commit_restore(
+        loaded.config,
+        output,
+        database_key_file,
+        move |tx| {
+            let mut imported = 0u64;
+            for (index, encoded) in chunks[..chunks.len() - 1].iter().enumerate() {
+                let ciphertext = URL_SAFE_NO_PAD
+                    .decode(encoded.as_str().unwrap())
+                    .map_err(|_| Error::bad("Invalid backup ciphertext"))?;
+                let plaintext =
+                    crypto::unseal(&key, record_chunk_aad(index).as_bytes(), &ciphertext)?;
+                let chunk: RecordsChunk = serde_json::from_slice(&plaintext)
+                    .map_err(|_| Error::bad("Backup payload is invalid"))?;
+                if chunk.kind != "records" || chunk.index != index as u64 {
                     return Err(Error::bad("Backup payload is invalid"));
                 }
-                tx.import_record(bucket, id, &value)?;
-                imported += 1;
+                for (name, value) in chunk.records {
+                    let (bucket, id) = split_record_key(&name)?;
+                    if tx.get::<Value>(bucket, id)?.is_some() {
+                        return Err(Error::bad("Backup payload is invalid"));
+                    }
+                    tx.import_record(bucket, id, &value)?;
+                    imported += 1;
+                }
             }
-        }
-        if imported != record_count {
-            return Err(Error::bad("Backup payload is invalid"));
-        }
-        Ok(())
-    })
+            if imported != record_count {
+                return Err(Error::bad("Backup payload is invalid"));
+            }
+            Ok(())
+        },
+        || Ok(()),
+    )
 }
 
 /// Authenticate every chunk before creating a directory. Plaintext pages are dropped.
@@ -453,6 +481,7 @@ fn commit_restore(
     output: &Path,
     database_key_file: Option<PathBuf>,
     import: impl FnOnce(&crate::store::Tx<'_>) -> Result<()>,
+    check: impl Fn() -> Result<()>,
 ) -> Result<Value> {
     config
         .validate()
@@ -464,6 +493,7 @@ fn commit_restore(
         .as_deref()
         .map(crypto::read_key)
         .transpose()?;
+    check()?;
     std::fs::create_dir(output)
         .map_err(|e| Error::bad(format!("Restore requires a new output directory: {e}")))?;
     private_dir(output).map_err(Error::internal)?;
@@ -471,26 +501,33 @@ fn commit_restore(
     private_dir(&data_dir).map_err(Error::internal)?;
     let store = Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?;
     store.write(|tx| {
+        check()?;
         import(tx)?;
-        tx.rebuild_indexes()?;
+        check()?;
+        tx.rebuild_indexes_checked(&check)?;
+        check()?;
         keys(tx)?.active.jwk()?;
         let mut after = None;
         let mut enabled_administrator = false;
         loop {
-            let users =
-                tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+            check()?;
+            // Imported users can approach the frame limit; one decoded record
+            // is the predictable bound for this validation loop.
+            let users = tx.scan::<User>("users", after.as_deref(), 1)?;
             if users.is_empty() {
                 break;
             }
             for (id, user) in users {
+                check()?;
                 enabled_administrator |= user.admin && user.enabled;
-                crate::claims::validate_user(tx, &user)?;
+                crate::claims::validate_user_checked(tx, &user, &check)?;
                 after = Some(id);
             }
         }
         if !enabled_administrator {
             return Err(Error::bad("Backup has no enabled administrator"));
         }
+        check()?;
         Ok(())
     })?;
     drop(store);

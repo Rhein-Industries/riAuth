@@ -12,6 +12,9 @@ pub const QUEUES: [&str; 5] = [
     "offboard_jobs",
 ];
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
+// Imported records can approach the archive's per-frame limit. The ordinary
+// maintenance PAGE would decode 128 such records before returning to rebuild.
+const REBUILD_PAGE: usize = 1;
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct QueueStats {
     pub pending: u64,
@@ -350,6 +353,12 @@ impl Tx<'_> {
     }
     /// Used for offline upgrades and restore, never for ordinary requests.
     pub fn rebuild_indexes(&self) -> Result<()> {
+        self.rebuild_indexes_checked(&|| Ok(()))
+    }
+    /// Rebuild derived indexes in pages, checking for cancellation between pages.
+    /// The caller's write transaction keeps the source records and rebuilt indexes
+    /// atomic even if a check aborts partway through.
+    pub fn rebuild_indexes_checked(&self, check: &dyn Fn() -> Result<()>) -> Result<()> {
         let mut indexes = vec![
             "index_counts".to_owned(),
             "index_queues".into(),
@@ -365,34 +374,62 @@ impl Tx<'_> {
             indexes.push(format!("index_age_{queue}"));
         }
         for bucket in indexes {
-            for (key, _) in self.list::<Value>(&bucket)? {
-                self.delete(&bucket, &key)?;
-            }
+            self.for_each_rebuild_page::<Value>(&bucket, check, |key, _| {
+                self.delete(&bucket, &key)
+            })?;
         }
         for bucket in COUNTED {
-            let records = self.list::<Value>(bucket)?;
-            self.put("index_counts", bucket, &(records.len() as u64))?;
-            for (id, value) in records {
-                self.update_indexes(bucket, &id, Some(&value))?;
-            }
+            let mut count = 0u64;
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                count = count
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("Collection count overflow"))?;
+                self.update_indexes(bucket, &id, Some(&value))
+            })?;
+            self.put("index_counts", bucket, &count)?;
         }
         for bucket in ["access", "refresh"] {
-            for (id, value) in self.list::<Value>(bucket)? {
-                self.update_indexes(bucket, &id, Some(&value))?;
-            }
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                self.update_indexes(bucket, &id, Some(&value))
+            })?;
         }
         for bucket in QUEUES {
-            for (id, value) in self.list::<Value>(bucket)? {
-                self.update_queue_indexes(bucket, &id, None, Some(&value))?;
-            }
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                self.update_queue_indexes(bucket, &id, None, Some(&value))
+            })?;
         }
-        for (id, value) in self.list::<Value>("access_grants")? {
-            self.update_grant_index(&id, None, Some(&value))?;
-        }
-        for (id, group) in self.list::<crate::model::Group>("groups")? {
-            self.update_group_index(&id, None, Some(&group))?;
-        }
+        self.for_each_rebuild_page::<Value>("access_grants", check, |id, value| {
+            self.update_grant_index(&id, None, Some(&value))
+        })?;
+        self.for_each_rebuild_page::<crate::model::Group>("groups", check, |id, group| {
+            self.update_group_index(&id, None, Some(&group))
+        })?;
+        check()?;
         self.put("meta", "index_version", &INDEX_VERSION)?;
         Ok(())
+    }
+    fn for_each_rebuild_page<T: DeserializeOwned>(
+        &self,
+        bucket: &str,
+        check: &dyn Fn() -> Result<()>,
+        mut visit: impl FnMut(String, T) -> Result<()>,
+    ) -> Result<()> {
+        let mut after = None;
+        loop {
+            check()?;
+            let page = self.scan::<T>(bucket, after.as_deref(), REBUILD_PAGE)?;
+            if page.is_empty() {
+                return Ok(());
+            }
+            let last = page.last().unwrap().0.clone();
+            let complete = page.len() < REBUILD_PAGE;
+            for (id, value) in page {
+                visit(id, value)?;
+            }
+            if complete {
+                return Ok(());
+            }
+            after = Some(last);
+        }
     }
 }
