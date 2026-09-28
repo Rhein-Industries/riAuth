@@ -639,7 +639,16 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         digest.update([0]);
         digest.update(parts.uri.to_string());
         digest.update([0]);
-        if reviewed_removals {
+        // A receipt may replay before the resource precondition is checked.
+        // Bind the supplied validator without retaining its raw value in the
+        // receipt, audit record, or request logs. An absent header preserves
+        // the previous fingerprint for commands that do not use If-Match.
+        if let Some(value) = parts.headers.get("if-match") {
+            digest.update(b"\0if-match-v1\0");
+            digest.update((value.as_bytes().len() as u64).to_be_bytes());
+            digest.update(value.as_bytes());
+        }
+        if reviewed_removals || parts.headers.contains_key("if-match") {
             digest.update((body.len() as u64).to_be_bytes());
         }
         digest.update(&body);

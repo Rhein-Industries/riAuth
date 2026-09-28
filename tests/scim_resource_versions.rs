@@ -130,3 +130,48 @@ async fn scim_resource_versions_bind_effective_user_and_group_state() {
     assert!(f.core.scim_get(&token, "Users", &user_id).is_err());
     assert_ne!(f.core.scim_get(&token, "Groups", &group_id).unwrap()["meta"]["version"], latest_group_version);
 }
+
+#[tokio::test]
+async fn scim_idempotency_key_rejects_a_changed_resource_if_match() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-replay-agent".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write"]
+            .map(|action| Permission { action: action.into(), resource: "*".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::USER],"userName":"replay-user","active":true});
+    let (status, Some(initial_version), created) = request(&app, Method::POST, "/scim/v2/Users", &token, None, None, Some(&input)).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let id = text(&created, "id");
+    let path = format!("/scim/v2/Users/{id}");
+    let disable = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"active","value":false}]});
+    let enable = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"active","value":true}]});
+
+    let (status, Some(disabled_version), disabled) = request(&app, Method::PATCH, &path, &token, Some(&initial_version), Some("disable-key"), Some(&disable)).await else { panic!("patch must return an ETag") };
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(disabled["active"], false);
+    let (status, Some(enabled_version), enabled) = request(&app, Method::PATCH, &path, &token, Some(&disabled_version), Some("enable-key"), Some(&enable)).await else { panic!("patch must return an ETag") };
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(enabled["active"], true);
+    assert_ne!(enabled_version, initial_version);
+
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, Some(&enabled_version), Some("disable-key"), Some(&disable)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, None, Some("disable-key"), Some(&disable)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(f.core.scim_get(&token, "Users", &id).unwrap()["active"], true);
+
+    // Repeating the exact original request still returns its saved result.
+    let (status, replay_version, replay) = request(&app, Method::PATCH, &path, &token, Some(&initial_version), Some("disable-key"), Some(&disable)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay_version.as_deref(), Some(disabled_version.as_str()));
+    assert_eq!(replay, disabled);
+    assert_eq!(f.core.scim_get(&token, "Users", &id).unwrap()["active"], true);
+}
