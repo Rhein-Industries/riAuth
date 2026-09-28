@@ -1010,6 +1010,9 @@ pub(crate) fn create_user(
         UserRecord::Direct("user.create"),
         false,
     )?;
+    if actor.agent {
+        crate::delegation::mark_credential_exposure(tx, actor, &user)?;
+    }
     Ok(json!(UserView::from(&user)))
 }
 
@@ -1044,15 +1047,19 @@ pub(crate) fn update_user(
     if actor.agent && (user.admin || patch.admin == Some(true)) {
         return Err(Error::forbidden());
     }
-    if actor.delegated
+    if (actor.delegated || actor.agent)
         && (patch.password.is_some()
             || patch.reset_mfa
             || patch
                 .email
                 .as_ref()
-                .is_some_and(|email| previous.email.as_ref() != Some(email)))
+                .is_some_and(|email| previous.email.as_ref() != Some(email))
+            || actor.agent
+                && patch
+                    .email_verified
+                    .is_some_and(|verified| verified != previous.email_verified))
     {
-        crate::delegation::mark_support_exposure(tx, actor, &previous)?;
+        crate::delegation::mark_credential_exposure(tx, actor, &previous)?;
     }
     if let Some(password) = patch.password {
         if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
@@ -1293,6 +1300,7 @@ pub(crate) fn write_desired_user(
         subjects: Default::default(),
         recovery_codes: Default::default(),
     });
+    let exposure_baseline = user.clone();
     if password_change && spec.password_disabled {
         user.password_hash.clear();
     }
@@ -1351,6 +1359,17 @@ pub(crate) fn write_desired_user(
     user.admin = spec.admin;
     user.attributes = spec.attributes.clone();
     user.subjects = spec.subjects.clone();
+    if actor.agent
+        && !preview
+        && ((password_change && !spec.password_disabled)
+            || factor_change
+            || existing.as_ref().is_some_and(|previous| {
+                previous.email != user.email || previous.email_verified != user.email_verified
+            })
+            || existing.is_none() && user.email_verified)
+    {
+        crate::delegation::mark_credential_exposure(tx, actor, &exposure_baseline)?;
+    }
     write_user_record(tx, actor, existing.as_ref(), &user, UserRecord::Plan, false)?;
     Ok(Some(Change {
         resource,

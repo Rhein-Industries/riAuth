@@ -15,7 +15,7 @@ pub(crate) struct Pin {
 }
 
 fn exposure(tx: &Tx<'_>, account: &str) -> Result<Option<String>> {
-    crate::delegation::support_exposure(tx, account)?
+    crate::delegation::credential_exposure(tx, account)?
         .map(|value| {
             serde_json::to_string(&value)
                 .map(|value| digest(&value))

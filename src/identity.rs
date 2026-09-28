@@ -108,7 +108,7 @@ fn user_security_transition(
     let promoted = after.is_some_and(|user| before["admin"] == false && user["admin"] == true);
     if promoted
         && tx
-            .get::<Value>(crate::delegation::SUPPORT_EXPOSURE, user_id)?
+            .get::<Value>(crate::delegation::CREDENTIAL_EXPOSURE, user_id)?
             .is_some()
     {
         return Err(Error::conflict(

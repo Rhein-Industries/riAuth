@@ -14,45 +14,102 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 const BUCKET: &str = "human_grants";
-pub(crate) const SUPPORT_EXPOSURE: &str = "support_credential_exposure";
+// Keep the original bucket so exposure recorded before agents were covered
+// continues to block elevation after an upgrade or restore.
+pub(crate) const CREDENTIAL_EXPOSURE: &str = "support_credential_exposure";
 
-/// A help-desk actor may know a password, control a changed recovery address,
+/// A third-party operator may know a password, control a recovery address,
 /// or have removed the target's factors. Only recovery through the address
-/// verified before that first support change can clear this boundary remotely.
+/// verified before the first such change can clear this boundary remotely.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct SupportExposure {
+pub(crate) struct CredentialExposure {
     pub(crate) verified_email: Option<String>,
     pub(crate) actor_id: String,
     pub(crate) at: u64,
+    #[serde(default)]
+    original_address_stamp: Option<String>,
 }
 
-pub(crate) fn support_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<SupportExposure>> {
-    tx.get(SUPPORT_EXPOSURE, user_id)
+fn original_address_stamp(user: &User, email: &str) -> String {
+    digest(&format!(
+        "{}\0{}\0{}\0{email}",
+        user.id, user.created_at, user.pairwise_seed
+    ))
 }
 
-pub(crate) fn mark_support_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
-    if support_exposure(tx, &user.id)?.is_none() {
+impl CredentialExposure {
+    fn stamped_email(&self, user: &User) -> Option<&str> {
+        let email = self.verified_email.as_deref()?;
+        (self.original_address_stamp.as_deref()
+            == Some(original_address_stamp(user, email).as_str()))
+        .then_some(email)
+    }
+
+    /// New exposure rows attest the address present before the operator's
+    /// change. Old rows can recover remotely only while that address remains
+    /// the account's current verified address.
+    pub(crate) fn allows_recovery(&self, user: &User, email: &str) -> bool {
+        self.verified_email.as_deref() == Some(email)
+            && (user.email_verified && user.email.as_deref() == Some(email)
+                || self.stamped_email(user) == Some(email))
+    }
+
+    pub(crate) fn recovery_email(&self, user: &User) -> Option<String> {
+        if let Some(email) = self.stamped_email(user) {
+            return Some(email.to_owned());
+        }
+        if self.verified_email.is_some() && user.email_verified {
+            return user.email.clone();
+        }
+        None
+    }
+}
+
+pub(crate) fn credential_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<CredentialExposure>> {
+    tx.get(CREDENTIAL_EXPOSURE, user_id)
+}
+
+/// Called by every scoped third-party credential writer in its user mutation.
+/// A credential change after a human grant would immediately transfer that
+/// person's delegated authority to the operator, so it must be refused.
+pub(crate) fn mark_credential_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
+    if actor.id == user.id {
+        return Ok(());
+    }
+    if user.admin || !stored(tx, &user.id)?.is_empty() {
+        return Err(Error::forbidden());
+    }
+    if credential_exposure(tx, &user.id)?.is_none() {
+        let verified_email = user.email_verified.then(|| user.email.clone()).flatten();
         tx.put(
-            SUPPORT_EXPOSURE,
+            CREDENTIAL_EXPOSURE,
             &user.id,
-            &SupportExposure {
-                verified_email: user.email_verified.then(|| user.email.clone()).flatten(),
+            &CredentialExposure {
+                original_address_stamp: verified_email
+                    .as_deref()
+                    .map(|email| original_address_stamp(user, email)),
+                verified_email,
                 actor_id: actor.id.clone(),
                 at: now(),
             },
         )?;
     }
-    audit_for(
-        tx,
-        actor,
-        "delegation.support_exposure",
-        &user.id,
-        &format!("user/{}", user.username),
-    )
+    let scope = format!("user/{}", user.username);
+    if actor.agent {
+        audit_with_details(
+            tx,
+            &actor.id,
+            "agent.credential_exposure",
+            &user.id,
+            json!({"scope": scope}),
+        )
+    } else {
+        audit_for(tx, actor, "delegation.support_exposure", &user.id, &scope)
+    }
 }
 
 pub(crate) fn require_unexposed(tx: &Tx<'_>, user_id: &str) -> Result<()> {
-    if support_exposure(tx, user_id)?.is_some() {
+    if credential_exposure(tx, user_id)?.is_some() {
         Err(Error::conflict(
             "This account needs independent credential recovery before privilege elevation",
         ))

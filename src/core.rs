@@ -368,10 +368,10 @@ impl Core {
                 return Err(Error::conflict("Stop every riAuth process connected to this database before administrator recovery"));
             }
             let mut user = user_by_name(tx, username)?;
-            let support_exposed = crate::delegation::support_exposure(tx, &user.id)?.is_some();
-            if support_exposed && !reset_mfa {
+            let credential_exposed = crate::delegation::credential_exposure(tx, &user.id)?.is_some();
+            if credential_exposed && !reset_mfa {
                 return Err(Error::conflict(
-                    "Help-desk-exposed credentials require offline recovery with factor reset",
+                    "Operator-exposed credentials require offline recovery with factor reset",
                 ));
             }
             if user.password_hash.is_empty() && user.totp_secret.is_none() && !reset_mfa {
@@ -392,18 +392,20 @@ impl Core {
             user.epoch += 1;
             if reset_mfa {
                 crate::passkey::clear(tx, &user.id)?;
+                #[cfg(feature = "platform")]
+                crate::assembly::clear_user_binding(tx, &user.id)?;
                 user.has_passkeys = false;
                 user.recovery_codes.clear();
                 user.totp_secret = None;
                 user.totp_pending = None;
                 user.totp_last_step = None;
             }
-            if support_exposed {
-                // An address changed by support may be a recovery channel under
-                // the helper's control. The offline operator must re-establish it.
+            if credential_exposed {
+                // An address changed by a third-party operator may be under
+                // their control. The offline operator must re-establish it.
                 user.email = None;
                 user.email_verified = false;
-                tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
+                tx.delete(crate::delegation::CREDENTIAL_EXPOSURE, &user.id)?;
             }
             tx.put("users", &user.id, &user)?;
             crate::logout::queue_user(tx, &user.id)?;

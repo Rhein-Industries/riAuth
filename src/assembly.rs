@@ -13,6 +13,8 @@ mod keyring;
 mod logout;
 #[cfg(feature = "platform")]
 mod mtls;
+#[cfg(feature = "platform")]
+pub(crate) use mtls::clear_user_binding;
 mod oidc;
 pub(crate) mod passkey;
 mod password;

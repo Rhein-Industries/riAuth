@@ -218,21 +218,21 @@ fn reset_authority(tx: &Tx<'_>, hash: &str, proof: &Proof, at: u64) -> Result<Us
     let user: User = tx
         .get("users", &proof.user_id)?
         .ok_or_else(Error::forbidden)?;
-    let exposure = crate::delegation::support_exposure(tx, &user.id)?;
+    let exposure = crate::delegation::credential_exposure(tx, &user.id)?;
+    let address_matches = match &exposure {
+        Some(exposure) => exposure.allows_recovery(&user, &proof.email),
+        None => user.email_verified && user.email.as_deref() == Some(proof.email.as_str()),
+    };
     if proof.purpose != Purpose::Reset
         || proof.expires_at <= at
         || !user.enabled
-        || !user.email_verified
         || user.epoch != proof.epoch
-        || user.email.as_deref() != Some(proof.email.as_str())
+        || !address_matches
         || tx
             .get::<String>("account_latest", &proof_key(&user, Purpose::Reset))?
             .as_deref()
             != Some(hash)
         || crate::password::Kind::of(tx, &user)? != crate::password::Kind::Local
-        || exposure.as_ref().is_some_and(|exposure| {
-            exposure.verified_email.as_deref() != Some(proof.email.as_str())
-        })
     {
         return Err(Error::forbidden());
     }
@@ -242,17 +242,22 @@ fn reset_authority(tx: &Tx<'_>, hash: &str, proof: &Proof, at: u64) -> Result<Us
 /// Preserve assisted-recovery policy in both ordinary and workflow completion.
 /// Call only in the same writer after verifying the original recovery address.
 fn reset_exposed_factors(tx: &Tx<'_>, user: &mut User) -> Result<bool> {
-    if crate::delegation::support_exposure(tx, &user.id)?.is_none() {
+    let Some(exposure) = crate::delegation::credential_exposure(tx, &user.id)? else {
         return Ok(false);
-    }
+    };
+    let verified_email = exposure.verified_email.ok_or_else(Error::forbidden)?;
     crate::passkey::clear(tx, &user.id)?;
+    #[cfg(feature = "platform")]
+    crate::assembly::clear_user_binding(tx, &user.id)?;
+    user.email = Some(verified_email);
+    user.email_verified = true;
     user.has_passkeys = false;
     user.recovery_codes.clear();
     user.totp_secret = None;
     user.totp_pending = None;
     user.totp_last_step = None;
     user.totp_settings = Default::default();
-    tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
+    tx.delete(crate::delegation::CREDENTIAL_EXPOSURE, &user.id)?;
     Ok(true)
 }
 fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
@@ -611,10 +616,19 @@ impl Core {
                 };
                 // Only a local password can be recovered here. Directory, passkey-only and
                 // upstream-only accounts get the same answer and no local password.
-                if let Some(user) = user.filter(|u| u.enabled && u.email_verified)
+                if let Some(user) = user.filter(|u| u.enabled)
                     && crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local
                 {
-                    enqueue(self, tx, &user, Purpose::Reset, BTreeSet::new(), None)?;
+                    let recipient = match crate::delegation::credential_exposure(tx, &user.id)? {
+                        Some(exposure) => exposure.recovery_email(&user),
+                        None if user.email_verified => user.email.clone(),
+                        None => None,
+                    };
+                    if let Some(recipient) = recipient {
+                        let mut recovery_user = user;
+                        recovery_user.email = Some(recipient);
+                        enqueue(self, tx, &recovery_user, Purpose::Reset, BTreeSet::new(), None)?;
+                    }
                 }
             }
             Ok(json!({"accepted":true}))
@@ -770,7 +784,7 @@ impl Core {
             };
             let mut user = tx
                 .get::<User>("users", &proof.user_id)?
-                .filter(|u| u.epoch == proof.epoch && u.email.as_deref() == Some(&proof.email))
+                .filter(|u| u.epoch == proof.epoch)
                 .ok_or_else(|| {
                     Error::new(
                         StatusCode::CONFLICT,
@@ -778,6 +792,21 @@ impl Core {
                         "Account changed; request a new link",
                     )
                 })?;
+            let address_matches = if purpose == Purpose::Reset {
+                match crate::delegation::credential_exposure(tx, &user.id)? {
+                    Some(exposure) => exposure.allows_recovery(&user, &proof.email),
+                    None => user.email.as_deref() == Some(proof.email.as_str()),
+                }
+            } else {
+                user.email.as_deref() == Some(proof.email.as_str())
+            };
+            if !address_matches {
+                return Err(Error::new(
+                    StatusCode::CONFLICT,
+                    "account_changed",
+                    "Account changed; request a new link",
+                ));
+            }
             #[cfg(not(feature = "platform"))]
             let apply_password = |user: &mut User| -> Result<()> {
                 let hashed = password_hash
@@ -806,7 +835,7 @@ impl Core {
                 Purpose::Verify if user.enabled => user.email_verified = true,
                 // Ordinary reset keeps factors. A target exposed to help desk
                 // loses factors and must enroll fresh ones after this proof.
-                Purpose::Reset if user.enabled && user.email_verified && local => {
+                Purpose::Reset if user.enabled && local => {
                     reset_authority(tx, &hash, &proof, now())?;
                     #[cfg(feature = "platform")]
                     {

@@ -70,6 +70,17 @@ fn clear_binding(tx: &Tx<'_>, binding: &Binding) -> Result<()> {
     Ok(())
 }
 
+/// Assisted and offline recovery remove certificate sign-in authority too.
+pub(crate) fn clear_user_binding(tx: &Tx<'_>, user_id: &str) -> Result<()> {
+    if let Some(binding_id) = tx.get::<String>("mtls_users", user_id)?
+        && let Some(binding) = tx.get::<Binding>("mtls_bindings", &binding_id)?
+    {
+        end_binding_sessions(tx, &binding.id)?;
+        clear_binding(tx, &binding)?;
+    }
+    Ok(())
+}
+
 fn end_binding_sessions(tx: &Tx<'_>, binding_id: &str) -> Result<()> {
     for (id, mut session) in tx.list::<Session>("sessions")? {
         if session.revoked {
@@ -182,6 +193,9 @@ impl Core {
             {
                 return Ok(existing.view());
             }
+            if actor.agent {
+                crate::delegation::mark_credential_exposure(tx, &actor, &user)?;
+            }
             if let Some(existing) = &existing {
                 end_binding_sessions(tx, &existing.id)?;
                 clear_binding(tx, existing)?;
@@ -239,6 +253,9 @@ impl Core {
                 self.management(tx, token, "mtls.bind", &format!("user/{}", user.username))?;
             if actor.agent && user.admin {
                 return Err(Error::forbidden());
+            }
+            if actor.agent {
+                crate::delegation::mark_credential_exposure(tx, &actor, &user)?;
             }
             end_binding_sessions(tx, &binding.id)?;
             clear_binding(tx, &binding)?;

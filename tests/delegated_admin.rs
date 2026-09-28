@@ -10,9 +10,10 @@ use axum::{
 use common::{Fixture, PASSWORD};
 use http_body_util::BodyExt;
 use riauth::{
+    agent::{NewAgent, Permission},
     delegation::{GrantInput, HumanRole},
     lifecycle::{MailConfig, MailSecurity, Purpose},
-    model::{ClientPatch, User, UserPatch},
+    model::{ClientPatch, NewUser, User, UserPatch},
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -929,4 +930,270 @@ async fn help_desk_credentials_cannot_survive_admin_promotion_or_delegated_grant
         .unwrap()
         .to_owned();
     assert!(f.core.audit_events(&bob_session, 10).is_ok());
+}
+
+#[tokio::test]
+async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.user("bob");
+    f.core.config.mail = Some(MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: MailSecurity::Loopback,
+        username: None,
+        password_file: None,
+    });
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                email_verified: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let alice_id: String = f.core.store.get("usernames", "alice").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut alice = tx.get::<User>("users", &alice_id)?.unwrap();
+            alice.totp_secret = Some("JBSWY3DPEHPK3PXP".into());
+            alice.epoch += 1;
+            tx.put("users", &alice_id, &alice)
+        })
+        .unwrap();
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "alice-writer".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: ["alice", "newbie"]
+                    .map(|name| Permission {
+                        action: "user.write".into(),
+                        resource: format!("user/{name}"),
+                    })
+                    .into(),
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(f.core.clone());
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/bob",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({"password":"out-of-scope"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let planted = "agent-planted-password";
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({
+            "password": planted,
+            "reset_mfa": true,
+            "email": "agent@example.test",
+            "email_verified": true
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let planted_session = f
+        .core
+        .login("alice".into(), planted.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&f.admin),
+        None,
+        Some(revision(&f)),
+        Some(json!({"admin":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(f
+        .core
+        .set_human_grants(
+            &f.admin,
+            "alice",
+            vec![grant(HumanRole::Auditor, "audit/events")],
+        )
+        .is_err());
+    let exposure: Value = f
+        .core
+        .store
+        .get("support_credential_exposure", &alice_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(exposure["verified_email"], "alice@example.test");
+    assert_eq!(exposure["actor_id"], "agent:alice-writer");
+    assert!(f
+        .core
+        .store
+        .get::<User>("users", &alice_id)
+        .unwrap()
+        .unwrap()
+        .totp_secret
+        .is_none());
+    assert!(f
+        .core
+        .store
+        .list::<Value>("audit")
+        .unwrap()
+        .into_iter()
+        .any(|(_, event)| {
+            event["action"] == "agent.credential_exposure"
+                && event["actor"] == "agent:alice-writer"
+                && event["target"] == alice_id
+                && event["details"]["scope"] == "user/alice"
+        }));
+
+    f.core.account_reset_request("alice").unwrap();
+    let deliveries = f.core.store.list::<Value>("mail_deliveries").unwrap();
+    assert!(!deliveries
+        .iter()
+        .any(|(_, delivery)| delivery["recipient"] == "agent@example.test"));
+    let owner_mail = deliveries
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "alice@example.test")
+        .unwrap();
+    let code = owner_mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap()
+        .to_owned();
+    let fresh = "owner-independent-password";
+    assert_eq!(
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(fresh.into()))
+            .unwrap()["factors_reset"],
+        true
+    );
+    assert!(f
+        .core
+        .account_complete(code, Purpose::Reset, Some("replay-password".into()))
+        .is_err());
+    assert!(f.core.me(&planted_session).is_err());
+    assert!(f.core.login("alice".into(), planted.into(), None).is_err());
+    let recovered: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
+    assert_eq!(recovered.email.as_deref(), Some("alice@example.test"));
+    assert!(recovered.email_verified);
+    assert!(f
+        .core
+        .store
+        .get::<Value>("support_credential_exposure", &alice_id)
+        .unwrap()
+        .is_none());
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "alice",
+            vec![grant(HumanRole::Auditor, "audit/events")],
+        )
+        .unwrap();
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({"password":"post-grant-plant"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({"reset_mfa":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                admin: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let owner_session = f
+        .core
+        .login("alice".into(), fresh.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(f.core.me(&owner_session).unwrap()["user"]["admin"], true);
+
+    f.core
+        .create_user(
+            &agent,
+            NewUser {
+                username: "newbie".into(),
+                password: "agent-created-password".into(),
+                email: Some("newbie@example.test".into()),
+                display_name: "New User".into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+    assert!(f
+        .core
+        .update_user(
+            &f.admin,
+            "newbie",
+            UserPatch {
+                admin: Some(true),
+                ..Default::default()
+            },
+        )
+        .is_err());
+    assert!(f
+        .core
+        .set_human_grants(
+            &f.admin,
+            "newbie",
+            vec![grant(HumanRole::Auditor, "audit/events")],
+        )
+        .is_err());
+    let newbie_id: String = f.core.store.get("usernames", "newbie").unwrap().unwrap();
+    let exposure: Value = f
+        .core
+        .store
+        .get("support_credential_exposure", &newbie_id)
+        .unwrap()
+        .unwrap();
+    assert!(exposure["verified_email"].is_null());
 }

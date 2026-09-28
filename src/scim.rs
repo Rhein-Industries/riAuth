@@ -1269,6 +1269,7 @@ impl Core {
                 if user.admin {
                     return Err(Error::forbidden());
                 }
+                let exposure_baseline = user.clone();
                 let enabled = data
                     .get("active")
                     .map(|v| {
@@ -1284,12 +1285,16 @@ impl Core {
                     .to_owned();
                 validate_display(&display)?;
                 let email = read_email(&data)?;
-                if user.email != email {
+                let email_changed = user.email != email;
+                if email_changed {
                     user.email_verified = false;
                 }
                 user.email = email;
                 user.display_name = display;
                 let password = data.as_object_mut().unwrap().remove("password");
+                // A new passwordless SCIM identity has no verified recovery
+                // address or operator-known local credential to carry forward.
+                let credential_change = password.is_some() || existing.is_some() && email_changed;
                 let revoke = user.enabled != enabled || password.is_some();
                 user.enabled = enabled;
                 if let Some(password) = password {
@@ -1307,6 +1312,13 @@ impl Core {
                     )?;
                     user.password_hash = hashed;
                     tx.delete("credential_versions", &format!("user/{label}"))?;
+                }
+                if actor.agent && credential_change {
+                    crate::delegation::mark_credential_exposure(
+                        tx,
+                        &actor,
+                        &exposure_baseline,
+                    )?;
                 }
                 if revoke {
                     user.epoch += 1;
