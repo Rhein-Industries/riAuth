@@ -26,26 +26,41 @@ cmake -S .\windows\RiAuth.CredentialProvider -B .\build\credential-provider -A x
 cmake --build .\build\credential-provider --config Release
 ```
 
-Sign the executable, `RiAuth.CredentialProvider.dll`, and
-`Install-DeviceHost.ps1` with the same trusted Authenticode certificate. From an
-elevated 64-bit PowerShell 7 process on Windows, install using the certificate's
-40-hex-character thumbprint:
+Build a signed release on Windows with PowerShell 7 and a trusted code-signing
+certificate. The builder signs the host, provider, and installer with the same
+certificate, then signs a manifest containing their exact SHA-256 hashes. It
+publishes a four-file directory and a ZIP containing those same files:
 
 ```powershell
-.\windows\Install-DeviceHost.ps1 -Action Install -PackagePath .\publish\device-host\RiAuth.DeviceHost.exe -SignerThumbprint <thumbprint>
+$pin = '<40-hex release certificate thumbprint>'
+.\windows\New-DeviceHostBundle.ps1 -HostPath .\publish\device-host\RiAuth.DeviceHost.exe -ProviderPath .\build\credential-provider\Release\RiAuth.CredentialProvider.dll -InstallerPath .\windows\Install-DeviceHost.ps1 -OutputDirectory .\release-1.0.0 -ReleaseVersion 1.0.0 -SignerThumbprint $pin -TimestampServer http://<trusted-timestamp-service>
 ```
 
-The installer pins that signer under `HKLM:\SOFTWARE\RiAuth\DeviceHost`.
-After enrollment, register the provider with an update:
+Distribute the ZIP and the expected signer thumbprint through trusted release
+channels. Extract the ZIP to an empty directory. Check the installer's
+Authenticode signature **before executing it**; its own `Verify` action cannot
+protect against running a substituted script. From that directory, verify the
+complete bundle before install, then run the same signed installer as an
+elevated 64-bit PowerShell 7 administrator:
 
 ```powershell
-.\windows\Install-DeviceHost.ps1 -Action Update -PackagePath .\publish\device-host\RiAuth.DeviceHost.exe -CredentialProviderPath .\build\credential-provider\Release\RiAuth.CredentialProvider.dll
+$pin = '<40-hex release certificate thumbprint>'
+$sig = Get-AuthenticodeSignature -LiteralPath .\Install-DeviceHost.ps1
+if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint.ToUpperInvariant() -cne $pin) { throw 'Installer signature or signer mismatch' }
+.\Install-DeviceHost.ps1 -Action Verify -BundlePath . -SignerThumbprint $pin
+.\Install-DeviceHost.ps1 -Action Install -BundlePath . -SignerThumbprint $pin
 ```
 
-The same signed DLL can be supplied on first install. Updates verify signatures
-and stage both binaries with rollback. The provider is never installed unless
-`-CredentialProviderPath` is supplied. The script does not disable Windows
-system credential providers or install a service.
+Use the same external script-signature check before update or uninstall, with
+the pinned thumbprint from `HKLM:\SOFTWARE\RiAuth\DeviceHost`. The first install
+pins the signer and the signed host/provider hashes there. For updates, extract the new release to
+its own empty directory and run its installer with `-Action Update -BundlePath
+.`. Update verifies the pinned signer, manifest, hashes, current installation,
+and staged files before swapping binaries; it attempts rollback on failure.
+The bundle always includes the native provider. A prior signed installation
+without hash metadata, with or without the provider, requires
+`-AllowLegacySignedInstall` for an explicit migration. The script does not
+disable Windows system credential providers or install a service.
 
 ## Device lifecycle
 
@@ -84,9 +99,13 @@ sign-in route.
 administrator revoked the device elsewhere,
 `purge-local --confirm-remote-revoked` removes local state for recovery. Uninstall refuses
 while any file remains in the device state directory; revoke and clear state
-first, then run `Install-DeviceHost.ps1 -Action Uninstall` with the pinned signed
-script. Re-enrollment rotates the server secret and invalidates outstanding
-tickets. `enroll --replace` is required when local state already exists.
+first, then run `Install-DeviceHost.ps1 -Action Uninstall` from a release signed
+by the pinned signer. Re-enrollment rotates the server secret and invalidates
+outstanding tickets. `enroll --replace` is required when local state already
+exists.
+
+See [RECOVERY.md](RECOVERY.md) for connection, credential, revocation, failed
+update, and uninstall recovery steps.
 
 The local protocol invariant check is `dotnet run --project
 windows/RiAuth.DeviceHost -- selftest`. Windows signing, installer registration

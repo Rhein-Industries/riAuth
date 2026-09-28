@@ -24,9 +24,11 @@ cmake -S windows\RiAuth.CredentialProvider -B build\riauth-cp -A x64
 cmake --build build\riauth-cp --config Release
 ```
 
-Sign `RiAuth.CredentialProvider.dll` with the DeviceHost release signer and
-install it through `Install-DeviceHost.ps1` alongside the signed host. The
-installer owns COM registration and its removal. A credential provider DLL must
+Package `RiAuth.CredentialProvider.dll` with DeviceHost through
+[`New-DeviceHostBundle.ps1`](../New-DeviceHostBundle.ps1). The bundle builder
+signs the DLL, host, installer, and hash manifest with the selected release
+signer; [`Install-DeviceHost.ps1`](../Install-DeviceHost.ps1) verifies the
+complete bundle and owns COM registration and removal. A credential provider DLL must
 be tested in an isolated Windows VM before deployment: this repository has no
 Windows LogonUI, secure desktop, domain join, or hardware test environment.
 The local Windows password is still required; the server assertion alone is
