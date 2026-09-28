@@ -38,10 +38,17 @@ pub const CURRENT: Target = if cfg!(feature = "platform") {
 
 const PROVENANCE_KEY: &str = "edition_provenance";
 const PROVENANCE_VERSION: u32 = 1;
+const PROVENANCE_SAMPLES_PER_CATEGORY: usize = 4;
+const PROVENANCE_RESOURCE_BYTES: usize = 256;
+const PROVENANCE_REASON_BYTES: usize = 256;
+const PROVENANCE_OBSERVATION_LIMIT: usize = 256;
+const PROVENANCE_RECORD_BYTES: usize = 1024 * 1024;
+const PROVENANCE_CATEGORY_PREFIX: &str = "~category/";
+const PROVENANCE_SCAN_KEY: &str = "~store_scan";
 
-/// Sticky evidence of the edition that last opened this store and the exact
-/// Platform dependencies seen during its activations. Clearing this evidence
-/// requires a reviewed migration, never a configuration change or Core open.
+/// Sticky source edition and bounded samples or categories of Platform
+/// dependencies seen during activation. Retiring this evidence requires a
+/// reviewed migration, never a configuration change or Core open.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Provenance {
@@ -60,19 +67,144 @@ fn parse_provenance(value: Value) -> Result<Provenance> {
             record.schema_version
         )));
     }
-    Ok(record)
+    let mut bounded = Provenance {
+        schema_version: PROVENANCE_VERSION,
+        last_activated_edition: record.last_activated_edition,
+        platform_dependencies: BTreeMap::new(),
+    };
+    for (resource, reason) in record.platform_dependencies {
+        if resource == PROVENANCE_SCAN_KEY {
+            bounded.mark_scan_truncated();
+        } else if let Some(category) = resource.strip_prefix(PROVENANCE_CATEGORY_PREFIX) {
+            if provenance_category(category) == category {
+                bounded.mark_category_saturated(category);
+            } else {
+                bounded.observe(resource, reason);
+            }
+        } else {
+            bounded.observe(resource, reason);
+        }
+    }
+    bounded.validate_bounds()?;
+    Ok(bounded)
 }
 
-fn read_provenance(tx: &Tx<'_>) -> Result<Option<Provenance>> {
-    tx.get::<Value>("meta", PROVENANCE_KEY)?
-        .map(parse_provenance)
-        .transpose()
+fn provenance_category(resource: &str) -> &'static str {
+    let first = resource.split('/').next().unwrap_or("");
+    const SHARED: &[&str] = &[
+        "config",
+        "clients",
+        "registrations",
+        "sources",
+        "agents",
+        "meta",
+        "key_domains",
+        "sessions",
+        "reconciliation_jobs",
+        "reconciliation_schedules",
+    ];
+    SHARED
+        .iter()
+        .chain(PLATFORM_BUCKETS.iter())
+        .copied()
+        .find(|category| *category == first)
+        .unwrap_or("other")
+}
+
+fn bounded_reason(mut reason: String) -> String {
+    if reason.len() > PROVENANCE_REASON_BYTES {
+        let mut end = PROVENANCE_REASON_BYTES - 3;
+        while !reason.is_char_boundary(end) {
+            end -= 1;
+        }
+        reason.truncate(end);
+        reason.push_str("...");
+    }
+    reason
+}
+
+impl Provenance {
+    fn mark_category_saturated(&mut self, category: &str) {
+        self.platform_dependencies.insert(
+            format!("{PROVENANCE_CATEGORY_PREFIX}{category}"),
+            format!("Additional Platform dependencies in {category} have bounded identifier evidence; explicit migration required"),
+        );
+    }
+
+    fn mark_scan_truncated(&mut self) {
+        self.platform_dependencies.insert(
+            PROVENANCE_SCAN_KEY.to_owned(),
+            "Platform dependency observation reached its bound; explicit migration required"
+                .to_owned(),
+        );
+    }
+
+    fn observe(&mut self, resource: String, reason: String) {
+        if self.platform_dependencies.contains_key(&resource) {
+            return;
+        }
+        let category = provenance_category(&resource);
+        if resource.len() > PROVENANCE_RESOURCE_BYTES
+            || self
+                .platform_dependencies
+                .keys()
+                .filter(|name| {
+                    !name.starts_with(PROVENANCE_CATEGORY_PREFIX)
+                        && name.as_str() != PROVENANCE_SCAN_KEY
+                        && provenance_category(name) == category
+                })
+                .count()
+                >= PROVENANCE_SAMPLES_PER_CATEGORY
+        {
+            self.mark_category_saturated(category);
+        } else {
+            self.platform_dependencies
+                .entry(resource)
+                .or_insert_with(|| bounded_reason(reason));
+        }
+    }
+
+    fn validate_bounds(&self) -> Result<()> {
+        let mut counts = BTreeMap::new();
+        for (resource, reason) in &self.platform_dependencies {
+            if resource.len() > PROVENANCE_RESOURCE_BYTES || reason.len() > PROVENANCE_REASON_BYTES
+            {
+                return Err(Error::bad(
+                    "Stored edition provenance exceeds its record bound",
+                ));
+            }
+            if resource == PROVENANCE_SCAN_KEY {
+                continue;
+            }
+            if let Some(category) = resource.strip_prefix(PROVENANCE_CATEGORY_PREFIX) {
+                if provenance_category(category) == category {
+                    continue;
+                }
+            }
+            let count = counts
+                .entry(provenance_category(resource))
+                .or_insert(0usize);
+            *count += 1;
+            if *count > PROVENANCE_SAMPLES_PER_CATEGORY {
+                return Err(Error::bad(
+                    "Stored edition provenance exceeds its category bound",
+                ));
+            }
+        }
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > PROVENANCE_RECORD_BYTES {
+            return Err(Error::bad(
+                "Stored edition provenance exceeds its record bound",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Record successful activation in the same transaction as initialization, or
 /// immediately after an existing store passes the read-only startup gates.
 pub(crate) fn stamp_activation(config: &Config, tx: &Tx<'_>) -> Result<()> {
-    let previous = read_provenance(tx)?;
+    let stored = tx.get::<Value>("meta", PROVENANCE_KEY)?;
+    let previous = stored.clone().map(parse_provenance).transpose()?;
     if CURRENT == Target::Essentials
         && previous.as_ref().is_some_and(|record| {
             record.last_activated_edition == Target::Platform
@@ -90,20 +222,23 @@ pub(crate) fn stamp_activation(config: &Config, tx: &Tx<'_>) -> Result<()> {
     });
     next.last_activated_edition = CURRENT;
     if CURRENT == Target::Platform {
+        let observed = transition::current_store_blockers(
+            tx,
+            Target::Essentials,
+            PROVENANCE_OBSERVATION_LIMIT,
+        )?;
+        if observed.len() == PROVENANCE_OBSERVATION_LIMIT {
+            next.mark_scan_truncated();
+        }
         for issue in config_blockers(config, Target::Essentials)
             .into_iter()
-            .chain(transition::current_store_blockers(
-                tx,
-                Target::Essentials,
-                usize::MAX,
-            )?)
+            .chain(observed)
         {
-            next.platform_dependencies
-                .entry(issue.resource)
-                .or_insert(issue.reason);
+            next.observe(issue.resource, issue.reason);
         }
     }
-    if previous.as_ref() != Some(&next) {
+    next.validate_bounds()?;
+    if stored.as_ref() != Some(&serde_json::to_value(&next).map_err(Error::internal)?) {
         tx.put("meta", PROVENANCE_KEY, &next)?;
     }
     Ok(())

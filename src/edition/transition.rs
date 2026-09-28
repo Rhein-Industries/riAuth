@@ -103,10 +103,20 @@ pub(super) fn store_blockers(tx: &Tx<'_>, target: Target, limit: usize) -> Resul
         match parse_provenance(value) {
             Ok(record) if target == Target::Essentials => {
                 for (resource, reason) in record.platform_dependencies {
-                    issues.push(blocker(
-                        format!("provenance/{resource}"),
-                        format!("Recorded Platform dependency {resource}: {reason}; explicit migration required"),
-                    ));
+                    let (path, detail) = if resource == PROVENANCE_SCAN_KEY {
+                        ("provenance/store_scan".to_owned(), reason)
+                    } else if let Some(category) = resource.strip_prefix(PROVENANCE_CATEGORY_PREFIX)
+                    {
+                        (format!("provenance/{category}/*"), reason)
+                    } else {
+                        (
+                            format!("provenance/{resource}"),
+                            format!(
+                                "Recorded Platform dependency {resource}: {reason}; explicit migration required"
+                            ),
+                        )
+                    };
+                    issues.push(blocker(path, detail));
                     if issues.len() >= limit {
                         return Ok(issues);
                     }
@@ -128,6 +138,14 @@ pub(super) fn store_blockers(tx: &Tx<'_>, target: Target, limit: usize) -> Resul
                     return Ok(issues);
                 }
             }
+        }
+    } else if target == Target::Essentials {
+        issues.push(blocker(
+            "meta/edition_provenance",
+            "Initialized store has no edition provenance; source edition is unknown and explicit adoption or migration is required before Essentials activation",
+        ));
+        if issues.len() >= limit {
+            return Ok(issues);
         }
     }
     issues.extend(current_store_blockers(

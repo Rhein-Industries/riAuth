@@ -34,13 +34,25 @@ rerun the report immediately before switching, since it does not reserve the
 snapshot or perform migration or rollback.
 
 Core initialization and open persist `meta/edition_provenance`, including the
-last activated edition and the exact Platform-only configuration or record paths
-observed at Platform activation. The preflight reports that source edition and
-the retained paths. Essentials refuses a Platform source or recorded dependency
-before migration, even when current configuration or records no longer expose
-it. Platform activation only adds evidence; it never clears it or deletes the
-referenced records. Clearing the marker requires an explicit, reviewed edition
-migration after checking the referenced policy, authority, credentials and
+last activated edition and bounded evidence of Platform-only configuration or
+record paths observed at Platform activation. The preflight reports that source
+edition, sampled identifiers, and categories whose additional identifiers were
+omitted. A bounded observation scan records an explicit truncation blocker when
+it reaches its limit. The marker retains at most four identifiers per category
+and is limited to 1 MiB; a Platform open compacts an older unbounded marker
+within the same version-1 format so earlier binaries can still parse it.
+Essentials refuses a Platform source or recorded dependency before migration,
+even when current configuration or records no longer expose it.
+
+An initialized store without a marker has unknown source edition. Essentials
+refuses it before migration, including when no current Platform rows remain. A
+Platform open adopts an unmarked store as Platform. This is the safe rule for
+older default Platform installations; older Essentials stores also need an
+explicit, reviewed adoption path and cannot be silently claimed as Essentials.
+Platform activation preserves the source guard and accumulates bounded evidence;
+compaction replaces excess identifiers with category evidence. It never deletes
+referenced records. Retiring Platform provenance requires an
+explicit migration after checking policy, authority, credentials and the
 rollback plan. This preview does not yet provide that migration command.
 
 Both builds run `riauth`; install only one on a deployment. The local capability
