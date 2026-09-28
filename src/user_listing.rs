@@ -26,6 +26,8 @@ struct Cursor {
     authority: String,
     revision: u64,
     users_generation: u64,
+    #[serde(default)]
+    cursor_epoch: String,
     limit: usize,
     expires_at: u64,
     after: String,
@@ -61,6 +63,9 @@ impl Core {
             let users_generation = tx
                 .get::<u64>("user_listing_generation", "all")?
                 .unwrap_or(0);
+            let cursor_epoch = tx
+                .get::<String>("meta", "user_listing_cursor_epoch")?
+                .unwrap_or_default();
             let grant_generation = if actor.delegated {
                 tx.get::<u64>("human_grant_generations", &actor.id)?
                     .unwrap_or(0)
@@ -101,6 +106,7 @@ impl Core {
                 }
                 if cursor.revision != revision
                     || cursor.users_generation != users_generation
+                    || cursor.cursor_epoch != cursor_epoch
                     || cursor.authority != authority
                     || cursor.expires_at <= now()
                 {
@@ -148,6 +154,7 @@ impl Core {
                     authority,
                     revision,
                     users_generation,
+                    cursor_epoch,
                     limit,
                     expires_at: now() + CURSOR_TTL,
                     after: after.expect("a non-exhausted page examined a record"),

@@ -2,8 +2,10 @@
 //! Backend parity for database-native restores is in the shared contracts.
 mod common;
 
+use axum::http::StatusCode;
 use common::{Fixture, PASSWORD, text};
 use riauth::{
+    agent::{NewAgent, Permission},
     config::Config,
     core::Core,
     crypto,
@@ -373,6 +375,92 @@ fn every_storage_collection_has_a_restore_classification() {
             Some(recovery::Class::Invalidated)
         );
     }
+    assert_eq!(
+        recovery::classify("user_listing_generation"),
+        Some(recovery::Class::Retained)
+    );
+}
+
+#[test]
+fn repeated_snapshot_restore_cannot_resurrect_user_list_cursor() {
+    let f = Fixture::new();
+    f.user("alice");
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "restored-user-reader".into(),
+                ttl: 600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "user.read".into(),
+                    resource: "*".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let token = text(&agent["credential"], "token");
+    let generation: u64 = f
+        .core
+        .store
+        .get("user_listing_generation", "all")
+        .unwrap()
+        .unwrap();
+    let archive_dir = tempfile::tempdir().unwrap();
+    let archive = backup(&f, archive_dir.path());
+
+    let first_dir = tempfile::tempdir().unwrap();
+    let (first_result, first) = restore(first_dir.path(), &archive);
+    let first_recovery: Recovery =
+        serde_json::from_value(first_result["recovery"].clone()).unwrap();
+    recovery::complete(&first.store, &first_recovery.id, true).unwrap();
+    assert_eq!(
+        first
+            .store
+            .get::<u64>("user_listing_generation", "all")
+            .unwrap(),
+        Some(generation)
+    );
+    let first_revision: u64 = first.store.get("meta", "revision").unwrap().unwrap();
+    let first_epoch: String = first
+        .store
+        .get("meta", "user_listing_cursor_epoch")
+        .unwrap()
+        .unwrap();
+    let first_page = first.list_users_page(&token, 1, None).unwrap();
+    let old_cursor = text(&first_page, "next_cursor");
+
+    // The same snapshot recreates the same credential, revision and generation.
+    // Its recovery must still give a cursor from the earlier timeline HTTP 409.
+    let second_dir = tempfile::tempdir().unwrap();
+    let (second_result, second) = restore(second_dir.path(), &archive);
+    let second_recovery: Recovery =
+        serde_json::from_value(second_result["recovery"].clone()).unwrap();
+    recovery::complete(&second.store, &second_recovery.id, true).unwrap();
+    assert_eq!(
+        second.store.get::<u64>("meta", "revision").unwrap(),
+        Some(first_revision)
+    );
+    assert_eq!(
+        second
+            .store
+            .get::<u64>("user_listing_generation", "all")
+            .unwrap(),
+        Some(generation)
+    );
+    let second_epoch: String = second
+        .store
+        .get("meta", "user_listing_cursor_epoch")
+        .unwrap()
+        .unwrap();
+    assert_ne!(first_epoch, second_epoch);
+    let error = second
+        .list_users_page(&token, 1, Some(old_cursor))
+        .unwrap_err();
+    assert_eq!(error.status, StatusCode::CONFLICT);
+    assert!(error.message.contains("restart pagination"));
+    assert!(second.list_users_page(&token, 1, None).is_ok());
 }
 
 /// Paged RP-session logout and the in-place MFA enrollment proof. More live

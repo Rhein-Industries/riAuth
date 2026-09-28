@@ -167,6 +167,9 @@ const RETAINED: &[&str] = &[
     "scim_groups",
     "provisioning_links",
     "provisioning_user_generation",
+    // Keep the User-list change counter; rotate its cursor epoch below so a
+    // restored counter cannot make a cursor from an earlier timeline valid.
+    "user_listing_generation",
     "provisioning_link_generations",
     "audit",
     "schema_migrations",
@@ -393,6 +396,14 @@ pub(crate) fn invalidate(
     }
     let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
     tx.put("meta", "revision", &revision.saturating_add(STRIDE))?;
+    // Repeated restores of the same snapshot can reproduce both revision and
+    // User generation. A fresh epoch prevents a cursor from the first restored
+    // timeline being accepted on the next one.
+    tx.put(
+        "meta",
+        "user_listing_cursor_epoch",
+        &crypto::random_token(""),
+    )?;
     // A snapshot's lineage describes where it was taken, not where it now lives.
     tx.delete("meta", LINEAGE)?;
     let recovery = Recovery {
