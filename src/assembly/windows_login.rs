@@ -1,13 +1,15 @@
 //! Windows device reads over concrete storage and live authorization state.
 
 use crate::{
-    core::{Core, audit},
+    core::{Core, audit, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKETS},
     model::{Attempts, User},
     store::Tx,
-    windows_login::{invalid, mfa_required, offline_claims, rate_limited, secret_matches, view},
+    windows_login::{
+        self, invalid, mfa_required, offline_claims, rate_limited, secret_matches, view,
+    },
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
@@ -125,6 +127,48 @@ fn verify_reauth(core: &Core, tx: &Tx<'_>, user: &User, token: &str, at: u64) ->
 }
 
 impl Core {
+    pub fn windows_device_enroll(
+        &self,
+        token: &str,
+        input: windows_login::EnrollDevice,
+    ) -> Result<Value> {
+        let request = crate::management::WindowsDeviceEnrollment::new(input)?;
+        self.mutation(token, |tx| {
+            let written = crate::management::enroll_windows_device(self, tx, token, &request)?;
+            Ok(json!({
+                "device": view(&written.device),
+                "device_secret": written.secret,
+                "offline_ticket": written.offline.as_ref().map(|(ticket, _)| ticket),
+                "offline_expires_at": written.offline.as_ref().map(|(_, exp)| exp),
+            }))
+        })
+    }
+
+    pub fn windows_device_revoke(&self, token: &str, id: &str) -> Result<Value> {
+        validate_name(id)?;
+        self.mutation(token, |tx| {
+            let device = crate::management::revoke_windows_device(self, tx, token, id)?;
+            Ok(view(&device))
+        })
+    }
+
+    pub fn windows_login(&self, input: windows_login::WindowsLogin) -> Result<Value> {
+        let input = windows_login::prepare_login(input)?;
+        self.windows_login_write(
+            &input.device_id,
+            &input.username,
+            &input.device_secret,
+            input.password.as_deref().map(String::as_str),
+            input.otp.as_deref(),
+            input.reauth_session.as_deref(),
+        )
+    }
+
+    pub fn windows_ticket_redeem(&self, ticket: &str) -> Result<Value> {
+        let key = windows_login::ticket_key(ticket)?;
+        self.windows_ticket_redeem_write(&key)
+    }
+
     pub fn windows_devices(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;

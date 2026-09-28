@@ -1,10 +1,10 @@
 //! Windows local logon protocol. A credential provider calls these endpoints;
 //! this crate does not build, install, or test a Windows CP DLL.
 use crate::{
-    core::{Core, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     identity::windows_credentials::Device,
+    validation::validate_name,
 };
 use aws_lc_rs::hmac::{self, HMAC_SHA256};
 use axum::http::StatusCode;
@@ -222,73 +222,57 @@ pub(crate) fn offline_claims(device_secret: &str, ticket: &str) -> Result<Offlin
     Ok(claims)
 }
 
-impl Core {
-    pub fn windows_device_enroll(&self, token: &str, input: EnrollDevice) -> Result<Value> {
-        let request = crate::management::WindowsDeviceEnrollment::new(input)?;
-        self.mutation(token, |tx| {
-            let written = crate::management::enroll_windows_device(self, tx, token, &request)?;
-            Ok(json!({
-                "device": view(&written.device),
-                "device_secret": written.secret,
-                "offline_ticket": written.offline.as_ref().map(|(ticket, _)| ticket),
-                "offline_expires_at": written.offline.as_ref().map(|(_, exp)| exp),
-            }))
-        })
-    }
+pub(crate) struct PreparedLogin {
+    pub device_id: String,
+    pub username: String,
+    pub device_secret: Zeroizing<String>,
+    pub password: Option<Zeroizing<String>>,
+    pub otp: Option<String>,
+    pub reauth_session: Option<String>,
+}
 
-    pub fn windows_device_revoke(&self, token: &str, id: &str) -> Result<Value> {
-        validate_name(id)?;
-        self.mutation(token, |tx| {
-            let device = crate::management::revoke_windows_device(self, tx, token, id)?;
-            Ok(view(&device))
-        })
+pub(crate) fn prepare_login(input: WindowsLogin) -> Result<PreparedLogin> {
+    validate_name(&input.device_id)?;
+    validate_name(&input.username)?;
+    check_secret(&input.device_secret)?;
+    if input.otp.as_ref().is_some_and(|otp| otp.len() > 128) {
+        return Err(Error::bad("Invalid one-time code"));
     }
+    if input
+        .reauth_session
+        .as_ref()
+        .is_some_and(|token| token.len() > 512)
+    {
+        return Err(Error::bad("Invalid reauthentication session"));
+    }
+    let password = input.password.map(Zeroizing::new);
+    if password
+        .as_ref()
+        .is_some_and(|password| password.len() > 1024)
+    {
+        return Err(Error::bad("Invalid password"));
+    }
+    match (password.is_some(), input.reauth_session.is_some()) {
+        (true, false) | (false, true) => {}
+        _ => {
+            return Err(Error::bad(
+                "Provide a password or a reauthentication session, not both",
+            ));
+        }
+    }
+    Ok(PreparedLogin {
+        device_id: input.device_id,
+        username: input.username,
+        device_secret: Zeroizing::new(input.device_secret),
+        password,
+        otp: input.otp,
+        reauth_session: input.reauth_session,
+    })
+}
 
-    pub fn windows_login(&self, input: WindowsLogin) -> Result<Value> {
-        validate_name(&input.device_id)?;
-        validate_name(&input.username)?;
-        check_secret(&input.device_secret)?;
-        if input.otp.as_ref().is_some_and(|otp| otp.len() > 128) {
-            return Err(Error::bad("Invalid one-time code"));
-        }
-        if input
-            .reauth_session
-            .as_ref()
-            .is_some_and(|token| token.len() > 512)
-        {
-            return Err(Error::bad("Invalid reauthentication session"));
-        }
-        let password = input.password.map(Zeroizing::new);
-        if password
-            .as_ref()
-            .is_some_and(|password| password.len() > 1024)
-        {
-            return Err(Error::bad("Invalid password"));
-        }
-        match (password.is_some(), input.reauth_session.is_some()) {
-            (true, false) | (false, true) => {}
-            _ => {
-                return Err(Error::bad(
-                    "Provide a password or a reauthentication session, not both",
-                ));
-            }
-        }
-        let device_secret = Zeroizing::new(input.device_secret);
-        self.windows_login_write(
-            &input.device_id,
-            &input.username,
-            &device_secret,
-            password.as_deref().map(String::as_str),
-            input.otp.as_deref(),
-            input.reauth_session.as_deref(),
-        )
+pub(crate) fn ticket_key(ticket: &str) -> Result<String> {
+    if !ticket.starts_with("ri_winticket_") || ticket.len() > 128 {
+        return Err(invalid());
     }
-
-    pub fn windows_ticket_redeem(&self, ticket: &str) -> Result<Value> {
-        if !ticket.starts_with("ri_winticket_") || ticket.len() > 128 {
-            return Err(invalid());
-        }
-        let key = digest(ticket);
-        self.windows_ticket_redeem_write(&key)
-    }
+    Ok(digest(ticket))
 }
