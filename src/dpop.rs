@@ -5,11 +5,20 @@ use crate::{
     jose::PublicJwk,
     model::{Client, Grant},
     oidc::TokenRequest,
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{Algorithm, Validation};
 use serde_json::{Value, json};
+
+/// Persisted values DPoP verification needs from one transaction.
+///
+/// The replay lookup and insert must use the caller's transaction so a failed
+/// token or resource operation cannot leave a consumed proof behind.
+pub trait DpopTx {
+    fn primary_issuer(&self) -> Result<Option<String>>;
+    fn replay_expiry(&self, proof_id: &str) -> Result<Option<u64>>;
+    fn record_replay(&self, proof_id: &str, expires_at: u64) -> Result<()>;
+}
 
 fn invalid() -> Error {
     Error::oauth(
@@ -31,7 +40,7 @@ pub fn thumbprint(key: &PublicJwk) -> Result<String> {
 }
 
 pub fn verify(
-    tx: &Tx<'_>,
+    tx: &impl DpopTx,
     proof: &str,
     method: &str,
     endpoint: &str,
@@ -109,18 +118,15 @@ pub fn verify(
     }
     let jkt = thumbprint(&key)?;
     let replay = digest(&format!("{jkt}\0{jti}"));
-    if tx
-        .get::<u64>("dpop_replays", &replay)?
-        .is_some_and(|exp| exp > now())
-    {
+    if tx.replay_expiry(&replay)?.is_some_and(|exp| exp > now()) {
         return Err(invalid());
     }
-    tx.put("dpop_replays", &replay, &(now() + 120))?;
+    tx.record_replay(&replay, now() + 120)?;
     Ok(jkt)
 }
 
 pub fn bind(
-    tx: &Tx<'_>,
+    tx: &impl DpopTx,
     client: &Client,
     request: &TokenRequest,
     grant: &mut Grant,
@@ -131,7 +137,7 @@ pub fn bind(
 
 /// Bind using the combined DPoP policies of every supplied client (e.g. exchange requester + target).
 pub fn bind_clients(
-    tx: &Tx<'_>,
+    tx: &impl DpopTx,
     clients: &[&Client],
     request: &TokenRequest,
     grant: &mut Grant,
@@ -152,7 +158,7 @@ pub fn bind_clients(
         }
         return Ok(());
     };
-    let issuer = tx.get::<String>("meta", "issuer")?.ok_or_else(invalid)?;
+    let issuer = tx.primary_issuer()?.ok_or_else(invalid)?;
     let jkt = verify(
         tx,
         proof,
@@ -185,7 +191,7 @@ pub fn bind_clients(
 }
 
 pub fn resource(
-    tx: &Tx<'_>,
+    tx: &impl DpopTx,
     grant: &Grant,
     proof: Option<&str>,
     token: &str,

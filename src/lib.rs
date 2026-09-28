@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 pub mod agent;
 pub mod api;
+mod assembly;
 pub mod assurance;
 pub mod authenticator;
 pub mod authorization;

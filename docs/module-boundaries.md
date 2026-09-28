@@ -408,3 +408,32 @@ management's direct Core/storage use, and API/server and client coupling to
 Core. Separate crate contracts and both distribution assemblies remain to be
 established. The source checker counts explicit crate-root references; it does
 not prove dependency acyclicity or runtime behavior.
+
+## Wave 8: DPoP replay persistence port
+
+[dpop.rs](../src/dpop.rs) now declares the three transaction operations it
+needs: read the primary issuer, read a proof's replay expiry, and record that
+proof's expiry. The concrete [server assembly](../src/assembly.rs) implements
+this port for storage's `Tx`. DPoP proof verification and token/resource
+binding no longer import `store::Tx`; every caller still passes its existing
+transaction. Replay lookup and insertion therefore retain their original
+atomicity and error behavior. The `meta/issuer` and `dpop_replays` records,
+expiry windows and proof checks are unchanged.
+
+The graph before this cut covered 100 Rust files; the assembly adapter makes
+it 101. The checker now guards DPoP's direct storage reference count and zero
+storage references to protocol or assembly modules.
+
+| Explicit source edge | Before | Wave 8 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 32 | 31 |
+| `server_assembly -> protocol` | 0 | 1 |
+| `server_assembly -> storage` | 0 | 1 |
+| `storage -> protocol` | 0 | 0 |
+| `storage -> identity` | 1 | 1 |
+
+The storage-to-identity transition hook remains, along with 31 protocol files
+that name storage directly, the model's embedded protocol types, and the
+management, API/server and client coupling described above. The new port is
+an intra-crate seam; it does not by itself establish independently compiled
+components or both distribution assemblies.

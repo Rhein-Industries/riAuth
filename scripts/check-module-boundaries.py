@@ -22,6 +22,7 @@ MANAGEMENT = {
 API_SERVER = {"api"}
 CLIENT = {"cli", "main"}
 STORAGE = {"store", "postgres_store"}
+SERVER_ASSEMBLY = {"assembly"}
 PROTOCOL = {
     "assurance", "authenticator", "authorization", "browser", "claims",
     "cloud_directory", "device_trust", "directory", "dpop", "event_map",
@@ -31,7 +32,7 @@ PROTOCOL = {
     "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
 }
 IDENTITY_ALLOWED = {"crypto", "error", "model", "identity"}
-STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf"}
+STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf", "assembly"}
 MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost", "jose", "encryption"}
 MODEL_CONFIG_LEGACY = {
     "jose": {"ClientAuthMethod", "MachineTrust"},
@@ -108,6 +109,8 @@ def group(module: str) -> str:
         return "model"
     if module in STORAGE:
         return "storage"
+    if module in SERVER_ASSEMBLY:
+        return "server_assembly"
     if module in MANAGEMENT:
         return "management"
     if module in API_SERVER:
@@ -232,6 +235,10 @@ def main() -> None:
                 errors.append(f"{path.relative_to(ROOT)}: identity implements Core")
         if source_group == "storage" and refs & STORAGE_FORBIDDEN:
             errors.append(f"{path.relative_to(ROOT)}: storage refers to {sorted(refs & STORAGE_FORBIDDEN)}")
+        if source_group == "storage" and refs & PROTOCOL:
+            errors.append(f"{path.relative_to(ROOT)}: storage refers to protocol {sorted(refs & PROTOCOL)}")
+        if source_module == "dpop" and refs & STORAGE:
+            errors.append(f"{path.relative_to(ROOT)}: DPoP refers directly to storage")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
             errors.append(f"{path.relative_to(ROOT)}: model refers to {sorted(refs & MODEL_FORBIDDEN)}")
         if source_group == "model":
@@ -265,6 +272,14 @@ def main() -> None:
             "storage_adapter_reference_files": sum(
                 bool(references(path) & STORAGE_FORBIDDEN)
                 for path in paths if group(root_module(path)) == "storage"
+            ),
+            "storage_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
+                for path in paths if group(root_module(path)) == "storage"
+            ),
+            "dpop_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "dpop"
             ),
             "model_adapter_reference_files": sum(
                 bool(references(path) & MODEL_FORBIDDEN)
