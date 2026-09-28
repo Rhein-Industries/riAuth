@@ -12,6 +12,7 @@
     offline_access: "Stay connected while you're away"
   };
   let code = null, review = null, screen = "loading", reauthenticate = false;
+  let decisionKeys = {};
   let sequence = 0, authBusy = false, decisionBusy = false;
 
   function unavailable(message) {
@@ -122,6 +123,7 @@
       return;
     }
     review = data;
+    decisionKeys = {};
     code = normalize(data.user_code);
     $("device-code").value = code;
     $("device-review-code").textContent = code;
@@ -276,8 +278,11 @@
       clearError("device-review-error");
       const requested = code;
       const sessionRef = review.session_ref;
+      const choice = approve ? "approve" : "deny";
+      decisionKeys[choice] ||= crypto.randomUUID();
       try {
-        await RiAuth.post("api/device/browser/decision", { user_code: requested, approve, session_ref: sessionRef });
+        await RiAuth.post("api/device/browser/decision", { user_code: requested, approve, session_ref: sessionRef },
+          { key: decisionKeys[choice], retry: true });
         finished(approve ? "Device approved" : "Request rejected", approve
           ? "You can return to your device. It will finish signing in shortly."
           : "The device was not allowed to sign in. You can close this page.");

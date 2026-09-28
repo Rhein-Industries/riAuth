@@ -4,6 +4,7 @@ use crate::{
     core::{Core, audit, groups_for},
     crypto::{self, digest, now},
     error::{Error, Result},
+    management::{DeviceDecisionAuthority, decide_device, device_approval_policy},
     model::*,
     oidc::{
         Authorization, OidcTx, TokenRequest, DEVICE_GRANT, authenticate_client,
@@ -982,7 +983,7 @@ impl Core {
             let client = get_client(tx, &device.client_id)?;
             let user = self.identity_user(tx, &session.identity)?;
             let stale = device_authentication_stale(&session);
-            let approval_allowed = match self.device_approval_policy(tx, &client, &device, &session)
+            let approval_allowed = match device_approval_policy(self, tx, &client, &device, &session)
             {
                 Ok(()) => !stale,
                 Err(error) if error.status.is_server_error() => return Err(error),
@@ -1007,8 +1008,13 @@ impl Core {
     }
     pub fn device_decide(&self, token: &str, user_code: &str, approve: bool) -> Result<Value> {
         self.store.write(|tx| {
-            let (_, session) = self.session(tx, token)?;
-            self.device_decide_in(tx, &session, user_code, approve, None)
+            decide_device(
+                self,
+                tx,
+                DeviceDecisionAuthority::Bearer { token },
+                user_code,
+                approve,
+            )
         })
     }
     pub fn device_browser_decide(
@@ -1019,86 +1025,17 @@ impl Core {
         session_ref: &str,
     ) -> Result<Value> {
         self.store.write(|tx| {
-            let session = self
-                .browser_session(tx, sso)?
-                .ok_or_else(Error::unauthorized)?;
-            self.device_decide_in(tx, &session, user_code, approve, Some(session_ref))
+            decide_device(
+                self,
+                tx,
+                DeviceDecisionAuthority::Browser {
+                    cookie: sso,
+                    session_ref,
+                },
+                user_code,
+                approve,
+            )
         })
-    }
-    fn device_decide_in(
-        &self,
-        tx: &Tx<'_>,
-        session: &Session,
-        user_code: &str,
-        approve: bool,
-        review: Option<&str>,
-    ) -> Result<Value> {
-        let (key, mut device) = lookup_device(tx, user_code)?;
-        if !matches!(device.status, DeviceStatus::Pending) {
-            return Err(Error::conflict("Device request already decided"));
-        }
-        if let Some(review) = review
-            && !crypto::constant_eq(review, &crate::signin::session_ref(&key, &session.id))
-        {
-            return Err(Error::new(
-                StatusCode::CONFLICT,
-                "account_changed",
-                "Review this device request again with the current account",
-            ));
-        }
-        let client = get_client(tx, &device.client_id)?;
-        if approve {
-            if device_authentication_stale(session) {
-                return Err(Error::new(
-                    StatusCode::FORBIDDEN,
-                    "reauthentication_required",
-                    "Sign in again before approving this device request",
-                ));
-            }
-            self.device_approval_policy(tx, &client, &device, session)?;
-            device.status = DeviceStatus::Approved(session.identity.clone());
-        } else {
-            device.status = DeviceStatus::Denied;
-        }
-        tx.put("devices", &key, &device)?;
-        audit(
-            tx,
-            &session.identity.user_id,
-            if approve {
-                "device.approved"
-            } else {
-                "device.denied"
-            },
-            &device.client_id,
-        )?;
-        Ok(json!({"approved": approve}))
-    }
-    fn device_approval_policy(
-        &self,
-        tx: &Tx<'_>,
-        client: &Client,
-        device: &Device,
-        session: &Session,
-    ) -> Result<()> {
-        let user = self.authorize_identity(tx, client, &session.identity)?;
-        if !device.scopes.is_subset(&client.scopes) {
-            return Err(Error::forbidden());
-        }
-        crate::claims::enforce(tx, client, &user, &session.identity, &device.scopes)?;
-        let claims = crate::claims::mapped_claims_for_identity(
-            tx,
-            &user,
-            client,
-            &device.scopes,
-            &session.identity,
-        )?;
-        crate::assurance::enforce(
-            client,
-            &session.identity,
-            None,
-            &Default::default(),
-            &claims,
-        )
     }
     pub fn token(&self, request: TokenRequest) -> Result<Value> {
         if request.audience.is_some() && request.grant_type != crate::exchange::TOKEN_EXCHANGE {

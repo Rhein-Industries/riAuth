@@ -16,10 +16,13 @@
 //! Consent withdrawal has a receipt bound to the live caller session and channel.
 //! Consent creation accepts only an issued OAuth approval or a decided SAML
 //! resume; their protocol adapters retain request-bound proof checks.
+//! Device approval and denial bind a live session and browser review proof;
+//! scoped receipts replay an exact decision after device-code redemption.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
 mod consents;
+mod devices;
 pub(crate) mod grants;
 mod client_creation;
 mod client_policy;
@@ -29,6 +32,7 @@ mod source_links;
 pub(crate) use consents::{
     ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
 };
+pub(crate) use devices::{DeviceDecisionAuthority, decide_device, device_approval_policy};
 pub(crate) use sessions::{RevokeIntent, revoke_sessions};
 pub(crate) use source_links::{SourceLinkAuthority, write_source_link};
 
