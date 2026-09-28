@@ -822,11 +822,12 @@ fn claim_dictionary(expression: &str) -> Option<Vec<(&str, ClaimValue)>> {
     Some(claims)
 }
 
-/// An escaped or computed dictionary key can evaluate to `sub` even when its source text does not
-/// spell it. Keep these keys, and literal `sub` keys in otherwise unrecognized mappings, out of
-/// the manual translation path: acknowledging a mapping ID cannot preserve subject continuity.
-fn may_return_sub_claim(expression: &str) -> bool {
-    fn skip_gap(bytes: &[u8], at: &mut usize) {
+/// Prove that every emitted claim key is a plain, unescaped string other than `sub`. A mapping
+/// with a computed key, dictionary expansion, wrapper call, another return path or unknown source
+/// cannot be waived as a manual translation. Values may be custom Python: they cannot change the
+/// keys of the returned literal dictionary, so those mappings can still receive manual review.
+fn subject_safe_dictionary(expression: &str) -> bool {
+    fn skip_trivia(bytes: &[u8], at: &mut usize) {
         loop {
             match bytes.get(*at) {
                 Some(b' ' | b'\t' | b'\r' | b'\n') => *at += 1,
@@ -840,120 +841,140 @@ fn may_return_sub_claim(expression: &str) -> bool {
         }
     }
 
+    // Quoted strings in values and in earlier statements only need to be skipped. For keys,
+    // the caller also rejects escapes; no Python string decoding is assumed.
+    fn string<'a>(bytes: &'a [u8], at: &mut usize) -> Option<(&'a [u8], bool)> {
+        let quote = *bytes.get(*at)?;
+        if !matches!(quote, b'"' | b'\'')
+            || (*at > 0 && (bytes[*at - 1].is_ascii_alphanumeric() || bytes[*at - 1] == b'_'))
+            || bytes.get(*at + 1) == Some(&quote) && bytes.get(*at + 2) == Some(&quote)
+        {
+            return None;
+        }
+        *at += 1;
+        let start = *at;
+        let mut escaped = false;
+        while *at < bytes.len() {
+            match bytes[*at] {
+                b'\\' => {
+                    escaped = true;
+                    *at = (*at + 2).min(bytes.len());
+                }
+                b if b == quote => {
+                    let content = &bytes[start..*at];
+                    *at += 1;
+                    return Some((content, escaped));
+                }
+                b'\n' => return None,
+                _ => *at += 1,
+            }
+        }
+        None
+    }
+
     let bytes = expression.as_bytes();
     let mut at = 0;
+    let mut after_return = None;
     while at < bytes.len() {
-        match bytes[at] {
-            b'#' => {
-                while at < bytes.len() && bytes[at] != b'\n' {
-                    at += 1;
+        skip_trivia(bytes, &mut at);
+        match bytes.get(at) {
+            None => break,
+            Some(b'"' | b'\'') => {
+                if string(bytes, &mut at).is_none() {
+                    return false;
                 }
             }
-            b'"' | b'\'' => {
-                let mut spelling = Vec::new();
-                let mut escaped = false;
-                let mut dynamic = false;
-                loop {
-                    dynamic |= at > 0 && matches!(bytes[at - 1], b'f' | b'F')
-                        || at > 1
-                            && matches!(bytes[at - 2], b'f' | b'F')
-                            && matches!(bytes[at - 1], b'r' | b'R');
-                    let quote = bytes[at];
-                    let width = if bytes.get(at + 1) == Some(&quote)
-                        && bytes.get(at + 2) == Some(&quote)
-                    {
-                        3
-                    } else {
-                        1
-                    };
-                    at += width;
-                    let start = at;
-                    while at < bytes.len() {
-                        if bytes[at] == b'\\' {
-                            escaped = true;
-                            at = (at + 2).min(bytes.len());
-                        } else if bytes[at] == quote
-                            && (width == 1
-                                || (bytes.get(at + 1) == Some(&quote)
-                                    && bytes.get(at + 2) == Some(&quote)))
-                        {
-                            break;
-                        } else {
-                            at += 1;
-                        }
-                    }
-                    if at == bytes.len() {
-                        return false;
-                    }
-                    spelling.extend_from_slice(&bytes[start..at]);
-                    at += width;
-                    skip_gap(bytes, &mut at);
-                    if matches!(bytes.get(at), Some(b'"' | b'\'')) {
-                        continue;
-                    }
-                    // Python also concatenates literal fragments joined with `+` at runtime.
-                    if bytes.get(at) == Some(&b'+') {
-                        let mut next = at + 1;
-                        skip_gap(bytes, &mut next);
-                        if matches!(bytes.get(next), Some(b'"' | b'\'')) {
-                            at = next;
-                            continue;
-                        }
-                    }
-                    break;
-                }
-                let key_position = bytes.get(at) == Some(&b':')
-                    || (bytes.get(at) == Some(&b']') && {
-                        let mut next = at + 1;
-                        skip_gap(bytes, &mut next);
-                        bytes.get(next) == Some(&b':')
-                            || bytes.get(next) == Some(&b'=')
-                                && bytes.get(next + 1) != Some(&b'=')
-                    });
-                if key_position && (spelling == b"sub" || escaped || dynamic) {
-                    return true;
-                }
-            }
-            b if b.is_ascii_alphabetic() || b == b'_' => {
+            Some(b) if b.is_ascii_alphabetic() || *b == b'_' => {
                 let start = at;
                 while at < bytes.len()
                     && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_')
                 {
                     at += 1;
                 }
-                if &bytes[start..at] == b"sub" {
-                    let mut next = at;
-                    skip_gap(bytes, &mut next);
-                    let mut before = start;
-                    while before > 0 && bytes[before - 1].is_ascii_whitespace() {
-                        before -= 1;
-                    }
-                    let dict_argument = if before > 0 && bytes[before - 1] == b'(' {
-                        let mut end = before - 1;
-                        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
-                            end -= 1;
-                        }
-                        let mut start = end;
-                        while start > 0 && bytes[start - 1].is_ascii_alphabetic() {
-                            start -= 1;
-                        }
-                        &bytes[start..end] == b"dict"
-                    } else {
-                        false
-                    };
-                    if bytes.get(next) == Some(&b':')
-                        || (dict_argument
-                            && bytes.get(next) == Some(&b'=')
-                            && bytes.get(next + 1) != Some(&b'='))
-                    {
-                        return true;
+                if &bytes[start..at] == b"return" {
+                    if after_return.replace(at).is_some() {
+                        return false;
                     }
                 }
             }
-            _ => at += 1,
+            Some(b'\\') => return false,
+            Some(_) => at += 1,
         }
     }
-    false
+    let Some(mut at) = after_return else {
+        return false;
+    };
+    skip_trivia(bytes, &mut at);
+    if bytes.get(at) != Some(&b'{') {
+        return false;
+    }
+    at += 1;
+    'dictionary: loop {
+        skip_trivia(bytes, &mut at);
+        if bytes.get(at) == Some(&b'}') {
+            at += 1;
+            break;
+        }
+        if !matches!(bytes.get(at), Some(b'"' | b'\'')) {
+            return false;
+        }
+        let Some((key, escaped)) = string(bytes, &mut at) else {
+            return false;
+        };
+        if escaped || key == b"sub" {
+            return false;
+        }
+        skip_trivia(bytes, &mut at);
+        if bytes.get(at) != Some(&b':') {
+            return false;
+        }
+        at += 1;
+        let mut closing = Vec::new();
+        let mut value_seen = false;
+        loop {
+            skip_trivia(bytes, &mut at);
+            match bytes.get(at) {
+                None | Some(b'\\') => return false,
+                Some(b'"' | b'\'') => {
+                    if string(bytes, &mut at).is_none() {
+                        return false;
+                    }
+                    value_seen = true;
+                }
+                Some(b'(' | b'[' | b'{') => {
+                    closing.push(match bytes[at] {
+                        b'(' => b')',
+                        b'[' => b']',
+                        _ => b'}',
+                    });
+                    value_seen = true;
+                    at += 1;
+                }
+                Some(b')' | b']' | b'}') if !closing.is_empty() => {
+                    if closing.pop() != Some(bytes[at]) {
+                        return false;
+                    }
+                    at += 1;
+                }
+                Some(b',') if closing.is_empty() && value_seen => {
+                    at += 1;
+                    break;
+                }
+                Some(b'}') if closing.is_empty() && value_seen => {
+                    at += 1;
+                    break 'dictionary;
+                }
+                Some(b';') if closing.is_empty() => return false,
+                Some(b) if !matches!(b, b' ' | b'\t' | b'\r' | b'\n') => {
+                    value_seen = true;
+                    at += 1;
+                }
+                Some(_) => at += 1,
+            }
+        }
+    }
+    skip_trivia(bytes, &mut at);
+    at == bytes.len()
 }
 
 /// Whether each exported value reads the same in riAuth for every converted account.
@@ -982,14 +1003,6 @@ fn scope_claims(
 ) -> std::result::Result<Vec<crate::model::claims::ClaimMapping>, (Classification, String)> {
     use crate::model::claims::{ClaimMapping, ClaimSource};
     let manual = |reason: String| Err((Classification::Manual, reason));
-    if may_return_sub_claim(expression) {
-        return Err((
-            Classification::Unsupported,
-            format!(
-                "Scope mapping {name} may return sub through a literal, escaped or computed key, which would change subjects this client issues"
-            ),
-        ));
-    }
     if scope.starts_with("goauthentik.io/") {
         return manual(format!(
             "Scope mapping {name} grants scope {scope}, access to Authentik's own API or client registration, which riAuth does not provide"
@@ -2313,8 +2326,15 @@ pub fn convert(input: Import) -> Result<Value> {
             }
             let outcome = match scope_mappings.get(mapping) {
                 None => Err((
-                    Classification::Manual,
-                    "Mapping expressions are never executed or assumed equivalent".to_owned(),
+                    Classification::Unsupported,
+                    "The mapping source is unavailable, so subject continuity cannot be proved"
+                        .to_owned(),
+                )),
+                Some((name, _, expression)) if !subject_safe_dictionary(expression) => Err((
+                    Classification::Unsupported,
+                    format!(
+                        "Scope mapping {name} does not have a provably sub-free literal dictionary return"
+                    ),
                 )),
                 Some((name, scope, _)) if per_scope[scope] > 1 => Err((
                     Classification::Manual,
@@ -2374,8 +2394,8 @@ pub fn convert(input: Import) -> Result<Value> {
                 }
                 Err((Classification::Unsupported, reason)) => {
                     p.add(ItemKind::PropertyMapping, id, Classification::Unsupported, reason,
-                        "Remove the sub claim from the mapping in Authentik, or plan an explicit relying-party account migration; translated_mapping_ids cannot clear it")
-                        .block(format!("{cid}: property mapping {mapping} would change subjects"));
+                        "Replace it in Authentik with a provably sub-free literal dictionary return, or plan an explicit relying-party account migration; translated_mapping_ids cannot clear it")
+                        .block(format!("{cid}: property mapping {mapping} may change subjects"));
                 }
                 Err((classification, reason)) => {
                     let item = p.add(ItemKind::PropertyMapping, id, classification, reason,

@@ -2522,7 +2522,7 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
         ("subject/m-sub", vec![(Unsupported, true)]),
         ("authentik/m-api", vec![(Manual, true)]),
         ("authentik/m-entitlements", vec![(Manual, true)]),
-        ("authentik/m-profile-main", vec![(Manual, true)]),
+        ("authentik/m-profile-main", vec![(Unsupported, true)]),
         ("noscope/m-custom", vec![(Manual, true)]),
         ("dup/m-profile", vec![(Manual, true)]),
         ("dup/m-profile2", vec![(Manual, true)]),
@@ -2530,7 +2530,7 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
         ("reserved/m-reserved", vec![(Manual, true)]),
         ("nameonly/m-name-only", vec![(Manual, true)]),
         ("clash/m-custom", vec![(Manual, true)]),
-        ("unknown/m-missing", vec![(Manual, true)]),
+        ("unknown/m-missing", vec![(Unsupported, true)]),
     ] {
         assert_eq!(findings(&report, PropertyMapping, id), expected, "{id}");
     }
@@ -2645,6 +2645,15 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             "opaque-sub",
             "legacy",
             "return {\"sub\": request.user.username.upper()}",
+            &["openid", "legacy"],
+            false,
+            Unsupported,
+            true,
+        ),
+        (
+            "parenthesized-sub",
+            "legacy",
+            r#"return {("sub"): True}"#,
             &["openid", "legacy"],
             false,
             Unsupported,
@@ -2782,6 +2791,7 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
     for cid in [
         "escaped-sub",
         "opaque-sub",
+        "parenthesized-sub",
         "triple-sub",
         "joined-sub",
         "formatted-sub",
@@ -2791,6 +2801,24 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
     ] {
         input["clients"][cid]["translated_mapping_ids"] = json!([format!("m-{cid}")]);
     }
+    input["scope_mappings"].as_array_mut().unwrap().extend([
+        json!({"pk":"m-grouped-sub","managed":null,"name":"grouped sub","scope_name":"legacy",
+            "expression":r#"return {"sub": True}"#}),
+        json!({"pk":"m-grouped-safe","managed":null,"name":"grouped safe","scope_name":"legacy",
+            "expression":"return {\"region\": request.user.attributes.get(\"region\")}"}),
+    ]);
+    input["providers"].as_array_mut().unwrap().push(json!({
+        "pk":cases.len() + 1,"name":"grouped","client_id":"grouped","client_type":"public",
+        "grant_types":["authorization_code"],
+        "redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback"}],
+        "property_mappings":["m-grouped-sub","m-grouped-safe"],"sub_mode":"hashed_user_id",
+        "issuer_mode":"per_provider","include_claims_in_id_token":true
+    }));
+    input["clients"]["grouped"] = json!({
+        "issuer":format!("{issuer}/application/o/grouped/"),"scopes":["openid","legacy"],
+        "settings":{},"translated_mapping_ids":["m-grouped-sub","m-grouped-safe"],
+        "translated_binding_ids":[],"authentication_flow_reviewed":true,"require_mfa":false
+    });
     let report = riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
     for (cid, _, _, _, _, classification, blocking) in cases {
         let id = format!("{cid}/m-{cid}");
@@ -2800,8 +2828,22 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
             "{id}"
         );
     }
+    assert_eq!(
+        findings(&report, PropertyMapping, "grouped/m-grouped-sub"),
+        [(Unsupported, true)]
+    );
+    assert_eq!(
+        findings(&report, PropertyMapping, "grouped/m-grouped-safe"),
+        [(Manual, false)]
+    );
     assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
-        blocker == "escaped-sub: property mapping m-escaped-sub would change subjects"
+        blocker == "escaped-sub: property mapping m-escaped-sub may change subjects"
+    }));
+    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
+        blocker == "parenthesized-sub: property mapping m-parenthesized-sub may change subjects"
+    }));
+    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
+        blocker == "grouped: property mapping m-grouped-sub may change subjects"
     }));
 }
 

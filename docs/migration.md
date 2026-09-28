@@ -236,18 +236,17 @@ A value converts only when riAuth returns the same value for every converted acc
 - an email when every account has an address, because Authentik returns an empty string and riAuth returns null;
 - direct groups when every account's riAuth groups are exactly its direct Authentik groups, with no ancestor added by flattening and no direct group excluded or unconverted.
 
-riAuth itself returns `name` and `preferred_username` for `profile` and `groups` for `groups`. So a mapping for those scopes must return those claims, and the other claims become `claim_mappings` on the mapping's scope, which the reviewed `scopes` must include. Authentik 2025.10's default `openid` and `offline_access` mappings are exact. Its default `profile` mapping converts into `given_name`, `nickname` and `groups` claim mappings when the values above hold.
+riAuth itself returns `name` and `preferred_username` for `profile`, `groups` for `groups`, and `groups` for `profile` when the reviewed client enables `groups_in_profile`. A mapping for those scopes must return those claims, and the other claims become `claim_mappings` on the mapping's scope, which the reviewed `scopes` must include. Authentik 2025.10's default `openid` and `offline_access` mappings are exact. Its default `profile` mapping converts into `given_name`, `nickname` and `groups` claim mappings when the values above hold.
 
-Every other mapping is manual, and blocks until its ID is in `translated_mapping_ids`, when it:
+An inexact mapping can be manual only when its source has one returned literal dictionary with plain, unescaped string keys other than `sub`. Its values may require custom translation, but its emitted claim keys are fixed. Each such mapping blocks until its ID is in `translated_mapping_ids`, for example when it:
 
 - sets the `email` scope, whose `email` and `email_verified` claims riAuth derives from its own verified addresses (Authentik's default asserts every address as verified);
 - grants an Authentik scope such as `goauthentik.io/api`;
 - is one of several mappings for one scope, which Authentik merges;
 - returns another reserved claim, omits a claim riAuth returns for its scope, or maps a claim the client already maps;
-- uses any other expression, such as Authentik's current `profile` default with its helper calls, or the `entitlements` default;
-- is missing from `scope_mappings`.
+- uses helper calls as values under fixed keys, such as the `entitlements` default.
 
-A mapping that returns `sub` is unsupported and blocks even when acknowledged, because it would change every subject the client issues. The report names a mapping but never quotes its expression.
+A mapping whose returned keys cannot be proved free of `sub` is unsupported and blocks even when its ID is acknowledged. This includes `sub` keys, escaped or computed keys, wrapper returns, multiple return paths and mappings missing from `scope_mappings`. Each mapping is checked before several mappings for one scope are classified as a manual merge. Replace an unproven mapping in Authentik with a literal dictionary of safe keys, or plan an explicit relying-party account migration. The report names a mapping but never quotes its expression.
 
 ## Rehearse and cut over
 
