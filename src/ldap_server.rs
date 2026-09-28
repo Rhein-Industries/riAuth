@@ -26,6 +26,70 @@ use tokio_util::codec::Framed;
 const STARTTLS: &str = "1.3.6.1.4.1.1466.20037";
 const WHOAMI: &str = "1.3.6.1.4.1.4203.1.11.3";
 const PAGED: &str = "1.2.840.113556.1.4.319";
+
+// Reuse the listener's BER decoder and limits without creating a connection or
+// invoking bind/search handlers. &[u8] is an always-ready Tokio AsyncRead.
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_ber(data: &[u8]) -> std::io::Result<Vec<i32>> {
+    use futures_util::FutureExt;
+    use std::io;
+    use tokio_util::codec::FramedRead;
+
+    if data.len() > 65_536 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "LDAP input limit",
+        ));
+    }
+    let mut wire = FramedRead::new(data, LdapCodec::new(Some(32768), Some(16)));
+    let mut ids = Vec::new();
+    for _ in 0..1000 {
+        match wire.next().now_or_never() {
+            Some(Some(Ok(message))) => ids.push(message.msgid),
+            Some(Some(Err(error))) => return Err(error),
+            Some(None) => return Ok(ids),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "LDAP in-memory read",
+                ));
+            }
+        }
+    }
+    Ok(ids)
+}
+
+#[cfg(all(test, feature = "fuzzing"))]
+mod ber_tests {
+    use super::fuzz_ber;
+
+    #[test]
+    fn listener_codec_parses_complete_frames_and_rejects_truncation() {
+        let unbind = include_bytes!("../fuzz/corpus/parsers/ldap-unbind");
+        let search = include_bytes!("../fuzz/corpus/parsers/ldap-search-present");
+        assert_eq!(fuzz_ber(unbind).unwrap(), vec![1]);
+        assert_eq!(fuzz_ber(search).unwrap(), vec![2]);
+        assert_eq!(
+            fuzz_ber(&[unbind.as_slice(), unbind.as_slice()].concat()).unwrap(),
+            vec![1, 1]
+        );
+        assert!(fuzz_ber(&unbind[..unbind.len() - 1]).is_err());
+        assert!(
+            fuzz_ber(include_bytes!(
+                "../fuzz/corpus/parsers/ldap-truncated-unbind"
+            ))
+            .is_err()
+        );
+        assert!(
+            fuzz_ber(include_bytes!(
+                "../fuzz/corpus/parsers/ldap-indefinite-length"
+            ))
+            .is_err()
+        );
+        assert!(fuzz_ber(include_bytes!("../fuzz/corpus/parsers/ldap-deep-filter")).is_err());
+        assert!(fuzz_ber(&vec![0; 65_537]).is_err());
+    }
+}
 #[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {

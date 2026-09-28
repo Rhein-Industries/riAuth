@@ -501,20 +501,70 @@ fn chunked_backup_restore_preserves_user_client_and_grant() {
     assert!(!rendered.contains("PRIVATE KEY"));
     let directory = tempfile::tempdir().unwrap();
     let (backup_file, key_file) = write_backup(directory.path(), "chunked", &backup, &key);
-    let mut truncated = backup.clone();
-    let mut chunks = truncated["chunks"].as_array().unwrap().clone();
-    chunks.remove(0);
-    truncated["chunks"] = serde_json::json!(chunks);
-    let (truncated_file, _) = write_backup(directory.path(), "truncated", &truncated, &key);
-    assert!(
-        riauth::operations::restore(
-            &truncated_file,
-            &key_file,
-            &directory.path().join("truncated-out"),
-            None
-        )
-        .is_err()
-    );
+    let original = backup["chunks"].as_array().unwrap();
+    let mut malformed = Vec::new();
+    for (name, index) in [
+        ("corrupt-record", 0),
+        ("corrupt-manifest", original.len() - 1),
+    ] {
+        let mut envelope = backup.clone();
+        let mut encoded = original[index].as_str().unwrap().as_bytes().to_vec();
+        encoded[0] = if encoded[0] == b'A' { b'B' } else { b'A' };
+        envelope["chunks"][index] = serde_json::json!(String::from_utf8(encoded).unwrap());
+        malformed.push((name, envelope));
+    }
+    for name in [
+        "truncated",
+        "missing-manifest",
+        "reordered",
+        "duplicate-record",
+    ] {
+        let mut envelope = backup.clone();
+        let mut chunks = original.clone();
+        match name {
+            "truncated" => {
+                chunks.remove(0);
+            }
+            "missing-manifest" => {
+                chunks.pop();
+            }
+            "reordered" => chunks.swap(0, 1),
+            "duplicate-record" => {
+                chunks.insert(0, chunks[0].clone());
+            }
+            _ => unreachable!(),
+        }
+        envelope["chunks"] = serde_json::json!(chunks);
+        malformed.push((name, envelope));
+    }
+    let mut wrong_time = backup.clone();
+    wrong_time["created_at"] = serde_json::json!(backup["created_at"].as_u64().unwrap() + 1);
+    malformed.push(("changed-time", wrong_time));
+    let mut wrong_type = backup.clone();
+    wrong_type["chunks"][0] = serde_json::json!(42);
+    malformed.push(("non-string-chunk", wrong_type));
+    let mut invalid_encoding = backup.clone();
+    let last = original.len() - 1;
+    invalid_encoding["chunks"][last] = serde_json::json!("%%%not-base64");
+    malformed.push(("invalid-base64-manifest", invalid_encoding));
+    let source_before = seed.fixture.core.store.read(|tx| tx.snapshot()).unwrap();
+    for (name, envelope) in malformed {
+        let (input, _) = write_backup(directory.path(), name, &envelope, &key);
+        let rejected_output = directory.path().join(format!("{name}-out"));
+        assert!(
+            riauth::operations::restore(&input, &key_file, &rejected_output, None).is_err(),
+            "{name}"
+        );
+        assert!(
+            !rejected_output.exists(),
+            "{name} created output before authentication"
+        );
+        assert_eq!(
+            seed.fixture.core.store.read(|tx| tx.snapshot()).unwrap(),
+            source_before,
+            "{name}"
+        );
+    }
     let output = directory.path().join("restore");
     riauth::operations::restore(&backup_file, &key_file, &output, None).unwrap();
     let restored = riauth::core::Core::open(

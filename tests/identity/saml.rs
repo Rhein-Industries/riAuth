@@ -484,6 +484,7 @@ fn exercise(independent: Option<&Path>) {
         .unwrap()
         .1
         .to_owned();
+    let before_rejected = f.core.store.read(|tx| tx.snapshot()).unwrap();
     let tampered = request.replace("state+%26+exact+%2B", "changed");
     assert!(
         f.core
@@ -526,6 +527,12 @@ fn exercise(independent: Option<&Path>) {
             )
             .is_err()
     );
+    assert_eq!(
+        f.core.store.read(|tx| tx.snapshot()).unwrap(),
+        before_rejected,
+        "rejected signed SAML requests must not change identity or pending state"
+    );
+    assert!(f.core.me(&session).is_ok());
     let passive = redirect(
         &authn("_passive", "IsPassive=\"true\""),
         &sp_key,

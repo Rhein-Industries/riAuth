@@ -458,6 +458,60 @@ fn fields(raw: &str, post: bool, field: &str) -> Result<BTreeMap<String, (String
     }
     Ok(fields)
 }
+
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_form(raw: &str) {
+    for field in ["SAMLRequest", "SAMLResponse"] {
+        for post in [false, true] {
+            let _ = fields(raw, post, field);
+        }
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_verified_redirect(raw: &str) {
+    // A fixed test certificate keeps the live signature and DEFLATE path in
+    // scope without granting the input control over trust or opening a store.
+    if raw.len() <= 32_768 && raw.contains("SAMLRequest=") {
+        let cert = include_str!("fixtures/q07-public.cert").to_owned();
+        let _ = verified_xml(&[cert], raw, false, "SAMLRequest");
+    }
+}
+
+#[cfg(test)]
+mod signed_redirect_tests {
+    use super::verified_xml;
+
+    #[test]
+    fn pinned_signature_and_deflate_reject_malformed_messages() {
+        let cert = include_str!("fixtures/q07-public.cert").to_owned();
+        let check =
+            |raw: &str| verified_xml(std::slice::from_ref(&cert), raw, false, "SAMLRequest");
+        let valid = include_str!("../../fuzz/corpus/parsers/saml-signed-redirect-valid");
+        assert_eq!(check(valid).unwrap().0, "<AuthnRequest ID=\"_q07\"/>");
+        for (name, raw) in [
+            (
+                "signature",
+                include_str!("../../fuzz/corpus/parsers/saml-redirect-bad-signature"),
+            ),
+            (
+                "deflate",
+                include_str!("../../fuzz/corpus/parsers/saml-signed-deflate-invalid"),
+            ),
+            (
+                "trailing",
+                include_str!("../../fuzz/corpus/parsers/saml-signed-deflate-trailing"),
+            ),
+            (
+                "expansion",
+                include_str!("../../fuzz/corpus/parsers/saml-signed-deflate-expansion"),
+            ),
+        ] {
+            assert!(check(raw).is_err(), "{name}");
+        }
+    }
+}
+
 pub(crate) fn verified_xml(
     trusted_certificates: &[String],
     raw: &str,

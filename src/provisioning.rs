@@ -508,25 +508,12 @@ impl Core {
                     .header("accept", "application/scim+json")
             })?;
             let (found, _) = scim_json(response)?;
-            let list = found["Resources"].as_array().ok_or_else(remote_error)?;
-            if found["totalResults"]
-                .as_u64()
-                .is_none_or(|n| n != list.len() as u64 || n > 1)
-                || list.iter().any(|r| r["externalId"] != external_id)
-            {
-                return Err(Error::conflict(
-                    "Remote external identity is ambiguous; refusing to choose an account",
-                ));
-            }
+            let remote = scim_lookup(&found, &external_id)?;
             let known = self.store.get::<Link>(
                 "provisioning_links",
                 &link_key(&job.plan.target, &resource.kind, &resource.local_id),
             )?;
-            let remote_id = if let Some(found) = list.first() {
-                let id = found["id"]
-                    .as_str()
-                    .filter(|id| !id.is_empty() && id.len() <= 512)
-                    .ok_or_else(remote_error)?;
+            let remote_id = if let Some(id) = remote {
                 if known.as_ref().is_some_and(|l| l.remote_id != id) {
                     return Err(Error::conflict(
                         "Remote account ID changed; review before replacing its binding",
@@ -1162,6 +1149,44 @@ fn remote_error() -> Error {
         "SCIM target rejected the request or returned an invalid response",
     )
 }
+
+fn parse_scim_body(bytes: &[u8]) -> Result<Value> {
+    serde_json::from_slice(bytes).map_err(|_| remote_error())
+}
+
+// Keep the remote identity choice shared by the live provisioner and the
+// bounded parser campaign. No local link or job can be changed here.
+fn scim_lookup<'a>(found: &'a Value, external_id: &str) -> Result<Option<&'a str>> {
+    let list = found["Resources"].as_array().ok_or_else(remote_error)?;
+    if found["totalResults"]
+        .as_u64()
+        .is_none_or(|n| n != list.len() as u64 || n > 1)
+        || list.iter().any(|r| r["externalId"] != external_id)
+    {
+        return Err(Error::conflict(
+            "Remote external identity is ambiguous; refusing to choose an account",
+        ));
+    }
+    let Some(remote) = list.first() else {
+        return Ok(None);
+    };
+    let id = remote["id"]
+        .as_str()
+        .filter(|id| !id.is_empty() && id.len() <= 512)
+        .ok_or_else(remote_error)?;
+    Ok(Some(id))
+}
+
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_scim_response(bytes: &[u8]) {
+    if bytes.len() > 32_768 {
+        return;
+    }
+    if let Ok(found) = parse_scim_body(bytes) {
+        let _ = scim_lookup(&found, "fuzz-external");
+    }
+}
+
 fn scim_json(response: reqwest::blocking::Response) -> Result<(Value, Option<String>)> {
     if !response.status().is_success() || response.content_length().is_some_and(|n| n > 2_097_152) {
         return Err(remote_error());
@@ -1179,10 +1204,7 @@ fn scim_json(response: reqwest::blocking::Response) -> Result<(Value, Option<Str
     if bytes.len() > 2_097_152 {
         return Err(remote_error());
     }
-    Ok((
-        serde_json::from_slice(&bytes).map_err(|_| remote_error())?,
-        etag,
-    ))
+    Ok((parse_scim_body(&bytes)?, etag))
 }
 pub async fn deliver(core: Core) -> Result<()> {
     if core.config.scim_targets.is_empty() {
@@ -1240,7 +1262,7 @@ fn managed_member_equal(key: &str, expected: &Value, actual: Option<&Value>) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::managed_equal;
+    use super::{managed_equal, parse_scim_body, scim_lookup};
     use serde_json::json;
 
     #[test]
@@ -1257,5 +1279,45 @@ mod tests {
             &json!({"id":"group-1","members":[{"value":"user-1"}]}),
             &json!({"id":"group-1"})
         ));
+    }
+
+    #[test]
+    fn outbound_response_parser_keeps_remote_identity_bound() {
+        assert!(
+            parse_scim_body(include_bytes!(
+                "../fuzz/corpus/parsers/scim-outbound-invalid-json"
+            ))
+            .is_err()
+        );
+        let empty = parse_scim_body(include_bytes!(
+            "../fuzz/corpus/parsers/scim-outbound-empty-list"
+        ))
+        .unwrap();
+        assert!(scim_lookup(&empty, "fuzz-external").unwrap().is_none());
+        let one = parse_scim_body(include_bytes!(
+            "../fuzz/corpus/parsers/scim-outbound-bound-identity"
+        ))
+        .unwrap();
+        assert_eq!(
+            scim_lookup(&one, "fuzz-external").unwrap().unwrap(),
+            "remote-1"
+        );
+        assert!(scim_lookup(&one, "another-identity").is_err());
+        for seed in [
+            include_bytes!("../fuzz/corpus/parsers/scim-outbound-ambiguous").as_slice(),
+            include_bytes!("../fuzz/corpus/parsers/scim-outbound-mismatched-identity").as_slice(),
+        ] {
+            let value = parse_scim_body(seed).unwrap();
+            assert!(scim_lookup(&value, "fuzz-external").is_err());
+        }
+        for invalid in [
+            json!({"Resources":{},"totalResults":0}),
+            json!({"Resources":[],"totalResults":1}),
+            json!({"Resources":[{"id":"remote-1","externalId":"fuzz-external"}],"totalResults":2}),
+            json!({"Resources":[{"id":"remote-1","externalId":"fuzz-external"},{"id":"remote-2","externalId":"fuzz-external"}],"totalResults":2}),
+            json!({"Resources":[{"id":"","externalId":"fuzz-external"}],"totalResults":1}),
+        ] {
+            assert!(scim_lookup(&invalid, "fuzz-external").is_err(), "{invalid}");
+        }
     }
 }

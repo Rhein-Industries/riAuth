@@ -24,6 +24,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Migration](migration.md) | General Authentik import, continuity, cutover and rollback guidance |
 | [Release compatibility](release-notes.md) | Behaviour changes, schema and backup compatibility, artifacts and rollback |
 | [Testing](testing.md) | Local checks and deployment validation |
+| [Q07 parser assurance](q07-parser-assurance.md) | Bounded parser/dependency checks, a local SCIM parser repair, and remaining assurance work |
 | [Release limitations](limitations.md) | Unsupported profiles and deployment responsibilities |
 
 ## Interfaces and identity

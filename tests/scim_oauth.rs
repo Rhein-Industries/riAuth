@@ -59,10 +59,68 @@ struct ScimState {
     hits: Arc<AtomicUsize>,
     seen: Arc<Mutex<Vec<String>>>,
     users: Arc<Mutex<Vec<Value>>>,
+    list_override: Arc<Mutex<Option<Value>>>,
     accept: Arc<Mutex<Option<String>>>,
     patch_no_content: Arc<AtomicBool>,
     patch_error_after_apply_once: Arc<AtomicBool>,
     patch_hits: Arc<AtomicUsize>,
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("provisioned");
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", true)
+        .unwrap();
+    let identities_before = f.core.store.list::<Value>("users").unwrap();
+    let groups_before = f.core.store.list::<Value>("groups").unwrap();
+    let tokens = token_state();
+    let scim = scim_state();
+    *scim.list_override.lock().unwrap() = Some(json!({"Resources":[
+        {"id":"remote-1","externalId":"wrong-identity"}
+    ],"totalResults":1}));
+    *scim.accept.lock().unwrap() = Some(ACCESS.into());
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("ambiguous-lookup");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "scim-token", ACCESS)),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    f.core
+        .provisioning_apply(&agent, &text(&plan, "id"))
+        .unwrap();
+    step(&f.core).await;
+    assert_eq!(job_error(&f, &agent), "conflict");
+    assert_eq!(scim.hits.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        scim.seen.lock().unwrap().as_slice(),
+        &[format!("Bearer {ACCESS}")]
+    );
+    assert!(scim.users.lock().unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_links")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("users").unwrap(),
+        identities_before
+    );
+    assert_eq!(f.core.store.list::<Value>("groups").unwrap(), groups_before);
 }
 
 struct Servers(Vec<tokio::task::JoinHandle<()>>);
@@ -1139,6 +1197,7 @@ fn scim_state() -> ScimState {
         hits: Arc::new(AtomicUsize::new(0)),
         seen: Arc::new(Mutex::new(Vec::new())),
         users: Arc::new(Mutex::new(Vec::new())),
+        list_override: Arc::new(Mutex::new(None)),
         accept: Arc::new(Mutex::new(None)),
         patch_no_content: Arc::new(AtomicBool::new(false)),
         patch_error_after_apply_once: Arc::new(AtomicBool::new(false)),
@@ -1264,6 +1323,9 @@ async fn list_users(
     state.hits.fetch_add(1, Ordering::SeqCst);
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if let Some(response) = state.list_override.lock().unwrap().clone() {
+        return Json(response).into_response();
     }
     let filter = query.get("filter").cloned().unwrap_or_default();
     let users = state.users.lock().unwrap();

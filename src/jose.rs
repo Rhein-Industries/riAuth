@@ -232,6 +232,91 @@ impl PublicJwks {
     }
 }
 
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_verify_claims(token: &str) {
+    use std::sync::OnceLock;
+
+    // The same pinned-key verification used by client/workload assertions.
+    // Only JWT-shaped inputs enter the bounded 16 KiB production verifier.
+    if token.len() > 16_384 || token.bytes().filter(|b| *b == b'.').count() != 2 {
+        return;
+    }
+    static KEYS: OnceLock<PublicJwks> = OnceLock::new();
+    let keys = KEYS.get_or_init(|| {
+        serde_json::from_str(include_str!("jose/fixtures/q07-public-jwks.json"))
+            .expect("static Q07 public JWK fixture")
+    });
+    let _ = keys.verify(token, "https://q07.example.test", "q07-client");
+    let _ = keys.verify_set(token, "https://q07.example.test", "q07-client");
+}
+
+#[cfg(test)]
+mod signed_claim_tests {
+    use super::PublicJwks;
+
+    #[test]
+    fn pinned_signature_issuer_audience_expiry_and_set_rules() {
+        let keys: PublicJwks =
+            serde_json::from_str(include_str!("jose/fixtures/q07-public-jwks.json")).unwrap();
+        keys.validate().unwrap();
+        let verify = |token: &str| keys.verify(token, "https://q07.example.test", "q07-client");
+        let valid = include_str!("../fuzz/corpus/parsers/jose-signed-valid-claims");
+        assert_eq!(verify(valid).unwrap()["sub"], "q07-subject");
+        for (name, token) in [
+            (
+                "issuer",
+                include_str!("../fuzz/corpus/parsers/jose-signed-wrong-issuer"),
+            ),
+            (
+                "audience",
+                include_str!("../fuzz/corpus/parsers/jose-signed-wrong-audience"),
+            ),
+            (
+                "expiry",
+                include_str!("../fuzz/corpus/parsers/jose-signed-expired"),
+            ),
+            (
+                "key",
+                include_str!("../fuzz/corpus/parsers/jose-signed-unknown-kid"),
+            ),
+            (
+                "embedded-key",
+                include_str!("../fuzz/corpus/parsers/jose-signed-embedded-jwk"),
+            ),
+            (
+                "signature",
+                include_str!("../fuzz/corpus/parsers/jose-bad-signature"),
+            ),
+            (
+                "claims",
+                include_str!("../fuzz/corpus/parsers/jose-malformed-claims"),
+            ),
+            (
+                "set-no-exp",
+                include_str!("../fuzz/corpus/parsers/jose-signed-set-no-exp"),
+            ),
+        ] {
+            assert!(verify(token).is_err(), "{name}");
+        }
+        // Subject binding belongs to the authenticated client/workload path.
+        assert_eq!(
+            verify(include_str!(
+                "../fuzz/corpus/parsers/jose-signed-wrong-subject"
+            ))
+            .unwrap()["sub"],
+            "attacker"
+        );
+        assert!(
+            keys.verify_set(
+                include_str!("../fuzz/corpus/parsers/jose-signed-set-no-exp"),
+                "https://q07.example.test",
+                "q07-client"
+            )
+            .is_ok()
+        );
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MachineTrust {

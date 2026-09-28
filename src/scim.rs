@@ -677,7 +677,9 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
             if data.get(path).is_none() {
                 data[path] = json!([]);
             }
-            let current = data[path].as_array_mut().unwrap();
+            let current = data[path]
+                .as_array_mut()
+                .ok_or_else(|| Error::bad("members must be an array"))?;
             for m in members {
                 if !current.iter().any(|old| old["value"] == m["value"]) {
                     current.push(m.clone());
@@ -688,4 +690,94 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
         }
     }
     Ok(data)
+}
+
+// Exercise pure parsers with a valid starting resource; never open a store or
+// grant authority from a fuzz input. src/fuzzing.rs bounds bytes/depth/nodes.
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_resource(input: Value) {
+    let _ = normalize(input.clone()).and_then(|value| read_email(&value));
+    let old =
+        json!({"schemas":[GROUP],"displayName":"fuzz-group","members":[{"value":"fuzz-user"}]});
+    let _ = patch_resource(&old, input);
+}
+
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_filter(filter: &str) {
+    let _ = filter_matches(
+        &json!({"userName":"fuzz-user","id":"fuzz-id"}),
+        Some(filter),
+    );
+}
+
+#[cfg(test)]
+mod patch_tests {
+    use super::*;
+
+    fn patch(operations: Value) -> Value {
+        json!({"schemas":[PATCH],"Operations":operations})
+    }
+
+    #[test]
+    fn members_add_rejects_invalid_intermediate_shapes() {
+        let old = json!({"schemas":[GROUP],"displayName":"test-group","members":[]});
+        let before = old.clone();
+        for shape in [
+            json!(0),
+            Value::Null,
+            json!(true),
+            json!("member"),
+            json!({}),
+        ] {
+            let input = patch(json!([
+                {"op":"replace","path":"members","value":shape},
+                {"op":"add","path":"members","value":[]}
+            ]));
+            let error = patch_resource(&old, input).unwrap_err();
+            assert_eq!(error.status, StatusCode::BAD_REQUEST, "{shape}");
+            assert_eq!(error.message, "members must be an array", "{shape}");
+            assert_eq!(old, before);
+        }
+    }
+
+    #[test]
+    fn members_add_preserves_absent_initialization_and_valid_sequences() {
+        for old in [
+            json!({"schemas":[GROUP],"displayName":"test-group"}),
+            json!({"schemas":[GROUP],"displayName":"test-group","members":[{"value":"original"}]}),
+        ] {
+            let before = old.clone();
+            let added = patch_resource(
+                &old,
+                patch(json!([
+                    {"op":"add","path":"members","value":[{"value":"first"}]}
+                ])),
+            )
+            .unwrap();
+            let mut expected = old.get("members").cloned().unwrap_or_else(|| json!([]));
+            expected
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"value":"first"}));
+            assert_eq!(added["members"], expected);
+            let updated = patch_resource(
+                &added,
+                patch(json!([
+                    {"op":"replace","path":"members","value":[{"value":"third"}]},
+                    {"op":"add","path":"members","value":[{"value":"second"},{"value":"third"}]}
+                ])),
+            )
+            .unwrap();
+            assert_eq!(
+                updated["members"],
+                json!([{"value":"third"},{"value":"second"}])
+            );
+            let reinitialized = patch_resource(&updated, patch(json!([
+                {"op":"remove","path":"members"},
+                {"op":"add","path":"members","value":[{"value":"third"},{"value":"second"},{"value":"third"}]}
+            ]))).unwrap();
+            assert_eq!(reinitialized, updated);
+            assert_eq!(old, before);
+        }
+    }
 }
