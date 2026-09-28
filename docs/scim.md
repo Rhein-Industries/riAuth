@@ -121,6 +121,27 @@ Each job reports `delivery_state`:
 
 A stopped job that was `ambiguous` keeps that state, so inspect the target before trusting a replacement plan. An operator can record what the target shows with `riauth provision resolve <job-id> --observed applied|not_applied|absent --evidence <reference>` (`POST /api/provisioning/jobs/{id}/resolve`). See [resolving ambiguity](#resolving-ambiguity). `item` gives the position and kind of the resource the latest failed attempt concerned. Its `local_id` appears only for a viewer with `provisioner.read` on the target and `user.read` or `group.read` on that user or group. This applies to the job list, apply, stop and controller responses alike. With backoff capped at an hour, 12 attempts on one item take about two hours. Then the job stops, is audited as `provisioner.stop`, and releases the target for a new reviewed plan. `riauth provision stop <job-id>` (`POST /api/provisioning/jobs/{id}/stop`) stops an unfinished job at once. It needs `provisioner.sync` on the target and is audited the same way. A job whose item is leased keeps that lease until it settles and reads as `ambiguous`. That item's worker still records its verified result. PATCH idempotency keys include the version sent in `If-Match`, so a retry that read a changed version is a new request.
 
+Reviewed workers persist `dispatch_started` under their lease before the first
+OAuth or SCIM request. The fence remains through token acquisition, 401 refresh,
+every retry, response handling and verification reads. Each send checks the
+owned lease; each write also rechecks current authority, source and lease expiry
+after credential acquisition. Verification reads can finish under the owned
+fence after stop or expiry. Only the owning worker's outcome transaction clears
+the fence. A 60-second lease or any elapsed grace cannot prove settlement.
+Acknowledgement means that worker has finished the attempt and cannot send
+again. A timed-out request can still have an unknown remote outcome; it remains
+ambiguous and is never reported as success.
+
+An expired lease explicitly recorded as unstarted can be reclaimed safely: the
+old worker cannot acquire the fence after expiry or replacement. A started or
+legacy untracked lease is held for acknowledgement, retained through cleanup,
+and blocks replacement delivery and dismissal. A claimant marks such an expired
+attempt stopped and ambiguous without taking its lease. If that worker crashed,
+the hold can persist indefinitely; there is no time-only or operator force-clear
+API. Recovery of a lost acknowledgement needs external worker quiescence and an
+audited recovery mechanism that is not yet implemented. Stop pre-fence worker
+versions before upgrading; mixed-version workers cannot enforce this protocol.
+
 Disabling or deleting a linked account records deactivation intent for each target; see [offboarding deactivation](#offboarding-deactivation). Provisioning tests exercise a second riAuth HTTP instance, conditional updates, preserved unmanaged attributes, groups, deactivation and permission revocation.
 
 ## Offboarding deactivation
@@ -131,7 +152,7 @@ The delivery worker handles one due row at a time and never records a remote out
 
 1. An account that is enabled again closes the row as `superseded`; nothing is sent. A removed link, or a link or target URL binding that changed, closes it as `stale` for inspection.
 2. A link that a reviewed provisioning job has already written as inactive closes the row as `delivered` with outcome `reviewed_delivery`. Reviewed jobs write links only after a verified read-back.
-3. Dispatch requires a [scoped controller](removal-safeguards.md) declared for `scim/<target>`. Its agent's live `provisioner.sync` authority on `provisioner/<target>` is checked, and its credential file is read afresh and must authenticate as that agent. A deactivation is a removal, so the target's reconciliation mode applies. `manual-review` and `guarded-automatic` hold the row until a reviewed plan delivers the disable. `automatic` dispatches unless the shared P03 floor, counted over every previously delivered active link whose account is now disabled or deleted, requires review. A reviewed job holding a live lease on the target delays dispatch briefly.
+3. Dispatch requires a [scoped controller](removal-safeguards.md) declared for `scim/<target>`. Its agent's live `provisioner.sync` authority on `provisioner/<target>` is checked, and its credential file is read afresh and must authenticate as that agent. A deactivation is a removal, so the target's reconciliation mode applies. `manual-review` and `guarded-automatic` hold the row until a reviewed plan delivers the disable. `automatic` dispatches unless the shared P03 floor, counted over every previously delivered active link whose account is now disabled or deleted, requires review. A reviewed job holding a live lease or unacknowledged dispatch on the target delays dispatch until it settles.
 4. The claim binds the controller authority, controller and target configuration, and link digest. That binding, the lease, the link and the account state are rechecked immediately before the conditional request. The worker reads the linked account, requires its `id`, `externalId` and a boolean `active`, and sends `PATCH active=false` only if the target still reports it active. The request carries `If-Match` and an idempotency key derived from the row, its epoch and that exact version. A retry of the identical request reuses the key. A retry after the version changed sends a new key, because some targets reject a reused key with a different precondition. A `204` is read back. Only the leasing worker records `delivered` (`deactivated` or `already_inactive`), a retry, or after five attempts `failed`. A missing remote account or a changed remote binding is `stale`.
 
 Rows also report `delivery_state`, derived in this order:
@@ -180,7 +201,7 @@ The HTTP routes are `POST /api/provisioning/deactivations/{id}/resolve` and `POS
 
 - **`observed`:** `applied` (the write took effect), `not_applied` (the target shows the earlier state) or `absent` (the remote resource is gone).
 - **`evidence`:** 1-280 characters including surrounding whitespace, without control characters or credentials, naming where the check was made. Whitespace-only evidence is rejected.
-- **Authorization:** `provisioner.sync` on the target. The caller must also be able to read what it attests about: `provisioner.read` on the target, plus `user.read` on the current account, or `user.read` / `group.read` on the job's actual local item. A missing job item can be recovered only from the retained plan at its cursor; without a matching local identity, resolution is denied and evidence stays redacted. A resolution is accepted only while the record is ambiguous. A stopped job retains its 60-second lease through the additional 30-second settlement grace; stop and resolve both honor that deadline.
+- **Authorization:** `provisioner.sync` on the target. The caller must also be able to read what it attests about: `provisioner.read` on the target, plus `user.read` on the current account, or `user.read` / `group.read` on the job's actual local item. A missing job item can be recovered only from the retained plan at its cursor; without a matching local identity, resolution is denied and evidence stays redacted. A resolution is accepted only while the record is ambiguous. Stop and resolve retain a started or untracked job lease until its worker acknowledges settlement; no elapsed grace can release it. Resolution remains available after that acknowledgement.
 
 A resolution clears `uncertain` and records the observation, evidence, actor and time. It changes neither the record's original target, remote identity, epoch, status, outcome nor error. Nothing is written to the target. The audit event (`provisioner.deactivate.resolve` or `provisioner.resolve`) keeps the same evidence in `details.context`.
 
@@ -215,9 +236,9 @@ event; changing the request under the same key conflicts.
 Dismissal needs `provisioner.sync` and `provisioner.read` on the target plus
 `user.read` on the named account. Running rows, delivered or superseded rows,
 satisfied resolutions, and targets with a live or settling reviewed-job lease
-cannot be dismissed. Every reviewed-job lease fences dismissal until its
-60-second expiry plus the 30-second settlement grace, whether the job is active
-or stale. Stopping that job does not bypass its settle window.
+cannot be dismissed. A started or untracked reviewed-job dispatch fences
+dismissal until its worker acknowledges settlement, whether the job is active
+or stale. Stopping that job, lease expiry and cleanup cannot bypass the fence.
 Deactivation listings, full retry responses, resolutions and dismissals load the
 current account by immutable `user_id` before checking its read scope. The stored
 username is historical evidence: renaming or reusing it never transfers access.

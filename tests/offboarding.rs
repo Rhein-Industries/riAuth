@@ -1842,7 +1842,7 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
         .write(|tx| tx.put(downstream::BUCKET, &id, &original))
         .unwrap();
 
-    // Stopping a reviewed job does not bypass its in-flight settle window.
+    // Stopping a reviewed job does not bypass its durable dispatch fence.
     let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
     let job = text(&plan, "id");
     f.core
@@ -1853,12 +1853,13 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
         .write(|tx| {
             let mut row: Value = tx.get("provisioning_jobs", &job)?.unwrap();
             row["lease"] = json!("reviewed-worker");
+            row["dispatch_started"] = json!(true);
             row["next_attempt"] = json!(crypto::now() + 60);
             tx.put("provisioning_jobs", &job, &row)
         })
         .unwrap();
     f.core.provisioning_stop(&f.admin, &job).unwrap();
-    for deadline in [crypto::now() + 60, crypto::now() - 1] {
+    for deadline in [crypto::now() + 60, crypto::now() - 1, crypto::now() - 31] {
         f.core
             .store
             .write(|tx| {
@@ -1878,7 +1879,9 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
         .store
         .write(|tx| {
             let mut row: Value = tx.get("provisioning_jobs", &job)?.unwrap();
-            row["next_attempt"] = json!(crypto::now() - 31);
+            // Simulate the owning worker's acknowledgement, not elapsed time.
+            row["lease"] = Value::Null;
+            row["dispatch_started"] = json!(false);
             tx.put("provisioning_jobs", &job, &row)
         })
         .unwrap();
@@ -2088,12 +2091,18 @@ fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
     let (f, job_id, mut job) = p08_resolution_fixture();
     let row = p08_ambiguous_deactivation(&f);
     job["lease"] = json!("reviewed-worker");
-    // A write admitted at second 59 can still settle at second 61. Neither
+    // No elapsed grace settles a started or legacy untracked dispatch. Neither
     // active/stale nor an inconsistent completed flag may waive that lease.
     for (stale, completed) in [(false, false), (true, false), (false, true)] {
-        for deadline in [crypto::now() + 60, crypto::now() - 1] {
+        for (dispatch, deadline) in [
+            (json!(false), crypto::now() + 60),
+            (json!(true), crypto::now() - 1),
+            (json!(true), crypto::now() - 31),
+            (Value::Null, crypto::now() - 3600),
+        ] {
             job["stale"] = json!(stale);
             job["completed"] = json!(completed);
+            job["dispatch_started"] = dispatch;
             job["next_attempt"] = json!(deadline);
             f.core
                 .store
@@ -2107,10 +2116,11 @@ fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
             f.assert_snapshot(&before);
         }
     }
-    // Past the grace, an active job's old lease no longer blocks the decision.
-    // The dismissal does not consume or rewrite that job's lease or state.
+    // Only an explicitly unstarted expired lease is safe to revoke/reclaim:
+    // its old worker must atomically pin a live lease before any remote send.
     job["stale"] = json!(false);
     job["completed"] = json!(false);
+    job["dispatch_started"] = json!(false);
     job["next_attempt"] = json!(crypto::now() - 31);
     f.core
         .store
@@ -2130,6 +2140,205 @@ fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
     let after = f.snapshot().unwrap();
     assert_eq!(
         p08_dismiss(&f, &f.admin, &row, "OPS-61").unwrap(),
+        dismissed
+    );
+    f.assert_snapshot(&after);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged() {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
+    use tokio::sync::Notify;
+
+    #[derive(Default)]
+    struct Auth {
+        requests: AtomicUsize,
+        waiting: Notify,
+        resume: Notify,
+    }
+    async fn token(State(auth): State<Arc<Auth>>) -> Response {
+        match auth.requests.fetch_add(1, Ordering::SeqCst) {
+            0 => {} // Initial access token for reads and the first PATCH.
+            1 => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            2 => {
+                // Pause the OAuth retry after the SCIM 401 and first refresh
+                // failure. No wall-clock sleep is needed to cross lease expiry.
+                auth.waiting.notify_one();
+                auth.resume.notified().await;
+            }
+            _ => panic!("Unexpected extra token request"),
+        }
+        Json(
+            json!({"access_token": "p08-fence-access", "token_type": "Bearer", "expires_in": 3600}),
+        )
+        .into_response()
+    }
+    let auth = Arc::new(Auth::default());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let token_url = format!("http://{}/token", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/token", axum::routing::post(token))
+        .with_state(auth.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    f.core
+        .group_member(&f.admin, "payroll", "alice", true)
+        .unwrap();
+    let alice = account(&f.core, "alice");
+    let scim = Scim::default();
+    let url = scim.serve();
+    let mut target = scim_target(&f, "payroll", &url, "payroll");
+    target.oauth = Some(riauth::provisioning::Oauth {
+        token_url,
+        grant: riauth::provisioning::OauthGrant::ClientCredentials,
+        client_id: "p08-fence".into(),
+        client_secret_file: target.token_file.take(),
+        refresh_token_file: None,
+        scope: None,
+        audience: None,
+        ca_file: None,
+    });
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+    let body = plan["resources"][0]["body"].clone();
+    let mut remote = body.clone();
+    remote["id"] = json!("p-alice");
+    remote["meta"] = json!({"version": "1"});
+    remote["active"] = json!(false); // Remote drift would make this plan reactivate it.
+    scim.users.lock().unwrap().push(remote);
+    scim.script.lock().unwrap().push_back((401, false));
+    let link_key = crypto::digest(&format!("payroll\0Users\0{}", alice.id));
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "provisioning_links",
+                &link_key,
+                &json!({
+                    "target": "payroll", "url": url, "kind": "Users", "local_id": alice.id,
+                    "remote_id": "p-alice", "external_id": body["externalId"], "body": body,
+                }),
+            )
+        })
+        .unwrap();
+    let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+    let id = text(&plan, "id");
+    f.core.provisioning_apply(&f.admin, &id).unwrap();
+    let core = f.core.clone();
+    let worker = tokio::task::spawn_blocking(move || core.provisioning_step());
+    tokio::time::timeout(Duration::from_secs(5), auth.waiting.notified())
+        .await
+        .unwrap();
+    assert_eq!(auth.requests.load(Ordering::SeqCst), 3);
+    assert_eq!(scim.patches.lock().unwrap().len(), 1);
+
+    // The worker is in refresh, past both its lease and the former 30s grace.
+    // It must retain a durable pin even though no PATCH is currently in flight.
+    f.core
+        .store
+        .write(|tx| {
+            let mut job: Value = tx.get("provisioning_jobs", &id)?.unwrap();
+            assert_eq!(job["dispatch_started"], true);
+            assert_eq!(job["stale"], false);
+            job["next_attempt"] = json!(crypto::now() - 31);
+            tx.put("provisioning_jobs", &id, &job)
+        })
+        .unwrap();
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    f.core.deactivation_step().unwrap();
+    let row = delivery(&f.core, "payroll", &alice);
+    assert!(row["hold"].is_string());
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap_err().code,
+        "conflict"
+    );
+    f.assert_snapshot(&before);
+
+    let owned: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    // Another claimant quarantines the expired attempt without stealing it;
+    // stop/resolve/replacement and retention must not erase its settlement pin.
+    f.core.provisioning_step().unwrap();
+    f.core.provisioning_stop(&f.admin, &id).unwrap();
+    let pending: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    assert_eq!(pending["lease"], owned["lease"]);
+    assert_eq!(pending["attempts"], owned["attempts"]);
+    assert_eq!(pending["dispatch_started"], true);
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-71"))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    let reconcile = f.core.provisioning_reconcile(&f.admin, "payroll").unwrap();
+    assert_eq!(reconcile["prior_delivery_settling"], true);
+    let replacement = text(&reconcile["plan"], "id");
+    assert_eq!(
+        f.core
+            .provisioning_apply_confirmed(&f.admin, &replacement, Some(&replacement))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.core
+        .store
+        .write(|tx| riauth::provisioning::cleanup(tx, crypto::now() + 8 * 86400))
+        .unwrap();
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap()["lease"],
+        owned["lease"]
+    );
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap_err().code,
+        "conflict"
+    );
+
+    auth.resume.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), worker)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    server.abort();
+    // The refreshed bearer cannot carry the old check into a second PATCH.
+    assert_eq!(scim.patches.lock().unwrap().len(), 1);
+    assert_eq!(scim.user("p-alice")["active"], false);
+    let settled: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    assert!(settled["lease"].is_null());
+    assert_eq!(settled["dispatch_started"], false);
+    assert_eq!(settled["uncertain"], true);
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-71"))
+            .unwrap()["delivery_state"],
+        "failed"
+    );
+    let dismissed = p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap();
+    assert_eq!(dismissed["status"], "dismissed");
+    assert_ne!(dismissed["delivery_state"], "succeeded");
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap(),
         dismissed
     );
     f.assert_snapshot(&after);
@@ -2408,13 +2617,14 @@ fn p08_security_resolution_requires_actual_user_or_group_when_item_is_missing() 
 }
 
 #[test]
-fn p08_security_stop_and_resolve_keep_the_expired_lease_through_grace() {
+fn p08_security_stop_and_resolve_keep_the_expired_dispatch_until_acknowledged() {
     let (f, id, mut job) = p08_resolution_fixture();
     job["stale"] = json!(false);
     job["uncertain"] = json!(false);
     job["lease"] = json!("in-flight-worker");
-    // A 60s lease expired ten seconds ago: its 30s grace is still live.
-    job["next_attempt"] = json!(crypto::now() - 10);
+    job["dispatch_started"] = json!(true);
+    // Expiry (even beyond the former grace) never proves dispatch settlement.
+    job["next_attempt"] = json!(crypto::now() - 31);
     f.core
         .store
         .write(|tx| tx.put("provisioning_jobs", &id, &job))
@@ -2461,7 +2671,8 @@ fn p08_security_stop_and_resolve_keep_the_expired_lease_through_grace() {
         .store
         .write(|tx| {
             let mut row: Value = tx.get("provisioning_jobs", &id)?.unwrap();
-            row["next_attempt"] = json!(crypto::now() - 31);
+            row["lease"] = Value::Null;
+            row["dispatch_started"] = json!(false);
             tx.put("provisioning_jobs", &id, &row)
         })
         .unwrap();

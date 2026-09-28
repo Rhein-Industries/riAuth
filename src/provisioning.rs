@@ -115,6 +115,14 @@ impl Target {
     /// Static files are read on every call. OAuth access tokens are cached in memory until
     /// shortly before expiry; client secrets and refresh tokens are re-read when acquiring.
     pub fn bearer(&self, core: &Core, name: &str) -> Result<Bearer> {
+        self.bearer_fenced(core, name, &|| Ok(()))
+    }
+    fn bearer_fenced(
+        &self,
+        core: &Core,
+        name: &str,
+        fence: &dyn Fn() -> Result<()>,
+    ) -> Result<Bearer> {
         self.validate()?;
         let Some(oauth) = &self.oauth else {
             let path = self.token_file.as_deref().ok_or_else(|| {
@@ -132,7 +140,7 @@ impl Target {
         if let Some(cached) = cached_bearer(&key, &secrets.fingerprint) {
             return Ok(cached);
         }
-        let issued = request_token(self, oauth, &secrets)?;
+        let issued = request_token(self, oauth, &secrets, fence)?;
         let generation = store_bearer(name, &key, &secrets.fingerprint, &issued);
         if let Err(error) = persist_oauth_meta(core, name, issued.expires_at, &issued.fingerprint) {
             forget_cache_key(&key);
@@ -292,11 +300,6 @@ fn snapshot_key(target: &str) -> String {
     // at most 32 records even if many operators request the same target.
     digest(target)
 }
-// A claimed item has a 60-second lease. A remote write can start just before
-// expiry and take up to 10 seconds, followed by a bounded read-back. Keep a
-// leased job fenced from dismissal, and a stale job from replacement delivery,
-// through that entire window.
-const LEASE_SETTLE_SECONDS: u64 = 30;
 // Attempts on one item, with exponential backoff capped at an hour, before the
 // job stops and releases the target for a fresh reviewed plan.
 const MAX_ITEM_ATTEMPTS: u32 = 12;
@@ -311,6 +314,11 @@ struct Job {
     next_attempt: u64,
     attempts: u32,
     lease: Option<String>,
+    /// Persisted before the attempt's first remote send, including OAuth. Only
+    /// its leasing worker clears this when recording the final outcome. `None`
+    /// is an older, untracked lease: its settlement cannot be inferred from time.
+    #[serde(default)]
+    dispatch_started: Option<bool>,
     error: Option<String>,
     #[serde(default)]
     reviewed_removals: bool,
@@ -449,14 +457,12 @@ fn compact_terminal_job(job: &mut Job) {
     }
 }
 
-/// A write admitted just before lease expiry may still be completing, even
-/// while the job remains active. Dismissal must fence that entire window.
-fn lease_settling(job: &Job, at: u64) -> bool {
-    job.lease.is_some() && job.next_attempt.saturating_add(LEASE_SETTLE_SECONDS) > at
-}
-
-fn stale_lease_settling(job: &Job, at: u64) -> bool {
-    job.stale && lease_settling(job, at)
+/// Expiry revokes permission to start a write; it does not prove settlement.
+/// Only a known unstarted lease can be recovered by time. Every send checks
+/// ownership atomically with setting dispatch_started, so that recovery and
+/// dispatch cannot both win. A started/untracked lease needs its worker's ack.
+fn lease_unsettled(job: &Job, at: u64) -> bool {
+    job.lease.is_some() && (job.dispatch_started != Some(false) || job.next_attempt > at)
 }
 
 /// A reviewed plan's active account must still be enabled locally when it is
@@ -583,16 +589,16 @@ impl Core {
             let mut active = None;
             let mut settling = false;
             for (id, mut job) in tx.list::<Job>("provisioning_jobs")? {
-                if job.plan.target != target_id || job.completed {
+                if job.plan.target != target_id {
                     continue;
                 }
-                if job.stale {
-                    if job.lease.is_some() && !stale_lease_settling(&job, at) {
+                if job.stale || job.completed {
+                    if job.lease.is_some() && !lease_unsettled(&job, at) {
                         job.lease = None;
                         compact_terminal_job(&mut job);
                         tx.put("provisioning_jobs", &id, &job)?;
                     } else {
-                        settling |= stale_lease_settling(&job, at);
+                        settling |= lease_unsettled(&job, at);
                     }
                     continue;
                 }
@@ -605,10 +611,10 @@ impl Core {
                     "Plan authority or source configuration changed; inspect partial results and create a new plan"
                         .into(),
                 );
-                if job.lease.is_some() && !stale_lease_settling(&job, at) {
+                if job.lease.is_some() && !lease_unsettled(&job, at) {
                     job.lease = None;
                 }
-                settling |= stale_lease_settling(&job, at);
+                settling |= lease_unsettled(&job, at);
                 compact_terminal_job(&mut job);
                 tx.put("provisioning_jobs", &id, &job)?;
             }
@@ -952,8 +958,7 @@ impl Core {
             .validate(tx, &actor, &plan)?;
             for (_, job) in tx.list::<Job>("provisioning_jobs")? {
                 if job.plan.target == plan.target
-                    && !job.completed
-                    && (!job.stale || stale_lease_settling(&job, now()))
+                    && (!job.completed && !job.stale || lease_unsettled(&job, now()))
                 {
                     return Err(Error::conflict(
                         "Target already has an unfinished job; inspect or retry it",
@@ -969,6 +974,7 @@ impl Core {
                 next_attempt: now(),
                 attempts: 0,
                 lease: None,
+                dispatch_started: Some(false),
                 error: None,
                 reviewed_removals: reviewed_plan == Some(id),
                 uncertain: false,
@@ -1007,7 +1013,7 @@ impl Core {
                 job.uncertain = true;
                 // Name the in-flight item before compaction can drop the plan copy.
                 job.item = delivery_item(&job);
-                if !stale_lease_settling(&job, now()) {
+                if !lease_unsettled(&job, now()) {
                     job.lease = None;
                 }
             }
@@ -1043,9 +1049,9 @@ impl Core {
                     "Only a stopped job whose current item is ambiguous can be resolved",
                 ));
             }
-            if stale_lease_settling(&job, now()) {
+            if lease_unsettled(&job, now()) {
                 return Err(Error::conflict(
-                    "The item is still in flight; resolve it after its lease and settlement grace expire",
+                    "The item is still in flight; wait for its worker to acknowledge settlement",
                 ));
             }
             let resolution = Resolution {
@@ -1117,6 +1123,17 @@ impl Core {
                 if job.completed || job.stale || job.next_attempt > at {
                     return Ok(None);
                 }
+                // Quarantine is local bookkeeping, independent of admission.
+                // Never steal a started or legacy untracked attempt, even if
+                // its worker still owns the in-process target permit.
+                if lease_unsettled(&job, at) {
+                    job.stale = true;
+                    job.uncertain = true;
+                    job.item = delivery_item(&job);
+                    job.error = Some("Lease expired after dispatch; awaiting the worker's settlement acknowledgement".into());
+                    tx.put("provisioning_jobs", &id, &job)?;
+                    return Ok(None);
+                }
                 let Some(target) = background.try_target(
                     crate::background::Job::Provisioning,
                     &format!("scim/{}", job.plan.target),
@@ -1126,6 +1143,7 @@ impl Core {
                 if !self.provisioning_job_eligible(tx, &job)? {
                     job.stale = true;
                     job.error = Some("Plan authority or source configuration changed; inspect partial results and create a new plan".into());
+                    job.lease = None;
                     compact_terminal_job(&mut job);
                     tx.put("provisioning_jobs", &id, &job)?;
                     return Ok(None);
@@ -1133,6 +1151,7 @@ impl Core {
                 job.next_attempt = at + 60;
                 job.attempts += 1;
                 job.lease = Some(crypto::id());
+                job.dispatch_started = Some(false);
                 tx.put("provisioning_jobs", &id, &job)?;
                 Ok(Some((job, target)))
             })
@@ -1155,6 +1174,8 @@ impl Core {
         // `dispatched`: a write was sent and its effect is not yet verified.
         let inspected = std::cell::Cell::new(false);
         let dispatched = std::cell::Cell::new(false);
+        let read_fence = || self.fence_provisioning(&job, false);
+        let write_fence = || self.fence_provisioning(&job, true);
         let result = (|| {
             let mut body = resource.body.clone();
             if resource.kind == "Groups" {
@@ -1187,12 +1208,19 @@ impl Core {
                 "externalId eq {}",
                 serde_json::to_string(&external_id).map_err(Error::internal)?
             );
-            let response = authorized(self, &job.plan.target, &target, &http, |http, token| {
-                http.get(&url)
-                    .bearer_auth(token)
-                    .query(&[("filter", filter.as_str()), ("count", "2")])
-                    .header("accept", "application/scim+json")
-            })?;
+            let response = authorized_fenced(
+                self,
+                &job.plan.target,
+                &target,
+                &http,
+                &read_fence,
+                |http, token| {
+                    http.get(&url)
+                        .bearer_auth(token)
+                        .query(&[("filter", filter.as_str()), ("count", "2")])
+                        .header("accept", "application/scim+json")
+                },
+            )?;
             let (found, _) = scim_json(response)?;
             validate_lookup(&found)?;
             let remote = scim_lookup(&found, &external_id)?;
@@ -1221,10 +1249,14 @@ impl Core {
                     .path_segments_mut()
                     .map_err(|_| remote_error())?
                     .push(id);
-                let response =
-                    authorized(self, &job.plan.target, &target, &http, |http, token| {
-                        http.get(item_url.clone()).bearer_auth(token)
-                    })?;
+                let response = authorized_fenced(
+                    self,
+                    &job.plan.target,
+                    &target,
+                    &http,
+                    &read_fence,
+                    |http, token| http.get(item_url.clone()).bearer_auth(token),
+                )?;
                 let (current, etag) = scim_json(response)?;
                 if current["externalId"] != external_id || current["id"] != id {
                     return Err(Error::conflict("Remote account binding changed"));
@@ -1245,9 +1277,6 @@ impl Core {
                 }
                 if !equal {
                     inspected.set(true);
-                    // Check live authority/lease after the remote reads, immediately
-                    // before dispatch. Accepted remote writes cannot be rolled back.
-                    self.validate_dispatch(&job)?;
                     let etag = etag
                         .or_else(|| current["meta"]["version"].as_str().map(String::from))
                         .ok_or_else(|| {
@@ -1271,16 +1300,22 @@ impl Core {
                         job.plan.id,
                         digest(&format!("{}:{}\0{etag}", resource.kind, resource.local_id))
                     );
-                    dispatched.set(true);
-                    let response =
-                        authorized(self, &job.plan.target, &target, &http, |http, token| {
+                    let response = authorized_fenced(
+                        self,
+                        &job.plan.target,
+                        &target,
+                        &http,
+                        &write_fence,
+                        |http, token| {
+                            dispatched.set(true);
                             http.patch(item_url.clone())
                                 .bearer_auth(token)
                                 .header("if-match", etag.clone())
                                 .header("idempotency-key", key.clone())
                                 .header("content-type", "application/scim+json")
                                 .json(&patch)
-                        })?;
+                        },
+                    )?;
                     if refused(&response) {
                         dispatched.set(false);
                         discard_body(response);
@@ -1290,10 +1325,14 @@ impl Core {
                     // Read the resource back before advancing the durable job so that
                     // a lost or incomplete update cannot be mistaken for success.
                     let updated = if response.status() == reqwest::StatusCode::NO_CONTENT {
-                        let response =
-                            authorized(self, &job.plan.target, &target, &http, |http, token| {
-                                http.get(item_url.clone()).bearer_auth(token)
-                            })?;
+                        let response = authorized_fenced(
+                            self,
+                            &job.plan.target,
+                            &target,
+                            &http,
+                            &read_fence,
+                            |http, token| http.get(item_url.clone()).bearer_auth(token),
+                        )?;
                         scim_json(response)?.0
                     } else {
                         scim_json(response)?.0
@@ -1328,10 +1367,14 @@ impl Core {
                     return Ok(None);
                 }
                 inspected.set(true);
-                self.validate_dispatch(&job)?;
-                dispatched.set(true);
-                let response =
-                    authorized(self, &job.plan.target, &target, &http, |http, token| {
+                let response = authorized_fenced(
+                    self,
+                    &job.plan.target,
+                    &target,
+                    &http,
+                    &write_fence,
+                    |http, token| {
+                        dispatched.set(true);
                         http.post(&url)
                             .bearer_auth(token)
                             .header(
@@ -1344,7 +1387,8 @@ impl Core {
                             )
                             .header("content-type", "application/scim+json")
                             .json(&body)
-                    })?;
+                    },
+                )?;
                 if refused(&response) {
                     dispatched.set(false);
                     discard_body(response);
@@ -1378,6 +1422,7 @@ impl Core {
                     .filter(|j| j.lease == job.lease)
                 {
                     current.lease = None;
+                    current.dispatch_started = Some(false);
                     current.error = Some(
                         if error.code == "conflict" || error.code == "connector_incomplete_snapshot"
                         {
@@ -1420,20 +1465,32 @@ impl Core {
             }),
         }
     }
-    fn validate_dispatch(&self, job: &Job) -> Result<()> {
-        self.store.read(|tx| {
-            let current = tx.get::<Job>("provisioning_jobs", &job.plan.id)?
+    /// Pin this attempt before any SCIM/OAuth send. Read-back may finish under
+    /// an owned, pinned lease after stop/expiry; every write (including a 401
+    /// retry after refresh) must still have live authority and an unexpired lease.
+    /// The pin survives auth, response handling and read-back until outcome ack.
+    fn fence_provisioning(&self, job: &Job, writing: bool) -> Result<()> {
+        self.store.write(|tx| {
+            let mut current = tx.get::<Job>("provisioning_jobs", &job.plan.id)?
                 .ok_or_else(Error::forbidden)?;
-            let actor = actor(tx, &job.plan.actor)?;
-            actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
-            job.plan.review.validate(tx, &actor, &plan_content(&job.plan)?)?;
-            if current.lease != job.lease || current.stale || current.completed
-                || current.next_attempt <= now()
-                || current.plan.review != job.plan.review
-                || job.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || !self.provisioning_fingerprint_matches(&job.plan)
-                || !resource_still_active(tx, job)? {
+            if job.lease.is_none() || current.lease != job.lease {
+                return Err(Error::conflict("SCIM delivery lease lost"));
+            }
+            if writing || current.dispatch_started != Some(true) {
+                let actor = actor(tx, &job.plan.actor)?;
+                actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
+                job.plan.review.validate(tx, &actor, &plan_content(&job.plan)?)?;
+                if current.stale || current.completed || current.next_attempt <= now()
+                    || current.plan.review != job.plan.review
+                    || job.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                    || !self.provisioning_fingerprint_matches(&job.plan)
+                    || !resource_still_active(tx, job)? {
                 return Err(Error::conflict("SCIM delivery authority, lease or source changed; inspect partial results and replan"));
+                }
+            }
+            if current.dispatch_started != Some(true) {
+                current.dispatch_started = Some(true);
+                tx.put("provisioning_jobs", &job.plan.id, &current)?;
             }
             Ok(())
         })
@@ -1459,6 +1516,7 @@ impl Core {
                 }
             }
             current.cursor=(current.cursor+1).min(current.plan.resources.len());current.completed=current.cursor==current.plan.resources.len();current.lease=None;current.error=None;current.next_attempt=now();current.attempts=0;
+            current.dispatch_started = Some(false);
             // This item's remote state was verified; the next item starts clean.
             current.uncertain = false;
             current.item = None;
@@ -1794,11 +1852,20 @@ fn oauth_failure(message: &'static str) -> AttemptError {
         ),
     }
 }
-fn request_token(target: &Target, oauth: &Oauth, secrets: &OauthSecrets) -> Result<Issued> {
+fn request_token(
+    target: &Target,
+    oauth: &Oauth,
+    secrets: &OauthSecrets,
+    fence: &dyn Fn() -> Result<()>,
+) -> Result<Issued> {
     let http = target.token_http()?;
+    fence()?;
     match post_token(&http, oauth, secrets) {
         Ok(issued) => Ok(issued),
-        Err(error) if error.retry => post_token(&http, oauth, secrets).map_err(|error| error.error),
+        Err(error) if error.retry => {
+            fence()?;
+            post_token(&http, oauth, secrets).map_err(|error| error.error)
+        }
         Err(error) => Err(error.error),
     }
 }
@@ -2036,7 +2103,22 @@ fn authorized(
     http: &reqwest::blocking::Client,
     build: impl Fn(&reqwest::blocking::Client, &str) -> reqwest::blocking::RequestBuilder,
 ) -> Result<reqwest::blocking::Response> {
-    let mut bearer = target.bearer(core, name)?;
+    authorized_fenced(core, name, target, http, &|| Ok(()), build)
+}
+
+/// The fence covers token acquisition (including its retry) and every SCIM
+/// send. A 401 is never permission to reuse an earlier dispatch check.
+fn authorized_fenced(
+    core: &Core,
+    name: &str,
+    target: &Target,
+    http: &reqwest::blocking::Client,
+    fence: &dyn Fn() -> Result<()>,
+    build: impl Fn(&reqwest::blocking::Client, &str) -> reqwest::blocking::RequestBuilder,
+) -> Result<reqwest::blocking::Response> {
+    fence()?;
+    let mut bearer = target.bearer_fenced(core, name, fence)?;
+    fence()?;
     let mut response = build(http, bearer.as_str())
         .send()
         .map_err(|_| remote_error())?;
@@ -2049,7 +2131,8 @@ fn authorized(
                 bearer.generation,
             );
         }
-        bearer = target.bearer(core, name)?;
+        bearer = target.bearer_fenced(core, name, fence)?;
+        fence()?;
         response = build(http, bearer.as_str())
             .send()
             .map_err(|_| remote_error())?;
@@ -2312,7 +2395,10 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
         }
     }
     for (id, mut job) in tx.maintenance_page::<Job>("provisioning_jobs")? {
-        if (job.completed || job.stale) && job.plan.expires_at + 7 * 86400 < at {
+        if (job.completed || job.stale)
+            && job.lease.is_none()
+            && job.plan.expires_at + 7 * 86400 < at
+        {
             tx.delete("provisioning_jobs", &id)?;
         } else if (job.completed || job.stale) && !job.plan.resources.is_empty() {
             compact_terminal_job(&mut job);

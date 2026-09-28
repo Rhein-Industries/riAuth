@@ -10,8 +10,8 @@
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
 use super::{
-    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, lease_settling, refused,
-    rejected, remote_error, scim_json, stale_lease_settling, validate_evidence,
+    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, lease_unsettled, refused,
+    rejected, remote_error, scim_json, validate_evidence,
 };
 use crate::{
     agent::Principal,
@@ -317,12 +317,11 @@ impl Core {
         }
         // A leased reviewed job may be writing this account now; ETags would
         // reject one of two overlapping writes, so wait for its item to settle.
-        if tx.list::<Job>("provisioning_jobs")?.iter().any(|(_, job)| {
-            job.plan.target == row.target
-                && !job.completed
-                && job.lease.is_some()
-                && (job.next_attempt > at || stale_lease_settling(job, at))
-        }) {
+        if tx
+            .list::<Job>("provisioning_jobs")?
+            .iter()
+            .any(|(_, job)| job.plan.target == row.target && lease_unsettled(job, at))
+        {
             return Ok(Gate::Hold(
                 "awaiting_prior_delivery",
                 Some(PRIOR_DELIVERY_SECONDS),
@@ -784,10 +783,10 @@ impl Core {
                 || tx
                     .list::<Job>("provisioning_jobs")?
                     .iter()
-                    .any(|(_, job)| job.plan.target == row.target && lease_settling(job, at))
+                    .any(|(_, job)| job.plan.target == row.target && lease_unsettled(job, at))
             {
                 return Err(Error::conflict(
-                    "Delivery is still in flight; wait for its lease to settle",
+                    "Delivery is still in flight; wait for its worker to acknowledge settlement",
                 ));
             }
             let dismissal = Dismissal {
