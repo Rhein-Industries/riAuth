@@ -11,8 +11,11 @@ riauthctl --server https://id.example.com whoami
 riauthctl --server https://id.example.com revision
 riauthctl --server https://id.example.com inventory users --limit 100
 riauthctl --server https://id.example.com user list
+riauthctl --server https://id.example.com user get alice
 riauthctl --server https://id.example.com group list
 riauthctl --server https://id.example.com client list
+riauthctl --server https://id.example.com client get dashboard
+riauthctl --server https://id.example.com session list
 riauthctl --server https://id.example.com request inspect CODE
 riauthctl --server https://id.example.com device inspect USER-CODE
 riauthctl --server https://id.example.com plan --file manifest.json --out plan.json
@@ -31,16 +34,26 @@ Routine People, Groups, and Applications commands use `/api/users`, `/api/groups
 ```sh
 printf '%s\n' "$NEW_PASSWORD" | riauthctl --server https://id.example.com user create alice --email alice@example.com --password-stdin
 riauthctl --server https://id.example.com user update alice --enabled false --revoke-sessions
+riauthctl --server https://id.example.com user disable alice
+riauthctl --server https://id.example.com user revoke-sessions alice
+riauthctl --server https://id.example.com user list --filter ali --limit 100
 riauthctl --server https://id.example.com group create operators
 riauthctl --server https://id.example.com group add-member operators alice
 riauthctl --server https://id.example.com group remove-member operators alice
 riauthctl --server https://id.example.com client create dashboard --redirect-uri https://dashboard.example.com/callback
 riauthctl --server https://id.example.com client update dashboard --enabled false
+riauthctl --server https://id.example.com client disable dashboard
+riauthctl --server https://id.example.com client list --filter dash --limit 100
 riauthctl --server https://id.example.com client create worker --service --secret-file worker-credential.json
 riauthctl --server https://id.example.com client rotate-secret worker --secret-file worker-new-credential.json
+riauthctl --server https://id.example.com session revoke SESSION_ID
 ```
 
-Each direct mutation sends a quoted `If-Match` revision and an `Idempotency-Key`. By default the client reads `/api/state/revision` and generates a fresh key. Use `--if-revision N` when the caller has a known revision or lacks `state.read` permission. Supply `--idempotency-key KEY` to retry the **same command and body** after an uncertain result; the server retains a matching receipt for 24 hours. `--run-id` adds audit correlation. Client creation uses the usual interactive scopes by default, or `api` for a service client. `--settings-file` supplies a complete ProviderSettings JSON object; on update it replaces the complete settings object. The server applies all client type and setting rules.
+`user get` and `client get` use `/api/resources` with exact resource read permission. Plain `user list` and `client list` retain the existing array response from `/api/users` and `/api/clients`. Adding `--filter`, `--limit`, or `--after` uses the bounded `/api/inventory` page response (`items`, `next_cursor`, `revision`); filters match case-sensitive name substrings. Continue a page with `--after` and the same filter. The server filters every read by the caller's authority.
+
+Each direct user, group, or client mutation sends a quoted `If-Match` configuration revision and an `Idempotency-Key`. By default the client reads `/api/state/revision` and generates a fresh key. Use `--if-revision N` when the caller has a known revision or lacks `state.read` permission. Supply `--idempotency-key KEY` to retry the **same command and body** after an uncertain result; the server retains a matching receipt for 24 hours. `--run-id` adds audit correlation. `user disable` also requests session revocation through the shared user management writer; `user revoke-sessions` leaves the enabled state alone. `client disable` uses the shared client writer, including its dependent-grant revocation. Client creation uses the usual interactive scopes by default, or `api` for a service client. `--settings-file` supplies a complete ProviderSettings JSON object; on update it replaces the complete settings object. The server applies all client type and setting rules.
+
+`session list` shows only the current human user's live sessions. `session revoke ID` uses `/api/sessions/{id}`; the server permits the owner, an administrator, or an agent with exact `session.revoke` authority. Revoking the current terminal session removes the saved session file. This endpoint has no revision precondition or idempotency receipt, so `session revoke` rejects `--if-revision` and `--idempotency-key`. The API does not expose a list of another user's session IDs; use `user revoke-sessions USER` to revoke that user's sessions through the conditional management route.
 
 Shared-secret confidential and service client creation requires `--secret-file`; `private_key_jwt` applications do not receive a shared secret. Rotation always requires the file. The destination must be a new file in an existing directory. It is reserved with owner-only permissions before the mutation, and the full one-time response is written there if the server issues a shared secret. Standard output contains the client result and `credential_file` path without the secret. Keep that file private. Supply your own `--idempotency-key` on the first attempt when you need a recoverable retry: if the response is uncertain, repeat the same command with that key and a new `--secret-file` path so the server can return the stored receipt.
 

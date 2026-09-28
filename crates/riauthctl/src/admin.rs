@@ -3,7 +3,7 @@
 
 use crate::{read_password, transport::Remote};
 use anyhow::{Context, Result, bail};
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -27,7 +27,12 @@ pub(crate) struct MutationOptions<'a> {
 #[derive(Subcommand)]
 pub(crate) enum UserCommand {
     /// List users visible to this principal.
-    List,
+    List {
+        #[command(flatten)]
+        page: ListOptions,
+    },
+    /// Read one user with exact user.read authority.
+    Get { username: String },
     /// Create a password user; password is read without echo or from stdin.
     Create {
         username: String,
@@ -58,6 +63,23 @@ pub(crate) enum UserCommand {
         #[arg(long)]
         revoke_sessions: bool,
     },
+    /// Disable one user and revoke their sessions through the shared management service.
+    Disable { username: String },
+    /// Revoke every session for one user without changing their enabled state.
+    RevokeSessions { username: String },
+}
+
+#[derive(Args)]
+pub(crate) struct ListOptions {
+    /// Use a bounded inventory page of this size (1–1000).
+    #[arg(long, value_parser = clap::value_parser!(u16).range(1..=1000))]
+    limit: Option<u16>,
+    /// Continue a filtered inventory page with the returned cursor.
+    #[arg(long)]
+    after: Option<String>,
+    /// Match a case-sensitive name substring in a bounded inventory page.
+    #[arg(long)]
+    filter: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -80,7 +102,12 @@ pub(crate) enum GroupCommand {
 #[derive(Subcommand)]
 pub(crate) enum ClientCommand {
     /// List applications visible to this principal.
-    List,
+    List {
+        #[command(flatten)]
+        page: ListOptions,
+    },
+    /// Read one application with exact client.read authority.
+    Get { client_id: String },
     /// Create an OAuth application. Confidential clients need --secret-file.
     Create {
         client_id: String,
@@ -135,6 +162,16 @@ pub(crate) enum ClientCommand {
         #[arg(long)]
         secret_file: PathBuf,
     },
+    /// Disable one application and let the server revoke dependent grants.
+    Disable { client_id: String },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum SessionCommand {
+    /// List this user's live browser and terminal sessions.
+    List,
+    /// Revoke one session by ID; the server authorizes own, administrator, or exact agent access.
+    Revoke { id: String },
 }
 
 #[derive(Serialize)]
@@ -187,11 +224,8 @@ pub(crate) async fn user(
     options: &MutationOptions<'_>,
 ) -> Result<Value> {
     match command {
-        UserCommand::List => {
-            remote
-                .authenticated(Method::GET, "/api/users", None::<&()>)
-                .await
-        }
+        UserCommand::List { page } => list(remote, "users", "/api/users", page).await,
+        UserCommand::Get { username } => get(remote, "user", &username, "username").await,
         UserCommand::Create {
             username,
             email,
@@ -245,6 +279,32 @@ pub(crate) async fn user(
             };
             mutate(remote, Method::PATCH, &path, Some(&patch), options).await
         }
+        UserCommand::Disable { username } => {
+            let path = format!("/api/users/{}", segment(&username)?);
+            let patch = UserPatch {
+                enabled: Some(false),
+                admin: None,
+                password: None,
+                email: None,
+                display_name: None,
+                reset_mfa: false,
+                revoke_sessions: true,
+            };
+            mutate(remote, Method::PATCH, &path, Some(&patch), options).await
+        }
+        UserCommand::RevokeSessions { username } => {
+            let path = format!("/api/users/{}", segment(&username)?);
+            let patch = UserPatch {
+                enabled: None,
+                admin: None,
+                password: None,
+                email: None,
+                display_name: None,
+                reset_mfa: false,
+                revoke_sessions: true,
+            };
+            mutate(remote, Method::PATCH, &path, Some(&patch), options).await
+        }
     }
 }
 
@@ -286,11 +346,8 @@ pub(crate) async fn client(
     options: &MutationOptions<'_>,
 ) -> Result<Value> {
     match command {
-        ClientCommand::List => {
-            remote
-                .authenticated(Method::GET, "/api/clients", None::<&()>)
-                .await
-        }
+        ClientCommand::List { page } => list(remote, "clients", "/api/clients", page).await,
+        ClientCommand::Get { client_id } => get(remote, "client", &client_id, "client_id").await,
         ClientCommand::Create {
             client_id,
             name,
@@ -397,7 +454,129 @@ pub(crate) async fn client(
             let result = mutate(remote, Method::POST, &path, None::<&()>, options).await?;
             protect_secret(result, Some(&mut destination), true)
         }
+        ClientCommand::Disable { client_id } => {
+            let path = format!("/api/clients/{}", segment(&client_id)?);
+            let patch = ClientPatch {
+                name: None,
+                enabled: Some(false),
+                redirect_uris: None,
+                scopes: None,
+                allowed_groups: None,
+                require_mfa: None,
+                settings: None,
+            };
+            mutate(remote, Method::PATCH, &path, Some(&patch), options).await
+        }
     }
+}
+
+pub(crate) async fn session(
+    remote: &Remote,
+    command: SessionCommand,
+    options: &MutationOptions<'_>,
+) -> Result<Value> {
+    match command {
+        SessionCommand::List => {
+            if remote.is_agent() {
+                bail!("Agent credentials cannot list a human user's sessions");
+            }
+            remote
+                .authenticated(Method::GET, "/api/sessions", None::<&()>)
+                .await
+        }
+        SessionCommand::Revoke { id } => {
+            if options.if_revision.is_some() || options.idempotency_key.is_some() {
+                bail!("Session revocation does not support If-Match or idempotency receipts");
+            }
+            let path = format!("/api/sessions/{}", segment(&id)?);
+            let verified = remote.verify_issuer().await?;
+            let credential = remote.credential(&verified)?;
+            let current_id = if remote.is_agent() {
+                None
+            } else {
+                remote
+                    .request_api(
+                        &verified,
+                        Method::GET,
+                        "/api/me",
+                        None::<&()>,
+                        Some(credential.token()),
+                        None,
+                    )
+                    .await?
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            };
+            let result = remote
+                .request_api(
+                    &verified,
+                    Method::DELETE,
+                    &path,
+                    None::<&()>,
+                    Some(credential.token()),
+                    options.run_id,
+                )
+                .await?;
+            if current_id.as_deref() == Some(id.as_str()) {
+                remote.remove_session()?;
+            }
+            Ok(result)
+        }
+    }
+}
+
+async fn list(remote: &Remote, kind: &str, legacy_path: &str, page: ListOptions) -> Result<Value> {
+    if page.limit.is_none() && page.after.is_none() && page.filter.is_none() {
+        return remote
+            .authenticated(Method::GET, legacy_path, None::<&()>)
+            .await;
+    }
+    if page
+        .after
+        .as_ref()
+        .is_some_and(|value| value.len() > 4096 || value.chars().any(char::is_control))
+        || page.filter.as_ref().is_some_and(|value| value.len() > 256)
+    {
+        bail!("Inventory cursor or filter exceeds its size limit");
+    }
+    let limit = page.limit.unwrap_or(100);
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    query.append_pair("limit", &limit.to_string());
+    if let Some(after) = &page.after {
+        query.append_pair("after", after);
+    }
+    if let Some(filter) = &page.filter {
+        query.append_pair("filter", filter);
+    }
+    let path = format!("/api/inventory/{kind}?{}", query.finish());
+    let result = remote
+        .authenticated(Method::GET, &path, None::<&()>)
+        .await?;
+    let items = result
+        .get("items")
+        .and_then(Value::as_array)
+        .context("Inventory response is missing items")?;
+    if items.len() > usize::from(limit)
+        || result
+            .get("next_cursor")
+            .and_then(Value::as_str)
+            .is_some_and(|cursor| cursor.len() > 4096)
+    {
+        bail!("Inventory response exceeds the requested bounds");
+    }
+    Ok(result)
+}
+
+async fn get(remote: &Remote, kind: &str, name: &str, identity_field: &str) -> Result<Value> {
+    let path = format!("/api/resources/{kind}/{}", segment(name)?);
+    let result = remote
+        .authenticated(Method::GET, &path, None::<&()>)
+        .await?;
+    if result.get(identity_field).and_then(Value::as_str) != Some(name) {
+        bail!("Resource response does not match the requested identity");
+    }
+    Ok(result)
 }
 
 async fn mutate<T: Serialize + ?Sized>(

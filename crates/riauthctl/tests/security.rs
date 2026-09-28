@@ -1537,3 +1537,137 @@ fn approval_complete_url_preserves_form_and_saves_callback_privately() {
         Some("Bearer ri_session_fresh_url")
     );
 }
+
+#[test]
+fn people_applications_and_sessions_use_exact_remote_authority() {
+    const SESSION_ID: &str = "00000000-0000-4000-8000-000000000001";
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => login_reply("ri_session_targeted_admin"),
+        "/api/state/revision" => Reply::json("{\"revision\":11}"),
+        "/api/resources/user/alice" => Reply::json("{\"username\":\"alice\",\"enabled\":true}"),
+        "/api/resources/client/dashboard" => {
+            Reply::json("{\"client_id\":\"dashboard\",\"enabled\":true}")
+        }
+        "/api/users" if request.method == "GET" => Reply::json("[{\"username\":\"alice\"}]"),
+        "/api/clients" if request.method == "GET" => Reply::json("[{\"client_id\":\"dashboard\"}]"),
+        target if target.starts_with("/api/inventory/users?") => Reply::json(
+            "{\"items\":[{\"username\":\"alice\"}],\"next_cursor\":null,\"revision\":11}",
+        ),
+        target if target.starts_with("/api/inventory/clients?") => Reply::json(
+            "{\"items\":[{\"client_id\":\"dashboard\"}],\"next_cursor\":null,\"revision\":11}",
+        ),
+        "/api/users/alice" if request.method == "PATCH" => {
+            Reply::json("{\"username\":\"alice\",\"enabled\":false}")
+        }
+        "/api/clients/dashboard" if request.method == "PATCH" => {
+            Reply::json("{\"client_id\":\"dashboard\",\"enabled\":false}")
+        }
+        "/api/sessions" => Reply::json(format!(
+            "[{{\"id\":\"{SESSION_ID}\",\"kind\":\"terminal\"}}]"
+        )),
+        "/api/me" => Reply::json(format!("{{\"session_id\":\"{SESSION_ID}\"}}")),
+        target if target == format!("/api/sessions/{SESSION_ID}") => {
+            Reply::json("{\"revoked\":true}")
+        }
+        _ => Reply::error("{\"error\":\"invalid_request\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("admin-password\n"),
+    ));
+    for args in [
+        vec!["user", "list"],
+        vec!["user", "get", "alice"],
+        vec!["user", "list", "--filter", "ali", "--limit", "2"],
+        vec!["client", "list"],
+        vec!["client", "get", "dashboard"],
+        vec!["client", "list", "--filter", "dash", "--limit", "2"],
+        vec!["session", "list"],
+        vec!["user", "disable", "alice"],
+        vec!["user", "revoke-sessions", "alice"],
+        vec!["client", "disable", "dashboard"],
+    ] {
+        assert_ok(&run(&server.origin, &session, &args, None));
+    }
+    let count = server.requests().len();
+    let unsupported = run(
+        &server.origin,
+        &session,
+        &["--if-revision", "11", "session", "revoke", SESSION_ID],
+        None,
+    );
+    assert!(!unsupported.status.success());
+    assert!(output_text(&unsupported).contains("does not support If-Match"));
+    assert_eq!(server.requests().len(), count);
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["--run-id", "targeted-run", "session", "revoke", SESSION_ID],
+        None,
+    ));
+    assert!(!session.exists());
+    let requests = server.requests();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target == "/api/inventory/users?limit=2&filter=ali")
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target == "/api/inventory/clients?limit=2&filter=dash")
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target == "/api/resources/user/alice")
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.target == "/api/resources/client/dashboard")
+    );
+    let user_patches: Vec<_> = requests
+        .iter()
+        .filter(|r| r.method == "PATCH" && r.target == "/api/users/alice")
+        .collect();
+    assert_eq!(user_patches.len(), 2);
+    let disable: serde_json::Value = serde_json::from_slice(&user_patches[0].body).unwrap();
+    let revoke: serde_json::Value = serde_json::from_slice(&user_patches[1].body).unwrap();
+    assert_eq!(disable["enabled"], false);
+    assert_eq!(disable["revoke_sessions"], true);
+    assert_eq!(revoke["enabled"], serde_json::Value::Null);
+    assert_eq!(revoke["revoke_sessions"], true);
+    let client_patch = requests
+        .iter()
+        .find(|r| r.method == "PATCH" && r.target == "/api/clients/dashboard")
+        .unwrap();
+    let client_body: serde_json::Value = serde_json::from_slice(&client_patch.body).unwrap();
+    assert_eq!(client_body["enabled"], false);
+    for write in user_patches
+        .into_iter()
+        .chain(std::iter::once(client_patch))
+    {
+        assert_eq!(write.header("if-match"), Some("\"11\""));
+        assert!(write.header("idempotency-key").is_some());
+        assert_eq!(
+            write.header("authorization"),
+            Some("Bearer ri_session_targeted_admin")
+        );
+    }
+    let session_delete = requests
+        .iter()
+        .find(|r| r.method == "DELETE" && r.target == format!("/api/sessions/{SESSION_ID}"))
+        .unwrap();
+    assert_eq!(session_delete.header("if-match"), None);
+    assert_eq!(session_delete.header("idempotency-key"), None);
+    assert_eq!(
+        session_delete.header("x-riauth-run-id"),
+        Some("targeted-run")
+    );
+}

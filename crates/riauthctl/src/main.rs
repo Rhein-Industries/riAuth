@@ -105,6 +105,11 @@ enum Command {
         #[command(subcommand)]
         command: admin::ClientCommand,
     },
+    /// List or revoke terminal and browser sessions.
+    Session {
+        #[command(subcommand)]
+        command: admin::SessionCommand,
+    },
     /// Review and decide a pending browser application authorization.
     Request {
         #[command(subcommand)]
@@ -324,6 +329,7 @@ async fn run(cli: Cli) -> Result<Value> {
         Command::User { command } => admin::user(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
         Command::Client { command } => admin::client(&remote, command, &mutation).await,
+        Command::Session { command } => admin::session(&remote, command, &mutation).await,
         Command::Request { command } => {
             approval::request(&remote, command, cli.non_interactive).await
         }
