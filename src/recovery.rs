@@ -61,6 +61,7 @@ pub const INVALIDATED: &[&str] = &[
     "reviewed_group_memberships",
     "reviewed_client_policies",
     "reviewed_client_statuses",
+    "reviewed_client_endpoints",
     "reviewed_client_creations",
     // OAuth grants, families and one-time codes.
     "access",

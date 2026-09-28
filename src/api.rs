@@ -390,6 +390,11 @@ pub fn router(core: Core) -> Router {
         .route("/api/client-creation-changes/{id}/approve", post(approve_client_creation_change))
         .route("/api/client-creation-changes/{id}/execute", post(execute_client_creation_change))
         .route("/api/client-creation-changes/{id}/cancel", post(cancel_client_creation_change))
+        .route("/api/clients/{id}/endpoint-changes", post(stage_client_endpoint))
+        .route("/api/client-endpoint-changes/{id}", get(client_endpoint_change))
+        .route("/api/client-endpoint-changes/{id}/approve", post(approve_client_endpoint_change))
+        .route("/api/client-endpoint-changes/{id}/execute", post(execute_client_endpoint_change))
+        .route("/api/client-endpoint-changes/{id}/cancel", post(cancel_client_endpoint_change))
         .route("/api/clients/{id}/status-changes", post(stage_client_status))
         .route("/api/client-status-changes/{id}", get(client_status_change))
         .route("/api/client-status-changes/{id}/approve", post(approve_client_status_change))
@@ -2020,6 +2025,29 @@ async fn client_policy_change(
 grant_change_handler!(approve_client_policy_change);
 grant_change_handler!(execute_client_policy_change);
 grant_change_handler!(cancel_client_policy_change);
+
+async fn stage_client_endpoint(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::model::ClientEndpointInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_client_endpoint(&token, &id, input).map(Json))
+        .await
+}
+async fn client_endpoint_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.client_endpoint_change(&token, &id).map(Json))
+        .await
+}
+grant_change_handler!(approve_client_endpoint_change);
+grant_change_handler!(execute_client_endpoint_change);
+grant_change_handler!(cancel_client_endpoint_change);
 
 async fn stage_client_status(
     State(app): State<App>,

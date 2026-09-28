@@ -153,12 +153,13 @@ with the resulting policy. A state plan is not an M05 approval.
 
 Remaining client classes are advanced/initially-disabled creation beyond the
 bounded creation review, other existing-client provider settings
-(including conditional access/claims, scopes, redirects, grants, issuer and
+(including conditional access/claims, scopes, provider-specific endpoints, post-logout URLs, grants, issuer and
 sector), credentials, registration templates and registration
 tokens. [Enable/disable review](reviewed-client-status.md) now covers bounded
 revocation snapshots; large snapshots, cross-client families and exchange dependencies fail closed.
 The complete remaining M05 resource inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).
+OAuth redirect URIs and browser origins now require [endpoint review](reviewed-client-endpoints.md).
 Configurable quorums, delegated review roles, shared review
 inbox/notifications and finer invalidation remain outside this slice.
 

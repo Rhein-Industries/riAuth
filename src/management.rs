@@ -31,6 +31,7 @@ pub(crate) mod grants;
 mod client_creation;
 mod client_policy;
 mod client_status;
+mod client_endpoint;
 mod memberships;
 #[cfg(feature = "platform")]
 mod pam;
@@ -110,6 +111,7 @@ enum ClientReview {
     Immediate,
     AccessPolicy,
     Status,
+    Endpoints,
     Creation,
 }
 
@@ -2348,6 +2350,13 @@ fn check_client_as(
     if review != ClientReview::Status && existing.is_some_and(|c| c.enabled != next.enabled) {
         return Err(Error::conflict(
             "Client enabled changes require a reviewed client status change",
+        ));
+    }
+    if review != ClientReview::Endpoints && existing.is_some_and(|c| {
+        c.redirect_uris != next.redirect_uris || c.settings.origins != next.settings.origins
+    }) {
+        return Err(Error::conflict(
+            "Client redirect URIs or browser origins require a reviewed client endpoint change",
         ));
     }
     Ok(Checked {

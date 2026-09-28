@@ -2,6 +2,7 @@ mod backup;
 mod client_creation;
 mod client_policy;
 mod client_status;
+mod client_endpoint;
 mod grants;
 pub mod local;
 mod memberships;
@@ -969,6 +970,11 @@ pub enum AccessCommand {
 #[derive(Subcommand)]
 pub enum ClientCommand {
     List,
+    /// Review exact OAuth redirect URIs and browser origins
+    EndpointReview {
+        #[command(subcommand)]
+        command: client_endpoint::ReviewCommand,
+    },
     /// Review exact application enable/disable and its revocation consequences
     StatusReview {
         #[command(subcommand)]
@@ -2576,6 +2582,7 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
 async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
     let (id, patch) = match command {
         ClientCommand::List => return remote.call(Method::GET, "/api/clients", None, true).await,
+        ClientCommand::EndpointReview { command } => return client_endpoint::run(remote, command).await,
         ClientCommand::Review { command } => return client_policy::run(remote, command).await,
         ClientCommand::StatusReview { command } => return client_status::run(remote, command).await,
         ClientCommand::CreationReview { command } => return client_creation::run(remote, command).await,

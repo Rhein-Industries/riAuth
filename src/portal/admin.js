@@ -6,7 +6,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies", "client-status-review": "Reviewed application status" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies", "client-status-review": "Reviewed application status", "client-endpoint-review": "Reviewed redirects and origins" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
@@ -175,6 +175,7 @@
     RiAuthClientCreationReview.reset(true);
     RiAuthClientPolicyReview.reset(true);
     RiAuthClientStatusReview.reset(true);
+    RiAuthClientEndpointReview.reset(true);
     draft = null; captureWizard = null;
     data.deliveries = []; data.deliveryLoadedAt = 0;
     workflowDraft = null; workflowPlan = null;
@@ -288,6 +289,7 @@
     document.querySelector('[data-section="client-creation-review"]').hidden = !data.me?.user?.admin;
     document.querySelector('[data-section="client-policy-review"]').hidden = !data.me?.user?.admin;
     document.querySelector('[data-section="client-status-review"]').hidden = !data.me?.user?.admin;
+    document.querySelector('[data-section="client-endpoint-review"]').hidden = !data.me?.user?.admin;
   }
 
   // ---- Routing -----------------------------------------------------------------------------
@@ -311,6 +313,7 @@
     RiAuthClientCreationReview.reset();
     RiAuthClientPolicyReview.reset();
     RiAuthClientStatusReview.reset();
+    RiAuthClientEndpointReview.reset();
     // A refresh re-renders the open step; keep what was typed since the last Continue.
     if (captureWizard) { try { captureWizard(); } catch { /* a partial step is re-read on Continue */ } captureWizard = null; }
     // A created application's one-time secret is dropped once the wizard route is left; an
@@ -336,7 +339,10 @@
     const clientStatusReview = (id) => RiAuthClientStatusReview.view({ id, api, h, me: data.me, users: data.users, clients: data.clients,
       identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
       sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
-    const views = { applications: [applications, application, data.me.reviewed_client_creation ? () => clientCreationReview() : newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null], "membership-review": [membershipReview, membershipReview, null], "client-creation-review": [clientCreationReview, clientCreationReview, null], "client-policy-review": [clientPolicyReview, clientPolicyReview, null], "client-status-review": [clientStatusReview, clientStatusReview, null] }[section];
+    const clientEndpointReview = (id) => RiAuthClientEndpointReview.view({ id, api, h, me: data.me, users: data.users, clients: data.clients,
+      identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
+      sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
+    const views = { applications: [applications, application, data.me.reviewed_client_creation ? () => clientCreationReview() : newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null], "membership-review": [membershipReview, membershipReview, null], "client-creation-review": [clientCreationReview, clientCreationReview, null], "client-policy-review": [clientPolicyReview, clientPolicyReview, null], "client-status-review": [clientStatusReview, clientStatusReview, null], "client-endpoint-review": [clientEndpointReview, clientEndpointReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -531,8 +537,6 @@
     const oidcApp = !client.service && !client.settings.saml && !client.settings.proxy;
     const native = () => Boolean(client.settings.native);
     const scopeInput = h("input", { id: "app-scopes", spellcheck: "false", autocomplete: "off", value: sorted(client.scopes).join(" ") });
-    const redirects = h("textarea", { id: "app-redirects", rows: "3", spellcheck: "false", value: client.redirect_uris.join("\n") });
-    const origins = h("textarea", { id: "app-origins", rows: "2", spellcheck: "false", placeholder: "https://app.example.com", value: sorted(client.settings.origins).join("\n") });
     const logout = h("textarea", { id: "app-logout", rows: "2", spellcheck: "false", value: client.settings.post_logout_redirect_uris.join("\n") });
     const mappingRows = client.settings.claim_mappings.map(fromMapping);
     const editor = oidcApp ? mappingEditor("app", mappingRows, () => sorted(words(scopeInput.value))) : null;
@@ -552,11 +556,14 @@
           !data.me?.user?.admin ? h("p", { class: "notice" }, "A full administrator must stage an access-policy review.")
             : RiAuthClientPolicyReview.unavailable(client) ? h("p", { class: "notice" }, RiAuthClientPolicyReview.unavailable(client))
             : link(hash("client-policy-review", `client:${client.client_id}`), "Review access policy", { class: "button secondary" })),
+      card("Redirect URIs and browser origins",
+        h("pre", { class: "creation-content" }, JSON.stringify({ redirect_uris: client.redirect_uris, origins: sorted(client.settings.origins) }, null, 2)),
+        !data.me?.user?.admin ? h("p", { class: "notice" }, "A full administrator must stage a redirect and origin review.")
+          : RiAuthClientEndpointReview.unavailable(client) ? h("p", { class: "notice" }, "Redirect and origin review is unavailable for this application's current provider or capabilities.")
+          : link(hash("client-endpoint-review", `client:${client.client_id}`), "Review redirects and origins", { class: "button secondary" })),
       client.service ? null : card("Sign-in",
-        uriField("Redirect URIs", redirects, "One per line. riAuth sends people back only to these exact addresses.", "redirect"),
         field("Scopes", scopeInput, OIDC_HINT),
-        oidcApp ? uriField("After sign-out, return to", logout, "Optional. Addresses the app may send people to after signing out.", "logout") : null,
-        oidcApp ? uriField("Allowed origins", origins, "Browser origins that may call the token and userinfo endpoints. Single-page apps need their own origin here.", "origin") : null),
+        oidcApp ? uriField("After sign-out, return to", logout, "Optional. Addresses the app may send people to after signing out.", "logout") : null),
       oidcApp ? card("Claims", deliveryChecks("app", client.settings), h("h3", {}, "Custom claims"), editor.node) : null,
       card("Your applications page",
         field("Description", h("input", { id: "app-description", maxlength: "300", value: app.description || "" })),
@@ -572,10 +579,6 @@
       const name = value(form, "app-name");
       if (!name) throw invalid("Enter a name.");
       if (name !== client.name) patch.name = name;
-      if (!client.service) {
-        const uris = lines(redirects.value);
-        if (!same(uris, client.redirect_uris)) patch.redirect_uris = uris;
-      }
       const scopes = sorted(words(scopeInput.value));
       if (!same(scopes, sorted(client.scopes))) { checkScopes(scopes, client.service); patch.scopes = scopes; }
       // A settings update replaces the whole object, so the current settings travel with it.
@@ -583,7 +586,6 @@
       if (oidcApp) {
         checkMappings(mappingRows, scopes);
         Object.assign(settings, readDelivery(form, "app"), {
-          origins: sorted(lines(origins.value)),
           post_logout_redirect_uris: lines(logout.value),
           claim_mappings: mappingRows.map(toMapping),
         });

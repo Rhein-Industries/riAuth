@@ -116,7 +116,8 @@ explicit multi-client proposal. These cases remain blocked rather than revoking
 unreviewed consequences. Configurable quorum, delegated reviewer roles and a
 shared review inbox remain future work. Other client classes still outside M05
 are advanced/initially-disabled creation, supplied credentials, provider policy
-beyond `allowed_groups`/`require_mfa`, credential changes, registration templates
+beyond `allowed_groups`/`require_mfa` and
+[OAuth redirect URIs/browser origins](reviewed-client-endpoints.md), credential changes, registration templates
 and registration tokens. The full inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).
 

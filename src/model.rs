@@ -110,6 +110,15 @@ pub struct ClientStatusInput {
 }
 pub type ClientCreationBinding = crate::delegation::GrantChangeBinding;
 
+/// Exact replacement of OAuth callbacks and browser CORS origins only.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientEndpointInput {
+    pub redirect_uris: Vec<String>,
+    pub origins: BTreeSet<String>,
+}
+pub type ClientEndpointBinding = crate::delegation::GrantChangeBinding;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
     pub id: String,

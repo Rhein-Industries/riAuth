@@ -180,19 +180,7 @@ async fn issuer_paths_and_cors_preserve_exact_issuer_and_client_origins() {
     f.client("app", false);
     f.core.config.issuer = "http://localhost:9000/application/o/app/".into();
     f.core.config.validate().unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(riauth::model::ProviderSettings {
-                    origins: strings(&["https://app.example.test"]),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_endpoint::set(&f.core, &f.admin, "app", None, Some(strings(&["https://app.example.test"])));
     let app = riauth::api::router(f.core.clone());
     let response = app
         .clone()

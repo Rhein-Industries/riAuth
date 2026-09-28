@@ -707,13 +707,12 @@ fn empty_optional_parameters_and_native_callback_ports() {
             native: true,
             ..Default::default()
         }),
-        redirect_uris: Some(vec![
-            "http://127.0.0.1:12345/callback".into(),
-            "com.example.app:/callback".into(),
-        ]),
         ..Default::default()
     };
     f.core.update_client(&f.admin, "app", patch).unwrap();
+    crate::common::client_endpoint::set(&f.core, &f.admin, "app", Some(vec![
+        "http://127.0.0.1:12345/callback".into(), "com.example.app:/callback".into(),
+    ]), None);
     let verifier = crypto::random_token("");
     let mut request = f.request("app", &verifier);
     request.redirect_uri = "http://127.0.0.1:54321/callback".into();
