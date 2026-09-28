@@ -97,6 +97,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
         TOTP_WORKFLOW => true,
+        _ if supported_configured_password(checked.definition()) => false,
         _ => return Err(Error::forbidden()),
     };
     crate::password::require_local(tx, user)?;

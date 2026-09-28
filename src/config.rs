@@ -54,6 +54,9 @@ pub struct Config {
     /// The cursor and each execution job are persisted in the database.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reconciliation_controllers: BTreeMap<String, crate::reconciliation::ControllerConfig>,
+    /// Platform workflow definitions; only active entries may start new runs.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workflows: BTreeMap<String, crate::workflow::ConfiguredWorkflow>,
     #[serde(default)]
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
@@ -278,6 +281,7 @@ impl Default for Config {
             scim_reconciliation_modes: BTreeMap::new(),
             state_reconciliation_mode: Default::default(),
             reconciliation_controllers: BTreeMap::new(),
+            workflows: BTreeMap::new(),
             signers: Default::default(),
             postgres: None,
             mail: None,
@@ -406,6 +410,35 @@ impl Config {
         }
         for (scope, controller) in &self.reconciliation_controllers {
             crate::reconciliation::validate_controller(self, scope, controller)?;
+        }
+        if self.workflows.len() > 32 {
+            bail!("Configure at most 32 workflows");
+        }
+        for (name, configured) in &self.workflows {
+            let id = crate::workflow::Id::new(name.clone())
+                .map_err(|_| anyhow::anyhow!("Invalid workflow configuration key"))?;
+            if configured.definition.id != id {
+                bail!("Workflow configuration key must match its definition id");
+            }
+            if configured.definition.canonical_json().len() > crate::workflow::MAX_DOCUMENT_BYTES {
+                bail!("Workflow definition exceeds 64 KiB");
+            }
+            let checked = crate::workflow::validate(
+                configured.definition.clone(),
+                &crate::workflow::Environment::platform(),
+            )
+            .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
+            if !crate::workflow::supported_configured_password(checked.definition())
+                || matches!(
+                    name.as_str(),
+                    "platform-password-totp-reauthentication"
+                        | "platform-invitation-password-enrollment"
+                        | "platform-source-reauthentication"
+                        | "platform-source-totp-reauthentication"
+                )
+            {
+                bail!("Configured workflow {name} has no executable adapter");
+            }
         }
         if self.signers.len() > 32 {
             bail!("Configure at most 32 external signing key versions");

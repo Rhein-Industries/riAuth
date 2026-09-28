@@ -16,12 +16,14 @@ keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
-It does not yet enable configured workflow execution. The W02/W03 workflow
-proof receipts remain bound to their account,
+Platform now starts one active configured authentication shape: a local-password
+step with explicit success and denial transitions for an account without TOTP.
+The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 The source paths use server-defined workflows and do not accept arbitrary
-configured definitions.
+configured definitions. Configured enrollment, recovery, custom stages and
+multi-step authentication remain unconnected.
 
 ## Scope
 
@@ -182,6 +184,65 @@ the guessing budget. The existing bound TOTP endpoints below consume both
 receipts and complete the run in one transaction. Revision two allows three
 attempts per verifier within ten minutes; exhausted TOTP leads to recovery code,
 and exhausted recovery denies. Revision-one runs retain their original path.
+
+### Active configured password path
+
+Platform can load an operator-authored definition in `config.toml` and start it
+with `POST /api/workflows/configured/{workflow}` using a live bearer token. The
+entry must be active, canonical, and have exactly one `verify_password` step.
+Its unconditional `verified` and `failed` transitions must end at
+`authenticated` and `denied` terminals. The model validates its revision,
+fingerprint, proof floor, run duration, step timeout and retry/execution limits.
+This shape has no configured source or custom-stage dependency. For example:
+
+```toml
+[workflows.local-password]
+active = true
+
+[workflows.local-password.definition]
+format = "riauth.workflow/v1"
+id = "local-password"
+revision = 1
+category = "authentication"
+origin = "configured"
+entry = "password"
+
+[workflows.local-password.definition.limits]
+max_duration_seconds = 600
+max_executions = 3
+
+[[workflows.local-password.definition.steps]]
+id = "password"
+action = { type = "verify_password" }
+max_attempts = 3
+timeout_seconds = 120
+cancellable = true
+transitions = [
+  { on = "verified", to = "success" },
+  { on = "failed", to = "denied" },
+]
+
+[[workflows.local-password.definition.terminals]]
+id = "success"
+outcome = "authenticated"
+requires = [["password"]]
+
+[[workflows.local-password.definition.terminals]]
+id = "denied"
+outcome = "denied"
+requires = []
+```
+
+`POST /api/workflows/{id}/password` executes the verifier.
+`GET /api/workflows/{id}` resumes and applies deadlines, and
+`POST /api/workflows/{id}/cancel` closes a cancellable run. The existing writer pins
+the exact definition, account, epoch, session and request, and consumes its
+password receipt with terminal completion. A wrong password consumes one bounded
+attempt and the account-wide lockout budget. A cancelled or expired attempt
+cannot later complete. An inactive entry cannot start a run; a started run keeps
+its pinned definition across server restarts. Accounts with enrolled TOTP
+use the canonical password/MFA path instead. This path is reauthentication only:
+it issues neither a new session nor a downstream OIDC authorization code.
 
 ## Downstream OIDC completion
 
@@ -479,8 +540,8 @@ These are not implemented or established by this slice:
   and other initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Arbitrary configured workflows, custom stage execution, and the other
-  built-in verifiers. The password
+* Configured enrollment, recovery, multi-step authentication, custom stage
+  execution, and the other built-in verifiers. The single-step configured password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.

@@ -3,7 +3,8 @@
 //! The W01 definition model and W03 completion seam describe authentication,
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
-//! reauthentication for live bearer sessions; see `docs/workflows.md`.
+//! reauthentication for live bearer sessions, plus one configured local-password path;
+//! see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,55 @@ pub struct Definition {
     pub limits: Limits,
     pub steps: Vec<Step>,
     pub terminals: Vec<Terminal>,
+}
+
+/// An operator-supplied Platform definition. Only active entries can start new
+/// runs; each run stores its validated canonical definition and fingerprint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfiguredWorkflow {
+    #[serde(default)]
+    pub active: bool,
+    pub definition: Definition,
+}
+
+/// The first configured executor path has one real local-password verifier.
+/// Keeping the accepted shape explicit prevents a validated but unwired action
+/// from being exposed as a production journey.
+pub(crate) fn supported_configured_password(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Authentication
+        || definition.steps.len() != 1
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+    {
+        return false;
+    }
+    let step = &definition.steps[0];
+    if !matches!(step.action, Action::VerifyPassword {}) || step.transitions.len() != 2 {
+        return false;
+    }
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Authenticated);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    step.transitions
+        .iter()
+        .all(|transition| transition.when.is_none())
+        && step.transitions.iter().any(|transition| {
+            transition.on == Label::fixed("verified") && transition.to == success.id
+        })
+        && step
+            .transitions
+            .iter()
+            .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
 }
 
 #[derive(JsonSchema, Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

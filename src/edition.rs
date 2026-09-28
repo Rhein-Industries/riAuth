@@ -395,6 +395,7 @@ fn config_blockers(config: &Config, target: Target) -> Vec<Blocker> {
         ),
         (!config.entra_directories.is_empty(), "entra_directories"),
         (!config.signers.is_empty(), "signers"),
+        (!config.workflows.is_empty(), "workflows"),
         (!config.pam_approvers.is_empty(), "pam_approvers"),
         (config.client_certificates.is_some(), "client_certificates"),
         (config.device_trust.is_some(), "device_trust"),

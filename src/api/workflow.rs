@@ -18,6 +18,10 @@ use webauthn_rs::prelude::PublicKeyCredential;
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .route("/api/workflows/password", post(start))
+        .route(
+            "/api/workflows/configured/{workflow}",
+            post(configured_start),
+        )
         .route("/api/workflows/authorization", post(authorization_start))
         .route(
             "/api/workflows/authorization/passkey",
@@ -222,6 +226,16 @@ async fn source_finish(
 async fn start(State(app): State<App>, headers: HeaderMap) -> Result<Json<View>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_start(&token).map(Json))
+        .await
+}
+
+async fn configured_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(workflow): Path<String>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_configured_start(&token, &workflow).map(Json))
         .await
 }
 

@@ -19,7 +19,7 @@ use super::{
     Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
     Target, Validated, builtin,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
-    validate,
+    supported_configured_password, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -140,9 +140,9 @@ struct RuntimeRun {
 
 impl RuntimeRun {
     fn validated(&self) -> Result<Validated> {
-        // Public entry points accept only shipped local definitions or the
-        // server-defined MFA/source paths. Revalidate the pinned snapshot
-        // on every resume so a changed or corrupt row cannot alter routing.
+        // Revalidate the pinned snapshot on every resume so a changed or
+        // corrupt row cannot alter routing. Configured runs retain the exact
+        // definition active when they started.
         let checked = if matches!(
             self.definition.id.as_str(),
             PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT | PASSWORD_RESET
@@ -160,6 +160,8 @@ impl RuntimeRun {
                 return Err(Error::conflict("Workflow definition changed"));
             }
             checked
+        } else if supported_configured_password(&self.definition) {
+            validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
         } else {
             let Some(Action::VerifySource { source }) =
                 self.definition.steps.first().map(|s| &s.action)
@@ -853,6 +855,26 @@ impl CompletionStore for TxCompletion<'_, '_> {
 }
 
 impl Core {
+    /// Start one active, operator-configured local password reauthentication
+    /// workflow. The definition is loaded from validated server configuration;
+    /// the caller supplies only its identifier, never actions or transitions.
+    pub fn workflow_configured_start(&self, token: &str, workflow: &str) -> Result<View> {
+        let configured = self
+            .config
+            .workflows
+            .get(workflow)
+            .filter(|entry| entry.active)
+            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+        let checked = validate(configured.definition.clone(), &Environment::platform())
+            .map_err(invalid_error)?;
+        if !supported_configured_password(checked.definition())
+            || checked.definition().id.as_str() != workflow
+        {
+            return Err(Error::conflict("Configured workflow is unavailable"));
+        }
+        self.start_local_workflow(token, &checked)
+    }
+
     /// Begin local-password reauthentication, adding TOTP when enrolled, for a live
     /// bearer session. The session pins the account and is rechecked at every
     /// operation; this entry point does not replace the existing sign-in path.
@@ -877,11 +899,18 @@ impl Core {
             .then(password::definition)
             .transpose()?;
             let checked = mfa_definition.as_ref().unwrap_or(checked);
+            let configured_password = supported_configured_password(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
-            ) {
+            ) || configured_password
+            {
                 crate::password::require_local(tx, &user)?;
+            }
+            if configured_password && user.totp_secret.is_some() {
+                return Err(Error::conflict(
+                    "This account needs a different verifier path",
+                ));
             }
             if matches!(
                 checked.definition().id.as_str(),
