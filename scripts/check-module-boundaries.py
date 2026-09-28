@@ -292,6 +292,10 @@ def main() -> None:
             r"\.\s*store\s*\.\s*read\s*\(", masked_rust_source(path.read_text())
         ):
             errors.append("src/windows_login.rs: Windows protocol directly reads storage")
+        if path == SRC / "windows_login.rs" and re.search(
+            r"\.\s*store\s*\.\s*write\s*\(", masked_rust_source(path.read_text())
+        ):
+            errors.append("src/windows_login.rs: Windows protocol directly writes storage")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

@@ -277,6 +277,38 @@ fn bad_secret_disabled_user_and_revoke_fail() {
 }
 
 #[test]
+fn failed_device_logins_lock_out_the_username_before_valid_credentials() {
+    let fx = Fixture::new();
+    fx.user("alice");
+    let secret = text(&enroll(&fx, "laptop", "alice", None), "device_secret");
+    for _ in 0..5 {
+        let error = login(
+            &fx,
+            "laptop",
+            "alice",
+            "not-the-real-device-secret-0123456789",
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "invalid_credentials");
+    }
+    let error = login(&fx, "laptop", "alice", &secret, Some(PASSWORD), None, None).unwrap_err();
+    assert_eq!(error.code, "rate_limited");
+    let events = fx.core.audit_events(&fx.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "windows.login_failed" && event["target"] == "laptop")
+            .count(),
+        5
+    );
+}
+
+#[test]
 fn totp_requires_a_valid_code() {
     let fx = Fixture::new();
     fx.user("alice");
