@@ -21,7 +21,7 @@ use super::{
     RunBinding, RunState, Target, Validated, builtin, configured_password_path,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
-    supported_configured_passkey_enrollment, validate,
+    supported_configured_passkey_enrollment, supported_configured_password_reset, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -167,6 +167,7 @@ impl RuntimeRun {
         } else if configured_password_path(&self.definition).is_some()
             || supported_configured_passkey(&self.definition)
             || supported_configured_passkey_enrollment(&self.definition)
+            || supported_configured_password_reset(&self.definition)
             || supported_configured_consent(&self.definition)
         {
             validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?

@@ -13,8 +13,29 @@ pub(super) fn authority(
 ) -> Result<User> {
     let pin = request.recovery.as_ref().ok_or_else(Error::forbidden)?;
     let user = pin.authority(tx, at)?;
-    if run.binding != local_definition(PASSWORD_RESET)?.binding()
-        || run.account != user.id
+    // The built-in and configured paths share this mail capability, but a
+    // configured recovery run must still carry its exact pinned executable
+    // definition. A stored proof or matching workflow name is insufficient.
+    if run.binding.workflow.as_str() == PASSWORD_RESET {
+        if run.binding != local_definition(PASSWORD_RESET)?.binding() {
+            return Err(Error::forbidden());
+        }
+    } else {
+        let saved = load_runtime(tx, &run.id)?;
+        let checked = saved.validated()?;
+        if !supported_configured_password_reset(checked.definition())
+            || checked.binding() != run.binding
+            || saved.record.binding != run.binding
+            || saved.record.account != run.account
+            || saved.record.account_epoch != run.account_epoch
+            || saved.record.request != run.request
+            || saved.record.session != run.session
+            || saved.record.started_at != run.started_at
+        {
+            return Err(Error::forbidden());
+        }
+    }
+    if run.account != user.id
         || run.account_epoch != user.epoch
         || run.session.is_some()
         || request.id != pin.request()
@@ -26,6 +47,7 @@ pub(super) fn authority(
         || request.token_hash != pin.hash()
         || request.source.is_some()
         || request.authorization.is_some()
+        || request.consent.is_some()
         || request.invitation.is_some()
         || request.requires_mfa
         || request.expires_at <= at
@@ -87,7 +109,6 @@ impl Verified {
         });
         expected == *run
             && run.request == self.reset.pin().request()
-            && run.binding.workflow.as_str() == PASSWORD_RESET
             && terminal.outcome == super::super::Outcome::Recovered
     }
 
@@ -136,11 +157,29 @@ impl Core {
         &self,
         tx: &Tx<'_>,
         verified: VerifiedReset,
+        workflow: Option<&str>,
     ) -> Result<Value> {
         let pin = verified.pin().clone();
         let at = pin.verified_at();
         let user = pin.authority(tx, now())?;
-        let checked = local_definition(PASSWORD_RESET)?;
+        let checked = if let Some(workflow) = workflow {
+            let configured = self
+                .config
+                .workflows
+                .get(workflow)
+                .filter(|entry| entry.active)
+                .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+            let checked = validate(configured.definition.clone(), &Environment::platform())
+                .map_err(invalid_error)?;
+            if checked.definition().id.as_str() != workflow
+                || !supported_configured_password_reset(checked.definition())
+            {
+                return Err(Error::conflict("Configured workflow is unavailable"));
+            }
+            checked
+        } else {
+            local_definition(PASSWORD_RESET)?
+        };
         let request_id = pin.request();
         // A final request remains reserved until normal workflow retention ends.
         // Even a restored proof row cannot create a second run for it.

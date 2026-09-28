@@ -283,6 +283,78 @@ pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -
         && routes(enroll, "completed", &success.id, &denied.id)
 }
 
+/// A reset-mail submission can execute this exact recovery path in one writer.
+/// The mail verifier alone supplies the reset proof and password mutation.
+pub(crate) fn supported_configured_password_reset(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Recovery
+        || definition.steps.len() != 3
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 2_400
+        || definition.limits.max_executions > 4
+    {
+        return false;
+    }
+    let [identify, email, reset] = definition.steps.as_slice() else {
+        return false;
+    };
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Recovered);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes = |step: &Step, verified: &'static str, target: &Id| {
+        step.transitions.len() == 2
+            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(verified) && &transition.to == target
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && transition.to == denied.id
+            })
+    };
+    identify.id.as_str() == "identify"
+        && email.id.as_str() == "email"
+        && reset.id.as_str() == "reset"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(identify.action, Action::Identify {})
+        && matches!(
+            email.action,
+            Action::VerifyEmail {
+                purpose: EmailPurpose::Reset
+            }
+        )
+        && matches!(reset.action, Action::ResetPassword {})
+        && identify.max_attempts == 1
+        && email.max_attempts == 1
+        && reset.max_attempts == 1
+        && identify.timeout_seconds <= 300
+        && email.timeout_seconds <= 1_800
+        && reset.timeout_seconds <= 300
+        && identify.cancellable
+        && email.cancellable
+        && !reset.cancellable
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 2
+        && success.requires[0].contains(&Proof::ResetEmail)
+        && success.requires[0].contains(&Proof::PasswordReset)
+        && identify.transitions.len() == 1
+        && identify.transitions[0].when.is_none()
+        && identify.transitions[0].on == Label::fixed("completed")
+        && identify.transitions[0].to == email.id
+        && routes(email, "verified", &reset.id)
+        && routes(reset, "completed", &success.id)
+}
+
 /// A configured consent decision has one live-session proof and one explicit
 /// user decision. Its success terminal cannot be reached by a static signal.
 pub(crate) fn supported_configured_consent(definition: &Definition) -> bool {

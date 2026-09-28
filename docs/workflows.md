@@ -25,11 +25,13 @@ for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
 It supports one configured enrollment shape: a live session, fresh verified
 existing passkey, and passkey registration in that order.
+It also supports one configured recovery shape: explicit reset-mail verification
+and password reset in the same transaction.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 The source paths use server-defined workflows and do not accept arbitrary
-configured definitions. Other configured enrollment shapes, recovery, custom
+configured definitions. Other configured enrollment and recovery shapes, custom
 stages and other authentication chains or consent shapes remain unconnected.
 
 ## Scope
@@ -504,6 +506,23 @@ returning `factors_reset: true`; that removal and clearing the support-exposure
 record commit with the same epoch transition. Essentials keeps its ordinary
 reset path and also rejects a proof whose current recovery-request index no
 longer matches.
+
+Platform can select an active exact configured reset definition at
+`POST /api/workflows/configured/{workflow}/password-reset` with a reset mail
+`token` and new `password`. The definition has only `identify → email → reset`
+steps (`identify`, `verify_email: reset`, `reset_password`), unconditional
+completed/verified routes, failure routes to denial, and a recovered terminal
+requiring reset-email and password-reset proofs no older than 120 seconds.
+It allows at most four executions and a 2,400-second run bound. The mail token
+chooses the account and current recovery request; no bearer session is required
+or created. The existing mail verifier, password policy and atomic mutation
+writer perform all three steps in one submission. A replaced, retired or expired
+mail proof cannot start the run, and a failed password policy check rolls it
+back for retry. Completion consumes the proof once and revokes old sessions.
+There is no separately cancellable active run between requests; replacing or
+retiring the mail proof cancels its authority before submission. The existing
+browser/CLI reset endpoints continue to use the shipped workflow, and
+Essentials does not expose this configured endpoint.
 
 ## Invitation password enrollment
 

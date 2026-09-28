@@ -751,6 +751,30 @@ impl Core {
         purpose: Purpose,
         password: Option<String>,
     ) -> Result<Value> {
+        self.account_complete_selected(token, purpose, password, None)
+    }
+
+    /// Select an active configured recovery definition only for an explicit
+    /// reset-mail submission. The mail token still determines the account.
+    #[cfg(feature = "platform")]
+    pub fn account_complete_configured_reset(
+        &self,
+        workflow: &str,
+        token: String,
+        password: String,
+    ) -> Result<Value> {
+        self.account_complete_selected(token, Purpose::Reset, Some(password), Some(workflow))
+    }
+
+    fn account_complete_selected(
+        &self,
+        token: String,
+        purpose: Purpose,
+        password: Option<String>,
+        configured: Option<&str>,
+    ) -> Result<Value> {
+        #[cfg(not(feature = "platform"))]
+        let _ = configured;
         let token = zeroize::Zeroizing::new(token);
         if !token.starts_with("ri_mail_") || token.len() > 128 {
             return Err(proof_error(None));
@@ -854,7 +878,7 @@ impl Core {
                                 .as_deref()
                                 .ok_or_else(|| Error::bad("New password required"))?,
                         )?;
-                        return self.complete_password_reset_workflow(tx, verified);
+                        return self.complete_password_reset_workflow(tx, verified, configured);
                     }
                     #[cfg(not(feature = "platform"))]
                     {

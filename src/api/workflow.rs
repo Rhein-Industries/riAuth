@@ -1,4 +1,4 @@
-//! Bearer-session endpoints for durable verifier and consent workflow runs.
+//! Platform endpoints for durable workflow runs and explicit mail-proof reset.
 
 use super::{App, bearer, credential_floor};
 use crate::{
@@ -25,6 +25,10 @@ pub(super) fn routes() -> Router<App> {
         .route(
             "/api/workflows/configured/{workflow}/consent",
             post(configured_consent_start),
+        )
+        .route(
+            "/api/workflows/configured/{workflow}/password-reset",
+            post(configured_password_reset),
         )
         .route("/api/workflows/authorization", post(authorization_start))
         .route(
@@ -242,6 +246,29 @@ async fn configured_start(
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_configured_start(&token, &workflow).map(Json))
         .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfiguredReset {
+    token: String,
+    password: String,
+}
+
+async fn configured_password_reset(
+    State(app): State<App>,
+    Path(workflow): Path<String>,
+    Json(input): Json<ConfiguredReset>,
+) -> Result<Json<serde_json::Value>> {
+    let started = Instant::now();
+    let result = app
+        .run_credentials(move |core| {
+            core.account_complete_configured_reset(&workflow, input.token, input.password)
+                .map(Json)
+        })
+        .await;
+    credential_floor(started, true).await;
+    result
 }
 
 async fn configured_consent_start(
