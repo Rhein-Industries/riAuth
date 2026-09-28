@@ -573,3 +573,41 @@ Twenty-eight protocol files still name storage directly. The broad OIDC,
 SAML, SSF, source and session adapters, management/Core access, API/server
 coupling and client/Core coupling remain. Separate crate contracts and
 reviewed distribution assembly parity are still A03 work.
+
+## Wave 13: read-side claims and audit projections
+
+[Claims](../src/claims.rs) now obtains group membership, client records and
+paged user records through a `ClaimsTx` port. The concrete
+[claims assembly](../src/assembly/claims.rs) still calls `core::groups_for`, so
+durable groups and temporary PAM entitlements continue to feed authorization
+and mapped claims together. Ordinary subject validation still uses storage's
+128-record maintenance page through the port; checked restore still scans one
+user per page. The same client lookup, subject collision rules and transaction
+are used. The assembly owns the existing `Core::explain` entry point and its
+permission checks. Claim policy builds the dry-run result, requesting the
+device-trust reason at the same point as before. No authorization or public
+response rule changed.
+
+[Audit map](../src/event_map.rs) now reads reverse audit pages and actor user
+records through an `EventMapTx` port. [Audit-map assembly](../src/assembly/event_map.rs)
+performs the same `audit.read` or browser-admin check before the query. Its
+256-record page, scan cap, cache, location precedence, rounding and response
+shape remain in the protocol module. Both ports are read-only and use the
+caller's existing storage transaction.
+
+After rebasing onto the accepted edition-gating change, the source scan covers
+129 Rust files before and 131 after this cut. It guards claims and audit-map
+modules against direct storage and Core references. This source-level count
+includes files that edition cfgs may exclude from a particular build.
+
+| Explicit source edge | Before | Wave 13 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 31 | 29 |
+| `protocol -> Core` | 34 | 32 |
+| `server_assembly -> protocol` | 4 | 6 |
+| `server_assembly -> storage` | 4 | 6 |
+
+Twenty-nine protocol files still name storage directly, including the larger
+OIDC, SAML, SSF, source, session and device-trust adapters. Management and API
+methods still couple to Core and storage; separate crate contracts and
+reviewed distribution assembly parity remain A03 work.

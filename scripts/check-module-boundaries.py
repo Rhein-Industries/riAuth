@@ -245,6 +245,10 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: issuer refers directly to storage or Core")
         if source_module in {"keyring", "response"} and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: {source_module} refers directly to storage or Core")
+        if source_module == "claims" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: claims refers directly to storage or Core")
+        if source_module == "event_map" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: event_map refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -320,6 +324,22 @@ def main() -> None:
             "response_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "response"
+            ),
+            "claims_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "claims"
+            ),
+            "claims_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "claims"
+            ),
+            "event_map_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "event_map"
+            ),
+            "event_map_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "event_map"
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

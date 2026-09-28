@@ -1,13 +1,21 @@
 pub use crate::model::claims::{ClaimMapping, ClaimSource, Policy, Rule};
 use crate::{
-    core::groups_for,
     error::{Error, Result},
     model::{Client, Identity, User},
-    store::Tx,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+
+/// Read-only facts needed by claim policy and subject validation.
+pub trait ClaimsTx {
+    /// Keep the ordinary subject scan aligned with storage's maintenance page.
+    const SUBJECT_SCAN_PAGE: usize;
+
+    fn groups_for(&self, user_id: &str) -> Result<BTreeSet<String>>;
+    fn client(&self, client_id: &str) -> Result<Option<Client>>;
+    fn scan_users(&self, after: Option<&str>, limit: usize) -> Result<Vec<(String, User)>>;
+}
 
 pub fn rule_reasons(
     rule: &Rule,
@@ -38,13 +46,13 @@ pub fn rule_reasons(
 }
 
 pub fn enforce(
-    tx: &Tx<'_>,
+    tx: &impl ClaimsTx,
     client: &Client,
     user: &User,
     identity: &Identity,
     scopes: &BTreeSet<String>,
 ) -> Result<()> {
-    let groups = groups_for(tx, &user.id)?;
+    let groups = tx.groups_for(&user.id)?;
     for rule in std::iter::once(&client.settings.policy.access).chain(
         scopes
             .iter()
@@ -67,13 +75,13 @@ pub fn subject(user: &User, client: &Client) -> String {
     user.id.clone()
 }
 
-pub fn validate_user(tx: &Tx<'_>, user: &User) -> Result<()> {
-    validate_user_paged(tx, user, crate::store::maintenance::PAGE, &|| Ok(()))
+pub fn validate_user<T: ClaimsTx>(tx: &T, user: &User) -> Result<()> {
+    validate_user_paged(tx, user, T::SUBJECT_SCAN_PAGE, &|| Ok(()))
 }
 
 /// Validate a user while allowing offline restore to abort a long subject scan.
 pub fn validate_user_checked(
-    tx: &Tx<'_>,
+    tx: &impl ClaimsTx,
     user: &User,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
@@ -81,7 +89,7 @@ pub fn validate_user_checked(
 }
 
 fn validate_user_paged(
-    tx: &Tx<'_>,
+    tx: &impl ClaimsTx,
     user: &User,
     page_size: usize,
     check: &dyn Fn() -> Result<()>,
@@ -107,14 +115,14 @@ fn validate_user_paged(
             ));
         }
         let client = tx
-            .get::<Client>("clients", cid)?
+            .client(cid)?
             .ok_or_else(|| Error::bad("Subject mapping references an unknown client"))?;
         let mut after = None;
         loop {
             // The checked restore path decodes just one imported user at a time;
             // an imported user can approach the archive's per-frame limit.
             check()?;
-            let users = tx.scan::<User>("users", after.as_deref(), page_size)?;
+            let users = tx.scan_users(after.as_deref(), page_size)?;
             if users.is_empty() {
                 break;
             }
@@ -132,7 +140,7 @@ fn validate_user_paged(
 }
 
 pub fn mapped_claims(
-    tx: &Tx<'_>,
+    tx: &impl ClaimsTx,
     user: &User,
     client: &Client,
     scopes: &BTreeSet<String>,
@@ -150,7 +158,7 @@ pub fn mapped_claims(
     }
     if scopes.contains("groups") || client.settings.groups_in_profile && scopes.contains("profile")
     {
-        claims["groups"] = json!(groups_for(tx, &user.id)?);
+        claims["groups"] = json!(tx.groups_for(&user.id)?);
     }
     for mapping in &client.settings.claim_mappings {
         if !scopes.contains(&mapping.scope) {
@@ -161,7 +169,7 @@ pub fn mapped_claims(
             ClaimSource::DisplayName => json!(user.display_name),
             ClaimSource::Email => json!(user.email),
             ClaimSource::EmailVerified => json!(user.email_verified),
-            ClaimSource::Groups => json!(groups_for(tx, &user.id)?),
+            ClaimSource::Groups => json!(tx.groups_for(&user.id)?),
             ClaimSource::Attribute { key } => {
                 user.attributes.get(key).cloned().unwrap_or(Value::Null)
             }
@@ -238,28 +246,65 @@ pub struct Explain {
     #[serde(default)]
     pub mfa: bool,
 }
-impl crate::core::Core {
-    pub fn explain(&self, token: &str, input: Explain) -> Result<Value> {
-        self.store.read(|tx| {
-            self.management(tx, token, "client.read", &format!("client/{}", input.client_id))?;
-            self.management(tx, token, "user.read", &format!("user/{}", input.username))?;
-            let client = tx.get::<Client>("clients", &input.client_id)?.ok_or_else(|| Error::missing("Client not found"))?;
-            let user = crate::core::user_by_name(tx, &input.username)?;
-            let groups = groups_for(tx, &user.id)?;
-            let mut reasons = rule_reasons(&client.settings.policy.access, &user.username, &groups, input.mfa);
-            if !client.enabled { reasons.push("client_disabled"); }
-            if !user.enabled { reasons.push("user_disabled"); }
-            if client.service { reasons.push("service_client_has_no_user_identity"); }
-            if !input.scope.is_subset(&client.scopes) { reasons.push("unregistered_scope"); }
-            if !client.allowed_groups.is_empty() && client.allowed_groups.is_disjoint(&groups) { reasons.push("no_matching_client_group"); }
-            if client.require_mfa && !input.mfa { reasons.push("mfa_required"); }
-            if let Some(reason) = crate::device_trust::policy_reason(self, tx, &client, None)? { reasons.push(reason); }
-            let scopes: std::collections::BTreeMap<_, _> = input.scope.iter().filter_map(|s| client.settings.policy.scopes.get(s).map(|r| (s, rule_reasons(r, &user.username, &groups, input.mfa)))).collect();
-            let allowed = reasons.is_empty() && scopes.values().all(Vec::is_empty);
-            let mapped = mapped_claims(tx, &user, &client, &input.scope)?;
-            Ok(json!({"simulation": true, "token_issued": false, "mfa_assumed": input.mfa, "allowed": allowed, "reasons": reasons, "scope_decisions": scopes,
-                "userinfo": mapped, "id_token_identity_claims": if client.settings.userinfo_only { json!({"sub": subject(&user, &client)}) } else { mapped.clone() },
-                "access_token_identity_claims": if client.settings.claims_in_access_token { mapped } else { json!({"sub": subject(&user, &client)}) }}))
-        })
+/// Build the dry-run response after assembly has authorized and loaded its records.
+pub(crate) fn explain_decision(
+    tx: &impl ClaimsTx,
+    input: &Explain,
+    client: &Client,
+    user: &User,
+    device_reason: impl FnOnce() -> Result<Option<&'static str>>,
+) -> Result<Value> {
+    let groups = tx.groups_for(&user.id)?;
+    let mut reasons = rule_reasons(
+        &client.settings.policy.access,
+        &user.username,
+        &groups,
+        input.mfa,
+    );
+    if !client.enabled {
+        reasons.push("client_disabled");
     }
+    if !user.enabled {
+        reasons.push("user_disabled");
+    }
+    if client.service {
+        reasons.push("service_client_has_no_user_identity");
+    }
+    if !input.scope.is_subset(&client.scopes) {
+        reasons.push("unregistered_scope");
+    }
+    if !client.allowed_groups.is_empty() && client.allowed_groups.is_disjoint(&groups) {
+        reasons.push("no_matching_client_group");
+    }
+    if client.require_mfa && !input.mfa {
+        reasons.push("mfa_required");
+    }
+    if let Some(reason) = device_reason()? {
+        reasons.push(reason);
+    }
+    let scopes: std::collections::BTreeMap<_, _> = input
+        .scope
+        .iter()
+        .filter_map(|scope| {
+            client.settings.policy.scopes.get(scope).map(|rule| {
+                (
+                    scope,
+                    rule_reasons(rule, &user.username, &groups, input.mfa),
+                )
+            })
+        })
+        .collect();
+    let allowed = reasons.is_empty() && scopes.values().all(Vec::is_empty);
+    let mapped = mapped_claims(tx, user, client, &input.scope)?;
+    Ok(json!({
+        "simulation": true,
+        "token_issued": false,
+        "mfa_assumed": input.mfa,
+        "allowed": allowed,
+        "reasons": reasons,
+        "scope_decisions": scopes,
+        "userinfo": mapped,
+        "id_token_identity_claims": if client.settings.userinfo_only { json!({"sub": subject(user, client)}) } else { mapped.clone() },
+        "access_token_identity_claims": if client.settings.claims_in_access_token { mapped } else { json!({"sub": subject(user, client)}) }
+    }))
 }

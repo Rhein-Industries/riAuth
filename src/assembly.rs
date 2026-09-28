@@ -1,5 +1,7 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
+mod claims;
+mod event_map;
 mod issuer;
 mod keyring;
 mod response;
