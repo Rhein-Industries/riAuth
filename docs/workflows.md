@@ -2,8 +2,8 @@
 
 Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
-the built-in password and passkey reauthentication workflows and an OIDC/SAML source
-reauthentication workflow with local TOTP when enrolled, for a live bearer session. All use the existing
+password, passkey and OIDC/SAML source reauthentication for a live bearer session.
+Password and source paths require local TOTP when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. They do not complete a
 downstream OIDC sign-in transaction or issue a new session. Other built-in
 verifier actions remain unconnected. The existing
@@ -154,6 +154,30 @@ model a trusted upstream MFA assertion, so an upstream-authenticated account
 with local TOTP still needs the local factor. W02 must reconcile that rule with
 today's [source stage](../src/source.rs) behavior.
 
+## Local password reauthentication
+
+On Platform, `POST /api/workflows/password` pins a workflow to the live bearer
+session's account. Accounts with a local password and enrolled TOTP use the
+server-owned `platform-password-totp-reauthentication` definition, whose success
+requires both proofs. Accounts without TOTP retain the shipped password-only
+path. Neither path accepts a directory-managed password or a caller-selected
+definition. Essentials ordinary sign-in is unchanged.
+
+`POST /api/workflows/{id}/password` accepts a `password`. The executor reserves
+one step attempt, calls sign-in's password hash verifier outside the writer,
+then rechecks the exact run, reservation, account epoch, live session, request,
+credential hash and account lockout before storing evidence. The receipt's
+freshness starts at verification time. Password proof never creates a staged
+browser login or session, so an incomplete MFA chain cannot be attached elsewhere.
+
+A correct password advances an MFA run to TOTP and leaves its account-wide
+failed-credential count intact. The full chain must succeed before that count
+is cleared. Cancellation, correct-password retries and new runs cannot restore
+the guessing budget. The existing bound TOTP endpoints below consume both
+receipts and complete the run in one transaction. The two-factor definition
+allows three attempts per factor within ten minutes; exhaustion denies instead
+of entering the model's unconnected recovery-code fallback.
+
 ## Local passkey reauthentication
 
 On Platform, `POST /api/workflows/passkey` starts the shipped passkey workflow
@@ -210,20 +234,23 @@ proof freshness or signed assertion expiry. OAuth-only sources remain unavailabl
 on this path. Upstream
 MFA assertions are not converted into local-factor proofs.
 
-## Local TOTP after source verification
+## Local TOTP after primary verification
 
 An account with TOTP uses the distinct, pinned
 `platform-source-totp-reauthentication` definition. It requires both source and
 TOTP evidence. The original source-only definition remains available for its
-existing pinned runs. After the source step, `POST /api/workflows/{id}/totp/start`
+existing pinned runs. Password-plus-TOTP uses the same local-factor adapter and
+requires a fresh password receipt instead. After the primary step,
+`POST /api/workflows/{id}/totp/start`
 returns a `workflow` view, an opaque `challenge` and its `expires_at`.
 `POST /api/workflows/{id}/totp` accepts that `challenge` and the authenticator
 `code`, using the original bearer session. The handle binds the account, epoch,
 session, request, run, definition, primary proof, current step and attempt.
 
 The executor uses the ordinary TOTP verifier, enrolled algorithm/digits/period,
-and account-wide `totp_last_step`. It rechecks the source proof's freshness and
-live account link before verification and again at completion. The factor
+and account-wide `totp_last_step`. It rechecks the primary proof's freshness and
+authority before verification and again at completion, including local-password
+eligibility or the source's live account link. The factor
 counter, both evidence consumptions and the final run state commit in one
 transaction. A completion error rolls back factor consumption. This path issues
 no session, changes no session assurance, and stores no submitted code.
@@ -232,9 +259,10 @@ Invalid codes spend the reserved handle and one of three attempts. Retrying
 requires a new handle; delayed submissions and handles from cancelled runs
 cannot complete it. The ordinary account lockout also applies, so cancellation
 or a new workflow does not reset failed-code counts. The factor deadline cannot
-extend the source proof's signed expiry, its 120-second freshness bound, or the
-run/request deadline. Epoch changes invalidate pending verification. The
-password-plus-TOTP default and recovery-code fallback remain unconnected.
+extend the primary proof's expiry, its 120-second freshness bound, or the
+run/request deadline. A source proof also retains its signed assertion expiry.
+Epoch changes invalidate pending verification. Recovery-code fallback remains
+unconnected.
 
 ## Bounds
 
@@ -277,7 +305,7 @@ These are not implemented or established by this slice:
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Arbitrary configured workflows, custom stage execution, trusted upstream MFA
-  assertion adapters, password-plus-TOTP and recovery-code fallback, invitation
+  assertion adapters, recovery-code fallback, invitation
   acceptance, and the other built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
@@ -297,6 +325,9 @@ These are not implemented or established by this slice:
   The focused TOTP regression uses signed upstream evidence and real enrolled
   codes to exercise bound retries, cancellation, stale/consumed source evidence,
   account-wide replay, epoch invalidation and atomic competing completion.
+  The password-plus-TOTP regression checks both real verifiers, retained lockout
+  across correct passwords and cancelled runs, proof substitution/expiry,
+  ordinary sign-in replay rejection and competing finalization writers.
   PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

@@ -1,8 +1,8 @@
-//! Local MFA after a real upstream proof. The shared TOTP verifier and account
+//! Local MFA after a real password or upstream proof. The shared TOTP verifier and account
 //! replay counter run in the same writer as W03 evidence and W02 completion.
 
 use super::*;
-use crate::{core::audit, model::Attempts};
+use crate::core::audit;
 use axum::http::StatusCode;
 
 #[derive(Serialize)]
@@ -35,7 +35,6 @@ fn binding(run: &RuntimeRun, reservation: &InFlight, challenge: &str) -> Result<
     .map_err(Error::internal)
 }
 
-/// Only the server-owned source-plus-TOTP path is connected in this slice.
 /// Check its primary proof before touching the account's factor replay state.
 fn primary(
     core: &Core,
@@ -46,12 +45,12 @@ fn primary(
     request: &RequestAuthority,
     at: u64,
 ) -> Result<StoredEvidence> {
-    if checked.definition().id.as_str() != source::TOTP_WORKFLOW
-        || !request.requires_mfa
-        || request.source.is_none()
-        || user.totp_secret.is_none()
-        || at < run.step_started_at
-    {
+    let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
+        (source::TOTP_WORKFLOW, true) => Proof::Source,
+        (password::TOTP_WORKFLOW, false) => Proof::Password,
+        _ => return Err(Error::forbidden()),
+    };
+    if !request.requires_mfa || user.totp_secret.is_none() || at < run.step_started_at {
         return Err(Error::forbidden());
     }
     let [recorded] = run.record.steps.as_slice() else {
@@ -60,7 +59,7 @@ fn primary(
     let step = checked.entry().ok_or_else(Error::forbidden)?;
     if recorded.step != step.id
         || recorded.signal != Label::fixed("verified")
-        || !matches!(step.action, Action::VerifySource { .. })
+        || step.action.proof(&recorded.signal) != Some(proof)
     {
         return Err(Error::forbidden());
     }
@@ -72,7 +71,7 @@ fn primary(
         &run.record,
         recorded,
         step,
-        Proof::Source,
+        proof,
         reference,
         &receipt,
         at,
@@ -87,7 +86,7 @@ fn primary(
 }
 
 impl Core {
-    /// Reserve the current MFA attempt after the upstream verifier succeeded.
+    /// Reserve the current MFA attempt after the primary verifier succeeded.
     /// The handle is bound to all run authority and is replaced on every retry.
     pub fn workflow_totp_challenge(&self, token: &str, id: &str) -> Result<TotpChallenge> {
         self.store
@@ -192,7 +191,7 @@ impl Core {
             let primary = primary(self, tx, &checked, &run, &user, &request, at)?;
             // Share the ordinary account lockout. Cancelling or starting a new
             // workflow cannot reset the code-guessing budget.
-            let mut attempts = tx
+            let attempts = tx
                 .get::<Attempts>("attempts", &user.username)?
                 .unwrap_or_default();
             if attempts.locked_until > at {
@@ -203,12 +202,6 @@ impl Core {
                     "Too many attempts; try again later",
                 )));
             }
-            if at.saturating_sub(attempts.window_start) >= 900 {
-                attempts = Attempts {
-                    window_start: at,
-                    ..Default::default()
-                };
-            }
             let verified = crypto::totp_step_with(
                 user.totp_secret.as_deref().ok_or_else(Error::forbidden)?,
                 &user.username,
@@ -218,11 +211,7 @@ impl Core {
                 &user.totp_settings,
             )?;
             let Some(factor_step) = verified else {
-                attempts.failures = attempts.failures.saturating_add(1);
-                if attempts.failures >= 5 {
-                    attempts.locked_until = at.saturating_add(900);
-                }
-                tx.put("attempts", &user.username, &attempts)?;
+                record_credential_failure(tx, &user, at)?;
                 audit(tx, &user.id, "workflow.totp.failed", id)?;
                 fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
                 return Ok(Ok(run.view(&checked)?));
