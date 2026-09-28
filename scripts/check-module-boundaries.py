@@ -279,6 +279,11 @@ def main() -> None:
             errors.append("src/portal/self_service.rs: browser self-service refers directly to storage, Core or assembly")
         if path == SRC / "portal/mfa.rs" and refs & (STORAGE | {"core", "assembly"}):
             errors.append("src/portal/mfa.rs: browser MFA refers directly to storage, Core or assembly")
+        if path == SRC / "portal/sources.rs" and (
+            refs & STORAGE
+            or re.search(r"\bimpl\s+Core\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/portal/sources.rs: browser source adapter contains Core transactions or storage")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

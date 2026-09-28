@@ -20,6 +20,7 @@ pub(crate) mod passkey;
 mod password;
 mod portal_mfa;
 mod portal_self_service;
+mod portal_sources;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;
