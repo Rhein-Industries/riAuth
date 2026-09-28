@@ -323,6 +323,11 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/signin.rs: browser sign-in protocol refers directly to Core or storage")
+        if path == SRC / "outpost.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/outpost.rs: proxy SSO protocol refers directly to Core or storage")
         if path == SRC / "ldap_server.rs" and (
             refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
         ):

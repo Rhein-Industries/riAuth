@@ -451,34 +451,56 @@ async fn cross_site_unsafe_methods_are_refused_before_authentication() {
     let s = setup();
     for authenticated in [false, true] {
         let cookie = if authenticated { s.proxy.as_str() } else { "" };
-        for request in [
-            call()
-                .set("x-forwarded-method", "POST")
-                .set("origin", "https://attacker.test"),
-            call()
-                .set("x-forwarded-method", "post")
-                .set("origin", "null"),
-            call()
-                .set("x-forwarded-method", "POST")
-                .set("sec-fetch-site", "cross-site"),
-            call()
-                .set("x-forwarded-method", "DELETE")
-                .set("origin", APP)
-                .set("sec-fetch-site", "same-site"),
-            call()
-                .set("x-forwarded-method", "PATCH")
-                .add("origin", APP)
-                .add("origin", APP),
-            call()
-                .set("x-forwarded-method", "PUT")
-                .add("sec-fetch-site", "same-origin")
-                .add("sec-fetch-site", "same-origin"),
-            call()
-                .without("x-forwarded-method")
-                .set("origin", "https://attacker.test"),
+        // Duplicate provenance headers fail parsing with 400 before origin policy runs.
+        for (request, expected) in [
+            (
+                call()
+                    .set("x-forwarded-method", "POST")
+                    .set("origin", "https://attacker.test"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "post")
+                    .set("origin", "null"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "POST")
+                    .set("sec-fetch-site", "cross-site"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "DELETE")
+                    .set("origin", APP)
+                    .set("sec-fetch-site", "same-site"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "PATCH")
+                    .add("origin", APP)
+                    .add("origin", APP),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "PUT")
+                    .add("sec-fetch-site", "same-origin")
+                    .add("sec-fetch-site", "same-origin"),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                call()
+                    .without("x-forwarded-method")
+                    .set("origin", "https://attacker.test"),
+                StatusCode::FORBIDDEN,
+            ),
         ] {
             let reply = request.set("cookie", cookie).send(&s.router).await;
-            assert_eq!(reply.status, StatusCode::FORBIDDEN, "{authenticated}");
+            assert_eq!(reply.status, expected, "{authenticated}");
             assert!(reply.header("x-riauth-login").is_none());
             assert!(reply.header("location").is_none());
             assert!(reply.header("x-authentik-username").is_none());

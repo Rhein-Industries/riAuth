@@ -20,6 +20,12 @@ pub(crate) use mtls::clear_user_binding;
 mod oidc;
 pub(crate) use oidc::{backfill_prepared_index, cleanup_prepared, stamp_prepared_index};
 #[cfg(feature = "platform")]
+mod outpost;
+#[cfg(feature = "platform")]
+pub use outpost::cleanup as outpost_cleanup;
+#[cfg(feature = "platform")]
+pub(crate) use outpost::revoke_sessions as outpost_revoke_sessions;
+#[cfg(feature = "platform")]
 mod pam;
 #[cfg(feature = "platform")]
 pub use pam::{cleanup as pam_cleanup, extra_groups as pam_extra_groups};
