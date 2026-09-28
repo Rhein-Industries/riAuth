@@ -475,13 +475,28 @@ impl Core {
     pub fn list_users(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<User>("users")?
-                    .iter()
-                    .filter(|(_, u)| actor.allows("user.read", &format!("user/{}", u.username)))
-                    .map(|(_, u)| UserView::from(u))
-                    .collect::<Vec<_>>()
-            ))
+            // Keep the returned array in key order without also retaining the
+            // complete User bucket and a second array of typed views.
+            let mut users = Vec::new();
+            let mut after = None;
+            loop {
+                let page =
+                    tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = page.last().map(|(key, _)| key.clone());
+                for (_, user) in page {
+                    if actor.allows("user.read", &format!("user/{}", user.username)) {
+                        users.push(json!(UserView::from(&user)));
+                    }
+                }
+                if !full {
+                    break;
+                }
+            }
+            Ok(Value::Array(users))
         })
     }
     pub fn create_user(&self, token: &str, input: NewUser) -> Result<Value> {
