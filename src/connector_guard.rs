@@ -11,6 +11,22 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+/// Leave a full MiB below the v3 backup frame ceiling for the record name,
+/// records-frame JSON wrapper, and sealed-frame overhead. Connector plans are
+/// single records and must remain exportable with the default backup limits.
+pub(crate) const BACKUP_SAFE_RECORD_BYTES: usize =
+    crate::operations::stream::MAX_FRAME_BYTES - 1024 * 1024;
+
+pub(crate) fn require_backup_safe_record(
+    record: &impl Serialize,
+    message: &'static str,
+) -> Result<()> {
+    if serde_json::to_vec(record).map_err(Error::internal)?.len() > BACKUP_SAFE_RECORD_BYTES {
+        return Err(Error::bad(message));
+    }
+    Ok(())
+}
+
 /// A controller policy is scoped to one configured connector. Absence of a
 /// policy means manual review; a controller never infers an automatic mode.
 #[derive(

@@ -7,6 +7,7 @@ use crate::{
     agent::Principal,
     connector_guard::{
         ApplyGate, Pagination, ReconciliationMode, ReviewBinding, plan_content, reconcile_plan,
+        require_backup_safe_record,
     },
     core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
@@ -1274,6 +1275,8 @@ impl WorkspaceSnapshotDraft {
 
     fn bounded(&self) -> Result<()> {
         self.snapshot.bounded()?;
+        // A 4 MiB serialized draft leaves ample room below the 8 MiB backup
+        // frame ceiling for its stored key and frame wrapper.
         if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
@@ -2516,6 +2519,10 @@ impl Core {
             plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
             plan.review
                 .validate(tx, &current_actor, &plan_content(&plan)?)?;
+            require_backup_safe_record(
+                &plan,
+                "Cloud directory plan exceeds the backup-safe record limit",
+            )?;
             if supersede {
                 for (old_id, old) in plans {
                     if old.actor == actor.id
