@@ -23,6 +23,8 @@ async function portalSignOut(page) {
 const stepTitle = (page) => page.locator('#wizard-step-title');
 const next = (page) => page.getByRole('button', { name: 'Continue' }).click();
 async function openWizard(page) {
+  // A fresh document: a hash-only goto would keep the previous view's state.
+  await page.goto('about:blank');
   await page.goto(`${fixture.issuer}/admin#/applications/new`);
   await expect(stepTitle(page)).toHaveText('Step 1 of 6: Application');
 }
@@ -134,33 +136,71 @@ test('a refresh keeps the fields typed on the open step', async ({ page }) => {
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Unsaved name');
 });
 
-test('an idle tab checks the account on focus before showing a one-time secret', async ({ page, context }) => {
-  const focus = () => page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  const secretField = () => page.locator('.connection-facts code', { hasText: /^ri_client_/ });
-  await portalSignIn(page, fixture.admin);
-  const secret = await createWebApp(page, 'Idle one', 'https://idle-one.example.com/callback');
-  // The same administrator returning sees the secret again.
-  await focus();
-  await expect(secretField()).toBeVisible();
-  await expect(secretField()).toHaveText(secret);
+// Non-retrying: the secret must already be gone when the event handler returns.
+async function secretErasedNow(page, secret) {
+  expect(await page.content()).not.toContain(secret);
+  expect(await page.locator('#secret-value').inputValue()).toBe('');
+}
+const dispatch = (page, type) => page.evaluate((type) => {
+  if (type === 'visibilitychange') {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event(type));
+    delete document.visibilityState;
+  } else window.dispatchEvent(new Event(type));
+}, type);
 
-  // Another administrator signs in from a second tab; this tab is idle, never refreshed.
+test('a one-time secret is erased as soon as the tab loses focus or is hidden', async ({ page }) => {
+  await portalSignIn(page, fixture.admin);
+  let secret = await createWebApp(page, 'Blur one', 'https://blur-one.example.com/callback');
+  await dispatch(page, 'blur');
+  await secretErasedNow(page, secret);
+  await expect(page.getByText('The client secret was erased when this page lost focus.')).toBeVisible();
+
+  secret = await createWebApp(page, 'Hidden one', 'https://hidden-one.example.com/callback');
+  await dispatch(page, 'visibilitychange');
+  await secretErasedNow(page, secret);
+
+  // A rotated secret in the dialog goes the same way.
+  await page.goto(`${fixture.issuer}/admin#/applications/hidden-one`);
+  await page.getByRole('button', { name: 'Rotate secret' }).click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#secret-dialog')).toBeVisible();
+  secret = await page.locator('#secret-value').inputValue();
+  expect(secret).toMatch(/^ri_client_/);
+  await dispatch(page, 'blur');
+  await secretErasedNow(page, secret);
+  await expect(page.locator('#secret-dialog')).toBeHidden();
+});
+
+test('focus erases a one-time secret before the session check answers', async ({ page, context }) => {
+  await portalSignIn(page, fixture.admin);
+  // A stalled, then failed, session check never exposes the secret.
+  let secret = await createWebApp(page, 'Stall one', 'https://stall-one.example.com/callback');
+  let release;
+  let held = new Promise((done) => { release = done; });
+  await page.route('**/api/admin/session', async (route) => { await held; await route.abort(); });
+  await dispatch(page, 'focus');
+  await secretErasedNow(page, secret);
+  release();
+  await expect(page.getByText('The client secret was erased when this page lost focus.')).toBeVisible();
+  await secretErasedNow(page, secret);
+  await page.unroute('**/api/admin/session');
+
+  // An idle tab returns after another administrator signed in from a second tab.
+  secret = await createWebApp(page, 'Idle one', 'https://idle-one.example.com/callback');
   const idle = { username: 'idle-admin', password: 'idle tab fixture administrator 2026' };
   const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...idle, admin: true } });
   expect(created.ok()).toBe(true);
   const other = await context.newPage();
   await portalSignOut(other);
   await portalSignIn(other, idle);
-  // Hold the session check: the secret is covered before riAuth answers.
-  let release;
-  const held = new Promise((done) => { release = done; });
+  held = new Promise((done) => { release = done; });
   await page.route('**/api/admin/session', async (route) => { await held; await route.continue(); });
-  await focus();
-  await expect(page.locator('#view')).toBeHidden();
-  await expect(secretField()).toBeHidden();
+  await dispatch(page, 'focus');
+  await secretErasedNow(page, secret);
   release();
   await expect(stepTitle(page)).toHaveText('Step 1 of 6: Application');
   await expect(page.locator('#account-detail')).toContainText('idle-admin');
   await page.unroute('**/api/admin/session');
-  await secretGone(page, secret);
+  await secretErasedNow(page, secret);
 });

@@ -14,7 +14,6 @@
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
-  let verifying = false, focusCheck = 0; // a one-time secret stays covered while verifying
 
   class ApiError extends Error {
     constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -164,10 +163,20 @@
   // them. Every session or account transition drops them, the views that rendered them and
   // any open secret or confirmation dialog, so a later account in this tab can't see them.
   function forget() {
-    draft = null; captureWizard = null; verifying = false;
+    draft = null; captureWizard = null;
     $("view").replaceChildren();
     $("secret-value").value = "";
     for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
+  }
+  // A one-time client secret lives only while this tab keeps focus. Losing focus, hiding or
+  // leaving the page erases it from the draft and from every DOM copy at once, before any
+  // other account could come back to this tab. A lost secret is replaced by rotating.
+  function eraseSecrets() {
+    $("secret-value").value = "";
+    if ($("secret-dialog").open) $("secret-dialog").close();
+    if (!draft || !draft.created || !draft.created.secret) return;
+    draft.created.secret = null; draft.created.discarded = true;
+    if (loaded) render(); else $("view").replaceChildren();
   }
   function gate(kind) {
     generation += 1; loaded = false;
@@ -200,7 +209,6 @@
       ]);
       if (run !== generation) return;
       if (draft && draft.owner !== me.user.id) forget();
-      verifying = false; focusCheck += 1;
       Object.assign(data, { me, revision: me.revision, clients, users, groups, requests, grants, audit });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -273,7 +281,7 @@
     else crumbs[0] = h("strong", { "aria-current": "page" }, SECTIONS[section]);
     $("breadcrumb").replaceChildren(h("span", {}, "Administration"), icon("chevron"), ...crumbs);
     document.title = `${content.crumb || SECTIONS[section]} · riAuth administration`;
-    if (!verifying) screen("view");
+    screen("view");
     if (options.focus) { const heading = view.querySelector("h1"); if (heading) heading.focus(); announce(document.title); }
   }
 
@@ -1047,7 +1055,8 @@
     const connection = d.created.connection;
     const node = h("div", {},
       heading("APPLICATIONS", `Connect ${client.name}`, "The application exists now. Configure the app with these values, then check the connection."),
-      secret ? h("p", { class: "notice warn-notice", role: "note" }, "Copy the client secret now. riAuth stores only a hash; it disappears when you leave this page and can only be replaced by rotating.") : null,
+      secret ? h("p", { class: "notice warn-notice", role: "note" }, "Copy the client secret now. riAuth stores only a hash, and this page erases it as soon as you switch to another tab or window. A lost secret can only be replaced by rotating.") : null,
+      d.created.discarded ? h("p", { class: "notice warn-notice", role: "note" }, "The client secret was erased when this page lost focus. If it wasn't copied, rotate it on the application's page.") : null,
       h("div", { class: "detail-grid" },
         h("div", { class: "admin-form" },
           card("Connection", connection ? connectionFacts(connection, secret) : h("p", { class: "field-hint" }, "Reload to see the connection details."), connection ? envSnippet(connection, secret) : null)),
@@ -1389,27 +1398,19 @@
       if (error.status === 401) gate("signin"); else toast(explain(error));
     } finally { $("sign-out").disabled = false; }
   });
-  // A session that ends, or becomes another account, in another tab is noticed on return. A
-  // one-time secret on screen is covered before the check, and shown again only to the
-  // administrator who created it; another administrator gets a fresh page without it.
+  window.addEventListener("blur", eraseSecrets);
+  window.addEventListener("pagehide", eraseSecrets);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") eraseSecrets(); });
+  // A session that ends, or becomes another account, in another tab is noticed on return.
+  // Any one-time secret is erased first, synchronously, so no answer or stall can expose it.
   window.addEventListener("focus", async () => {
+    eraseSecrets();
     if (!loaded) return;
-    const run = ++focusCheck;
-    const owner = data.me && data.me.user ? data.me.user.id : null;
-    verifying = Boolean(draft && draft.created && draft.created.secret);
-    if (verifying) screen("loading");
-    let me = null, failure = null;
-    try { me = await api("GET", "admin/session"); } catch (error) { failure = error; }
-    if (run !== focusCheck) return;
-    const covered = verifying;
-    verifying = false;
-    if (failure && (failure.status === 401 || failure.status === 403)) { refresh(); return; }
-    if (me && me.user.id !== owner) { forget(); loaded = false; refresh({ focus: true }); return; }
-    if (!covered) return;
-    if (me) { screen("view"); return; }
-    // Unconfirmed: keep the secret covered; Refresh checks the session again.
-    verifying = true;
-    connection("Offline"); toast("Couldn't confirm your session. Refresh to show this page again.");
+    const owner = data.me.user.id;
+    try {
+      const me = await api("GET", "admin/session");
+      if (me.user.id !== owner) { forget(); loaded = false; refresh({ focus: true }); }
+    } catch (error) { if (error.status === 401 || error.status === 403) refresh(); }
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
