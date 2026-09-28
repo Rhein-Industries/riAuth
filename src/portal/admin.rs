@@ -1,14 +1,14 @@
 //! Compact browser administration: `/admin` and its same-origin JSON routes.
 //!
 //! Every route authenticates the administrator's browser session (SSO cookie) as a management
-//! credential and calls the same `Core` methods as the bearer API, so authorization,
-//! validation, If-Match revisions, idempotency receipts and audit are shared. Reads require
-//! the portal header; writes also pass `browser_write_guard`.
+//! credential and calls the same `Core` methods as the bearer API, sharing authorization
+//! and validation. Mutations also share If-Match revisions, idempotency receipts and audit.
+//! Reads require the portal header; POSTs also pass `browser_write_guard`.
 use super::http::{browser_write_guard, portal_html};
 use crate::{
     agent::browser_credential,
     api::{App, sso_cookie},
-    claims::Explain,
+    claims::{Explain, Simulation},
     delegation::GrantInput,
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
@@ -49,6 +49,7 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
         .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
         .route("/api/admin/clients/{id}/explain", post(explain))
+        .route("/api/admin/policy/simulate", post(simulate_policy))
         .route("/api/admin/client-checks", post(check_client))
         .route("/api/admin/audit", get(audit));
     #[cfg(feature = "platform")]
@@ -554,4 +555,16 @@ async fn explain(
         .map(Json)
     })
     .await
+}
+
+/// Same read-only management decision as the bearer API and CLI, with the
+/// browser's same-origin POST guard and SSO credential.
+async fn simulate_policy(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<Simulation>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.simulate_policy(&token, input).map(Json))
+        .await
 }

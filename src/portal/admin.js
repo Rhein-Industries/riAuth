@@ -1,6 +1,6 @@
 "use strict";
 // Compact administration. Every call goes to /api/admin/*, which runs the same management
-// methods, permission checks, validation and audit as the bearer API. Edits send the
+// methods, permission checks and validation as the bearer API. Edits share its audit and send the
 // configuration revision they were made against (If-Match) and one Idempotency-Key per
 // attempt, so a stale form is rejected and a retried submit is applied at most once.
 (() => {
@@ -568,7 +568,7 @@
       h("div", { class: "detail-grid" }, form,
         h("div", { class: "detail-side" },
           diagnosticsCard(client, true),
-          signInTest(client),
+          policySimulation(client),
           card("Credentials", secret),
           card("Protocol settings", h("p", { class: "field-hint" }, "Signing, encryption, token lifetimes and trust are changed with riauth client update or a desired-state manifest; saving this page keeps them."),
             h("details", {}, h("summary", {}, "Show current settings"), h("pre", { class: "settings-json" }, JSON.stringify(protocol, null, 2)))))));
@@ -579,17 +579,23 @@
   const PROTECTED_CLAIMS = ["iss", "sub", "aud", "exp", "iat", "nbf", "jti", "nonce", "auth_time", "amr", "acr", "at_hash", "c_hash", "sid", "client_id", "scope", "cnf", "act", "email", "email_verified"];
   const SOURCES = [["username", "Username"], ["display_name", "Display name"], ["email", "Email address"], ["email_verified", "Email verified"], ["groups", "Group names"], ["attribute", "Person attribute"], ["literal", "Fixed value"]];
   const REASONS = {
-    required_groups_missing: "isn't in every group the application's policy requires",
-    no_matching_group: "isn't in any group the application's policy accepts",
-    denied_group: "is in a group the application's policy denies",
-    user_not_allowed: "isn't on the application's list of allowed people",
-    user_denied: "is on the application's list of denied people",
-    mfa_required: "needs a passkey or authenticator code for this application",
-    client_disabled: "can't sign in because the application is disabled",
-    user_disabled: "can't sign in because their account is disabled",
-    service_client_has_no_user_identity: "can't sign in: services have no people signing in",
-    unregistered_scope: "asked for a scope the application doesn't allow",
-    no_matching_client_group: "isn't a member of the application's allowed groups",
+    required_groups_missing: "Required group membership is missing.",
+    no_matching_group: "No allowed policy group matches.",
+    denied_group: "A denied group matches.",
+    user_not_allowed: "The person is absent from the policy's allowed-user list.",
+    user_denied: "The person is on the policy's denied-user list.",
+    mfa_required: "This application or scope requires MFA.",
+    client_disabled: "The application is disabled.",
+    user_disabled: "The person is disabled.",
+    service_client_has_no_user_identity: "Service applications have no person sign-in.",
+    unregistered_scope: "A requested scope is not registered for the application.",
+    no_matching_client_group: "No application-allowed group matches.",
+    source_disabled: "The assumed source is disabled.",
+    assurance_not_accepted: "The assumed assurance does not meet the application's default requirement.",
+    conditional_policy_denied: "A conditional policy check denies the request.",
+    conditional_policy_requires_live_proof: "A conditional check needs a live authentication or device proof.",
+    device_trust_session_required: "Device trust needs a live session.",
+    device_trust_verifier_unconfigured: "The device trust verifier is not configured.",
   };
   // What a claim mapping row shows; `toMapping` turns it into the stored ClaimMapping.
   function fromMapping(m) {
@@ -764,24 +770,96 @@
     run();
     return card(withConnection ? "Connection" : "Diagnostics", h("p", { class: "field-hint" }, "Configuration and connection checks. Nothing is sent to the application."), connection, status, body, again);
   }
-  // The policy engine's simulation (POST /policy/explain): no token is issued.
-  function signInTest(client) {
+  // A browser envelope for the same read-only policy simulation used by the API and CLI.
+  function policySimulation(client) {
     const users = [...data.users].sort((a, b) => byName(personName(a), personName(b)));
-    const form = h("form", { class: "admin-form sign-in-test", novalidate: true },
-      field("Person", h("select", { id: "test-user" }, users.map((u) => h("option", { value: u.username }, `${personName(u)} (${u.username})`)))),
-      check("test-mfa", "Assume they used a passkey or authenticator code", client.require_mfa),
-      actions(h("button", { class: "button secondary", type: "submit" }, "Test sign-in")));
-    const result = h("div", { "aria-live": "polite" });
+    const groups = data.groups.map((group) => group.name).sort(byName);
+    const scopes = sorted(client.scopes);
+    const initialScope = scopes.includes("openid") ? "openid" : scopes[0];
+    const form = h("form", { class: "admin-form policy-simulation-form", novalidate: true },
+      field("Person", h("select", { id: "sim-user" }, users.length
+        ? users.map((user) => h("option", { value: user.username }, `${personName(user)} (${user.username})`))
+        : h("option", { value: "" }, "No readable people"))),
+      h("fieldset", { class: "policy-scope-checks" }, h("legend", {}, "Requested scopes"),
+        h("p", { class: "field-hint" }, "Choose the scopes this hypothetical request would ask for."),
+        scopes.map((scope, index) => check(`sim-scope-${index}`, scope, scope === initialScope || scope === "profile" && initialScope === "openid"))),
+      field("Group to vary", h("select", { id: "sim-group" }, h("option", { value: "" }, "No group change"),
+        groups.map((name) => h("option", { value: name }, name))), "Only groups you can read are listed."),
+      field("Assumed group membership", h("select", { id: "sim-membership" },
+        h("option", { value: "unchanged" }, "Leave unchanged"),
+        h("option", { value: "member" }, "Assume member"),
+        h("option", { value: "not_member" }, "Assume not a member")), "Changes one group for this calculation only."),
+      field("Assumed verified source", h("input", { id: "sim-source", autocomplete: "off", spellcheck: "false", maxlength: "64", placeholder: "Optional source ID" }),
+        "Enter a configured source ID only if assuming its verification succeeded. No source link is checked or created."),
+      field("Assumed assurance", h("select", { id: "sim-assurance" },
+        h("option", { value: "password", selected: !client.require_mfa }, "Password"),
+        h("option", { value: "mfa", selected: client.require_mfa }, "MFA"),
+        h("option", { value: "federated" }, "Federated source"),
+        h("option", { value: "certificate" }, "Certificate")), "A source can be assumed with federated or MFA assurance; federated requires a source."),
+      actions(h("button", { class: "button secondary", type: "submit", disabled: !users.length }, "Simulate policy")));
+    const result = h("div", { class: "policy-simulation-result", "aria-live": "polite" });
+    let inputVersion = 0;
+    const clearResult = () => {
+      inputVersion += 1;
+      result.replaceChildren();
+      const status = form.querySelector(".form-error");
+      if (status) status.hidden = true;
+    };
+    form.addEventListener("input", clearResult);
+    form.addEventListener("change", clearResult);
     bindForm(form, async () => {
-      const username = value(form, "test-user");
-      const report = await api("POST", `admin/clients/${seg(client.client_id)}/explain`, { username, scope: client.scopes, mfa: checked(form, "test-mfa") });
-      const reasons = [...report.reasons, ...Object.values(report.scope_decisions).flat()];
+      result.replaceChildren();
+      const username = value(form, "sim-user");
+      const scope = scopes.filter((_, index) => checked(form, `sim-scope-${index}`));
+      const groupName = value(form, "sim-group"), membership = value(form, "sim-membership");
+      const source = value(form, "sim-source") || null, assurance = value(form, "sim-assurance");
+      if (!username) throw invalid("Choose a person you can read.");
+      if (!scope.length) throw invalid("Choose at least one requested scope.");
+      if (membership !== "unchanged" && !groupName) throw invalid("Choose the group whose membership you want to vary.");
+      if ((source && !["federated", "mfa"].includes(assurance)) || (!source && assurance === "federated")) {
+        throw invalid("A source needs federated or MFA assurance; federated assurance needs a source.");
+      }
+      const group = membership === "unchanged" ? null : { name: groupName, member: membership === "member" };
+      const submittedVersion = inputVersion;
+      let report;
+      try {
+        report = await api("POST", "admin/policy/simulate", { client_id: client.client_id, username, scope, group, source, assurance });
+      } catch (error) {
+        if (!form.isConnected || inputVersion !== submittedVersion) return;
+        throw error;
+      }
+      if (!form.isConnected || inputVersion !== submittedVersion) return;
+      if (report?.policy_only !== true || report.token_issued !== false || !["allow", "deny", "needs_live_proof"].includes(report.decision)
+        || !Array.isArray(report.reasons) || report.reasons.some((code) => typeof code !== "string")
+        || !report.scope_decisions || Array.isArray(report.scope_decisions) || typeof report.scope_decisions !== "object"
+        || Object.values(report.scope_decisions).some((codes) => !Array.isArray(codes) || codes.some((code) => typeof code !== "string"))
+        || !Number.isSafeInteger(report.revision) || typeof report.dependency_revision !== "string" || !report.dependency_revision) {
+        throw new ApiError(502, "invalid_response", "riAuth returned an invalid policy simulation.");
+      }
+      const labels = { allow: "Allowed by policy under these assumptions", deny: "Denied by policy", needs_live_proof: "Needs live proof before a decision" };
+      const reasons = [
+        ...report.reasons.map((code) => [null, code]),
+        ...Object.entries(report.scope_decisions).flatMap(([name, codes]) => codes.map((code) => [name, code])),
+      ];
       result.replaceChildren(
-        h("p", { class: `test-result ${report.allowed ? "ok" : "bad"}` }, report.allowed ? `${username} can sign in.` : `${username} is refused:`),
-        reasons.length ? h("ul", { class: "plain-list" }, [...new Set(reasons)].map((r) => h("li", {}, `${username} ${REASONS[r] || r.replaceAll("_", " ")}.`))) : null,
-        report.allowed ? h("details", {}, h("summary", {}, "Claims the app would receive"), h("pre", { class: "settings-json" }, JSON.stringify(report.id_token_identity_claims, null, 2))) : null);
-    }, { 403: "Testing needs permission to read the application, person, and policy groups." }, "Testing…");
-    return client.service ? null : card("Test a sign-in", h("p", { class: "field-hint" }, "Simulates this application's policy for one person. No token is issued and nothing is recorded as a sign-in."), form, result);
+        h("p", { class: `test-result ${report.decision === "allow" ? "ok" : report.decision === "deny" ? "bad" : "info"}` }, labels[report.decision]),
+        h("p", { class: "field-hint" }, "Policy only. These are assumptions, not an authorization or sign-in. No grant, session or token was created."),
+        reasons.length ? h("ul", { class: "plain-list" }, reasons.map(([name, code]) => h("li", {},
+          name ? h("strong", {}, `${name}: `) : null, h("code", {}, code), ` — ${REASONS[code] || code.replaceAll("_", " ")}`)))
+          : h("p", { class: "field-hint" }, "No policy reasons were returned."),
+        h("p", { class: "field-hint policy-simulation-revision" }, "Configuration revision ", h("code", {}, String(report.revision)),
+          "; dependency fingerprint ", h("code", {}, report.dependency_revision), "."));
+    }, {
+      0: "riAuth did not answer. No policy decision was returned; retry the simulation.",
+      403: "This simulation needs read permission for the application, person, policy groups, and any assumed source. No result was returned.",
+      404: "A selected item is unavailable. Refresh the page and review the inputs; no result was returned.",
+      500: "riAuth could not complete the policy simulation. No result was returned.",
+      502: "riAuth could not return a valid policy decision. No result was shown.",
+      503: "Policy simulation is temporarily unavailable. No result was returned.",
+      504: "Policy simulation timed out. No result was returned.",
+    }, "Simulating…");
+    return client.service ? null : card("Policy simulation", h("p", { class: "field-hint" },
+      "Choose a hypothetical request. The server checks policy only; it does not verify a sign-in or change access."), form, result);
   }
 
   // ---- Application setup wizard ------------------------------------------------------------

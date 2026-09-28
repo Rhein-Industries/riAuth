@@ -8,10 +8,76 @@ use common::{Fixture, text};
 use http_body_util::BodyExt;
 use riauth::{
     agent::{NewAgent, Permission},
+    core::Core,
+    delegation::{GrantInput, HumanRole},
     model::ClientPatch,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
+
+fn sso_cookie(core: &Core, session: &str) -> String {
+    let request = core.portal_sign_in().unwrap();
+    core.portal_decide(session, request.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = request.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let response = core
+        .portal_poll(request.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    response
+        .cookies
+        .iter()
+        .find(|cookie| cookie.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_owned()
+}
+
+async fn browser_simulate(
+    app: &axum::Router,
+    cookie: &str,
+    origin: &str,
+    portal_header: bool,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/api/admin/policy/simulate")
+        .header("cookie", format!("riauth_sso={cookie}"))
+        .header("origin", origin)
+        .header("content-type", "application/json");
+    if portal_header {
+        request = request.header("x-riauth-portal", "1");
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .body(Body::from(
+                    json!({
+                        "client_id": "app", "username": "alice", "scope": ["openid"],
+                        "group": {"name": "eng", "member": true}, "source": null,
+                        "assurance": "password",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&body).unwrap())
+}
 
 async fn simulate(
     app: &axum::Router,
@@ -125,5 +191,66 @@ async fn scoped_simulation_requires_group_and_source_reads_and_never_persists_a_
         allowed["dependency_revision"],
         refused["dependency_revision"]
     );
+    f.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test]
+async fn browser_simulation_has_the_same_decision_and_scoped_authority_as_the_api() {
+    let f = Fixture::new();
+    let support = f.user("support");
+    f.user("alice");
+    f.client("app", false);
+    f.core.create_group(&f.admin, "eng").unwrap();
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                allowed_groups: Some(["eng".to_owned()].into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "support",
+            vec![
+                GrantInput {
+                    role: HumanRole::HelpDesk,
+                    scope: "user/alice".into(),
+                },
+                GrantInput {
+                    role: HumanRole::ApplicationOwner,
+                    scope: "client/app".into(),
+                },
+            ],
+        )
+        .unwrap();
+    let admin_cookie = sso_cookie(&f.core, &f.admin);
+    let support_cookie = sso_cookie(&f.core, &support);
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let app = riauth::api::router(f.core.clone());
+    let before = f.snapshot().unwrap();
+
+    let (status, direct) = simulate(&app, &f.admin, true, None).await;
+    assert_eq!(status, StatusCode::OK, "{direct}");
+    let (status, browser) = browser_simulate(&app, &admin_cookie, &origin, true).await;
+    assert_eq!(status, StatusCode::OK, "{browser}");
+    assert_eq!(browser, direct);
+    assert_eq!(browser["policy_only"], true);
+    let (status, denied) = browser_simulate(&app, &support_cookie, &origin, true).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        denied,
+        json!({"error": "access_denied", "error_description": "Access denied"})
+    );
+    let (status, _) = browser_simulate(&app, &admin_cookie, &origin, false).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = browser_simulate(&app, &admin_cookie, "https://other.invalid", true).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
     f.assert_http_mutation_snapshot(&before);
 }

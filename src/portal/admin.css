@@ -165,8 +165,10 @@ details summary{cursor:pointer;font-size:12px;font-weight:600;color:#4f3bb0;marg
 .snippet .section-heading{margin:4px 0}
 .snippet h3{margin:0}
 .test-result{font-weight:600;margin:12px 0 6px}
-.test-result.ok{color:#1f6b4f}.test-result.bad{color:#a1231b}
-.sign-in-test{gap:0}
+.test-result.ok{color:#1f6b4f}.test-result.bad{color:#a1231b}.test-result.info{color:#334f85}
+.policy-simulation-form{gap:14px}
+.policy-scope-checks{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:12px}
+.policy-simulation-revision code{overflow-wrap:anywhere}
 @media(max-width:760px){
   .mapping-row{grid-template-columns:1fr}
   .check{flex-direction:column;gap:6px}

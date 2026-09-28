@@ -342,6 +342,7 @@ Direct administrative resource writes support `Idempotency-Key` and `If-Match: "
 
 Policy simulation uses the same management principal as other reads. It requires `client.read` and `user.read` on the named records, `group.read` on the changed group and every group used by the evaluated policy, and `source.read` on an assumed source. The older explanation also requires group read rights for policy decisions and projected group claims. The new response omits profile, group lists, claims, secrets and source metadata. `revision` is the configuration revision; `dependency_revision` fingerprints the request, policy, relevant observed memberships, user state, source availability and device-trust result in one read snapshot. Neither value is an apply receipt or authorization proof. A source is assumed to have been verified, but no link or login is verified. Fresh authentication proofs and approved device state return `needs_live_proof` unless another policy check already denies the request. Use `riauth simulate <client-id> <username> --with-group <name> --assurance mfa` (or `--without-group`, `--source`, `--scope`); `riauth schema policy-simulation` describes the API body.
 
+The compact administration page sends the same body to `POST /api/admin/policy/simulate` with its SSO cookie and same-origin portal guards. That route calls the same read-only management method as the bearer API and CLI.
 
 ## Inbound SCIM
 
