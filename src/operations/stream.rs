@@ -301,6 +301,27 @@ impl Batch {
     }
 }
 
+/// A fresh random archive identity. It cannot be copied or built from chosen
+/// bytes, so every archive written with it has its own.
+pub struct StreamId([u8; 16]);
+
+impl StreamId {
+    pub fn random() -> Result<Self> {
+        let mut bytes = [0u8; 16];
+        SysRng.try_fill_bytes(&mut bytes).map_err(Error::internal)?;
+        Ok(Self(bytes))
+    }
+    /// The encoding of [`StreamSummary::stream_id`].
+    pub fn encoded(&self) -> String {
+        URL_SAFE_NO_PAD.encode(self.0)
+    }
+}
+
+/// Reject a malformed backup key before any work starts.
+pub fn validate_key(encryption_key: &str) -> Result<()> {
+    decode_key(encryption_key).map(drop)
+}
+
 impl Core {
     /// Write one consistent snapshot as a v3 stream. `out` receives sealed
     /// frames as they are produced; on error or cancellation it holds an
@@ -310,20 +331,30 @@ impl Core {
         token: &str,
         encryption_key: &str,
         out: &mut dyn Write,
+        options: StreamOptions<'_>,
+    ) -> Result<StreamSummary> {
+        self.backup_stream_as(StreamId::random()?, token, encryption_key, out, options)
+    }
+
+    /// [`Core::backup_stream`] under an identity drawn before the export, so
+    /// a caller can record it before the snapshot opens.
+    pub fn backup_stream_as(
+        &self,
+        stream_id: StreamId,
+        token: &str,
+        encryption_key: &str,
+        out: &mut dyn Write,
         mut options: StreamOptions<'_>,
     ) -> Result<StreamSummary> {
         options.limits.validate()?;
         let key = decode_key(encryption_key)?;
         let limit = options.limits.max_frame_bytes;
+        let StreamId(stream_id) = stream_id;
         self.store.read(|tx| {
             self.management(tx, token, "operations.backup", "operations/backup")?;
             let mut config = self.config.clone();
             config.database_key_file = None;
             let created_at = now();
-            let mut stream_id = [0u8; 16];
-            SysRng
-                .try_fill_bytes(&mut stream_id)
-                .map_err(Error::internal)?;
             let mut writer = FrameWriter {
                 out: &mut *out,
                 key: &key,

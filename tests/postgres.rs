@@ -1104,3 +1104,131 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
         .unwrap_err();
     assert!(error.message.contains("snapshot page limit"), "{error:?}");
 }
+
+/// With `pool_size = 1` the export holds the only connection for the whole
+/// archive. Its audit trail must neither wait behind it nor make the export
+/// wait: the archive is larger than the export queue, so a started event
+/// recorded after the snapshot opened would stall until the pool gave up.
+#[test]
+#[ignore = "runs against a disposable synchronous PostgreSQL primary/standby; use scripts/test-postgres.sh"]
+fn postgres_single_connection_streams_and_audits_a_backup() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let root = PathBuf::from(
+        std::env::var_os("RIAUTH_TEST_PG_ROOT").expect("Use scripts/test-postgres.sh"),
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("marker")).unwrap(),
+        "riauth disposable integration cluster\n"
+    );
+    let shared =
+        std::fs::read_to_string(std::env::var_os("RIAUTH_TEST_PG_CONNECTION").unwrap()).unwrap();
+    // A database of its own keeps the other scenarios' database untouched.
+    let database = "riauth_backup_single_connection";
+    postgres::Client::connect(shared.trim(), postgres::NoTls)
+        .unwrap()
+        .batch_execute(&format!("CREATE DATABASE {database}"))
+        .unwrap();
+    let local = tempfile::TempDir::new().unwrap();
+    let connection_file = local.path().join("connection");
+    riauth::config::write_private(
+        &connection_file,
+        shared
+            .replace("dbname=postgres", &format!("dbname={database}"))
+            .as_bytes(),
+        false,
+    )
+    .unwrap();
+    let storage_key = local.path().join("storage.key");
+    riauth::config::write_private(&storage_key, crypto::random_token("").as_bytes(), false)
+        .unwrap();
+    let mut config = Config {
+        data_dir: local.path().join("data"),
+        database_key_file: Some(storage_key),
+        postgres: Some(PostgresConfig {
+            connection_file,
+            ca_file: None,
+            local_unencrypted: true,
+            pool_size: 1,
+        }),
+        ..Default::default()
+    };
+    // A stalled export fails in seconds rather than a minute.
+    config.backup.stall_timeout_seconds = 5;
+    let core = Core::initialize(config, new_admin()).unwrap();
+    let admin = text(
+        &core.login("admin".into(), PASSWORD.into(), None).unwrap(),
+        "session_token",
+    );
+    let payload = "p".repeat(2048);
+    core.store
+        .write(|tx| {
+            for index in 0..1500 {
+                tx.put(
+                    "backup_payload",
+                    &format!("{index:05}"),
+                    &serde_json::json!({"payload": payload}),
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let key = crypto::random_token("");
+    let request = Request::post("/api/operations/backup/stream")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {admin}"))
+        .body(Body::from(
+            serde_json::json!({"encryption_key": key}).to_string(),
+        ))
+        .unwrap();
+    // Storage runs on blocking threads, as under `serve`; the synchronous
+    // PostgreSQL client cannot run on a runtime thread.
+    let router = riauth::api::router(core.clone());
+    let bytes = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async move {
+            let response = router.oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            tokio::time::timeout(Duration::from_secs(30), response.into_body().collect())
+                .await
+                .expect("the export stalled behind its own audit trail")
+                .unwrap()
+                .to_bytes()
+        });
+    assert!(
+        bytes.len() > 1024 * 1024,
+        "the archive must exceed the export queue"
+    );
+    let archive = local.path().join("single-connection.riauth-backup");
+    std::fs::write(&archive, &bytes).unwrap();
+    let key_file = local.path().join("backup.key");
+    riauth::config::write_private(&key_file, key.as_bytes(), false).unwrap();
+    let verified = riauth::operations::stream::verify_file(
+        &archive,
+        &crypto::read_key(&key_file).unwrap(),
+        riauth::operations::stream::StreamOptions::default(),
+    )
+    .unwrap();
+    let target = format!("backup/{}", verified.summary.stream_id);
+    let mut actions: Vec<String> = core
+        .store
+        .list::<Audit>("audit")
+        .unwrap()
+        .into_iter()
+        .filter(|(_, event)| event.target == target)
+        .map(|(_, event)| event.action)
+        .collect();
+    actions.sort();
+    assert_eq!(
+        actions,
+        ["operations.backup.completed", "operations.backup.started"]
+    );
+}

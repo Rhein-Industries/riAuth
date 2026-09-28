@@ -286,17 +286,22 @@ shutdown the server also drops archive bytes still queued for the client.
 
 Every export that passes authorization records durable audit events for its
 actor with target `backup/<stream ID>`. `operations.backup.started` is committed
-before the response begins; if it cannot be recorded, the export is refused.
-Exactly one terminal event follows: `operations.backup.completed` (frames,
+before the export opens its snapshot, so the archive contains it; if it cannot
+be recorded, the export is refused. Exactly one terminal event follows once the
+export has released its snapshot: `operations.backup.completed` (frames,
 records, bytes, transcript) only after every archive byte, trailer included,
 was handed to the connection; otherwise `operations.backup.cancelled` (client
 disconnected or stopped reading, deadline, shutdown) or `operations.backup.failed`
 (for example the quota), each with the reason and the bytes handed over. An
 export that finished sealing while its response was cut short is recorded as
 cancelled, not completed; only the client's verification confirms receipt.
-Details never contain the backup key or a credential. Audit events are written
-in their own transactions, so the exported snapshot never contains them. The
-server also logs each event and the export's progress every 10 seconds.
+Details never contain the backup key or a credential. The server also logs each
+event and the export's progress every 10 seconds.
+
+On PostgreSQL an export holds one pooled connection for its whole duration.
+It works with `pool_size = 1`, but then other requests that need storage wait
+for that connection (up to 5 seconds) and fail with 503 `storage_busy` until
+the export ends; size the pool for backups taken while serving.
 
 Server quotas live in an optional `[backup]` table; put it after all top-level keys:
 

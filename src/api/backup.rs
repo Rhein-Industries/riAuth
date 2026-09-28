@@ -14,11 +14,13 @@
 //! new exports receive 503.
 //!
 //! Every export that starts leaves a durable audit trail for its actor and
-//! stream ID: `operations.backup.started` is committed before the response
-//! begins, and exactly one of `completed`, `failed` or `cancelled` follows.
-//! `completed` means every archive byte, trailer included, was handed to the
-//! connection; an export that merely finished queueing is not complete.
-//! Details name the stream and its sizes, never the key or a credential.
+//! stream ID. `operations.backup.started` is committed before the export opens
+//! its snapshot, which may hold the only storage connection (PostgreSQL
+//! `pool_size = 1`) until it ends; exactly one of `completed`, `failed` or
+//! `cancelled` follows once the export has released it. `completed` means
+//! every archive byte, trailer included, was handed to the connection; an
+//! export that merely finished queueing is not complete. Details name the
+//! stream and its sizes, never the key or a credential.
 
 use super::*;
 use crate::operations::stream::{self, Progress, StreamLimits, StreamOptions, StreamSummary};
@@ -78,6 +80,7 @@ pub(super) async fn stream(
         return Err(shutting_down());
     }
     let key = Zeroizing::new(input.encryption_key);
+    stream::validate_key(&key)?;
     let settings = app.core.config.backup.clone();
     let limits = settings.limits(input.max_archive_bytes);
     limits.validate()?;
@@ -100,10 +103,30 @@ pub(super) async fn stream(
             "Another backup stream is running; retry after it finishes",
         )
     })?;
+    let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
+    let (request_id, run_id) = context
+        .as_ref()
+        .map(|context| (Some(context.request_id.clone()), context.run_id.clone()))
+        .unwrap_or_default();
+    let stream_id = stream::StreamId::random()?;
+    let trail = Trail {
+        core: app.core.clone(),
+        runtime: tokio::runtime::Handle::current(),
+        actor,
+        stream_id: stream_id.encoded(),
+        request_id,
+        run_id,
+    };
+    // Durable before the export opens its snapshot. Without it there is no
+    // export; the snapshot is part of the archive, so the archive contains it.
+    trail
+        .record_async(
+            STARTED,
+            json!({"max_archive_bytes": limits.max_archive_bytes}),
+        )
+        .await?;
     let cancel = Arc::new(AtomicBool::new(false));
-    // Dropped with the handler or its body, including when the client hangs up.
-    let guard = CancelOnDrop(cancel.clone());
-    let (sender, mut receiver) = mpsc::channel(QUEUE);
+    let (sender, receiver) = mpsc::channel(QUEUE);
     let sink = Sink {
         sender,
         runtime: tokio::runtime::Handle::current(),
@@ -114,69 +137,41 @@ pub(super) async fn stream(
         failure: None,
     };
     let core = app.core.clone();
-    let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
-    let (request_id, run_id) = context
-        .as_ref()
-        .map(|context| (Some(context.request_id.clone()), context.run_id.clone()))
-        .unwrap_or_default();
+    let exporting = cancel.clone();
     let export = tokio::task::spawn_blocking(move || {
         // The slot is released only after the export stopped reading storage.
         let _slot = slot;
         crate::context::scope(context, || {
-            export(&core, &token, &key, limits, sink, &cancel)
+            export(&core, stream_id, &token, &key, limits, sink, &exporting)
         })
     });
-    // The export sends its preamble only after authorizing the caller in its
-    // own snapshot. It names the stream the audit trail refers to.
-    let mut head = VecDeque::new();
-    let mut preamble = Vec::with_capacity(stream::PREAMBLE_BYTES);
-    while preamble.len() < stream::PREAMBLE_BYTES {
-        let Some(chunk) = receiver.recv().await else {
-            break;
-        };
-        let take = chunk.len().min(stream::PREAMBLE_BYTES - preamble.len());
-        preamble.extend_from_slice(&chunk[..take]);
-        head.push_back(chunk);
-    }
-    let Some(stream_id) = stream::preamble_stream_id(&preamble) else {
-        // The export ended before its preamble: authorization, key, quota or
-        // shutdown. Nothing was sent and nothing started.
-        drop(receiver);
-        let error = match export.await.map_err(Error::internal)? {
-            Err(error) => error,
-            Ok(_) => Error::internal("Backup stream ended without its preamble"),
-        };
-        return Err(if stopping(&shutdown) {
-            shutting_down()
-        } else {
-            error
-        });
-    };
-    let trail = Trail {
-        core: app.core.clone(),
-        runtime: tokio::runtime::Handle::current(),
-        actor,
-        stream_id,
-        request_id,
-        run_id,
-    };
-    // Without a durable start record there is no export: returning drops the
-    // queue and the guard, which cancels it before any byte leaves.
-    trail
-        .record_async(
-            STARTED,
-            json!({"max_archive_bytes": limits.max_archive_bytes}),
-        )
-        .await?;
-    let mut response = Response::new(body(Transfer {
-        head,
+    // From here every outcome ends the trail exactly once, also when a client
+    // that hangs up drops this handler.
+    let mut transfer = Transfer {
+        head: VecDeque::new(),
         receiver,
         export: Some(export),
         shutdown,
         trail: Some(trail),
         delivered: 0,
-        _cancel: guard,
-    }));
+        _cancel: CancelOnDrop(cancel),
+    };
+    // The export sends its preamble only after authorizing the caller in its
+    // own snapshot.
+    let mut preamble = 0;
+    while preamble < stream::PREAMBLE_BYTES {
+        let Some(chunk) = transfer.receiver.recv().await else {
+            break;
+        };
+        preamble += chunk.len();
+        transfer.head.push_back(chunk);
+    }
+    if preamble < stream::PREAMBLE_BYTES {
+        // Nothing reached the client: authorization in the snapshot, a
+        // storage error or shutdown.
+        return Err(transfer.abandon().await);
+    }
+    let mut response = Response::new(body(transfer));
     let response_headers = response.headers_mut();
     response_headers.insert(
         axum::http::header::CONTENT_TYPE,
@@ -193,6 +188,7 @@ pub(super) async fn stream(
 
 fn export(
     core: &Core,
+    stream_id: stream::StreamId,
     token: &str,
     key: &str,
     limits: StreamLimits,
@@ -215,7 +211,8 @@ fn export(
             );
         }
     };
-    core.backup_stream(
+    core.backup_stream_as(
+        stream_id,
         token,
         key,
         &mut sink,
@@ -403,6 +400,33 @@ impl Transfer {
         };
         received.map_or(Step::Drained, Step::Chunk)
     }
+    /// Waits for the export to end, which releases its snapshot and storage
+    /// connection, so a terminal event never waits behind them.
+    async fn outcome(
+        &mut self,
+    ) -> Option<std::result::Result<Result<StreamSummary>, tokio::task::JoinError>> {
+        Some(self.export.take()?.await)
+    }
+    /// Ends a started export that sent the client nothing and returns the
+    /// error the caller receives.
+    async fn abandon(&mut self) -> Error {
+        let error = match self.outcome().await {
+            Some(Ok(Err(error))) => error,
+            Some(Err(error)) => Error::internal(error),
+            Some(Ok(Ok(_))) | None => Error::internal("Backup stream ended without its preamble"),
+        };
+        let action = if error.code == "cancelled" {
+            CANCELLED
+        } else {
+            FAILED
+        };
+        self.finish(action, json!({"reason": error.message})).await;
+        if self.stopping() {
+            shutting_down()
+        } else {
+            error
+        }
+    }
     /// Records the terminal event once. A failed audit write is logged; it
     /// cannot recall bytes already sent.
     async fn finish(&mut self, action: &'static str, mut details: Value) {
@@ -414,19 +438,27 @@ impl Transfer {
 }
 
 impl Drop for Transfer {
-    /// The body went away before a terminal event: the client disconnected,
-    /// or the server dropped the connection while shutting down.
+    /// The handler or body went away before a terminal event: the client
+    /// disconnected, or the server dropped the connection while shutting down.
+    /// Dropping the queue and the guard stops the export; the event is
+    /// recorded once it has released its snapshot and storage connection.
     fn drop(&mut self) {
-        if let Some(trail) = self.trail.take() {
-            let reason = if self.stopping() {
-                SHUTTING_DOWN
-            } else {
-                "client disconnected"
-            };
-            let details = json!({"reason": reason, "bytes": self.delivered});
-            let runtime = trail.runtime.clone();
-            runtime.spawn_blocking(move || trail.record(CANCELLED, details));
-        }
+        let Some(trail) = self.trail.take() else {
+            return;
+        };
+        let reason = if self.stopping() {
+            SHUTTING_DOWN
+        } else {
+            "client disconnected"
+        };
+        let details = json!({"reason": reason, "bytes": self.delivered});
+        let export = self.export.take();
+        trail.runtime.clone().spawn(async move {
+            if let Some(export) = export {
+                let _ = export.await;
+            }
+            let _ = trail.record_async(CANCELLED, details).await;
+        });
     }
 }
 
@@ -442,13 +474,15 @@ fn body(transfer: Transfer) -> Body {
                     return Some((Ok(chunk), transfer));
                 }
                 Step::Stopped => {
+                    // The export stops at its next write.
+                    let _ = transfer.outcome().await;
                     transfer
                         .finish(CANCELLED, json!({"reason": SHUTTING_DOWN}))
                         .await;
                     SHUTTING_DOWN.to_owned()
                 }
                 // Only a complete archive, entirely handed over, ends the body.
-                Step::Drained => match transfer.export.take()?.await {
+                Step::Drained => match transfer.outcome().await? {
                     Ok(Ok(summary)) if summary.bytes == transfer.delivered => {
                         transfer
                             .finish(
