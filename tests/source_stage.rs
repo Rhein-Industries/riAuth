@@ -2408,6 +2408,75 @@ async fn oauth_only_stage_does_not_invent_authentication_assurance() {
 }
 
 #[tokio::test]
+async fn reopened_browser_source_stage_can_be_denied_without_a_transaction_id() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let browser = f.core.browser_start(request, None).unwrap();
+    assert_eq!(browser.body["status"], "source_stage");
+    let authorization_id = text(&browser.body, "authorization_id");
+    let stage_id = text(&browser.body, "stage_id");
+    let transaction_id = text(&browser.body, "transaction_id");
+    let binding = browser.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .strip_prefix("riauth_return=")
+        .unwrap()
+        .to_owned();
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &authorization_id)
+        .unwrap()
+        .unwrap();
+    assert!(pending["authentication"].is_null());
+    let transaction: AuthenticationTransaction = f
+        .core
+        .store
+        .get("authentication", &digest(&transaction_id))
+        .unwrap()
+        .unwrap();
+    assert!(transaction.source_stage.is_some());
+    let request_hash = transaction.request_hash;
+    f.core
+        .store
+        .write(|tx| tx.delete("meta", "authorization_prepared_index_v1"))
+        .unwrap();
+
+    let f = f.reopen_with(|_| {});
+    assert!(
+        f.core
+            .store
+            .get::<Value>("authorization_prepared", &request_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .authorize_decision(&authorization_id, Some(&binding), None, false, false, None)
+            .unwrap_err()
+            .code,
+        "request_decided"
+    );
+    let denied = f
+        .core
+        .source_stage_cancel(&stage_id, &authorization_id)
+        .unwrap();
+    assert_eq!(denied["error"], "access_denied");
+    assert_eq!(denied["code_issued"], false);
+    let delivered = f
+        .core
+        .browser_resume(&authorization_id, Some(&binding))
+        .unwrap();
+    let response = query(delivered.location.as_deref().unwrap());
+    assert_eq!(response["error"], "access_denied");
+    assert!(!response.contains_key("code"));
+    assert!(codes(&f).is_empty());
+}
+
+#[tokio::test]
 async fn source_stage_browser_session_is_browser_owned() {
     let f = Fixture::new();
     let upstream = Upstream::new(&f, true).await;

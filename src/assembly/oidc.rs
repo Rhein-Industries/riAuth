@@ -45,7 +45,9 @@ fn matching_preparation(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool
             && tx
                 .get::<AuthenticationTransaction>("authentication", key)?
                 .is_some_and(|attempt| {
-                    attempt.expires_at > at && attempt.request_hash == request_hash
+                    attempt.expires_at > at
+                        && attempt.source_stage.is_none()
+                        && attempt.request_hash == request_hash
                 })
         {
             return Ok(true);
@@ -73,6 +75,7 @@ fn legacy_overflow_live(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool
         .into_iter()
         .any(|(key, attempt)| {
             attempt.expires_at > at
+                && attempt.source_stage.is_none()
                 && attempt.request_hash == request_hash
                 && !browser_proofs.contains(&key)
         }))
@@ -93,7 +96,9 @@ fn register_preparation(tx: &Tx<'_>, request_hash: &str, key: &str, expires_at: 
                 && tx
                     .get::<AuthenticationTransaction>("authentication", &key)?
                     .is_some_and(|attempt| {
-                        attempt.expires_at > at && attempt.request_hash == request_hash
+                        attempt.expires_at > at
+                            && attempt.source_stage.is_none()
+                            && attempt.request_hash == request_hash
                     })
             {
                 attempts.insert(key, expiry);
@@ -127,7 +132,8 @@ pub(crate) fn stamp_prepared_index(tx: &Tx<'_>) -> Result<()> {
 }
 
 /// Existing prepared transactions must participate in no-ID ambiguity checks
-/// after an upgrade. Browser reauthentication proofs are not preparations.
+/// after an upgrade. Browser proofs and embedded source stages have their own
+/// completion gates and are not ordinary preparations.
 pub(crate) fn backfill_prepared_index(tx: &Tx<'_>) -> Result<()> {
     if tx.get::<u8>("meta", PREPARED_INDEX_VERSION)? == Some(1) {
         return Ok(());
@@ -140,7 +146,10 @@ pub(crate) fn backfill_prepared_index(tx: &Tx<'_>) -> Result<()> {
         }
     }
     for (key, attempt) in tx.list::<AuthenticationTransaction>("authentication")? {
-        if attempt.expires_at <= at || browser_proofs.contains(&key) {
+        if attempt.expires_at <= at
+            || attempt.source_stage.is_some()
+            || browser_proofs.contains(&key)
+        {
             continue;
         }
         let mut index = tx

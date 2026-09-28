@@ -337,6 +337,17 @@ and closed runs retain replay protection for that transaction. No new session or
 remembered consent grant is created. Browser and
 remembered-consent adapters are not connected.
 
+Standard terminal OIDC preparations, outside embedded source stages, admit at
+most 64 live attempts per request hash. Anonymous preparation can fill those
+slots under the general per-address HTTP rate limit. The cap bounds stored
+index work but does not guarantee per-request admission across addresses.
+A no-ID decision for that same static URL conflicts while any preparation
+remains live. Each attempt expires after 600 seconds, but new attempts can
+extend the delay. The caller
+can use its exact `transaction_id` or retry a direct no-ID decision after the
+live attempts are spent or expire. Ignoring anonymous attempts would leave
+their one-use authority available for a second decision.
+
 ## Downstream OIDC completion
 
 On Platform, prepare a terminal authorization with its existing live bearer

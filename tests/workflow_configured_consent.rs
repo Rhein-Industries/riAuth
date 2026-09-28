@@ -556,3 +556,94 @@ fn reopening_backfills_live_preparations_from_before_the_index() {
     );
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
 }
+
+#[test]
+fn legacy_preparation_overflow_checks_live_rows_before_blocking_static_urls() {
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("legacy-overflow");
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.decision = None;
+    let first = text(
+        &f.core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap(),
+        "transaction_id",
+    );
+    let mut keys = vec![digest(&first)];
+    keys.extend((0..64).map(|_| digest(&crypto::random_token("ri_auth_"))));
+    let prepared: AuthenticationTransaction = f
+        .core
+        .store
+        .get("authentication", &keys[0])
+        .unwrap()
+        .unwrap();
+    let request_hash = request.request_hash().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            for key in keys.iter().skip(1) {
+                tx.put("authentication", key, &prepared)?;
+            }
+            tx.delete("authorization_prepared", &request_hash)?;
+            tx.delete("meta", "authorization_prepared_index_v1")
+        })
+        .unwrap();
+    let f = f.reopen_with(|_| {});
+    let index: Value = f
+        .core
+        .store
+        .get("authorization_prepared", &request_hash)
+        .unwrap()
+        .unwrap();
+    let indexed: std::collections::BTreeSet<String> = index["attempts"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(indexed.len(), 64);
+    assert!(index["overflow_until"].as_u64().unwrap() > now());
+    let overflow = keys.iter().find(|key| !indexed.contains(*key)).unwrap();
+    let mut decision = request;
+    decision.decision = Some("approve".into());
+    assert_eq!(
+        f.core.authorize(&alice, decision.clone()).unwrap_err().code,
+        "conflict"
+    );
+    f.core
+        .store
+        .write(|tx| {
+            for key in &indexed {
+                tx.delete("authentication", key)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        f.core.authorize(&alice, decision.clone()).unwrap_err().code,
+        "conflict"
+    );
+    f.core
+        .store
+        .write(|tx| tx.delete("authentication", overflow))
+        .unwrap();
+    let mut source_stage = prepared;
+    source_stage.source_stage = Some("another-source-stage".into());
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "authentication",
+                &digest(&crypto::random_token("ri_auth_")),
+                &source_stage,
+            )
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, decision)
+            .unwrap()
+            .contains("code=")
+    );
+}
