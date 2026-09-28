@@ -1574,12 +1574,17 @@ fn authentik_application_bindings_convert_exactly_or_block() {
 }
 
 #[test]
-fn authentik_membership_expression_chains_factor_exactly_or_block() {
+fn authentik_membership_expressions_factor_into_two_lists_or_block() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();
     let issuer = f.core.config.issuer.clone();
     let check = |group: &str| format!("ak_is_group_member(request.user, name=\"{group}\")");
-    let (staff, ops, lab) = (check("staff"), check("ops"), check("lab"));
+    let (staff, ops, lab, research) = (
+        check("staff"),
+        check("ops"),
+        check("lab"),
+        check("research"),
+    );
     let chain = |groups: std::ops::RangeInclusive<u32>| {
         groups
             .map(|i| check(&format!("t{i}")))
@@ -1590,7 +1595,7 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         ("both", format!("return {staff} and not {ops}")),
         ("either", format!("return {staff} or {lab}")),
         ("notboth", format!("return not {staff} and not {lab}")),
-        // `not` binds tighter than `and`.
+        // `not` binds tighter than `and`, and `and` tighter than `or`.
         ("precedence", format!("return not {ops} and {staff}")),
         (
             "notops",
@@ -1600,7 +1605,6 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             "spaced",
             "\n\t return\tak_is_group_member( request.user ,\tname = \"ops\" )\n".to_owned(),
         ),
-        // `and` binds tighter than `or`; these factor into one any-of list plus unit groups.
         (
             "factored",
             format!("return {staff} and {lab} or {staff} and {ops}"),
@@ -1619,15 +1623,69 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             format!("return {staff} and not {ops} or {staff} and not {ops} and {lab}"),
         ),
         ("twelve", format!("return {}", chain(1..=12))),
-        // These do not factor.
+        // Two any-of lists, written with and without parentheses.
         ("mixed", format!("return {staff} and {ops} or {lab}")),
         ("mixed2", format!("return {staff} or {ops} and {lab}")),
+        ("paren", format!("return ({staff} or {ops})")),
+        (
+            "twolist",
+            format!("return ({staff} or {lab}) and ({ops} or {research})"),
+        ),
+        (
+            "twolistneg",
+            format!(
+                "return ({staff} or {lab}) and ({ops} or {research}) and not {}",
+                check("engineering")
+            ),
+        ),
+        (
+            "twolistdnf",
+            format!(
+                "return {staff} and {ops} or {staff} and {research} or {lab} and {ops} or {lab} and {research}"
+            ),
+        ),
+        (
+            "negtwolistsrc",
+            format!("return not {staff} and not {lab} or not {ops} and not {research}"),
+        ),
+        (
+            "overlap",
+            format!("return ({staff} or {lab}) and ({staff} or {ops})"),
+        ),
+        (
+            "parensnot",
+            format!("return ({staff}) and not ({ops} or {lab})"),
+        ),
+        (
+            "nested",
+            format!("return ((({staff}) or {lab}) and (({ops}) or {research}))"),
+        ),
+        (
+            "tight",
+            format!("return ({staff} or {lab})and({ops} or {research})"),
+        ),
+        // These do not factor.
+        (
+            "threelists",
+            format!(
+                "return ({staff} or {lab}) and ({ops} or {research}) and ({})",
+                chain(1..=2)
+            ),
+        ),
+        (
+            "nonmono",
+            format!("return ({staff} or not {lab}) and ({ops} or {research})"),
+        ),
         ("negor", format!("return {staff} or not {ops}")),
         ("tautology", format!("return {staff} or not {staff}")),
         ("toomany", format!("return {}", chain(1..=13))),
         ("contradiction", format!("return {staff} and not {staff}")),
         // Outside the grammar.
-        ("paren", format!("return ({staff} or {ops})")),
+        (
+            "deep",
+            format!("return {}{staff}{}", "(".repeat(9), ")".repeat(9)),
+        ),
+        ("unbalanced", format!("return ({staff} or {ops}")),
         ("nbsp", format!("return\u{a0}{staff}")),
         ("formfeed", format!("return {staff}\u{c} or {ops}")),
         ("newline", format!("return {staff} or\n{ops}")),
@@ -1651,7 +1709,7 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             "admins",
             format!("return {staff} and not {}", check("authentik Admins")),
         ),
-        ("twin", format!("return {} or {staff}", check("research"))),
+        ("twin", format!("return {} or {staff}", check("archive"))),
         ("list-b", format!("return {ops} or {lab}")),
         (
             "secret",
@@ -1680,12 +1738,15 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             json!({"policy":format!("p-{pk}"),"negate":true}),
         )
     };
+    let extra = |slug: &str, suffix: &str, pk: &str| {
+        binding(slug, suffix, json!({"policy":format!("p-{pk}")}))
+    };
+    // (slug, policy_engine_mode, bindings, acknowledged binding IDs, reviewed settings.policy.access)
     let app =
         |slug: &str, mode: &'static str, bindings: Vec<Value>, acknowledged: Vec<&'static str>| {
-            (slug.to_owned(), mode, bindings, acknowledged)
+            (slug.to_owned(), mode, bindings, acknowledged, json!({}))
         };
     let single = |slug: &str| app(slug, "any", vec![policy(slug, slug)], vec![]);
-    // (slug, policy_engine_mode, bindings, acknowledged binding IDs)
     let mut apps = vec![
         single("both"),
         single("either"),
@@ -1705,7 +1766,7 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             ],
             vec![],
         ),
-        // All mode: the one any-of list sits beside the other required conditions.
+        // All mode: any-of lists sit beside the other required conditions.
         app(
             "allpair",
             "all",
@@ -1727,13 +1788,49 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         single("redundant"),
         single("absorbneg"),
         single("twelve"),
-        // Acknowledging an any-mode alternative that does not factor accepts narrower access.
+        single("mixed"),
+        single("mixed2"),
+        single("paren"),
+        single("twolist"),
+        single("twolistneg"),
+        single("twolistdnf"),
+        // `(not staff and not lab) or (not ops and not research)`, negated, is two lists.
+        app(
+            "negtwolist",
+            "any",
+            vec![negated("negtwolist", "negtwolistsrc")],
+            vec![],
+        ),
+        single("overlap"),
+        single("parensnot"),
+        single("nested"),
+        single("tight"),
+        // All mode: two bindings fill allowed_groups and settings.policy.access.any_groups.
+        app(
+            "twolists",
+            "all",
+            vec![
+                policy("twolists", "either"),
+                extra("twolists", "second", "list-b"),
+            ],
+            vec![],
+        ),
+        app(
+            "twomixed",
+            "all",
+            vec![
+                policy("twomixed", "factored"),
+                extra("twomixed", "second", "list-b"),
+            ],
+            vec![],
+        ),
+        // Acknowledging an any-mode alternative that does not convert accepts narrower access.
         app(
             "narrowacked",
             "any",
             vec![
                 binding("narrowacked", "lab", json!({"group":"g-lab"})),
-                policy("narrowacked", "mixed"),
+                policy("narrowacked", "twolist"),
             ],
             vec!["narrowacked-policy"],
         ),
@@ -1743,13 +1840,14 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         .map(|(slug, ..)| slug.clone())
         .collect::<Vec<_>>();
     for slug in [
-        "mixed",
-        "mixed2",
+        "threelists",
+        "nonmono",
         "negor",
         "tautology",
         "toomany",
         "contradiction",
-        "paren",
+        "deep",
+        "unbalanced",
         "nbsp",
         "formfeed",
         "newline",
@@ -1768,29 +1866,30 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
     apps.extend([
         // `staff and not ops`, negated, admits users outside every named group.
         app("negand", "any", vec![negated("negand", "both")], vec![]),
-        // Acknowledgement never clears a required condition riAuth cannot keep.
+        // Acknowledgement never clears a required formula that does not factor.
         app(
             "acked",
             "any",
-            vec![policy("acked", "mixed")],
+            vec![policy("acked", "negor")],
             vec!["acked-policy"],
         ),
-        // riAuth keeps one any-of list per client.
+        // riAuth ANDs at most two any-of lists per client.
         app(
-            "twolists",
+            "threebind",
             "all",
             vec![
-                policy("twolists", "either"),
-                binding("twolists", "second", json!({"policy":"p-list-b"})),
+                policy("threebind", "either"),
+                extra("threebind", "second", "list-b"),
+                extra("threebind", "third", "paren"),
             ],
             vec![],
         ),
         app(
-            "twomixed",
+            "listsplus",
             "all",
             vec![
-                policy("twomixed", "factored"),
-                binding("twomixed", "second", json!({"policy":"p-list-b"})),
+                policy("listsplus", "twolist"),
+                extra("listsplus", "second", "either"),
             ],
             vec![],
         ),
@@ -1800,11 +1899,19 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             "any",
             vec![
                 binding("narrow", "lab", json!({"group":"g-lab"})),
-                policy("narrow", "mixed"),
+                policy("narrow", "twolist"),
             ],
             vec![],
         ),
     ]);
+    // Reviewed settings that already use any_groups leave room for one list only.
+    apps.push((
+        "reviewedany".to_owned(),
+        "any",
+        vec![policy("reviewedany", "twolist")],
+        vec![],
+        json!({"any_groups":["t1"]}),
+    ));
     let user = |pk: u64, name: &str, groups: &[&str]| {
         json!({"pk":pk,"uid":format!("uid-{pk}"),"username":name,"name":name,"groups":groups,
             "attributes":{},"type":"internal","is_active":true,"roles":[]})
@@ -1813,7 +1920,8 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         user(1, "alice", &["g-eng"]),
         user(2, "bob", &["g-staff", "g-ops"]),
         user(3, "carol", &["g-lab"]),
-        user(4, "dave", &[])
+        user(4, "dave", &[]),
+        user(5, "erin", &["g-lab", "g-research"])
     ]);
     let bundle = |slugs: &[String], twin: bool, extra: Vec<Value>| {
         let chosen = apps
@@ -1826,8 +1934,9 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             json!({"pk":"g-eng","name":"engineering","parents":["g-staff"]}),
             json!({"pk":"g-ops","name":"ops","parents":[]}),
             json!({"pk":"g-lab","name":"lab","parents":[]}),
-            json!({"pk":"g-admins","name":"authentik Admins","parents":[]}),
             json!({"pk":"g-research","name":"research","parents":[]}),
+            json!({"pk":"g-archive","name":"archive","parents":[]}),
+            json!({"pk":"g-admins","name":"authentik Admins","parents":[]}),
         ];
         groups.extend(
             (1..=13).map(|i| json!({"pk":format!("g-t{i}"),"name":format!("t{i}"),"parents":[]})),
@@ -1835,14 +1944,23 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         let mut excluded = vec!["g-admins"];
         // Authentik's check also matches an excluded group of the same name.
         if twin {
-            groups.push(json!({"pk":"g-research-old","name":"research","parents":[]}));
-            excluded.push("g-research-old");
+            groups.push(json!({"pk":"g-archive-old","name":"archive","parents":[]}));
+            excluded.push("g-archive-old");
         }
         let mut bindings = chosen
             .iter()
-            .flat_map(|(_, (_, _, bindings, _))| bindings.clone())
+            .flat_map(|(_, (_, _, bindings, ..))| bindings.clone())
             .collect::<Vec<_>>();
         bindings.extend(extra);
+        let passwords = ["alice", "bob", "carol", "dave", "erin"]
+            .map(|name| {
+                (
+                    name.to_owned(),
+                    json!({"reference":format!("env:{}", name.to_uppercase()),"version":"v1"}),
+                )
+            })
+            .into_iter()
+            .collect::<serde_json::Map<_, _>>();
         json!({"api_version":"riauth.authentik-import/v1","issuer":issuer,
             "users":users,"groups":groups,"excluded_groups":excluded,"expression_policies":policies,
             "providers":chosen.iter().map(|(i, (slug, ..))| json!({"pk":i + 1,"name":slug,"client_id":slug,"client_type":"public",
@@ -1850,11 +1968,9 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
                 "property_mappings":[],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true})).collect::<Vec<_>>(),
             "applications":chosen.iter().map(|(i, (slug, mode, ..))| json!({"pk":format!("app-{slug}"),"slug":slug,"provider":i + 1,
                 "name":slug,"policy_engine_mode":mode})).collect::<Vec<_>>(),
-            "policy_bindings":bindings,"sources":[],
-            "passwords":{"alice":{"reference":"env:ALICE","version":"v1"},"bob":{"reference":"env:BOB","version":"v1"},
-                "carol":{"reference":"env:CAROL","version":"v1"},"dave":{"reference":"env:DAVE","version":"v1"}},
-            "clients":chosen.iter().map(|(_, (slug, _, _, acknowledged))| (slug.to_string(), json!({"issuer":format!("{issuer}/application/o/{slug}/"),
-                "scopes":["openid","profile"],"settings":{},"translated_mapping_ids":[],"translated_binding_ids":acknowledged,
+            "policy_bindings":bindings,"sources":[],"passwords":passwords,
+            "clients":chosen.iter().map(|(_, (slug, _, _, acknowledged, access))| (slug.to_string(), json!({"issuer":format!("{issuer}/application/o/{slug}/"),
+                "scopes":["openid","profile"],"settings":{"policy":{"access":access}},"translated_mapping_ids":[],"translated_binding_ids":acknowledged,
                 "authentication_flow_reviewed":true,"require_mfa":false}))).collect::<serde_json::Map<_, _>>()})
     };
     let convert = |input: Value| riauth::migration::convert(serde_json::from_value(input).unwrap());
@@ -1868,14 +1984,15 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
     let mut expected = vec![
         ("anymix-lab".to_owned(), (Convertible, false)),
         ("allpair-ops".to_owned(), (Convertible, false)),
+        ("twolists-second".to_owned(), (Convertible, false)),
+        ("twomixed-second".to_owned(), (Convertible, false)),
         ("narrowacked-lab".to_owned(), (Convertible, false)),
         ("narrowacked-policy".to_owned(), (Manual, false)),
         ("narrow-lab".to_owned(), (Convertible, false)),
         ("narrow-policy".to_owned(), (Manual, true)),
-        ("twolists-policy".to_owned(), (Unsupported, true)),
-        ("twolists-second".to_owned(), (Unsupported, true)),
-        ("twomixed-policy".to_owned(), (Unsupported, true)),
-        ("twomixed-second".to_owned(), (Unsupported, true)),
+        ("threebind-second".to_owned(), (Unsupported, true)),
+        ("threebind-third".to_owned(), (Unsupported, true)),
+        ("listsplus-second".to_owned(), (Unsupported, true)),
     ];
     for slug in [
         "both",
@@ -1893,12 +2010,26 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         "redundant",
         "absorbneg",
         "twelve",
+        "mixed",
+        "mixed2",
+        "paren",
+        "twolist",
+        "twolistneg",
+        "twolistdnf",
+        "negtwolist",
+        "overlap",
+        "parensnot",
+        "nested",
+        "tight",
+        "twolists",
+        "twomixed",
     ] {
         expected.push((policy_id(slug), (Convertible, false)));
     }
     for slug in [
         "contradiction",
-        "paren",
+        "deep",
+        "unbalanced",
         "nbsp",
         "formfeed",
         "newline",
@@ -1911,13 +2042,16 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         "admins",
         "twin",
         "secret",
+        "threebind",
+        "listsplus",
+        "reviewedany",
     ] {
         expected.push((policy_id(slug), (Unsupported, true)));
     }
     // Formulas that do not factor are manual rewrites that no acknowledgement clears.
     for slug in [
-        "mixed",
-        "mixed2",
+        "threelists",
+        "nonmono",
         "negor",
         "negand",
         "acked",
@@ -1933,9 +2067,6 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             "{id}"
         );
     }
-    assert!(report["blockers"].as_array().unwrap().contains(&json!(
-        "acked: application binding acked-policy needs its expression rewritten in Authentik"
-    )));
     // Expressions are never quoted in the report.
     let rendered = report.to_string();
     for fragment in ["s3cr3t-token", "is_superuser", "st\\u0061ff"] {
@@ -1952,6 +2083,7 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
         let rule = &client["settings"]["policy"]["access"];
         [
             client["allowed_groups"].clone(),
+            rule["any_groups"].clone(),
             rule["all_groups"].clone(),
             rule["denied_groups"].clone(),
         ]
@@ -1959,35 +2091,130 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
     let twelve = (1..=12)
         .map(|i| format!("t{i}"))
         .collect::<std::collections::BTreeSet<_>>();
+    let (ls, or, lo, os) = (
+        json!(["lab", "staff"]),
+        json!(["ops", "research"]),
+        json!(["lab", "ops"]),
+        json!(["ops", "staff"]),
+    );
+    let none = json!([]);
     for (cid, expected) in [
-        ("both", [json!([]), json!(["staff"]), json!(["ops"])]),
-        ("either", [json!(["lab", "staff"]), json!([]), json!([])]),
-        ("neither", [json!([]), json!([]), json!(["lab", "staff"])]),
-        ("anyof", [json!(["lab", "staff"]), json!([]), json!([])]),
-        ("precedence", [json!([]), json!(["staff"]), json!(["ops"])]),
-        ("opsonly", [json!(["ops"]), json!([]), json!([])]),
-        ("spaced", [json!(["ops"]), json!([]), json!([])]),
-        ("anymix", [json!(["lab", "staff"]), json!([]), json!([])]),
+        (
+            "both",
+            [none.clone(), none.clone(), json!(["staff"]), json!(["ops"])],
+        ),
+        (
+            "either",
+            [ls.clone(), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "neither",
+            [none.clone(), none.clone(), none.clone(), ls.clone()],
+        ),
+        (
+            "anyof",
+            [ls.clone(), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "precedence",
+            [none.clone(), none.clone(), json!(["staff"]), json!(["ops"])],
+        ),
+        (
+            "opsonly",
+            [json!(["ops"]), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "spaced",
+            [json!(["ops"]), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "anymix",
+            [ls.clone(), none.clone(), none.clone(), none.clone()],
+        ),
         (
             "allpair",
-            [json!(["lab", "staff"]), json!([]), json!(["ops"])],
+            [ls.clone(), none.clone(), none.clone(), json!(["ops"])],
         ),
         (
             "factored",
-            [json!(["lab", "ops"]), json!(["staff"]), json!([])],
+            [lo.clone(), none.clone(), json!(["staff"]), none.clone()],
         ),
         (
             "factoredneg",
-            [json!(["lab", "staff"]), json!([]), json!(["ops"])],
+            [ls.clone(), none.clone(), none.clone(), json!(["ops"])],
         ),
         (
             "negfactored",
-            [json!(["lab", "ops"]), json!(["staff"]), json!([])],
+            [lo.clone(), none.clone(), json!(["staff"]), none.clone()],
         ),
-        ("redundant", [json!(["staff"]), json!([]), json!([])]),
-        ("absorbneg", [json!([]), json!(["staff"]), json!(["ops"])]),
-        ("twelve", [json!(twelve), json!([]), json!([])]),
-        ("narrowacked", [json!(["lab"]), json!([]), json!([])]),
+        (
+            "redundant",
+            [json!(["staff"]), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "absorbneg",
+            [none.clone(), none.clone(), json!(["staff"]), json!(["ops"])],
+        ),
+        (
+            "twelve",
+            [json!(twelve), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "mixed",
+            [lo.clone(), ls.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "mixed2",
+            [ls.clone(), os.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "paren",
+            [os.clone(), none.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "twolist",
+            [ls.clone(), or.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "twolistneg",
+            [ls.clone(), or.clone(), none.clone(), json!(["engineering"])],
+        ),
+        (
+            "twolistdnf",
+            [ls.clone(), or.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "negtwolist",
+            [ls.clone(), or.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "overlap",
+            [ls.clone(), os.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "parensnot",
+            [none.clone(), none.clone(), json!(["staff"]), lo.clone()],
+        ),
+        (
+            "nested",
+            [ls.clone(), or.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "tight",
+            [ls.clone(), or.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "twolists",
+            [ls.clone(), lo.clone(), none.clone(), none.clone()],
+        ),
+        (
+            "twomixed",
+            [lo.clone(), lo.clone(), json!(["staff"]), none.clone()],
+        ),
+        (
+            "narrowacked",
+            [json!(["lab"]), none.clone(), none.clone(), none.clone()],
+        ),
     ] {
         assert_eq!(access(&report, cid), expected, "{cid}");
     }
@@ -2015,8 +2242,8 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             serde_json::from_value(report["manifest"].clone()).unwrap(),
         )
         .unwrap();
-    let secrets =
-        ["ALICE", "BOB", "CAROL", "DAVE"].map(|name| (format!("env:{name}"), PASSWORD.to_owned()));
+    let secrets = ["ALICE", "BOB", "CAROL", "DAVE", "ERIN"]
+        .map(|name| (format!("env:{name}"), PASSWORD.to_owned()));
     f.core
         .apply_state(
             &f.admin,
@@ -2027,7 +2254,7 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
             },
         )
         .unwrap();
-    let sessions = ["alice", "bob", "carol", "dave"].map(|username| {
+    let sessions = ["alice", "bob", "carol", "dave", "erin"].map(|username| {
         (
             username,
             text(
@@ -2040,22 +2267,35 @@ fn authentik_membership_expression_chains_factor_exactly_or_block() {
     });
     for (cid, admitted) in [
         ("both", ["alice"].as_slice()),
-        ("either", &["alice", "bob", "carol"]),
+        ("either", &["alice", "bob", "carol", "erin"]),
         ("neither", &["dave"]),
-        ("anyof", &["alice", "bob", "carol"]),
+        ("anyof", &["alice", "bob", "carol", "erin"]),
         ("precedence", &["alice"]),
         ("opsonly", &["bob"]),
         ("spaced", &["bob"]),
-        ("anymix", &["alice", "bob", "carol"]),
-        ("allpair", &["alice", "carol"]),
+        ("anymix", &["alice", "bob", "carol", "erin"]),
+        ("allpair", &["alice", "carol", "erin"]),
         ("factored", &["bob"]),
-        ("factoredneg", &["alice", "carol"]),
+        ("factoredneg", &["alice", "carol", "erin"]),
         ("negfactored", &["bob"]),
         ("redundant", &["alice", "bob"]),
         ("absorbneg", &["alice"]),
         ("twelve", &[]),
-        // Authentik also admitted Alice and Bob through the acknowledged alternative.
-        ("narrowacked", &["carol"]),
+        ("mixed", &["bob", "carol", "erin"]),
+        ("mixed2", &["alice", "bob"]),
+        ("paren", &["alice", "bob"]),
+        ("twolist", &["bob", "erin"]),
+        ("twolistneg", &["bob", "erin"]),
+        ("twolistdnf", &["bob", "erin"]),
+        ("negtwolist", &["bob", "erin"]),
+        ("overlap", &["alice", "bob"]),
+        ("parensnot", &["alice"]),
+        ("nested", &["bob", "erin"]),
+        ("tight", &["bob", "erin"]),
+        ("twolists", &["bob", "carol", "erin"]),
+        ("twomixed", &["bob"]),
+        // Authentik also admitted Bob through the acknowledged alternative.
+        ("narrowacked", &["carol", "erin"]),
     ] {
         for (username, session) in &sessions {
             let mut request = f.request(cid, &crypto::random_token(""));

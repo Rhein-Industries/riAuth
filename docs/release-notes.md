@@ -187,6 +187,13 @@
   factor, always passes, or checks more than 12 groups is a manual finding that
   needs a rewrite in Authentik. It always blocks where its condition is
   required, and `translated_binding_ids` cannot clear it.
+- Membership expressions may now use parentheses, up to 8 levels deep. They
+  factor into at most two any-of lists, `allowed_groups` and
+  `settings.policy.access.any_groups`, so `(a or b) and (c or d)` converts
+  exactly. Where every condition is required, an application's lists fill those
+  two places, or only `allowed_groups` when the reviewed settings already use
+  `any_groups`, and more lists block. Three lists, non-monotone formulas and
+  over-deep or unbalanced parentheses stay manual or unsupported.
 
 # Unreleased migration identity continuity (G02)
 

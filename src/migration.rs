@@ -701,20 +701,123 @@ fn flag(binding: &Value, name: &str, default: bool) -> Result<bool> {
     }
 }
 
-/// One literal of a membership expression: whether it is negated, and the group name it checks.
-type Literal<'a> = (bool, &'a str);
+/// A membership expression as Python evaluates it.
+enum Formula<'a> {
+    /// `ak_is_group_member(request.user, name="<group>")`.
+    Check(&'a str),
+    Not(Box<Formula<'a>>),
+    And(Vec<Formula<'a>>),
+    Or(Vec<Formula<'a>>),
+}
+impl<'a> Formula<'a> {
+    fn eval(&self, member: &dyn Fn(&str) -> bool) -> bool {
+        match self {
+            Formula::Check(group) => member(group),
+            Formula::Not(formula) => !formula.eval(member),
+            Formula::And(formulas) => formulas.iter().all(|f| f.eval(member)),
+            Formula::Or(formulas) => formulas.iter().any(|f| f.eval(member)),
+        }
+    }
+    fn groups(&self, into: &mut BTreeSet<&'a str>) {
+        match self {
+            Formula::Check(group) => {
+                into.insert(group);
+            }
+            Formula::Not(formula) => formula.groups(into),
+            Formula::And(formulas) | Formula::Or(formulas) => {
+                formulas.iter().for_each(|f| f.groups(into));
+            }
+        }
+    }
+}
 
-/// The expressions riAuth converts: one statement `return <chain>`, where the chain joins
-/// literals `[not ]ak_is_group_member(request.user, name="<group>")` with `and` and `or`, and every
-/// name is a plain single- or double-quoted string. The result is the chain exactly as Python
-/// evaluates it, with `not` binding tighter than `and` and `and` tighter than `or`: a disjunction
-/// of conjunctions. Authentik's `ak_is_group_member` returns `user.all_groups()
-/// .filter(**filters).exists()`, so each literal passes for members of the group and of every
-/// group below it, exactly like a group binding. Anything else is not recognized, including
-/// parentheses, other calls, arguments or keywords, comments, escapes, semicolons, a line break
-/// inside the statement, whitespace other than spaces and tabs, and any character outside ASCII.
-fn membership_expression(expression: &str) -> Option<Vec<Vec<Literal<'_>>>> {
-    const MAX_LITERALS: usize = 32;
+/// Recursive descent over the tokens of one `return` statement, with Python's precedence.
+struct Parser<'a> {
+    tokens: Vec<&'a str>,
+    at: usize,
+    checks: usize,
+}
+impl<'a> Parser<'a> {
+    const MAX_CHECKS: usize = 32;
+    const MAX_DEPTH: usize = 8;
+    fn peek(&self) -> Option<&'a str> {
+        self.tokens.get(self.at).copied()
+    }
+    fn next(&mut self) -> Option<&'a str> {
+        let token = self.peek()?;
+        self.at += 1;
+        Some(token)
+    }
+    /// Operands joined by one keyword, each parsed by `operand`.
+    fn joined(
+        &mut self,
+        keyword: &str,
+        depth: usize,
+        operand: fn(&mut Self, usize) -> Option<Formula<'a>>,
+        join: fn(Vec<Formula<'a>>) -> Formula<'a>,
+    ) -> Option<Formula<'a>> {
+        let mut operands = vec![operand(self, depth)?];
+        while self.peek() == Some(keyword) {
+            self.at += 1;
+            operands.push(operand(self, depth)?);
+        }
+        Some(if operands.len() == 1 {
+            operands.pop()?
+        } else {
+            join(operands)
+        })
+    }
+    fn or(&mut self, depth: usize) -> Option<Formula<'a>> {
+        self.joined("or", depth, Self::and, Formula::Or)
+    }
+    fn and(&mut self, depth: usize) -> Option<Formula<'a>> {
+        self.joined("and", depth, Self::not, Formula::And)
+    }
+    fn not(&mut self, depth: usize) -> Option<Formula<'a>> {
+        if depth > Self::MAX_DEPTH {
+            return None;
+        }
+        match self.peek()? {
+            "not" => {
+                self.at += 1;
+                Some(Formula::Not(Box::new(self.not(depth + 1)?)))
+            }
+            "(" => {
+                self.at += 1;
+                let inner = self.or(depth + 1)?;
+                (self.next()? == ")").then_some(inner)
+            }
+            _ => self.check(),
+        }
+    }
+    fn check(&mut self) -> Option<Formula<'a>> {
+        for expected in ["ak_is_group_member", "(", "request.user", ",", "name", "="] {
+            if self.next()? != expected {
+                return None;
+            }
+        }
+        let quoted = self.next()?;
+        let name = quoted
+            .strip_prefix(['"', '\''])?
+            .strip_suffix(['"', '\''])?;
+        if name.is_empty() || name.contains(['"', '\'']) || self.next()? != ")" {
+            return None;
+        }
+        self.checks += 1;
+        (self.checks <= Self::MAX_CHECKS).then_some(Formula::Check(name))
+    }
+}
+
+/// The expressions riAuth converts: one statement `return <expression>`, where the expression
+/// combines checks `ak_is_group_member(request.user, name="<group>")` with `not`, `and`, `or` and
+/// parentheses, and every name is a plain single- or double-quoted string. The result is the
+/// expression exactly as Python evaluates it: `not` binds tighter than `and`, and `and` tighter than
+/// `or`. Authentik's `ak_is_group_member` returns `user.all_groups().filter(**filters).exists()`, so
+/// each check passes for members of the group and of every group below it, exactly like a group
+/// binding. Anything else is not recognized, including other calls, arguments or keywords,
+/// comments, escapes, semicolons, a line break inside the statement, whitespace other than spaces
+/// and tabs, any character outside ASCII, more than 32 checks and nesting deeper than 8.
+fn membership_expression(expression: &str) -> Option<Formula<'_>> {
     if !expression.is_ascii() {
         return None;
     }
@@ -749,37 +852,16 @@ fn membership_expression(expression: &str) -> Option<Vec<Vec<Literal<'_>>>> {
         }
         tokens.push(&line[start..at]);
     }
-    let mut tokens = tokens.into_iter().peekable();
-    if tokens.next()? != "return" {
+    let mut parser = Parser {
+        tokens,
+        at: 1,
+        checks: 0,
+    };
+    if parser.tokens.first() != Some(&"return") {
         return None;
     }
-    let (mut terms, mut literals) = (vec![Vec::new()], 0);
-    loop {
-        let negated = tokens.next_if_eq(&"not").is_some();
-        for expected in ["ak_is_group_member", "(", "request.user", ",", "name", "="] {
-            if tokens.next()? != expected {
-                return None;
-            }
-        }
-        let quoted = tokens.next()?;
-        let name = quoted
-            .strip_prefix(['"', '\''])?
-            .strip_suffix(['"', '\''])?;
-        if name.is_empty() || name.contains(['"', '\'']) || tokens.next()? != ")" {
-            return None;
-        }
-        literals += 1;
-        if literals > MAX_LITERALS {
-            return None;
-        }
-        terms.last_mut()?.push((negated, name));
-        match tokens.next() {
-            None => return Some(terms),
-            Some("and") => {}
-            Some("or") => terms.push(Vec::new()),
-            Some(_) => return None,
-        }
-    }
+    let formula = parser.or(0)?;
+    (parser.at == parser.tokens.len()).then_some(formula)
 }
 
 /// What a membership expression becomes in riAuth.
@@ -791,34 +873,25 @@ enum Membership {
     Never(String),
 }
 
-/// Factor a membership expression, negated when its binding is, into the one shape riAuth ANDs
-/// together: one any-of group list, required groups and denied groups. Each checked group is an
-/// independent variable, and the factored shape must agree with the expression on every
+/// Factor a membership expression, negated when its binding is, into the shape riAuth ANDs
+/// together: at most two any-of group lists, required groups and denied groups. Each checked group
+/// is an independent variable, and the factored shape must agree with the expression on every
 /// assignment, so a result is exact for any group hierarchy. At most 12 distinct groups are
 /// checked this way.
-fn membership_condition(terms: &[Vec<Literal<'_>>], negate: bool) -> Membership {
+fn membership_condition(formula: &Formula<'_>, negate: bool) -> Membership {
     const MAX_GROUPS: usize = 12;
-    let atoms = terms
-        .iter()
-        .flatten()
-        .map(|(_, name)| *name)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let mut checked = BTreeSet::new();
+    formula.groups(&mut checked);
+    let atoms = checked.into_iter().collect::<Vec<_>>();
     if atoms.len() > MAX_GROUPS {
         return Membership::Nonfactorable(format!(
             "checks more than {MAX_GROUPS} distinct groups, too many to factor exactly"
         ));
     }
     let bit = |name: &str| 1u32 << atoms.iter().position(|atom| *atom == name).unwrap_or(0);
-    // Python's reading: alternatives of conjunctions, then the binding's negation.
-    let passes = |x: u32| {
-        terms.iter().any(|term| {
-            term.iter()
-                .all(|(negated, name)| (x & bit(name) != 0) != *negated)
-        }) != negate
-    };
+    let passes = |x: u32| formula.eval(&|name| x & bit(name) != 0) != negate;
     let rows = 1u32 << atoms.len();
+    let bits = (0..atoms.len()).map(|i| 1u32 << i).collect::<Vec<_>>();
     let passing = (0..rows).filter(|x| passes(*x)).collect::<Vec<_>>();
     if passing.is_empty() {
         return Membership::Never("never passes, so Authentik admits no one through it".to_owned());
@@ -831,21 +904,29 @@ fn membership_condition(terms: &[Vec<Literal<'_>>], negate: bool) -> Membership 
     // Groups every passing assignment is in, or out of.
     let required = passing.iter().fold(rows - 1, |mask, x| mask & x);
     let refused = passing.iter().fold(rows - 1, |mask, x| mask & !x);
-    // With those fixed, the rest must be one any-of list, or nothing.
+    // With those fixed, a conjunction of any-of lists fails exactly where the other groups miss
+    // one list, so each maximal failing assignment of them leaves out exactly one list.
     let rest = (rows - 1) & !required & !refused;
-    let any = if passes(required) {
-        0
-    } else {
-        (0..atoms.len())
-            .map(|i| 1u32 << i)
-            .filter(|b| rest & b != 0 && passes(required | b))
-            .fold(0, |mask, b| mask | b)
+    let failing = |y: u32| !passes(required | y);
+    let maximal = (0..rows)
+        .filter(|y| y & !rest == 0 && failing(*y))
+        .filter(|y| {
+            bits.iter()
+                .all(|b| rest & b == 0 || y & b != 0 || !failing(y | b))
+        })
+        .collect::<Vec<_>>();
+    if maximal.len() > 2 {
+        return Membership::Nonfactorable(
+            "needs more than two any-of group lists, which riAuth cannot combine".to_owned(),
+        );
+    }
+    let lists = maximal.iter().map(|y| rest & !y).collect::<Vec<_>>();
+    let factored = |x: u32| {
+        x & required == required && x & refused == 0 && lists.iter().all(|list| x & list != 0)
     };
-    let factored =
-        |x: u32| x & required == required && x & refused == 0 && (any == 0 || x & any != 0);
     if (0..rows).any(|x| passes(x) != factored(x)) {
         return Membership::Nonfactorable(
-            "is not factorable into one any-of group list plus required and denied groups"
+            "is not factorable into at most two any-of group lists plus required and denied groups"
                 .to_owned(),
         );
     }
@@ -857,14 +938,20 @@ fn membership_condition(terms: &[Vec<Literal<'_>>], negate: bool) -> Membership 
             .map(|(_, name)| (*name).to_owned())
             .collect::<BTreeSet<_>>()
     };
-    let (any, required, refused) = (names(any), names(required), names(refused));
+    let mut lists = lists.into_iter().map(names).collect::<Vec<_>>();
+    lists.sort();
+    let (required, refused) = (names(required), names(refused));
     let only = |set: BTreeSet<String>| set.into_iter().next().unwrap_or_default();
-    Membership::Exact(match (any.is_empty(), required.len(), refused.len()) {
-        (true, 1, 0) => Condition::Group(only(required)),
-        (true, 0, 1) => Condition::NotGroup(only(refused)),
-        (true, ..) => Condition::Groups(required, refused),
-        (false, 0, 0) => Condition::AnyGroups(any),
-        (false, ..) => Condition::Mixed(any, required, refused),
+    Membership::Exact(match (lists.len(), required.len(), refused.len()) {
+        (0, 1, 0) => Condition::Group(only(required)),
+        (0, 0, 1) => Condition::NotGroup(only(refused)),
+        (0, ..) => Condition::Groups(required, refused),
+        (1, 0, 0) => Condition::AnyGroups(lists.remove(0)),
+        (1, ..) => Condition::Mixed(lists.remove(0), required, refused),
+        _ => {
+            let first = lists.remove(0);
+            Condition::Lists(first, lists.remove(0), required, refused)
+        }
     })
 }
 /// One binding as the condition it places on a user.
@@ -879,6 +966,14 @@ enum Condition {
     AnyGroups(BTreeSet<String>),
     /// At least one group of the first set, every group of the second, and none of the third.
     Mixed(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>),
+    /// At least one group of each of the first two sets, every group of the third, and none of
+    /// the fourth.
+    Lists(
+        BTreeSet<String>,
+        BTreeSet<String>,
+        BTreeSet<String>,
+        BTreeSet<String>,
+    ),
 }
 
 /// Access an application's enabled Authentik bindings impose, kept only where riAuth expresses it
@@ -934,13 +1029,15 @@ fn application_access(
                 None => Err("The bound policy is not an exported expression policy, and policies are never executed or assumed equivalent".to_owned()),
                 Some((policy, expression)) => match membership_expression(expression) {
                     None => Err(format!("Expression policy {policy} is not a chain of ak_is_group_member checks riAuth converts, and expressions are never executed or assumed equivalent")),
-                    Some(terms) => {
+                    Some(formula) => {
+                        let mut checked = BTreeSet::new();
+                        formula.groups(&mut checked);
                         // Authentik filters every group of that name, so exactly one may exist.
-                        let unresolved = terms.iter().flatten().find_map(|(_, group)| {
+                        let unresolved = checked.iter().find_map(|group| {
                             let named = directory
                                 .group_names
                                 .iter()
-                                .filter(|(_, name)| name == group)
+                                .filter(|(_, name)| name.as_str() == *group)
                                 .map(|(pk, _)| pk)
                                 .collect::<Vec<_>>();
                             match named.as_slice() {
@@ -951,7 +1048,7 @@ fn application_access(
                         });
                         match unresolved {
                             Some(reason) => Err(reason),
-                            None => match membership_condition(&terms, negate) {
+                            None => match membership_condition(&formula, negate) {
                                 Membership::Exact(condition) => {
                                     origins.insert(id.as_str(), *policy);
                                     Ok(condition)
@@ -1031,10 +1128,17 @@ fn application_access(
         .iter()
         .filter(|(_, c)| matches!(c, Ok(Condition::Group(_) | Condition::AnyGroups(_))))
         .count();
+    // riAuth ANDs allowed_groups with policy.access.any_groups: two any-of lists per client, or
+    // one when the reviewed settings already use any_groups.
     let any_lists = conditions
         .iter()
-        .filter(|(_, c)| matches!(c, Ok(Condition::AnyGroups(_) | Condition::Mixed(..))))
-        .count();
+        .map(|(_, c)| match c {
+            Ok(Condition::AnyGroups(_) | Condition::Mixed(..)) => 1,
+            Ok(Condition::Lists(..)) => 2,
+            _ => 0,
+        })
+        .sum::<usize>();
+    let capacity = if rule.any_groups.is_empty() { 2 } else { 1 };
     let names = |set: &BTreeSet<String>| set.iter().cloned().collect::<Vec<_>>().join(", ");
     // "requires every group of a and refuses every group of b", leaving out an empty half.
     let units = |required: &BTreeSet<String>, refused: &BTreeSet<String>| {
@@ -1119,14 +1223,23 @@ fn application_access(
                 true,
             ),
             // riAuth ANDs one any-of list per client with its other conditions.
-            (Ok(Condition::AnyGroups(_) | Condition::Mixed(..)), Ok(true)) if any_lists > 1 => Outcome::Impossible(
-                "riAuth keeps one any-of group list per client, and this application requires several"
-                    .to_owned(),
-            ),
+            (Ok(Condition::AnyGroups(_) | Condition::Mixed(..) | Condition::Lists(..)), Ok(true))
+                if any_lists > capacity =>
+            {
+                Outcome::Impossible(format!(
+                    "riAuth ANDs at most {capacity} any-of group list{} per client (allowed_groups{}), and this application needs {any_lists}",
+                    if capacity == 1 { "" } else { "s" },
+                    if capacity == 1 {
+                        ", because the reviewed settings already use settings.policy.access.any_groups"
+                    } else {
+                        " and settings.policy.access.any_groups"
+                    }
+                ))
+            }
             (Ok(Condition::Mixed(any, required, refused)), Ok(true)) => {
                 Outcome::Converted(
                     format!(
-                        "The binding's groups {} become allowed groups, and it {} through settings.policy.access; members of each group and of every group below it count, as in Authentik",
+                        "The binding's groups {} become one of the client's any-of group lists, and it {} through settings.policy.access; members of each group and of every group below it count, as in Authentik",
                         names(&any),
                         units(&required, &refused)
                     ),
@@ -1134,9 +1247,34 @@ fn application_access(
                     true,
                 )
             }
-            (Ok(Condition::AnyGroups(groups)), Ok(_)) => Outcome::Converted(
+            (Ok(Condition::Lists(first, second, required, refused)), Ok(true)) => {
+                let units = units(&required, &refused);
+                Outcome::Converted(
+                    format!(
+                        "The binding needs one of {} and one of {}, which become allowed_groups and settings.policy.access.any_groups{}; members of each group and of every group below it count, as in Authentik",
+                        names(&first),
+                        names(&second),
+                        if units.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", and it {units}")
+                        }
+                    ),
+                    Condition::Lists(first, second, required, refused),
+                    true,
+                )
+            }
+            (Ok(Condition::AnyGroups(groups)), Ok(true)) => Outcome::Converted(
                 format!(
-                    "The binding's groups {} become allowed groups; members of any of them and of every group below them pass, as in Authentik",
+                    "The binding's groups {} become one of the client's any-of group lists; members of any of them and of every group below them pass, as in Authentik",
+                    names(&groups)
+                ),
+                Condition::AnyGroups(groups),
+                true,
+            ),
+            (Ok(Condition::AnyGroups(groups)), Ok(false)) => Outcome::Converted(
+                format!(
+                    "The binding's groups {} join the client's allowed groups; members of any of them and of every group below them pass, as in Authentik",
                     names(&groups)
                 ),
                 Condition::AnyGroups(groups),
@@ -1164,6 +1302,22 @@ fn application_access(
     } else {
         rule.users.intersection(&converted_users).cloned().collect()
     };
+    /// A required any-of list fills allowed_groups first, then policy.access.any_groups; the
+    /// capacity check above ensures no list lands in a slot another one holds.
+    fn place(
+        list: BTreeSet<String>,
+        placed: &mut usize,
+        allowed: &mut BTreeSet<String>,
+        any_groups: &mut BTreeSet<String>,
+    ) {
+        if *placed == 0 {
+            allowed.extend(list);
+        } else {
+            any_groups.extend(list);
+        }
+        *placed += 1;
+    }
+    let mut placed = 0;
     let alternative_kept = matches!(required, Ok(false))
         && (groups > 0 || converted_users.iter().any(|name| admitted.contains(name)));
     for (id, outcome) in outcomes {
@@ -1209,9 +1363,18 @@ fn application_access(
                         rule.all_groups.extend(required);
                         rule.denied_groups.extend(refused);
                     }
+                    Condition::AnyGroups(groups) if required_group => {
+                        place(groups, &mut placed, &mut allowed, &mut rule.any_groups);
+                    }
                     Condition::AnyGroups(groups) => allowed.extend(groups),
                     Condition::Mixed(any, required, refused) => {
-                        allowed.extend(any);
+                        place(any, &mut placed, &mut allowed, &mut rule.any_groups);
+                        rule.all_groups.extend(required);
+                        rule.denied_groups.extend(refused);
+                    }
+                    Condition::Lists(first, second, required, refused) => {
+                        place(first, &mut placed, &mut allowed, &mut rule.any_groups);
+                        place(second, &mut placed, &mut allowed, &mut rule.any_groups);
                         rule.all_groups.extend(required);
                         rule.denied_groups.extend(refused);
                     }

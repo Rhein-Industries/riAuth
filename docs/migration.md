@@ -155,29 +155,43 @@ A client whose Authentik bindings restricted it, but which would admit every use
 **Group-membership expressions.** An expression policy converts only when its whole expression is one statement of this grammar, on one line (blank lines around it are ignored):
 
 ```text
-statement := "return" chain
-chain     := literal { ("and" | "or") literal }       (at most 32 literals)
-literal   := ["not"] "ak_is_group_member(request.user, name=" quoted-name ")"
+statement  := "return" expression
+expression := and-term { "or" and-term }
+and-term   := not-term { "and" not-term }
+not-term   := "not" not-term | "(" expression ")" | check
+check      := "ak_is_group_member(request.user, name=" quoted-name ")"
 ```
 
-Tokens are separated only by spaces and tabs, and the name is a plain single- or double-quoted string. Authentik's `ak_is_group_member` checks `user.all_groups()`, so each literal passes for members of the group and of every group below it, exactly like a group binding and like riAuth's flattened memberships. Python evaluates `not` before `and` and `and` before `or`, so the chain is a disjunction of conjunctions, negated as a whole when its binding negates it.
+At most 32 checks and 8 levels of `not` or parentheses are accepted. Tokens are separated only by spaces and tabs, and the name is a plain single- or double-quoted string. This is Python's own precedence: `not` binds tighter than `and`, and `and` tighter than `or`. Authentik's `ak_is_group_member` checks `user.all_groups()`, so each check passes for members of the group and of every group below it, exactly like a group binding and like riAuth's flattened memberships. A negated binding negates the whole expression.
 
-riAuth ANDs one any-of group list with required and denied groups, so the preflight factors the formula into exactly that shape:
+riAuth ANDs two any-of group lists, `allowed_groups` and `settings.policy.access.any_groups`, with required and denied groups. The preflight factors the formula into exactly that shape:
 
 - **Required groups:** the groups every passing assignment includes.
 - **Denied groups:** the groups every passing assignment excludes.
-- **Any-of list:** the remaining groups, which must form one list of plain groups, or none.
+- **Any-of lists:** the remaining groups must form at most two lists of plain groups. Each maximal failing assignment of them leaves out exactly one list.
 - **Verification:** each checked group is treated as an independent yes/no variable, and the factored shape must agree with the formula on every assignment of up to 12 distinct groups. The result is therefore exact whatever the group hierarchy.
 
-For example, `a and b or a and c` becomes allowed groups `b, c` with required group `a`. `a and not d or b and not d` becomes allowed groups `a, b` with denied group `d`. `a or a and b` becomes allowed group `a`.
+Examples:
+
+| Formula | Converts to |
+| --- | --- |
+| `a and b or a and c` | allowed groups `b, c`, required group `a` |
+| `a and not d or b and not d` | allowed groups `a, b`, denied group `d` |
+| `a or a and b` | allowed group `a` |
+| `(a or b) and (c or d)` | allowed groups `a, b` and `any_groups` `c, d` |
+| `a and b or c` (read as `(a and b) or c`) | allowed groups `a, c` and `any_groups` `b, c` |
+
+The factored shape converts as follows:
 
 | Factored shape | Converts to |
 | --- | --- |
 | Required and denied groups only | Required groups (`all_groups`) and denied groups, like the static bindings of `all` mode |
-| One any-of list only | `allowed_groups`; in `any` mode it joins the other alternatives' allowed groups |
-| One any-of list with required or denied groups | `allowed_groups` plus required and denied groups, where every condition is required (`all` mode or a single binding); in `any` mode it is an alternative riAuth cannot combine |
+| One any-of list only | An any-of list; in `any` mode it joins the other alternatives' allowed groups |
+| Any-of lists with required or denied groups, or two lists | The lists plus required and denied groups, where every condition is required (`all` mode or a single binding); in `any` mode it is an alternative riAuth cannot combine |
 
-The converted formula is then handled like any other converted binding. A formula that does not factor, such as `a and b or c`, `a or not b`, a formula that always passes, or one with more than 12 distinct groups, is a **manual** finding. Rewrite it in Authentik, for example by splitting it into separate bindings, and export again:
+Where every condition is required, the application's any-of lists, from all its bindings, fill `allowed_groups` first and then `settings.policy.access.any_groups`. Only one is available when the reviewed settings already set `any_groups`. An application that needs more lists than are available is unsupported and blocks.
+
+The converted formula is then handled like any other converted binding. Some formulas do not factor, such as `a or not b` or three any-of lists. So do a formula that always passes and one with more than 12 distinct groups. Each is a **manual** finding: rewrite it in Authentik, for example by splitting it into separate bindings, and export again.
 
 - Where every condition is required, or no other alternative converts, it always blocks. `translated_binding_ids` cannot clear it, because leaving it out would admit users Authentik refused.
 - In `any` mode beside a converted alternative, acknowledging it accepts narrower access, as for other alternatives.
@@ -185,14 +199,14 @@ The converted formula is then handled like any other converted binding. A formul
 It is unsupported and blocks when:
 
 - the formula never passes (for example `a and not a`), since Authentik admits no one;
-- an `all`-mode application needs more than one any-of list, because riAuth keeps one per client;
-- a literal names a group that is missing from the export, excluded, not converted, or not the only exported group with that name (Authentik's check also matches an excluded group of the same name).
+- an application needs more any-of lists than riAuth has room for, as above;
+- a check names a group that is missing from the export, excluded, not converted, or not the only exported group with that name (Authentik's check also matches an excluded group of the same name).
 
 Every other expression is an unconverted policy binding under the rules above, and expressions are never executed. That includes:
 
 - direct-membership checks such as `request.user.ak_groups.filter(...)`, which miss child groups;
 - other calls, lookups, keywords or arguments;
-- parentheses, comments, escapes, semicolons and `==`;
+- unbalanced or over-deep parentheses, comments, escapes, semicolons and `==`;
 - a line break inside the statement, whitespace other than spaces and tabs, and any character outside ASCII;
 - an expression policy missing from `expression_policies`, and an expiring binding.
 
