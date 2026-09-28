@@ -152,7 +152,38 @@ Converted conditions are added to the reviewed `settings.policy.access`; when bo
 
 A client whose Authentik bindings restricted it, but which would admit every user after conversion, blocks until its reviewed `settings.policy` restricts access. Bindings on other targets, such as flows, and on applications that are not converted keep the reviewed-translation rule above.
 
-**Group-membership expressions.** An expression policy converts only when its whole expression is one line, `return ak_is_group_member(request.user, name="<group>")`, optionally with `not` before the call, and a plain single- or double-quoted name. Authentik's `ak_is_group_member` checks `user.all_groups()`, so it passes for members of the group and of every group below it, exactly like a group binding. The named group must be the only exported group with that name, and converted, because Authentik's check matches every group of that name, including excluded ones. Every other expression is an unconverted policy binding under the rules above, and expressions are never executed. That includes direct-membership checks such as `request.user.ak_groups.filter(...)`, which miss child groups, as well as other lookups, extra logic, comments, escapes, f-strings and other user arguments. It also covers an expression policy missing from `expression_policies` and an expiring binding. The report names the policy but never quotes its expression.
+**Group-membership expressions.** An expression policy converts only when its whole expression is one statement of this grammar, on one line (blank lines around it are ignored):
+
+```text
+statement := "return" chain
+chain     := literal { ("and" | "or") literal }       (at most 32 literals)
+literal   := ["not"] "ak_is_group_member(request.user, name=" quoted-name ")"
+```
+
+Tokens are separated only by spaces and tabs, and the name is a plain single- or double-quoted string. Authentik's `ak_is_group_member` checks `user.all_groups()`, so each literal passes for members of the group and of every group below it, exactly like a group binding and like riAuth's flattened memberships. Python evaluates `not` before `and` and `and` before `or`. So the chain is read as alternatives of conjunctions, and it converts only when it is one of these (after a negated binding applies De Morgan's laws):
+
+| Chain | Converts to |
+| --- | --- |
+| Literals joined only by `and` | Required groups (`all_groups`) for the plain literals and denied groups for the negated ones, like the static bindings of `all` mode |
+| Plain literals joined only by `or` | One any-of list, which becomes `allowed_groups`; in `any` mode it joins the other alternatives' allowed groups |
+
+The chain is then handled like any other converted binding. It is unsupported, and blocks as the rules above require, when:
+
+- it mixes `and` with `or`, such as `a and b or c`, which Python reads as `(a and b) or c`;
+- an `or` chain contains a negated literal, which would admit users outside every named group;
+- an `and` chain requires and refuses the same group, so it never passes;
+- an `all`-mode application needs more than one any-of list, because riAuth keeps one per client;
+- a literal names a group that is missing from the export, excluded, not converted, or not the only exported group with that name (Authentik's check also matches an excluded group of the same name).
+
+Every other expression is an unconverted policy binding under the rules above, and expressions are never executed. That includes:
+
+- direct-membership checks such as `request.user.ak_groups.filter(...)`, which miss child groups;
+- other calls, lookups, keywords or arguments;
+- parentheses, comments, escapes, semicolons and `==`;
+- a line break inside the statement, whitespace other than spaces and tabs, and any character outside ASCII;
+- an expression policy missing from `expression_policies`, and an expiring binding.
+
+A binding whose `enabled`, `negate` or `expiring` field is present but not a boolean fails the conversion, so a malformed export cannot change a binding's meaning. The report names the policy but never quotes its expression.
 
 **Source links.** A `source_links` entry is carried over only when `user_source_connections` shows the same connection: its source must be the applied resolution of the connection's Authentik source, its username an exported and converted account, and its subject the connection's `identifier`. Any other link blocks and is not applied, including one the export does not show, one with another subject and one for an account or source that is not converted. Two links for one upstream identity also block. Only an external account with a carried link has its local password disabled. Every exported connection to a converted source is accounted for: one that is not carried over blocks when the reviewed source auto-provisions accounts, because the next upstream sign-in would create a second account; otherwise it is a non-blocking manual finding, and the user links the source again after signing in. Connections to sources that are not converted are reported as unsupported. A carried link matches only if the reviewed source returns the value Authentik stored: the `sub` for OpenID Connect and Okta sources, the Microsoft Graph `id` for Entra ID, the numeric `id` for GitHub and Google, and the NameID for SAML. Rehearse each source's sign-in.
 

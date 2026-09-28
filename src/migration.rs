@@ -689,47 +689,165 @@ struct Directory<'a> {
     expressions: BTreeMap<String, (&'a str, &'a str)>,
 }
 
-/// The one expression form riAuth converts: a single line
-/// `return [not ]ak_is_group_member(request.user, name="<group>")`, with a plain single- or
-/// double-quoted name. Authentik's `ak_is_group_member` returns
-/// `user.all_groups().filter(**filters).exists()`, so it passes for members of the group and of
-/// every group below it, exactly like a group binding. Anything else, including direct-membership
-/// checks, other filters, extra logic, comments or escapes, is not recognized.
-fn group_check(expression: &str) -> Option<(bool, &str)> {
-    let line = expression.trim();
-    if line.contains(['\n', '\r', ';', '#']) {
-        return None;
+/// A binding's boolean field, or its default when absent. Any other value fails the conversion,
+/// so a malformed export can never flip what a binding means.
+fn flag(binding: &Value, name: &str, default: bool) -> Result<bool> {
+    match &binding[name] {
+        Value::Null => Ok(default),
+        Value::Bool(value) => Ok(*value),
+        _ => Err(Error::bad(format!(
+            "Policy binding field {name} must be a boolean"
+        ))),
     }
-    let rest = line.strip_prefix("return")?;
-    let rest = rest.strip_prefix([' ', '\t'])?.trim_start();
-    let (negated, rest) = match rest.strip_prefix("not") {
-        Some(after) if after.starts_with([' ', '\t']) => (true, after.trim_start()),
-        _ => (false, rest),
-    };
-    let arguments = rest
-        .strip_prefix("ak_is_group_member")?
-        .trim_start()
-        .strip_prefix('(')?
-        .strip_suffix(')')?;
-    let (user, filter) = arguments.split_once(',')?;
-    let (key, value) = filter.split_once('=')?;
-    if user.trim() != "request.user" || key.trim() != "name" {
-        return None;
-    }
-    let value = value.trim();
-    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
-    let name = value.strip_prefix(quote)?.strip_suffix(quote)?;
-    if name.is_empty() || name.contains([quote, '\\']) {
-        return None;
-    }
-    Some((negated, name))
 }
-/// One static binding as the condition it places on a user.
+
+/// One literal of a membership expression: whether it is negated, and the group name it checks.
+type Literal<'a> = (bool, &'a str);
+
+/// The expressions riAuth converts: one statement `return <chain>`, where the chain joins
+/// literals `[not ]ak_is_group_member(request.user, name="<group>")` with `and` and `or`, and every
+/// name is a plain single- or double-quoted string. The result is the chain exactly as Python
+/// evaluates it, with `not` binding tighter than `and` and `and` tighter than `or`: a disjunction
+/// of conjunctions. Authentik's `ak_is_group_member` returns `user.all_groups()
+/// .filter(**filters).exists()`, so each literal passes for members of the group and of every
+/// group below it, exactly like a group binding. Anything else is not recognized, including
+/// parentheses, other calls, arguments or keywords, comments, escapes, semicolons, a line break
+/// inside the statement, whitespace other than spaces and tabs, and any character outside ASCII.
+fn membership_expression(expression: &str) -> Option<Vec<Vec<Literal<'_>>>> {
+    const MAX_LITERALS: usize = 32;
+    if !expression.is_ascii() {
+        return None;
+    }
+    // Blank lines around the one statement are harmless in Python; nothing else is.
+    let line = expression.trim_matches([' ', '\t', '\n', '\r']);
+    if line
+        .bytes()
+        .any(|b| (b.is_ascii_control() && b != b'\t') || matches!(b, b'#' | b';' | b'\\'))
+    {
+        return None;
+    }
+    let bytes = line.as_bytes();
+    let (mut tokens, mut at) = (Vec::new(), 0);
+    while at < bytes.len() {
+        let start = at;
+        match bytes[at] {
+            b' ' | b'\t' => {
+                at += 1;
+                continue;
+            }
+            b'(' | b')' | b',' => at += 1,
+            b'=' if bytes.get(at + 1) != Some(&b'=') => at += 1,
+            quote @ (b'"' | b'\'') => at += line[at + 1..].find(char::from(quote))? + 2,
+            b if b.is_ascii_alphabetic() || b == b'_' => {
+                while at < bytes.len()
+                    && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'_' | b'.'))
+                {
+                    at += 1;
+                }
+            }
+            _ => return None,
+        }
+        tokens.push(&line[start..at]);
+    }
+    let mut tokens = tokens.into_iter().peekable();
+    if tokens.next()? != "return" {
+        return None;
+    }
+    let (mut terms, mut literals) = (vec![Vec::new()], 0);
+    loop {
+        let negated = tokens.next_if_eq(&"not").is_some();
+        for expected in ["ak_is_group_member", "(", "request.user", ",", "name", "="] {
+            if tokens.next()? != expected {
+                return None;
+            }
+        }
+        let quoted = tokens.next()?;
+        let name = quoted
+            .strip_prefix(['"', '\''])?
+            .strip_suffix(['"', '\''])?;
+        if name.is_empty() || name.contains(['"', '\'']) || tokens.next()? != ")" {
+            return None;
+        }
+        literals += 1;
+        if literals > MAX_LITERALS {
+            return None;
+        }
+        terms.last_mut()?.push((negated, name));
+        match tokens.next() {
+            None => return Some(terms),
+            Some("and") => {}
+            Some("or") => terms.push(Vec::new()),
+            Some(_) => return None,
+        }
+    }
+}
+
+/// The riAuth condition equal to a membership expression, negated when its binding is. riAuth ANDs
+/// its conditions, so it holds a conjunction of literals as required and denied groups, and a
+/// disjunction only when every literal is positive, as one any-of group list. Mixing `and` with
+/// `or`, a disjunction with a negated literal, and a conjunction that requires and refuses one
+/// group are not represented.
+fn membership_condition(
+    terms: &[Vec<Literal<'_>>],
+    negate: bool,
+) -> std::result::Result<Condition, String> {
+    let (conjunction, literals) = match terms {
+        [term] => (true, term.clone()),
+        terms if terms.iter().all(|term| term.len() == 1) => {
+            (false, terms.iter().map(|term| term[0]).collect::<Vec<_>>())
+        }
+        _ => {
+            return Err(
+                "mixes and with or, which riAuth cannot represent as one condition".to_owned(),
+            );
+        }
+    };
+    // De Morgan: a negated binding turns a conjunction into a disjunction of the opposite
+    // literals, and the reverse.
+    let conjunction = conjunction != negate;
+    let literals = literals
+        .into_iter()
+        .map(|(negated, name)| (negated != negate, name.to_owned()))
+        .collect::<Vec<_>>();
+    let required = literals
+        .iter()
+        .filter(|(negated, _)| !negated)
+        .map(|(_, name)| name.clone())
+        .collect::<BTreeSet<_>>();
+    let refused = literals
+        .iter()
+        .filter(|(negated, _)| *negated)
+        .map(|(_, name)| name.clone())
+        .collect::<BTreeSet<_>>();
+    if conjunction {
+        if !required.is_disjoint(&refused) {
+            return Err("requires and refuses the same group, so it never passes".to_owned());
+        }
+        Ok(match (required.len(), refused.len()) {
+            (1, 0) => Condition::Group(required.into_iter().next().unwrap_or_default()),
+            (0, 1) => Condition::NotGroup(refused.into_iter().next().unwrap_or_default()),
+            _ => Condition::Groups(required, refused),
+        })
+    } else if !refused.is_empty() {
+        Err("admits users outside the named groups through a negated alternative, which riAuth cannot represent".to_owned())
+    } else if required.len() == 1 {
+        Ok(Condition::Group(
+            required.into_iter().next().unwrap_or_default(),
+        ))
+    } else {
+        Ok(Condition::AnyGroups(required))
+    }
+}
+/// One binding as the condition it places on a user.
 enum Condition {
     Group(String),
     NotGroup(String),
     User(String),
     NotUser(String),
+    /// Every group of the first set, and none of the second.
+    Groups(BTreeSet<String>, BTreeSet<String>),
+    /// At least one of the groups.
+    AnyGroups(BTreeSet<String>),
 }
 
 /// Access an application's enabled Authentik bindings impose, kept only where riAuth expresses it
@@ -762,7 +880,7 @@ fn application_access(
         }
         let id = identifier(&binding["pk"])?;
         handled.push(id.clone());
-        if binding["enabled"] == false {
+        if !flag(binding, "enabled", true)? {
             p.add(ItemKind::PolicyBinding, &id, Classification::Exact,
                 "The binding is disabled, so Authentik admits and refuses no one through it; it is not converted",
                 "None");
@@ -774,35 +892,37 @@ fn application_access(
     // Bindings whose condition comes from an expression policy, by that policy's name.
     let mut origins = BTreeMap::new();
     for (id, binding) in &enabled {
-        let negate = binding["negate"] == true;
-        let condition = if binding["expiring"] == true {
+        let negate = flag(binding, "negate", false)?;
+        let condition = if flag(binding, "expiring", false)? {
             Err("Expiring bindings are not converted, because a permanent condition would outlive the expiry".to_owned())
         } else if !binding["policy"].is_null() {
             let policy = identifier(&binding["policy"])?;
             match directory.expressions.get(&policy) {
                 None => Err("The bound policy is not an exported expression policy, and policies are never executed or assumed equivalent".to_owned()),
-                Some((policy, expression)) => match group_check(expression) {
-                    None => Err(format!("Expression policy {policy} is not the single ak_is_group_member check riAuth converts, and expressions are never executed or assumed equivalent")),
-                    Some((negated, group)) => {
+                Some((policy, expression)) => match membership_expression(expression) {
+                    None => Err(format!("Expression policy {policy} is not a chain of ak_is_group_member checks riAuth converts, and expressions are never executed or assumed equivalent")),
+                    Some(terms) => {
                         // Authentik filters every group of that name, so exactly one may exist.
-                        let named = directory
-                            .group_names
-                            .iter()
-                            .filter(|(_, name)| name.as_str() == group)
-                            .map(|(pk, _)| pk)
-                            .collect::<Vec<_>>();
-                        match named.as_slice() {
-                            [pk] if directory.converted_groups.contains(*pk) => {
-                                origins.insert(id.as_str(), *policy);
-                                // A negated binding flips the policy's result.
-                                if negated != negate {
-                                    Ok(Condition::NotGroup(group.to_owned()))
-                                } else {
-                                    Ok(Condition::Group(group.to_owned()))
-                                }
+                        let unresolved = terms.iter().flatten().find_map(|(_, group)| {
+                            let named = directory
+                                .group_names
+                                .iter()
+                                .filter(|(_, name)| name == group)
+                                .map(|(pk, _)| pk)
+                                .collect::<Vec<_>>();
+                            match named.as_slice() {
+                                [pk] if directory.converted_groups.contains(*pk) => None,
+                                [] => Some(format!("Expression policy {policy} checks group {group}, which is not in the export")),
+                                _ => Some(format!("Expression policy {policy} checks group {group}, which is not converted as exactly one riAuth group")),
                             }
-                            [] => Err(format!("Expression policy {policy} checks group {group}, which is not in the export")),
-                            _ => Err(format!("Expression policy {policy} checks group {group}, which is not converted as exactly one riAuth group")),
+                        });
+                        match unresolved {
+                            Some(reason) => Err(reason),
+                            None => membership_condition(&terms, negate)
+                                .map_err(|reason| format!("Expression policy {policy} {reason}"))
+                                .inspect(|_| {
+                                    origins.insert(id.as_str(), *policy);
+                                }),
                         }
                     }
                 },
@@ -866,10 +986,15 @@ fn application_access(
         Condition::User(name) => Some(name),
         _ => None,
     });
-    let groups = count(|c| match c {
-        Condition::Group(name) => Some(name),
-        _ => None,
-    });
+    let groups = conditions
+        .iter()
+        .filter(|(_, c)| matches!(c, Ok(Condition::Group(_) | Condition::AnyGroups(_))))
+        .count();
+    let any_lists = conditions
+        .iter()
+        .filter(|(_, c)| matches!(c, Ok(Condition::AnyGroups(_))))
+        .count();
+    let names = |set: &BTreeSet<String>| set.iter().cloned().collect::<Vec<_>>().join(", ");
     // Only an `any`-mode alternative may be left out on acknowledgement, and only while a
     // converted alternative still restricts access, so riAuth admits a subset of Authentik's
     // users. A required, impossible or unknown condition is never left out.
@@ -925,6 +1050,32 @@ fn application_access(
             (Ok(Condition::User(name)), Ok(false)) if groups == 0 => Outcome::Converted(
                 format!("The user binding admits {name} as one of the users in settings.policy.access.users, as in Authentik"),
                 Condition::User(name),
+                false,
+            ),
+            (Ok(Condition::Groups(required, refused)), Ok(true)) => Outcome::Converted(
+                format!(
+                    "The binding {} through settings.policy.access; members of each group and of every group below it count, as in Authentik",
+                    [("requires every group of", &required), ("refuses every group of", &refused)]
+                        .iter()
+                        .filter(|(_, set)| !set.is_empty())
+                        .map(|(verb, set)| format!("{verb} {}", names(set)))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
+                Condition::Groups(required, refused),
+                true,
+            ),
+            // riAuth ANDs one any-of list per client with its other conditions.
+            (Ok(Condition::AnyGroups(_)), Ok(true)) if any_lists > 1 => Outcome::Impossible(
+                "riAuth keeps one any-of group list per client, and this application requires several"
+                    .to_owned(),
+            ),
+            (Ok(Condition::AnyGroups(groups)), Ok(_)) => Outcome::Converted(
+                format!(
+                    "The binding's groups {} become allowed groups; members of any of them and of every group below them pass, as in Authentik",
+                    names(&groups)
+                ),
+                Condition::AnyGroups(groups),
                 false,
             ),
             (Ok(_), Ok(false)) => Outcome::Narrows(
@@ -985,10 +1136,15 @@ fn application_access(
                     Condition::NotUser(name) => {
                         rule.denied_users.insert(name);
                     }
+                    Condition::Groups(required, refused) => {
+                        rule.all_groups.extend(required);
+                        rule.denied_groups.extend(refused);
+                    }
+                    Condition::AnyGroups(groups) => allowed.extend(groups),
                 }
                 let reason = match origins.get(id) {
                     Some(policy) => format!(
-                        "Expression policy {policy} is exactly one ak_is_group_member check, which passes like a group binding. {reason}"
+                        "Expression policy {policy} is a chain of ak_is_group_member checks, each passing like a group binding. {reason}"
                     ),
                     None => reason,
                 };

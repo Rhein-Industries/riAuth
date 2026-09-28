@@ -126,6 +126,14 @@
   `expression_policies`. Any other expression, a group that is not the only
   converted group of its name, and an expiring binding still follow the
   unconverted-binding rules. Expression text never appears in the report.
+- Expressions may now chain such checks with `and` or `or`, read with Python's
+  precedence. A pure `and` chain becomes required and denied groups, and a
+  pure `or` chain of plain checks becomes one any-of allowed-group list. A
+  negated binding applies De Morgan's laws first. Mixed `and`/`or` chains,
+  negated alternatives, contradictions, a second any-of list in `all` mode,
+  parentheses, non-ASCII characters and whitespace other than spaces and tabs
+  do not convert. A binding field `enabled`, `negate` or `expiring` that is not
+  a boolean now fails the conversion.
 
 # Unreleased migration identity continuity (G02)
 
