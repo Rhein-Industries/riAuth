@@ -1209,7 +1209,7 @@
         h("dt", {}, "Link"), h("dd", {}, linkState(invitation)),
         h("dt", {}, "Delivery"), h("dd", {}, deliveryState(invitation)),
         h("dt", {}, "Adds groups"), h("dd", {}, invitation.groups.length ? invitation.groups.join(", ") : "None"),
-        h("dt", {}, "Invited by"), h("dd", {}, actorName(invitation.invited_by))),
+        h("dt", {}, "Invited by"), h("dd", {}, invitation.invited_by ? actorName(invitation.invited_by) : "—")),
       h("p", { class: "field-hint" }, "Queued means the message is in riAuth's outbox; accepted by the mail server doesn't confirm it reached the inbox. Invite the same username again to send a new link, which replaces this one."),
       invitation.status === "inactive" ? null : h("div", { class: "stack" }, h("button", { class: "button secondary", type: "button", onclick: () => revokeInvitation(invitation) }, "Revoke invitation"))) : null;
     const node = h("div", {},

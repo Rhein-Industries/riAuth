@@ -9,6 +9,7 @@ use axum::{
 use common::{Fixture, PASSWORD as SIGN_IN_PASSWORD};
 use http_body_util::BodyExt;
 use riauth::{
+    agent::{NewAgent, Permission},
     api,
     crypto::{digest, now},
     lifecycle::{Invitation, MailConfig, MailSecurity},
@@ -637,4 +638,65 @@ fn restored_pending_invitation_keeps_provenance_for_authorized_reissue() {
         .unwrap();
     assert_eq!(reissued["user"]["id"], before.id);
     assert_eq!(reissued["delivery_queued"], true);
+}
+
+#[test]
+fn invitation_review_shows_only_what_the_reader_may_read() {
+    let f = mail_fixture();
+    for group in ["engineering", "finance"] {
+        f.core.create_group(&f.admin, group).unwrap();
+    }
+    f.core
+        .account_invite(
+            &f.admin,
+            Invitation {
+                groups: ["engineering", "finance"].map(String::from).into(),
+                ..invitation("invited")
+            },
+        )
+        .unwrap();
+    let scoped = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "reviewer".into(),
+                ttl: 3600,
+                permissions: [
+                    ("user.read", "user/invited"),
+                    ("group.read", "group/engineering"),
+                ]
+                .map(|(action, resource)| Permission {
+                    action: action.into(),
+                    resource: resource.into(),
+                })
+                .into(),
+                parent: None,
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let review = |token: &str| {
+        let listed = f.core.account_invitations(token).unwrap();
+        let entry = &listed["invitations"][0];
+        assert_eq!(entry["user"]["username"], "invited");
+        (
+            entry["groups"].clone(),
+            entry["invited_by"].clone(),
+            entry["delivery"]["status"].clone(),
+        )
+    };
+    let admin_id = f.core.me(&f.admin).unwrap()["user"]["id"].clone();
+    assert_eq!(
+        review(&f.admin),
+        (json!(["engineering", "finance"]), admin_id, json!("queued"))
+    );
+    // A reader scoped to the invitee sees neither the group, the administrator who sent the
+    // invitation, nor delivery state that it has no permission to read.
+    assert_eq!(
+        review(&scoped),
+        (json!(["engineering"]), Value::Null, Value::Null)
+    );
 }

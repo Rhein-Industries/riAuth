@@ -442,6 +442,21 @@ pub(crate) fn rebase_invitation_reservation(
     }
     Ok(())
 }
+/// An invitation's creator as `actor` may see it. Administrators may list every person and
+/// agent, and an agent knows itself; otherwise a person needs `user.read` and another
+/// agent stays hidden, since agents cannot list agents.
+fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<String>> {
+    if !actor.agent || actor.id == id {
+        return Ok(Some(id.into()));
+    }
+    if id.starts_with("agent:") {
+        return Ok(None);
+    }
+    Ok(tx
+        .get::<User>("users", id)?
+        .filter(|user| actor.allows("user.read", &format!("user/{}", user.username)))
+        .map(|_| id.into()))
+}
 fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
@@ -525,8 +540,9 @@ impl Core {
         })
     }
     /// Invited accounts that have not accepted yet, with the state of their current link.
-    /// Codes and message bodies are never returned, and delivery state needs the same
-    /// permission as `mail_deliveries`.
+    /// Each part obeys the reader's own read permissions: people by `user.read`, groups by
+    /// `group.read`, the inviter by `visible_inviter` and delivery state by the permission
+    /// `mail_deliveries` needs. Codes and message bodies are never returned.
     pub fn account_invitations(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
@@ -594,12 +610,17 @@ impl Core {
                     ),
                     None => (reservation.created_by, None, BTreeSet::new()),
                 };
+                // Groups follow list_groups: a scoped reader sees only the ones it may read.
+                let groups: Vec<_> = groups
+                    .into_iter()
+                    .filter(|name| actor.allows("group.read", &format!("group/{name}")))
+                    .collect();
                 invitations.push(json!({
                     "user": UserView::from(&user),
                     "status": status,
                     "expires_at": expires_at,
                     "groups": groups,
-                    "invited_by": invited_by,
+                    "invited_by": visible_inviter(tx, &actor, &invited_by)?,
                     "delivery": delivery,
                 }));
             }
