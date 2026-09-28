@@ -1,0 +1,50 @@
+# Run one copy on each Linux service host. PostgreSQL and the TLS load balancer
+# are operated separately. Every riAuth process runs HTTP and all built-in workers.
+name: riauth-node
+services:
+  riauth:
+    image: ${RIAUTH_IMAGE:?Load and select the same shipped image on every node}
+    user: "10001:10001"
+    network_mode: host
+    # Reject a configuration that would silently create a local redb backend.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - 'grep -Fqx "[postgres]" /config/riauth.toml && exec /usr/local/bin/riauth --config /config/riauth.toml serve'
+    command: []
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /data:uid=10001,gid=10001,mode=0700
+      - /tmp:rw,nosuid,nodev,size=64m
+    volumes:
+      - type: bind
+        source: ../deployment-private/distributed
+        target: /config
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/riauth", "--server", "http://127.0.0.1:9000", "--session-file", "/tmp/riauth-health-session", "--request-timeout", "5", "status"]
+      interval: 15s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Use only once, against a new empty database, before starting either node.
+  init:
+    profiles: ["tools"]
+    image: ${RIAUTH_IMAGE:?Load and select the same shipped image on every node}
+    user: "10001:10001"
+    network_mode: host
+    entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
+    tmpfs:
+      - /data:uid=10001,gid=10001,mode=0700
+    volumes:
+      - type: bind
+        source: ../deployment-private/distributed
+        target: /config
+        bind:
+          create_host_path: false

@@ -7,6 +7,10 @@ adapters.
 
 This is the v0.1 operator runbook. The default redb backend has one owning process, snapshot reads and serialized commits. PostgreSQL supports multiple service processes with shared sessions, replay state, rate limits and delivery leases; see [availability](availability.md). Database election, replication policy and fencing belong to the deployment. Do not start two servers against the same redb file.
 
+The [released-image deployment examples](deployment-examples.md) give concrete
+Linux Compose steps for one redb instance and for two PostgreSQL-backed hosts,
+including mounts, readiness, TLS proxying and recovery ownership.
+
 `riauth-maintenance` provides the offline `init`, `prepare-setup`, `restore`, `recover-admin`, `migrate-postgres`, `keygen`, and `import-authentik` commands. Build it with `cargo build --locked --bin riauth-maintenance`; the default build has no terminal USB dependency. It accepts local configuration and output flags, but has no server URL, session, or HTTP administration commands. Stop the server before operations that need exclusive local database access. The existing `riauth` executable still accepts these local commands during this transition; `riauth serve` and authenticated commands such as `login`, `backup`, `plan`, `apply`, and `status` keep their current paths. The separate [riauthctl](../crates/riauthctl/README.md) supports remote status, identity, inventory, and reviewed plan/apply; other management commands remain in the legacy executable until parity review is complete.
 
 ## Before exposing an instance

@@ -1,0 +1,50 @@
+# Linux single-host example. The host TLS proxy connects to 127.0.0.1:9000.
+name: riauth-small
+services:
+  riauth:
+    image: ${RIAUTH_IMAGE:?Load and select a shipped Essentials or Platform image}
+    user: "10001:10001"
+    network_mode: host
+    entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
+    command: ["serve"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    volumes:
+      - type: bind
+        source: ../deployment-private/small
+        target: /config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: riauth-data
+        target: /data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/riauth", "--server", "http://127.0.0.1:9000", "--session-file", "/tmp/riauth-health-session", "--request-timeout", "5", "status"]
+      interval: 15s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Run explicitly for key generation and one-time initialization; never started by `up`.
+  init:
+    profiles: ["tools"]
+    image: ${RIAUTH_IMAGE:?Load and select a shipped Essentials or Platform image}
+    user: "10001:10001"
+    entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
+    volumes:
+      - type: bind
+        source: ../deployment-private/small
+        target: /config
+        bind:
+          create_host_path: false
+      - type: volume
+        source: riauth-data
+        target: /data
+
+volumes:
+  riauth-data:

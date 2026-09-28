@@ -2,6 +2,9 @@
 
 The default redb backend is a single-process deployment. The PostgreSQL backend supports independently running riAuth nodes behind one issuer URL. It shares identities, signing domains, consent, browser and CLI sessions, staged browser logins, replay records, rate limits, agent plans/receipts and delivery leases. The `forward_auth` rate limit is the exception: it is counted in memory on each node, so its effective limit grows with the number of nodes. Sticky routing is not required.
 
+For a bounded two-host image configuration and the operator-owned database
+and load-balancer steps, see [Linux deployment examples](deployment-examples.md).
+
 Create a private libpq connection file and a PostgreSQL configuration JSON file. From the repository root, keep both files and the CA certificate under the ignored `deployment-private/` directory; outside a checkout, use a private operator directory:
 
 ```text

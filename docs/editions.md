@@ -69,9 +69,10 @@ after a later transition. Core open and serving preflight reject these records
 before migrations or workers; authorized client and template writes use the same
 edition setting check.
 
-The release workflow builds separate x86-64 Essentials and Platform native
-archives and container image archives from the checked tag, plus the standalone
-`riauthctl` and a Platform-capable offline `riauth-maintenance` archive. The
+The release workflow builds separate x86-64 and ARM64 Essentials and Platform
+native archives and container image archives from the checked tag, plus the
+standalone `riauthctl` and a Platform-capable offline `riauth-maintenance`
+archive per architecture. The
 Dockerfile defaults to Essentials; pass `--build-arg RIAUTH_EDITION=platform` for
 the additive image. Release provenance records both feature sets and image IDs.
 The server and base client release builds omit terminal USB support.
@@ -86,8 +87,9 @@ appear transitively in Essentials through shared PostgreSQL, TOTP and LDAP
 functionality. Complete module extraction and remaining durable-reference checks
 for downgrade remain A05 work. A06 now reports local feature states from the
 running instance and preflights device-trust policy references; per-instance
-profiles, complete activation switches and peer health remain A06 work. Native
-ARM64 release evidence and broader packaged integration gates remain A09/Q08
-work. The local binary reports `compiled_features` only; the running server's
+profiles, complete activation switches and peer health remain A06 work.
+Native ARM64 release execution and broader packaged integration gates remain
+unverified until the release jobs run. The local binary reports
+`compiled_features` only; the running server's
 `features` list reports locally usable profiles. Neither asserts that an
 external peer is healthy or that a caller is authorized.
