@@ -51,7 +51,8 @@ Terminal USB passkey login and enrollment are optional:
 ```sh
 cargo install --locked --path crates/riauthctl --features terminal-usb
 riauthctl --server https://id.example.com passkey login alice
+riauthctl --server https://id.example.com passkey login alice --transaction-id "$TRANSACTION"
 riauthctl --server https://id.example.com passkey enroll --name security-key
 ```
 
-The base build rejects those commands locally before contacting the server. The USB feature requires a supported CTAP2 authenticator and its native USB prerequisites. Local maintenance commands remain in the existing executable during the split.
+The base build rejects those commands locally before contacting the server. The USB feature requires a supported CTAP2 authenticator and its native USB prerequisites. USB commands need interactive touch/PIN input; `--non-interactive` fails locally. The optional transaction ID binds a passkey sign-in to a pending server authentication transaction. Local maintenance commands remain in the existing executable during the split.

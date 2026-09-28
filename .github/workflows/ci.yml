@@ -40,10 +40,26 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
       - run: cargo test --all-targets --features test-support,fuzzing --locked
-      - name: Check build without terminal USB
+      - name: Check server USB boundary
         run: |
           cargo build --no-default-features --features essentials --locked --bins
-          cargo test --no-default-features --features essentials --locked --test cli usb_commands_fail_locally_without_feature -- --exact
+          cargo test --no-default-features --features essentials --locked --test cli legacy_usb_commands_fail_locally_with_client_guidance -- --exact
+          python3 - <<'PY'
+          import re, subprocess
+          forbidden = {'webauthn-authenticator-rs', 'fido-hid-rs', 'hidapi',
+                       'rusb', 'libusb1-sys', 'udev', 'libudev-sys'}
+          for edition in ('essentials', 'platform'):
+              tree = subprocess.check_output([
+                  'cargo', 'tree', '--locked', '--no-default-features',
+                  '--features', edition, '--target', 'x86_64-unknown-linux-gnu',
+                  '--edges', 'normal', '--prefix', 'none', '--format', '{p}',
+              ], text=True)
+              packages = {match.group(1) for line in tree.splitlines()
+                          if (match := re.match(r'^(\S+) v\S+', line))}
+              leaked = sorted(packages & forbidden)
+              if leaked:
+                  raise SystemExit(f'{edition} server has terminal USB dependencies: {leaked}')
+          PY
       - name: Check standalone riauthctl and its dependency closure
         run: |
           cargo fmt --manifest-path crates/riauthctl/Cargo.toml --all -- --check

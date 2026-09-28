@@ -536,9 +536,8 @@ fn cli_help_and_http_rejection_are_actionable() {
     assert_eq!(pkce["code_verifier"].as_str().unwrap().len(), 43);
 }
 
-#[cfg(not(feature = "terminal-usb"))]
 #[test]
-fn usb_commands_fail_locally_without_feature() {
+fn legacy_usb_commands_fail_locally_with_client_guidance() {
     let dir = TempDir::new().unwrap();
     let config = PathBuf::from("missing.toml");
     let session = dir.path().join("session.json");
@@ -561,7 +560,7 @@ fn usb_commands_fail_locally_without_feature() {
             envelope["error"]["message"]
                 .as_str()
                 .unwrap()
-                .contains("--features terminal-usb"),
+                .contains("riauthctl"),
             "{args:?}: {envelope}"
         );
     }

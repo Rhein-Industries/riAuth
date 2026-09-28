@@ -146,7 +146,12 @@ impl InventoryKind {
 #[derive(Subcommand)]
 enum PasskeyCommand {
     /// Sign in using a terminal USB authenticator.
-    Login { username: String },
+    Login {
+        username: String,
+        /// Bind this sign-in to a pending authentication transaction.
+        #[arg(long)]
+        transaction_id: Option<String>,
+    },
     /// Enroll a terminal USB authenticator using a recent session.
     Enroll {
         #[arg(long)]
@@ -167,6 +172,9 @@ async fn main() {
 async fn run(cli: Cli) -> Result<Value> {
     if matches!(cli.command, Command::Passkey { .. }) {
         usb::require_support()?;
+        if cli.non_interactive {
+            bail!("Terminal USB passkeys need touch/PIN input; run interactively");
+        }
     }
     if cli.run_id.as_ref().is_some_and(|id| {
         id.is_empty() || id.len() > 128 || !id.bytes().all(|byte| byte.is_ascii_graphic())
@@ -302,14 +310,17 @@ async fn run(cli: Cli) -> Result<Value> {
             }
             // This branch is reachable only when terminal-usb support is compiled in.
             match command {
-                PasskeyCommand::Login { username } => {
+                PasskeyCommand::Login {
+                    username,
+                    transaction_id,
+                } => {
                     let verified = remote.verify_issuer().await?;
                     let start = remote
                         .request_api(
                             &verified,
                             Method::POST,
                             "/api/passkey/authentication/start",
-                            Some(&json!({"username":username})),
+                            Some(&json!({"username":username,"transaction_id":transaction_id})),
                             None,
                             None,
                         )

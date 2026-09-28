@@ -16,7 +16,6 @@ keywords = ["identity", "oidc", "saml", "sso"]
 default = ["platform"]
 essentials = []
 platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "dep:tokio-rustls", "dep:hmac", "dep:time", "futures-util/sink"]
-terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []
 
@@ -51,7 +50,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
-webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["usb", "ui-cli"] }
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["codec"], optional = true }
 tokio-rustls = { version = "0.26", optional = true }
@@ -77,7 +75,7 @@ tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 openssl = "0.10"
-webauthn-authenticator-rs = { version = "=0.5.5", features = ["softpasskey"] }
+webauthn-authenticator-rs = { version = "=0.5.5", default-features = false, features = ["softpasskey"] }
 tempfile = "3"
 http-body-util = "0.1"
 axum = { version = "0.8.9", features = ["ws"] }

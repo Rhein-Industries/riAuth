@@ -33,9 +33,9 @@
   link issued before an account became directory-managed or passwordless is
   refused.
 - `/api/password` now also requires an MFA session from the last five minutes
-  when the account's only factor is a passkey (sign in with
-  `riauth passkey login NAME` first). Accounts with TOTP keep supplying the code
-  in `RIAUTH_OTP`. A successful change now also clears a password lockout.
+  when a passkey is enrolled. The portal can perform passkey reauthentication;
+  accounts with TOTP keep supplying the code in `RIAUTH_OTP`. A successful
+  change now also clears a password lockout.
 - Account pages (`/account/accept`, `/account/verify`, `/account/reset`) now
   start over when a newer emailed link is opened in the same tab, and show
   their errors in the error color.

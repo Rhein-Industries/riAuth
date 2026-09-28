@@ -514,6 +514,7 @@ fn usb_commands_fail_locally_in_the_base_build() {
     let session = dir.path().join("missing-session.json");
     for args in [
         vec!["passkey", "login", "alice"],
+        vec!["passkey", "login", "alice", "--transaction-id", "txn-123"],
         vec!["passkey", "enroll", "--name", "security-key"],
     ] {
         let output = run(&server.origin, &session, &args, None);

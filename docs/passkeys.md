@@ -16,7 +16,7 @@ Initial `/setup` offers a password-backed or passkey-only first administrator. P
 
 CLI consequences:
 
-- A user whose only factor is a passkey signs in with `riauth passkey login alice` before `riauth mfa enroll`, `riauth passkey enroll` or `riauth passwd`; `riauth login alice` alone is a password-only session. With TOTP, `riauth passwd` verifies the code from `RIAUTH_OTP` itself.
+- A user whose only factor is a passkey signs in with the optional USB-enabled `riauthctl passkey login alice`. The portal and HTTP API provide factor management beyond the standalone client's enrollment command. A password login alone remains a password-only session. With TOTP, the legacy `riauth passwd` verifies the code from `RIAUTH_OTP` itself.
 - A user with TOTP uses `riauth login alice --mfa` before changing factors.
 - A stale passkey enrollment or removal now fails with `reauthentication_required` (it used to be `access_denied`), and a stale `mfa enroll` with the same 403 (it used to be 400 `invalid_request`).
 
@@ -26,7 +26,7 @@ The [portal](PORTAL.md#passkeys-and-security) and every sign-in page offer **Sig
 
 - **Usernameless.** When no account is signed in, the browser offers the passkeys it holds for this host and sends no username. riAuth identifies the user from the credential and its user handle.
 - **Pinned re-authentication.** When a page re-authenticates the signed-in account (`prompt=login`, `max_age`, step-up, or the portal's confirm panel), the challenge lists that account's credentials, so non-discoverable keys work too.
-- **Enrollment** in **Sign-in and security** asks for a resident (discoverable) key with user verification. Keys enrolled from the terminal with `riauth passkey enroll` are usually not discoverable: they work for pinned re-authentication and in the terminal, but cannot start a browser sign-in on their own.
+- **Enrollment** in **Sign-in and security** asks for a resident (discoverable) key with user verification. Keys enrolled from the terminal with `riauthctl passkey enroll` are usually not discoverable: they work for pinned re-authentication and in the terminal, but cannot start a browser sign-in on their own.
 - **Ceremonies are bound.** A browser ceremony is single use, expires after five minutes and is bound to its interaction and to the browser that started it (the portal's `riauth_passkey` cookie or the interaction's binding cookie). `POST /api/passkey/authentication/finish` rejects browser ceremonies.
 - **Cancelled prompts.** After a cancelled or timed-out prompt the page keeps the fetched options, so the next click opens the authenticator directly. Test this flow in every browser and device your deployment supports, including Safari.
 - **Explicit cancellation.** Closing the passkey dialog or selecting Cancel before verification is submitted discards its pending registration. Cancelling a sign-in before submission discards its pending authentication challenge. A cancelled ceremony cannot later finish; neither action creates a credential or session.
@@ -39,16 +39,14 @@ The [portal](PORTAL.md#passkeys-and-security) and every sign-in page offer **Sig
 ## Passkeys from the terminal
 
 ```sh
-riauth login alice
-riauth passkey enroll --name security-key
-riauth passkey login alice
-riauth request approve ABCDE-FGHIJ --passkey
-riauth authorize "$AUTHORIZATION_URL" --username alice --passkey
-riauth passkey list
-riauth passkey remove CREDENTIAL_ID
+cargo install --locked --path crates/riauthctl --features terminal-usb
+riauthctl --server https://id.example.com login alice
+riauthctl --server https://id.example.com passkey enroll --name security-key
+riauthctl --server https://id.example.com passkey login alice
+riauthctl --server https://id.example.com passkey login alice --transaction-id "$TRANSACTION"
 ```
 
-The USB client requests the authenticator's PIN and touch through the terminal. It uses the issuer's hostname as the WebAuthn RP ID and its exact origin. It requires a CTAP2 USB authenticator supported by `webauthn-authenticator-rs`. Platform keychains, Bluetooth and hybrid/phone transports are not implemented by this CLI. The legacy `riauth` binary omits its USB/HID client dependency by default; build it with `cargo build --features terminal-usb` to enable terminal USB support. Without that feature, terminal `passkey enroll`, `passkey login`, and approval or authorization `--passkey` commands fail locally before starting a ceremony. Split `passkey start` and `passkey finish` commands remain available to external authenticator clients without USB support compiled in.
+The USB-enabled `riauthctl` requests the authenticator's PIN and touch through the terminal. It uses the issuer's hostname as the WebAuthn RP ID and its exact origin. It requires a CTAP2 USB authenticator supported by `webauthn-authenticator-rs`. Platform keychains, Bluetooth and hybrid/phone transports are not implemented by this CLI. Production server builds have no terminal USB feature or USB transport dependency; test builds retain a software authenticator for protocol checks. Legacy `riauth` USB enrollment, sign-in, and approval or authorization `--passkey` commands fail locally with client guidance before starting a ceremony. Its split `passkey start` and `passkey finish` commands remain available to external authenticator clients without USB support compiled in. Use the portal for approval and authorization flows that the standalone client does not yet expose.
 
 An external authenticator client can use split commands, including a supplied OIDC authentication transaction. From the repository root, keep the short-lived ceremony files under the ignored `deployment-private/` directory:
 
