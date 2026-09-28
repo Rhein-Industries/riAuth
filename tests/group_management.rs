@@ -1,9 +1,9 @@
 mod common;
 
-use common::{Fixture, text};
+use common::{Fixture, PASSWORD, text};
 use riauth::{
     agent::{NewAgent, Permission},
-    model::Group,
+    model::{Group, User},
     scim,
 };
 use serde_json::{Value, json};
@@ -157,6 +157,74 @@ fn scim_and_direct_group_writes_preserve_live_membership_and_tombstones() {
             .status
             .as_u16(),
         409
+    );
+}
+
+#[test]
+fn scim_user_delete_offboards_with_out_of_scope_group_membership() {
+    let f = Fixture::new();
+    let credential = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "user-only-scim".into(),
+                ttl: 600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "user.write".into(),
+                    resource: "user/remote".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let token = text(&credential["credential"], "token");
+    let remote = f
+        .core
+        .scim_write(
+            &token,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"remote","password":PASSWORD}),
+            false,
+        )
+        .unwrap();
+    let remote_id = text(&remote, "id");
+    let local_id: String = f.core.store.get("usernames", "remote").unwrap().unwrap();
+    let session = text(
+        &f.core
+            .login("remote".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    f.user("retained");
+    let retained_id: String = f.core.store.get("usernames", "retained").unwrap().unwrap();
+    f.core.create_group(&f.admin, "admin-owned").unwrap();
+    f.core
+        .group_member(&f.admin, "admin-owned", "remote", true)
+        .unwrap();
+    f.core
+        .group_member(&f.admin, "admin-owned", "retained", true)
+        .unwrap();
+    assert!(group(&f, "admin-owned").members.contains(&local_id));
+
+    let at = revision(&f);
+    f.core.scim_delete(&token, "Users", &remote_id).unwrap();
+    assert_eq!(revision(&f), at + 1);
+    let user: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert!(!user.enabled);
+    assert_eq!(group(&f, "admin-owned").members, [retained_id].into());
+    assert!(f.core.me(&session).is_err());
+    assert!(f.core.scim_get(&token, "Users", &remote_id).is_err());
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.scim_delete" && event["target"] == "remote")
+            .count(),
+        1
     );
 }
 

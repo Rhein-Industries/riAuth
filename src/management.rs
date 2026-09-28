@@ -59,7 +59,16 @@ pub(crate) struct ClientWrite {
 pub(crate) enum GroupIntent<'a> {
     Create(&'a BTreeSet<String>),
     ReplaceMembers(&'a BTreeSet<String>),
-    Member { user_id: &'a str, present: bool },
+    Member {
+        user_id: &'a str,
+        present: bool,
+    },
+    /// Dependent cleanup for an already disabled identity. This only removes
+    /// that identity and is authorized by its exact user.write scope.
+    OffboardMember {
+        user_id: &'a str,
+        username: &'a str,
+    },
 }
 
 /// Some adapters finish other records before emitting one enclosing audit.
@@ -132,6 +141,24 @@ pub(crate) fn write_group(
             } else {
                 group.members.remove(user_id)
             };
+            if changed {
+                tx.put("groups", name, &group)?;
+                audit_group(tx, actor, record)?;
+            }
+            Ok(GroupWrite { group, changed })
+        }
+        GroupIntent::OffboardMember { user_id, username } => {
+            actor.require("user.write", &format!("user/{username}"))?;
+            validate_name(username)?;
+            let user = tx
+                .get::<User>("users", user_id)?
+                .ok_or_else(|| Error::missing("User not found"))?;
+            if user.id != user_id || user.username != username || user.enabled {
+                return Err(Error::conflict("Offboarded user identity does not match"));
+            }
+            validate_name(name)?;
+            let mut group = existing_group(tx, name)?;
+            let changed = group.members.remove(user_id);
             if changed {
                 tx.put("groups", name, &group)?;
                 audit_group(tx, actor, record)?;

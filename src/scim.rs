@@ -586,6 +586,9 @@ impl Core {
             require(&actor, &record, "write")?;
             if kind == "Users" {
                 let mut user = user_by_name(tx, name(&record))?;
+                if user.id != record.local_id || user.username != name(&record) {
+                    return Err(Error::conflict("SCIM user identity does not match"));
+                }
                 if user.admin {
                     return Err(Error::forbidden());
                 }
@@ -607,9 +610,9 @@ impl Core {
                             tx,
                             &actor,
                             &key,
-                            crate::management::GroupIntent::Member {
+                            crate::management::GroupIntent::OffboardMember {
                                 user_id: &user.id,
-                                present: false,
+                                username: &user.username,
                             },
                             crate::management::GroupAudit::Deferred,
                         )?;
