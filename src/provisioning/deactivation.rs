@@ -76,6 +76,17 @@ fn hold_delay(row: &Deactivation, at: u64) -> u64 {
     (at.saturating_sub(row.created_at) / 2).clamp(60, 3_600)
 }
 
+/// Key for one conditional deactivation request. Replaying the exact request
+/// after an ambiguous response reuses it; after a fresh read with a different
+/// version the request is new, so a target that binds a key to its first
+/// `If-Match` value accepts it instead of rejecting the retry indefinitely.
+fn idempotency_key(delivery: &str, epoch: u64, etag: &str) -> String {
+    format!(
+        "ri-offboard-{}",
+        digest(&format!("{delivery}\0{epoch}\0{etag}"))
+    )
+}
+
 fn stale(message: &'static str) -> Error {
     Error::new(StatusCode::CONFLICT, "deactivation_stale", message)
 }
@@ -412,6 +423,10 @@ impl Core {
         let etag = etag
             .or_else(|| current["meta"]["version"].as_str().map(String::from))
             .ok_or_else(|| Error::bad("SCIM target must supply an ETag for conditional updates"))?;
+        // Every attempt reads first: a disable applied before an ambiguous
+        // response reads back inactive and is not sent again, and an unchanged
+        // version replays the identical request under the same key.
+        let key = idempotency_key(&row.id, row.epoch, &etag);
         self.fence_deactivation(claim)?;
         let patch = json!({
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
@@ -421,13 +436,7 @@ impl Core {
             http.patch(url.clone())
                 .bearer_auth(token)
                 .header("if-match", etag.clone())
-                .header(
-                    "idempotency-key",
-                    format!(
-                        "ri-offboard-{}",
-                        digest(&format!("{}:{}", row.id, row.epoch))
-                    ),
-                )
+                .header("idempotency-key", key.clone())
                 .header("content-type", "application/scim+json")
                 .json(&patch)
         })?;
@@ -529,4 +538,20 @@ pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::idempotency_key;
+
+    #[test]
+    fn idempotency_key_is_stable_per_conditional_request() {
+        let key = idempotency_key("delivery", 7, "W/\"3\"");
+        assert_eq!(key, idempotency_key("delivery", 7, "W/\"3\""));
+        assert_ne!(key, idempotency_key("delivery", 7, "W/\"4\""));
+        assert_ne!(key, idempotency_key("delivery", 8, "W/\"3\""));
+        assert_ne!(key, idempotency_key("other", 7, "W/\"3\""));
+        assert!(key.starts_with("ri-offboard-") && key.len() <= 128);
+        assert!(key.bytes().all(|byte| byte.is_ascii_graphic()));
+    }
 }
