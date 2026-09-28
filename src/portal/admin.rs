@@ -94,6 +94,10 @@ fn cloud_routes() -> Router<App> {
             post(cloud_test_connection),
         )
         .route(
+            "/api/admin/cloud-directories/{kind}/{id}/verify-credential",
+            post(cloud_verify_credential),
+        )
+        .route(
             "/api/admin/cloud-directories/{kind}/{id}/schedule",
             patch(cloud_schedule_update),
         )
@@ -140,6 +144,20 @@ async fn cloud_test_connection(
     app.run_connector(
         crate::background::ConnectorWork::target(&kind, &id),
         move |core| core.cloud_test_connection(&token, &kind, &id).map(Json),
+    )
+    .await
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_verify_credential(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run_connector(
+        crate::background::ConnectorWork::target(&kind, &id),
+        move |core| core.cloud_verify_credential(&token, &kind, &id).map(Json),
     )
     .await
 }

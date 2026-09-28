@@ -10,7 +10,7 @@
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
-  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
+  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
   // The routes can read and revoke retained grants after approver rules are removed.
   const accessRoutes = () => !!data.me?.user?.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
   const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
@@ -1607,8 +1607,8 @@
     ], grants, "No temporary access is active.", (g) => `${g.group}`);
     return { waiting, grants, requests, active };
   }
-  // Cloud connector operations use the same scoped Core reads and connection probe as the
-  // bearer API. The browser never receives credential paths or source job outcomes.
+  // Cloud connector operations use the same scoped Core methods as the bearer API.
+  // The browser never receives credential paths or source job outcomes.
   function connectors() {
     const rows = data.directories;
     const grid = table("Configured cloud connectors", [
@@ -1668,7 +1668,9 @@
     }
     if (report.error) return { crumb: title, node: h("div", {}, heading("CONNECTOR", title), card("Operations unavailable", h("p", { class: "notice warn-notice" }, report.error), h("button", { class: "button secondary", type: "button", onclick: () => { delete data.operations[key]; render(); } }, "Try again"))) };
     const config = report.configuration, validation = report.validation, credential = report.credential;
-    const probe = data.probes[key];
+    const verification = report.last_connection_check;
+    const verifyError = data.probes[key];
+    const changedSinceCheck = credential.modified_at && verification && credential.modified_at > verification.checked_at;
     const groups = Object.entries(config.groups || {});
     const mapped = table("Local to upstream group mappings", [
       { label: "Local group", cell: ([name]) => name },
@@ -1683,19 +1685,24 @@
       { label: "Next attempt", cell: (job) => job.next_attempt ? when(job.next_attempt) : "—" },
       { label: "Next action", cell: (job) => ({ none: "None", wait_for_attempt: "Wait for retry", wait_for_worker: "Wait for worker", review_plan: "Review plan", wait_for_delivery: "Wait for prior delivery", review_local_result: "Review local result", check_downstream_delivery: "Check downstream delivery", inspect_connector_and_replan: "Inspect and replan", refresh_authority_and_replan: "Refresh authority and replan" })[job.next_action] || "Inspect job" },
     ], report.jobs || [], "No local jobs are recorded for this connector.", (job) => `${job.id} ${job.status} ${job.origin}`);
-    const test = h("button", { class: "button secondary", type: "button", onclick: async (event) => {
+    const verify = h("button", { class: "button secondary", type: "button", onclick: async (event) => {
       const button = event.currentTarget;
-      button.disabled = true; button.textContent = "Testing…";
+      button.disabled = true; button.textContent = "Verifying…";
       try {
-        data.probes[key] = await api("POST", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/test-connection`);
+        data.verifyKeys[key] = data.verifyKeys[key] || requestKey();
+        const result = await api("POST", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/verify-credential`, undefined,
+          { revision: data.revision, key: data.verifyKeys[key] });
+        report.last_connection_check = result;
+        delete data.verifyKeys[key]; delete data.probes[key];
+        try { data.operations[key] = await api("GET", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/operations`); } catch { /* Keep the recorded result if refresh fails. */ }
         if (route().id === key) render();
       } catch (error) {
         if (error.status === 401) gate("signin");
-        else { data.probes[key] = { connected: false, message: explain(error) }; if (route().id === key) render(); }
-      } finally { button.disabled = false; button.textContent = "Test connection"; }
-    } }, "Test connection");
+        else { if (error.status === 403 || error.status === 409 || error.status === 428) delete data.verifyKeys[key]; data.probes[key] = explain(error); if (route().id === key) render(); }
+      } finally { button.disabled = false; button.textContent = "Verify current credential"; }
+    } }, "Verify current credential");
     const attributes = config.attributes || {};
-    const node = h("div", {}, heading("CONNECTOR", title, "Configuration is read from the server. This view and its test do not apply a reconciliation plan.", test),
+    const node = h("div", {}, heading("CONNECTOR", title, "Configuration is read from the server. Verification does not apply a reconciliation plan."),
       h("div", { class: "detail-grid" },
         h("div", { class: "detail-side" },
           card("Configuration validation",
@@ -1717,7 +1724,14 @@
             badge(credential.state === "file_readable" ? "Private file readable" : "Private file unavailable", credential.state === "file_readable" ? "ok" : "warn"),
             h("p", { class: "field-hint" }, credential.state === "file_readable" ? "The configured private file was readable with owner-only permissions. The next token request reads it again." : "Check that the configured private file exists, is bounded and has owner-only permissions."),
             credential.modified_at ? h("p", { class: "field-hint" }, "File last modified: ", when(credential.modified_at)) : null,
-            h("p", { class: "field-hint" }, "File status does not verify the credential with the provider. Run Test connection after rotation.")),
+            h("p", { class: "field-hint" }, "Replace the configured private credential file on the server, then verify the current credential. This reads a fresh token and one users page; it does not change accounts."),
+            verify,
+            verifyError ? h("p", { class: "notice warn-notice" }, verifyError) : null,
+            verification ? [
+              h("p", {}, badge(verification.connected ? "Connection succeeded" : "Connection failed", verification.connected ? "ok" : "warn"), " Checked ", when(verification.checked_at)),
+              h("p", { class: "field-hint" }, verification.connected ? "Token acquisition and the first users page succeeded at that time. This does not prove a rotation or a complete sync." : verification.message || "The connection check failed."),
+              changedSinceCheck ? h("p", { class: "notice warn-notice" }, "The private file changed after this check. Verify again.") : null,
+            ] : h("p", { class: "field-hint" }, "No credential connection check is recorded yet. File readability alone does not prove provider access.")),
           card("Schedule", report.schedule ? [
             badge(report.schedule.enabled ? "Enabled" : "Disabled", report.schedule.enabled ? "ok" : "muted"),
             report.schedule.state === "not_started" ? h("p", { class: "field-hint" }, "The controller is configured. Its first scheduler pass may queue a periodic job.") : null,
@@ -1728,9 +1742,7 @@
               h("dt", {}, "Last error"), h("dd", {}, report.schedule.has_error ? "Yes; inspect controller and job state" : "None recorded")),
             cloudScheduleForm(row, report.schedule),
           ] : h("p", { class: "field-hint" }, "No controller is configured for this connector. Configure its reconciliation controller on the server before setting a schedule.")),
-          probe ? card("Connection test", badge(probe.connected ? "Connected" : "Failed", probe.connected ? "ok" : "warn"),
-            h("p", { class: "field-hint" }, probe.connected ? "Token acquisition and the first users page succeeded. Group pages, full crawl and apply were not tested." : probe.message || "The connection test failed."),
-            probe.checked_at ? h("p", { class: "field-hint" }, "Checked ", when(probe.checked_at)) : null) : null)));
+          )));
     return { crumb: title, node };
   }
 

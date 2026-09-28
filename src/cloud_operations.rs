@@ -1,10 +1,11 @@
 //! Shared, sanitized operational view of configured cloud directory connectors.
 use crate::{
-    core::{Core, validate_name},
-    crypto::now,
+    core::{Core, audit, validate_name},
+    crypto::{digest, now},
     error::{Error, Result},
     model::Group,
 };
+use axum::http::StatusCode;
 use serde_json::{Value, json};
 use std::{path::Path, time::UNIX_EPOCH};
 
@@ -202,6 +203,10 @@ impl Core {
                 })
             })
             .collect::<Vec<_>>();
+        let last_connection_check = self.store.read(|tx| {
+            self.management(tx, token, "directory.read", &scope)?;
+            tx.get::<Value>("cloud_connection_checks", &scope)
+        })?;
         self.store.read(|tx| {
             self.management(tx, token, "directory.read", &scope)?;
             Ok(())
@@ -218,6 +223,7 @@ impl Core {
             },
             "schedule": schedule,
             "jobs": jobs,
+            "last_connection_check": last_connection_check,
         }))
     }
 
@@ -245,6 +251,81 @@ impl Core {
                 "error": error.code,
                 "message": error.message,
             }),
+        })
+    }
+
+    /// Persist only the outcome of a fresh token request and one users read. The
+    /// credential stays in its configured private file, which token acquisition
+    /// opens on every attempt. This is not evidence of a completed rotation.
+    pub fn cloud_verify_credential(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        let scope = resource(kind, id)?;
+        // Check authority, replay, and preconditions before contacting a provider.
+        // The probe must run outside a store writer; a remote peer can take seconds.
+        if let Some(replay) = self.store.read(|tx| {
+            let actor = self.management(tx, token, "directory.sync", &scope)?;
+            if let Some(context) = crate::context::current() {
+                if let Some(key) = &context.idempotency_key {
+                    let receipt_key = digest(&format!("{}\0{key}", actor.id));
+                    let permissions = serde_json::to_value(&actor.permissions)
+                        .map_err(Error::internal)?;
+                    if let Some(result) = crate::context::replay_receipt(
+                        tx, &receipt_key, &context.fingerprint, &permissions,
+                    )? {
+                        return Ok(Some(result));
+                    }
+                }
+                if actor.agent && context.revision.is_none() {
+                    return Err(Error::new(
+                        StatusCode::PRECONDITION_REQUIRED,
+                        "precondition_required",
+                        "Agent mutations require If-Match with the current revision, or use plan/apply",
+                    ));
+                }
+                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                if context.revision.is_some_and(|expected| expected != revision) {
+                    return Err(Error::conflict("Configuration revision changed"));
+                }
+            }
+            Ok(None)
+        })? {
+            return Ok(replay);
+        }
+        match kind {
+            "workspace" => self
+                .config
+                .workspace_directories
+                .get(id)
+                .ok_or_else(|| Error::missing("Workspace directory not configured"))?
+                .validate()?,
+            "entra" => self
+                .config
+                .entra_directories
+                .get(id)
+                .ok_or_else(|| Error::missing("Entra directory not configured"))?
+                .validate()?,
+            _ => unreachable!(),
+        }
+        let checked_at = now();
+        let outcome = match self.cloud_connection_probe(kind, id) {
+            Ok(()) => json!({"checked_at": checked_at, "connected": true}),
+            Err(error) if error.code == "invalid_request" => json!({
+                "checked_at": checked_at,
+                "connected": false,
+                "error": "invalid_configuration",
+                "message": "Connector configuration is invalid",
+            }),
+            Err(_) => json!({
+                "checked_at": checked_at,
+                "connected": false,
+                "error": "connection_failed",
+                "message": "Token request or first users page failed; inspect the configured credential and provider access",
+            }),
+        };
+        self.mutation(token, |tx| {
+            let actor = self.management(tx, token, "directory.sync", &scope)?;
+            tx.put("cloud_connection_checks", &scope, &outcome)?;
+            audit(tx, &actor.id, "cloud_directory.credential_verify", &scope)?;
+            Ok(outcome)
         })
     }
 }

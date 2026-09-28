@@ -97,6 +97,8 @@ pub const INVALIDATED: &[&str] = &[
     // Fresh cursors are derived from current config on the first worker tick.
     "reconciliation_schedules",
     "reconciliation_jobs",
+    // A restored diagnostic can describe a credential revoked after the snapshot.
+    "cloud_connection_checks",
     // Queued mail bodies carry the plaintext proofs deleted above.
     "mail_deliveries",
     // Consent withdrawn after the snapshot must not return; users are asked again.

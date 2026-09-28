@@ -3173,6 +3173,111 @@ async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    async fn call(
+        app: &axum::Router,
+        method: &str,
+        path: &str,
+        credential: &str,
+        browser: bool,
+        origin: &str,
+        revision: u64,
+        key: &str,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder().method(method).uri(path);
+        if browser {
+            request = request
+                .header("cookie", format!("riauth_sso={credential}"))
+                .header("x-riauth-portal", "1");
+            if method == "POST" {
+                request = request.header("origin", origin);
+            }
+        } else {
+            request = request.header("authorization", format!("Bearer {credential}"));
+        }
+        if method == "POST" {
+            request = request
+                .header("if-match", format!("\"{revision}\""))
+                .header("idempotency-key", key);
+        }
+        let response = app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        let status = response.status();
+        let value = serde_json::from_slice(
+            &to_bytes(response.into_body(), 64 * 1024).await.unwrap(),
+        )
+        .unwrap();
+        (status, value)
+    }
+
+    let workspace = serve("workspace", vec![person("ws-1", "alice@example.test", "Alice", true)], SECRET);
+    let entra = serve("entra", vec![person("en-1", "bob@example.test", "Bob", false)], SECRET);
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &workspace, "");
+    configure(&mut fixture, "entra", "tenant", &entra, "");
+    let other = agent_token(&fixture, "entra_only", vec![permission("directory.sync", "entra/tenant")]);
+    let sign_in = fixture.core.portal_sign_in().unwrap();
+    fixture.core.portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true).unwrap();
+    let binding = sign_in.cookies[0].split(';').next().unwrap().split_once('=').unwrap().1;
+    let poll = fixture.core.portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding)).unwrap();
+    let cookie = poll.cookies.iter().find(|value| value.starts_with("riauth_sso="))
+        .unwrap().split(';').next().unwrap().split_once('=').unwrap().1.to_owned();
+    let origin = Url::parse(&fixture.core.config.issuer).unwrap().origin().ascii_serialization();
+    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    let app = riauth::api::router(fixture.core.clone());
+    let workspace_api = "/api/cloud-directories/workspace/corp/verify-credential";
+    let workspace_browser = "/api/admin/cloud-directories/workspace/corp/verify-credential";
+    let (status, denied) = call(&app, "POST", workspace_api, &other, false, &origin, revision, "wrong-scope").await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
+    let (status, stale) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, revision - 1, "stale-revision").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{stale}");
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
+
+    let (status, first) = call(&app, "POST", workspace_browser, &cookie, true, &origin, revision, "rotate-workspace").await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["connected"], true);
+    assert_redacted(&first);
+    let (status, replay) = call(&app, "POST", workspace_browser, &cookie, true, &origin, revision, "rotate-workspace").await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    assert_eq!(replay, first);
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 1);
+    let (_, operations) = call(&app, "GET", "/api/cloud-directories/workspace/corp/operations", &fixture.admin, false, &origin, revision, "").await;
+    assert_eq!(operations["last_connection_check"], first);
+    assert_eq!(operations["credential"]["provider_verified"], false);
+    assert_redacted(&operations);
+
+    let rotated_secret = "rotated-cloud-client-secret";
+    *workspace.state.secret.lock().unwrap() = rotated_secret.into();
+    write_private(&secret_path(&fixture, "workspace", "corp"), rotated_secret.as_bytes(), true).unwrap();
+    let (status, rotated) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, revision, "rotated-workspace").await;
+    assert_eq!(status, StatusCode::OK, "{rotated}");
+    assert_eq!(rotated["connected"], true);
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 2);
+    assert_eq!(workspace.state.seen_secrets.lock().unwrap().last().unwrap(), rotated_secret);
+    assert_redacted(&rotated);
+
+    entra.state.token_status.store(503, Ordering::Relaxed);
+    let (status, failed) = call(&app, "POST", "/api/cloud-directories/entra/tenant/verify-credential", &fixture.admin, false, &origin, revision, "rotate-entra").await;
+    assert_eq!(status, StatusCode::OK, "{failed}");
+    assert_eq!(failed["connected"], false);
+    assert_eq!(failed["error"], "connection_failed");
+    assert_redacted(&failed);
+    let (_, entra_operations) = call(&app, "GET", "/api/cloud-directories/entra/tenant/operations", &fixture.admin, false, &origin, revision, "").await;
+    assert_eq!(entra_operations["last_connection_check"], failed);
+    assert_eq!(entra.state.token_hits.load(Ordering::Relaxed), 1);
+    let audit = fixture.core.audit_events(&fixture.admin, 100).unwrap();
+    assert_eq!(audit.as_array().unwrap().iter()
+        .filter(|event| event["action"] == "cloud_directory.credential_verify").count(), 3);
+    assert_redacted(&audit);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cloud_schedule_controls_share_browser_api_authority_and_receipts() {
     use axum::{
         body::{Body, to_bytes},
