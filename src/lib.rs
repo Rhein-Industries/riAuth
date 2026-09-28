@@ -27,6 +27,7 @@ pub mod connector_guard;
 pub mod context;
 pub mod core;
 pub mod crypto;
+pub mod delegation;
 #[cfg(feature = "platform")]
 pub mod device_trust;
 #[cfg(not(feature = "platform"))]

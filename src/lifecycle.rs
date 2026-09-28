@@ -446,7 +446,7 @@ pub(crate) fn rebase_invitation_reservation(
 /// agent, and an agent knows itself; otherwise a person needs `user.read` and another
 /// agent stays hidden, since agents cannot list agents.
 fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<String>> {
-    if !actor.agent || actor.id == id {
+    if (!actor.agent && !actor.delegated) || actor.id == id {
         return Ok(Some(id.into()));
     }
     if id.starts_with("agent:") {
@@ -495,6 +495,8 @@ fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: true,
+            delegated: false,
+            grants: vec![],
             permissions: agent.permissions,
         })
     } else {
@@ -504,6 +506,8 @@ fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: false,
+            delegated: false,
+            grants: vec![],
             permissions: vec![],
         })
     }

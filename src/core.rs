@@ -35,11 +35,11 @@ impl Core {
     ) -> Result<Value> {
         self.mutation_checked(token, |tx, actor, context| {
             if let Some(c) = context {
-                if actor.agent && c.revision.is_none() {
+                if (actor.agent || actor.delegated) && c.revision.is_none() {
                     return Err(Error::new(
                         StatusCode::PRECONDITION_REQUIRED,
                         "precondition_required",
-                        "Agent mutations require If-Match with the current revision, or use plan/apply",
+                        "Scoped mutations require If-Match with the current revision",
                     ));
                 }
                 let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
@@ -66,7 +66,13 @@ impl Core {
                 .as_ref()
                 .and_then(|c| c.idempotency_key.as_ref())
                 .map(|k| digest(&format!("{}\0{k}", actor.id)));
-            let permissions = serde_json::to_value(&actor.permissions).map_err(Error::internal)?;
+            // Keep the established agent/admin receipt representation stable.
+            // A delegated human's current grants form a separate replay scope.
+            let permissions = if actor.delegated {
+                json!({"human_grants": actor.grants})
+            } else {
+                serde_json::to_value(&actor.permissions).map_err(Error::internal)?
+            };
             if let Some(key) = &receipt_key
                 && let Some(result) = crate::context::replay_receipt(
                     tx,
@@ -574,7 +580,21 @@ impl Core {
     }
     pub fn update_client(&self, token: &str, cid: &str, patch: ClientPatch) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "client.write", &format!("client/{cid}"))?;
+            let principal = self.principal(tx, token)?;
+            let action = if principal.delegated {
+                "client.owner_update"
+            } else {
+                "client.write"
+            };
+            let actor = self.management(tx, token, action, &format!("client/{cid}"))?;
+            if actor.delegated
+                && (patch.enabled.is_some()
+                    || patch.allowed_groups.is_some()
+                    || patch.require_mfa.is_some()
+                    || patch.scopes.is_some())
+            {
+                return Err(Error::forbidden());
+            }
             let existing = tx
                 .get::<Client>("clients", cid)?
                 .ok_or_else(|| Error::missing("Client not found"))?;
@@ -945,6 +965,15 @@ pub(crate) fn keys(tx: &Tx<'_>) -> Result<Keys> {
 pub(crate) const AUDIT_RETENTION_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Result<()> {
+    audit_with_details(tx, actor, action, target, Value::Null)
+}
+pub(crate) fn audit_with_details(
+    tx: &Tx<'_>,
+    actor: &str,
+    action: &str,
+    target: &str,
+    extra: Value,
+) -> Result<()> {
     if [
         "user.",
         "group.",
@@ -954,6 +983,7 @@ pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Res
         "source.reconcile",
         "source_link.reconcile",
         "agent.",
+        "delegation.",
         "access.",
         "signing_key.",
         "admin.recover",
@@ -974,6 +1004,11 @@ pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Res
         "request_id": crate::context::current().map(|c| c.request_id),
         "changes": tx.changes(),
     });
+    if let Some(extra) = extra.as_object() {
+        for (key, value) in extra {
+            details[key] = value.clone();
+        }
+    }
     crate::store::redact_audit_value(&mut details);
     if let Some(parent) = crate::agent::audit_parent(tx, actor, action, target)? {
         details["parent_user"] = json!(parent);

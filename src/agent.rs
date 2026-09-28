@@ -78,17 +78,25 @@ pub struct NewAgent {
 pub struct Principal {
     pub id: String,
     pub agent: bool,
+    /// A human with current, exact grants rather than full administrator rights.
+    pub delegated: bool,
+    pub grants: Vec<crate::delegation::HumanGrant>,
     pub permissions: Vec<Permission>,
 }
 impl Principal {
     pub fn allows(&self, action: &str, resource: &str) -> bool {
         crate::edition::action_available(action)
-            && (!self.agent
-                || self.permissions.iter().any(|p| {
+            && (if self.delegated {
+                self.grants.iter().any(|grant| grant.allows(action, resource))
+            } else if self.agent {
+                self.permissions.iter().any(|p| {
                     crate::edition::agent_permission_available(&p.action, &p.resource)
                         && p.action == action
                         && (p.resource == resource || p.resource == "*")
-                }))
+                })
+            } else {
+                true
+            })
     }
     pub fn require(&self, action: &str, resource: &str) -> Result<()> {
         if self.allows(action, resource) {
@@ -136,6 +144,8 @@ impl Core {
             Ok(Principal {
                 id: format!("agent:{}", agent.id),
                 agent: true,
+                delegated: false,
+                grants: vec![],
                 permissions: agent.permissions,
             })
         } else {
@@ -143,12 +153,19 @@ impl Core {
                 Some(cookie) => self.browser_user(tx, cookie)?.0,
                 None => self.session(tx, token)?.0,
             };
-            if !user.admin {
+            let grants = if user.admin {
+                vec![]
+            } else {
+                crate::delegation::active(tx, &self.config, &user.id)?
+            };
+            if !user.admin && grants.is_empty() {
                 return Err(Error::forbidden());
             }
             Ok(Principal {
                 id: user.id,
                 agent: false,
+                delegated: !user.admin,
+                grants,
                 permissions: vec![],
             })
         }

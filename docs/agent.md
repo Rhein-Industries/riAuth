@@ -44,6 +44,21 @@ agent permissions do not grant a human session. See the [PAM contract](enterpris
 
 Grant `operations.backup=operations/backup` only to a backup custodian: backups contain the **entire instance**, including private signing keys, MFA secrets and credential records. This permission is broader than resource-scoped inventory access. `operations.read=operations/health` allows doctor, `operations.read=operations/metrics` allows metrics, and `operations.read=operations/logout` allows outbox inspection. `key.rotate=key/signing` permits signing-key rotation; `session.revoke=session/<id>` permits that session's revocation.
 
+## Delegated human administration (M04 first slice)
+
+A full human administrator can replace another enabled, non-administrator's delegated grants with `PUT /api/users/{username}/delegated-grants` using a JSON array. An empty array also revokes grants from a disabled or promoted account. `GET` on the same path reads them. The same routes are available to an administrator's signed-in browser at `/api/admin/users/{username}/delegated-grants` behind the portal read or write guards. A grant is tied to the exact named target and its stable stored ID; `*` and kind-wide scopes are rejected. Changes are live on the next management request and are audited with the assigning actor and scopes. A grant holder cannot change grants, even their own.
+
+```json
+[
+  {"role":"help_desk","scope":"user/alice"},
+  {"role":"application_owner","scope":"client/reports"}
+]
+```
+
+`help_desk` may read its selected ordinary account and update its display name, email, enabled state, password, MFA reset, or sessions through the existing user update API. It cannot create an account; change administrator status, attributes, subjects or email verification; update itself; or update an administrator, another delegated person or a configured privileged-access approver. `application_owner` may read its selected client and update its name, redirect URIs, portal presentation, allowed browser origins and post-logout redirect URIs. It cannot create clients, rotate credentials, change sign-in policy, scopes, enabled state or other provider settings. Both roles can read the configuration revision for conditional writes. Their direct HTTP mutations require `If-Match`; the CLI's `--if-revision` sends the same header. The existing CLI user and client commands, direct API routes and browser administration routes all call the same server management methods. The browser page has not yet been tailored to hide unsupported controls.
+
+The full administrator role and scoped agents retain their current behavior. Directory operator, auditor and security administrator human roles are later M04 work; grants do not confer those permissions. Desired-state plan/apply remains unavailable to delegated humans in this slice.
+
 ## Desired state
 
 1. Read `riauth --json schema manifest` and `riauth --json capabilities`.

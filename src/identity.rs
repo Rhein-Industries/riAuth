@@ -105,6 +105,11 @@ fn user_security_transition(
     after: Option<&Value>,
 ) -> Result<()> {
     let disabled = after.is_none_or(|user| user["enabled"] == false);
+    // A disabled or promoted account must not regain old delegated authority
+    // if it is later enabled or demoted. This covers every user writer.
+    if disabled || after.is_some_and(|user| before["admin"] == false && user["admin"] == true) {
+        tx.delete("human_grants", user_id)?;
+    }
     // Old snapshots may contain disabled parents whose children were never
     // revoked. Re-enabling must repair those credentials before enabling use.
     if disabled || before["enabled"] == false {

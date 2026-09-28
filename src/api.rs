@@ -19,6 +19,7 @@ pub use rates::RateTable;
 use crate::offboarding::{RescheduleRequest, ScheduleRequest};
 use crate::{
     core::Core,
+    delegation::GrantInput,
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch},
     oidc::{TokenRequest, client_credentials_from_headers, parse_form},
@@ -278,6 +279,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/api/users", get(users).post(create_user))
         .route("/api/users/{username}", axum::routing::patch(update_user))
+        .route(
+            "/api/users/{username}/delegated-grants",
+            get(human_grants).put(set_human_grants),
+        )
         .route("/api/groups", get(groups).post(create_group))
         .route(
             "/api/groups/{name}/members/{username}",
@@ -1760,6 +1765,25 @@ session_handler!(me, me);
 session_handler!(logout, logout);
 session_handler!(sessions, sessions);
 session_handler!(users, list_users);
+async fn human_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.human_grants(&token, &username).map(Json))
+        .await
+}
+async fn set_human_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Json(grants): Json<Vec<GrantInput>>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.set_human_grants(&token, &username, grants).map(Json))
+        .await
+}
 #[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);
 session_handler!(groups, list_groups);

@@ -372,6 +372,7 @@ impl Core {
     pub fn plan_status(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
+            if actor.delegated { return Err(Error::forbidden()); }
             let plan = tx
                 .get::<StoredPlan>("plans", id)?
                 .ok_or_else(|| Error::missing("Plan not found"))?;
@@ -390,6 +391,7 @@ impl Core {
         let desired = serde_json::to_value(&manifest).map_err(Error::internal)?;
         let pending = self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
+            if actor.delegated { return Err(Error::forbidden()); }
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
             for (_, stored) in tx.list::<StoredPlan>("plans")? {
@@ -438,6 +440,7 @@ impl Core {
         manifest.validate()?;
         let (actor, revision, changes, impact, authority_digest) = self.store.preview(|tx| {
             let actor = self.principal(tx, token)?;
+            if actor.delegated { return Err(Error::forbidden()); }
             manifest.require_issuer(&self.config.issuer)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
@@ -500,6 +503,7 @@ impl Core {
         }
         self.store.write(|tx| {
             let actor = self.principal(tx, token)?;
+            if actor.delegated { return Err(Error::forbidden()); }
             let mut stored = tx.get::<StoredPlan>("plans", &input.plan.plan_id)?.ok_or_else(|| Error::missing("Plan not found; create a new plan"))?;
             if stored.actor != actor.id || input.plan.issuer != self.config.issuer { return Err(Error::forbidden()); }
             input.plan.manifest.require_issuer(&self.config.issuer)?;

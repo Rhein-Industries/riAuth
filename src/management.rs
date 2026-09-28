@@ -638,11 +638,18 @@ fn write_user_record(
     if let Some(owner) = cloud_owner {
         actor.require("directory.sync", &cloud_resource(owner))?;
     }
+    let action = if actor.delegated && matches!(&record, UserRecord::Direct("user.update")) {
+        "user.support"
+    } else {
+        "user.write"
+    };
     if let Some(previous) = existing {
-        actor.require("user.write", &format!("user/{}", previous.username))?;
+        actor.require(action, &format!("user/{}", previous.username))?;
     }
-    actor.require("user.write", &format!("user/{}", user.username))?;
-    if actor.agent && (user.admin || existing.is_some_and(|previous| previous.admin)) {
+    actor.require(action, &format!("user/{}", user.username))?;
+    if (actor.agent || actor.delegated)
+        && (user.admin || existing.is_some_and(|previous| previous.admin))
+    {
         return Err(Error::forbidden());
     }
     if let Some(owner) = directory_owner {
@@ -811,7 +818,19 @@ fn write_user_record(
         )?;
     }
     match record {
-        UserRecord::Direct(action) => audit(tx, &actor.id, action, &user.id)?,
+        UserRecord::Direct(action) => {
+            if actor.delegated {
+                crate::delegation::audit_for(
+                    tx,
+                    actor,
+                    action,
+                    &user.id,
+                    &format!("user/{}", user.username),
+                )?;
+            } else {
+                audit(tx, &actor.id, action, &user.id)?;
+            }
+        }
         UserRecord::DirectorySync(_) => {
             audit(tx, &actor.id, "user.directory_sync", &user.username)?;
         }
@@ -919,9 +938,23 @@ pub(crate) fn update_user(
     patch: UserPatch,
     password_history: u32,
 ) -> Result<Value> {
-    actor.require("user.write", &format!("user/{username}"))?;
+    actor.require(
+        if actor.delegated { "user.support" } else { "user.write" },
+        &format!("user/{username}"),
+    )?;
     let mut user = user_by_name(tx, username)?;
     let previous = user.clone();
+    if actor.delegated
+        && (actor.id == user.id
+            || user.admin
+            || !crate::delegation::stored(tx, &user.id)?.is_empty()
+            || patch.admin.is_some()
+            || patch.attributes.is_some()
+            || patch.subjects.is_some()
+            || patch.email_verified.is_some())
+    {
+        return Err(Error::forbidden());
+    }
     if actor.agent && (user.admin || patch.admin == Some(true)) {
         return Err(Error::forbidden());
     }
@@ -1470,7 +1503,17 @@ fn write_client_as(
     tx.put("clients", &next.id, &next)?;
     match authority {
         Authority::Management(actor, Record::Direct(action)) => {
-            audit(tx, &actor.id, action, &next.id)?;
+            if actor.delegated {
+                crate::delegation::audit_for(
+                    tx,
+                    actor,
+                    action,
+                    &next.id,
+                    &format!("client/{}", next.id),
+                )?;
+            } else {
+                audit(tx, &actor.id, action, &next.id)?;
+            }
         }
         Authority::Management(_, Record::Plan) => {}
         Authority::Registration(grant) => {
@@ -1513,7 +1556,26 @@ fn check_client_as(
     };
     match authority {
         Authority::Management(actor, _) => {
-            if other_change || !credential_change {
+            if actor.delegated {
+                actor.require("client.owner_update", &resource)?;
+                let prior = existing.ok_or_else(Error::forbidden)?;
+                let mut permitted_settings = prior.settings.clone();
+                permitted_settings.app = next.settings.app.clone();
+                permitted_settings.origins = next.settings.origins.clone();
+                permitted_settings.post_logout_redirect_uris =
+                    next.settings.post_logout_redirect_uris.clone();
+                if requested
+                    || credential_change
+                    || next.enabled != prior.enabled
+                    || next.service != prior.service
+                    || next.allowed_groups != prior.allowed_groups
+                    || next.require_mfa != prior.require_mfa
+                    || next.scopes != prior.scopes
+                    || next.settings != permitted_settings
+                {
+                    return Err(Error::forbidden());
+                }
+            } else if other_change || !credential_change {
                 actor.require("client.write", &resource)?;
             }
             if credential_change {

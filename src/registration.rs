@@ -166,6 +166,8 @@ fn check_creator(tx: &Tx<'_>, record: &InitialAccess) -> Result<()> {
         let actor = crate::agent::Principal {
             id: record.created_by.clone(),
             agent: true,
+            delegated: false,
+            grants: vec![],
             permissions: agent.permissions,
         };
         actor.require("client.write", "*")?;

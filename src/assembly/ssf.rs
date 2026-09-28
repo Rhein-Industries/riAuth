@@ -268,7 +268,7 @@ impl Core {
                 return Err(Error::bad("At most 32 SSF streams are allowed"));
             }
             let owner = owner_of(&actor);
-            if !matches!(&actor, Caller::Principal(principal) if !principal.agent) {
+            if !matches!(&actor, Caller::Principal(principal) if !principal.agent && !principal.delegated) {
                 if streams
                     .iter()
                     .filter(|(_, stream)| stream.standard && stream.owner == owner)

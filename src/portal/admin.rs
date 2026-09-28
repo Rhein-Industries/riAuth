@@ -9,6 +9,7 @@ use crate::{
     agent::browser_credential,
     api::{App, sso_cookie},
     claims::Explain,
+    delegation::GrantInput,
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
     passkey::NewPasskeyAdmin,
@@ -35,6 +36,10 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/users/passkey/finish", post(passkey_admin_finish))
         .route("/api/admin/users/passkey/cancel", post(passkey_admin_cancel))
         .route("/api/admin/users/{username}", patch(update_user))
+        .route(
+            "/api/admin/users/{username}/delegated-grants",
+            get(human_grants).put(set_human_grants),
+        )
         .route("/api/admin/invitations", get(invitations).post(invite))
         .route("/api/admin/invitations/{username}", axum::routing::delete(revoke_invitation))
         .route("/api/admin/groups", get(groups).post(create_group))
@@ -149,6 +154,26 @@ read!(users, list_users);
 read!(groups, list_groups);
 read!(clients, list_clients);
 read!(invitations, account_invitations);
+
+async fn human_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.human_grants(&token, &username).map(Json))
+        .await
+}
+async fn set_human_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Json(grants): Json<Vec<GrantInput>>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.set_human_grants(&token, &username, grants).map(Json))
+        .await
+}
 
 /// Access review is limited to administrators here; `pam` still decides who may approve.
 #[cfg(feature = "platform")]

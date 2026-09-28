@@ -637,6 +637,8 @@ fn authority_still_valid(tx: &Tx<'_>, job: &Job, user: &User) -> Result<()> {
         let actor = Principal {
             id: job.created_by.clone(),
             agent: true,
+            delegated: false,
+            grants: vec![],
             permissions: agent.permissions,
         };
         actor.require("user.offboard", &format!("user/{}", user.username))?;

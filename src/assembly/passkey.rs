@@ -283,7 +283,7 @@ impl Core {
     ) -> Result<(User, Session)> {
         let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
         let (user, session) = self.browser_user(tx, cookie)?;
-        if actor.agent || actor.id != user.id || crate::signin::bearer_backed(tx, &session)? {
+        if actor.agent || actor.delegated || actor.id != user.id || crate::signin::bearer_backed(tx, &session)? {
             return Err(reauthentication_required());
         }
         require_fresh_factor(&user, &session)?;

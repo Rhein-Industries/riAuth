@@ -338,6 +338,8 @@ fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: true,
+            delegated: false,
+            grants: vec![],
             permissions: agent.permissions,
         })
     } else {
@@ -347,6 +349,8 @@ fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: false,
+            delegated: false,
+            grants: vec![],
             permissions: vec![],
         })
     }

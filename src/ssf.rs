@@ -336,7 +336,7 @@ pub(crate) fn cancel_pending(tx: &impl SsfTx, stream_id: &str) -> Result<()> {
 
 pub(crate) fn admin_allow(caller: &Caller, stream: &Stream) -> Result<()> {
     match caller {
-        Caller::Principal(principal) if !principal.agent => Ok(()),
+        Caller::Principal(principal) if !principal.agent && !principal.delegated => Ok(()),
         Caller::Principal(principal) => {
             principal.require("ssf.manage", &format!("ssf/{}", stream.id))
         }
@@ -349,7 +349,7 @@ pub(crate) fn config_allow(caller: &Caller, stream: &Stream) -> Result<()> {
         return Err(Error::forbidden());
     }
     match caller {
-        Caller::Principal(principal) if !principal.agent => Ok(()),
+        Caller::Principal(principal) if !principal.agent && !principal.delegated => Ok(()),
         Caller::Principal(principal) if stream.owner == principal.id => {
             principal.require("ssf.configure", &format!("ssf/{}", stream.id))
         }

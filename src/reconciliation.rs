@@ -338,6 +338,8 @@ fn scoped_agent(tx: &Tx<'_>, config: &Config, scope: &str, agent_id: &str) -> Re
     let actor = Principal {
         id: format!("agent:{agent_id}"),
         agent: true,
+        delegated: false,
+        grants: vec![],
         permissions: agent.permissions,
     };
     actor.require(action, &resource)?;
