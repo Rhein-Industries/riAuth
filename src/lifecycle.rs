@@ -457,6 +457,33 @@ fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<St
         .filter(|user| actor.allows("user.read", &format!("user/{}", user.username)))
         .map(|_| id.into()))
 }
+/// Whether acceptance could complete now: the checks `account_complete` makes through
+/// `creator` and `management::accept_invitation`, without writing. The creator must still
+/// be an enabled administrator or active agent with `user.write` on the invitee and
+/// `group.members` on every group, and each group must still exist.
+fn acceptance_authorized(tx: &Tx<'_>, user: &User, proof: &Proof) -> Result<bool> {
+    let Some(id) = proof.creator.as_deref() else {
+        return Ok(false);
+    };
+    let actor = match creator(tx, id) {
+        Ok(actor) => actor,
+        Err(error) if error.status == StatusCode::FORBIDDEN => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if !actor.allows("user.write", &format!("user/{}", user.username)) {
+        return Ok(false);
+    }
+    for name in &proof.groups {
+        if !actor.allows("group.members", &format!("group/{name}"))
+            || !tx
+                .get::<crate::model::Group>("groups", name)?
+                .is_some_and(|group| &group.name == name)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
 fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
@@ -578,10 +605,12 @@ impl Core {
                     None => None,
                 };
                 // Without a current code the last link was revoked, or expired and was
-                // cleaned up; either way it no longer works.
+                // cleaned up; either way it no longer works. An unexpired code whose
+                // acceptance would be refused is blocked, without saying whose authority failed.
                 let status = match &current {
-                    Some((_, proof)) if proof.expires_at > now() => "pending",
-                    Some(_) => "expired",
+                    Some((_, proof)) if proof.expires_at <= now() => "expired",
+                    Some((_, proof)) if !acceptance_authorized(tx, &user, proof)? => "blocked",
+                    Some(_) => "pending",
                     None => "inactive",
                 };
                 let delivery = current

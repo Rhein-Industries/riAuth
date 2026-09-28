@@ -1082,12 +1082,14 @@
   // Invitations go through the account invitation API: an invited account stays disabled
   // until its owner accepts the emailed link, which sets a password and adds the groups.
   const invitationOf = (user) => data.invitations.find((entry) => entry.user.id === user.id);
-  const INVITATION_BADGES = { pending: ["Invited", "info"], expired: ["Invitation expired", "warn"], inactive: ["No working invitation", "muted"] };
+  const INVITATION_BADGES = { pending: ["Invited", "info"], blocked: ["Needs a new invitation", "warn"], expired: ["Invitation expired", "warn"], inactive: ["No working invitation", "muted"] };
   const invitationBadge = (invitation) => badge(...INVITATION_BADGES[invitation.status]);
   const days = (seconds) => seconds % 86400 ? duration(seconds) : `${seconds / 86400} ${seconds === 86400 ? "day" : "days"}`;
   function linkState(invitation) {
     if (invitation.status === "pending") return ["Link expires ", when(invitation.expires_at)];
     if (invitation.status === "expired") return ["Link expired ", when(invitation.expires_at)];
+    // Acceptance rechecks who sent it; the server doesn't say which check failed.
+    if (invitation.status === "blocked") return "The link can't be accepted: whoever sent it can no longer invite this person, or a group it adds was removed. Invite the same username again to send a working link.";
     return "The link was revoked, has expired, or the account changed after it was sent.";
   }
   // Queued and sent describe riAuth's outbox and the mail server, never the inbox.

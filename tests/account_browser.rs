@@ -12,7 +12,7 @@ use riauth::{
     agent::{NewAgent, Permission},
     api,
     crypto::{digest, now},
-    lifecycle::{Invitation, MailConfig, MailSecurity},
+    lifecycle::{Invitation, MailConfig, MailSecurity, Purpose},
     model::{Session, User, UserPatch},
 };
 use serde_json::{Value, json};
@@ -699,4 +699,56 @@ fn invitation_review_shows_only_what_the_reader_may_read() {
         review(&scoped),
         (json!(["engineering"]), Value::Null, Value::Null)
     );
+}
+
+#[test]
+fn invitation_review_blocks_a_link_whose_inviter_lost_authority() {
+    let f = mail_fixture();
+    f.core
+        .create_user(
+            &f.admin,
+            riauth::model::NewUser {
+                username: "inviter".into(),
+                password: SIGN_IN_PASSWORD.into(),
+                email: None,
+                display_name: "Inviter".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+    let inviter = f
+        .core
+        .login("inviter".into(), SIGN_IN_PASSWORD.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    f.core
+        .account_invite(&inviter, invitation("invited"))
+        .unwrap();
+    let status =
+        || f.core.account_invitations(&f.admin).unwrap()["invitations"][0]["status"].clone();
+    assert_eq!(status(), "pending");
+    f.core
+        .update_user(
+            &f.admin,
+            "inviter",
+            UserPatch {
+                admin: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    // Acceptance rechecks the inviter's authority, so review must not report a working link.
+    assert_eq!(status(), "blocked");
+    let (_, code) = mail(&f, "invited");
+    let refused = f
+        .core
+        .account_complete(
+            code,
+            Purpose::Invite,
+            Some("invited-person-password-2026".into()),
+        )
+        .unwrap_err();
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
 }
