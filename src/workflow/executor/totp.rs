@@ -87,6 +87,16 @@ fn binding(
     .map_err(Error::internal)
 }
 
+fn recovery_fallback_allowed(checked: &Validated) -> bool {
+    let definition = checked.definition();
+    (definition.revision == 2
+        && matches!(
+            definition.id.as_str(),
+            password::TOTP_WORKFLOW | source::TOTP_WORKFLOW
+        ))
+        || configured_password_path(definition) == Some(ConfiguredPasswordPath::TotpOrRecovery)
+}
+
 /// Check its primary proof before touching the account's factor replay state.
 fn primary(
     core: &Core,
@@ -100,7 +110,10 @@ fn primary(
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,
         (password::TOTP_WORKFLOW, false) => Proof::Password,
-        (_, false) if configured_password_requires_totp(checked.definition()) == Some(true) => {
+        (_, false)
+            if configured_password_path(checked.definition())
+                .is_some_and(ConfiguredPasswordPath::requires_mfa) =>
+        {
             Proof::Password
         }
         _ => return Err(Error::forbidden()),
@@ -119,7 +132,7 @@ fn primary(
             return Err(Error::forbidden());
         };
         let totp = checked.step(&fallback.step).ok_or_else(Error::forbidden)?;
-        if checked.definition().revision != 2
+        if !recovery_fallback_allowed(checked)
             || !matches!(totp.action, Action::VerifyTotp {})
             || fallback.signal != Label::fixed("failed")
             || fallback.evidence.is_some()
@@ -204,7 +217,7 @@ impl Core {
                         .reserved(reserved)
                         .ok_or_else(Error::forbidden)?;
                     if factor != Factor::RecoveryCode
-                        || checked.definition().revision != 2
+                        || !recovery_fallback_allowed(&checked)
                         || checked.step(step).map(|s| &s.action) != Some(&Action::VerifyTotp {})
                         || reserved.step != *step
                         || reserved.attempt != *attempt

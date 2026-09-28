@@ -16,8 +16,8 @@ pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
 
 use super::{
-    Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
-    Target, Validated, builtin, configured_password_requires_totp,
+    Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
+    RunBinding, RunState, Target, Validated, builtin, configured_password_path,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_passkey, validate,
     validate::{Code, Invalid, fail},
@@ -160,7 +160,7 @@ impl RuntimeRun {
                 return Err(Error::conflict("Workflow definition changed"));
             }
             checked
-        } else if configured_password_requires_totp(&self.definition).is_some()
+        } else if configured_password_path(&self.definition).is_some()
             || supported_configured_passkey(&self.definition)
         {
             validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
@@ -869,7 +869,7 @@ impl Core {
             .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
         let checked = validate(configured.definition.clone(), &Environment::platform())
             .map_err(invalid_error)?;
-        if (configured_password_requires_totp(checked.definition()).is_none()
+        if (configured_password_path(checked.definition()).is_none()
             && !supported_configured_passkey(checked.definition()))
             || checked.definition().id.as_str() != workflow
         {
@@ -902,7 +902,7 @@ impl Core {
             .then(password::definition)
             .transpose()?;
             let checked = mfa_definition.as_ref().unwrap_or(checked);
-            let configured_password = configured_password_requires_totp(checked.definition());
+            let configured_password = configured_password_path(checked.definition());
             let configured_passkey = supported_configured_passkey(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
@@ -912,7 +912,7 @@ impl Core {
                 crate::password::require_local(tx, &user)?;
             }
             if configured_password
-                .is_some_and(|needs_totp| user.totp_secret.is_some() != needs_totp)
+                .is_some_and(|path| user.totp_secret.is_some() != path.requires_mfa())
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
@@ -997,7 +997,7 @@ impl Core {
                 token_hash: digest(token),
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
-                    || configured_password == Some(true),
+                    || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa),
                 source: None,
                 authorization: None,
                 recovery: None,

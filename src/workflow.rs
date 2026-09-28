@@ -70,10 +70,24 @@ pub struct ConfiguredWorkflow {
     pub definition: Definition,
 }
 
-/// The configured executor accepts either one local-password verifier or a
-/// password followed by local TOTP. The return value says whether TOTP is
-/// required. Every other validated model shape remains unavailable to runtime.
-pub(crate) fn configured_password_requires_totp(definition: &Definition) -> Option<bool> {
+/// The local password shapes the configured executor can safely bind to its
+/// existing verifier adapters. Recovery is only a fallback from a reserved
+/// TOTP step, so it never bypasses the password proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConfiguredPasswordPath {
+    PasswordOnly,
+    Totp,
+    TotpOrRecovery,
+}
+
+impl ConfiguredPasswordPath {
+    #[cfg(feature = "platform")]
+    pub(crate) fn requires_mfa(self) -> bool {
+        self != Self::PasswordOnly
+    }
+}
+
+pub(crate) fn configured_password_path(definition: &Definition) -> Option<ConfiguredPasswordPath> {
     if definition.origin != Origin::Configured
         || definition.category != Category::Authentication
         || definition.terminals.len() != 2
@@ -95,7 +109,7 @@ pub(crate) fn configured_password_requires_totp(definition: &Definition) -> Opti
     let (Some(success), Some(denied)) = (success, denied) else {
         return None;
     };
-    let routes = |step: &Step, verified: &Id| {
+    let routes = |step: &Step, verified: &Id, failed: &Id| {
         step.transitions.len() == 2
             && step
                 .transitions
@@ -105,28 +119,50 @@ pub(crate) fn configured_password_requires_totp(definition: &Definition) -> Opti
                 transition.on == Label::fixed("verified") && &transition.to == verified
             })
             && step.transitions.iter().any(|transition| {
-                transition.on == Label::fixed("failed") && transition.to == denied.id
+                transition.on == Label::fixed("failed") && &transition.to == failed
             })
     };
     match definition.steps.as_slice() {
         [password]
             if matches!(password.action, Action::VerifyPassword {})
-                && routes(password, &success.id) =>
+                && routes(password, &success.id, &denied.id) =>
         {
-            Some(false)
+            Some(ConfiguredPasswordPath::PasswordOnly)
         }
         [password, totp]
             if matches!(password.action, Action::VerifyPassword {})
                 && matches!(totp.action, Action::VerifyTotp {})
                 && totp.id.as_str() == "totp"
-                && routes(password, &totp.id)
-                && routes(totp, &success.id)
+                && routes(password, &totp.id, &denied.id)
+                && routes(totp, &success.id, &denied.id)
                 && success.requires.len() == 1
                 && success.requires[0].len() == 2
                 && success.requires[0].contains(&Proof::Password)
                 && success.requires[0].contains(&Proof::Totp) =>
         {
-            Some(true)
+            Some(ConfiguredPasswordPath::Totp)
+        }
+        [password, totp, recovery]
+            if matches!(password.action, Action::VerifyPassword {})
+                && matches!(totp.action, Action::VerifyTotp {})
+                && matches!(recovery.action, Action::VerifyRecoveryCode {})
+                && totp.id.as_str() == "totp"
+                && recovery.id.as_str() == "recovery-code"
+                && routes(password, &totp.id, &denied.id)
+                && routes(totp, &success.id, &recovery.id)
+                && routes(recovery, &success.id, &denied.id)
+                && success.requires.len() == 2
+                && [Proof::Totp, Proof::RecoveryCode]
+                    .into_iter()
+                    .all(|factor| {
+                        success.requires.iter().any(|alternative| {
+                            alternative.len() == 2
+                                && alternative.contains(&Proof::Password)
+                                && alternative.contains(&factor)
+                        })
+                    }) =>
+        {
+            Some(ConfiguredPasswordPath::TotpOrRecovery)
         }
         _ => None,
     }

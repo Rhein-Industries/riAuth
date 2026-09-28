@@ -97,9 +97,9 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
         TOTP_WORKFLOW => true,
-        _ => {
-            configured_password_requires_totp(checked.definition()).ok_or_else(Error::forbidden)?
-        }
+        _ => configured_password_path(checked.definition())
+            .ok_or_else(Error::forbidden)?
+            .requires_mfa(),
     };
     crate::password::require_local(tx, user)?;
     if request.source.is_some() || request.requires_mfa != mfa || user.totp_secret.is_some() != mfa

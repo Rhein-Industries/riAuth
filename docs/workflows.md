@@ -16,15 +16,16 @@ keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
-Platform now starts three active configured authentication shapes: local password
-alone for an account without TOTP, password followed by enrolled local TOTP, or
-one user-verified passkey step for an account with an enrolled passkey.
+Platform now starts four active configured authentication shapes: local password
+alone for an account without TOTP, password followed by enrolled local TOTP,
+password with a TOTP or recovery-code choice, or one user-verified passkey step
+for an account with an enrolled passkey.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 The source paths use server-defined workflows and do not accept arbitrary
 configured definitions. Configured enrollment, recovery, custom stages and
-authentication chains beyond Password→TOTP remain unconnected.
+other authentication chains remain unconnected.
 
 ## Scope
 
@@ -192,10 +193,12 @@ and exhausted recovery denies. Revision-one runs retain their original path.
 Platform can load an operator-authored definition in `config.toml` and start it
 with `POST /api/workflows/configured/{workflow}` using a live bearer token. The
 entry must be active and canonical. The supported shapes have one
-`verify_password` step, `verify_password` followed by `verify_totp`, or one
-`verify_passkey` step. Each routes failed verification to `denied`; success
-requires the corresponding verifier receipts. The model validates the revision,
-fingerprint, proof floor, run duration, step timeout and retry/execution limits.
+`verify_password` step, `verify_password` followed by `verify_totp`, the same
+password/TOTP path with a recovery-code fallback, or one `verify_passkey` step.
+The only factor fallback routes TOTP's failed signal to `verify_recovery_code`;
+success requires the corresponding verifier receipts. The model validates the
+revision, fingerprint, proof floor, run duration, step timeout and
+retry/execution limits.
 None of these shapes has a configured source or custom-stage dependency. The
 password-only shape is:
 
@@ -258,7 +261,18 @@ The TOTP step uses `POST /api/workflows/{id}/totp/start` to reserve a bound
 attempt handle, then `POST /api/workflows/{id}/totp` to submit its challenge and
 code. Each retry needs a new handle. The existing verifier consumes a successful
 TOTP time step once across workflows and ordinary sign-in; both receipts and
-finalization commit together. This configured path has no recovery-code fallback.
+finalization commit together. The two-step shape has no recovery-code fallback.
+
+To allow a recovery code as the alternative factor, set `max_executions = 9`,
+route the TOTP step's `failed` signal to `recovery-code`, add one
+`verify_recovery_code` step with `verified → success` and `failed → denied`, and
+set the terminal to
+`requires = [["password", "totp"], ["password", "recovery_code"]]`.
+The user chooses recovery with the current TOTP handle at
+`POST /api/workflows/{id}/recovery-code/start`, as described below. This retires
+that TOTP attempt without proof; only a verified recovery code can complete the
+fallback path. Both factors use the same account lockout and one-time consumption
+as ordinary sign-in. Their receipts and finalization commit in one transaction.
 
 For a passkey-only definition, use one `verify_passkey` step and set the
 authenticated terminal to `requires = [["passkey"]]`. The existing
@@ -276,8 +290,8 @@ password receipt with terminal completion. A wrong password consumes one bounded
 attempt and the account-wide lockout budget. A cancelled or expired attempt
 cannot later complete. An inactive entry cannot start a run; a started run keeps
 its pinned definition across server restarts. The password-only shape refuses
-accounts with enrolled TOTP; the two-step shape requires it. The passkey shape
-requires an enrolled passkey. All three are reauthentication only: they issue
+accounts with enrolled TOTP; both password/MFA shapes require it. The passkey
+shape requires an enrolled passkey. All four are reauthentication only: they issue
 neither a new session nor a downstream OIDC code.
 
 ## Downstream OIDC completion
@@ -597,7 +611,7 @@ These are not implemented or established by this slice:
   and other initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Configured enrollment, recovery, authentication chains beyond Password→TOTP,
+* Configured enrollment, recovery, other authentication chains,
   custom stage execution, and the other built-in verifiers. The configured local
   verifier paths store attempt timing, enforce retry and run bounds, cancellation
   and expiry, and recheck account, session, request and receipt authority in the

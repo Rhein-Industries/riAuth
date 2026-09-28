@@ -68,6 +68,26 @@ fn totp_definition(id: &str) -> workflow::Definition {
     workflow::parse(document.to_string().as_bytes()).unwrap()
 }
 
+fn recovery_definition(id: &str) -> workflow::Definition {
+    let mut document = serde_json::to_value(totp_definition(id)).unwrap();
+    document["limits"]["max_executions"] = json!(9);
+    document["steps"][1]["transitions"][1]["to"] = json!("recovery-code");
+    document["steps"].as_array_mut().unwrap().push(json!({
+        "id": "recovery-code",
+        "action": {"type": "verify_recovery_code"},
+        "max_attempts": 3,
+        "timeout_seconds": 120,
+        "cancellable": true,
+        "transitions": [
+            {"on": "verified", "to": "success"},
+            {"on": "failed", "to": "denied"}
+        ]
+    }));
+    document["terminals"][0]["requires"] =
+        json!([["password", "totp"], ["password", "recovery_code"]]);
+    workflow::parse(document.to_string().as_bytes()).unwrap()
+}
+
 fn passkey_definition(id: &str) -> workflow::Definition {
     let mut document = serde_json::to_value(definition(id)).unwrap();
     document["entry"] = json!("passkey");
@@ -455,6 +475,261 @@ fn configured_password_totp_consumes_only_bound_fresh_verifiers() {
         core.workflow_password(&token, &expired.id, PASSWORD.into())
             .is_err()
     );
+    assert_eq!(
+        core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+}
+
+#[test]
+fn configured_recovery_choice_consumes_only_its_bound_code_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = Config {
+        data_dir: dir.path().join("data"),
+        ..Default::default()
+    };
+    let selected = recovery_definition("local-password-recovery");
+    let fingerprint = selected.fingerprint();
+    config.workflows.insert(
+        "local-password-recovery".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: selected,
+        },
+    );
+    let mut extra_stage = config.clone();
+    extra_stage
+        .workflows
+        .get_mut("local-password-recovery")
+        .unwrap()
+        .definition
+        .steps[1]
+        .transitions[0]
+        .to = Id::new("recovery-code").unwrap();
+    assert!(extra_stage.validate().is_err());
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
+    let config = Config::load(&path).unwrap();
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let login = |core: &Core, factor: Option<String>| {
+        core.login("admin".into(), PASSWORD.into(), factor).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let initial = login(&core, None);
+    assert!(
+        core.workflow_configured_start(&initial, "local-password-recovery")
+            .is_err()
+    );
+    let secret = core.mfa_begin(&initial).unwrap()["secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let totp = crypto::totp(&secret, "admin").unwrap();
+    core.mfa_confirm(&initial, &totp.generate((now() / 30 - 1) * 30).to_string())
+        .unwrap();
+    let token = login(&core, Some(totp.generate(now()).to_string()));
+    let codes = core.recovery_codes(&token).unwrap()["recovery_codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    let other_session = login(&core, Some(codes[1].clone()));
+    let sessions = core.store.list::<Session>("sessions").unwrap().len();
+    let user_id = core.me(&token).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let remaining = core
+        .store
+        .get::<User>("users", &user_id)
+        .unwrap()
+        .unwrap()
+        .recovery_codes
+        .len();
+
+    let run = core
+        .workflow_configured_start(&token, "local-password-recovery")
+        .unwrap();
+    assert_eq!(run.binding.fingerprint, fingerprint);
+    assert!(
+        core.workflow_recovery_challenge(&token, &run.id, None)
+            .is_err()
+    );
+    assert!(matches!(
+        core.workflow_password(&token, &run.id, PASSWORD.into())
+            .unwrap()
+            .state,
+        RunState::Active { ref step, .. } if step.as_str() == "totp"
+    ));
+    assert!(
+        core.workflow_recovery_challenge(&token, &run.id, None)
+            .is_err()
+    );
+    let totp_handle = core.workflow_totp_challenge(&token, &run.id).unwrap();
+    let recovery = core
+        .workflow_recovery_challenge(&token, &run.id, Some(&totp_handle.challenge))
+        .unwrap();
+    assert!(matches!(
+        recovery.workflow.state,
+        RunState::Active { ref step, attempt: 1 } if step.as_str() == "recovery-code"
+    ));
+    assert!(
+        core.workflow_totp(&token, &run.id, &totp_handle.challenge, "000000".into())
+            .is_err()
+    );
+    let stored: Value = core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let password_receipt = stored["record"]["steps"][0]["evidence"].as_str().unwrap();
+    let original: Value = core
+        .store
+        .get("workflow_evidence", password_receipt)
+        .unwrap()
+        .unwrap();
+    let mut wrong_request = original.clone();
+    wrong_request["request"] = json!("another-request");
+    core.store
+        .write(|tx| tx.put("workflow_evidence", password_receipt, &wrong_request))
+        .unwrap();
+    assert!(
+        core.workflow_recovery_code(&token, &run.id, &recovery.challenge, codes[0].clone())
+            .is_err()
+    );
+    core.store
+        .write(|tx| tx.put("workflow_evidence", password_receipt, &original))
+        .unwrap();
+    drop(core);
+
+    let core = Core::open(config).unwrap();
+    assert!(matches!(
+        core.workflow_resume(&token, &run.id).unwrap().state,
+        RunState::Active { ref step, attempt: 1 } if step.as_str() == "recovery-code"
+    ));
+    assert!(
+        core.workflow_recovery_code(
+            &other_session,
+            &run.id,
+            &recovery.challenge,
+            codes[0].clone()
+        )
+        .is_err()
+    );
+    let finished = core
+        .workflow_recovery_code(&token, &run.id, &recovery.challenge, codes[0].clone())
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    let final_run: Value = core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let steps = final_run["record"]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 3);
+    assert_eq!(steps[1]["signal"], "failed");
+    assert!(steps[1]["evidence"].is_null());
+    for step in [steps[0].clone(), steps[2].clone()] {
+        let reference = step["evidence"].as_str().unwrap();
+        let receipt: Value = core
+            .store
+            .get("workflow_evidence", reference)
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt["consumed"], true);
+        for field in ["account", "account_epoch", "session", "request", "binding"] {
+            assert_eq!(receipt[field], final_run["record"][field], "{field}");
+        }
+    }
+    assert_eq!(
+        core.store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .recovery_codes
+            .len(),
+        remaining - 1
+    );
+    assert!(
+        core.workflow_recovery_code(&token, &run.id, &recovery.challenge, codes[0].clone())
+            .is_err()
+    );
+
+    let replay = core
+        .workflow_configured_start(&token, "local-password-recovery")
+        .unwrap();
+    core.workflow_password(&token, &replay.id, PASSWORD.into())
+        .unwrap();
+    let totp_handle = core.workflow_totp_challenge(&token, &replay.id).unwrap();
+    let fresh = core
+        .workflow_recovery_challenge(&token, &replay.id, Some(&totp_handle.challenge))
+        .unwrap();
+    assert!(
+        core.workflow_recovery_code(&token, &replay.id, &recovery.challenge, codes[0].clone())
+            .is_err()
+    );
+    assert!(matches!(
+        core.workflow_recovery_code(&token, &replay.id, &fresh.challenge, codes[0].clone())
+            .unwrap()
+            .state,
+        RunState::Active { attempt: 2, .. }
+    ));
+    let retry = core
+        .workflow_recovery_challenge(&token, &replay.id, None)
+        .unwrap();
+    assert!(matches!(
+        core.workflow_cancel(&token, &replay.id).unwrap().state,
+        RunState::Cancelled {}
+    ));
+    assert!(
+        core.workflow_recovery_code(&token, &replay.id, &retry.challenge, codes[2].clone())
+            .is_err()
+    );
+
+    let totp_run = core
+        .workflow_configured_start(&token, "local-password-recovery")
+        .unwrap();
+    core.workflow_password(&token, &totp_run.id, PASSWORD.into())
+        .unwrap();
+    let challenge = core.workflow_totp_challenge(&token, &totp_run.id).unwrap();
+    let code = totp.generate((now() / 30 + 1) * 30).to_string();
+    assert!(matches!(
+        core.workflow_totp(&token, &totp_run.id, &challenge.challenge, code)
+            .unwrap()
+            .state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    let expired = core
+        .workflow_configured_start(&token, "local-password-recovery")
+        .unwrap();
+    core.workflow_password(&token, &expired.id, PASSWORD.into())
+        .unwrap();
+    core.store
+        .write(|tx| {
+            let mut row: Value = tx.get("workflow_runs", &expired.id)?.unwrap();
+            row["record"]["started_at"] = json!(now() - 601);
+            tx.put("workflow_runs", &expired.id, &row)
+        })
+        .unwrap();
+    assert!(matches!(
+        core.workflow_resume(&token, &expired.id).unwrap().state,
+        RunState::Expired {}
+    ));
+    assert!(core.workflow_totp_challenge(&token, &expired.id).is_err());
     assert_eq!(
         core.store.list::<Session>("sessions").unwrap().len(),
         sessions
