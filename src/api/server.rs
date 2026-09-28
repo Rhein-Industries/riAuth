@@ -1,5 +1,4 @@
 use super::*;
-#[cfg(feature = "platform")]
 use axum::Extension;
 #[cfg(feature = "platform")]
 use axum_server::accept::Accept;
