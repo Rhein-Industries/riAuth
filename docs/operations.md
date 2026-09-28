@@ -346,10 +346,11 @@ Measure HTTP backup and CLI restore with representative records, external keys, 
 ## Release verification
 
 The [testing guide](testing.md) describes source and integration checks. A
-tagged release may include a native binary archive built on Ubuntu 24.04 x86_64
-for compatible Linux systems, a container archive, checksums and build provenance.
-Build from source when using another platform or an incompatible Linux
-environment. Verify the checksums and match the provenance commit to the
+tagged release may include Essentials, Platform, riauthctl and maintenance
+archives built on Ubuntu 24.04 x86-64 and ARM64, plus matching container
+archives, checksums and build provenance for each architecture. Build from
+source when using another platform or an incompatible Linux environment.
+Verify the architecture-specific checksums and match the provenance commit to the
 version you intend to deploy. Test startup, proxy behavior and
 restore in the target environment before directing users to the new version;
 a container capabilities smoke test does not exercise those paths. See the

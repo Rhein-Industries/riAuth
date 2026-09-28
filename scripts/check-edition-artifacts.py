@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused smoke checks against the exact A05 release archives and loaded images."""
+"""Focused smoke checks against the exact release archives and loaded images."""
 
 import argparse
 import json
@@ -136,6 +136,20 @@ def archive_binary(archive, edition, directory):
     return binary
 
 
+def check_tool_archive(archive, name, directory):
+    destination = directory / name
+    destination.mkdir()
+    with tarfile.open(archive, "r:gz") as source:
+        member = source.getmember(name)
+        assert member.isfile(), f"{archive} has no {name} binary"
+        with source.extractfile(member) as payload, (destination / name).open("wb") as output:
+            while chunk := payload.read(1024 * 1024):
+                output.write(chunk)
+    binary = destination / name
+    binary.chmod(0o700)
+    assert name in run(str(binary), "--version")
+
+
 def stop(process):
     process.terminate()
     try:
@@ -242,11 +256,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--essentials-archive", type=pathlib.Path, required=True)
     parser.add_argument("--platform-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--maintenance-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--riauthctl-archive", type=pathlib.Path, required=True)
     parser.add_argument("--essentials-image")
     parser.add_argument("--platform-image")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="riauth-a05-") as temporary:
-        check_archives(args.essentials_archive, args.platform_archive, pathlib.Path(temporary))
+        directory = pathlib.Path(temporary)
+        check_archives(args.essentials_archive, args.platform_archive, directory)
+        check_tool_archive(args.maintenance_archive, "riauth-maintenance", directory)
+        check_tool_archive(args.riauthctl_archive, "riauthctl", directory)
     if args.essentials_image or args.platform_image:
         if not (args.essentials_image and args.platform_image):
             parser.error("both image names are required")

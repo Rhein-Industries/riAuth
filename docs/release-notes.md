@@ -305,14 +305,15 @@ restore and startup with the exact binary intended for recovery.
 
 ## Distribution
 
-The release workflow builds separate `riauth-linux-x86_64.tar.gz` and
-`riauthctl-linux-x86_64.tar.gz` native archives on Ubuntu 24.04 x86_64 for
-compatible Linux systems, plus a server container image archive. The standalone
-client is built without terminal USB support. SHA-256 checksums and build
-provenance record the commit, toolchain, and both Cargo lockfile digests. The
-native archives include the [license](../LICENSE) and
-[third-party notices](../THIRD_PARTY_NOTICES.md). Linux ARM64 and other
-platform artifacts are not produced by this workflow; build from source there.
+The release workflow builds native Essentials, Platform, riauthctl and maintenance
+archives for Linux x86-64 and ARM64 on native Ubuntu 24.04 runners. It also
+packages an Essentials and a Platform container image for each architecture.
+The standalone client is built without terminal USB support. Each architecture
+has its own SHA-256 checksums and build provenance recording the commit, target,
+toolchain, feature sets and both Cargo lockfile digests. Native archives include
+the [license](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md).
+The release gate requires both architecture bundles and runs the packaged
+artifacts on their native runners. Other platforms require a source build.
 
 Maintainers review the tagged commit, checks, smoke tests, and draft assets
 before publication. The provenance records build metadata; it is not a

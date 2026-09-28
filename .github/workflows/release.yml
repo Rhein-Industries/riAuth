@@ -37,17 +37,28 @@ jobs:
   checks:
     needs: validate
     uses: ./.github/workflows/ci.yml
-  publish:
+  package:
     needs: checks
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux/amd64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
-    permissions:
-      contents: write
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
-      RIAUTH_ESSENTIALS_IMAGE: riauth:essentials-${{ github.run_id }}-${{ github.run_attempt }}
-      RIAUTH_PLATFORM_IMAGE: riauth:platform-${{ github.run_id }}-${{ github.run_attempt }}
+      RIAUTH_ARCH: ${{ matrix.arch }}
+      RIAUTH_ESSENTIALS_IMAGE: riauth:essentials-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+      RIAUTH_PLATFORM_IMAGE: riauth:platform-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,37 +76,61 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_REF_NAME^{commit}")"
           RIAUTH_COMMIT="$(git rev-parse HEAD)"
           export RIAUTH_COMMIT
-          test "$(uname -m)" = x86_64
+          test "$(uname -m)" = "$RIAUTH_ARCH"
           python3 scripts/generate-third-party-notices.py --check
-          cargo build --release --locked --no-default-features --features essentials --bins --target-dir target/essentials
-          cargo build --release --locked --no-default-features --features platform --bins --target-dir target/platform
-          cargo build --manifest-path crates/riauthctl/Cargo.toml --release --locked --no-default-features
-          crates/riauthctl/target/release/riauthctl --version
-          docker build --build-arg RIAUTH_EDITION=essentials -t "$RIAUTH_ESSENTIALS_IMAGE" .
-          docker build --build-arg RIAUTH_EDITION=platform -t "$RIAUTH_PLATFORM_IMAGE" .
+          cargo build --release --locked --no-default-features --features essentials --bins --target "${{ matrix.target }}" --target-dir target/essentials
+          cargo build --release --locked --no-default-features --features platform --bins --target "${{ matrix.target }}" --target-dir target/platform
+          cargo build --manifest-path crates/riauthctl/Cargo.toml --release --locked --no-default-features --target "${{ matrix.target }}"
+          crates/riauthctl/target/${{ matrix.target }}/release/riauthctl --version
+          docker build --platform "${{ matrix.platform }}" --build-arg RIAUTH_EDITION=essentials --build-arg RIAUTH_COMMIT="$RIAUTH_COMMIT" -t "$RIAUTH_ESSENTIALS_IMAGE" .
+          docker build --platform "${{ matrix.platform }}" --build-arg RIAUTH_EDITION=platform --build-arg RIAUTH_COMMIT="$RIAUTH_COMMIT" -t "$RIAUTH_PLATFORM_IMAGE" .
           for edition in essentials platform; do
             if [ "$edition" = essentials ]; then image="$RIAUTH_ESSENTIALS_IMAGE"; else image="$RIAUTH_PLATFORM_IMAGE"; fi
-            docker run --rm "$image" --json capabilities | python3 -c 'import json,sys; expected=sys.argv[1]; result=json.load(sys.stdin); assert result["ok"] and result["data"]["edition"] == expected' "$edition"
+            test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" = "${{ matrix.platform }}"
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$RIAUTH_COMMIT"
+            docker run --rm --platform "${{ matrix.platform }}" "$image" --json capabilities | python3 -c 'import json,sys; expected=sys.argv[1]; result=json.load(sys.stdin); assert result["ok"] and result["data"]["edition"] == expected' "$edition"
             docker run --rm --entrypoint cat "$image" /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md
             docker run --rm --entrypoint test "$image" -r /usr/share/doc/libssl3t64/copyright
           done
           scripts/package-release.sh
           docker image rm "$RIAUTH_ESSENTIALS_IMAGE" "$RIAUTH_PLATFORM_IMAGE"
-          docker load --input target/dist/riauth-essentials-linux-x86_64.docker.tar.gz
-          docker load --input target/dist/riauth-platform-linux-x86_64.docker.tar.gz
+          docker load --input "target/dist/riauth-essentials-linux-$RIAUTH_ARCH.docker.tar.gz"
+          docker load --input "target/dist/riauth-platform-linux-$RIAUTH_ARCH.docker.tar.gz"
           python3 scripts/check-edition-artifacts.py \
-            --essentials-archive target/dist/riauth-essentials-linux-x86_64.tar.gz \
-            --platform-archive target/dist/riauth-platform-linux-x86_64.tar.gz \
+            --essentials-archive "target/dist/riauth-essentials-linux-$RIAUTH_ARCH.tar.gz" \
+            --platform-archive "target/dist/riauth-platform-linux-$RIAUTH_ARCH.tar.gz" \
+            --maintenance-archive "target/dist/riauth-maintenance-linux-$RIAUTH_ARCH.tar.gz" \
+            --riauthctl-archive "target/dist/riauthctl-linux-$RIAUTH_ARCH.tar.gz" \
             --essentials-image "$RIAUTH_ESSENTIALS_IMAGE" \
             --platform-image "$RIAUTH_PLATFORM_IMAGE"
           cd target/dist
-          sha256sum --check SHA256SUMS
-          for edition in essentials platform; do
-            tar -xOzf "riauth-$edition-linux-x86_64.tar.gz" LICENSE | cmp - ../../LICENSE
-            tar -xOzf "riauth-$edition-linux-x86_64.tar.gz" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
+          sha256sum --check "SHA256SUMS-linux-$RIAUTH_ARCH"
+          for archive in "riauth-essentials-linux-$RIAUTH_ARCH.tar.gz" "riauth-platform-linux-$RIAUTH_ARCH.tar.gz" "riauth-maintenance-linux-$RIAUTH_ARCH.tar.gz" "riauthctl-linux-$RIAUTH_ARCH.tar.gz"; do
+            tar -xOzf "$archive" LICENSE | cmp - ../../LICENSE
+            tar -xOzf "$archive" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
           done
-          tar -xOzf riauthctl-linux-x86_64.tar.gz LICENSE | cmp - ../../LICENSE
-          tar -xOzf riauthctl-linux-x86_64.tar.gz THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: riauth-linux-${{ matrix.arch }}
+          path: target/dist/*
+          if-no-files-found: error
+          compression-level: 0
+  publish:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: riauth-linux-*
+          path: target/dist
+          merge-multiple: true
+      - name: Verify the complete two-architecture release bundle
+        run: python3 scripts/check-release-bundle.py target/dist "$(git rev-parse HEAD)" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
       - name: Create a draft release for maintainer review
         env:
           GH_TOKEN: ${{ github.token }}
