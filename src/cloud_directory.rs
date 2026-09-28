@@ -1614,7 +1614,7 @@ impl Core {
                 &[("$select", "id"), ("$top", "1")],
             )?
         };
-        let body = get_json(&http, &token, &users)?;
+        let body = get_json(&http, &token, &users, kind == "entra")?;
         let valid = if kind == "workspace" {
             body.get("users").is_some_and(Value::is_array)
                 || (body.get("users").is_none()
