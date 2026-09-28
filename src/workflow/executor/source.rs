@@ -1,0 +1,272 @@
+//! A server-defined source workflow using the same executor and completion store.
+
+use super::*;
+use crate::workflow::{Category, Format, Limits, Origin, Outcome, Step, Terminal, Transition};
+
+#[derive(Serialize)]
+pub struct SourceStart {
+    pub workflow: View,
+    pub authorization_url: String,
+}
+
+pub(super) fn definition(source: &Id) -> Result<Validated> {
+    if !cfg!(feature = "platform") {
+        return Err(Error::forbidden());
+    }
+    let id = |value| Id::new(value).map_err(Error::internal);
+    let definition = Definition {
+        format: Format::V1,
+        id: id("platform-source-reauthentication")?,
+        revision: 1,
+        category: Category::Authentication,
+        origin: Origin::Configured,
+        entry: id("source")?,
+        limits: Limits {
+            max_duration_seconds: 600,
+            max_executions: 1,
+        },
+        steps: vec![Step {
+            id: id("source")?,
+            action: Action::VerifySource {
+                source: source.clone(),
+            },
+            max_attempts: 1,
+            timeout_seconds: 600,
+            cancellable: true,
+            transitions: vec![
+                Transition {
+                    on: Label::fixed("verified"),
+                    when: None,
+                    to: id("success")?,
+                },
+                Transition {
+                    on: Label::fixed("failed"),
+                    when: None,
+                    to: id("denied")?,
+                },
+            ],
+        }],
+        terminals: vec![
+            Terminal {
+                id: id("success")?,
+                outcome: Outcome::Authenticated,
+                requires: vec![vec![Proof::Source]],
+                max_proof_age_seconds: Some(RECEIPT_SECONDS as u32),
+            },
+            Terminal {
+                id: id("denied")?,
+                outcome: Outcome::Denied,
+                requires: vec![],
+                max_proof_age_seconds: None,
+            },
+        ],
+    };
+    let mut environment = Environment::platform();
+    environment.sources.insert(source.clone());
+    validate(definition, &environment).map_err(invalid_error)
+}
+
+fn binding(run: &RuntimeRun, reservation: &InFlight) -> Result<upstream::Binding> {
+    Ok(upstream::Binding {
+        run: run.record.id.clone(),
+        account: run.record.account.clone(),
+        account_epoch: run.record.account_epoch,
+        session: run.record.session.clone().ok_or_else(Error::forbidden)?,
+        request: run.record.request.clone(),
+        definition: run.record.binding.clone(),
+        step: reservation.step.clone(),
+        attempt: reservation.attempt,
+        reservation: reservation.nonce.clone(),
+        started_at: reservation.step_started_at,
+    })
+}
+
+pub(super) fn discard(tx: &Tx<'_>, run: &RuntimeRun) -> Result<()> {
+    if let Some(reservation) = &run.in_flight
+        && let Some(attempt) = &reservation.source
+    {
+        upstream::discard(tx, attempt, &binding(run, reservation)?)?;
+    }
+    Ok(())
+}
+
+impl Core {
+    /// Start one bounded OIDC source reauthentication for the exact live bearer
+    /// session. The caller chooses an enabled source, never a workflow or proof.
+    pub fn workflow_source_start(&self, token: &str, source: &str) -> Result<SourceStart> {
+        let source = Id::new(source).map_err(Error::bad)?;
+        let checked = definition(&source)?;
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            let pin = upstream::pin(tx, &source)?;
+            upstream::authority(tx, &pin, &user)?;
+            // W03 currently requires a local factor for accounts with TOTP.
+            // An upstream ACR must not silently substitute for that proof.
+            if user.totp_secret.is_some() {
+                return Err(Error::conflict(
+                    "This account needs a local factor workflow",
+                ));
+            }
+            let at = now();
+            if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
+                if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
+                    owned(self, tx, token, &active.record)?;
+                    let validated = active.validated()?;
+                    settle_time(self, tx, &validated, &mut active, at)?;
+                    if !active.record.state.is_final() {
+                        return Err(Error::conflict(
+                            "A workflow is already active for this session",
+                        ));
+                    }
+                }
+                tx.delete(ACTIVE_SESSIONS, &session.id)?;
+            }
+            let run_id = crypto::id();
+            let request_id = crypto::id();
+            let expires_at = at.saturating_add(600).min(session.expires_at);
+            let mut run = RuntimeRun {
+                record: StoredRun {
+                    id: run_id.clone(),
+                    account: user.id.clone(),
+                    account_epoch: user.epoch,
+                    session: Some(session.id.clone()),
+                    request: request_id.clone(),
+                    binding: checked.binding(),
+                    started_at: at,
+                    state: RunState::Active {
+                        step: checked.definition().entry.clone(),
+                        attempt: 1,
+                    },
+                    steps: vec![],
+                },
+                definition: checked.definition().clone(),
+                step_started_at: at,
+                executions: 1,
+                attempts: vec![],
+                in_flight: None,
+            };
+            let mut reservation = InFlight {
+                nonce: crypto::id(),
+                step: checked.definition().entry.clone(),
+                attempt: 1,
+                step_started_at: at,
+                source: None,
+            };
+            let (attempt, authorization_url) =
+                self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
+            reservation.source = Some(attempt);
+            run.in_flight = Some(reservation);
+            let request = RequestAuthority {
+                id: request_id.clone(),
+                run: run_id.clone(),
+                account: user.id,
+                account_epoch: user.epoch,
+                session: session.id.clone(),
+                token_hash: digest(token),
+                expires_at,
+                requires_mfa: false,
+                source: Some(pin),
+            };
+            tx.put(REQUESTS, &request_id, &request)?;
+            tx.put(RUNS, &run_id, &run)?;
+            tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            Ok(SourceStart {
+                workflow: run.view(&checked)?,
+                authorization_url,
+            })
+        })
+    }
+
+    /// Poll only the verifier transaction reserved by this run. Consumption,
+    /// evidence creation, live-authority checks and finalization share a writer.
+    pub fn workflow_source_finish(&self, token: &str, id: &str) -> Result<View> {
+        self.store.write(|tx| {
+            let mut run = load_runtime(tx, id)?;
+            let checked = run.validated()?;
+            owned(self, tx, token, &run.record)?;
+            if run.record.state.is_final() {
+                return Err(Error::conflict("Workflow run is already final"));
+            }
+            settle_time(self, tx, &checked, &mut run, now())?;
+            let RunState::Active { step, attempt } = &run.record.state else {
+                return run.view(&checked);
+            };
+            let reservation = run.in_flight.clone().ok_or_else(Error::forbidden)?;
+            let source_attempt = reservation.source.as_ref().ok_or_else(Error::forbidden)?;
+            let (user, request) = authority(self, tx, &run.record, now())?;
+            let pin = request.source.as_ref().ok_or_else(Error::forbidden)?;
+            if reservation.step != *step
+                || reservation.attempt != *attempt
+                || reservation.step_started_at != run.step_started_at
+                || checked.step(step).map(|s| &s.action)
+                    != Some(&Action::VerifySource {
+                        source: pin.source.clone(),
+                    })
+                || user.totp_secret.is_some()
+                || request.requires_mfa
+            {
+                return Err(Error::forbidden());
+            }
+            let at = now();
+            let verified = upstream::consume(
+                tx,
+                pin,
+                source_attempt,
+                &binding(&run, &reservation)?,
+                &user,
+                at,
+            )?;
+            let (source, auth_time, expires_at) = match verified {
+                upstream::Verification::Pending => return run.view(&checked),
+                upstream::Verification::Failed => {
+                    fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
+                    return run.view(&checked);
+                }
+                upstream::Verification::Verified {
+                    authority,
+                    auth_time,
+                    expires_at,
+                } => (authority, auth_time, expires_at),
+            };
+            let receipt = StoredEvidence {
+                id: crypto::id(),
+                proof: Proof::Source,
+                step: step.clone(),
+                attempt: *attempt,
+                action: Action::VerifySource {
+                    source: pin.source.clone(),
+                },
+                account: run.record.account.clone(),
+                account_epoch: run.record.account_epoch,
+                session: run.record.session.clone(),
+                request: run.record.request.clone(),
+                run: run.record.id.clone(),
+                binding: run.record.binding.clone(),
+                verified_at: auth_time,
+                expires_at: expires_at
+                    .min(request.expires_at)
+                    .min(at.saturating_add(RECEIPT_SECONDS)),
+                consumed: false,
+                source: Some(source),
+            };
+            run.attempts.push(Attempt {
+                step: step.clone(),
+                ordinal: *attempt,
+                started_at: run.step_started_at,
+                finished_at: at,
+                result: AttemptResult::Verified,
+            });
+            run.in_flight = None;
+            finish_step(
+                self,
+                tx,
+                &checked,
+                &mut run,
+                Label::fixed("verified"),
+                Some(receipt),
+                at,
+            )?;
+            run.view(&checked)
+        })
+    }
+}

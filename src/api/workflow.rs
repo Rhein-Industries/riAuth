@@ -1,7 +1,10 @@
-//! Bearer-session endpoints for durable password workflow runs.
+//! Bearer-session endpoints for durable verifier-backed workflow runs.
 
 use super::{App, bearer, credential_floor};
-use crate::{error::Result, workflow::executor::View};
+use crate::{
+    error::Result,
+    workflow::executor::{SourceStart, View},
+};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -14,9 +17,31 @@ use std::time::Instant;
 pub(super) fn routes() -> Router<App> {
     Router::new()
         .route("/api/workflows/password", post(start))
+        .route("/api/workflows/sources/{source}", post(source_start))
         .route("/api/workflows/{id}", get(resume))
         .route("/api/workflows/{id}/password", post(password))
+        .route("/api/workflows/{id}/source", post(source_finish))
         .route("/api/workflows/{id}/cancel", post(cancel))
+}
+
+async fn source_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(source): Path<String>,
+) -> Result<Json<SourceStart>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_source_start(&token, &source).map(Json))
+        .await
+}
+
+async fn source_finish(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_source_finish(&token, &id).map(Json))
+        .await
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap) -> Result<Json<View>> {

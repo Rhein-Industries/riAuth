@@ -116,6 +116,16 @@ fn receipt(
         verified_at,
         expires_at: 1_300,
         consumed: false,
+        source: match &validated.step(&id(step)).unwrap().action {
+            Action::VerifySource { source } => Some(SourceEvidence {
+                source: source.clone(),
+                fingerprint: "source-fingerprint".into(),
+                link: "account-link".into(),
+                subject: "subject".into(),
+                transaction: "login".into(),
+            }),
+            _ => None,
+        },
     }
 }
 
@@ -765,6 +775,7 @@ fn verifier_provenance_and_proofless_signals_cannot_be_forged() {
             verified_at: 1_005,
             expires_at: 1_300,
             consumed: false,
+            source: None,
         },
     );
     rejects_unchanged(&stage, store, Code::Provenance);

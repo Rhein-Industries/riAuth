@@ -14,6 +14,339 @@ use std::sync::{Arc, Mutex};
 
 type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)>>>;
 
+/// Exercises the real signed OIDC callback and durable W02/W03 completion, with
+/// authority changes between verification and consumption and competing writers.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_source_evidence_is_bound_fresh_and_consumed_once() {
+    use riauth::workflow::{Outcome, RunState};
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, false).await;
+    let alice = f.user("workflow-alice");
+    let bob = f.user("workflow-bob");
+    let second = text(
+        &f.core
+            .login("workflow-alice".into(), common::PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+
+    // Use the existing explicit-link flow and signed upstream verifier.
+    let link = f
+        .core
+        .source_start(
+            "upstream",
+            riauth::source::Start {
+                link: true,
+                authentication_transaction: None,
+            },
+            Some(&alice),
+        )
+        .unwrap();
+    upstream.callback(&f, &link, "workflow-subject").await;
+    f.core
+        .source_finish(riauth::source::Finish {
+            credential: text(&link["credential"], "token"),
+            approve: true,
+            otp: None,
+        })
+        .unwrap();
+    let sessions_before = f.core.store.list::<Session>("sessions").unwrap().len();
+    let start = f.core.workflow_source_start(&alice, "upstream").unwrap();
+    let run_id = start.workflow.id.clone();
+    let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    let login_key = run["in_flight"]["source"]["login"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let request_id = text(&run["record"], "request");
+    let session_id = text(&run["record"], "session");
+    assert!(matches!(
+        f.core
+            .workflow_source_finish(&alice, &run_id)
+            .unwrap()
+            .state,
+        RunState::Active { .. }
+    ));
+    assert!(f.core.workflow_source_finish(&bob, &run_id).is_err());
+    assert!(f.core.workflow_source_finish(&second, &run_id).is_err());
+    assert!(
+        f.core
+            .workflow_password(&alice, &run_id, common::PASSWORD.into())
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .is_empty()
+    );
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": start.authorization_url}),
+            "workflow-subject",
+        )
+        .await;
+
+    // These fixtures model changes after the callback. Every failed completion
+    // must leave both the verifier transaction and the run unconsumed.
+    let rejects_change = |bucket: &str, key: &str, pointer: &str, replacement: Value| {
+        let original: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+        let mut changed = original.clone();
+        *changed.pointer_mut(pointer).expect("fixture field") = replacement;
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &changed))
+            .unwrap();
+        assert!(
+            f.core.workflow_source_finish(&alice, &run_id).is_err(),
+            "accepted {bucket}{pointer}"
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>("source_logins", &login_key)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("workflow_runs", &run_id)
+                .unwrap()
+                .unwrap()["record"]["state"]["state"],
+            "active"
+        );
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &original))
+            .unwrap();
+    };
+    for (pointer, replacement) in [
+        ("/workflow/run", json!("another-run")),
+        ("/workflow/account", json!("another-account")),
+        ("/workflow/account_epoch", json!(999)),
+        ("/workflow/session", json!("another-session")),
+        ("/workflow/request", json!("another-request")),
+        ("/workflow/step", json!("another-step")),
+        ("/workflow/attempt", json!(2)),
+        ("/workflow/reservation", json!("another-reservation")),
+        (
+            "/workflow/definition/fingerprint",
+            json!("changed-definition"),
+        ),
+        ("/nonce", json!("another-nonce")),
+        ("/fingerprint", json!("changed-source")),
+        ("/claimed", json!(false)),
+        ("/result/subject", json!("unlinked-subject")),
+        (
+            "/result/auth_time",
+            json!(start.workflow.started_at.saturating_sub(1)),
+        ),
+        ("/result/auth_time", json!(now() + 300)),
+        ("/result/expires_at", json!(now())),
+        ("/expires_at", json!(now())),
+    ] {
+        rejects_change("source_logins", &login_key, pointer, replacement);
+    }
+    for (pointer, replacement) in [
+        ("/run", json!("another-run")),
+        ("/id", json!("another-request")),
+        ("/session", json!("another-session")),
+        ("/account_epoch", json!(999)),
+        ("/source/fingerprint", json!("changed-source")),
+        ("/requires_mfa", json!(true)),
+        ("/expires_at", json!(now())),
+    ] {
+        rejects_change("workflow_requests", &request_id, pointer, replacement);
+    }
+    rejects_change("sessions", &session_id, "/revoked", json!(true));
+    rejects_change("sessions", &session_id, "/expires_at", json!(now()));
+    rejects_change("sessions", &session_id, "/identity/epoch", json!(999));
+    rejects_change(
+        "sessions",
+        &session_id,
+        "/identity/session_id",
+        json!("another-session"),
+    );
+    rejects_change(
+        "workflow_active_sessions",
+        &session_id,
+        "",
+        json!("another-run"),
+    );
+    rejects_change(
+        "workflow_runs",
+        &run_id,
+        "/record/state/step",
+        json!("another-step"),
+    );
+    rejects_change("workflow_runs", &run_id, "/record/state/attempt", json!(2));
+    rejects_change("sources", "upstream", "/enabled", json!(false));
+    rejects_change(
+        "sources",
+        "upstream",
+        "/trusted_mfa_acr",
+        json!(["changed-trust"]),
+    );
+    rejects_change(
+        "workflow_runs",
+        &run_id,
+        "/definition/steps/0/action",
+        json!({
+            "type": "custom", "stage": "approval", "outputs": ["allow"],
+            "permissions": [], "max_output_bytes": 32
+        }),
+    );
+    let link_id = text(&f.core.source_links(&alice).unwrap()[0], "id");
+    rejects_change(
+        "source_links",
+        &link_id,
+        "/user_id",
+        json!("another-account"),
+    );
+
+    // Age out otherwise valid evidence inside a still-live run. Consumption
+    // happens before the terminal age check, so rejection must roll it back.
+    let original_login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    let mut old_login = original_login.clone();
+    let mut old_run = run.clone();
+    let earlier = now() - 121;
+    old_login["started_at"] = json!(earlier);
+    old_login["workflow"]["started_at"] = json!(earlier);
+    old_login["result"]["auth_time"] = json!(earlier);
+    old_run["record"]["started_at"] = json!(earlier);
+    old_run["step_started_at"] = json!(earlier);
+    old_run["in_flight"]["step_started_at"] = json!(earlier);
+    f.core
+        .store
+        .write(|tx| {
+            tx.put("source_logins", &login_key, &old_login)?;
+            tx.put("workflow_runs", &run_id, &old_run)
+        })
+        .unwrap();
+    assert!(f.core.workflow_source_finish(&alice, &run_id).is_err());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &login_key)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .is_empty()
+    );
+    f.core
+        .store
+        .write(|tx| {
+            tx.put("source_logins", &login_key, &original_login)?;
+            tx.put("workflow_runs", &run_id, &run)
+        })
+        .unwrap();
+    let account = text(&run["record"], "account");
+    rejects_change("users", &account, "/enabled", json!(false));
+
+    // Recover a fresh owner session after disabling the account revoked it.
+    // The original reservation remains tied to its original session and epoch,
+    // so it cannot be rescued with a new bearer or copied to another run.
+    let fresh = text(
+        &f.core
+            .login("workflow-alice".into(), common::PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert!(f.core.workflow_source_finish(&fresh, &run_id).is_err());
+    let start = f.core.workflow_source_start(&fresh, "upstream").unwrap();
+    let run_id = start.workflow.id.clone();
+    let current: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    let current_login = current["in_flight"]["source"]["login"].as_str().unwrap();
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": start.authorization_url}),
+            "workflow-subject",
+        )
+        .await;
+    let outcomes = std::thread::scope(|scope| {
+        let first = scope.spawn(|| f.core.workflow_source_finish(&fresh, &run_id));
+        let second = scope.spawn(|| f.core.workflow_source_finish(&fresh, &run_id));
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    let finished = outcomes
+        .into_iter()
+        .find_map(std::result::Result::ok)
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", current_login)
+            .unwrap()
+            .is_none()
+    );
+    let evidence = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].1["consumed"], true);
+    assert_eq!(evidence[0].1["run"], run_id);
+    assert_eq!(evidence[0].1["source"]["transaction"], current_login);
+    assert!(f.core.workflow_source_finish(&fresh, &run_id).is_err());
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions_before + 1
+    );
+    assert!(codes(&f).is_empty());
+
+    let cancelled = f.core.workflow_source_start(&fresh, "upstream").unwrap();
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": cancelled.authorization_url}),
+            "workflow-subject",
+        )
+        .await;
+    f.core
+        .workflow_cancel(&fresh, &cancelled.workflow.id)
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_source_finish(&fresh, &cancelled.workflow.id)
+            .is_err()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
 struct Upstream {
     source: riauth::source::Source,
     key: crypto::SigningKey,

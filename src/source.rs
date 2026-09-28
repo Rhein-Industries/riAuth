@@ -1,10 +1,12 @@
 //! Upstream federation with explicit account linking and terminal completion.
-mod saml_types;
 #[cfg(feature = "platform")]
 pub mod saml;
 #[cfg(not(feature = "platform"))]
 #[path = "source/saml_essentials.rs"]
 pub mod saml;
+mod saml_types;
+#[cfg(feature = "platform")]
+pub(crate) mod workflow;
 pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
@@ -163,6 +165,24 @@ pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpe
     Ok(output)
 }
 
+/// Persisted reservation metadata is shared by both editions. Essentials must
+/// recognize and reject a workflow-bound login rather than deserialize it as a
+/// standalone login. Only the Platform adapter may create or consume a binding.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WorkflowBinding {
+    pub run: String,
+    pub account: String,
+    pub account_epoch: u64,
+    pub session: String,
+    pub request: String,
+    pub definition: crate::workflow::RunBinding,
+    pub step: crate::workflow::Id,
+    pub attempt: u8,
+    pub reservation: String,
+    pub started_at: u64,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Login {
     source: String,
@@ -181,6 +201,9 @@ struct Login {
     /// Embedded authorization stage that must resume this login. Standalone logins leave this empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stage: Option<String>,
+    /// Server-owned workflow reservation; never accepted from a source API body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workflow: Option<WorkflowBinding>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -193,6 +216,9 @@ struct UpstreamIdentity {
     email_verified: bool,
     mfa: bool,
     auth_time: u64,
+    /// Original signed assertion expiry, preserved for delayed workflow use.
+    #[serde(default)]
+    expires_at: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -544,6 +570,7 @@ impl Core {
             failed: false,
             attempts: 0,
             stage: stage.map(str::to_owned),
+            workflow: None,
         };
         let started = |authorization_url: String, pending: &Login| StartedLogin {
             body: json!({"authorization_url": &authorization_url, "credential": {"issuer":self.config.issuer,"source":id,"token":&credential,"expires_at":pending.expires_at}, "instruction":"Authenticate at the upstream provider, then inspect and finish this request in the CLI"}),
@@ -779,9 +806,9 @@ impl Core {
                 .get::<Login>("source_logins", &state)?
                 .filter(|p| p.expires_at > now() && !p.failed && p.attempts < 5)
                 .ok_or_else(Error::unauthorized)?;
-            if pending.stage.is_some() {
+            if pending.stage.is_some() || pending.workflow.is_some() {
                 return Err(Error::bad(
-                    "Resume the embedded source stage for this login",
+                    "Resume the bound source stage or workflow for this login",
                 ));
             }
             self.complete_source_login(
@@ -803,6 +830,9 @@ impl Core {
         otp: Option<&str>,
         expected_user: Option<&str>,
     ) -> Result<Result<Value>> {
+        if pending.workflow.is_some() {
+            return Err(Error::forbidden());
+        }
         let source = enabled(tx, &pending.source)?;
         if pending.fingerprint != source.fingerprint()? {
             return Err(Error::bad("Source configuration changed; restart login"));
@@ -1519,6 +1549,7 @@ fn verify_identity(source: &Source, pending: &Login, tokens: &Value) -> Result<U
             .as_str()
             .is_some_and(|v| source.trusted_mfa_acr.contains(v)),
         auth_time,
+        expires_at: claims["exp"].as_u64(),
     })
 }
 
@@ -1713,5 +1744,6 @@ fn oauth_identity(profile: &OAuthProfile, claims: &Value) -> Result<UpstreamIden
         email_verified,
         mfa: false,
         auth_time: 0,
+        expires_at: None,
     })
 }

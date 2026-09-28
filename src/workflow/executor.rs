@@ -1,5 +1,7 @@
-//! Durable, server-owned workflow execution. Only the password reauthentication
-//! entry point is exposed while other built-in verifiers are connected.
+//! Durable, server-owned password and OIDC source reauthentication.
+
+mod source;
+pub use source::SourceStart;
 
 use super::{
     Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
@@ -14,6 +16,7 @@ use crate::{
     error::{Error, Result},
     model::{Session, User},
     signin::{StagedLogin, discard_staged},
+    source::workflow as upstream,
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
@@ -52,6 +55,8 @@ struct RequestAuthority {
     token_hash: String,
     expires_at: u64,
     requires_mfa: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<upstream::Pin>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,6 +84,8 @@ struct InFlight {
     step: Id,
     attempt: u8,
     step_started_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<upstream::Attempt>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -95,14 +102,23 @@ struct RuntimeRun {
 
 impl RuntimeRun {
     fn validated(&self) -> Result<Validated> {
-        // The current public entry point accepts only this immutable shipped
-        // definition. Revalidate the stored snapshot and its pinned fingerprint
+        // Public entry points accept only the shipped password definition or
+        // the server-defined source path. Revalidate the pinned snapshot
         // on every resume so a changed or corrupt row cannot alter routing.
-        if self.definition.id.as_str() != PASSWORD_WORKFLOW {
-            return Err(Error::conflict("Workflow definition is unavailable"));
-        }
-        let checked =
-            validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?;
+        let checked = if self.definition.id.as_str() == PASSWORD_WORKFLOW {
+            validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
+        } else {
+            let Some(Action::VerifySource { source }) =
+                self.definition.steps.first().map(|s| &s.action)
+            else {
+                return Err(Error::conflict("Workflow definition is unavailable"));
+            };
+            let checked = source::definition(source)?;
+            if checked.definition() != &self.definition {
+                return Err(Error::conflict("Workflow definition changed"));
+            }
+            checked
+        };
         if checked.binding() != self.record.binding {
             return Err(Error::conflict("Workflow definition changed"));
         }
@@ -214,14 +230,23 @@ fn authority(
         || session.expires_at <= at
         || session.id != sid
         || session.token_hash != request.token_hash
+        || session.identity.session_id != sid
         || session.identity.user_id != run.account
         || session.identity.epoch != run.account_epoch
+    {
+        return Err(Error::forbidden());
+    }
+    if !run.state.is_final()
+        && tx.get::<String>(ACTIVE_SESSIONS, sid)?.as_deref() != Some(run.id.as_str())
     {
         return Err(Error::forbidden());
     }
     let user = core.identity_user(tx, &session.identity)?;
     if user.id != run.account || user.epoch != run.account_epoch {
         return Err(Error::forbidden());
+    }
+    if let Some(pin) = &request.source {
+        upstream::authority(tx, pin, &user)?;
     }
     Ok((user, request))
 }
@@ -255,10 +280,14 @@ fn owned(core: &Core, tx: &Tx<'_>, token: &str, run: &StoredRun) -> Result<()> {
     let request = tx
         .get::<RequestAuthority>(REQUESTS, &run.request)?
         .ok_or_else(Error::forbidden)?;
-    if request.run != run.id
+    if request.id != run.request
+        || request.run != run.id
         || request.account != user.id
+        || request.account_epoch != user.epoch
         || request.session != session.id
         || request.token_hash != digest(token)
+        || session.token_hash != request.token_hash
+        || session.identity.session_id != session.id
         || run.account != user.id
         || run.account_epoch != user.epoch
         || run.session.as_deref() != Some(session.id.as_str())
@@ -266,6 +295,21 @@ fn owned(core: &Core, tx: &Tx<'_>, token: &str, run: &StoredRun) -> Result<()> {
         return Err(Error::forbidden());
     }
     Ok(())
+}
+
+fn evidence_authority(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &StoredRun,
+    receipt: &StoredEvidence,
+    at: u64,
+) -> Result<()> {
+    let (user, request) = authority(core, tx, run, at)?;
+    match (&receipt.source, &request.source) {
+        (Some(evidence), Some(pin)) => upstream::evidence_authority(tx, pin, &user, evidence),
+        (None, None) => Ok(()),
+        _ => Err(Error::forbidden()),
+    }
 }
 
 struct RouteFacts<'a> {
@@ -311,6 +355,9 @@ fn finish_step(
     }
     let reference = evidence.as_ref().map(|value| value.id.clone());
     if let Some(value) = evidence {
+        if tx.get::<StoredEvidence>(EVIDENCE, &value.id)?.is_some() {
+            return Err(Error::conflict("Workflow evidence already exists"));
+        }
         tx.put(EVIDENCE, &value.id, &value)?;
     }
     run.record.steps.push(StoredStep {
@@ -321,14 +368,36 @@ fn finish_step(
     });
     let facts = trusted_facts(core, tx, &run.record, at)?;
     let mut held = BTreeSet::new();
+    let mut seen = BTreeSet::new();
     for completed in &run.record.steps {
+        let current = checked
+            .step(&completed.step)
+            .ok_or_else(|| Error::internal("Workflow step vanished"))?;
+        let proof = current.action.proof(&completed.signal);
+        if proof.is_some() != completed.evidence.is_some() {
+            return Err(Error::internal(
+                "Workflow evidence is missing or unexpected",
+            ));
+        }
         if let Some(reference) = &completed.evidence {
             let receipt = tx
                 .get::<StoredEvidence>(EVIDENCE, reference)?
                 .ok_or_else(|| Error::internal("Workflow evidence vanished"))?;
-            if receipt.consumed || receipt.run != run.record.id || receipt.step != completed.step {
+            if !seen.insert(reference) {
                 return Err(Error::internal("Workflow evidence changed"));
             }
+            super::evidence::check_evidence(
+                &run.record,
+                completed,
+                current,
+                proof.unwrap(),
+                reference,
+                &receipt,
+                at,
+                None,
+            )
+            .map_err(invalid_error)?;
+            evidence_authority(core, tx, &run.record, &receipt, at)?;
             held.insert(receipt.proof);
         }
     }
@@ -378,6 +447,7 @@ fn fail_attempt(
     let current = checked
         .step(&step)
         .ok_or_else(|| Error::internal("Unknown workflow step"))?;
+    source::discard(tx, run)?;
     if run.in_flight.take().is_none() {
         run.executions = run.executions.saturating_add(1);
     }
@@ -403,6 +473,7 @@ fn fail_attempt(
 }
 
 fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
+    source::discard(tx, run)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence {
             if let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)? {
@@ -521,10 +592,25 @@ impl CompletionStore for TxCompletion<'_, '_> {
         if current.record != *run || current.record.state.is_final() {
             return Err(fail(Code::Replay, "run", "Run changed before finalization"));
         }
-        if at
-            >= run
-                .started_at
-                .saturating_add(u64::from(current.definition.limits.max_duration_seconds))
+        let checked = current.validated().map_err(storage_invalid)?;
+        if checked
+            .definition()
+            .terminals
+            .iter()
+            .find(|value| value.id == terminal.id)
+            != Some(terminal)
+        {
+            return Err(fail(
+                Code::Binding,
+                "terminal",
+                "Terminal changed before finalization",
+            ));
+        }
+        if at < run.started_at
+            || at
+                >= run
+                    .started_at
+                    .saturating_add(u64::from(current.definition.limits.max_duration_seconds))
         {
             return Err(fail(
                 Code::RunExpired,
@@ -572,8 +658,10 @@ impl CompletionStore for TxCompletion<'_, '_> {
                     "Receipt changed or was consumed",
                 ));
             }
+            evidence_authority(self.core, self.tx, run, &receipt, at).map_err(storage_invalid)?;
             if terminal.outcome.is_success()
-                && (receipt.expires_at <= at
+                && (receipt.verified_at > at
+                    || receipt.expires_at <= at
                     || terminal
                         .max_proof_age_seconds
                         .is_some_and(|age| at.saturating_sub(receipt.verified_at) > u64::from(age)))
@@ -676,6 +764,7 @@ impl Core {
                 token_hash: digest(token),
                 expires_at,
                 requires_mfa: false,
+                source: None,
             };
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
@@ -711,8 +800,7 @@ impl Core {
         })
     }
 
-    /// The only proof-producing runtime action currently exposed. It calls the
-    /// existing password verifier, commits deletion of its short-lived staged
+    /// Calls the existing password verifier, commits deletion of its short-lived staged
     /// result, then records and finalizes the bound receipt in one writer.
     pub fn workflow_password(&self, token: &str, id: &str, password: String) -> Result<View> {
         if password.len() > 1024 {
@@ -753,6 +841,7 @@ impl Core {
                     step: step.clone(),
                     attempt: *attempt,
                     step_started_at: run.step_started_at,
+                    source: None,
                 };
                 run.in_flight = Some(reservation.clone());
                 run.executions += 1;
@@ -897,6 +986,7 @@ fn password_receipt(
         .min(request.expires_at)
         .min(at.saturating_add(RECEIPT_SECONDS));
     if staged.identity.auth_time < run.record.started_at
+        || staged.identity.auth_time < run.step_started_at
         || staged.identity.auth_time > at
         || expires_at <= at
     {
@@ -917,6 +1007,7 @@ fn password_receipt(
         verified_at: staged.identity.auth_time,
         expires_at,
         consumed: false,
+        source: None,
     })
 }
 
@@ -957,6 +1048,7 @@ mod tests {
                     step: run.definition.entry.clone(),
                     attempt: 1,
                     step_started_at: run.step_started_at,
+                    source: None,
                 });
                 run.executions = 1;
                 tx.put(RUNS, &id, &run)

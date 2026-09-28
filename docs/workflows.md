@@ -1,28 +1,30 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, and a limited W02 executor path.**
+Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The server now persists bounded runs, attempts, requests and evidence, and exposes
-an Essentials password reauthentication workflow for a live bearer session. It
-uses the existing local password verifier and finalizes through the W03 store
-boundary. It does not yet complete an OIDC sign-in transaction or issue a new
-session, and other built-in verifier actions remain unconnected. The existing
+an Essentials password reauthentication workflow and a Platform OIDC source
+reauthentication workflow for a live bearer session. Both use the existing
+verifiers and finalize through the W03 store boundary. They do not complete a
+downstream OIDC sign-in transaction or issue a new session. Other built-in
+verifier actions remain unconnected. The existing
 sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
-It does not yet enable configured workflow execution or the full P01 Platform
-capability. The W02/W03 workflow proof receipts remain bound to their account,
+It does not yet enable configured workflow execution. The W02/W03 workflow
+proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
+The source path uses a server-defined workflow and does not accept arbitrary
+configured definitions.
 
 ## Scope
 
 One typed, versioned representation covers five categories: `authentication`,
-`enrollment`, `recovery`, `consent` and `sensitive_action`. The module imports no
-Core, storage or protocol module. It defines data, parsing, validation, a
+`enrollment`, `recovery`, `consent` and `sensitive_action`. The model defines data, parsing, validation, a
 deterministic fingerprint, a pure transition lookup and a completion boundary.
-A later executor (W02) must consume only `Validated` definitions and connect the
-completion boundary to trusted verification and durable storage.
+The executor consumes only `Validated` definitions and connects the completion
+boundary to trusted verification and durable storage.
 
 The JSON Schema is published as `workflow` through `riauth schema workflow` and
 `GET /api/schema/workflow`, alongside the existing schemas. Publishing the schema
@@ -95,6 +97,12 @@ can route by its outputs but never
 produces a proof, cannot reuse built-in signal names and only receives
 permissions that its registration grants.
 
+Source receipts additionally retain the source fingerprint, exact linked
+subject/account record and consumed upstream transaction reference. The
+production adapter checks the current enabled source and explicit account link
+inside the completion transaction. Receipt expiry is capped by the original
+signed upstream assertion expiry as well as the request and receipt lifetimes.
+
 Validation computes every set of proofs that can arrive at each node, treating
 every conditional branch as possible. It rejects the definition unless each
 success terminal satisfies, for every arriving set:
@@ -139,12 +147,38 @@ matching historical evidence provenance, bindings and step attempts. An earlier
 receipt may have expired by denial time; its expiry does not make denial into
 authentication success. A spent receipt, expired run, changed account epoch or
 wrong path still fails. Supported completion finalizes the run and consumes
-receipts together through the store boundary. W02 must make that operation
-atomic in the durable store and recheck live account/session authority, run
-expiry and success-proof freshness at commit time. This seam does not yet
+receipts together through the store boundary. The password and source adapters
+make this operation atomic and recheck live account/session authority, run
+expiry and success-proof freshness inside the writer transaction. This seam does not yet
 model a trusted upstream MFA assertion, so an upstream-authenticated account
 with local TOTP still needs the local factor. W02 must reconcile that rule with
 today's [source stage](../src/source.rs) behavior.
+
+## Source reauthentication
+
+On Platform, `POST /api/workflows/sources/{source}` with a live bearer session
+returns a `workflow` view and `authorization_url`. The executor pins the exact
+account, account epoch, session, request, definition, run, step, attempt and
+reservation nonce into the existing source login before redirecting upstream.
+It accepts enabled OIDC sources and existing explicit account links; it cannot
+provision or reattach an account. Only one workflow can be active per session.
+
+The existing OIDC callback checks the signed ID token, issuer, audience, nonce
+and authentication time. `POST /api/workflows/{id}/source` with the original
+bearer session polls that reserved result; the caller supplies no proof, claims,
+signal or receipt reference. A successful completion consumes the source login,
+creates and consumes W03 evidence, and finalizes the W02 run in one transaction.
+Source configuration changes, unlinking, mismatched accounts or sessions,
+revoked/expired authority, old assertions and replay fail closed. Cancellation
+and run expiry discard the source reservation. The ordinary source-finish API
+cannot use workflow-bound logins, and this path issues no session or OAuth code.
+
+This bounded workflow has one source attempt and lasts at most ten minutes.
+Authentication must occur at or after that attempt starts; its proof must be
+at most 120 seconds old at completion. OIDC clock-skew allowances do not extend
+workflow proof freshness or signed assertion expiry. Accounts with local TOTP,
+OAuth-only sources and SAML sources remain unavailable on this path. Upstream
+MFA assertions are not converted into local-factor proofs.
 
 ## Bounds
 
@@ -177,8 +211,8 @@ not require a revision increase.
 These are not implemented or established by this slice:
 
 * Connecting the remaining verifier actions and existing OIDC/browser sign-in,
-  passkey, lifecycle, consent and source-stage paths. The current W02 endpoint
-  covers only local-password reauthentication for a live bearer session; it
+  passkey, lifecycle, consent and embedded source-stage paths. Current W02 endpoints
+  cover password and OIDC source reauthentication for a live bearer session; each
   neither consumes an OIDC request nor issues a session. Endpoint parity has not
   been checked.
 * An atomic credential-mutation receipt/finalization protocol for enrollment and
@@ -186,16 +220,21 @@ These are not implemented or established by this slice:
   session revocation. Until then these success outcomes remain blocked. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Runtime source and stage state, invitation acceptance, and the other built-in
-  verifiers. The password path now stores attempt timing, enforces retry and run
+* Arbitrary configured workflows, custom stage execution, source MFA and SAML
+  adapters, invitation acceptance, and the other built-in verifiers. The password
+  path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.
 * Binding runs to their security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. It does not cover the `Environment`
-  (active sources, stage registrations and permissions) or any approval record
+  (stage registrations and permissions) or any approval record
   that RI-WF-002 requires.
+  The source reauthentication request now pins and rechecks its source fingerprint
+  and the receipt's explicit account link; broader dependency/approval binding remains.
 * End-to-end invariant and race tests for the remaining verifier integrations
-  and both durable backends. The focused password path is covered on the local
-  store; PostgreSQL has not been exercised for this executor slice.
+  and both durable backends. The focused source regression exercises the signed
+  OIDC callback, binding and authority changes, rollback on stale evidence, and
+  competing completion writers on the local store. PostgreSQL has not been
+  exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

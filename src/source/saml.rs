@@ -739,6 +739,7 @@ fn identity(
             email_verified,
             mfa: source.trusted_mfa_acr.contains(&context),
             auth_time,
+            expires_at: Some(expires_at),
             saml_session: Some(UpstreamSession {
                 subject: Some(subject_name),
                 index: index.into(),

@@ -1,9 +1,9 @@
-//! Store-backed completion boundary for a future workflow executor.
+//! Store-backed completion boundary shared by the workflow executor.
 //!
 //! The store is crate-private: a definition, a custom stage, or an external
 //! caller cannot mint evidence or substitute an always-accepting verifier.
-//! W02 must implement this interface over the existing identity verifiers and
-//! a durable transaction; this module does not execute a workflow.
+//! The executor implements this interface over the existing identity verifiers
+//! and a durable transaction; this module does not execute a workflow.
 
 use super::*;
 use crate::workflow::validate::{completion_rules, fail};
@@ -61,6 +61,20 @@ pub(crate) struct StoredEvidence {
     /// material (mail codes, passkey ceremonies, TOTP steps, recovery codes and
     /// source transactions) must already be consumed by its existing verifier.
     pub consumed: bool,
+    /// Present only for an upstream verifier receipt. The transaction adapter
+    /// rechecks the pinned source and exact account link before finalization.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceEvidence>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SourceEvidence {
+    pub source: Id,
+    pub fingerprint: String,
+    pub link: String,
+    pub subject: String,
+    pub transaction: String,
 }
 
 /// Account and request facts read by the trusted store for this run. The path
@@ -223,7 +237,17 @@ impl Validated {
                         fail(Code::Evidence, &path, "Verified evidence is unavailable")
                     })?;
                     check_evidence(
-                        &run, recorded, current, proof, reference, &record, now, target,
+                        &run,
+                        recorded,
+                        current,
+                        proof,
+                        reference,
+                        &record,
+                        now,
+                        target
+                            .outcome
+                            .is_success()
+                            .then_some(target.max_proof_age_seconds),
                     )?;
                     if record.verified_at < last_verified {
                         return Err(fail(Code::Stale, &path, "Evidence is out of order"));
@@ -269,7 +293,7 @@ impl Validated {
     }
 }
 
-fn check_evidence(
+pub(super) fn check_evidence(
     run: &StoredRun,
     recorded: &StoredStep,
     step: &Step,
@@ -277,7 +301,9 @@ fn check_evidence(
     reference: &str,
     record: &StoredEvidence,
     now: u64,
-    target: &Terminal,
+    // None checks historical denial evidence; Some checks live proof, with an
+    // optional terminal age bound. Historical routing never authorizes success.
+    freshness: Option<Option<u32>>,
 ) -> Result<(), Invalid> {
     if record.id != reference
         || record.proof != proof
@@ -290,6 +316,22 @@ fn check_evidence(
             "evidence",
             "Evidence has the wrong verifier or step",
         ));
+    }
+    match (&record.action, &record.source) {
+        (Action::VerifySource { source }, Some(authority))
+            if source == &authority.source
+                && !authority.fingerprint.is_empty()
+                && !authority.link.is_empty()
+                && !authority.subject.is_empty()
+                && !authority.transaction.is_empty() => {}
+        (Action::VerifySource { .. }, _) | (_, Some(_)) => {
+            return Err(fail(
+                Code::Provenance,
+                "evidence",
+                "Source authority does not match",
+            ));
+        }
+        (_, None) => {}
     }
     if record.account != run.account
         || record.account_epoch != run.account_epoch
@@ -319,10 +361,10 @@ fn check_evidence(
     if record.verified_at < run.started_at
         || record.verified_at > now
         || record.expires_at <= record.verified_at
-        || (target.outcome.is_success()
+        || (freshness.is_some()
             && (record.expires_at <= now
-                || target
-                    .max_proof_age_seconds
+                || freshness
+                    .flatten()
                     .is_some_and(|age| now - record.verified_at > u64::from(age))))
     {
         return Err(fail(Code::Stale, "evidence", "Evidence is stale"));
