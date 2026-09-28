@@ -594,12 +594,23 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         }
     }
     if let Some(value) = req.headers().get("if-match") {
-        context.revision = value
-            .to_str()
-            .ok()
-            .and_then(|v| v.strip_prefix('"')?.strip_suffix('"')?.parse().ok());
-        if context.revision.is_none() || req.headers().get_all("if-match").iter().count() != 1 {
-            return Error::bad("If-Match must be one quoted numeric revision").into_response();
+        let parsed = value.to_str().ok().filter(|v| {
+            v.len() >= 3
+                && v.len() <= 258
+                && v.starts_with('"')
+                && v.ends_with('"')
+                && v[1..v.len() - 1].bytes().all(|b| b.is_ascii_graphic() && b != b'"')
+        });
+        if parsed.is_none() || req.headers().get_all("if-match").iter().count() != 1 {
+            return Error::bad("If-Match must be one quoted resource version").into_response();
+        }
+        let value = parsed.unwrap();
+        context.if_match = Some(value.to_owned());
+        if !req.uri().path().starts_with("/scim/v2/") {
+            context.revision = value[1..value.len() - 1].parse().ok();
+            if context.revision.is_none() {
+                return Error::bad("If-Match must be one quoted numeric revision").into_response();
+            }
         }
     }
     if context.idempotency_key.is_some() {

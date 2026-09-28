@@ -32,6 +32,32 @@ impl Core {
         token: &str,
         f: impl FnOnce(&Tx<'_>) -> Result<Value>,
     ) -> Result<Value> {
+        self.mutation_checked(token, |tx, actor, context| {
+            if let Some(c) = context {
+                if actor.agent && c.revision.is_none() {
+                    return Err(Error::new(
+                        StatusCode::PRECONDITION_REQUIRED,
+                        "precondition_required",
+                        "Agent mutations require If-Match with the current revision, or use plan/apply",
+                    ));
+                }
+                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                if c.revision.is_some_and(|r| r != revision) {
+                    return Err(Error::conflict("Configuration revision changed"));
+                }
+            }
+            Ok(())
+        }, f)
+    }
+
+    /// Use the same authorization, idempotency receipt, and atomic writer with
+    /// a protocol-specific precondition. The check runs after receipt replay.
+    pub(crate) fn mutation_checked(
+        &self,
+        token: &str,
+        check: impl FnOnce(&Tx<'_>, &crate::agent::Principal, Option<&crate::context::RequestContext>) -> Result<()>,
+        f: impl FnOnce(&Tx<'_>) -> Result<Value>,
+    ) -> Result<Value> {
         self.store.write(|tx| {
             let actor = self.principal(tx, token)?;
             let context = crate::context::current();
@@ -50,19 +76,7 @@ impl Core {
             {
                 return Ok(result);
             }
-            if let Some(c) = &context {
-                if actor.agent && c.revision.is_none() {
-                    return Err(Error::new(
-                        StatusCode::PRECONDITION_REQUIRED,
-                        "precondition_required",
-                        "Agent mutations require If-Match with the current revision, or use plan/apply",
-                    ));
-                }
-                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                if c.revision.is_some_and(|r| r != revision) {
-                    return Err(Error::conflict("Configuration revision changed"));
-                }
-            }
+            check(tx, &actor, context.as_ref())?;
             let result = f(tx)?;
             if let Some(key) = receipt_key {
                 crate::context::save_receipt(

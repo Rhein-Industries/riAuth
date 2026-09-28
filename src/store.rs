@@ -835,7 +835,7 @@ impl Tx<'_> {
             Error::internal("Mutation attempted inside a read transaction")
         })?;
         let mut public = serde_json::to_value(value).map_err(Error::internal)?;
-        let before = if matches!(bucket, "users" | "passkeys") {
+        let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None
@@ -864,7 +864,7 @@ impl Tx<'_> {
         let transitions = self.transitions.ok_or_else(|| {
             Error::internal("Mutation attempted inside a read transaction")
         })?;
-        let before = if matches!(bucket, "users" | "passkeys") {
+        let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None

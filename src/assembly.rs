@@ -46,7 +46,10 @@ impl RecordTransitions for IdentityTransitions {
         before: Option<&Value>,
         after: Option<&Value>,
     ) -> Result<()> {
-        identity::record_transition(tx, bucket, key, before, after)
+        identity::record_transition(tx, bucket, key, before, after)?;
+        #[cfg(feature = "platform")]
+        crate::scim::record_transition(tx, bucket, key, before, after)?;
+        Ok(())
     }
 }
 

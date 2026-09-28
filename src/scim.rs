@@ -7,7 +7,6 @@ use crate::{
     model::{Group, NewUser, User},
     store::Tx,
 };
-#[cfg(test)]
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -25,6 +24,10 @@ struct Record {
     external_id: Option<String>,
     data: Value,
     deleted: bool,
+    /// A generation marker prevents a resource from reusing an earlier ETag
+    /// after SCIM changes are later reversed. Legacy rows use an empty marker.
+    #[serde(default)]
+    version: String,
 }
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -37,7 +40,7 @@ pub struct Query {
 pub fn metadata(kind: &str) -> Result<Value> {
     Ok(match kind {
         "ServiceProviderConfig" => {
-            json!({"schemas":["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],"patch":{"supported":true},"bulk":{"supported":false,"maxOperations":0,"maxPayloadSize":0},"filter":{"supported":true,"maxResults":1000},"changePassword":{"supported":true},"sort":{"supported":false},"etag":{"supported":true},"authenticationSchemes":[{"type":"oauthbearertoken","name":"Scoped operator credential","description":"Use a dedicated agent credential and If-Match revision for mutations","primary":true}]})
+            json!({"schemas":["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],"patch":{"supported":true},"bulk":{"supported":false,"maxOperations":0,"maxPayloadSize":0},"filter":{"supported":true,"maxResults":1000},"changePassword":{"supported":true},"sort":{"supported":false},"etag":{"supported":true},"authenticationSchemes":[{"type":"oauthbearertoken","name":"Scoped operator credential","description":"Use a dedicated agent credential and resource If-Match for updates and deletes","primary":true}]})
         }
         "ResourceTypes" => {
             json!({"schemas":[LIST],"totalResults":2,"startIndex":1,"itemsPerPage":2,"Resources":[{"schemas":["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],"id":"User","name":"User","endpoint":"/Users","schema":USER},{"schemas":["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],"id":"Group","name":"Group","endpoint":"/Groups","schema":GROUP}]})
@@ -112,6 +115,69 @@ fn owned(tx: &Tx<'_>, actor: &Principal, kind: &str, id: &str) -> Result<Record>
     tx.get::<Record>(bucket(kind)?, id)?
         .filter(|r| !r.deleted && r.owner == actor.id)
         .ok_or_else(|| Error::missing("SCIM resource not found"))
+}
+
+/// Track effective changes made outside inbound SCIM as part of the same
+/// storage transaction. This keeps an old ETag stale even when a later write
+/// restores the same projected content. Server assembly calls this only in
+/// Platform builds; Essentials has no inbound SCIM transition work.
+pub(crate) fn record_transition(
+    tx: &Tx<'_>,
+    bucket: &str,
+    key: &str,
+    before: Option<&Value>,
+    after: Option<&Value>,
+) -> Result<()> {
+    match bucket {
+        "users" => {
+            let effective = ["username", "display_name", "email", "enabled", "password_hash"];
+            if !effective.iter().any(|field| before.and_then(|v| v.get(*field)) != after.and_then(|v| v.get(*field))) {
+                return Ok(());
+            }
+            for (id, mut record) in tx.list::<Record>("scim_users")? {
+                if !record.deleted && record.local_id == key {
+                    record.version = crypto::id();
+                    tx.put("scim_users", &id, &record)?;
+                }
+            }
+        }
+        "groups" => {
+            let members = |value: Option<&Value>| -> Result<BTreeSet<String>> {
+                value
+                    .map(|value| serde_json::from_value::<Group>(value.clone()).map(|group| group.members).map_err(Error::internal))
+                    .transpose()
+                    .map(|members| members.unwrap_or_default())
+            };
+            let old = members(before)?;
+            let new = members(after)?;
+            if old == new {
+                return Ok(());
+            }
+            let users = tx.list::<Record>("scim_users")?;
+            for (id, mut group) in tx.list::<Record>("scim_groups")? {
+                if group.deleted || group.local_id != key {
+                    continue;
+                }
+                let mut visible_change = false;
+                for (user_id, mut user) in users.iter().cloned() {
+                    if user.deleted || user.owner != group.owner {
+                        continue;
+                    }
+                    if old.contains(&user.local_id) != new.contains(&user.local_id) {
+                        visible_change = true;
+                        user.version = crypto::id();
+                        tx.put("scim_users", &user_id, &user)?;
+                    }
+                }
+                if visible_change {
+                    group.version = crypto::id();
+                    tx.put("scim_groups", &id, &group)?;
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 fn name(record: &Record) -> &str {
     record.data[if record.kind == "Users" {
@@ -265,8 +331,51 @@ impl Core {
                     .collect::<Vec<_>>()
             );
         }
-        value["meta"] = json!({"resourceType":if record.kind=="Users"{"User"}else{"Group"},"location":format!("{}/scim/v2/{}/{id}",self.config.issuer.trim_end_matches('/'),record.kind),"version":format!("\"{}\"",tx.get::<u64>("meta","revision")?.unwrap_or(0))});
+        // Include the effective projection so direct management and directory
+        // changes to this resource also invalidate its ETag. Hidden password
+        // changes affect the user version without revealing the password hash.
+        let credential = if record.kind == "Users" {
+            tx.get::<User>("users", &record.local_id)?
+                .map(|user| user.password_hash)
+        } else {
+            None
+        };
+        let fingerprint = json!([record.version, value, credential]);
+        let serialized = serde_json::to_string(&fingerprint).map_err(Error::internal)?;
+        let version = format!("\"{}\"", crypto::digest(&serialized));
+        value["meta"] = json!({"resourceType":if record.kind=="Users"{"User"}else{"Group"},"location":format!("{}/scim/v2/{}/{id}",self.config.issuer.trim_end_matches('/'),record.kind),"version":version});
         Ok(value)
+    }
+    fn scim_precondition(
+        &self,
+        tx: &Tx<'_>,
+        actor: &Principal,
+        context: Option<&crate::context::RequestContext>,
+        kind: &str,
+        id: Option<&str>,
+    ) -> Result<()> {
+        let Some(id) = id else {
+            if context.and_then(|c| c.if_match.as_ref()).is_some() {
+                return Err(Error::new(StatusCode::PRECONDITION_FAILED, "precondition_failed", "No resource exists for If-Match"));
+            }
+            return Ok(());
+        };
+        let record = owned(tx, actor, kind, id)?;
+        require(actor, &record, "write")?;
+        if let Some(context) = context {
+            let supplied = context.if_match.as_deref();
+            if actor.agent && supplied.is_none() {
+                return Err(Error::new(StatusCode::PRECONDITION_REQUIRED, "precondition_required", "Agent SCIM updates and deletes require resource If-Match"));
+            }
+            if let Some(supplied) = supplied {
+                let current = self.scim_view(tx, id, &record)?;
+                let version = current["meta"]["version"].as_str().unwrap_or("");
+                if !crypto::constant_eq(supplied, version) {
+                    return Err(Error::new(StatusCode::PRECONDITION_FAILED, "precondition_failed", "SCIM resource version changed"));
+                }
+            }
+        }
+        Ok(())
     }
     pub fn scim_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
@@ -301,9 +410,13 @@ impl Core {
         patch: bool,
     ) -> Result<Value> {
         bucket(kind)?;
-        self.mutation(token, |tx| {
+        self.mutation_checked(token, |tx, actor, context| self.scim_precondition(tx, actor, context, kind, id), |tx| {
             let actor = self.principal(tx, token)?;
             let existing = id.map(|id| owned(tx, &actor, kind, id)).transpose()?;
+            let before_version = existing.as_ref().map(|record| {
+                self.scim_view(tx, id.unwrap(), record)
+                    .map(|value| value["meta"]["version"].clone())
+            }).transpose()?;
             let member_patch = kind == "Groups" && patch && patches_members(&input);
             let mut data = if patch {
                 let mut base = existing
@@ -513,26 +626,33 @@ impl Core {
             };
             data.as_object_mut().unwrap().remove("meta");
             data.as_object_mut().unwrap().remove("id");
-            let record = Record {
+            let mut record = Record {
                 owner: actor.id.clone(),
                 kind: kind.into(),
                 local_id,
                 external_id,
                 data,
                 deleted: false,
+                version: existing.as_ref().map_or_else(crypto::id, |record| record.version.clone()),
             };
             let record_changed = existing.as_ref() != Some(&record);
             if kind == "Users" || record_changed {
                 tx.put(bucket(kind)?, &id, &record)?;
             }
+            let mut view = self.scim_view(tx, &id, &record)?;
+            if before_version.is_some_and(|before| before != view["meta"]["version"]) {
+                record.version = crypto::id();
+                tx.put(bucket(kind)?, &id, &record)?;
+                view = self.scim_view(tx, &id, &record)?;
+            }
             if kind == "Users" || record_changed || group_changed {
                 audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
             }
-            self.scim_view(tx, &id, &record)
+            Ok(view)
         })
     }
     pub fn scim_delete(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        self.mutation(token, |tx| {
+        self.mutation_checked(token, |tx, actor, context| self.scim_precondition(tx, actor, context, kind, Some(id)), |tx| {
             let actor = self.principal(tx, token)?;
             let mut record = owned(tx, &actor, kind, id)?;
             require(&actor, &record, "write")?;

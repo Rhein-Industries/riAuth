@@ -10,6 +10,8 @@ pub struct RequestContext {
     pub idempotency_key: Option<String>,
     pub fingerprint: String,
     pub revision: Option<u64>,
+    /// The exact quoted entity tag supplied for a SCIM resource mutation.
+    pub if_match: Option<String>,
     /// Attributed client address, after trusted-proxy processing.
     pub client_ip: Option<IpAddr>,
     /// User-Agent without control characters, at most 256 bytes.
