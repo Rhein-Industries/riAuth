@@ -201,6 +201,7 @@ impl Core {
             })?;
         }
         crate::edition::validate_store(&store)?;
+        crate::capability::validate_store(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
         let dummy = store

@@ -12,6 +12,9 @@ use url::Url;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Explicit runtime activation overrides for supported optional capabilities.
+    #[serde(default, skip_serializing_if = "CapabilityActivation::is_default")]
+    pub capabilities: CapabilityActivation,
     #[serde(default)]
     pub proxy_listeners: std::collections::BTreeMap<String, crate::proxy_server::Listener>,
     #[serde(default)]
@@ -89,6 +92,23 @@ pub struct Config {
     /// Streamed backup export quotas. Omitted means the built-in defaults.
     #[serde(default, skip_serializing_if = "BackupConfig::is_default")]
     pub backup: BackupConfig,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CapabilityActivation {
+    /// Names from the server capability registry. Unknown or unsupported names fail validation.
+    pub disabled: BTreeSet<String>,
+}
+
+impl CapabilityActivation {
+    fn is_default(&self) -> bool {
+        self.disabled.is_empty()
+    }
+
+    pub fn enabled(&self, name: &str) -> bool {
+        !self.disabled.contains(name)
+    }
 }
 
 /// Every HTTP rate-limit category that `rate_limits` may override.
@@ -240,6 +260,7 @@ impl BackupConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            capabilities: CapabilityActivation::default(),
             proxy_listeners: Default::default(),
             radius_listeners: Default::default(),
             ldap_listeners: Default::default(),
@@ -302,6 +323,7 @@ pub fn validate_server_url(value: &str) -> Result<Url> {
 impl Config {
     pub fn validate(&self) -> Result<()> {
         crate::edition::validate_config(self)?;
+        crate::capability::validate_config(self)?;
         if self.proxy_listeners.len() > 16 {
             bail!("Configure at most 16 proxy listeners");
         }

@@ -62,6 +62,23 @@ riAuth walks forwarded chains from the right, skipping trusted addresses, and ig
 
 The external issuer determines all published URLs. Configure native HTTPS as described below, or keep the HTTP listener behind a trusted TLS proxy. Issuers can contain `/application/o/<slug>/`; instance endpoints are nested under that path. Host/forwarded-host headers cannot change the issuer.
 
+`GET /api/capabilities` reports the running instance's compiled, enabled,
+configured and locally usable feature state. The local `riauth capabilities`
+command reports artifact inclusion without opening the store. To turn off the
+Platform device-trust verifier, remove every stored client policy that requires
+it and remove the `[device_trust]` configuration, then set:
+
+```toml
+[capabilities]
+disabled = ["identity.device_trust"]
+```
+
+An unknown or unsupported disabled name, a verifier configured while disabled,
+or a retained client requiring device trust through either its direct setting or
+a conditional approved-device policy without an enabled valid verifier stops
+startup before the server accepts traffic. The existing client token
+policy continues to reject an unmet device proof at request time.
+
 ## Container
 
 The Dockerfile uses pinned Rust and Debian image digests, a locked Cargo dependency graph and UID/GID 10001. No data, credentials or local target directory enter the build context.

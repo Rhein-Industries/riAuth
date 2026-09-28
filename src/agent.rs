@@ -424,10 +424,5 @@ pub const PLATFORM_FEATURES: &[&str] = &[
 ];
 
 pub fn capabilities() -> Value {
-    json!({"schema_version": "riauth.capabilities/v1", "version": env!("CARGO_PKG_VERSION"),
-        "interface": "server", "edition": crate::edition::NAME,
-        "build_features": if cfg!(feature = "platform") { vec!["essentials", "platform"] } else { vec!["essentials"] },
-        "permissions": ACTIONS.iter().filter(|(action, _)| crate::edition::action_available(action)).map(|(action, resource_kind)| json!({"action": action, "resource_kind": resource_kind})).collect::<Vec<_>>(),
-        "features": FEATURES.iter().copied().filter(|feature| cfg!(feature = "platform") || !PLATFORM_FEATURES.contains(feature)).collect::<Vec<_>>(),
-        "schemas": crate::schema::available_names(), "cli_result_schema": "riauth.cli/v1", "error_exit_codes": {"operation_failed": 1, "usage": 2, "authentication": 3, "permission": 4, "conflict": 5, "retryable": 6}})
+    crate::capability::artifact()
 }

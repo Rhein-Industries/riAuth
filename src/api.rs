@@ -324,7 +324,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/keys", get(key_domains).post(configure_key))
         .route(
             "/api/capabilities",
-            get(|| async { Json(crate::agent::capabilities()) }),
+            get(capabilities),
         )
         .route("/api/agents", get(list_agents).post(create_agent))
         .route("/api/agents/{id}", axum::routing::delete(revoke_agent))
@@ -1051,6 +1051,10 @@ pub(crate) fn bearer(headers: &HeaderMap) -> Result<String> {
         return Err(Error::unauthorized());
     }
     Ok(token.to_owned())
+}
+async fn capabilities(State(app): State<App>) -> Result<Json<Value>> {
+    app.run(|core| crate::capability::runtime(core).map(Json))
+        .await
 }
 async fn discovery(
     State(app): State<App>,

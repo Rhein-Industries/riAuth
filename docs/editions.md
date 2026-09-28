@@ -14,9 +14,9 @@ target/essentials/release/riauth --json capabilities
 target/platform/release/riauth --json capabilities
 ```
 
-Both builds run `riauth`; install only one on a deployment. The capability
-document includes `edition` and lists only features, permissions, and schemas
-exposed by that artifact. Essentials omits Platform HTTP routes, LDAP/RADIUS/proxy
+Both builds run `riauth`; install only one on a deployment. The local capability
+document includes `edition`, compiled features, permissions and schemas from
+that artifact. Essentials omits Platform HTTP routes, LDAP/RADIUS/proxy
 listeners and SSF delivery, rejects Platform configuration fields and client/source
 settings, and refuses to open stores containing known retained Platform resources or
 authority. Essentials also omits the temporary-access admin API and controls and
@@ -77,8 +77,10 @@ in the shared federation module. The direct SAML, RADIUS, proxy and certificate
 adapter dependencies are feature-gated; `md-5`, `sha1` and `x509-parser` still
 appear transitively in Essentials through shared PostgreSQL, TOTP and LDAP
 functionality. Complete module extraction and remaining durable-reference checks
-for downgrade remain A05 work. Configured/enabled/usable capability state is A06
-work. Native ARM64 release evidence and broader packaged integration gates remain
-A09/Q08 work. A capability name in this preview means the artifact exposes that
-operation; it does not assert that an external peer or runtime configuration has
-been verified.
+for downgrade remain A05 work. A06 now reports local feature states from the
+running instance and preflights device-trust policy references; per-instance
+profiles, complete activation switches and peer health remain A06 work. Native
+ARM64 release evidence and broader packaged integration gates remain A09/Q08
+work. The local binary reports `compiled_features` only; the running server's
+`features` list reports locally usable profiles. Neither asserts that an
+external peer is healthy or that a caller is authorized.

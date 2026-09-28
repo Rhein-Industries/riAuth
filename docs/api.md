@@ -241,7 +241,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 
 | Method | Route | Contract |
 | --- | --- | --- |
-| GET | `/api/capabilities` | Public versioned capabilities and permission/schema discovery |
+| GET | `/api/capabilities` | Public `riauth.capabilities/v2` instance snapshot: `features` contains only locally usable profiles; `feature_states` separates compiled, enabled, configured and usable with redacted reasons. Permissions and schemas remain build catalogs. External peer health and caller authorization are separate. |
 | GET, POST | `/api/users` | Visible users / create user |
 | PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset |
 | GET, POST | `/api/groups` | Visible groups / create group |

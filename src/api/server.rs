@@ -121,7 +121,12 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
 pub async fn serve(core: Core) -> anyhow::Result<()> {
     // No listener or worker starts on unreconciled restored state.
     let store = core.store.clone();
-    tokio::task::spawn_blocking(move || crate::recovery::require_serving(&store)).await??;
+    let config = core.config.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::capability::validate_store(&config, &store)?;
+        crate::recovery::require_serving(&store)
+    })
+    .await??;
     let config = core.config.clone();
     let _workers = start_workers(core.clone()).await?;
     serve_http(config, router(core)).await

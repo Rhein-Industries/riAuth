@@ -10,6 +10,7 @@ pub mod authenticator;
 pub mod authorization;
 pub mod bootstrap;
 pub mod browser;
+pub mod capability;
 pub mod claims;
 pub mod cli;
 #[cfg(feature = "platform")]

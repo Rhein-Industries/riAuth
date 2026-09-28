@@ -85,6 +85,18 @@
   transitions and maintenance. Direct TLS, RADIUS and SAML-only dependencies
   are selected by the additive Platform feature.
 
+# Unreleased capability state (A06)
+
+- The local `riauth capabilities` command now labels compiled artifact features
+  separately from usable instance features. The public `/api/capabilities`
+  response reports compiled, enabled, configured and locally usable state with
+  redacted reasons, and advertises only usable features.
+- `[capabilities].disabled` now accepts `identity.device_trust`. Startup rejects
+  a configured verifier while it is disabled and rejects any retained client
+  policy requiring device trust without an enabled valid verifier, including
+  nested conditional approved-device rules and disabled clients. Existing
+  request-time device proof checks remain in force.
+
 # Unreleased management changes
 
 - `PATCH /api/clients/{id}` and `riauth client update` now reject a settings
