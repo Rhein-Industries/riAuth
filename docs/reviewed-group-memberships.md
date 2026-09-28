@@ -72,14 +72,16 @@ replan. There is no implicit conversion of a connector or manifest plan into M05
 approval. The existing `OffboardMember` operation still immediately removes an
 already-disabled, identity-matched user under its exact user-write authority.
 
-Execution also records a durable per-person credential fence. M04 rejects later
-agent/help-desk credential takeover while that person retains reviewed membership;
-help-desk grants against the person become inactive. Every shared group removal,
-including SCIM offboarding, updates this fence. Removing a group from configuration
-does not erase a still-held reviewed membership's fence. The fence survives backup
-recovery with durable memberships; pending reviews are invalidated by recovery.
-Pre-existing memberships acquire this additional fence when their complete set is
-reviewed; this slice does not backfill old groups or change the existing PAM contract.
+M04 rejects agent/help-desk credential takeover of live members of currently
+protected groups, including memberships predating `reviewed_membership_groups` or
+`pam_approvers` activation. Existing help-desk grants against these members become
+inactive immediately, and new grants are refused, without a ledger backfill.
+Reviewed execution additionally records a durable per-person fence: removing a
+group from configuration does not erase a still-held reviewed membership's fence.
+Both checks require live membership; every shared group removal, including SCIM
+offboarding, updates the historical fence. It survives backup recovery with durable
+memberships; pending reviews are invalidated by recovery. The temporary PAM
+request/approval/grant contract is unchanged.
 
 This slice supports at most 128 current and proposed members per reviewed group,
 128 retained review records, and 128 reviewed groups per person. Larger protected
@@ -121,3 +123,24 @@ reviewer authority loss, idempotent receipts, single consumption/audit, reviewed
 revocation, post-execution credential protection, and SCIM offboarding. New Rust
 files passed formatting checks and `git diff --check` passed. No broad suite,
 browser automation or PostgreSQL execution was run for this slice.
+
+Credential-fence correction to held source `90920ba` (2026-09-28) threads the live
+configuration through every credential/invitation exposure caller and help-desk
+activation/binding. Its regression starts with ordinary membership and no holder
+row, activates each protection setting, and verifies denied scoped credential
+reset, rejected new help-desk binding, and inactive existing target grants with
+unchanged stored grants. It then verifies that a reviewed holder stays fenced
+after configuration removal, until live membership is removed. Unrelated ordinary
+accounts remain manageable. The existing review/replay and offboarding regression
+is retained unchanged.
+
+Using the same shared target and environment above, the correction passed only
+these focused test commands (including their builds):
+
+```text
+cargo test --locked --offline --test reviewed_memberships --test group_management
+cargo test --locked --offline --no-default-features --features essentials --test reviewed_memberships
+```
+
+Platform: 6 passed; Essentials: 2 passed. `git diff --check` and formatting checks
+for `management.rs` and `reviewed_memberships.rs` also passed.

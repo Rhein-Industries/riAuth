@@ -132,12 +132,15 @@ fn require_group_review(config: &Config, name: &str, reviewed: bool) -> Result<(
 
 const MEMBERSHIP_HOLDERS: &str = "reviewed_membership_holders";
 
-/// Durable M04 credential fence, retained across recovery with the memberships.
-/// Check the live group as well, so obsolete index entries cannot confer authority.
-pub(crate) fn has_reviewed_membership(tx: &Tx<'_>, user_id: &str) -> Result<bool> {
-    let groups = tx
+/// Fence live membership in currently protected groups, including membership
+/// predating configuration, and in historically reviewed groups after config removal.
+/// Obsolete holder entries alone cannot keep a former member fenced.
+pub(crate) fn has_reviewed_membership(config: &Config, tx: &Tx<'_>, user_id: &str) -> Result<bool> {
+    let mut groups = tx
         .get::<BTreeSet<String>>(MEMBERSHIP_HOLDERS, user_id)?
         .unwrap_or_default();
+    groups.extend(config.reviewed_membership_groups.iter().cloned());
+    groups.extend(config.pam_approvers.keys().cloned());
     for name in groups {
         if tx
             .get::<Group>("groups", &name)?
@@ -1189,10 +1192,10 @@ pub(crate) fn write_cloud_user(
 /// mutation transaction. The service rechecks exact user authority before
 /// validation, persistence, revocation and audit.
 pub(crate) fn create_user(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     input: NewUser,
-    password_history: u32,
 ) -> Result<Value> {
     actor.require("user.write", &format!("user/{}", input.username))?;
     if actor.agent && input.admin {
@@ -1201,7 +1204,7 @@ pub(crate) fn create_user(
     let user = make_user(input)?;
     crate::identity::password_history::record_imported_hash(
         tx,
-        password_history,
+        config.password_history,
         &user.id,
         "",
         &user.password_hash,
@@ -1215,7 +1218,7 @@ pub(crate) fn create_user(
         false,
     )?;
     if actor.agent {
-        crate::delegation::mark_credential_exposure(tx, actor, &user)?;
+        crate::delegation::mark_credential_exposure(config, tx, actor, &user)?;
     } else if !actor.delegated {
         crate::delegation::record_elevation_provenance(
             tx,
@@ -1227,11 +1230,11 @@ pub(crate) fn create_user(
 }
 
 pub(crate) fn update_user(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     username: &str,
     patch: UserPatch,
-    password_history: u32,
 ) -> Result<Value> {
     actor.require(
         if actor.delegated {
@@ -1269,7 +1272,7 @@ pub(crate) fn update_user(
                     .email_verified
                     .is_some_and(|verified| verified != previous.email_verified))
     {
-        crate::delegation::mark_credential_exposure(tx, actor, &previous)?;
+        crate::delegation::mark_credential_exposure(config, tx, actor, &previous)?;
     }
     if let Some(password) = patch.password {
         if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
@@ -1280,7 +1283,7 @@ pub(crate) fn update_user(
         let hashed = crypto::password_hash(&password)?;
         crate::identity::password_history::accept(
             tx,
-            password_history,
+            config.password_history,
             &user.id,
             &user.password_hash,
             &password,
@@ -1513,11 +1516,11 @@ fn user_version_changed(tx: &Tx<'_>, resource: &str, version: &Option<String>) -
 /// This writer owns user authority, identity binding, credential changes,
 /// persistence and revocation inside that same transaction.
 pub(crate) fn write_desired_user(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     spec: &UserSpec,
     secrets: &std::collections::BTreeMap<String, String>,
-    password_history: u32,
     preview: bool,
 ) -> Result<Option<Change>> {
     let resource = format!("user/{}", spec.username);
@@ -1631,7 +1634,7 @@ pub(crate) fn write_desired_user(
                 crypto::validate_imported_hash(desired_secret(secrets, &spec.password_hash_ref)?)?;
             crate::identity::password_history::record_imported_hash(
                 tx,
-                password_history,
+                config.password_history,
                 &user.id,
                 &user.password_hash,
                 &imported,
@@ -1642,7 +1645,7 @@ pub(crate) fn write_desired_user(
             let hashed = crypto::password_hash(plaintext)?;
             crate::identity::password_history::accept(
                 tx,
-                password_history,
+                config.password_history,
                 &user.id,
                 &user.password_hash,
                 plaintext,
@@ -1682,7 +1685,7 @@ pub(crate) fn write_desired_user(
             })
             || existing.is_none() && user.email_verified)
     {
-        crate::delegation::mark_credential_exposure(tx, actor, &exposure_baseline)?;
+        crate::delegation::mark_credential_exposure(config, tx, actor, &exposure_baseline)?;
     }
     write_user_record(tx, actor, existing.as_ref(), &user, UserRecord::Plan, false)?;
     if existing.is_none() && !preview && !actor.agent && !actor.delegated {
@@ -1734,7 +1737,7 @@ pub(crate) fn invite_user(
         if actor.agent {
             // The inviter selects the mailbox, so completing its proof does
             // not independently establish the account owner's identity.
-            crate::delegation::mark_invitation_exposure(tx, actor, &user)?;
+            crate::delegation::mark_invitation_exposure(&core.config, tx, actor, &user)?;
         }
         user.email = Some(input.email);
         user.display_name = input.display_name;
@@ -1763,7 +1766,7 @@ pub(crate) fn invite_user(
     tx.put("users", &user.id, &user)?;
     tx.put("usernames", &user.username, &user.id)?;
     if actor.agent {
-        crate::delegation::mark_invitation_exposure(tx, actor, &user)?;
+        crate::delegation::mark_invitation_exposure(&core.config, tx, actor, &user)?;
     } else if !actor.delegated {
         crate::delegation::record_elevation_provenance(
             tx,
@@ -1818,7 +1821,7 @@ pub(crate) fn accept_invitation(
     actor.require("user.write", &format!("user/{}", user.username))?;
     // Also fence invitations issued before agent provenance was recorded.
     if actor.agent {
-        crate::delegation::mark_invitation_exposure(tx, actor, user)?;
+        crate::delegation::mark_invitation_exposure(config, tx, actor, user)?;
     }
     for name in groups {
         write_group(

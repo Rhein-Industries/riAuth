@@ -194,7 +194,7 @@ impl Core {
                 return Ok(existing.view());
             }
             if actor.agent {
-                crate::delegation::mark_credential_exposure(tx, &actor, &user)?;
+                crate::delegation::mark_credential_exposure(&self.config, tx, &actor, &user)?;
             }
             if let Some(existing) = &existing {
                 end_binding_sessions(tx, &existing.id)?;
@@ -255,7 +255,7 @@ impl Core {
                 return Err(Error::forbidden());
             }
             if actor.agent {
-                crate::delegation::mark_credential_exposure(tx, &actor, &user)?;
+                crate::delegation::mark_credential_exposure(&self.config, tx, &actor, &user)?;
             }
             end_binding_sessions(tx, &binding.id)?;
             clear_binding(tx, &binding)?;

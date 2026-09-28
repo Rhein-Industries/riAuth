@@ -1497,6 +1497,7 @@ impl Core {
                 }
                 if actor.agent && credential_change {
                     crate::delegation::mark_credential_exposure(
+                        &self.config,
                         tx,
                         &actor,
                         &exposure_baseline,

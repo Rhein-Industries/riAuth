@@ -784,11 +784,11 @@ fn reconcile(
     let mut changes = Vec::new();
     for spec in &manifest.users {
         if let Some(change) = crate::management::write_desired_user(
+            &core.config,
             tx,
             actor,
             spec,
             secrets,
-            core.config.password_history,
             preview,
         )? {
             changes.push(change);

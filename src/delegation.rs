@@ -151,15 +151,20 @@ pub(crate) fn credential_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<C
 }
 
 /// Called by every scoped third-party credential writer in its user mutation.
-/// A credential change after a human grant would immediately transfer that
-/// person's delegated authority to the operator, so it must be refused.
-pub(crate) fn mark_credential_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
+/// A credential change after a human grant or protected membership would transfer
+/// that person's authority to the operator, so it must be refused.
+pub(crate) fn mark_credential_exposure(
+    config: &Config,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    user: &User,
+) -> Result<()> {
     if actor.id == user.id {
         return Ok(());
     }
     if user.admin
         || !stored(tx, &user.id)?.is_empty()
-        || crate::management::has_reviewed_membership(tx, &user.id)?
+        || crate::management::has_reviewed_membership(config, tx, &user.id)?
     {
         return Err(Error::forbidden());
     }
@@ -195,10 +200,15 @@ pub(crate) fn mark_credential_exposure(tx: &Tx<'_>, actor: &Principal, user: &Us
 /// An invitation's recipient was selected by its inviter. Its verification
 /// flag cannot establish an independent recovery address, including on old
 /// pending rows that predate the exposure marker.
-pub(crate) fn mark_invitation_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
+pub(crate) fn mark_invitation_exposure(
+    config: &Config,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    user: &User,
+) -> Result<()> {
     let mut unverified = user.clone();
     unverified.email_verified = false;
-    mark_credential_exposure(tx, actor, &unverified)
+    mark_credential_exposure(config, tx, actor, &unverified)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -281,7 +291,9 @@ pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<
                                         .values()
                                         .any(|names| names.contains(name))
                                     && stored(tx, &user.id)?.is_empty()
-                                    && !crate::management::has_reviewed_membership(tx, &user.id)?
+                                    && !crate::management::has_reviewed_membership(
+                                        config, tx, &user.id,
+                                    )?
                             } else {
                                 false
                             }
@@ -339,7 +351,7 @@ pub(crate) fn bind(
                     .values()
                     .any(|names| names.contains(name))
                 || !stored(tx, &target.id)?.is_empty()
-                || crate::management::has_reviewed_membership(tx, &target.id)?
+                || crate::management::has_reviewed_membership(config, tx, &target.id)?
             {
                 return Err(Error::forbidden());
             }

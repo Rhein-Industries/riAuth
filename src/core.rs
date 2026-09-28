@@ -502,19 +502,13 @@ impl Core {
     pub fn create_user(&self, token: &str, input: NewUser) -> Result<Value> {
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
-            crate::management::create_user(tx, &actor, input, self.config.password_history)
+            crate::management::create_user(&self.config, tx, &actor, input)
         })
     }
     pub fn update_user(&self, token: &str, username: &str, patch: UserPatch) -> Result<Value> {
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
-            crate::management::update_user(
-                tx,
-                &actor,
-                username,
-                patch,
-                self.config.password_history,
-            )
+            crate::management::update_user(&self.config, tx, &actor, username, patch)
         })
     }
     pub fn list_groups(&self, token: &str) -> Result<Value> {

@@ -9,6 +9,7 @@ use http_body_util::BodyExt;
 use riauth::{
     agent::{NewAgent, Permission},
     core::Core,
+    delegation::{GrantInput, HumanRole},
     error::Result,
     model::{Group, GroupChangeBinding, GroupMembershipInput, NewUser, UserPatch},
 };
@@ -34,6 +35,182 @@ fn administrator(f: &Fixture, username: &str) -> String {
         .as_str()
         .unwrap()
         .into()
+}
+
+#[test]
+fn membership_credential_fence_covers_config_activation_and_historical_holders() {
+    let mut f = Fixture::new();
+    let reviewer = administrator(&f, "reviewer");
+    let executor = administrator(&f, "executor");
+    for name in ["bob", "ordinary", "added", "new-support"] {
+        f.user(name);
+    }
+    let support = f.user("support");
+    let help_desk = |name: &str| GrantInput {
+        role: HumanRole::HelpDesk,
+        scope: format!("user/{name}"),
+    };
+    f.core.create_group(&f.admin, "protected").unwrap();
+    f.core
+        .group_member(&f.admin, "protected", "bob", true)
+        .unwrap();
+    let bob: String = f.core.store.get("usernames", "bob").unwrap().unwrap();
+    let holders = || {
+        f.core
+            .store
+            .get::<Vec<String>>("reviewed_membership_holders", &bob)
+            .unwrap()
+    };
+    assert_eq!(holders(), None); // Ordinary membership predates protection and any review.
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "support",
+            vec![help_desk("bob"), help_desk("ordinary")],
+        )
+        .unwrap();
+    let stored_grants = f.core.human_grants(&f.admin, "support").unwrap();
+    assert_eq!(
+        f.core
+            .list_users(&support)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let scoped = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "scoped-credentials".into(),
+                ttl: 600,
+                parent: None,
+                permissions: ["bob", "ordinary"]
+                    .iter()
+                    .map(|name| Permission {
+                        action: "user.write".into(),
+                        resource: format!("user/{name}"),
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let assert_fenced = |f: &Fixture| {
+        for token in [&scoped, &support] {
+            refused(
+                f,
+                || {
+                    f.core.update_user(
+                        token,
+                        "bob",
+                        UserPatch {
+                            password: Some("operator-chosen-password-2026".into()),
+                            reset_mfa: true,
+                            ..Default::default()
+                        },
+                    )
+                },
+                403,
+            );
+        }
+        refused(
+            f,
+            || {
+                f.core
+                    .set_human_grants(&f.admin, "new-support", vec![help_desk("bob")])
+            },
+            403,
+        );
+        // The existing grant remains stored but inactive only for the protected target.
+        assert_eq!(
+            f.core.human_grants(&f.admin, "support").unwrap(),
+            stored_grants
+        );
+        let visible = f.core.list_users(&support).unwrap();
+        assert_eq!(visible.as_array().unwrap().len(), 1);
+        assert_eq!(visible[0]["username"], "ordinary");
+    };
+
+    let before = f.snapshot().unwrap();
+    f.core
+        .config
+        .reviewed_membership_groups
+        .insert("protected".into());
+    f.core.config.validate().unwrap();
+    f.assert_snapshot(&before); // Config activation does not require a ledger backfill.
+    assert_fenced(&f);
+    assert_eq!(holders(), None);
+    // An unrelated ordinary account still permits scoped credential maintenance.
+    f.core
+        .update_user(
+            &scoped,
+            "ordinary",
+            UserPatch {
+                reset_mfa: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    #[cfg(feature = "platform")]
+    {
+        f.core.config.reviewed_membership_groups.clear();
+        // Bob is a member, not a named PAM approver: the group itself supplies the fence.
+        f.core
+            .config
+            .pam_approvers
+            .insert("protected".into(), ["reviewer".into()].into());
+        f.core.config.validate().unwrap();
+        assert_fenced(&f);
+        assert_eq!(holders(), None);
+        f.core.config.pam_approvers.clear();
+        f.core
+            .config
+            .reviewed_membership_groups
+            .insert("protected".into());
+    }
+
+    // A distinct author/reviewer/executor reviews the complete set, including retained Bob.
+    let change = approved(&f, &reviewer, "protected", &["bob", "added"]);
+    f.core
+        .execute_group_membership_change(&executor, id(&change), binding(&change))
+        .unwrap();
+    assert_eq!(holders(), Some(vec!["protected".into()]));
+    f.core.config.reviewed_membership_groups.clear();
+    f.core.config.validate().unwrap();
+    assert_fenced(&f); // Historical live membership survives removal of all protection config.
+
+    f.core
+        .group_member(&f.admin, "protected", "bob", false)
+        .unwrap();
+    assert_eq!(holders(), None);
+    assert_eq!(
+        f.core
+            .list_users(&support)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    f.core
+        .set_human_grants(&f.admin, "new-support", vec![help_desk("bob")])
+        .unwrap();
+    f.core
+        .update_user(
+            &scoped,
+            "bob",
+            UserPatch {
+                reset_mfa: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
 }
 
 fn revision(core: &Core) -> u64 {
