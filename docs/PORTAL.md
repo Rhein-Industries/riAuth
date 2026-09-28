@@ -4,7 +4,7 @@ Open `<issuer>/apps` in a browser. The server embeds the HTML, CSS, JavaScript a
 
 The portal includes a responsive application grid, list view, name/description/category search, category filters and favorites. Favorites and view preferences are saved locally per account and issuer path. Only application IDs and the view choice are stored; removing access also removes an app from the active favorite list. Storage is optional, so private browsing still works.
 
-The applications and administration shells use `GET /api/capabilities` from the running instance to present usable actions. The same browser assets serve Essentials and Platform; server authorization remains in force for every action. Set `browser_ui = false` explicitly in the server configuration for an API-only deployment. This removes embedded browser pages and assets, including the first-run setup page; `/api/setup`, management and portal JSON APIs, and OIDC routes remain mounted. Interactive OIDC approval requires a browser-enabled instance.
+The applications, administration, sessions and consent, and OIDC/SAML interaction pages use `GET /api/capabilities` from the running instance to present usable actions. The same browser assets serve Essentials and Platform; server authorization remains in force for every action. Set `browser_ui = false` explicitly in the server configuration for an API-only deployment. This removes embedded browser pages and assets, including the first-run setup page; `/api/setup`, management and portal JSON APIs, and OIDC routes remain mounted. Interactive OIDC approval requires a browser-enabled instance.
 
 ## Sign in
 

@@ -480,8 +480,10 @@ async fn resume_page_has_strict_headers_no_refresh_and_no_coop() {
     );
     let html = &page.text;
     assert!(html.contains("<script src=\"/portal/assets/auth.js\" defer></script>"));
+    assert!(html.contains("<script src=\"/portal/assets/capabilities.js\" defer></script>"));
     assert!(html.contains("<script src=\"/portal/assets/signin.js\" defer></script>"));
-    assert_eq!(html.matches("<script").count(), 2, "no inline script");
+    assert_eq!(html.matches("<script").count(), 3, "no inline script");
+    assert!(html.contains("data-capability=\"identity.passkeys\""));
     assert!(!html.contains("style="), "no inline style");
     for placeholder in ["__BASE__", "__CODE__", "__COMMAND__"] {
         assert!(!html.contains(placeholder));
@@ -504,6 +506,16 @@ async fn resume_page_has_strict_headers_no_refresh_and_no_coop() {
     }
     let script = call(&app, get("/portal/assets/signin.js", "*/*", &[])).await;
     assert_eq!(script.status, StatusCode::OK);
+    let capabilities = call(&app, get("/portal/assets/capabilities.js", "*/*", &[])).await;
+    assert_eq!(capabilities.status, StatusCode::OK);
+    let account = call(&app, get("/account/security", "text/html", &[])).await;
+    assert_eq!(account.status, StatusCode::OK);
+    assert!(account.text.contains("/portal/assets/capabilities.js"));
+    assert!(account.text.contains("data-capability=\"audit.self_hosted_event_map\""));
+    let admin_sso = browser(&f, "admin");
+    let overview = call(&app, get("/api/portal/security", "application/json", &[("riauth_sso", &admin_sso)])).await;
+    assert_eq!(overview.status, StatusCode::OK);
+    assert_eq!(overview.body["user"]["admin"], true);
     assert_eq!(
         script.header("content-type"),
         Some("text/javascript; charset=utf-8")

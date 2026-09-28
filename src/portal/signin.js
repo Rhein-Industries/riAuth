@@ -27,7 +27,15 @@
   const noun = page?.kind === "logout" ? "sign-out request" : "sign-in request";
   // `generation` discards state fetched while a user action was in flight.
   let state = null, current = "loading", generation = 0, acting = 0, loading = false, again = false, leaving = false;
-  let pollTimer, messageAction = null, flow = null, flowKey = null, passkeyAttempt = 0;
+  let pollTimer, messageAction = null, flow = null, flowKey = null, passkeyAttempt = 0, capabilitiesReady = false;
+
+  async function refreshCapabilities() {
+    await RiAuthCapabilities.refresh().catch(() => {});
+    capabilitiesReady = true;
+    const passkeyAvailable = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
+    $("signin-passkey").hidden = $("signin-divider").hidden = !passkeyAvailable;
+    RiAuthCapabilities.apply();
+  }
 
   const app = () => state?.application?.name || "the application";
   // Polling continues while the request can still change: open screens, and a request only
@@ -46,8 +54,8 @@
   // The terminal panel is one element, placed in whichever screen offers it.
   function terminal(section, before) {
     const panel = $("signin-terminal"), info = state?.terminal;
-    panel.hidden = !section || !info;
-    if (!section || !info) return;
+    panel.hidden = !section || !info || !RiAuthCapabilities.usable("portal.terminal_sign_in");
+    if (panel.hidden) return;
     if (panel.parentElement !== $(section)) $(section).insertBefore(panel, before ? $(before) : null);
     $("signin-code").textContent = info.user_code;
     const command = page.kind === "logout" ? "logout-request approve" : "request approve";
@@ -59,7 +67,7 @@
   }
   function showError(id, text, portal = false) {
     $(id).replaceChildren(text);
-    if (portal) {
+    if (portal && RiAuthCapabilities.usable("portal.user_applications")) {
       const link = document.createElement("a");
       link.href = `${base}apps`; link.textContent = "Open your applications portal";
       $(id).append(" ", link);
@@ -72,7 +80,7 @@
     clearError("message-error");
     messageAction = action?.run ?? null;
     $("message-action").textContent = action?.label ?? ""; $("message-action").hidden = !action;
-    $("message-link").hidden = !link; $("signin-expiry").hidden = true;
+    $("message-link").hidden = !link || !RiAuthCapabilities.usable("portal.user_applications"); $("signin-expiry").hidden = true;
     show("message", title);
   }
   function expired() {
@@ -83,7 +91,7 @@
 
   // State: fetched on load, on return to the tab and while polling (F21).
   async function load() {
-    if (!page || acting || leaving) return;
+    if (!page || !capabilitiesReady || acting || leaving) return;
     if (loading) { again = true; return; }
     loading = true; stop();
     const at = generation;
@@ -163,7 +171,7 @@
     const mfa = next.requirements?.mfa === true;
     $("signin-otp").required = mfa;
     $("signin-requirement").hidden = !mfa;
-    $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code. No passkey yet?`;
+    $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code.`;
     $("signin-cancel").textContent = `Cancel and return to ${app()}`;
     const key = `${next.pinned}:${next.session_ref}`;
     if (flowKey !== key) {
@@ -339,10 +347,11 @@
   $("signin-terminal").addEventListener("toggle", () => { if ($("signin-terminal").open) load(); else schedule(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); else stop(); });
   window.addEventListener("focus", () => load());
-  window.addEventListener("pageshow", (event) => { if (event.persisted) { leaving = false; load(); } });
+  window.addEventListener("pageshow", (event) => { if (event.persisted) { leaving = false; refreshCapabilities().then(load); } });
   setInterval(() => { if (waiting()) expiry(); }, 30000);
 
-  $("signin-passkey").hidden = $("signin-divider").hidden = !RiAuth.passkeysAvailable();
-  if (page) load();
-  else message("This link isn't valid", "Return to the application and try again.", { link: true });
+  refreshCapabilities().then(() => {
+    if (page) load();
+    else message("This link isn't valid", "Return to the application and try again.", { link: true });
+  });
 })();

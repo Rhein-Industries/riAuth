@@ -62,7 +62,7 @@ impl Core {
                     .then_with(|| a["id"].as_str().cmp(&b["id"].as_str()))
             });
             Ok(json!({
-                "user":{"id":user.id,"username":user.username,"display_name":user.display_name},
+                "user":{"id":user.id,"username":user.username,"display_name":user.display_name,"admin":user.admin},
                 "current_session_id":current.id,
                 "sessions":sessions,
                 "consents":consents_for_user(tx, &user.id)?,

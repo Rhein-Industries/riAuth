@@ -29,6 +29,7 @@
   }
   function signedOut(message) {
     snapshot = null;
+    $("security-admin-link").hidden = $("security-events-link").hidden = true;
     $("loading").hidden = $("security-content").hidden = true;
     $("signed-out").hidden = false;
     if (message) showStatus(message); else $("status").hidden = true;
@@ -44,6 +45,8 @@
   }
   function render(data) {
     snapshot = data;
+    $("security-admin-link").hidden = data.user.admin !== true;
+    $("security-events-link").hidden = data.user.admin !== true || !RiAuthCapabilities.usable("audit.self_hosted_event_map");
     $("loading").hidden = $("signed-out").hidden = true;
     $("security-content").hidden = false;
     $("account-line").textContent = `Signed in as ${data.user.display_name} (@${data.user.username})`;
@@ -51,9 +54,10 @@
     $("verify-hint").textContent = data.browser_owned
       ? "Sign in again in this browser before changing sessions or consent. Then choose your action again."
       : "This browser shares a terminal sign-in. Confirm with a passkey or password here first; your terminal sign-in remains available until you revoke it.";
-    $("verify-passkey").hidden = !RiAuth.passkeysAvailable();
+    const passkeyAvailable = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
+    $("verify-passkey").hidden = !passkeyAvailable;
     $("verify-form").hidden = !data.password_available;
-    if (!data.password_available && !RiAuth.passkeysAvailable()) {
+    if (!data.password_available && !passkeyAvailable) {
       $("verify-hint").textContent = "This account has no browser sign-in method available here. Use an enrolled passkey in a supported browser, or contact your administrator.";
     }
     $("verify-error").hidden = true;
@@ -87,12 +91,14 @@
     });
     $("consent-list").replaceChildren(...consents);
     $("consents-empty").hidden = consents.length > 0;
+    RiAuthCapabilities.apply();
   }
   async function load() {
     const mine = ++generation;
     $("status").hidden = true;
     $("loading").hidden = false;
     try {
+      await RiAuthCapabilities.refresh().catch(() => {});
       const data = await RiAuth.get("api/portal/security");
       if (mine === generation) { render(data); await loadProviders(); }
     } catch (error) {

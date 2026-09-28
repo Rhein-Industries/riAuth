@@ -2364,11 +2364,14 @@ async fn portal_page_and_auth_asset_stay_offline() {
     let auth = page
         .find(r#"<script src="/identity/portal/assets/auth.js" defer></script>"#)
         .unwrap();
+    let capabilities = page
+        .find(r#"<script src="/identity/portal/assets/capabilities.js" defer></script>"#)
+        .unwrap();
     let script = page
         .find(r#"<script src="/identity/portal/assets/app.js" defer></script>"#)
         .unwrap();
-    assert!(auth < script, "auth.js loads before app.js");
-    assert_eq!(page.matches("<script").count(), 2, "no inline script");
+    assert!(auth < capabilities && capabilities < script, "shared helpers load before app.js");
+    assert_eq!(page.matches("<script").count(), 3, "no inline script");
     assert!(page.contains(r#"src="/identity/portal/assets/riauth-mark.svg""#));
     for id in [
         "auth-error",

@@ -1,5 +1,6 @@
 .security-shell{max-width:1040px;margin:0 auto;padding:0 28px 56px}
 .security-header{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:86px;border-bottom:1px solid var(--line)}
+.security-navigation{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
 .security-brand{display:inline-flex;align-items:center;gap:7px;text-decoration:none;font-size:23px;font-weight:750;letter-spacing:-1.1px}.security-brand span{font-weight:450}.security-brand img{width:37px;height:37px}
 .security-shell main{max-width:none;padding:36px 0 0}.security-intro{color:var(--muted);font-size:13px;line-height:1.7;margin:12px 0 30px}.security-shell h1{font-size:32px}
 .security-card{padding:25px 27px;margin:17px 0;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 3px 10px #25334705}
