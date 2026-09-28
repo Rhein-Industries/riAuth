@@ -2563,6 +2563,60 @@ fn workspace_resumes_interrupted_plan_and_apply_pages_without_removal() {
 }
 
 #[test]
+fn workspace_quotas_bind_plan_continuation_and_apply() {
+    let (directory, mut fixture) = linked_pair("workspace");
+    let old = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    fixture.core.config.reconciliation_quotas.cloud.pages_per_call = 6;
+    assert!(fixture.core.config.validate().is_err());
+    fixture.core.config.reconciliation_quotas.cloud.pages_per_call = 1;
+    fixture.core.config.reconciliation_quotas.cloud.max_pages_per_collection = 1;
+    fixture.core.config.reconciliation_quotas.cloud.max_objects = 3;
+    fixture.core.config.reconciliation_quotas.cloud.max_snapshot_bytes = 65536;
+    fixture.core.config.reconciliation_quotas.cloud.max_page_bytes = 65537;
+    assert!(fixture.core.config.validate().is_err());
+    fixture.core.config.reconciliation_quotas.cloud.max_page_bytes = 4096;
+    fixture.core.config.validate().unwrap();
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+
+    let progress = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    assert_eq!(progress["decision"], "snapshot_in_progress");
+    assert_eq!(progress["pages"], 1);
+    assert_eq!(fixture.core.cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap_err().code, "connector_incomplete_snapshot");
+    assert_eq!(fixture.core.cloud_apply(&fixture.admin, "workspace", old["id"].as_str().unwrap())
+        .unwrap_err().code, "conflict");
+
+    fixture.core.config.reconciliation_quotas.cloud.max_pages_per_collection = 20;
+    let mut plan = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    assert_eq!(plan["restart"], true);
+    for _ in 0..8 {
+        if plan["decision"] != "snapshot_in_progress" { break; }
+        plan = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    }
+    let id = plan["id"].as_str().unwrap();
+    let users_before = users_of(&fixture);
+    let apply = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+    assert_eq!(apply["decision"], "snapshot_in_progress");
+    assert_eq!(apply["pages"], 1);
+    assert_eq!(users_of(&fixture), users_before);
+
+    fixture.core.config.reconciliation_quotas.cloud.max_objects = 1;
+    fixture.core.config.validate().unwrap();
+    assert_eq!(fixture.core.cloud_apply(&fixture.admin, "workspace", id)
+        .unwrap_err().code, "conflict");
+    assert_eq!(users_of(&fixture), users_before);
+    fixture.core.config.reconciliation_quotas.cloud.max_objects = 3;
+    let mut applied = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+    for _ in 0..8 {
+        if applied["decision"] != "snapshot_in_progress" { break; }
+        applied = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+    }
+    assert_eq!(applied["applied"], true);
+    assert!(fixture.core.store.list::<Value>("cloud_directory_apply_snapshots")
+        .unwrap().is_empty());
+}
+
+#[test]
 fn entra_controller_rejects_repeated_resume_and_waits_for_complete_source() {
     let (directory, mut fixture) = linked_pair("entra");
     *directory.state.people.lock().unwrap() = vec![

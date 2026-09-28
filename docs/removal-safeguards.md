@@ -8,6 +8,55 @@ Outbound SCIM, LDAP, Workspace, Entra and desired state have explicit
 controller modes. A mode alone does not install a schedule; an explicit scoped
 controller declaration does.
 
+## Source crawl quotas
+
+The optional instance-wide quota policy applies to LDAP planning and apply
+validation, and to Workspace and Entra planning and apply validation. Omitted
+values retain the conservative defaults. Overrides may only lower a bound:
+
+```toml
+[reconciliation_quotas.ldap]
+pages_per_call = 2
+max_pages_per_search = 10
+max_users = 1000
+max_snapshot_bytes = 2097152
+draft_ttl_seconds = 180
+
+[reconciliation_quotas.cloud]
+pages_per_call = 2
+max_pages_per_collection = 10
+max_objects = 1000
+max_page_bytes = 524288
+max_snapshot_bytes = 2097152
+draft_ttl_seconds = 180
+```
+
+| Quota | Default and maximum | Minimum |
+| --- | ---: | ---: |
+| LDAP `pages_per_call` | 4 | 1 |
+| LDAP `max_pages_per_search` | 20 | 1 |
+| LDAP `max_users` (also rows per group search) | 2,000 | 1 |
+| LDAP `max_snapshot_bytes` | 4,194,304 | 65,536 |
+| Cloud `pages_per_call` | 5 | 1 |
+| Cloud `max_pages_per_collection` | 20 | 1 |
+| Cloud `max_objects` (all returned object types per collection) | 2,000 | 1 |
+| Cloud `max_page_bytes` (source response) | 1,048,576 | 4,096 |
+| Cloud `max_snapshot_bytes` | 4,194,304 | 65,536 |
+| Both `draft_ttl_seconds` | 300 | 30 |
+
+Cloud `max_page_bytes` cannot exceed `max_snapshot_bytes`. Invalid or unknown
+fields reject configuration. The current policy is bound into each source
+fingerprint: changing it restarts an in-progress plan crawl and rejects an old
+plan at apply, including a partially completed apply crawl. Each resumed call
+enforces the current policy before saving another page. A quota reached before
+source completion is an incomplete snapshot, never an empty source or removal
+authorization. LDAP and cloud still cap a wire page at 200 rows. LDAP paged
+cookies remain limited to 4,096 bytes; Workspace tokens to 2,048 bytes and
+Graph next links to 8,192 bytes; token responses retain a fixed 1 MiB cap. The 30-second per-call source budget, 5-second
+LDAP step timeout, five-minute plan expiry and 7 MiB plan-record cap remain
+fixed. LDAP paged results and cloud list pagination do not provide a remote
+point-in-time snapshot across calls.
+
 `[ldap_reconciliation_modes]`, `[workspace_reconciliation_modes]`,
 `[entra_reconciliation_modes]` and `[scim_reconciliation_modes]` map configured
 connector IDs to `manual-review`, `guarded-automatic` or `automatic`. Omitted

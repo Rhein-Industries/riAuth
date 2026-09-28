@@ -57,6 +57,9 @@ pub struct Config {
     /// Platform workflow definitions; only active entries may start new runs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub workflows: BTreeMap<String, crate::workflow::ConfiguredWorkflow>,
+    /// Instance-wide, downward-only bounds for directory planning and apply crawls.
+    #[serde(default, skip_serializing_if = "ReconciliationQuotas::is_default")]
+    pub reconciliation_quotas: ReconciliationQuotas,
     #[serde(default)]
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
@@ -263,6 +266,102 @@ impl BackupConfig {
     }
 }
 
+/// Operator bounds for durable LDAP and cloud source crawls. Defaults preserve
+/// the original fixed limits; overrides may only tighten those limits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReconciliationQuotas {
+    pub ldap: LdapReconciliationQuota,
+    pub cloud: CloudReconciliationQuota,
+}
+
+impl ReconciliationQuotas {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+    pub fn validate(&self) -> Result<()> {
+        self.ldap.validate()?;
+        self.cloud.validate()?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LdapReconciliationQuota {
+    pub pages_per_call: usize,
+    pub max_pages_per_search: usize,
+    pub max_users: usize,
+    pub max_snapshot_bytes: usize,
+    pub draft_ttl_seconds: u64,
+}
+
+impl Default for LdapReconciliationQuota {
+    fn default() -> Self {
+        Self {
+            pages_per_call: 4,
+            max_pages_per_search: 20,
+            max_users: 2_000,
+            max_snapshot_bytes: 4 * 1024 * 1024,
+            draft_ttl_seconds: 300,
+        }
+    }
+}
+
+impl LdapReconciliationQuota {
+    pub fn validate(&self) -> Result<()> {
+        if !(1..=4).contains(&self.pages_per_call)
+            || !(1..=20).contains(&self.max_pages_per_search)
+            || !(1..=2_000).contains(&self.max_users)
+            || !(64 * 1024..=4 * 1024 * 1024).contains(&self.max_snapshot_bytes)
+            || !(30..=300).contains(&self.draft_ttl_seconds)
+        {
+            bail!("LDAP reconciliation quotas must be pages_per_call 1..4, max_pages_per_search 1..20, max_users 1..2000, max_snapshot_bytes 65536..4194304, and draft_ttl_seconds 30..300");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CloudReconciliationQuota {
+    pub pages_per_call: usize,
+    pub max_pages_per_collection: usize,
+    pub max_objects: usize,
+    pub max_page_bytes: usize,
+    pub max_snapshot_bytes: usize,
+    pub draft_ttl_seconds: u64,
+}
+
+impl Default for CloudReconciliationQuota {
+    fn default() -> Self {
+        Self {
+            pages_per_call: 5,
+            max_pages_per_collection: 20,
+            max_objects: 2_000,
+            max_page_bytes: 1024 * 1024,
+            max_snapshot_bytes: 4 * 1024 * 1024,
+            draft_ttl_seconds: 300,
+        }
+    }
+}
+
+impl CloudReconciliationQuota {
+    pub fn validate(&self) -> Result<()> {
+        if !(1..=5).contains(&self.pages_per_call)
+            || !(1..=20).contains(&self.max_pages_per_collection)
+            || !(1..=2_000).contains(&self.max_objects)
+            || !(4 * 1024..=1024 * 1024).contains(&self.max_page_bytes)
+            || !(64 * 1024..=4 * 1024 * 1024).contains(&self.max_snapshot_bytes)
+            || self.max_page_bytes > self.max_snapshot_bytes
+            || !(30..=300).contains(&self.draft_ttl_seconds)
+        {
+            bail!("Cloud reconciliation quotas must be pages_per_call 1..5, max_pages_per_collection 1..20, max_objects 1..2000, max_page_bytes 4096..1048576, max_snapshot_bytes 65536..4194304 (at least max_page_bytes), and draft_ttl_seconds 30..300");
+        }
+        Ok(())
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -282,6 +381,7 @@ impl Default for Config {
             state_reconciliation_mode: Default::default(),
             reconciliation_controllers: BTreeMap::new(),
             workflows: BTreeMap::new(),
+            reconciliation_quotas: ReconciliationQuotas::default(),
             signers: Default::default(),
             postgres: None,
             mail: None,
@@ -440,6 +540,7 @@ impl Config {
                 bail!("Configured workflow {name} has no executable adapter");
             }
         }
+        self.reconciliation_quotas.validate()?;
         if self.signers.len() > 32 {
             bail!("Configure at most 32 external signing key versions");
         }

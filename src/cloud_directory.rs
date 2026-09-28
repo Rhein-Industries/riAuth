@@ -9,6 +9,7 @@ use crate::{
         ApplyGate, Pagination, ReconciliationMode, ReviewBinding, plan_content, reconcile_plan,
         require_backup_safe_record,
     },
+    config::CloudReconciliationQuota,
     core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -32,18 +33,14 @@ use zeroize::{Zeroize, Zeroizing};
 
 const RETRY_LIMIT: u32 = 5;
 const RETRY_WINDOW: u64 = 900;
-const MAX_PAGES: usize = 20;
-const MAX_OBJECTS: usize = 2000;
-const MAX_PAGE_BYTES: usize = 1024 * 1024;
-const MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
+const MAX_TOKEN_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_PROBE_RESPONSE_BYTES: usize = 1024 * 1024;
 const SYNC_BUDGET: Duration = Duration::from_secs(30);
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.user.readonly";
 const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
 const GOOGLE_MEMBER_READ: &str =
     "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
-const CLOUD_PAGES_PER_PLAN_CALL: usize = 5;
-const CLOUD_SNAPSHOT_SECONDS: u64 = 300;
 const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
 const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
 const CLOUD_APPLY_SNAPSHOTS: &str = "cloud_directory_apply_snapshots";
@@ -365,6 +362,7 @@ struct Settings {
     username_prefix: String,
     fingerprint: String,
     identity_fingerprint: String,
+    quota: CloudReconciliationQuota,
 }
 impl Settings {
     fn resource(&self) -> String {
@@ -387,6 +385,14 @@ fn fingerprint_of(kind: &str, value: &impl Serialize) -> Result<String> {
         "{kind}\0{}",
         serde_json::to_string(value).map_err(Error::internal)?
     )))
+}
+
+fn quota_fingerprint(base: String, quota: CloudReconciliationQuota) -> Result<String> {
+    if quota == CloudReconciliationQuota::default() {
+        Ok(base)
+    } else {
+        crate::connector_guard::hash(&(base, quota))
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -551,7 +557,7 @@ fn access_token(
         );
         return Err(unavailable("Cloud directory credential request failed"));
     }
-    let bytes = read_body(response)?;
+    let bytes = read_body(response, MAX_TOKEN_RESPONSE_BYTES)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| unavailable("Cloud directory credential request failed"))?;
     let token = value
@@ -636,7 +642,7 @@ fn direct_access_token(
         );
         return Err(unavailable("Cloud directory credential request failed"));
     }
-    let bytes = read_body(response)?;
+    let bytes = read_body(response, MAX_TOKEN_RESPONSE_BYTES)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| unavailable("Cloud directory credential request failed"))?;
     if value.get("token_type").and_then(Value::as_str) != Some("Bearer")
@@ -655,19 +661,19 @@ fn direct_access_token(
     Ok(Zeroizing::new(token.to_owned()))
 }
 
-fn read_body(response: reqwest::blocking::Response) -> Result<Vec<u8>> {
+fn read_body(response: reqwest::blocking::Response, max_bytes: usize) -> Result<Vec<u8>> {
     if response
         .content_length()
-        .is_some_and(|length| length > MAX_PAGE_BYTES as u64)
+        .is_some_and(|length| length > max_bytes as u64)
     {
         return Err(unavailable("Cloud directory page is too large"));
     }
     let mut bytes = Vec::new();
     response
-        .take((MAX_PAGE_BYTES + 1) as u64)
+        .take((max_bytes + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|_| unavailable("Cloud directory request failed"))?;
-    if bytes.len() > MAX_PAGE_BYTES {
+    if bytes.len() > max_bytes {
         return Err(unavailable("Cloud directory page is too large"));
     }
     Ok(bytes)
@@ -678,6 +684,7 @@ fn get_json_sized(
     token: &str,
     url: &Url,
     graph_count: bool,
+    max_page_bytes: usize,
 ) -> Result<(Value, usize)> {
     let mut request = http
         .get(url.clone())
@@ -697,7 +704,7 @@ fn get_json_sized(
         );
         return Err(unavailable("Cloud directory request failed"));
     }
-    let bytes = read_body(response)?;
+    let bytes = read_body(response, max_page_bytes)?;
     let value = serde_json::from_slice(&bytes)
         .map_err(|_| unavailable("Cloud directory returned an unreadable page"))?;
     Ok((value, bytes.len()))
@@ -709,7 +716,7 @@ fn get_json(
     url: &Url,
     graph_count: bool,
 ) -> Result<Value> {
-    Ok(get_json_sized(http, token, url, graph_count)?.0)
+    Ok(get_json_sized(http, token, url, graph_count, MAX_PROBE_RESPONSE_BYTES)?.0)
 }
 
 fn same_origin(base: &Url, next: &Url) -> bool {
@@ -875,11 +882,11 @@ struct CloudSnapshot {
 }
 
 impl CloudSnapshot {
-    fn new() -> Self {
+    fn new(settings: &Settings) -> Self {
         Self {
             phase: 0,
             cursor: None,
-            pagination: Pagination::new(MAX_PAGES, MAX_OBJECTS),
+            pagination: Pagination::new(settings.quota.max_pages_per_collection, settings.quota.max_objects),
             phase_ids: BTreeSet::new(),
             users: BTreeMap::new(),
             selected: BTreeMap::new(),
@@ -897,10 +904,10 @@ impl CloudSnapshot {
         }
     }
 
-    fn next_phase(&mut self) {
+    fn next_phase(&mut self, settings: &Settings) {
         self.phase += 1;
         self.cursor = None;
-        self.pagination = Pagination::new(MAX_PAGES, MAX_OBJECTS);
+        self.pagination = Pagination::new(settings.quota.max_pages_per_collection, settings.quota.max_objects);
         self.phase_ids.clear();
     }
 
@@ -990,12 +997,12 @@ impl CloudSnapshot {
         }
     }
 
-    fn bounded(&self) -> Result<()> {
-        if self.source_bytes > MAX_TOTAL_BYTES
-            || self.users.len() > MAX_OBJECTS
+    fn bounded(&self, settings: &Settings) -> Result<()> {
+        if self.source_bytes > settings.quota.max_snapshot_bytes
+            || self.users.len() > settings.quota.max_objects
             || self.selected.len() > 32
             || self.chosen.len() > 32
-            || serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES
+            || serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes
         {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
@@ -1044,12 +1051,13 @@ impl CloudSnapshot {
                     url.query_pairs_mut().append_pair("pageToken", cursor);
                 }
             }
-            let (body, page_bytes) = get_json_sized(&http, &token, &url, graph)?;
+            let (body, page_bytes) = get_json_sized(&http, &token, &url, graph,
+                settings.quota.max_page_bytes)?;
             if started.elapsed() > SYNC_BUDGET {
                 return Err(unavailable("Cloud directory sync exceeded its time limit"));
             }
             self.source_bytes = self.source_bytes.saturating_add(page_bytes);
-            if self.source_bytes > MAX_TOTAL_BYTES {
+            if self.source_bytes > settings.quota.max_snapshot_bytes {
                 return Err(unavailable(
                     "Cloud directory snapshot staging quota exceeded",
                 ));
@@ -1228,9 +1236,9 @@ impl CloudSnapshot {
                         }
                     }
                 }
-                self.next_phase();
+                self.next_phase(settings);
             }
-            self.bounded()?;
+            self.bounded(settings)?;
         }
         Ok(())
     }
@@ -1267,17 +1275,17 @@ impl CloudSnapshotDraft {
             revision,
             fingerprint: settings.fingerprint.clone(),
             authority_digest,
-            expires_at: now().saturating_add(CLOUD_SNAPSHOT_SECONDS),
+            expires_at: now().saturating_add(settings.quota.draft_ttl_seconds),
             sequence: 0,
-            snapshot: CloudSnapshot::new(),
+            snapshot: CloudSnapshot::new(settings),
         }
     }
 
-    fn bounded(&self) -> Result<()> {
-        self.snapshot.bounded()?;
+    fn bounded(&self, settings: &Settings) -> Result<()> {
+        self.snapshot.bounded(settings)?;
         // A 4 MiB serialized draft leaves ample room below the 8 MiB backup
         // frame ceiling for its stored key and frame wrapper.
-        if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES {
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
             ));
@@ -1329,9 +1337,9 @@ impl CloudApplyDraft {
             && self.draft.snapshot.phase <= settings.groups.len() + 2
     }
 
-    fn bounded(&self) -> Result<()> {
-        self.draft.bounded()?;
-        if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES {
+    fn bounded(&self, settings: &Settings) -> Result<()> {
+        self.draft.bounded(settings)?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
             ));
@@ -1834,6 +1842,8 @@ impl Core {
     fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
         let provider = Provider::parse(kind)?;
         validate_name(id)?;
+        let quota = self.config.reconciliation_quotas.cloud;
+        quota.validate().map_err(|error| Error::bad(error.to_string()))?;
         match provider {
             Provider::Workspace => {
                 let directory = self
@@ -1864,13 +1874,15 @@ impl Core {
                     username_prefix: directory.username_prefix.clone(),
                     fingerprint: self
                         .cloud_mode(provider, id)
-                        .fingerprint(&fingerprint_of(provider.as_str(), directory)?)?,
+                        .fingerprint(&quota_fingerprint(
+                            fingerprint_of(provider.as_str(), directory)?, quota)?)?,
                     identity_fingerprint: digest(&format!(
                         "workspace\0{}\0{}\0{}",
                         directory.customer_id,
                         directory.directory_url,
                         directory.attributes.external_id.to_ascii_lowercase()
                     )),
+                    quota,
                 })
             }
             Provider::Entra => {
@@ -1901,13 +1913,15 @@ impl Core {
                     username_prefix: directory.username_prefix.clone(),
                     fingerprint: self
                         .cloud_mode(provider, id)
-                        .fingerprint(&fingerprint_of(provider.as_str(), directory)?)?,
+                        .fingerprint(&quota_fingerprint(
+                            fingerprint_of(provider.as_str(), directory)?, quota)?)?,
                     identity_fingerprint: digest(&format!(
                         "entra\0{}\0{}\0{}",
                         directory.tenant_id,
                         directory.graph_url,
                         directory.attributes.external_id.to_ascii_lowercase()
                     )),
+                    quota,
                 })
             }
         }
@@ -2118,7 +2132,8 @@ impl Core {
         let stored = tx
             .get::<Plan>("cloud_directory_plans", &expected.id)?
             .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-        if stored.applied
+        if expected.fingerprint != settings.fingerprint
+            || stored.applied
             || stored.kind != settings.kind
             || stored.directory != settings.id
             || stored.review != expected.review
@@ -2187,11 +2202,11 @@ impl Core {
                 let draft = previous.filter(|_| valid).unwrap_or_else(|| {
                     CloudSnapshotDraft::new(&settings, &actor, revision, authority_digest.clone())
                 });
-                draft.bounded()?;
+                draft.bounded(&settings)?;
                 Ok((prior, draft, restarted, authority_digest))
             })?;
             self.ensure_budget(&settings)?;
-            if let Err(error) = draft.snapshot.advance(&settings, CLOUD_PAGES_PER_PLAN_CALL) {
+            if let Err(error) = draft.snapshot.advance(&settings, settings.quota.pages_per_call) {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
                     self.record_failure(&settings)?;
                 }
@@ -2199,8 +2214,8 @@ impl Core {
             }
             self.reset_budget(&settings)?;
             draft.sequence = draft.sequence.saturating_add(1);
-            draft.expires_at = now().saturating_add(CLOUD_SNAPSHOT_SECONDS);
-            draft.bounded()?;
+            draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
+            draft.bounded(&settings)?;
             if !draft.snapshot.complete(&settings) {
                 return self.store.write(|tx| {
                     self.cloud_snapshot_actor(
@@ -2402,14 +2417,14 @@ impl Core {
                 let apply = previous
                     .filter(|_| valid)
                     .unwrap_or_else(|| CloudApplyDraft::new(&settings, &actor, &plan));
-                apply.bounded()?;
+                apply.bounded(&settings)?;
                 Ok((prior, apply, restarted))
             })?;
             self.ensure_budget(&settings)?;
             if let Err(error) = apply
                 .draft
                 .snapshot
-                .advance(&settings, CLOUD_PAGES_PER_PLAN_CALL)
+                .advance(&settings, settings.quota.pages_per_call)
             {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
                     self.record_failure(&settings)?;
@@ -2418,8 +2433,8 @@ impl Core {
             }
             self.reset_budget(&settings)?;
             apply.draft.sequence = apply.draft.sequence.saturating_add(1);
-            apply.draft.expires_at = now().saturating_add(CLOUD_SNAPSHOT_SECONDS);
-            apply.bounded()?;
+            apply.draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
+            apply.bounded(&settings)?;
             if !apply.draft.snapshot.complete(&settings) {
                 return self.store.write(|tx| {
                     self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;

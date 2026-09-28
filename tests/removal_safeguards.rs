@@ -288,6 +288,62 @@ async fn ldap_membership_removal_waits_for_durable_plan_and_apply_crawls() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ldap_reconciliation_quotas_bind_plan_continuation_and_apply() {
+    let parsed: riauth::config::ReconciliationQuotas =
+        toml::from_str("[ldap]\npages_per_call = 1\n").unwrap();
+    assert_eq!(parsed.ldap.pages_per_call, 1);
+    assert_eq!(parsed.cloud.pages_per_call, 5);
+    assert!(toml::from_str::<riauth::config::ReconciliationQuotas>(
+        "[cloud]\nunknown_limit = 1\n").is_err());
+    let peer = peer().await;
+    let url = peer.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut f = Fixture::new();
+        configure(&mut f, url);
+        f.core.config.reconciliation_quotas.ldap.pages_per_call = 5;
+        assert!(f.core.config.validate().is_err());
+        f.core.config.reconciliation_quotas.ldap.pages_per_call = 1;
+        f.core.config.reconciliation_quotas.ldap.max_pages_per_search = 1;
+        f.core.config.validate().unwrap();
+
+        let progress = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(progress["decision"], "snapshot_in_progress");
+        assert_eq!(progress["pages"], 1);
+        assert_eq!(f.core.directory_plan(&f.admin, "staff").unwrap_err().code,
+            "connector_incomplete_snapshot");
+        assert!(f.core.store.list::<Value>("directory_plans").unwrap().is_empty());
+
+        f.core.config.reconciliation_quotas.ldap.max_pages_per_search = 20;
+        let mut plan = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(plan["restart"], true);
+        for _ in 0..8 {
+            if plan["decision"] != "snapshot_in_progress" { break; }
+            plan = f.core.directory_plan(&f.admin, "staff").unwrap();
+        }
+        let id = text(&plan, "id");
+        assert_eq!(plan["entries"].as_array().unwrap().len(), 2);
+        let before = canonical(&f);
+        let apply = f.core.directory_apply(&f.admin, &id).unwrap();
+        assert_eq!(apply["decision"], "snapshot_in_progress");
+        assert_eq!(apply["pages"], 1);
+        assert_eq!(canonical(&f), before);
+
+        f.core.config.reconciliation_quotas.ldap.max_users = 1;
+        f.core.config.validate().unwrap();
+        assert_eq!(f.core.directory_apply(&f.admin, &id).unwrap_err().code, "conflict");
+        assert_eq!(canonical(&f), before);
+        f.core.config.reconciliation_quotas.ldap.max_users = 2_000;
+        let mut applied = f.core.directory_apply(&f.admin, &id).unwrap();
+        for _ in 0..8 {
+            if applied["decision"] != "snapshot_in_progress" { break; }
+            applied = f.core.directory_apply(&f.admin, &id).unwrap();
+        }
+        assert_eq!(applied["applied"], true);
+        assert!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap().is_empty());
+    }).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ldap_user_writes_share_management_seam() {
     let peer = peer().await;
     let url = peer.url.clone();

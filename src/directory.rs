@@ -5,6 +5,7 @@ use crate::{
         ApplyGate, Pagination, ReconciliationMode, RemovalImpact, ReviewBinding, plan_content,
         reconcile_plan, require_backup_safe_record,
     },
+    config::LdapReconciliationQuota,
     core::{Core, Delivery, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -32,11 +33,6 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(5);
 /// permit for long. A directory that needs longer counts as unavailable.
 const LOGIN_BUDGET: Duration = Duration::from_millis(800);
 const LDAP_PAGE_SIZE: usize = 200;
-const LDAP_PAGES_PER_PLAN_CALL: usize = 4;
-const LDAP_MAX_PAGES_PER_SEARCH: usize = 20;
-const LDAP_MAX_USERS: usize = 2_000;
-const LDAP_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
-const LDAP_SNAPSHOT_SECONDS: u64 = 300;
 const LDAP_SNAPSHOTS: &str = "directory_snapshots";
 const LDAP_APPLY_SNAPSHOTS: &str = "directory_apply_snapshots";
 
@@ -223,10 +219,10 @@ impl Directory {
     }
     /// Advance a bounded number of LDAP pages on one service connection. The
     /// opaque cookie and converted rows can be persisted between calls.
-    fn advance_snapshot(&self, draft: &mut SnapshotDraft, max_pages: usize) -> Result<()> {
+    fn advance_snapshot(&self, draft: &mut SnapshotDraft, quota: &LdapReconciliationQuota) -> Result<()> {
         let started = Instant::now();
         let mut conn = self.service(Budget::Step)?;
-        for _ in 0..max_pages {
+        for _ in 0..quota.pages_per_call {
             if draft.complete(self) {
                 break;
             }
@@ -267,15 +263,15 @@ impl Directory {
                 !next.is_empty(),
             )?;
             for row in rows {
-                draft.record(self, phase, row)?;
+                draft.record(self, quota, phase, row)?;
             }
             draft.cookie = next;
             draft.sequence = draft.sequence.checked_add(1)
                 .ok_or_else(|| Error::internal("LDAP snapshot cursor exhausted"))?;
             if draft.cookie.is_empty() {
-                draft.next_phase();
+                draft.next_phase(quota);
             }
-            draft.bounded()?;
+            draft.bounded(quota)?;
         }
         let _ = conn.unbind();
         Ok(())
@@ -452,11 +448,11 @@ struct SnapshotDraft {
     attributes_bytes: usize,
 }
 impl SnapshotDraft {
-    fn new(directory: String, actor: String, revision: u64, fingerprint: String, authority_digest: String) -> Self {
+    fn new(directory: String, actor: String, revision: u64, fingerprint: String, authority_digest: String, quota: &LdapReconciliationQuota) -> Self {
         Self {
             id: crypto::id(), directory, actor, revision, fingerprint, authority_digest,
-            expires_at: now().saturating_add(LDAP_SNAPSHOT_SECONDS), sequence: 0, phase: 0,
-            cookie: Vec::new(), pagination: Pagination::new(LDAP_MAX_PAGES_PER_SEARCH, LDAP_MAX_USERS),
+            expires_at: now().saturating_add(quota.draft_ttl_seconds), sequence: 0, phase: 0,
+            cookie: Vec::new(), pagination: Pagination::new(quota.max_pages_per_search, quota.max_users),
             phase_dns: BTreeSet::new(), names: BTreeSet::new(), users: BTreeMap::new(),
             attributes_bytes: 0,
         }
@@ -464,16 +460,16 @@ impl SnapshotDraft {
     fn complete(&self, directory: &Directory) -> bool {
         self.phase == directory.group_user_filters.len() + 1
     }
-    fn next_phase(&mut self) {
+    fn next_phase(&mut self, quota: &LdapReconciliationQuota) {
         self.phase += 1;
         self.cookie.clear();
-        self.pagination = Pagination::new(LDAP_MAX_PAGES_PER_SEARCH, LDAP_MAX_USERS);
+        self.pagination = Pagination::new(quota.max_pages_per_search, quota.max_users);
         self.phase_dns.clear();
     }
-    fn bounded(&self) -> Result<()> {
-        if self.attributes_bytes > LDAP_SNAPSHOT_BYTES
-            || self.users.len() > LDAP_MAX_USERS
-            || serde_json::to_vec(self).map_err(Error::internal)?.len() > LDAP_SNAPSHOT_BYTES
+    fn bounded(&self, quota: &LdapReconciliationQuota) -> Result<()> {
+        if self.attributes_bytes > quota.max_snapshot_bytes
+            || self.users.len() > quota.max_users
+            || serde_json::to_vec(self).map_err(Error::internal)?.len() > quota.max_snapshot_bytes
         {
             return Err(Error::bad("LDAP snapshot staging quota exceeded"));
         }
@@ -493,14 +489,14 @@ impl SnapshotDraft {
     fn into_snapshot(self) -> Snapshot {
         Snapshot { users: self.users.into_values().collect() }
     }
-    fn record(&mut self, directory: &Directory, phase: usize, entry: SearchEntry) -> Result<()> {
+    fn record(&mut self, directory: &Directory, quota: &LdapReconciliationQuota, phase: usize, entry: SearchEntry) -> Result<()> {
         let bytes = entry.dn.len()
             .saturating_add(entry.attrs.iter().map(|(key, values)|
                 key.len().saturating_add(values.iter().map(String::len).sum::<usize>())).sum::<usize>())
             .saturating_add(entry.bin_attrs.iter().map(|(key, values)|
                 key.len().saturating_add(values.iter().map(Vec::len).sum::<usize>())).sum::<usize>());
         self.attributes_bytes = self.attributes_bytes.saturating_add(bytes);
-        if self.attributes_bytes > LDAP_SNAPSHOT_BYTES
+        if self.attributes_bytes > quota.max_snapshot_bytes
             || entry.dn.is_empty() || entry.dn.len() > 2048
             || !self.phase_dns.insert(entry.dn.clone())
         {
@@ -545,12 +541,12 @@ struct ApplySnapshotDraft {
     draft: SnapshotDraft,
 }
 impl ApplySnapshotDraft {
-    fn new(directory: &str, actor: &Principal, plan: &Plan) -> Self {
+    fn new(directory: &str, actor: &Principal, plan: &Plan, quota: &LdapReconciliationQuota) -> Self {
         Self {
             plan_id: plan.id.clone(),
             review: plan.review.clone(),
             draft: SnapshotDraft::new(directory.into(), actor.id.clone(), plan.revision,
-                plan.fingerprint.clone(), plan.review.authority_digest.clone()),
+                plan.fingerprint.clone(), plan.review.authority_digest.clone(), quota),
         }
     }
     fn valid(&self, directory_id: &str, directory: &Directory, plan: &Plan) -> bool {
@@ -562,9 +558,9 @@ impl ApplySnapshotDraft {
             && !self.draft.complete(directory)
             && self.draft.phase <= directory.group_user_filters.len()
     }
-    fn bounded(&self) -> Result<()> {
-        self.draft.bounded()?;
-        if serde_json::to_vec(self).map_err(Error::internal)?.len() > LDAP_SNAPSHOT_BYTES {
+    fn bounded(&self, quota: &LdapReconciliationQuota) -> Result<()> {
+        self.draft.bounded(quota)?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > quota.max_snapshot_bytes {
             return Err(Error::bad("LDAP snapshot staging quota exceeded"));
         }
         Ok(())
@@ -626,8 +622,15 @@ impl Core {
     }
 
     fn directory_fingerprint(&self, id: &str, directory: &Directory) -> Result<String> {
-        self.directory_mode(id)
-            .fingerprint(&directory.fingerprint()?)
+        let quota = self.config.reconciliation_quotas.ldap;
+        quota.validate().map_err(|error| Error::bad(error.to_string()))?;
+        let base = directory.fingerprint()?;
+        let base = if quota == LdapReconciliationQuota::default() {
+            base
+        } else {
+            crate::connector_guard::hash(&(base, quota))?
+        };
+        self.directory_mode(id).fingerprint(&base)
     }
 
     pub fn directories(&self, token: &str) -> Result<Value> {
@@ -742,6 +745,8 @@ impl Core {
             .directories
             .get(id)
             .ok_or_else(|| Error::missing("LDAP directory not configured"))?;
+        let quota = self.config.reconciliation_quotas.ldap;
+        quota.validate().map_err(|error| Error::bad(error.to_string()))?;
         let key = digest(id);
         let (actor, revision, fingerprint, authority_digest, prior, mut draft, restarted) = self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
@@ -758,13 +763,13 @@ impl Core {
             });
             let restarted = previous.is_some() && !valid;
             let draft = previous.filter(|_| valid).unwrap_or_else(|| SnapshotDraft::new(
-                id.into(), actor.id.clone(), revision, fingerprint.clone(), authority_digest.clone()
+                id.into(), actor.id.clone(), revision, fingerprint.clone(), authority_digest.clone(), &quota
             ));
             Ok((actor, revision, fingerprint, authority_digest, prior, draft, restarted))
         })?;
-        directory.advance_snapshot(&mut draft, LDAP_PAGES_PER_PLAN_CALL)?;
-        draft.expires_at = now().saturating_add(LDAP_SNAPSHOT_SECONDS);
-        draft.bounded()?;
+        directory.advance_snapshot(&mut draft, &quota)?;
+        draft.expires_at = now().saturating_add(quota.draft_ttl_seconds);
+        draft.bounded(&quota)?;
         let same_prior = |tx: &Tx<'_>| -> Result<bool> {
             let current = tx.get::<SnapshotDraft>(LDAP_SNAPSHOTS, &key)?;
             Ok(current.as_ref().map(|draft| (&draft.id, draft.sequence))
@@ -879,6 +884,8 @@ impl Core {
             .directories
             .get(&plan.directory)
             .ok_or_else(Error::forbidden)?;
+        let quota = self.config.reconciliation_quotas.ldap;
+        quota.validate().map_err(|error| Error::bad(error.to_string()))?;
         let key = digest(&plan.directory);
         let initially_applied = plan.applied;
         let snapshot_prior = if initially_applied {
@@ -899,13 +906,13 @@ impl Core {
                     apply.valid(&plan.directory, directory, &plan));
                 let restarted = previous.is_some() && !valid;
                 let apply = previous.filter(|_| valid).unwrap_or_else(||
-                    ApplySnapshotDraft::new(&plan.directory, &actor, &plan));
-                apply.bounded()?;
+                    ApplySnapshotDraft::new(&plan.directory, &actor, &plan, &quota));
+                apply.bounded(&quota)?;
                 Ok((prior, apply, restarted))
             })?;
-            directory.advance_snapshot(&mut apply.draft, LDAP_PAGES_PER_PLAN_CALL)?;
-            apply.draft.expires_at = now().saturating_add(LDAP_SNAPSHOT_SECONDS);
-            apply.bounded()?;
+            directory.advance_snapshot(&mut apply.draft, &quota)?;
+            apply.draft.expires_at = now().saturating_add(quota.draft_ttl_seconds);
+            apply.bounded(&quota)?;
             if !apply.draft.complete(directory) {
                 return self.store.write(|tx| {
                     self.directory_apply_actor(tx, token, directory, &plan, reviewed_plan)?;
@@ -1490,11 +1497,12 @@ mod backup_and_snapshot_regression {
             "invalid_request");
 
         let sweep_at = now();
+        let quota = LdapReconciliationQuota::default();
         let mut expired = SnapshotDraft::new("removed".into(), "admin".into(), 0,
-            "test".into(), "test".into());
+            "test".into(), "test".into(), &quota);
         expired.expires_at = sweep_at;
         let mut live = SnapshotDraft::new("live".into(), "admin".into(), 0,
-            "test".into(), "test".into());
+            "test".into(), "test".into(), &quota);
         live.expires_at = sweep_at.saturating_add(60);
         assert!(!core.config.directories.contains_key("removed"));
         let expired_key = digest("removed");
