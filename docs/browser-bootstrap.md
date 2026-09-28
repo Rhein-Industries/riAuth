@@ -128,14 +128,19 @@ CARGO_BUILD_JOBS=2 cargo test --locked --test bootstrap \
 
 The connection must target a dedicated empty disposable database. The test
 initializes it and deliberately tries a mismatched encryption configuration.
-Do not point it at an existing deployment. The rendered-browser acceptance
-test is `tools/browser/setup.spec.js`, using the Chromium/Firefox/WebKit
-test matrix and the built `target/debug/riauth` binary:
+Do not point it at an existing deployment. CI also runs the rendered setup
+journey in Chromium, Firefox and WebKit from `tools/browser/setup.spec.js`. It
+covers a private proof claim and ordinary sign-in, denial of a visitor without
+the proof, expiry, and the closed page after a replay. The setup URL carries no
+proof; the private proof must be entered in the form. Run the browser test with
+the built `target/debug/riauth` binary:
 
 ```sh
 CARGO_BUILD_JOBS=2 cargo build --locked --bin riauth
 npm ci --prefix tools/browser
-cd tools/browser && ./node_modules/.bin/playwright test setup.spec.js --reporter=list
+cd tools/browser
+./node_modules/.bin/playwright install chromium firefox webkit
+./node_modules/.bin/playwright test setup.spec.js --reporter=list
 ```
 
 Network traces and failure screenshots are disabled for this test because they

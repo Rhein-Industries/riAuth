@@ -97,6 +97,13 @@ jobs:
         run: PG_BIN="$(pg_config --bindir)" scripts/test-postgres.sh
       - name: Shared contracts on isolated PostgreSQL databases
         run: PG_BIN="$(pg_config --bindir)" bash scripts/test-contracts-postgres.sh
+      - name: Secure first administrator setup in real browsers
+        run: |
+          cargo build --locked --bin riauth
+          npm ci --prefix tools/browser
+          cd tools/browser
+          ./node_modules/.bin/playwright install --with-deps chromium firefox webkit
+          ./node_modules/.bin/playwright test setup.spec.js --reporter=list
       - name: PostgreSQL Q05 replay and lease schedules
         run: PG_BIN="$(pg_config --bindir)" RIAUTH_PG_TEST_TARGET=q05_replay_concurrency scripts/test-postgres.sh
       - name: OpenLDAP synchronization and authentication
