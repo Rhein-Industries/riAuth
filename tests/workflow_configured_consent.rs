@@ -301,7 +301,7 @@ fn identical_oidc_requests_have_independent_preparations_and_token_scoped_replay
             .unwrap_err()
             .code,
         "conflict",
-        "a no-ID decision cannot bypass live preparations"
+        "a no-ID decision cannot bypass its own bound preparations"
     );
     assert_eq!(
         f.core
@@ -494,6 +494,135 @@ fn identical_oidc_requests_have_independent_preparations_and_token_scoped_replay
         }
     ));
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 7);
+}
+
+#[test]
+fn anonymous_preparation_saturation_cannot_block_direct_account_decisions() {
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("anonymous-preparation-alice");
+    let bob = f.user("anonymous-preparation-bob");
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.decision = None;
+    let prepared: Vec<String> = (0..64)
+        .map(|_| {
+            text(
+                &f.core.authorization_prepare(None, request.clone()).unwrap(),
+                "transaction_id",
+            )
+        })
+        .collect();
+    assert_eq!(
+        f.core
+            .authorization_prepare(None, request.clone())
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+
+    let mut decision = request.clone();
+    decision.decision = Some("approve".into());
+    for _ in 0..2 {
+        assert!(
+            f.core
+                .authorize(&alice, decision.clone())
+                .unwrap()
+                .contains("code=")
+        );
+    }
+    let mut denial = decision.clone();
+    denial.decision = Some("deny".into());
+    assert!(
+        f.core
+            .authorize(&alice, denial)
+            .unwrap()
+            .contains("access_denied")
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
+
+    let f = f.reopen_with(|_| {});
+    let mut old = decision.clone();
+    old.transaction_id = Some(prepared[0].clone());
+    assert_eq!(
+        f.core.authorize(&alice, old.clone()).unwrap_err().code,
+        "conflict"
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &digest(&prepared[0]))
+            .unwrap()
+            .is_some(),
+        "Alice's direct decision must not cancel the anonymous preparation"
+    );
+    assert!(
+        f.core
+            .authorize(&bob, old.clone())
+            .unwrap()
+            .contains("code=")
+    );
+    assert_eq!(
+        f.core.authorize(&bob, old).unwrap_err().code,
+        "login_required"
+    );
+
+    let fresh = text(
+        &f.core.authorization_prepare(None, request.clone()).unwrap(),
+        "transaction_id",
+    );
+    let mut fresh_decision = decision.clone();
+    fresh_decision.transaction_id = Some(fresh);
+    assert!(
+        f.core
+            .authorize(&alice, fresh_decision)
+            .unwrap()
+            .contains("code=")
+    );
+    let bob_prepared = text(
+        &f.core
+            .authorization_prepare(Some(&bob), request)
+            .unwrap(),
+        "transaction_id",
+    );
+    assert!(
+        f.core
+            .authorize(&alice, decision.clone())
+            .unwrap()
+            .contains("code="),
+        "another account's bound preparation cannot block Alice"
+    );
+    assert_eq!(
+        f.core.authorize(&bob, decision.clone()).unwrap_err().code,
+        "conflict",
+        "Bob's own bound preparation still requires its ID"
+    );
+    decision.transaction_id = Some(bob_prepared);
+    assert!(f.core.authorize(&bob, decision).unwrap().contains("code="));
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+}
+
+#[test]
+fn rejected_direct_decision_does_not_mark_anonymous_preparation() {
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("rejected-direct-decision");
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.decision = None;
+    let transaction = text(
+        &f.core.authorization_prepare(None, request.clone()).unwrap(),
+        "transaction_id",
+    );
+    let mut invalid = request.clone();
+    invalid.decision = Some("invalid".into());
+    assert!(f.core.authorize(&alice, invalid).is_err());
+    let mut exact = request;
+    exact.transaction_id = Some(transaction);
+    exact.decision = Some("approve".into());
+    assert!(f.core.authorize(&alice, exact).unwrap().contains("code="));
 }
 
 #[test]

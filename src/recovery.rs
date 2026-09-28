@@ -73,6 +73,7 @@ pub const INVALIDATED: &[&str] = &[
     // Pending interactions, ceremonies and proofs.
     "authentication",
     "authorization_prepared",
+    "authorization_prepared_actor_decisions",
     "pushed_requests",
     "saml_requests",
     "saml_logout_flows",

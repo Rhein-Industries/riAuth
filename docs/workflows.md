@@ -329,24 +329,27 @@ session proof from the live session; only the explicit approval emits consent
 proof. Completion consumes the one-use transaction and bound receipts in the
 same write as the existing issuer's response. Ordinary authorization cannot use
 that reserved transaction. An ordinary decision with its transaction ID spends
-that exact preparation and prevents its later consent reservation. While any
-matching preparation is live, an ordinary decision without an ID requires an ID;
-after those preparations finish, an identical static OIDC URL can be authorized
-again. Expiry and cancellation discard only the pending transaction; completed
-and closed runs retain replay protection for that transaction. No new session or
-remembered consent grant is created. Browser and
-remembered-consent adapters are not connected.
+that exact preparation and prevents its later consent reservation. An ordinary
+no-ID decision with a bearer requires an ID while that account has a bound
+preparation; another account's bound preparation does not block it. For live
+anonymous preparations, the issuer records the exact transaction digests passed
+over by the deciding account. Later use of one of those IDs by that account
+conflicts, while another account can still decide it. A later admitted
+preparation remains usable. Expiry and cancellation discard only the pending
+transaction; completed and closed runs retain replay protection for that
+transaction. No new session or remembered consent grant is created. Browser
+and remembered-consent adapters are not connected.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live attempts per request hash. Anonymous preparation can fill those
 slots under the general per-address HTTP rate limit. The cap bounds stored
-index work but does not guarantee per-request admission across addresses.
-A no-ID decision for that same static URL conflicts while any preparation
-remains live. Each attempt expires after 600 seconds, but new attempts can
-extend the delay. The caller
-can use its exact `transaction_id` or retry a direct no-ID decision after the
-live attempts are spent or expire. Ignoring anonymous attempts would leave
-their one-use authority available for a second decision.
+index work but does not guarantee new preparation admission across addresses.
+Saturating it cannot block a live bearer's direct no-ID decision for the same
+static URL. Signed-out no-ID denial still requires an ID while any matching
+preparation is live, because it has no account to bind a replay fence to.
+Legacy upgrade overflow also remains conservative until its live rows are gone.
+Each attempt expires after 600 seconds; new attempts can keep preparation
+admission full, so callers holding an ID can decide that exact preparation.
 
 ## Downstream OIDC completion
 
@@ -368,8 +371,9 @@ exact account/epoch/session, workflow request, run and
 definition revision/fingerprint. Live checks reject request substitution,
 consumed or expired references, client changes, revocation and stale receipts.
 Ordinary OIDC completion rejects a reserved transaction even with a fresh
-session. While a matching preparation is live, ordinary completion without a
-transaction ID requires its ID. Cancelled and completed transactions retain
+session. A no-ID decision requires the ID of that account's live bound
+preparation; the anonymous preparation replay rule above also applies.
+Cancelled and completed transactions retain
 token-specific replay state for the existing seven-day workflow retention
 window; a fresh preparation of identical request content remains usable.
 

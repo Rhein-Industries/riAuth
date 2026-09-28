@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 const PREPARED_REQUESTS: &str = "authorization_prepared";
+const PREPARED_ACTOR_DECISIONS: &str = "authorization_prepared_actor_decisions";
 const PREPARED_INDEX_VERSION: &str = "authorization_prepared_index_v1";
 const MAX_PREPARED_PER_REQUEST: usize = 64;
 
@@ -31,6 +32,132 @@ struct PreparedRequests {
     #[serde(default)]
     overflow_until: u64,
     expires_at: u64,
+}
+
+/// A direct decision cannot consume an anonymous preparation belonging to an
+/// unknown caller. Remember its exact token for this account instead, so that
+/// account cannot subsequently issue again by supplying the token.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PreparedActorDecisions {
+    request_hash: String,
+    account: String,
+    attempts: BTreeMap<String, u64>,
+    expires_at: u64,
+}
+
+fn prepared_actor_key(request_hash: &str, account: &str) -> String {
+    digest(&format!(
+        "authorization-prepared-actor-v1\0{request_hash}\0{account}"
+    ))
+}
+
+fn live_ordinary_preparation(
+    tx: &Tx<'_>, key: &str, request_hash: &str, at: u64,
+) -> Result<Option<AuthenticationTransaction>> {
+    Ok(tx
+        .get::<AuthenticationTransaction>("authentication", key)?
+        .filter(|attempt| {
+            attempt.expires_at > at
+                && attempt.source_stage.is_none()
+                && attempt.request_hash == request_hash
+        }))
+}
+
+/// A session-bound direct decision may bypass another account's preparation.
+/// For anonymous preparations, it records an account-specific replay fence for
+/// the exact live tokens without consuming those tokens for other accounts.
+fn mark_direct_decision(tx: &Tx<'_>, request_hash: &str, account: &str, at: u64) -> Result<()> {
+    let Some(mut index) = tx.get::<PreparedRequests>(PREPARED_REQUESTS, request_hash)? else {
+        return Ok(());
+    };
+    if index.attempts.len() > MAX_PREPARED_PER_REQUEST {
+        return Err(Error::forbidden());
+    }
+    // An upgraded store can contain more live preparations than the bounded
+    // index. Do not bypass a token that cannot be marked exactly.
+    if index.overflow_until > at {
+        if legacy_overflow_live(tx, request_hash, at)? {
+            return Err(Error::conflict(
+                "Specify the prepared authorization transaction ID",
+            ));
+        }
+        index.overflow_until = 0;
+        tx.put(PREPARED_REQUESTS, request_hash, &index)?;
+    }
+    let mut anonymous = BTreeMap::new();
+    for (key, expires_at) in &index.attempts {
+        if *expires_at <= at {
+            continue;
+        }
+        let Some(attempt) = live_ordinary_preparation(tx, key, request_hash, at)? else {
+            continue;
+        };
+        if attempt.user_id.as_deref() == Some(account) {
+            return Err(Error::conflict(
+                "Specify the prepared authorization transaction ID",
+            ));
+        }
+        if attempt.user_id.is_none() {
+            anonymous.insert(key.clone(), attempt.expires_at);
+        }
+    }
+    if anonymous.is_empty() {
+        return Ok(());
+    }
+    let marker_key = prepared_actor_key(request_hash, account);
+    if let Some(previous) = tx.get::<PreparedActorDecisions>(PREPARED_ACTOR_DECISIONS, &marker_key)? {
+        if previous.request_hash != request_hash
+            || previous.account != account
+            || previous.attempts.len() > MAX_PREPARED_PER_REQUEST
+        {
+            return Err(Error::forbidden());
+        }
+        for (key, expires_at) in previous.attempts {
+            if expires_at > at
+                && live_ordinary_preparation(tx, &key, request_hash, at)?
+                    .is_some_and(|attempt| attempt.user_id.is_none())
+            {
+                anonymous.insert(key, expires_at);
+            }
+        }
+    }
+    if anonymous.len() > MAX_PREPARED_PER_REQUEST {
+        return Err(Error::forbidden());
+    }
+    tx.put(
+        PREPARED_ACTOR_DECISIONS,
+        &marker_key,
+        &PreparedActorDecisions {
+            request_hash: request_hash.to_owned(),
+            account: account.to_owned(),
+            expires_at: anonymous.values().copied().max().unwrap_or(at),
+            attempts: anonymous,
+        },
+    )
+}
+
+fn reject_direct_decision_replay(
+    tx: &Tx<'_>, request_hash: &str, account: &str, key: &str, at: u64,
+) -> Result<()> {
+    let Some(marker) = tx.get::<PreparedActorDecisions>(
+        PREPARED_ACTOR_DECISIONS,
+        &prepared_actor_key(request_hash, account),
+    )? else {
+        return Ok(());
+    };
+    if marker.request_hash != request_hash
+        || marker.account != account
+        || marker.attempts.len() > MAX_PREPARED_PER_REQUEST
+    {
+        return Err(Error::forbidden());
+    }
+    if marker.attempts.get(key).is_some_and(|expires_at| *expires_at > at) {
+        return Err(Error::conflict(
+            "Prepared request already decided for this account",
+        ));
+    }
+    Ok(())
 }
 
 fn matching_preparation(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool> {
@@ -176,6 +303,11 @@ pub(crate) fn cleanup_prepared(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (key, record) in tx.maintenance_page::<PreparedRequests>(PREPARED_REQUESTS)? {
         if record.expires_at <= at {
             tx.delete(PREPARED_REQUESTS, &key)?;
+        }
+    }
+    for (key, record) in tx.maintenance_page::<PreparedActorDecisions>(PREPARED_ACTOR_DECISIONS)? {
+        if record.expires_at <= at {
+            tx.delete(PREPARED_ACTOR_DECISIONS, &key)?;
         }
     }
     Ok(())
@@ -577,10 +709,8 @@ impl Core {
                 if proof_key != Some(exact.as_str()) {
                     return Err(Error::forbidden());
                 }
-            } else if matching_preparation(tx, &request_hash, now())? {
-                return Err(Error::conflict(
-                    "Specify the prepared authorization transaction ID",
-                ));
+            } else {
+                mark_direct_decision(tx, &request_hash, &session.identity.user_id, now())?;
             }
         }
         crate::source::enforce_pending_stage(tx, &request, &session)?;
@@ -618,6 +748,15 @@ impl Core {
                 return Err(Error::bad(
                     "Authentication transaction belongs to another request",
                 ));
+            }
+            if challenge.user_id.is_none() {
+                reject_direct_decision_replay(
+                    tx,
+                    &request_hash,
+                    &session.identity.user_id,
+                    key,
+                    now(),
+                )?;
             }
             tx.delete("authentication", key)?;
         }
