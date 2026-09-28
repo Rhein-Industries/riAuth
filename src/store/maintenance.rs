@@ -310,6 +310,21 @@ impl Tx<'_> {
         }
         Ok(names)
     }
+    /// One bounded page of durable Group memberships for an LDAP user. The
+    /// cursor is the index key (a Group-key digest), not the Group name.
+    #[cfg(feature = "platform")]
+    pub(crate) fn user_group_index_page(
+        &self,
+        user_id: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(String, String)>> {
+        self.scan(
+            &format!("index_user_groups/{}", crypto::digest(user_id)),
+            after,
+            limit.min(PAGE),
+        )
+    }
     /// Group storage keys whose LDAP DNs have the same ASCII case fold.
     /// A page is enough for the read side to detect visible collisions without
     /// retaining every projected Group DN.

@@ -9,12 +9,89 @@ use crate::{
 };
 use ldap3_proto::proto::{LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    cmp::Reverse,
+    collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
     net::IpAddr,
 };
 
 const MAX_SELECTED_USERS: usize = 2000;
 const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
+const GROUP_INDEX_PAGE: usize = 16;
+
+struct GroupIndexCursor {
+    user_id: String,
+    after: Option<String>,
+    page: VecDeque<(String, String)>,
+    exhausted: bool,
+}
+
+impl GroupIndexCursor {
+    fn next(&mut self, tx: &Tx<'_>) -> Result<Option<(String, String)>> {
+        if self.page.is_empty() && !self.exhausted {
+            let page =
+                tx.user_group_index_page(&self.user_id, self.after.as_deref(), GROUP_INDEX_PAGE)?;
+            self.exhausted = page.len() < GROUP_INDEX_PAGE;
+            self.page = page.into();
+        }
+        let Some((key, name)) = self.page.pop_front() else {
+            return Ok(None);
+        };
+        self.after = Some(key.clone());
+        Ok(Some((key, name)))
+    }
+}
+
+/// A heap holds one membership per selected user, with one small page buffered
+/// per cursor. The index key sorts equal Group memberships together, so no
+/// request-wide set of Group names is needed even when filters exclude them.
+fn for_each_visible_group(
+    tx: &Tx<'_>,
+    visible: &BTreeMap<String, String>,
+    mut visit: impl FnMut(String, Group) -> Result<()>,
+) -> Result<()> {
+    let mut cursors = Vec::with_capacity(visible.len());
+    let mut next = BinaryHeap::new();
+    for user_id in visible.keys() {
+        let mut cursor = GroupIndexCursor {
+            user_id: user_id.clone(),
+            after: None,
+            page: VecDeque::new(),
+            exhausted: false,
+        };
+        if let Some((key, name)) = cursor.next(tx)? {
+            next.push(Reverse((key, name, cursors.len())));
+        }
+        cursors.push(cursor);
+    }
+    let mut previous = None;
+    while let Some(Reverse((key, name, index))) = next.pop() {
+        if let Some((next_key, next_name)) = cursors[index].next(tx)? {
+            next.push(Reverse((next_key, next_name, index)));
+        }
+        if previous
+            .as_ref()
+            .is_some_and(|(prior_key, prior_name)| prior_key == &key && prior_name == &name)
+        {
+            continue;
+        }
+        if crate::crypto::digest(&name) != key {
+            return Err(Error::internal(
+                "LDAP Group membership index has a mismatched key",
+            ));
+        }
+        let group = tx
+            .get::<Group>("groups", &name)?
+            .ok_or_else(|| Error::internal("LDAP Group membership index has a missing Group"))?;
+        if group.name != name {
+            return Err(Error::internal(
+                "LDAP Group membership index has a mismatched Group",
+            ));
+        }
+        previous = Some((key, name.clone()));
+        visit(name, group)?;
+    }
+    Ok(())
+}
 
 fn retain_selected(users: &mut BTreeMap<String, User>, id: &str, user: User) -> Result<()> {
     if user.id != id {
@@ -375,28 +452,14 @@ impl Core {
                 include(entry(dn, attrs));
             }
             if client.scopes.contains("groups") {
-                let mut after = None;
-                loop {
-                    let page = tx.scan::<Group>(
-                        "groups",
-                        after.as_deref(),
-                        crate::store::maintenance::PAGE,
-                    )?;
-                    if page.is_empty() {
-                        break;
-                    }
-                    let full = page.len() == crate::store::maintenance::PAGE;
-                    after = page.last().map(|(key, _)| key.clone());
-                    for (name, group) in page {
-                        let members: Vec<_> = group
-                            .members
-                            .iter()
-                            .filter_map(|id| visible.get(id))
-                            .map(|name| settings.user_dn(name))
-                            .collect();
-                        if members.is_empty() {
-                            continue;
-                        }
+                for_each_visible_group(tx, &visible, |name, group| {
+                    let members: Vec<_> = group
+                        .members
+                        .iter()
+                        .filter_map(|id| visible.get(id))
+                        .map(|name| settings.user_dn(name))
+                        .collect();
+                    if !members.is_empty() {
                         let dn = settings.group_dn(&name);
                         ensure_unique_group_dn(tx, &name, &visible)?;
                         include(entry(
@@ -408,10 +471,8 @@ impl Core {
                             ],
                         ));
                     }
-                    if !full {
-                        break;
-                    }
-                }
+                    Ok(())
+                })?;
             }
             if !base_seen {
                 return Err(Error::missing("LDAP base not found"));
@@ -711,9 +772,13 @@ mod tests {
         assert_eq!(
             after.1 - before.1,
             6,
-            "two Group pages, two memberships and two DN-fold checks"
+            "two membership-index cursors, two user memberships and two DN-fold checks"
         );
-        assert_eq!(after.2 - before.2, 138);
+        assert_eq!(
+            after.2 - before.2,
+            10,
+            "the 130 unrelated Groups must not enter the read path"
+        );
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert_eq!(dns.len(), 7);
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -928,8 +993,8 @@ mod tests {
             "non-retained members must not cause unbounded point reads"
         );
         assert_eq!(after.1, before.1, "no unbounded bucket read");
-        assert_eq!(after.2 - before.2, if disabled_members { 7 } else { 6 });
-        assert_eq!(after.3 - before.3, if disabled_members { 262 } else { 136 });
+        assert_eq!(after.2 - before.2, if disabled_members { 8 } else { 7 });
+        assert_eq!(after.3 - before.3, if disabled_members { 263 } else { 137 });
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(dns.len(), 6);
@@ -1032,7 +1097,7 @@ mod tests {
             .unwrap();
 
         // Group entries are filtered out, but their DNs still participate in
-        // collision checks. More than one Group page must not grow a DN set.
+        // collision checks across membership-index pages without a DN set.
         let query = LdapSearchRequest {
             base: "ou=users,dc=riauth,dc=test".into(),
             scope: LdapSearchScope::OneLevel,
@@ -1060,7 +1125,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].dn, "uid=admin,ou=users,dc=riauth,dc=test");
         assert_eq!(after.0, before.0);
-        assert_eq!(after.1 - before.1, 135);
+        assert_eq!(after.1 - before.1, 142);
         assert_eq!(after.2 - before.2, 393);
 
         // A non-visible case variant is harmless; making it visible conflicts
