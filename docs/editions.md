@@ -14,6 +14,25 @@ target/essentials/release/riauth --json capabilities
 target/platform/release/riauth --json capabilities
 ```
 
+Before switching artifacts, stop all riAuth writers and run the Platform
+maintenance binary against the configuration intended for the target:
+
+```sh
+riauth-maintenance --config /etc/riauth/riauth.toml --json transition-preflight --target essentials
+riauth-maintenance --config /etc/riauth/riauth.toml --json transition-preflight --target platform
+```
+
+The command reads redb or PostgreSQL without opening Core, migrating the schema,
+rebuilding indexes, or changing identity and credential records. Its
+`riauth.edition-transition/v1` report lists every known blocker as a
+`resource`/`reason` pair, plus the inspected schema and store revision. Exit 0
+means `ready: true`; exit 5 means blockers remain. A missing store, mismatched
+issuer or schema, unsupported configuration, and retained Platform records are
+blockers. Use the Platform maintenance artifact to assess either target; an
+Essentials build cannot inspect all Platform configuration. Stop writers and
+rerun the report immediately before switching, since it does not reserve the
+snapshot or perform migration or rollback.
+
 Both builds run `riauth`; install only one on a deployment. The local capability
 document includes `edition`, compiled features, permissions and schemas from
 that artifact. Essentials omits Platform HTTP routes, LDAP/RADIUS/proxy

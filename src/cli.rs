@@ -55,6 +55,10 @@ impl std::fmt::Display for RemoteFailure {
 impl std::error::Error for RemoteFailure {}
 
 pub fn report_error(error: &anyhow::Error, json_output: bool) -> i32 {
+    if error.is::<local::TransitionBlocked>() {
+        eprintln!("error: {error}");
+        return 5;
+    }
     let (status, code, message) = if let Some(e) = error.downcast_ref::<RemoteFailure>() {
         (e.status, e.code.clone(), e.message.clone())
     } else if let Some(e) = error.downcast_ref::<crate::error::Error>() {

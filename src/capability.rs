@@ -19,11 +19,18 @@ use std::collections::{BTreeMap, BTreeSet};
 const DISABLABLE: &[&str] = &["identity.device_trust"];
 
 pub fn validate_config(config: &Config) -> anyhow::Result<()> {
+    validate_config_for(config, crate::edition::CURRENT)
+}
+
+pub(crate) fn validate_config_for(
+    config: &Config,
+    target: crate::edition::Target,
+) -> anyhow::Result<()> {
     for name in &config.capabilities.disabled {
         if !agent::FEATURES.contains(&name.as_str()) {
             anyhow::bail!("Unknown capability in capabilities.disabled: {name}");
         }
-        if !compiled(name) {
+        if !compiled_for(name, target) {
             anyhow::bail!(
                 "capabilities.disabled contains {name}, which is not compiled in this build"
             );
@@ -41,24 +48,31 @@ pub fn validate_config(config: &Config) -> anyhow::Result<()> {
 /// Retained policies, proxy routes, and EAP listener bindings are active
 /// dependencies even when their clients are disabled. Run before workers.
 pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
-    store.read(|tx| {
-        if !device_trust_usable(config) {
-            for (id, client) in tx.list::<Value>("clients")? {
-                if settings_require_device_trust(&client["settings"]) {
-                    return Err(Error::bad(format!(
-                        "Stored client {id:?} requires identity.device_trust; enable and configure its verifier before serving"
-                    )));
-                }
+    store.read(|tx| validate_store_tx_for(config, crate::edition::CURRENT, tx))
+}
+
+pub(crate) fn validate_store_tx_for(
+    config: &Config,
+    target: crate::edition::Target,
+    tx: &Tx<'_>,
+) -> Result<()> {
+    if !device_trust_usable_for(config, target) {
+        for (id, client) in tx.list::<Value>("clients")? {
+            if settings_require_device_trust(&client["settings"]) {
+                return Err(Error::bad(format!(
+                    "Stored client {id:?} requires identity.device_trust; enable and configure its verifier before serving"
+                )));
             }
         }
-        #[cfg(feature = "platform")]
+    }
+    #[cfg(feature = "platform")]
+    if target == crate::edition::Target::Platform {
         for (listener_id, listener) in &config.proxy_listeners {
-            for (origin, target) in &listener.routes {
-                let client = tx.get::<Client>("clients", &target.client_id)?;
-                validate_proxy_route(listener_id, origin, &target.client_id, client.as_ref())?;
+            for (origin, route) in &listener.routes {
+                let client = tx.get::<Client>("clients", &route.client_id)?;
+                validate_proxy_route(listener_id, origin, &route.client_id, client.as_ref())?;
             }
         }
-        #[cfg(feature = "platform")]
         for (listener_id, listener) in &config.radius_listeners {
             if listener.eap_tls.is_none() {
                 continue;
@@ -91,12 +105,16 @@ pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
                 )));
             }
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
 fn device_trust_usable(config: &Config) -> bool {
-    compiled("identity.device_trust")
+    device_trust_usable_for(config, crate::edition::CURRENT)
+}
+
+fn device_trust_usable_for(config: &Config, target: crate::edition::Target) -> bool {
+    compiled_for("identity.device_trust", target)
         && config.capabilities.enabled("identity.device_trust")
         && config
             .device_trust
@@ -248,7 +266,11 @@ fn conditional_requires_device(conditional: &Value) -> bool {
 }
 
 fn compiled(name: &str) -> bool {
-    cfg!(feature = "platform") || !agent::PLATFORM_FEATURES.contains(&name)
+    compiled_for(name, crate::edition::CURRENT)
+}
+
+fn compiled_for(name: &str, target: crate::edition::Target) -> bool {
+    target == crate::edition::Target::Platform || !agent::PLATFORM_FEATURES.contains(&name)
 }
 
 fn catalog() -> Value {

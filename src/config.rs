@@ -473,11 +473,23 @@ impl Config {
         Ok(())
     }
     pub fn load(path: &Path) -> Result<Self> {
+        Self::load_with_validation(path, true)
+    }
+
+    /// Resolve storage and credential paths for a read-only transition report
+    /// even when the proposed edition cannot serve this configuration.
+    pub(crate) fn load_for_preflight(path: &Path) -> Result<Self> {
+        Self::load_with_validation(path, false)
+    }
+
+    fn load_with_validation(path: &Path, validate: bool) -> Result<Self> {
         let mut value: Self = toml::from_str(
             &fs::read_to_string(path)
                 .with_context(|| format!("Read {}; run `riauth init` first", path.display()))?,
         )?;
-        value.validate()?;
+        if validate {
+            value.validate()?;
+        }
         if value.data_dir.is_relative() {
             value.data_dir = path
                 .parent()

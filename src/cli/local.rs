@@ -15,6 +15,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
+pub struct TransitionBlocked;
+
+impl std::fmt::Display for TransitionBlocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Transition preflight found blockers; inspect the report")
+    }
+}
+
+impl std::error::Error for TransitionBlocked {}
+
 #[derive(Args, Clone)]
 pub struct MigratePostgresArgs {
     #[arg(long)]
@@ -93,6 +104,11 @@ pub struct RecoverAdminArgs {
 
 #[derive(Subcommand, Clone)]
 pub enum LocalCommand {
+    /// Inspect a candidate edition against configuration and stored dependencies without writing
+    TransitionPreflight {
+        #[arg(long, value_enum)]
+        target: crate::edition::Target,
+    },
     /// Create an instance, signing key and first administrator
     Init(InitArgs),
     /// Provision a single-use browser setup proof in a private operator file
@@ -201,8 +217,37 @@ fn emit_local(options: &LocalOptions<'_>, value: &Value) -> Result<()> {
     }
 }
 
+fn emit_transition(options: &LocalOptions<'_>, report: &Value) -> Result<()> {
+    let ready = report["ready"] == true;
+    let data = if let Some(path) = options.output_file {
+        write_private(path, &serde_json::to_vec_pretty(report)?, false)?;
+        json!({"output_file": path, "written": true})
+    } else {
+        report.clone()
+    };
+    if options.json {
+        println!(
+            "{}",
+            json!({"schema_version": "riauth.cli/v1", "ok": ready, "data": data, "exit_code": if ready { 0 } else { 5 }})
+        );
+    } else {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+    }
+    Ok(())
+}
+
 pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -> Result<()> {
     match command {
+        LocalCommand::TransitionPreflight { target } => {
+            let config = Config::load_for_preflight(options.config)?;
+            let report =
+                tokio::task::spawn_blocking(move || crate::edition::preflight(&config, target))
+                    .await??;
+            emit_transition(&options, &report)?;
+            if report["ready"] != true {
+                return Err(TransitionBlocked.into());
+            }
+        }
         LocalCommand::ImportAuthentik(ImportAuthentikArgs { file, out, .. }) => {
             let input = serde_json::from_slice(&fs::read(file)?)?;
             let report = crate::migration::convert(input)?;

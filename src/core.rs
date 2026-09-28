@@ -188,18 +188,6 @@ impl Core {
         }
         // Edition compatibility is read-only and must run before either migration
         // or restored-lineage reconciliation mutates shared state.
-        if !cfg!(feature = "platform") {
-            store.read(|tx| {
-                for (_, client) in tx.list::<serde_json::Value>("clients")? {
-                    if client["settings"]["policy"].get("conditional").is_some() {
-                        return Err(Error::bad(
-                            "Stored conditional policy requires the Platform build",
-                        ));
-                    }
-                }
-                Ok(())
-            })?;
-        }
         crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
         crate::upgrade::migrate(&store)?;
