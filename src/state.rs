@@ -28,6 +28,10 @@ pub struct Manifest {
     pub clients: Vec<ClientSpec>,
     #[serde(default)]
     pub sources: Vec<crate::source::SourceSpec>,
+    /// The riAuth issuer this manifest was prepared for. When set, planning and applying fail
+    /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -137,6 +141,12 @@ impl Manifest {
                 "Unsupported manifest api_version; expected riauth/v1",
             ));
         }
+        // The same canonical form the instance's own issuer must have.
+        if let Some(issuer) = &self.issuer {
+            crate::config::validate_server_url(issuer).map_err(|_| {
+                Error::bad("Manifest issuer must be a canonical HTTPS URL (HTTP only on loopback)")
+            })?;
+        }
         if self.users.len()
             + self.groups.len()
             + self.clients.len()
@@ -216,6 +226,16 @@ impl Manifest {
             }
         }
         Ok(())
+    }
+    /// A bound manifest applies only where riAuth publishes exactly its issuer. Relying parties
+    /// compare `iss` as a string, so issuers that differ only by a trailing slash differ.
+    pub fn require_issuer(&self, instance: &str) -> Result<()> {
+        match &self.issuer {
+            Some(issuer) if issuer != instance => Err(Error::conflict(format!(
+                "Manifest is bound to issuer {issuer}, but this instance's issuer is {instance}; prepare the manifest for this instance"
+            ))),
+            _ => Ok(()),
+        }
     }
     pub fn secret_references(&self) -> BTreeSet<&str> {
         self.users
@@ -441,6 +461,7 @@ impl Core {
         manifest.validate()?;
         let (actor, revision, changes, impact, authority_digest) = self.store.preview(|tx| {
             let actor = self.principal(tx, token)?;
+            manifest.require_issuer(&self.config.issuer)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
             let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
@@ -504,6 +525,7 @@ impl Core {
             let actor = self.principal(tx, token)?;
             let mut stored = tx.get::<StoredPlan>("plans", &input.plan.plan_id)?.ok_or_else(|| Error::missing("Plan not found; create a new plan"))?;
             if stored.actor != actor.id || input.plan.issuer != self.config.issuer { return Err(Error::forbidden()); }
+            input.plan.manifest.require_issuer(&self.config.issuer)?;
             if serde_json::to_value(&input.plan).map_err(Error::internal)? != serde_json::to_value(&stored.plan).map_err(Error::internal)? {
                 return Err(Error::conflict("Plan was modified; create a new plan"));
             }
@@ -551,7 +573,7 @@ impl Core {
             let clients = tx.list::<Client>("clients")?.into_iter().filter(|(_, c)| actor.allows("client.read", &format!("client/{}", c.id))).map(|(_, c)| client_spec(&c)).collect();
             let sources = tx.list::<crate::source::Source>("sources")?.into_iter().filter(|(_, s)| actor.allows("source.read", &format!("source/{}",s.id))).map(|(_,source)| crate::source::SourceSpec{source,secret_ref:None,secret_version:None}).collect();
             let source_links=crate::source::export_links(tx,&actor)?;
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, issuer: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
         })
     }
 }

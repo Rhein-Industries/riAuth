@@ -1252,6 +1252,76 @@ fn authentik_preflight_keeps_or_blocks_each_exported_issuer() {
     }
 }
 
+#[test]
+fn authentik_manifest_plans_only_on_its_exact_target_issuer() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let f = Fixture::new();
+    let convert = |issuer: &str| {
+        riauth::migration::convert(serde_json::from_value(json!({"api_version":"riauth.authentik-import/v1","issuer":issuer,
+            "users":[{"pk":5,"uid":"uid-5","username":"dana","name":"Dana","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],"sources":[],
+            "passwords":{"dana":{"reference":"env:DANA_PASSWORD","version":"v1"}},"clients":{}})).unwrap())
+        .unwrap()
+    };
+    let bound = |issuer: &str| -> riauth::state::Manifest {
+        serde_json::from_value(convert(issuer)["manifest"].clone()).unwrap()
+    };
+    // Offline the instance's issuer is unknown, so the binding is a manual, non-blocking
+    // finding that planning enforces.
+    let report = convert(&f.core.config.issuer);
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    assert_eq!(findings(&report, Issuer, "*"), [(Manual, false)]);
+    assert_eq!(report["manifest"]["issuer"], f.core.config.issuer);
+    // Another host, or the same issuer with a trailing slash, never reaches a plan, and a
+    // non-canonical form is rejected before it is compared.
+    for (issuer, error) in [
+        (format!("{}/", f.core.config.issuer), "bound to issuer"),
+        ("https://id.example.test".to_owned(), "bound to issuer"),
+        (f.core.config.issuer.to_uppercase(), "canonical HTTPS URL"),
+    ] {
+        let mut manifest = bound(&f.core.config.issuer);
+        manifest.issuer = Some(issuer.clone());
+        let rejected = f.core.plan_state(&f.admin, manifest).err().unwrap();
+        assert!(
+            rejected.message.contains(error),
+            "{issuer}: {}",
+            rejected.message
+        );
+    }
+    assert!(
+        f.core
+            .plan_state(&f.admin, bound("https://id.example.test"))
+            .err()
+            .unwrap()
+            .message
+            .contains("bound to issuer")
+    );
+    // Unbound manifests, such as exported state, plan as before.
+    let mut unbound = bound(&f.core.config.issuer);
+    unbound.issuer = None;
+    f.core.plan_state(&f.admin, unbound).unwrap();
+    let plan = f
+        .core
+        .plan_state(&f.admin, bound(&f.core.config.issuer))
+        .unwrap();
+    f.core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan,
+                secrets: [("env:DANA_PASSWORD".into(), PASSWORD.into())].into(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    assert!(f.core.login("dana".into(), PASSWORD.into(), None).is_ok());
+    assert!(
+        f.core.export_state(&f.admin).unwrap()["manifest"]
+            .get("issuer")
+            .is_none()
+    );
+}
+
 #[tokio::test]
 async fn authentik_import_links_only_exported_source_connections() {
     use riauth::migration::{Classification::*, ItemKind::*};

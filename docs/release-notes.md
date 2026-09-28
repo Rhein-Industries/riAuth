@@ -85,6 +85,12 @@
   `credential` report issuer continuity, links, and credentials that never move.
   Inventories can declare these kinds, and they can no longer be used as a
   `source_kind`.
+- Converted manifests now record the bundle's `issuer`. Planning and applying
+  fail unless the instance's issuer is exactly that canonical URL, trailing
+  slash included, so a manifest prepared for one instance cannot silently
+  change `iss` on another. The preflight reports the binding as a non-blocking
+  manual finding. Existing bundles need no new input. Manifests without
+  `issuer`, including exports, are not bound.
 
 # Unreleased dependency refresh
 

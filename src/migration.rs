@@ -672,10 +672,15 @@ pub fn convert(input: Import) -> Result<Value> {
     let applications = rows(&input.applications)?;
     let bindings = rows(&input.policy_bindings)?;
     let mut p = Preflight::default();
+    // Every conversion decision assumes this target, so the manifest applies nowhere else.
     let mut manifest = Manifest {
         api_version: "riauth/v1".into(),
+        issuer: Some(input.issuer.clone()),
         ..Default::default()
     };
+    p.add(ItemKind::Issuer, "*", Classification::Manual,
+        format!("The instance's issuer is not available offline, so the manifest is bound to the target issuer {}: planning and applying fail unless the instance's issuer is exactly this value, including any trailing slash", input.issuer),
+        "Plan only on the riAuth instance initialized with exactly this issuer");
     let mut exported_sources = BTreeSet::new();
     // Exported source ID -> the reviewed riAuth source that replaces it.
     let mut applied = BTreeMap::new();
