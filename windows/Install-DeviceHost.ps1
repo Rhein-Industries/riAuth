@@ -116,6 +116,28 @@ function Assert-SignedBy {
     }
 }
 
+function Assert-SignedScriptBytesBy {
+    param(
+        [Parameter(Mandatory = $true)][byte[]] $Content,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint
+    )
+
+    if ($PSVersionTable.PSVersion.Major -lt 7 -or
+        ($PSVersionTable.PSVersion.Major -eq 7 -and $PSVersionTable.PSVersion.Minor -lt 4)) {
+        throw 'Bundle verification, install and update require PowerShell 7.4 or newer for UTF-8 content signature verification.'
+    }
+    # PowerShell 7.4 supports UTF-8 script content here. The signature is
+    # checked against the same byte array that Read-SignedBundle parses.
+    $signature = Get-AuthenticodeSignature -Content $Content -SourcePathOrExtension 'ps1'
+    if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
+        throw "Authenticode signature is not valid for the bundle manifest ($($signature.Status))"
+    }
+    $actual = Normalize-Thumbprint $signature.SignerCertificate.Thumbprint
+    if ($actual -cne $ExpectedThumbprint) {
+        throw 'Authenticode signer does not match the pinned certificate for the bundle manifest.'
+    }
+}
+
 function Assert-Sha256 {
     param(
         [Parameter(Mandatory = $true)][string] $LiteralPath,
@@ -172,14 +194,38 @@ function Read-SignedBundle {
             [IO.Path]::GetFullPath($installerPath), [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Run Install-DeviceHost.ps1 directly from the bundle being verified.'
     }
-    # Authenticating the manifest precedes even parsing its first line.
-    Assert-SignedBy -LiteralPath $manifestPath -ExpectedThumbprint $ExpectedThumbprint
-    $firstLine = Get-Content -LiteralPath $manifestPath -TotalCount 1
+    # Never reopen the source manifest after signature verification: an
+    # extracted bundle can be replaced between two path-based reads.
+    $manifestStream = [IO.File]::Open(
+        $manifestPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ($manifestStream.Length -gt 1048576) {
+            throw 'The signed bundle manifest exceeds the 1 MiB limit.'
+        }
+        $manifestBytes = [byte[]]::new([int]$manifestStream.Length)
+        $manifestStream.ReadExactly($manifestBytes, 0, $manifestBytes.Length)
+    } finally {
+        $manifestStream.Dispose()
+    }
+    Assert-SignedScriptBytesBy -Content $manifestBytes -ExpectedThumbprint $ExpectedThumbprint
+    $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    try {
+        $manifestText = $utf8.GetString($manifestBytes)
+    } catch {
+        throw "The signed bundle manifest is not valid UTF-8: $_"
+    }
+    $lineEnd = $manifestText.IndexOf("`n")
+    if ($lineEnd -lt 0) {
+        throw 'The signed bundle manifest has no first-line terminator.'
+    }
+    $firstLine = $manifestText.Substring(0, $lineEnd)
+    if ($firstLine.EndsWith("`r")) {
+        $firstLine = $firstLine.Substring(0, $firstLine.Length - 1)
+    }
     if ($firstLine -cnotmatch '^# RIAUTH-BUNDLE-V1 ([A-Za-z0-9+/]+={0,2})$') {
         throw 'The signed bundle manifest has no valid v1 envelope.'
     }
     try {
-        $utf8 = [Text.UTF8Encoding]::new($false, $true)
         $json = $utf8.GetString([Convert]::FromBase64String($Matches[1]))
         $document = [Text.Json.JsonDocument]::Parse($json)
     } catch {

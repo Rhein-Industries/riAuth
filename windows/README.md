@@ -42,7 +42,10 @@ channels. Extract the ZIP to an empty directory. Check the installer's
 Authenticode signature **before executing it**; its own `Verify` action cannot
 protect against running a substituted script. From that directory, verify the
 complete bundle before install, then run the same signed installer as an
-elevated 64-bit PowerShell 7 administrator:
+elevated 64-bit PowerShell 7.4 or newer administrator. The installer uses
+byte-array Authenticode verification for the UTF-8 manifest so its signed bytes
+are the same bytes parsed for the release version and payload hashes. Uninstall
+can still run on PowerShell 7.0 or newer:
 
 ```powershell
 $pin = '<40-hex release certificate thumbprint>'

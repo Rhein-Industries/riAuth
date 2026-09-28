@@ -49,7 +49,7 @@ reenabling the user does not restore those device credentials.
    confirming remote revocation. Complete any pending installer update before
    uninstalling.
 2. Run the pinned-signer `Install-DeviceHost.ps1 -Action Uninstall` from a
-   trusted signed release as an elevated 64-bit PowerShell 7 administrator.
+   trusted signed release as an elevated 64-bit PowerShell 7.0 or newer administrator.
    Independently check the script's Authenticode signer before execution as
    shown in [README.md](README.md). For a previous signed installation without
    bundle hash metadata, add `-AllowLegacySignedInstall`.
