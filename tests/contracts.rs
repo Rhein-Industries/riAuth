@@ -1,4 +1,6 @@
-//! Q02 shared contract slices: identical bodies over real backend factories.
+//! Shared contract bodies over real redb and PostgreSQL backend factories.
+#[path = "contracts/backend_parity.rs"]
+mod backend_parity;
 mod common;
 #[path = "contracts/shared.rs"]
 mod shared;

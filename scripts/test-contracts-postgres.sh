@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Q02: the same contracts in new databases in a new loopback-only cluster.
+# Shared contracts in new databases in a new loopback-only cluster.
+# An optional first argument filters test names (default: all PostgreSQL contracts).
 set -euo pipefail
 riauth_repo="$(cd "$(dirname "$0")/.." && pwd)"
 riauth_pg_bin="${PG_BIN:-$(dirname "$(command -v initdb)")}"
 riauth_cargo="${CARGO:-cargo}"
+riauth_filter="${1:-postgres}"
 mkdir -p "$riauth_repo/target"
 riauth_pg_test="$(mktemp -d "$riauth_repo/target/contract-postgres.XXXXXXXX")"
 cleanup() {
@@ -25,4 +27,4 @@ printf 'riauth disposable contract cluster\n' >"$riauth_pg_test/marker"
 cd "$riauth_repo"
 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR="$riauth_repo/target" \
   RIAUTH_TEST_CONTRACT_PG_ROOT="$riauth_pg_test" \
-  "$riauth_cargo" test --locked --features test-support --test contracts -- --ignored postgres --test-threads=2 --nocapture
+  "$riauth_cargo" test --locked --features test-support --test contracts -- --ignored "$riauth_filter" --test-threads=2 --nocapture

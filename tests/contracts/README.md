@@ -68,8 +68,8 @@ From the repository root, ordinary tests need no external services:
 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=target CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked --features test-support --test contracts
 ```
 
-This selects 46 redb cases and explicitly ignores 46 PostgreSQL cases. Without
-`test-support`, five clock/deadline bodies are absent: 36 run and 36 are ignored.
+This selects 52 redb cases and explicitly ignores 52 PostgreSQL cases. Without
+`test-support`, five clock/deadline bodies are absent: 42 run and 42 are ignored.
 A PostgreSQL skip is not backend evidence.
 
 Install/use local PostgreSQL programs (`initdb`, `pg_ctl`) and run:
@@ -79,7 +79,7 @@ CARGO_PROFILE_DEV_DEBUG=0 bash scripts/test-contracts-postgres.sh
 ```
 
 The script creates a fresh loopback-only cluster under `target/`, a private
-connection file and a marker, then runs the 46 ignored PostgreSQL cases with
+connection file and a marker, then runs the 52 ignored PostgreSQL cases with
 `CARGO_BUILD_JOBS=2`. Each fixture creates its own empty database. Before any
 database creation/drop, the fixture checks the actual server data directory
 against the cluster's `primary` directory, rather than trusting only an environment
