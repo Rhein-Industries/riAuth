@@ -1,3 +1,29 @@
+# Unreleased durable offboarding delivery (P04)
+
+- Every transaction that disables or deletes an account now also records one
+  outbound SCIM deactivation row per linked target that last reported the account
+  active. This includes administrator, inbound SCIM, directory, cloud,
+  desired-state, SSF and scheduled-offboarding disables. The intent commits or
+  aborts with the local session, OAuth-grant and credential revocation.
+- The provisioning worker delivers those rows one target at a time. It dispatches
+  only under a `scim/<target>` scoped controller in `automatic` mode below the
+  shared removal floor. The binding, lease, account and link are rechecked
+  immediately before the conditional `PATCH active=false`. Other targets hold the
+  row until a reviewed plan delivers the disable. Outcomes are listed by
+  `riauth provision deactivations` (`GET /api/provisioning/deactivations`). See
+  [offboarding deactivation](scim.md#offboarding-deactivation).
+- Scheduled offboarding also revokes unexpired temporary access grants. It records
+  `result.local` and the per-target row IDs, and its views report
+  `downstream.state` (`pending`, `delivered` or `incomplete`) from the live rows.
+  `status: done` no longer implies anything about downstream accounts, and
+  `downstream: local-only` is no longer produced. New jobs list
+  `downstream.deactivate` instead of `downstream.local-only`.
+- A reviewed provisioning job now goes stale instead of dispatching an active
+  account whose local user has since been disabled.
+- The derived index revision is now 4. The first start after upgrading rebuilds
+  derived indexes, including a per-account outbound-link index. Stop all older
+  writers before upgrading.
+
 # Unreleased streamed backup export (R01)
 
 - `riauth backup` now streams a `riauth.backup/v3` archive from the new

@@ -21,7 +21,7 @@ Naive local times (`2027-03-01T00:00:00`) and numeric strings are rejected. The 
 
 ## Execution
 
-When the job runs it clears the local account and queues relying-party logout: `enabled` is cleared, `epoch` increases by one, and `logout::queue_user` fans out relying-party logout. Existing sessions and OAuth grants fail the epoch check. Temporary PAM grants are separate stored entitlements and retain their own expiry/revocation rules. The job records actions `user.disable`, `session.revoke`, `grant.revoke` and `downstream.local-only`. The shared disable transition also durably revokes child agents, Windows devices and outstanding sign-in tickets, and enqueues an outbound SSF account-disabled signal. Re-enabling the account does not restore those credentials.
+When the job runs, one transaction revokes local access and records downstream intent. `enabled` is cleared and `epoch` increases by one, so existing sessions and OAuth grants fail the epoch check. Unexpired temporary access grants, including future-dated ones, are revoked with the job's creator as `revoked_by`. The shared disable transition durably revokes child agents, Windows devices and outstanding sign-in tickets. It also queues relying-party logout, enqueues an outbound SSF account-disabled signal, and records one outbound SCIM deactivation row per linked target. Re-enabling the account does not restore those credentials. New jobs record the actions `user.disable`, `session.revoke`, `grant.revoke` and `downstream.deactivate`; stored jobs keep their original list.
 
 The scheduler's authority is checked again at execution. A revoked/expired agent, an inactive administrator, a changed user id, or a user who is now the last administrator fails the job without disabling anyone. An agent-created job still refuses an administrator. The worker checks the agent's enabled flag, expiry, permission and parent-user state. A disabled or deleted parent rejects execution even for a legacy agent row still marked enabled.
 
@@ -31,7 +31,17 @@ Retryable failures before revocation are retried at most five times, with backof
 
 ## Downstream SCIM
 
-Offboarding does **not** call outbound SCIM, even when `[scim_targets]` is configured. There is no single-user deprovision function. Outbound deactivation is the existing reviewed plan: a disabled local user that already has a provisioning link is sent as `active: false` when an operator runs `riauth provision plan` and `riauth provision apply`. The job result is always `downstream: local-only`. `scim_targets_configured` only reports whether targets exist. Do not treat that field as a delivery receipt.
+The job never calls a SCIM target inside its commit, and `status: done` means only that the local revocation committed. The same transaction records a [deactivation row](../scim.md#offboarding-deactivation) for each outbound link whose target last reported the account active. That includes an account that was already disabled when the job ran. The job result stores the local outcome in `result.local` and the row IDs in `result.downstream.targets`. Job views then add `downstream`, which reads each row live:
+
+| `downstream.state` | Meaning |
+| --- | --- |
+| `pending` | At least one target has no outcome yet, including rows held for a controller or review |
+| `delivered` | Every recorded target confirmed that the account is inactive |
+| `incomplete` | Every target has an outcome and at least one is `stale`, `failed`, `superseded` or `expired` (retention elapsed) |
+
+Each entry in `downstream.targets` shows that target's `status`, `hold`, `outcome`, `attempts`, `last_error` and `delivered_at`. An agent sees an entry only with `provisioner.read` on `provisioner/<target>`. Hidden targets are counted in `hidden_targets` and still decide `state`, so a hidden pending target never reads as delivered. If the account had no active outbound link, `result.downstream.targets` is empty and `downstream` is omitted. Jobs completed by earlier releases keep `downstream: local-only`.
+
+A target delivers automatically only when it has a `scim/<target>` scoped controller and `automatic` reconciliation mode, below the shared removal floor. Otherwise the row is held until a reviewed `riauth provision plan` / `provision apply` delivers the disable; the row then closes as `delivered`.
 
 ## API and CLI
 

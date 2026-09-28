@@ -6,24 +6,27 @@
 //! so replacing the label on reschedule cannot move the clock time by itself.
 //! Naive local timestamps are rejected.
 //!
-//! Outbound SCIM is not called. Provisioning deactivation is a reviewed full-target
-//! plan (`provision plan` / `provision apply`), not a single-user operation. The
-//! job result therefore records `downstream: local-only` even when targets are
-//! configured. A disabled user is deactivated remotely only when an operator applies
-//! a later plan that already contains that behavior.
+//! Execution commits the local revocation and the downstream intent together: the
+//! shared account transition records one deactivation row per linked outbound SCIM
+//! account in the same transaction. The job keeps those row IDs. `status: done`
+//! means the local revocation committed; each target's outcome is read live from
+//! its own row, and `downstream.state` is `delivered` only after every target
+//! confirmed the deactivation.
 
+pub use crate::offboarding_types::{ACTIONS, BUCKET, Job, MAX_ATTEMPTS, Status};
 use crate::{
     agent::{Agent, Principal},
     core::{Core, audit, ensure_remaining_admin, user_by_name, validate_name},
     crypto::{self, now},
     error::{Error, Result},
+    identity::downstream::{self, Deactivation, Status as Delivery},
     model::User,
+    pam::AccessGrant,
     store::Tx,
 };
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
-pub use crate::offboarding_types::{BUCKET, Job, LOCAL_ACTIONS, MAX_ATTEMPTS, Status};
 
 const LEASE_SECONDS: u64 = 60;
 const MAX_SCHEDULE_SECONDS: u64 = 366 * 24 * 60 * 60;
@@ -188,19 +191,68 @@ fn guard_schedule(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
     would_remove_last_admin(tx, user)
 }
 
-fn local_actions() -> Vec<String> {
-    LOCAL_ACTIONS
-        .iter()
-        .map(|action| (*action).to_owned())
-        .collect()
+fn job_actions() -> Vec<String> {
+    ACTIONS.iter().map(|action| (*action).to_owned()).collect()
 }
 
 fn audit_target(job: &Job) -> String {
     format!("{}/{}", job.id, job.username)
 }
 
-fn view(job: &Job) -> Result<Value> {
-    serde_json::to_value(job).map_err(Error::internal)
+/// The stored job plus each recorded target's live deactivation outcome. An
+/// agent sees details only for targets it may read; every target still counts
+/// toward `state`, so a hidden pending target never reads as delivered.
+fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
+    let mut value = serde_json::to_value(job).map_err(Error::internal)?;
+    let Some(recorded) = job
+        .result
+        .as_ref()
+        .and_then(|result| result["downstream"]["targets"].as_array())
+        .filter(|targets| !targets.is_empty())
+    else {
+        return Ok(value);
+    };
+    let mut targets = Vec::new();
+    let (mut hidden, mut open, mut delivered) = (0usize, 0usize, 0usize);
+    for entry in recorded {
+        let target = entry["target"].as_str().unwrap_or_default();
+        let id = entry["delivery"].as_str().unwrap_or_default();
+        let row = tx.get::<Deactivation>(downstream::BUCKET, id)?;
+        match row.as_ref().map(|row| row.status) {
+            Some(Delivery::Delivered) => delivered += 1,
+            Some(status) if !status.terminal() => open += 1,
+            _ => {}
+        }
+        if viewer.is_some_and(|viewer| {
+            !viewer.allows("provisioner.read", &format!("provisioner/{target}"))
+        }) {
+            hidden += 1;
+            continue;
+        }
+        targets.push(match row {
+            Some(row) => json!({
+                "target": target,
+                "delivery": id,
+                "status": row.status,
+                "hold": row.hold,
+                "outcome": row.outcome,
+                "attempts": row.attempts,
+                "last_error": row.last_error,
+                "delivered_at": row.delivered_at,
+            }),
+            // Terminal rows are retained for 90 days.
+            None => json!({"target": target, "delivery": id, "status": "expired"}),
+        });
+    }
+    let state = if open > 0 {
+        "pending"
+    } else if delivered == recorded.len() {
+        "delivered"
+    } else {
+        "incomplete"
+    };
+    value["downstream"] = json!({"state": state, "targets": targets, "hidden_targets": hidden});
+    Ok(value)
 }
 
 fn load(tx: &Tx<'_>, id: &str) -> Result<Job> {
@@ -232,19 +284,6 @@ fn release_lease(job: &mut Job) {
 
 fn is_permanent(error: &Error) -> bool {
     matches!(error.code, "conflict" | "not_found" | "access_denied")
-}
-
-fn downstream_result(configured: bool) -> Value {
-    let mut result = json!({
-        "downstream": "local-only",
-        "scim_targets_configured": configured,
-    });
-    if configured {
-        result["note"] = json!(
-            "Configured SCIM targets were not called. Run provision plan and apply to deactivate linked downstream accounts."
-        );
-    }
-    result
 }
 
 impl Core {
@@ -286,7 +325,7 @@ impl Core {
                 lease_until: 0,
                 last_error: None,
                 created_by: actor.id.clone(),
-                actions: local_actions(),
+                actions: job_actions(),
                 cancel_requested: false,
                 next_attempt: execute_at,
                 result: None,
@@ -294,7 +333,7 @@ impl Core {
             };
             tx.put(BUCKET, &job.id, &job)?;
             audit(tx, &actor.id, "offboard.schedule", &audit_target(&job))?;
-            view(&job)
+            view(tx, &job, Some(&actor))
         })
     }
 
@@ -332,7 +371,7 @@ impl Core {
             job.next_attempt = execute_at;
             tx.put(BUCKET, &job.id, &job)?;
             audit(tx, &actor.id, "offboard.reschedule", &audit_target(&job))?;
-            view(&job)
+            view(tx, &job, Some(&actor))
         })
     }
 
@@ -346,7 +385,7 @@ impl Core {
                 &format!("user/{}", job.username),
             )?;
             match job.status {
-                Status::Cancelled => view(&job),
+                Status::Cancelled => view(tx, &job, Some(&actor)),
                 Status::Done | Status::Failed => Err(Error::conflict(
                     "Offboarding job can no longer be cancelled",
                 )),
@@ -357,15 +396,15 @@ impl Core {
                     job.next_attempt = now();
                     tx.put(BUCKET, &job.id, &job)?;
                     audit(tx, &actor.id, "offboard.cancel", &audit_target(&job))?;
-                    view(&job)
+                    view(tx, &job, Some(&actor))
                 }
-                Status::Running if job.cancel_requested => view(&job),
+                Status::Running if job.cancel_requested => view(tx, &job, Some(&actor)),
                 Status::Running => {
                     // Leave the job running. The worker re-reads this flag before revocation.
                     job.cancel_requested = true;
                     tx.put(BUCKET, &job.id, &job)?;
                     audit(tx, &actor.id, "offboard.cancel", &audit_target(&job))?;
-                    view(&job)
+                    view(tx, &job, Some(&actor))
                 }
             }
         })
@@ -386,7 +425,7 @@ impl Core {
             });
             let views = jobs
                 .iter()
-                .map(|(_, job)| view(job))
+                .map(|(_, job)| view(tx, job, Some(&actor)))
                 .collect::<Result<Vec<_>>>()?;
             Ok(Value::Array(views))
         })
@@ -397,7 +436,7 @@ impl Core {
             let actor = self.principal(tx, token)?;
             let job = load(tx, id)?;
             actor.require("user.offboard", &format!("user/{}", job.username))?;
-            view(&job)
+            view(tx, &job, Some(&actor))
         })
     }
 
@@ -447,7 +486,7 @@ impl Core {
                 current.next_attempt = current.lease_until;
                 current.attempts = current.attempts.saturating_add(1);
                 tx.put(BUCKET, &current.id, &current)?;
-                return view(&current).map(Some);
+                return view(tx, &current, None).map(Some);
             }
             Ok(None)
         })
@@ -465,7 +504,7 @@ impl Core {
                 job.status,
                 Status::Done | Status::Cancelled | Status::Failed
             ) {
-                return view(&job);
+                return view(tx, &job, None);
             }
             if job.lease_owner.as_deref() != Some(owner)
                 || job.lease_until <= now()
@@ -479,7 +518,7 @@ impl Core {
             }
             if job.cancel_requested {
                 finalize_cancel(tx, &mut job)?;
-                return view(&job);
+                return view(tx, &job, None);
             }
             if mode == BeforeCommit::RetryableFailure {
                 return Err(Error::new(
@@ -488,8 +527,7 @@ impl Core {
                     "Offboarding attempt failed before changes were committed",
                 ));
             }
-            let configured = !self.config.scim_targets.is_empty();
-            match apply_local(tx, &job, configured) {
+            match apply_local(tx, &job) {
                 Ok(result) => {
                     job.status = Status::Done;
                     job.result = Some(result);
@@ -498,7 +536,7 @@ impl Core {
                     job.next_attempt = now();
                     tx.put(BUCKET, &job.id, &job)?;
                     audit(tx, &job.created_by, "offboard.execute", &audit_target(&job))?;
-                    view(&job)
+                    view(tx, &job, None)
                 }
                 Err(error) if is_permanent(&error) => {
                     job.status = Status::Failed;
@@ -508,7 +546,7 @@ impl Core {
                     job.next_attempt = now();
                     tx.put(BUCKET, &job.id, &job)?;
                     audit(tx, &job.created_by, "offboard.execute", &audit_target(&job))?;
-                    view(&job)
+                    view(tx, &job, None)
                 }
                 Err(error) => Err(error),
             }
@@ -615,20 +653,53 @@ fn authority_still_valid(tx: &Tx<'_>, job: &Job, user: &User) -> Result<()> {
     Ok(())
 }
 
-fn apply_local(tx: &Tx<'_>, job: &Job, scim_targets_configured: bool) -> Result<Value> {
+/// Revoke unexpired temporary group entitlements, including future-dated ones.
+fn revoke_temporary_access(tx: &Tx<'_>, user_id: &str, actor: &str, at: u64) -> Result<usize> {
+    let mut revoked = 0;
+    for mut grant in tx.user_access_grants::<AccessGrant>(user_id)? {
+        if grant.user_id != user_id || grant.revoked_at.is_some() || grant.expires_at <= at {
+            continue;
+        }
+        grant.revoked_at = Some(at);
+        grant.revoked_by = Some(actor.to_owned());
+        tx.put("access_grants", &grant.id, &grant)?;
+        revoked += 1;
+    }
+    Ok(revoked)
+}
+
+fn apply_local(tx: &Tx<'_>, job: &Job) -> Result<Value> {
     let mut user = user_by_name(tx, &job.username)?;
     if user.id != job.user_id {
         return Err(Error::conflict("Offboarding user identity changed"));
     }
     authority_still_valid(tx, job, &user)?;
     would_remove_last_admin(tx, &user)?;
-    // Same revocation as an administrative disable: epoch mismatch kills sessions
-    // and grants, and queue_user fans out RP logout. No SCIM call is made.
+    // Same revocation as an administrative disable, in this transaction: the epoch
+    // change ends sessions and OAuth grants, and the shared account transition
+    // revokes owned agents and Windows devices, queues RP logout and records one
+    // downstream deactivation row per linked outbound SCIM account.
     user.enabled = false;
     user.epoch = user.epoch.saturating_add(1);
     tx.put("users", &user.id, &user)?;
-    crate::logout::queue_user(tx, &user.id)?;
-    Ok(downstream_result(scim_targets_configured))
+    let temporary_access = revoke_temporary_access(tx, &user.id, &job.created_by, now())?;
+    // The transition above recorded intent for an enabled account. An account
+    // that was already disabled gets its own rows for this execution; rows the
+    // transition already wrote for this epoch are kept.
+    let targets: Vec<Value> = downstream::enqueue(tx, &user.id, &user.username, user.epoch)?
+        .into_iter()
+        .map(|(target, delivery)| json!({"target": target, "delivery": delivery}))
+        .collect();
+    Ok(json!({
+        "local": {
+            "account": "disabled",
+            "epoch": user.epoch,
+            "sessions": "revoked",
+            "oauth_grants": "revoked",
+            "temporary_access_revoked": temporary_access,
+        },
+        "downstream": {"targets": targets},
+    }))
 }
 
 pub fn cleanup(core: &Core) -> Result<()> {

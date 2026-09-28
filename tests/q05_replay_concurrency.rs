@@ -1152,7 +1152,16 @@ fn offboarding_lease_reclaim_after_reopen(h: Harness, postgres: bool) {
         assert_eq!(completed["last_error"], Value::Null);
         assert_eq!(
             completed["result"],
-            json!({"downstream": "local-only", "scim_targets_configured": false})
+            json!({
+                "local": {
+                    "account": "disabled",
+                    "epoch": original.epoch + 1,
+                    "sessions": "revoked",
+                    "oauth_grants": "revoked",
+                    "temporary_access_revoked": 0,
+                },
+                "downstream": {"targets": []},
+            })
         );
         assert_eq!(serde_json::to_value(stored()).unwrap(), completed);
         let mut expected_user = original_value.clone();

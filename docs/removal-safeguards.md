@@ -128,6 +128,15 @@ Outbound SCIM plans review desired content and previously delivered managed
 links; they do not fetch an entire remote tenant during planning. Remote drift
 outside that reviewed membership is rejected rather than implicitly approved.
 
+Offboarding deactivation rows (see [outbound SCIM](scim.md#offboarding-deactivation))
+are removals under the same modes. `manual-review` and `guarded-automatic` hold
+them for a reviewed plan. `automatic` dispatches under the target's scoped
+controller unless the floor, counted over all previously delivered active links
+whose accounts are now disabled or deleted, requires review. The delivery does
+not rewrite managed links, so a reviewed plan still sees and rebaselines those
+departures. A reviewed job stops as stale rather than dispatch an active state
+for an account that is now disabled.
+
 Remote delivery remains at least once and can be partial or uncertain. Revocation
 cannot roll back a remote write already accepted by a peer. Inspect job errors
 and partial results before replanning; local apply does not mean downstream work

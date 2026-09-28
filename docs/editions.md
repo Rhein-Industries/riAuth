@@ -46,7 +46,9 @@ Cloud Workspace/Entra synchronization, inbound SCIM, Windows login, device-trust
 verification, temporary-access approval, scheduled offboarding and Vault Transit
 signing engines also compile only in Platform. Shared configuration, temporary
 access, offboarding and remote-key records remain decodable for restore and
-downgrade inspection. Essentials refuses a retained remote signing key before
+downgrade inspection. Outbound SCIM deactivation intent, which every account
+disable records for linked targets, and its scoped-controller delivery are shared
+by both editions. Essentials refuses a retained remote signing key before
 serving, even if its signer configuration has been removed. Its local JWT signing
 path keeps the same token semantics and rejects any remote key reference.
 

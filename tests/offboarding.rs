@@ -1,20 +1,33 @@
 mod common;
 
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::get,
+};
 use common::{Fixture, PASSWORD, text};
 use riauth::{
     agent::{NewAgent, Permission},
-    config::Config,
+    config::{Config, write_private},
+    connector_guard::ReconciliationMode,
     core::Core,
     crypto,
+    identity::downstream,
     model::{NewUser, User},
     offboarding::{
         BUCKET, BeforeCommit, ExecuteAt, Job, RescheduleRequest, ScheduleRequest, Status,
         format_rfc3339, format_rfc3339_at_offset,
     },
     provisioning::Target,
+    reconciliation::ControllerConfig,
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::{Arc, Mutex},
+};
 
 fn add_user(f: &Fixture, username: &str, admin: bool) {
     f.core
@@ -220,7 +233,7 @@ fn schedule_list_and_time_contract() {
     assert_eq!(beth["timezone"], "Pacific/Auckland");
     assert_eq!(cara["timezone"], "UTC");
     assert_eq!(alice["status"], "scheduled");
-    assert_eq!(alice["actions"][3], "downstream.local-only");
+    assert_eq!(alice["actions"][3], "downstream.deactivate");
     assert!(
         f.core
             .offboard_schedule(
@@ -396,11 +409,10 @@ fn overdue_job_disables_user_and_revokes_sessions() {
     assert_eq!(job.status, Status::Done);
     assert_eq!(job.attempts, 1);
     assert!(job.lease_owner.is_none());
-    assert_eq!(job.result.as_ref().unwrap()["downstream"], "local-only");
-    assert_eq!(
-        job.result.as_ref().unwrap()["scim_targets_configured"],
-        false
-    );
+    let result = job.result.as_ref().unwrap();
+    assert_eq!(result["local"]["account"], "disabled");
+    assert_eq!(result["local"]["epoch"], before + 1);
+    assert_eq!(result["downstream"]["targets"], json!([]));
     f.core.cleanup().unwrap();
     assert_eq!(account(&f.core, "alice").epoch, before + 1);
     assert!(targets(&f.core, "offboard.execute").contains(&format!("{id}/alice")));
@@ -652,46 +664,382 @@ fn agent_without_permission_is_forbidden_and_last_admin_is_protected() {
     assert!(account(&f.core, "root2").enabled);
 }
 
+/// Loopback SCIM target recording each request's method and bearer header.
+#[derive(Clone, Default)]
+struct Scim {
+    users: Arc<Mutex<Vec<Value>>>,
+    requests: Arc<Mutex<Vec<(String, String)>>>,
+    patches: Arc<Mutex<Vec<(String, Option<String>, Value)>>>,
+}
+
+impl Scim {
+    fn serve(&self) -> String {
+        let state = self.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                sender.send(listener.local_addr().unwrap()).unwrap();
+                let app = Router::new()
+                    .route("/scim/v2/Users", get(scim_list))
+                    .route("/scim/v2/Users/{id}", get(scim_read).patch(scim_patch))
+                    .with_state(state);
+                axum::serve(listener, app).await.unwrap();
+            });
+        });
+        format!("http://{}/scim/v2", receiver.recv().unwrap())
+    }
+    fn record(&self, method: &str, headers: &HeaderMap) {
+        let bearer = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        self.requests.lock().unwrap().push((method.into(), bearer));
+    }
+    fn user(&self, id: &str) -> Value {
+        self.users
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|user| user["id"] == id)
+            .cloned()
+            .unwrap()
+    }
+}
+
+fn versioned(user: &Value) -> Response {
+    let etag = format!("\"{}\"", user["meta"]["version"].as_str().unwrap());
+    (StatusCode::OK, [(header::ETAG, etag)], Json(user.clone())).into_response()
+}
+
+async fn scim_list(
+    State(scim): State<Scim>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    scim.record("GET", &headers);
+    let filter = query.get("filter").cloned().unwrap_or_default();
+    let matched: Vec<_> = scim
+        .users
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|user| filter.contains(user["externalId"].as_str().unwrap()))
+        .cloned()
+        .collect();
+    Json(json!({"Resources": matched, "totalResults": matched.len()})).into_response()
+}
+
+async fn scim_read(
+    State(scim): State<Scim>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    scim.record("GET", &headers);
+    let users = scim.users.lock().unwrap();
+    match users.iter().find(|user| user["id"] == id) {
+        Some(user) => versioned(user),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn scim_patch(
+    State(scim): State<Scim>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(patch): Json<Value>,
+) -> Response {
+    scim.record("PATCH", &headers);
+    let condition = headers
+        .get(header::IF_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .map(String::from);
+    scim.patches
+        .lock()
+        .unwrap()
+        .push((id.clone(), condition, patch.clone()));
+    let mut users = scim.users.lock().unwrap();
+    let Some(user) = users.iter_mut().find(|user| user["id"] == id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    for (key, value) in patch["Operations"][0]["value"].as_object().unwrap() {
+        user[key] = value.clone();
+    }
+    let version = user["meta"]["version"]
+        .as_str()
+        .unwrap()
+        .parse::<u64>()
+        .unwrap()
+        + 1;
+    user["meta"]["version"] = json!(version.to_string());
+    versioned(user)
+}
+
+fn scim_body(user: &User) -> Value {
+    json!({
+        "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+        "externalId": format!("urn:riauth:offboarding-test:Users:{}", user.id),
+        "userName": user.username,
+        "displayName": user.display_name,
+        "active": true,
+        "emails": [],
+    })
+}
+
+/// A previously delivered link and the matching active remote account.
+fn linked(f: &Fixture, scim: &Scim, target: &str, url: &str, user: &User, remote: &str) {
+    let body = scim_body(user);
+    let mut account = body.clone();
+    account["id"] = json!(remote);
+    account["meta"] = json!({"version": "1"});
+    scim.users.lock().unwrap().push(account);
+    let link = json!({
+        "target": target,
+        "url": url,
+        "kind": "Users",
+        "local_id": user.id,
+        "remote_id": remote,
+        "external_id": body["externalId"],
+        "body": body,
+    });
+    let key = crypto::digest(&format!("{target}\0Users\0{}", user.id));
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_links", &key, &link))
+        .unwrap();
+}
+
+fn scim_target(f: &Fixture, name: &str, url: &str, group: &str) -> Target {
+    let token_file = f._dir.path().join(format!("{name}-scim-token"));
+    write_private(&token_file, format!("{name}-bearer").as_bytes(), false).unwrap();
+    Target {
+        url: url.into(),
+        token_file: Some(token_file),
+        oauth: None,
+        ca_file: None,
+        groups: BTreeSet::from([group.to_owned()]),
+        export_groups: false,
+    }
+}
+
+fn delivery(core: &Core, target: &str, user: &User) -> Value {
+    deliveries(core)
+        .into_iter()
+        .find(|row| row["target"] == target && row["user_id"] == user.id.as_str())
+        .unwrap()
+}
+
+fn deliveries(core: &Core) -> Vec<Value> {
+    core.store
+        .list::<Value>(downstream::BUCKET)
+        .unwrap()
+        .into_iter()
+        .map(|(_, row)| row)
+        .collect()
+}
+
+fn reported<'a>(job: &'a Value, target: &str) -> &'a Value {
+    job["downstream"]["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["target"] == target)
+        .unwrap()
+}
+
+/// P04 contract: the local revocation and one deactivation intent per linked target
+/// commit together; each target's outcome is recorded on its own row; the job never
+/// reports remote completion before every target confirmed delivery.
 #[test]
-fn configured_scim_targets_are_not_called() {
+fn offboarding_commits_downstream_intent_and_reports_each_target_only_after_delivery() {
     let mut f = Fixture::new();
-    add_user(&f, "alice", false);
-    f.core.config.scim_targets.insert(
-        "payroll".into(),
-        Target {
-            url: "http://127.0.0.1:9/scim/v2".into(),
-            token_file: Some(PathBuf::from("missing-scim-token")),
-            oauth: None,
-            ca_file: None,
-            groups: BTreeSet::from(["people".to_owned()]),
-            export_groups: false,
+    f.client("app", false);
+    let session = f.user("alice");
+    let tokens = f.tokens("app", &session, None);
+    f.user("bob");
+    f.core.create_group(&f.admin, "wiki").unwrap();
+    f.core
+        .group_member(&f.admin, "wiki", "alice", true)
+        .unwrap();
+    let (alice, bob) = (account(&f.core, "alice"), account(&f.core, "bob"));
+
+    // payroll: automatic mode under a P02 scoped controller. wiki: manual review.
+    let (payroll, wiki) = (Scim::default(), Scim::default());
+    let (payroll_url, wiki_url) = (payroll.serve(), wiki.serve());
+    let payroll_target = scim_target(&f, "payroll", &payroll_url, "payroll");
+    let wiki_target = scim_target(&f, "wiki", &wiki_url, "wiki");
+    f.core
+        .config
+        .scim_targets
+        .insert("payroll".into(), payroll_target);
+    f.core
+        .config
+        .scim_targets
+        .insert("wiki".into(), wiki_target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert("payroll".into(), ReconciliationMode::Automatic);
+    let controller = agent(
+        &f,
+        "payroll_controller",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let credential_file = f._dir.path().join("payroll-controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    f.core.config.reconciliation_controllers.insert(
+        "scim/payroll".into(),
+        ControllerConfig {
+            agent_id: "payroll_controller".into(),
+            credential_file,
+            interval_seconds: 3600,
         },
     );
+    linked(&f, &payroll, "payroll", &payroll_url, &alice, "p-alice");
+    linked(&f, &payroll, "payroll", &payroll_url, &bob, "p-bob");
+    linked(&f, &wiki, "wiki", &wiki_url, &alice, "w-alice");
+
+    // A failed attempt commits neither the revocation nor downstream intent.
     let id = job_id(&schedule(&f.core, &f.admin, "alice", soon(3600), "UTC"));
     age(&f.core, &id);
+    assert!(
+        f.core
+            .offboard_process("worker", |_| BeforeCommit::RetryableFailure)
+            .unwrap()
+    );
+    assert!(account(&f.core, "alice").enabled);
+    assert!(deliveries(&f.core).is_empty());
+
+    // The commit revokes locally and records intent for alice's two links only.
+    age(&f.core, &id);
     f.core.cleanup().unwrap();
-    let job = stored(&f.core, &id);
-    assert_eq!(job.status, Status::Done);
-    assert_eq!(job.result.as_ref().unwrap()["downstream"], "local-only");
+    let disabled = account(&f.core, "alice");
+    assert!(!disabled.enabled);
+    assert!(f.core.me(&session).is_err());
+    assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+    let rows = deliveries(&f.core);
+    assert_eq!(rows.len(), 2);
+    for row in &rows {
+        assert_eq!(row["user_id"], alice.id);
+        assert_eq!(row["epoch"], disabled.epoch);
+        assert_eq!(row["status"], "pending");
+    }
+    // Restored intent is retained and revalidated, not discarded.
     assert_eq!(
-        job.result.as_ref().unwrap()["scim_targets_configured"],
-        true
+        riauth::recovery::classify(downstream::BUCKET),
+        Some(riauth::recovery::Class::Retained)
     );
-    assert!(!account(&f.core, "alice").enabled);
-    assert!(
-        f.core
-            .store
-            .list::<Value>("provisioning_jobs")
+    assert!(payroll.requests.lock().unwrap().is_empty());
+    assert!(wiki.requests.lock().unwrap().is_empty());
+    let job = f.core.offboard_get(&f.admin, &id).unwrap();
+    assert_eq!(job["status"], "done");
+    assert_eq!(job["downstream"]["state"], "pending");
+    assert_eq!(
+        job["result"]["downstream"]["targets"]
+            .as_array()
             .unwrap()
-            .is_empty()
+            .len(),
+        2
+    );
+
+    // The controller delivers payroll; wiki has no controller and sends nothing.
+    for _ in 0..4 {
+        if !f.core.deactivation_step().unwrap() {
+            break;
+        }
+    }
+    let delivered = delivery(&f.core, "payroll", &alice);
+    assert_eq!(delivered["status"], "delivered");
+    assert_eq!(delivered["outcome"], "deactivated");
+    assert_eq!(delivered["actor"], "agent:payroll_controller");
+    assert_eq!(payroll.user("p-alice")["active"], false);
+    assert_eq!(payroll.user("p-bob")["active"], true);
+    let patches = payroll.patches.lock().unwrap().clone();
+    assert_eq!(patches.len(), 1);
+    assert_eq!(patches[0].0, "p-alice");
+    assert_eq!(patches[0].1.as_deref(), Some("\"1\""));
+    assert_eq!(
+        patches[0].2["Operations"][0]["value"],
+        json!({"active": false})
     );
     assert!(
-        f.core
-            .store
-            .list::<Value>("provisioning_plans")
+        payroll
+            .requests
+            .lock()
             .unwrap()
-            .is_empty()
+            .iter()
+            .all(|(_, bearer)| bearer == "Bearer payroll-bearer")
     );
+    let waiting = delivery(&f.core, "wiki", &alice);
+    assert_eq!(waiting["status"], "pending");
+    assert_eq!(waiting["hold"], "awaiting_controller");
+    assert!(wiki.requests.lock().unwrap().is_empty());
+    let job = f.core.offboard_get(&f.admin, &id).unwrap();
+    assert_eq!(job["downstream"]["state"], "pending");
+    assert_eq!(reported(&job, "payroll")["status"], "delivered");
+    assert_eq!(reported(&job, "wiki")["hold"], "awaiting_controller");
+    assert_eq!(
+        f.core
+            .provisioning_deactivations(&f.admin)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    // Details stay target-scoped; a hidden pending target still blocks completion.
+    let scoped = agent(
+        &f,
+        "offboard-reader",
+        &[
+            ("user.offboard", "user/alice"),
+            ("provisioner.read", "provisioner/payroll"),
+        ],
+    );
+    let limited = f.core.offboard_get(&scoped, &id).unwrap();
+    assert_eq!(limited["downstream"]["state"], "pending");
+    assert_eq!(limited["downstream"]["hidden_targets"], 1);
+    assert_eq!(
+        limited["downstream"]["targets"].as_array().unwrap().len(),
+        1
+    );
+
+    // An operator's reviewed wiki plan delivers the disable; the row then settles.
+    let reviewer = agent(
+        &f,
+        "wiki-reviewer",
+        &[
+            ("provisioner.read", "provisioner/wiki"),
+            ("provisioner.sync", "provisioner/wiki"),
+        ],
+    );
+    let plan = f.core.provisioning_plan(&reviewer, "wiki").unwrap();
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    let plan_id = text(&plan, "id");
+    f.core
+        .provisioning_apply_confirmed(&reviewer, &plan_id, Some(&plan_id))
+        .unwrap();
+    f.core.provisioning_step().unwrap();
+    assert_eq!(wiki.user("w-alice")["active"], false);
+    let mut due = delivery(&f.core, "wiki", &alice);
+    due["next_attempt"] = json!(1);
+    f.core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, due["id"].as_str().unwrap(), &due))
+        .unwrap();
+    assert!(!f.core.deactivation_step().unwrap());
+    let settled = delivery(&f.core, "wiki", &alice);
+    assert_eq!(settled["status"], "delivered");
+    assert_eq!(settled["outcome"], "reviewed_delivery");
+    assert_eq!(wiki.patches.lock().unwrap().len(), 1);
+    let job = f.core.offboard_get(&f.admin, &id).unwrap();
+    assert_eq!(job["downstream"]["state"], "delivered");
+    assert!(targets(&f.core, "provisioner.deactivate").contains(&"payroll/alice".to_owned()));
 }
 
 #[test]

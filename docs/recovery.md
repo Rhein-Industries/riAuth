@@ -158,8 +158,9 @@ data from before that stamp cannot be detected.
   days for SETs).
 - **Remote work.** Provisioning, SCIM, logout, SSF and offboarding work completed
   after the snapshot is not known. Revision-bound plans and jobs become stale.
-  Revocation deliveries and offboarding jobs may be sent or run again, which fails
-  closed. Remote objects created after the snapshot may be orphaned.
+  Revocation deliveries, SCIM deactivations and offboarding jobs may be sent or run
+  again, which fails closed. Restored deactivation rows are kept and recheck the
+  account, link, target and controller authority before any dispatch. Remote objects created after the snapshot may be orphaned.
 - **Freshness of the snapshot.** No external monotonic witness exists. Restoring an
   older copy of a redb file, or an undetectable PostgreSQL restore, depends on the
   operator running `recovery invalidate`. Tested high availability, RPO and RTO are

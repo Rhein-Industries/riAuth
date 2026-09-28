@@ -33,7 +33,7 @@ Additional scoped enterprise actions are:
 | Action/resource | Purpose |
 | --- | --- |
 | `mtls.read=user/<username>`, `mtls.bind=user/<username>` | Inspect or change HTTPS client-certificate bindings; separate from RADIUS `certificate.read` / `certificate.write`. |
-| `user.offboard=user/<username>` | Schedule, inspect, reschedule or cancel local offboarding; downstream SCIM deactivation is not implemented. |
+| `user.offboard=user/<username>` | Schedule, inspect, reschedule or cancel offboarding. Per-target SCIM deactivation details also need `provisioner.read` on that target. |
 | `ssf.configure=ssf/<id>` or `ssf.configure=*` | Read or change an owned outbound Shared Signals stream; `*` permits creation with a generated ID. |
 | `ssf.manage=ssf/<id>` | Register pinned inbound signing trust or bind approved local subjects for the selected Shared Signals stream. |
 | `audit.read=audit/events` | Audit review, audit CSV export and the Events Map; does not grant user CSV access. |

@@ -138,9 +138,10 @@ These limits must remain visible when building new interfaces or distributions:
   [Encryption at rest](../../src/store.rs) is optional by default in
   [Config](../../src/config.rs). Secret hashes/redacted API views do not mean the
   whole database contains no usable secrets (RI-STORE-002).
-- **Local and remote effects have separate commits.** Offboarding disables
-  locally and reports `local-only`; it does not call SCIM even when targets are
-  configured. Outbound provisioning performs network writes outside a local
+- **Local and remote effects have separate commits.** A disable commits local
+  revocation with durable per-target SCIM deactivation intent. Delivery happens
+  later under a scoped controller, and a target is reported delivered only after
+  it confirms the account inactive. Outbound provisioning performs network writes outside a local
   transaction, then reconciles results under a lease. It can report partial/stale
   progress; it cannot promise remote rollback or universal exactly-once delivery.
   Logout and SSF delivery also depend on peers (RI-CON-002/003/004).

@@ -211,7 +211,7 @@ Backlogs can require multiple passes; expired records are rejected during
 authentication independently of cleanup.
 Grant issuance maintains a monotonic parent-session retention index, so a client
 refresh TTL longer than the instance default cannot cause premature session removal.
-Logout, email, SCIM, SSF and offboarding claims read bounded due-time indexes;
+Logout, email, SCIM, SCIM deactivation, SSF and offboarding claims read bounded due-time indexes;
 quota counts are maintained atomically, with bounded expired-entry reclamation
 when capacity is reached. Queue counts and oldest age need only point reads and
 one index entry per queue. Offboarding handles at most eight jobs per maintenance
@@ -220,7 +220,7 @@ groups use a per-user unrevoked-grant index; expired grants never confer access
 while waiting for cleanup. Retained-history regressions bound records examined,
 while deployment backlog deadlines still require representative measurement.
 
-Schema 3 builds derived indexes atomically during the first upgrade. A separate index revision backfills newer indexes when opening an existing schema-3 store; restore also rebuilds them. Stop all
+Schema 3 builds derived indexes atomically during the first upgrade. A separate index revision backfills newer indexes when opening an existing schema-3 store; restore also rebuilds them. Index revision 4 adds the per-account outbound-link index that records SCIM deactivation intent. An older writer left running would add links without that index, so their deactivation intent would be missing. Stop all
 older writers before upgrading and keep a verified pre-upgrade backup. See the
 [release compatibility contract](release-notes.md). With record encryption enabled,
 index values are encrypted but timestamp/hash keys expose scheduling metadata.

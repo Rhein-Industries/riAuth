@@ -16,7 +16,7 @@ future authorized work, not implemented tests or claims of passing coverage.
 | Sessions, proofs, consumption and revocation | RI-SES-001–005 | Browser, bearer, grant and replay paths exist; expiry must remain distinct from revocation. |
 | Authorization and protocol binding | RI-AUTH-001–002 | Shared online checks and protocol-specific binding exist. |
 | Agents, management approval, retries and audit | RI-MGT-001–005 | Current management core exists; exact secret-byte review, cached-result authority and future multi-party review need explicit contracts. |
-| Connectors, offboarding and signals | RI-CON-001–004 | Local transactions and reviewed remote work exist; offboarding remains local-only. |
+| Connectors, offboarding and signals | RI-CON-001–004 | Local transactions and reviewed remote work exist. A disable commits per-target deactivation intent, which is delivered later under a scoped controller. |
 | Workflows | RI-WF-001–002 | Embedded source stages exist; general configurable workflows are intended policy. |
 | Proxies | RI-PROXY-001–002 | Forward auth and embedded proxy exist; deployment header trust remains an external dependency. |
 | Devices and certificates | RI-DEV-001–003 | Server protocols exist; real device agents/peers are not established here. |
@@ -556,15 +556,18 @@ once; remote completion is separately reported.
 **Observed enforcement.** [Offboarding](../../src/offboarding.rs)
 `offboard_claim`, `offboard_commit`, `authority_still_valid`, `apply_local`
 validate owner/deadline/status/user ID/cancel/authority. `apply_local` bumps epoch
-and disables through central store hooks; `downstream_result` reports local-only
-and never calls outbound SCIM. Reschedule/cancel are separately authorized writes.
+and disables through central store hooks. The shared transition records
+per-target deactivation rows in that transaction; the job keeps their IDs and
+its view reports each target's live outcome. Nothing calls SCIM inside the commit;
+[deactivation delivery](../../src/provisioning/deactivation.rs) reports `delivered`
+only after the target confirms the account inactive. Reschedule/cancel are separately authorized writes.
 
 **Existing regressions.** [Offboarding](../../tests/offboarding.rs)
 `second_worker_claims_once_and_epoch_increments_once`,
 `expired_lease_is_reclaimed_by_one_owner`,
 `running_cancel_is_observed_before_revocation`,
 `execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent`,
-`configured_scim_targets_are_not_called`.
+`offboarding_commits_downstream_intent_and_reports_each_target_only_after_delivery`.
 
 **Missing coverage / later contract.** Q02-C06 verifies due-time/identity/
 creator/admin/cancel outcomes and honest downstream status. Q05-R07 races claim,
@@ -1068,7 +1071,7 @@ counts, not just returned status.
 | Q05-R04: deadline/phantom | Pause prepared hashing/signing after authority/range reads; advance clock across grant/proof/session/family or temporary-entitlement deadline without a write; insert/change a range dependency; resume. | Revalidated expiry/derived policy prevents stale issuance; absolute offline lifetime holds; index cleanup does not revive or orphan authority. Covers RI-SES-005, RI-AUTH-001, RI-STORE-001. |
 | Q05-R05: approval/retry interruption | Plan/review, then mutate dependency/secret reference/version or file bytes; race reviews/two applies or change approval policy. Commit a mutation then lose its response; retry with same/different request/principal or reduced authority, including expired receipts. Inject local error before commit. | One authorized committed effect/result/credential and success audit; rejected work leaves no partial effects; cached disclosure obeys reviewed policy. Covers RI-MGT-002/003/004/005, RI-STORE-002 and secret-content gap G-04. |
 | Q05-R06: peer uncertainty/lease | Pause before and after remote acceptance, lose response, revoke authority/binding, rotate secret or config, expire/reclaim lease, restart and retry. Repeat for SCIM, logout/SSF and mail delivery as applicable. | Honest partial/stale/uncertain state and current authority before subsequent work; conditional reconciliation avoids duplicate mutation where supported; no false remote exactly-once/rollback assertion. Covers RI-CON-002/004, RI-STORE-002. |
-| Q05-R07: offboard due work | Two workers claim, old lease expires, one reclaims, then cancel/reschedule/revoke creator/parent or promote target before commit; interrupt/restart before and after commit. | One final local disable/epoch/success audit; lost owner cannot commit; cancellation or inactive authority leaves target protected; result stays local-only. Covers RI-CON-003 and RI-ACC-002. |
+| Q05-R07: offboard due work | Two workers claim, old lease expires, one reclaims, then cancel/reschedule/revoke creator/parent or promote target before commit; interrupt/restart before and after commit. | One final local disable/epoch/success audit; lost owner cannot commit; cancellation or inactive authority leaves target protected; the result records the local outcome and per-target downstream intent and claims no remote completion. Covers RI-CON-003 and RI-ACC-002. |
 | Q05-R08: old/partial restore | Backup before revoke/rotate/consume/remote acceptance, perform the newer event, stop/fence writers, restore old snapshot; separately truncate/tamper/interrupt restore and rebuild indexes. | Characterize exactly which still-unexpired authority/replay/work returns; no false current-revocation claim; selected recovery policy prevents serving unreconciled state; malformed/partial restore is not served. Covers RI-STORE-003/004. |
 | Q05-R09: product/config transition | Carry live proofs/plans/refresh/jobs through supported and unsupported build/config/schema switches; attempt mixed writers or removal of a required capability/verifier. | Preserve shared identity/security semantics or explicit preflight/startup rejection; no silent weakened stage, factor, proof, secret custody or background action. Covers RI-DIST-001/002/003 and RI-WF-002. |
 
@@ -1149,7 +1152,7 @@ policy is distinguished from baseline enforcement:
 | G05: one-time/request binding | RI-SES-002/003; RI-WF-001/002; RI-DEV-001/002 |
 | G06: sensitive/browser safety | RI-CRED-002/003; RI-SES-001/002; future scanner-safe lifecycle pages require a test that GET consumes no proof. |
 | G07: management equivalence | RI-MGT-001–005; exact secret-byte approval and cached-result authority remain G-04 review questions. |
-| G08: downstream honesty | RI-CON-002/003/004; required automatic downstream intent is future work, not current offboarding behavior. |
+| G08: downstream honesty | RI-CON-002/003/004. Durable per-target deactivation intent commits with every disable. Automatic delivery needs a scoped controller in `automatic` mode, and other targets wait for review. Real-peer acceptance is still required. |
 | G09: assembly/capability states | RI-DIST-001/002; actual builds and dynamic discovery are missing. |
 | G10: strict configuration/transitions | RI-DIST-002/003; headless conflicts and active/retained dependencies need future preflight. |
 | G11: backend/recovery safety | RI-STORE-001/003/004; default invalidation plus persistent-credential reconciliation/rotation is intended, not current restore behavior. |

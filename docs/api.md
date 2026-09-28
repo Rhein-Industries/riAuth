@@ -288,7 +288,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/account/invitations` | Accounts waiting to accept an invitation: link status and expiry, groups, inviter and, with `operations.read`, delivery state. Never returns codes |
 | POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups |
 | DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation |
-| GET, POST | `/api/offboard/jobs` | List/schedule durable local offboarding jobs; `user.offboard` |
+| GET, POST | `/api/offboard/jobs` | List/schedule durable offboarding jobs with live per-target downstream outcomes; `user.offboard` |
 | GET | `/api/offboard/jobs/{id}` | Inspect an offboarding job |
 | POST | `/api/offboard/jobs/{id}/reschedule`, `/api/offboard/jobs/{id}/cancel` | Update a scheduled job or request cancellation; see [ENT-10](enterprise/ENT-10.md) |
 | GET, POST, PATCH, PUT, DELETE | `/api/ssf/streams` | SSF 1.0 receiver configuration; generated stream IDs, `stream_id` query for GET/DELETE, bearer administrator, `ssf.configure` agent, or OAuth service access token with `ssf.configure` scope |
@@ -300,6 +300,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/provisioning/plans/{id}` | Inspect caller-bound plan |
 | POST | `/api/provisioning/plans/{id}/apply` | Apply reviewed plan to a durable delivery job |
 | GET | `/api/provisioning/jobs` | Inspect permitted delivery jobs |
+| GET | `/api/provisioning/deactivations` | Newest per-target offboarding deactivation outcomes; `provisioner.read` on the target and `user.read` on the account |
 | GET, POST | `/api/keys` | List/import/generate signing-key domains |
 | POST | `/api/keys/rotate` | Authorized signing-key rotation |
 | POST | `/api/state/plan` | Versioned manifest; redacted immutable plan |

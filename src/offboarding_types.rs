@@ -4,11 +4,12 @@ use serde_json::Value;
 
 pub const BUCKET: &str = "offboard_jobs";
 pub const MAX_ATTEMPTS: u32 = 5;
-pub const LOCAL_ACTIONS: &[&str] = &[
+/// Actions of a job created by this release. Older jobs keep their stored list.
+pub const ACTIONS: &[&str] = &[
     "user.disable",
     "session.revoke",
     "grant.revoke",
-    "downstream.local-only",
+    "downstream.deactivate",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
