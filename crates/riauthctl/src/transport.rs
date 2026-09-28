@@ -26,6 +26,11 @@ pub(crate) struct VerifiedIssuer {
     pub(crate) api_base: String,
 }
 
+struct MutationHeaders {
+    revision: u64,
+    idempotency_key: String,
+}
+
 pub(crate) enum Credential {
     Session(SavedSession),
     Agent(AgentCredential),
@@ -110,6 +115,7 @@ impl Remote {
                 Method::GET,
                 "/.well-known/openid-configuration",
                 None::<&()>,
+                None,
                 None,
                 None,
             )
@@ -221,8 +227,56 @@ impl Remote {
         bearer: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<Value> {
-        self.request_at(&verified.api_base, method, path, body, bearer, run_id)
+        self.request_at(&verified.api_base, method, path, body, bearer, run_id, None)
             .await
+    }
+
+    /// Direct management writes use the same conditional and receipt envelope
+    /// as the server's other remote adapters. The server remains authoritative
+    /// for permissions, validation, auditing, and revision conflicts.
+    pub(crate) async fn mutate<T: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        run_id: Option<&str>,
+        if_revision: Option<u64>,
+        idempotency_key: Option<&str>,
+    ) -> Result<Value> {
+        let verified = self.verify_issuer().await?;
+        let credential = self.credential(&verified)?;
+        let revision = match if_revision {
+            Some(revision) => revision,
+            None => self
+                .request_api(
+                    &verified,
+                    Method::GET,
+                    "/api/state/revision",
+                    None::<&()>,
+                    Some(credential.token()),
+                    run_id,
+                )
+                .await?
+                .get("revision")
+                .and_then(Value::as_u64)
+                .context("Revision response is missing a numeric revision")?,
+        };
+        let headers = MutationHeaders {
+            revision,
+            idempotency_key: idempotency_key
+                .map(str::to_owned)
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        };
+        self.request_at(
+            &verified.api_base,
+            method,
+            path,
+            body,
+            Some(credential.token()),
+            run_id,
+            Some(&headers),
+        )
+        .await
     }
 
     async fn request_at<T: Serialize + ?Sized>(
@@ -233,6 +287,7 @@ impl Remote {
         body: Option<&T>,
         bearer: Option<&str>,
         run_id: Option<&str>,
+        mutation: Option<&MutationHeaders>,
     ) -> Result<Value> {
         if !path.starts_with('/') || path.starts_with("//") || path.contains('#') {
             bail!("Invalid API path");
@@ -247,6 +302,11 @@ impl Remote {
         }
         if let Some(run_id) = run_id {
             request = request.header("x-riauth-run-id", run_id);
+        }
+        if let Some(mutation) = mutation {
+            request = request
+                .header("if-match", format!("\"{}\"", mutation.revision))
+                .header("idempotency-key", &mutation.idempotency_key);
         }
         decode_response(request.send().await?).await
     }

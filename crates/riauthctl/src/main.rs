@@ -1,3 +1,4 @@
+mod admin;
 mod management;
 mod session;
 mod transport;
@@ -43,9 +44,15 @@ struct Cli {
     /// Fail instead of prompting for input.
     #[arg(long, global = true)]
     non_interactive: bool,
-    /// Correlation identifier for plan and apply requests.
+    /// Correlation identifier for management requests.
     #[arg(long, global = true, env = "RIAUTH_RUN_ID")]
     run_id: Option<String>,
+    /// Retry the exact same direct mutation with this key for up to 24 hours.
+    #[arg(long, global = true)]
+    idempotency_key: Option<String>,
+    /// Apply a direct mutation only at this configuration revision.
+    #[arg(long, global = true)]
+    if_revision: Option<u64>,
     #[command(subcommand)]
     command: Command,
 }
@@ -80,6 +87,22 @@ enum Command {
         after: Option<String>,
         #[arg(long)]
         filter: Option<String>,
+    },
+    /// Manage people through /api/users.
+    User {
+        #[command(subcommand)]
+        command: admin::UserCommand,
+    },
+    /// Manage groups and membership through /api/groups.
+    Group {
+        #[command(subcommand)]
+        command: admin::GroupCommand,
+    },
+    /// Manage applications through /api/clients.
+    #[command(alias = "application")]
+    Client {
+        #[command(subcommand)]
+        command: admin::ClientCommand,
     },
     /// Preview a versioned manifest and save the immutable plan privately.
     Plan {
@@ -150,6 +173,11 @@ async fn run(cli: Cli) -> Result<Value> {
     }) {
         bail!("Run ID must contain 1–128 printable ASCII characters without spaces");
     }
+    if cli.idempotency_key.as_ref().is_some_and(|key| {
+        key.is_empty() || key.len() > 128 || !key.bytes().all(|byte| byte.is_ascii_graphic())
+    }) {
+        bail!("Idempotency key must contain 1–128 printable ASCII characters without spaces");
+    }
     let remote = Remote::new(
         cli.server
             .as_deref()
@@ -159,6 +187,12 @@ async fn run(cli: Cli) -> Result<Value> {
         cli.ca_cert.as_deref(),
         cli.request_timeout,
     )?;
+    let mutation = admin::MutationOptions {
+        run_id: cli.run_id.as_deref(),
+        if_revision: cli.if_revision,
+        idempotency_key: cli.idempotency_key.as_deref(),
+        non_interactive: cli.non_interactive,
+    };
     match cli.command {
         Command::Status => remote.status().await,
         Command::Discovery => remote.discovery().await,
@@ -255,6 +289,9 @@ async fn run(cli: Cli) -> Result<Value> {
             }
             Ok(result)
         }
+        Command::User { command } => admin::user(&remote, command, &mutation).await,
+        Command::Group { command } => admin::group(&remote, command, &mutation).await,
+        Command::Client { command } => admin::client(&remote, command, &mutation).await,
         Command::Plan { file, out } => {
             management::plan(&remote, &file, &out, cli.run_id.as_deref()).await
         }
@@ -334,7 +371,7 @@ struct LoginBody<'a> {
     otp: Option<&'a str>,
 }
 
-fn read_password(stdin: bool, non_interactive: bool) -> Result<Zeroizing<String>> {
+pub(crate) fn read_password(stdin: bool, non_interactive: bool) -> Result<Zeroizing<String>> {
     let value = if stdin {
         let mut line = String::new();
         io::stdin().lock().take(1026).read_line(&mut line)?;

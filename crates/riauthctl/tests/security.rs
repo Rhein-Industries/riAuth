@@ -1084,3 +1084,145 @@ fn plan_apply_uses_immutable_server_plan_and_reuses_its_receipt() {
         1
     );
 }
+
+#[test]
+fn routine_admin_commands_use_conditional_management_routes_and_private_secrets() {
+    const PASSWORD: &str = "new-user-password-sentinel";
+    const FIRST_SECRET: &str = "ri_client_first-secret-sentinel";
+    const NEXT_SECRET: &str = "ri_client_next-secret-sentinel";
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => login_reply("ri_session_admin_sentinel"),
+        "/api/state/revision" => Reply::json("{\"revision\":7}"),
+        "/api/clients" if request.method == "POST" => Reply::json(
+            serde_json::json!({"client":{"client_id":"worker"},"client_secret":FIRST_SECRET})
+                .to_string(),
+        ),
+        "/api/clients/worker/rotate-secret" => Reply::json(
+            serde_json::json!({"client_id":"worker","client_secret":NEXT_SECRET}).to_string(),
+        ),
+        "/api/users" | "/api/groups" | "/api/clients" if request.method == "GET" => {
+            Reply::json("[]")
+        }
+        _ => Reply::json("{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    let first_file = dir.path().join("worker-first.json");
+    let next_file = dir.path().join("worker-next.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("admin-password\n"),
+    ));
+
+    let missing_destination = run(
+        &server.origin,
+        &session,
+        &["client", "create", "worker", "--service"],
+        None,
+    );
+    assert!(!missing_destination.status.success());
+    assert!(!server.requests().iter().any(|r| r.target == "/api/clients"));
+
+    let commands: &[(&[&str], Option<&str>)] = &[
+        (&["user", "list"], None),
+        (&["group", "list"], None),
+        (&["client", "list"], None),
+        (
+            &["user", "create", "alice", "--password-stdin"],
+            Some(PASSWORD),
+        ),
+        (&["user", "update", "alice", "--enabled", "false"], None),
+        (&["group", "create", "operators"], None),
+        (&["group", "add-member", "operators", "alice"], None),
+        (&["group", "remove-member", "operators", "alice"], None),
+        (
+            &[
+                "client",
+                "create",
+                "worker",
+                "--service",
+                "--secret-file",
+                first_file.to_str().unwrap(),
+            ],
+            None,
+        ),
+        (&["client", "update", "worker", "--enabled", "false"], None),
+        (
+            &[
+                "client",
+                "rotate-secret",
+                "worker",
+                "--secret-file",
+                next_file.to_str().unwrap(),
+            ],
+            None,
+        ),
+    ];
+    for (args, input) in commands {
+        let input = input.map(|password| format!("{password}\n"));
+        let output = run(&server.origin, &session, args, input.as_deref());
+        assert_ok(&output);
+        let printed = output_text(&output);
+        for secret in [PASSWORD, FIRST_SECRET, NEXT_SECRET] {
+            assert!(!printed.contains(secret), "{args:?} exposed a credential");
+        }
+    }
+
+    let requests = server.requests();
+    let writes: Vec<_> = requests
+        .iter()
+        .filter(|r| {
+            matches!(r.method.as_str(), "POST" | "PATCH" | "PUT" | "DELETE")
+                && r.target != "/api/login"
+        })
+        .collect();
+    assert_eq!(writes.len(), 8);
+    for write in &writes {
+        assert_eq!(write.header("if-match"), Some("\"7\""));
+        assert!(write.header("idempotency-key").is_some());
+        assert_eq!(
+            write.header("authorization"),
+            Some("Bearer ri_session_admin_sentinel")
+        );
+    }
+    assert!(
+        writes
+            .iter()
+            .any(|r| r.method == "PUT" && r.target == "/api/groups/operators/members/alice")
+    );
+    assert!(
+        writes
+            .iter()
+            .any(|r| r.method == "DELETE" && r.target == "/api/groups/operators/members/alice")
+    );
+    let created_user = writes.iter().find(|r| r.target == "/api/users").unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&created_user.body).unwrap();
+    assert_eq!(body["username"], "alice");
+    assert_eq!(body["password"], PASSWORD);
+    let client = writes.iter().find(|r| r.target == "/api/clients").unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&client.body).unwrap();
+    assert_eq!(body["client_id"], "worker");
+    assert_eq!(body["scopes"], serde_json::json!(["api"]));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&first_file).unwrap()).unwrap()
+            ["client_secret"],
+        FIRST_SECRET
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&next_file).unwrap()).unwrap()["client_secret"],
+        NEXT_SECRET
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [&first_file, &next_file] {
+            assert_eq!(
+                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+}
