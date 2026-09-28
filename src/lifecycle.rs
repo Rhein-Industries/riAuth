@@ -128,7 +128,7 @@ struct Proof {
 }
 /// A disabled invited account remains identifiable after its proof expires or is revoked.
 /// The immutable user ID prevents a later account with the same username from inheriting it.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct InvitationReservation {
     pub(crate) username: String,
@@ -762,6 +762,7 @@ impl Core {
                         "Account changed; request a new link",
                     )
                 })?;
+            #[cfg(not(feature = "platform"))]
             let apply_password = |user: &mut User| -> Result<()> {
                 let hashed = password_hash
                     .clone()
@@ -816,10 +817,28 @@ impl Core {
                 Purpose::Invite
                     if !user.enabled && !user.admin && user.password_hash.is_empty() =>
                 {
-                    let actor =
-                        creator(tx, proof.creator.as_deref().ok_or_else(Error::forbidden)?)?;
-                    crate::management::accept_invitation(tx, &actor, &mut user, &proof.groups)?;
-                    apply_password(&mut user)?;
+                    #[cfg(feature = "platform")]
+                    {
+                        let verified = workflow::invitation::Verified::new(
+                            tx,
+                            hash,
+                            proof,
+                            password
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                            password_hash
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                        )?;
+                        return self.complete_invitation_workflow(tx, verified);
+                    }
+                    #[cfg(not(feature = "platform"))]
+                    {
+                        let actor =
+                            creator(tx, proof.creator.as_deref().ok_or_else(Error::forbidden)?)?;
+                        crate::management::accept_invitation(tx, &actor, &mut user, &proof.groups)?;
+                        apply_password(&mut user)?;
+                    }
                 }
                 _ => return Err(Error::forbidden()),
             }

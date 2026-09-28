@@ -8,10 +8,11 @@ verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
 issues a new session. Other built-in
 verifier actions remain unconnected except passkey enrollment authorized by a
-fresh existing-passkey proof and password recovery through the existing mail
-verifier. Both finalize the credential and epoch change atomically. Ordinary
-sign-in, enrollment, consent and source-stage paths are unchanged; browser
-recovery keeps its existing response and requires a separate sign-in.
+fresh existing-passkey proof, password recovery and first-password invitation
+acceptance through the existing mail verifier. They finalize the credential and
+epoch change atomically. Ordinary sign-in, other enrollment, consent and
+source-stage paths are unchanged; browser recovery and invitation acceptance
+keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
@@ -276,8 +277,8 @@ and `credential_epoch`. Previous sessions cannot resume or reuse the result.
 Sign in again after enrollment.
 
 This slice supports adding a passkey after verification of an existing passkey.
-First-passkey enrollment through password/TOTP, invitation enrollment and other
-credential mutations still require their own bound adapters.
+First-passkey enrollment through password/TOTP, invitation passkey enrollment
+and other credential mutations still require their own bound adapters.
 Persisted mutation receipts alone cannot enable any of those success outcomes.
 
 ## Password recovery finalization
@@ -309,6 +310,37 @@ returning `factors_reset: true`; that removal and clearing the support-exposure
 record commit with the same epoch transition. Essentials keeps its ordinary
 reset path and also rejects a proof whose current recovery-request index no
 longer matches.
+
+## Invitation password enrollment
+
+On Platform, the existing browser/CLI invitation acceptance enrolls a first
+password through the server-owned `platform-invitation-password-enrollment`
+workflow. The shipped invitation passkey definition remains unchanged. Only the
+existing mail verifier can create the in-memory mutation capability; the caller
+cannot select an account, workflow signal, or receipt.
+
+The capability pins the exact invitation proof, current request index, immutable
+account ID, email, epoch, pending reservation and M04 support-exposure record.
+Completion rechecks that the account is still disabled, unverified and without
+credentials, that the username still resolves to that account, and that no
+directory manages its password. The existing management writer revalidates the
+inviter's live permissions and group assignments. Reissued, revoked, expired,
+retargeted or stale-epoch invitations cannot activate an account.
+
+The invitation and enrollment receipts bind to the request, account, run/version,
+step/attempt and epoch with no authenticated session. Password policy, group
+membership, activation, password storage, E-to-E+1, proof/index/reservation
+retirement, revocation, evidence consumption and `enrolled` completion share one
+transaction. The new epoch is stored before revocation is queued. A rejected
+completion rolls back everything, and competing submissions consume the link
+only once. Invitation acceptance preserves any M04 exposure marker; it cannot
+replace independent recovery or clear that privilege boundary.
+
+Scanner-safe GET/HEAD, explicit POST, used-link errors and the existing
+`completed`/`login_required` response remain unchanged. No login, session, cookie
+or OIDC code is minted. Essentials keeps its ordinary invitation path. This
+adapter covers first-password invitations only; invitation passkeys and other
+initial factor enrollment still need their real bound adapters.
 
 ## Source reauthentication
 
@@ -442,13 +474,13 @@ These are not implemented or established by this slice:
   logout association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey enrollment and mail-proven password reset:
-  first-passkey/password/TOTP enrollment and invitations remain blocked pending
-  their real adapters. A
-  denial after an epoch change also remains blocked by current-facts binding;
+  authorized passkey enrollment, mail-proven password reset and invitation
+  first-password enrollment: first-passkey/TOTP enrollment, invitation passkeys
+  and other initial credential paths remain blocked pending their real adapters.
+  A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Arbitrary configured workflows, custom stage execution, invitation
-  acceptance, and the other built-in verifiers. The password
+* Arbitrary configured workflows, custom stage execution, and the other
+  built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
   account, session, request and receipt authority in its final transaction.

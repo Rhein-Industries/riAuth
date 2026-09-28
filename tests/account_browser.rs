@@ -239,6 +239,246 @@ async fn invitation_scanner_get_and_head_leave_proof_for_explicit_post() {
     assert_eq!(replay.body["error"], "account_code_used");
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_invitation_password_is_account_bound_and_one_use() {
+    let mut f = mail_fixture();
+    f.core.config.password_history = 2;
+    f.core.create_group(&f.admin, "invite-team").unwrap();
+    f.core
+        .account_invite(
+            &f.admin,
+            Invitation {
+                groups: common::strings(&["invite-team"]),
+                ..invitation("enroll-owner")
+            },
+        )
+        .unwrap();
+    let (_, code) = mail(&f, "enroll-owner");
+    let other_code = invite(&f, "enroll-other");
+    let before = user(&f, "enroll-owner");
+    let other = user(&f, "enroll-other");
+    let hash = digest(&code);
+    let original = proof(&f, &code).unwrap();
+    let complete = || {
+        f.core
+            .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+    };
+
+    // Matching account/email/epoch values still cannot move this secret to a
+    // second account's invitation request and reservation.
+    let mut retargeted = original.clone();
+    retargeted["user_id"] = json!(other.id);
+    retargeted["email"] = json!(other.email);
+    retargeted["epoch"] = json!(other.epoch);
+    f.core
+        .store
+        .write(|tx| tx.put("account_proofs", &hash, &retargeted))
+        .unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert!(complete().is_err());
+    f.assert_snapshot(&snapshot);
+    f.core
+        .store
+        .write(|tx| tx.put("account_proofs", &hash, &original))
+        .unwrap();
+
+    let latest = format!("{}:accept", before.id);
+    let admin = user(&f, "admin");
+    for (bucket, key, pointer, value) in [
+        (
+            "account_latest",
+            latest.as_str(),
+            "",
+            json!(digest(&other_code)),
+        ),
+        ("account_proofs", hash.as_str(), "/expires_at", json!(now())),
+        (
+            "users",
+            before.id.as_str(),
+            "/epoch",
+            json!(before.epoch + 1),
+        ),
+        (
+            "users",
+            before.id.as_str(),
+            "/totp_secret",
+            json!("existing-factor"),
+        ),
+        (
+            "users",
+            before.id.as_str(),
+            "/recovery_codes",
+            json!(["existing-code"]),
+        ),
+        (
+            "invitation_reservations",
+            before.id.as_str(),
+            "/username",
+            json!("enroll-other"),
+        ),
+        ("users", admin.id.as_str(), "/admin", json!(false)),
+    ] {
+        let saved: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+        let mut changed = saved.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &changed))
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        assert!(complete().is_err(), "{bucket}{pointer}");
+        f.assert_snapshot(&snapshot);
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &saved))
+            .unwrap();
+    }
+
+    // Password-policy rejection happens inside finalization, after receipts have
+    // been prepared. All rows, group membership and the mail secret roll back.
+    let prior_hash = riauth::crypto::password_hash(PASSWORD).unwrap();
+    f.core
+        .store
+        .write(|tx| tx.put("password_history", &before.id, &vec![prior_hash]))
+        .unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert!(complete().is_err());
+    f.assert_snapshot(&snapshot);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_runs")
+            .unwrap()
+            .is_empty()
+    );
+    f.core
+        .store
+        .write(|tx| tx.delete("password_history", &before.id))
+        .unwrap();
+
+    // A server-side M04 exposure marker is pinned but never cleared by an
+    // invitation. Only the independent-recovery path may remove that boundary.
+    let exposure = json!({"verified_email":null,"actor_id":admin.id,"at":now()});
+    f.core
+        .store
+        .write(|tx| tx.put("support_credential_exposure", &before.id, &exposure))
+        .unwrap();
+    let sessions = f.core.store.list::<Value>("sessions").unwrap();
+    let staged = f.core.store.list::<Value>("browser_logins").unwrap();
+    let codes = f.core.store.list::<Value>("codes").unwrap();
+    let app = api::router(f.core.clone());
+    let snapshot = f.snapshot().unwrap();
+    for method in ["GET", "HEAD"] {
+        assert_eq!(
+            call(&app, page(method, "/account/accept")).await.status,
+            StatusCode::OK
+        );
+    }
+    f.assert_http_mutation_snapshot(&snapshot);
+    let request = || {
+        completion(
+            "/api/portal/account/accept",
+            json!({"token":code,"password":PASSWORD}),
+            true,
+        )
+    };
+    let (first, second) = tokio::join!(call(&app, request()), call(&app, request()));
+    let replies = [first, second];
+    assert_eq!(
+        replies
+            .iter()
+            .filter(|r| r.status == StatusCode::OK)
+            .count(),
+        1
+    );
+    let winner = replies.iter().find(|r| r.status == StatusCode::OK).unwrap();
+    let loser = replies.iter().find(|r| r.status != StatusCode::OK).unwrap();
+    assert_eq!(winner.body, json!({"completed":true,"login_required":true}));
+    assert!(winner.headers.get("set-cookie").is_none());
+    assert_eq!(loser.body["error"], "account_code_used");
+
+    let after = user(&f, "enroll-owner");
+    assert!(after.enabled && after.email_verified && !after.admin);
+    assert_eq!(after.epoch, before.epoch + 1);
+    assert!(riauth::crypto::password_matches(
+        PASSWORD,
+        &after.password_hash
+    ));
+    assert!(proof(&f, &code).is_none());
+    assert!(proof(&f, &other_code).is_some());
+    assert_eq!(user(&f, "enroll-other").epoch, other.epoch);
+    assert!(!user(&f, "enroll-other").enabled);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("account_latest", &latest)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("invitation_reservations", &before.id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &before.id)
+            .unwrap(),
+        Some(exposure)
+    );
+    let group: riauth::model::Group = f.core.store.get("groups", "invite-team").unwrap().unwrap();
+    assert_eq!(group.members, common::strings(&[&before.id]));
+    assert_eq!(f.core.store.list::<Value>("sessions").unwrap(), sessions);
+    assert_eq!(
+        f.core.store.list::<Value>("browser_logins").unwrap(),
+        staged
+    );
+    assert_eq!(f.core.store.list::<Value>("codes").unwrap(), codes);
+
+    let runs = f.core.store.list::<Value>("workflow_runs").unwrap();
+    assert_eq!(runs.len(), 1);
+    let (run_id, run) = &runs[0];
+    let request_id = format!("accept:{hash}");
+    assert_eq!(run["record"]["state"]["outcome"], "enrolled");
+    assert!(run["record"]["session"].is_null());
+    assert_eq!(run["record"]["account"], before.id);
+    assert_eq!(run["record"]["account_epoch"], before.epoch);
+    assert_eq!(run["record"]["request"], request_id);
+    assert_eq!(run["credential_mutation"]["from_epoch"], before.epoch);
+    assert_eq!(run["credential_mutation"]["to_epoch"], after.epoch);
+    assert_eq!(run["credential_mutation"]["invitation_request"], request_id);
+    assert_eq!(run["credential_mutation"]["credential"], "password");
+    assert!(run.get("authorization_response").is_none());
+    let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(receipts.len(), 2);
+    for (_, receipt) in &receipts {
+        assert_eq!(receipt["account"], before.id);
+        assert_eq!(receipt["account_epoch"], before.epoch);
+        assert_eq!(receipt["request"], request_id);
+        assert_eq!(receipt["run"], *run_id);
+        assert_eq!(receipt["binding"], run["record"]["binding"]);
+        assert_eq!(receipt["attempt"], 1);
+        assert_eq!(receipt["consumed"], true);
+        assert!(receipt["session"].is_null());
+        assert!(
+            receipt["verified_at"].as_u64().unwrap()
+                >= run["record"]["started_at"].as_u64().unwrap()
+        );
+    }
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(complete().unwrap_err().code, "account_code_used");
+    f.assert_snapshot(&snapshot);
+    assert!(
+        f.core
+            .login("enroll-owner".into(), PASSWORD.into(), None)
+            .is_ok()
+    );
+}
+
 #[tokio::test]
 async fn verification_scanner_get_leaves_proof_and_post_verifies_once() {
     let f = mail_fixture();

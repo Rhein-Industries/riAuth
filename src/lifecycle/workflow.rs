@@ -3,6 +3,8 @@
 use super::*;
 use zeroize::Zeroizing;
 
+pub(crate) mod invitation;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Pin {

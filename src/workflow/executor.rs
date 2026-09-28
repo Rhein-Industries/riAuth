@@ -2,6 +2,7 @@
 
 pub(crate) mod authorization;
 mod enrollment;
+mod invitation;
 mod mutation;
 mod passkey;
 mod password;
@@ -79,6 +80,8 @@ struct RequestAuthority {
     authorization: Option<authorization::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recovery: Option<crate::lifecycle::workflow::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    invitation: Option<crate::lifecycle::workflow::invitation::Pin>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -147,6 +150,12 @@ impl RuntimeRun {
             validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
         } else if self.definition.id.as_str() == password::TOTP_WORKFLOW {
             let checked = password::definition_at_revision(self.definition.revision)?;
+            if checked.definition() != &self.definition {
+                return Err(Error::conflict("Workflow definition changed"));
+            }
+            checked
+        } else if self.definition.id.as_str() == invitation::WORKFLOW {
+            let checked = invitation::definition()?;
             if checked.definition() != &self.definition {
                 return Err(Error::conflict("Workflow definition changed"));
             }
@@ -258,6 +267,10 @@ fn authority(
         .ok_or_else(Error::forbidden)?;
     if request.recovery.is_some() {
         let user = reset::authority(tx, run, &request, at)?;
+        return Ok((user, request));
+    }
+    if request.invitation.is_some() {
+        let user = invitation::authority(tx, run, &request, at)?;
         return Ok((user, request));
     }
     let sid = run.session.as_deref().ok_or_else(Error::forbidden)?;
@@ -935,6 +948,7 @@ impl Core {
                 source: None,
                 authorization: None,
                 recovery: None,
+                invitation: None,
             };
             if let Some(authorization) = authorization.as_ref() {
                 authorization::bind(tx, &run.record, &mut request, authorization, at)?;

@@ -1,9 +1,24 @@
-//! Password recovery uses the real mail proof and the canonical recovery path.
-//! All intermediate state stays in one writer: there is no new bearer, staged
-//! login, caller-selected account, or public proof-to-success endpoint.
+//! First-password acceptance of an existing invitation. The real mail verifier
+//! supplies a sealed ticket; every step and the account mutation share one writer.
 use super::*;
-use crate::lifecycle::workflow::VerifiedReset;
+use crate::lifecycle::workflow::invitation::Verified as VerifiedInvitation;
 use serde_json::{Value, json};
+
+pub(super) const WORKFLOW: &str = "platform-invitation-password-enrollment";
+
+pub(super) fn definition() -> Result<Validated> {
+    // The shipped invitation journey enrolls a passkey. Pin this server-owned
+    // password variant separately without changing that default or its revision.
+    let mut definition = local_definition("essentials-invitation")?
+        .definition()
+        .clone();
+    definition.id = Id::new(WORKFLOW).map_err(Error::internal)?;
+    definition.origin = super::super::Origin::Configured;
+    definition.steps[1].action = Action::EnrollCredential {
+        credential: Credential::Password,
+    };
+    validate(definition, &Environment::platform()).map_err(invalid_error)
+}
 
 pub(super) fn authority(
     tx: &Tx<'_>,
@@ -11,9 +26,9 @@ pub(super) fn authority(
     request: &RequestAuthority,
     at: u64,
 ) -> Result<User> {
-    let pin = request.recovery.as_ref().ok_or_else(Error::forbidden)?;
+    let pin = request.invitation.as_ref().ok_or_else(Error::forbidden)?;
     let user = pin.authority(tx, at)?;
-    if run.binding != local_definition(PASSWORD_RESET)?.binding()
+    if run.binding != definition()?.binding()
         || run.account != user.id
         || run.account_epoch != user.epoch
         || run.session.is_some()
@@ -26,7 +41,7 @@ pub(super) fn authority(
         || request.token_hash != pin.hash()
         || request.source.is_some()
         || request.authorization.is_some()
-        || request.invitation.is_some()
+        || request.recovery.is_some()
         || request.requires_mfa
         || request.expires_at <= at
         || request.expires_at > pin.expires_at()
@@ -73,7 +88,7 @@ fn receipt(
 pub(super) struct Verified {
     before: StoredRun,
     evidence: StoredEvidence,
-    reset: VerifiedReset,
+    invitation: VerifiedInvitation,
 }
 
 impl Verified {
@@ -86,9 +101,9 @@ impl Verified {
             evidence: Some(self.evidence.id.clone()),
         });
         expected == *run
-            && run.request == self.reset.pin().request()
-            && run.binding.workflow.as_str() == PASSWORD_RESET
-            && terminal.outcome == super::super::Outcome::Recovered
+            && run.request == self.invitation.pin().request()
+            && run.binding.workflow.as_str() == WORKFLOW
+            && terminal.outcome == super::super::Outcome::Enrolled
     }
 
     pub(super) fn commit(
@@ -103,10 +118,10 @@ impl Verified {
             return Err(Error::forbidden());
         }
         let (user, request) = super::authority(core, tx, run, now())?;
-        if request.recovery.as_ref() != Some(self.reset.pin()) {
+        if request.invitation.as_ref() != Some(self.invitation.pin()) {
             return Err(Error::forbidden());
         }
-        let (account, from_epoch, to_epoch, factors_reset) = self.reset.commit(core, tx)?;
+        let (account, from_epoch, to_epoch) = self.invitation.commit(core, tx)?;
         let at = now();
         if account != user.id
             || from_epoch != run.account_epoch
@@ -116,7 +131,7 @@ impl Verified {
                 .any(|e| e.expires_at <= at || e.verified_at.saturating_add(RECEIPT_SECONDS) <= at)
         {
             return Err(Error::conflict(
-                "Password reset authority changed during completion",
+                "Invitation authority changed during completion",
             ));
         }
         Ok(mutation::Completed {
@@ -124,28 +139,26 @@ impl Verified {
             from_epoch,
             to_epoch,
             credential: "password".into(),
-            recovery_request: Some(request.id),
-            invitation_request: None,
-            factors_reset,
+            recovery_request: None,
+            invitation_request: Some(request.id),
+            factors_reset: false,
         })
     }
 }
 
 impl Core {
-    pub(crate) fn complete_password_reset_workflow(
+    pub(crate) fn complete_invitation_workflow(
         &self,
         tx: &Tx<'_>,
-        verified: VerifiedReset,
+        verified: VerifiedInvitation,
     ) -> Result<Value> {
         let pin = verified.pin().clone();
         let at = pin.verified_at();
         let user = pin.authority(tx, now())?;
-        let checked = local_definition(PASSWORD_RESET)?;
+        let checked = definition()?;
         let request_id = pin.request();
-        // A final request remains reserved until normal workflow retention ends.
-        // Even a restored proof row cannot create a second run for it.
         if tx.get::<RequestAuthority>(REQUESTS, &request_id)?.is_some() {
-            return Err(Error::conflict("Recovery request already has a workflow"));
+            return Err(Error::conflict("Invitation request already has a workflow"));
         }
         let run_id = crypto::id();
         let expires_at = pin.expires_at().min(at.saturating_add(RECEIPT_SECONDS));
@@ -160,8 +173,8 @@ impl Core {
             requires_mfa: false,
             source: None,
             authorization: None,
-            recovery: Some(pin),
-            invitation: None,
+            recovery: None,
+            invitation: Some(pin),
         };
         let mut run = RuntimeRun {
             record: StoredRun {
@@ -188,19 +201,7 @@ impl Core {
         };
         tx.put(REQUESTS, &request_id, &request)?;
         tx.put(RUNS, &run_id, &run)?;
-        // Identification supplies no proof. Only the already-verified secret
-        // can produce the purpose-bound email receipt on the next step.
-        finish_step(
-            self,
-            tx,
-            &checked,
-            &mut run,
-            Label::fixed("completed"),
-            None,
-            at,
-        )?;
-        let email = receipt(&run, &checked, Proof::ResetEmail, at, expires_at)?;
-        run.executions += 1;
+        let email = receipt(&run, &checked, Proof::Invitation, at, expires_at)?;
         finish_step(
             self,
             tx,
@@ -210,11 +211,11 @@ impl Core {
             Some(email),
             at,
         )?;
-        let changed = receipt(&run, &checked, Proof::PasswordReset, at, expires_at)?;
+        let enrolled = receipt(&run, &checked, Proof::Enrolled, at, expires_at)?;
         let mutation = Verified {
             before: run.record.clone(),
-            evidence: changed.clone(),
-            reset: verified,
+            evidence: enrolled.clone(),
+            invitation: verified,
         };
         run.executions += 1;
         finish_step_with_mutation(
@@ -223,20 +224,11 @@ impl Core {
             &checked,
             &mut run,
             Label::fixed("completed"),
-            Some(changed),
+            Some(enrolled),
             at,
-            Some(mutation::Pending::PasswordReset(mutation)),
+            Some(mutation::Pending::Invitation(mutation)),
         )?;
-        // Preserve the browser/CLI recovery contract, including explicit sign-in
-        // after reset. The workflow view is audit state, never authentication.
-        let mut response = json!({"completed":true,"login_required":true});
-        if run
-            .credential_mutation
-            .as_ref()
-            .is_some_and(|m| m.factors_reset)
-        {
-            response["factors_reset"] = Value::Bool(true);
-        }
-        Ok(response)
+        // Account activation is enrollment, never an authenticated session.
+        Ok(json!({"completed":true,"login_required":true}))
     }
 }

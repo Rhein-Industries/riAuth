@@ -11,6 +11,8 @@ pub(super) struct Completed {
     pub credential: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_request: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invitation_request: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub factors_reset: bool,
 }
@@ -18,6 +20,7 @@ pub(super) struct Completed {
 pub(super) enum Pending {
     Enrollment(enrollment::Verified),
     PasswordReset(reset::Verified),
+    Invitation(invitation::Verified),
 }
 
 impl Pending {
@@ -25,6 +28,7 @@ impl Pending {
         match self {
             Self::Enrollment(verified) => verified.matches(run, terminal),
             Self::PasswordReset(verified) => verified.matches(run, terminal),
+            Self::Invitation(verified) => verified.matches(run, terminal),
         }
     }
 
@@ -45,10 +49,12 @@ impl Pending {
                     to_epoch: mutation.to_epoch,
                     credential: mutation.credential,
                     recovery_request: None,
+                    invitation_request: None,
                     factors_reset: false,
                 })
             }
             Self::PasswordReset(verified) => verified.commit(core, tx, run, terminal, evidence),
+            Self::Invitation(verified) => verified.commit(core, tx, run, terminal, evidence),
         }
     }
 }
