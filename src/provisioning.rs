@@ -376,14 +376,12 @@ fn delivery_state(job: &Job) -> &'static str {
 /// viewer who may read the target and that user or group; others see its
 /// position and kind.
 fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
-    let readable = match &job.item {
+    let current_item = delivery_item(job);
+    let readable = match &current_item {
         Some(item) => item_readable(tx, viewer, &job.plan.target, item)?,
-        None => viewer.allows(
-            "provisioner.read",
-            &format!("provisioner/{}", job.plan.target),
-        ),
+        None => false,
     };
-    let item = match &job.item {
+    let item = match &current_item {
         Some(item) => {
             let mut view = json!({"index": item.index, "kind": item.kind});
             if readable {
@@ -403,6 +401,23 @@ fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
         json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution}),
     )
 }
+
+/// Older or interrupted jobs may not have recorded their current item yet.
+/// Recover it only from the retained snapshot at the exact cursor; target
+/// authority alone cannot identify or authorize an ambiguous resource.
+fn delivery_item(job: &Job) -> Option<Item> {
+    job.item.clone().or_else(|| {
+        (job.uncertain || job.lease.is_some())
+            .then(|| job.plan.resources.get(job.cursor))
+            .flatten()
+            .map(|resource| Item {
+                index: job.cursor,
+                kind: resource.kind.clone(),
+                local_id: resource.local_id.clone(),
+            })
+    })
+}
+
 fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> Result<bool> {
     if !viewer.allows("provisioner.read", &format!("provisioner/{target}")) {
         return Ok(false);
@@ -410,14 +425,23 @@ fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> 
     Ok(match item.kind.as_str() {
         "Users" => tx
             .get::<User>("users", &item.local_id)?
-            .is_some_and(|user| viewer.allows("user.read", &format!("user/{}", user.username))),
-        "Groups" => viewer.allows("group.read", &format!("group/{}", item.local_id)),
+            .is_some_and(|user| {
+                user.id == item.local_id
+                    && viewer.allows("user.read", &format!("user/{}", user.username))
+            }),
+        "Groups" => tx
+            .get::<Group>("groups", &item.local_id)?
+            .is_some_and(|group| {
+                group.name == item.local_id
+                    && viewer.allows("group.read", &format!("group/{}", group.name))
+            }),
         _ => false,
     })
 }
 
 fn compact_terminal_job(job: &mut Job) {
     if (job.completed || job.stale) && job.lease.is_none() {
+        job.item = delivery_item(job);
         job.total = job.total.max(job.plan.resources.len());
         job.plan.resources.clear();
         job.plan.managed_links.clear();
@@ -976,16 +1000,8 @@ impl Core {
             if job.lease.is_some() {
                 job.uncertain = true;
                 // Name the in-flight item before compaction can drop the plan copy.
-                if job.item.is_none()
-                    && let Some(resource) = job.plan.resources.get(job.cursor)
-                {
-                    job.item = Some(Item {
-                        index: job.cursor,
-                        kind: resource.kind.clone(),
-                        local_id: resource.local_id.clone(),
-                    });
-                }
-                if job.next_attempt <= now() {
+                job.item = delivery_item(&job);
+                if !stale_lease_settling(&job, now()) {
                     job.lease = None;
                 }
             }
@@ -1011,14 +1027,8 @@ impl Core {
                 &format!("provisioner/{}", job.plan.target),
             )?;
             // An attestation names the ambiguous item, so it needs read access to it.
-            let readable = match &job.item {
-                Some(item) => item_readable(tx, &actor, &job.plan.target, item)?,
-                None => actor.allows(
-                    "provisioner.read",
-                    &format!("provisioner/{}", job.plan.target),
-                ),
-            };
-            if !readable {
+            let item = delivery_item(&job).ok_or_else(Error::forbidden)?;
+            if !item_readable(tx, &actor, &job.plan.target, &item)? {
                 return Err(Error::forbidden());
             }
             if !job.stale || !job.uncertain {
@@ -1026,9 +1036,9 @@ impl Core {
                     "Only a stopped job whose current item is ambiguous can be resolved",
                 ));
             }
-            if job.lease.is_some() && job.next_attempt > now() {
+            if stale_lease_settling(&job, now()) {
                 return Err(Error::conflict(
-                    "The item is still in flight; resolve it after its lease expires",
+                    "The item is still in flight; resolve it after its lease and settlement grace expire",
                 ));
             }
             let resolution = Resolution {
@@ -1039,6 +1049,7 @@ impl Core {
             };
             job.uncertain = false;
             job.lease = None;
+            job.item = Some(item);
             job.resolution = Some(resolution.clone());
             compact_terminal_job(&mut job);
             tx.put("provisioning_jobs", id, &job)?;
@@ -2134,8 +2145,11 @@ pub struct DismissDeactivation {
 /// Evidence is stored and audited: 1-280 characters, no control characters and
 /// nothing that looks like a credential, as for access-request reasons.
 fn validate_evidence(evidence: &str) -> Result<()> {
-    let length = evidence.trim().chars().count();
-    if !(1..=280).contains(&length) || evidence.chars().any(char::is_control) {
+    let length = evidence.chars().count();
+    if !(1..=280).contains(&length)
+        || evidence.trim().is_empty()
+        || evidence.chars().any(char::is_control)
+    {
         return Err(Error::bad(
             "Evidence must be 1-280 characters without control characters",
         ));

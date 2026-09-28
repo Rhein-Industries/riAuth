@@ -161,8 +161,8 @@ riauth provision resolve <job-id> --observed not_applied --evidence "Payroll sho
 The HTTP routes are `POST /api/provisioning/deactivations/{id}/resolve` and `POST /api/provisioning/jobs/{id}/resolve`, each with body `{"observed": ..., "evidence": ...}`.
 
 - **`observed`:** `applied` (the write took effect), `not_applied` (the target shows the earlier state) or `absent` (the remote resource is gone).
-- **`evidence`:** 1-280 characters without control characters or credentials, naming where the check was made.
-- **Authorization:** `provisioner.sync` on the target. The caller must also be able to read what it attests about: `provisioner.read` on the target, plus `user.read` on the account, or `user.read` / `group.read` on the job's item. A resolution is accepted only while the record is ambiguous, and a job's lease must have settled.
+- **`evidence`:** 1-280 characters including surrounding whitespace, without control characters or credentials, naming where the check was made. Whitespace-only evidence is rejected.
+- **Authorization:** `provisioner.sync` on the target. The caller must also be able to read what it attests about: `provisioner.read` on the target, plus `user.read` on the current account, or `user.read` / `group.read` on the job's actual local item. A missing job item can be recovered only from the retained plan at its cursor; without a matching local identity, resolution is denied and evidence stays redacted. A resolution is accepted only while the record is ambiguous. A stopped job retains its 60-second lease through the additional 30-second settlement grace; stop and resolve both honor that deadline.
 
 A resolution clears `uncertain` and records the observation, evidence, actor and time. It changes neither the record's original target, remote identity, epoch, status, outcome nor error. Nothing is written to the target. The audit event (`provisioner.deactivate.resolve` or `provisioner.resolve`) keeps the same evidence in `details.context`.
 
@@ -198,6 +198,11 @@ Dismissal needs `provisioner.sync` and `provisioner.read` on the target plus
 `user.read` on the named account. Running rows, delivered or superseded rows,
 satisfied resolutions, and targets with a live or settling reviewed-job lease
 cannot be dismissed. Stopping that job does not bypass its settle window.
+Deactivation listings, full retry responses, resolutions and dismissals load the
+current account by immutable `user_id` before checking its read scope. The stored
+username is historical evidence: renaming or reusing it never transfers access.
+If that local identity no longer exists, these account-detail operations fail
+closed; the durable intent remains stored.
 
 The row becomes `status: dismissed` and leaves the automatic queue. Its original
 identity, epoch, hold, attempts, error, outcome and `uncertain` flag stay intact.

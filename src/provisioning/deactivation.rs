@@ -675,7 +675,7 @@ impl Core {
                 "provisioner.deactivate.retry",
                 &format!("{}/{}", row.target, row.username),
             )?;
-            row_view_for(&row, &actor)
+            row_view_for(tx, &row, &actor)
         })
     }
 
@@ -701,9 +701,7 @@ impl Core {
                 &format!("provisioner/{}", row.target),
             )?;
             // An attestation names the account, so it needs the listing's read scopes.
-            if !actor.allows("provisioner.read", &format!("provisioner/{}", row.target))
-                || !actor.allows("user.read", &format!("user/{}", row.username))
-            {
+            if !row_readable(tx, &row, &actor)? {
                 return Err(Error::forbidden());
             }
             if !row.uncertain || !matches!(row.status, Status::Failed | Status::Stale) {
@@ -762,9 +760,7 @@ impl Core {
                 "provisioner.sync",
                 &format!("provisioner/{}", row.target),
             )?;
-            if !actor.allows("provisioner.read", &format!("provisioner/{}", row.target))
-                || !actor.allows("user.read", &format!("user/{}", row.username))
-            {
+            if !row_readable(tx, &row, &actor)? {
                 return Err(Error::forbidden());
             }
             if input.revision != row.revision()? {
@@ -823,15 +819,12 @@ impl Core {
     pub fn provisioning_deactivations(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            let mut rows: Vec<_> = tx
-                .list::<Deactivation>(BUCKET)?
-                .into_iter()
-                .map(|(_, row)| row)
-                .filter(|row| {
-                    actor.allows("provisioner.read", &format!("provisioner/{}", row.target))
-                        && actor.allows("user.read", &format!("user/{}", row.username))
-                })
-                .collect();
+            let mut rows = Vec::new();
+            for (_, row) in tx.list::<Deactivation>(BUCKET)? {
+                if row_readable(tx, &row, &actor)? {
+                    rows.push(row);
+                }
+            }
             rows.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
             rows.truncate(MAX_LISTED);
             let views = rows.iter().map(row_view).collect::<Result<Vec<_>>>()?;
@@ -849,10 +842,8 @@ fn row_view(row: &Deactivation) -> Result<Value> {
 
 /// A full row names the account and its remote identity, so it needs the
 /// listing's read scopes; a caller with only write authority sees the outcome.
-fn row_view_for(row: &Deactivation, viewer: &Principal) -> Result<Value> {
-    if viewer.allows("provisioner.read", &format!("provisioner/{}", row.target))
-        && viewer.allows("user.read", &format!("user/{}", row.username))
-    {
+fn row_view_for(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<Value> {
+    if row_readable(tx, row, viewer)? {
         return row_view(row);
     }
     Ok(json!({
@@ -863,6 +854,17 @@ fn row_view_for(row: &Deactivation, viewer: &Principal) -> Result<Value> {
         "hold": row.hold,
         "attempts": row.attempts,
         "next_attempt": row.next_attempt,
+    }))
+}
+
+/// The recorded username is historical evidence, never an authorization key.
+/// A rename or reuse of that name must not transfer access to this identity.
+fn row_readable(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<bool> {
+    if !viewer.allows("provisioner.read", &format!("provisioner/{}", row.target)) {
+        return Ok(false);
+    }
+    Ok(tx.get::<User>("users", &row.user_id)?.is_some_and(|user| {
+        user.id == row.user_id && viewer.allows("user.read", &format!("user/{}", user.username))
     }))
 }
 

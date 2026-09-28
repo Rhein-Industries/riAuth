@@ -1994,6 +1994,435 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
     assert_eq!(payroll.requests.lock().unwrap().len(), requests);
 }
 
+// A retained, ambiguous job from an interrupted/older worker. These focused
+// contracts exercise local authorization and settlement without remote I/O.
+fn p08_resolution_fixture() -> (Fixture, String, Value) {
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    f.core
+        .group_member(&f.admin, "payroll", "alice", true)
+        .unwrap();
+    let mut target = scim_target(&f, "payroll", "http://127.0.0.1:9/scim/v2", "payroll");
+    target.export_groups = true;
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+    let id = text(&plan, "id");
+    f.core.provisioning_apply(&f.admin, &id).unwrap();
+    let mut job: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    job["stale"] = json!(true);
+    job["uncertain"] = json!(true);
+    job["item"] = Value::Null;
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_jobs", &id, &job))
+        .unwrap();
+    (f, id, job)
+}
+
+fn p08_resolution(evidence: &str) -> Resolve {
+    Resolve {
+        observed: downstream::Observed::NotApplied,
+        evidence: evidence.into(),
+    }
+}
+
+fn p08_ambiguous_deactivation(f: &Fixture) -> Value {
+    let alice = account(&f.core, "alice");
+    linked(
+        f,
+        &Scim::default(),
+        "payroll",
+        "http://127.0.0.1:9/scim/v2",
+        &alice,
+        "p-alice",
+    );
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let mut row = delivery(&f.core, "payroll", &alice);
+    row["status"] = json!("stale");
+    row["uncertain"] = json!(true);
+    f.core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, row["id"].as_str().unwrap(), &row))
+        .unwrap();
+    row
+}
+
+fn p08_dismiss(
+    f: &Fixture,
+    token: &str,
+    row: &Value,
+    evidence: &str,
+) -> riauth::error::Result<Value> {
+    let row: downstream::Deactivation = serde_json::from_value(row.clone()).unwrap();
+    let input = json!({"revision": row.revision().unwrap(), "reason": "permanently_unverifiable", "evidence": evidence});
+    let fingerprint = crypto::digest(&input.to_string());
+    riauth::context::scope(
+        Some(riauth::context::RequestContext {
+            revision: Some(revision(&f.core)),
+            idempotency_key: Some(fingerprint.clone()),
+            fingerprint,
+            ..Default::default()
+        }),
+        || {
+            f.core.provisioning_deactivation_dismiss(
+                token,
+                &row.id,
+                serde_json::from_value(input).unwrap(),
+            )
+        },
+    )
+}
+
+#[test]
+fn p08_security_resolution_requires_actual_user_or_group_when_item_is_missing() {
+    let (f, id, original) = p08_resolution_fixture();
+    let target_only = agent(
+        &f,
+        "target-only",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+        ],
+    );
+    let wrong = agent(
+        &f,
+        "wrong-item",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/bob"),
+            ("group.read", "group/other"),
+        ],
+    );
+    let reader = agent(
+        &f,
+        "item-reader",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+            ("group.read", "group/payroll"),
+        ],
+    );
+    for kind in ["Users", "Groups"] {
+        let index = original["plan"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|r| r["kind"] == kind)
+            .unwrap();
+        let local_id = original["plan"]["resources"][index]["local_id"].clone();
+        let mut job = original.clone();
+        job["cursor"] = json!(index);
+        f.core
+            .store
+            .write(|tx| tx.put("provisioning_jobs", &id, &job))
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        for token in [&target_only, &wrong] {
+            assert_eq!(
+                f.core
+                    .provisioning_resolve(token, &id, p08_resolution("OPS-51"))
+                    .unwrap_err()
+                    .code,
+                "access_denied"
+            );
+            f.assert_snapshot(&snapshot);
+            assert!(f.core.provisioning_jobs(token).unwrap()[0]["item"]["local_id"].is_null());
+        }
+        let resolved = f
+            .core
+            .provisioning_resolve(&reader, &id, p08_resolution("OPS-51"))
+            .unwrap();
+        assert_eq!(
+            resolved["item"],
+            json!({"index": index, "kind": kind, "local_id": local_id})
+        );
+        assert_eq!(resolved["resolution"]["evidence"], "OPS-51");
+        assert!(
+            f.core.provisioning_jobs(&target_only).unwrap()[0]["resolution"]["evidence"].is_null()
+        );
+
+        // Even unrestricted scope cannot substitute for a missing local record.
+        job["plan"]["resources"][index]["local_id"] = json!("missing-identity");
+        f.core
+            .store
+            .write(|tx| tx.put("provisioning_jobs", &id, &job))
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-52"))
+                .unwrap_err()
+                .code,
+            "access_denied"
+        );
+        f.assert_snapshot(&snapshot);
+    }
+    // A compacted legacy row has no recoverable identity. Keep its ambiguity
+    // and redact any legacy attestation instead of trusting target scope.
+    let mut job = original;
+    job["plan"]["resources"] = json!([]);
+    job["resolution"] = json!({"observed": "not_applied", "evidence": "Private account check OPS-53", "by": "operator", "at": crypto::now()});
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_jobs", &id, &job))
+        .unwrap();
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&reader, &id, p08_resolution("OPS-53"))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    f.assert_snapshot(&snapshot);
+    assert!(f.core.provisioning_jobs(&target_only).unwrap()[0]["resolution"]["evidence"].is_null());
+}
+
+#[test]
+fn p08_security_stop_and_resolve_keep_the_expired_lease_through_grace() {
+    let (f, id, mut job) = p08_resolution_fixture();
+    job["stale"] = json!(false);
+    job["uncertain"] = json!(false);
+    job["lease"] = json!("in-flight-worker");
+    // A 60s lease expired ten seconds ago: its 30s grace is still live.
+    job["next_attempt"] = json!(crypto::now() - 10);
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_jobs", &id, &job))
+        .unwrap();
+    assert_eq!(
+        f.core.provisioning_stop(&f.admin, &id).unwrap()["delivery_state"],
+        "ambiguous"
+    );
+    let stopped: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    assert_eq!(stopped["lease"], job["lease"]);
+    assert_eq!(stopped["next_attempt"], job["next_attempt"]);
+    assert_eq!(stopped["plan"]["resources"], job["plan"]["resources"]);
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-54"))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_snapshot(&snapshot);
+    let reconcile = f.core.provisioning_reconcile(&f.admin, "payroll").unwrap();
+    assert_eq!(reconcile["prior_delivery_settling"], true);
+    let replacement = text(&reconcile["plan"], "id");
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .provisioning_apply(&f.admin, &replacement)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_snapshot(&snapshot);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap()["lease"],
+        job["lease"]
+    );
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get("provisioning_jobs", &id)?.unwrap();
+            row["next_attempt"] = json!(crypto::now() - 31);
+            tx.put("provisioning_jobs", &id, &row)
+        })
+        .unwrap();
+    let resolved = f
+        .core
+        .provisioning_resolve(&f.admin, &id, p08_resolution("OPS-54"))
+        .unwrap();
+    assert_eq!(resolved["delivery_state"], "failed");
+    let settled: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
+    assert!(settled["lease"].is_null());
+    assert_eq!(settled["plan"]["resources"], json!([]));
+    assert_eq!(settled["item"], stopped["item"]);
+}
+
+#[test]
+fn p08_security_deactivation_read_scope_follows_the_immutable_user() {
+    let (f, _, _) = p08_resolution_fixture();
+    let original = p08_ambiguous_deactivation(&f);
+    let id = text(&original, "id");
+    let old = agent(
+        &f,
+        "old-name",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+        ],
+    );
+    let current = agent(
+        &f,
+        "current-name",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alicia"),
+        ],
+    );
+    let mut alice = account(&f.core, "alice");
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("usernames", "alice")?;
+            alice.username = "alicia".into();
+            tx.put("users", &alice.id, &alice)?;
+            tx.put("usernames", "alicia", &alice.id)
+        })
+        .unwrap();
+    f.user("alice");
+    assert_ne!(account(&f.core, "alice").id, alice.id);
+    assert_eq!(f.core.provisioning_deactivations(&old).unwrap(), json!([]));
+    assert_eq!(
+        f.core.provisioning_deactivations(&current).unwrap()[0]["user_id"],
+        alice.id
+    );
+    let snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_resolve(&old, &id, p08_resolution("OPS-55"))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    assert_eq!(
+        p08_dismiss(&f, &old, &original, "OPS-55").unwrap_err().code,
+        "access_denied"
+    );
+    f.assert_snapshot(&snapshot);
+    // Retry still needs target write authority, but its response needs current
+    // identity read authority before it may disclose account details.
+    let retry = f.core.provisioning_deactivation_retry(&old, &id).unwrap();
+    assert!(retry["username"].is_null() && retry["user_id"].is_null());
+    f.core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, &id, &original))
+        .unwrap();
+    let retry = f
+        .core
+        .provisioning_deactivation_retry(&current, &id)
+        .unwrap();
+    assert_eq!(retry["user_id"], alice.id);
+    assert_eq!(retry["username"], "alice"); // Historical evidence is unchanged.
+    f.core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, &id, &original))
+        .unwrap();
+    let resolved = f
+        .core
+        .provisioning_deactivation_resolve(&current, &id, p08_resolution("OPS-55"))
+        .unwrap();
+    assert_eq!(resolved["resolution"]["by"], "agent:current-name");
+    assert_eq!(
+        p08_dismiss(&f, &current, &resolved, "OPS-56").unwrap()["status"],
+        "dismissed"
+    );
+
+    // A deleted immutable identity never borrows permission from a replacement
+    // account with its historical username. The durable row still exists.
+    f.core
+        .store
+        .write(|tx| tx.delete("users", &alice.id))
+        .unwrap();
+    for token in [&old, &current, &f.admin] {
+        assert_eq!(f.core.provisioning_deactivations(token).unwrap(), json!([]));
+        assert_eq!(
+            f.core
+                .provisioning_deactivation_resolve(token, &id, p08_resolution("OPS-57"))
+                .unwrap_err()
+                .code,
+            "access_denied"
+        );
+    }
+    assert!(
+        f.core
+            .store
+            .get::<Value>(downstream::BUCKET, &id)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn p08_security_persisted_evidence_limit_counts_surrounding_whitespace() {
+    let (f, job, _) = p08_resolution_fixture();
+    let row = p08_ambiguous_deactivation(&f);
+    let id = text(&row, "id");
+    let snapshot = f.snapshot().unwrap();
+    for evidence in [
+        format!("{}OPS-58", " ".repeat(280)),
+        format!("OPS-58{}", "\u{2003}".repeat(280)),
+    ] {
+        assert_eq!(
+            f.core
+                .provisioning_resolve(&f.admin, &job, p08_resolution(&evidence))
+                .unwrap_err()
+                .code,
+            "invalid_request"
+        );
+        assert_eq!(
+            f.core
+                .provisioning_deactivation_resolve(&f.admin, &id, p08_resolution(&evidence))
+                .unwrap_err()
+                .code,
+            "invalid_request"
+        );
+        assert_eq!(
+            p08_dismiss(&f, &f.admin, &row, &evidence).unwrap_err().code,
+            "invalid_request"
+        );
+        f.assert_snapshot(&snapshot);
+    }
+    let evidence = format!(" {} ", "é".repeat(278));
+    assert_eq!(evidence.chars().count(), 280);
+    let resolved = f
+        .core
+        .provisioning_resolve(&f.admin, &job, p08_resolution(&evidence))
+        .unwrap();
+    assert_eq!(resolved["resolution"]["evidence"], evidence);
+    assert_eq!(
+        audit_context(&f.core, "provisioner.resolve")[0]["resolution"]["evidence"],
+        evidence
+    );
+    let resolved = f
+        .core
+        .provisioning_deactivation_resolve(&f.admin, &id, p08_resolution(&evidence))
+        .unwrap();
+    assert_eq!(resolved["resolution"]["evidence"], evidence);
+    assert_eq!(
+        audit_context(&f.core, "provisioner.deactivate.resolve")[0]["resolution"]["evidence"],
+        evidence
+    );
+    let dismissed = p08_dismiss(&f, &f.admin, &resolved, &evidence).unwrap();
+    assert_eq!(dismissed["dismissal"]["evidence"], evidence.trim());
+    assert_eq!(
+        audit_context(&f.core, "provisioner.deactivate.dismiss")[0]["dismissal"],
+        dismissed["dismissal"]
+    );
+}
+
 #[test]
 fn execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent() {
     let f = Fixture::new();
