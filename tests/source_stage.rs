@@ -14,6 +14,435 @@ use std::sync::{Arc, Mutex};
 
 type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)>>>;
 
+/// Both canonical chains must spend the actual account code, primary receipt and
+/// completion together, without turning a recovery proof into factor authority.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_recovery_code_is_bound_single_use_and_cannot_elevate_factors() {
+    use riauth::workflow::{Outcome, RunState};
+
+    async fn primary(f: &Fixture, upstream: &Upstream, token: &str, password: bool) -> String {
+        if password {
+            let run = f.core.workflow_start(token).unwrap().id;
+            assert!(
+                f.core
+                    .workflow_recovery_challenge(token, &run, None)
+                    .is_err()
+            );
+            f.core
+                .workflow_password(token, &run, common::PASSWORD.into())
+                .unwrap();
+            run
+        } else {
+            let start = f.core.workflow_source_start(token, "upstream").unwrap();
+            assert!(
+                f.core
+                    .workflow_recovery_challenge(token, &start.workflow.id, None)
+                    .is_err()
+            );
+            upstream
+                .callback(
+                    f,
+                    &json!({"authorization_url": start.authorization_url}),
+                    "recovery-subject",
+                )
+                .await;
+            f.core
+                .workflow_source_finish(token, &start.workflow.id)
+                .unwrap();
+            start.workflow.id
+        }
+    }
+
+    for password in [true, false] {
+        let f = Fixture::new();
+        let upstream = Upstream::new(&f, false).await;
+        let alice = f.user("workflow-recovery");
+        let bob = f.user("workflow-other");
+        let user_id = text(&f.core.me(&alice).unwrap()["user"], "id");
+        if !password {
+            let link = f
+                .core
+                .source_start(
+                    "upstream",
+                    riauth::source::Start {
+                        link: true,
+                        authentication_transaction: None,
+                    },
+                    Some(&alice),
+                )
+                .unwrap();
+            upstream.callback(&f, &link, "recovery-subject").await;
+            f.core
+                .source_finish(riauth::source::Finish {
+                    credential: text(&link["credential"], "token"),
+                    approve: true,
+                    otp: None,
+                })
+                .unwrap();
+        }
+        let enrollment = f.core.mfa_begin(&alice).unwrap();
+        let totp = crypto::totp(&text(&enrollment, "secret"), "workflow-recovery").unwrap();
+        f.core
+            .mfa_confirm(&alice, &totp.generate((now() / 30 - 1) * 30).to_string())
+            .unwrap();
+        let alice = text(
+            &f.core
+                .login(
+                    "workflow-recovery".into(),
+                    common::PASSWORD.into(),
+                    Some(totp.generate(now()).to_string()),
+                )
+                .unwrap(),
+            "session_token",
+        );
+        let codes: Vec<String> = f.core.recovery_codes(&alice).unwrap()["recovery_codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|code| code.as_str().unwrap().to_owned())
+            .collect();
+        let second = text(
+            &f.core
+                .login(
+                    "workflow-recovery".into(),
+                    common::PASSWORD.into(),
+                    Some(codes[0].clone()),
+                )
+                .unwrap(),
+            "session_token",
+        );
+        let session_id: String = f
+            .core
+            .store
+            .get("session_tokens", &digest(&alice))
+            .unwrap()
+            .unwrap();
+        // A current but non-MFA session may reauthenticate. Finishing the run
+        // must not upgrade it or bypass factor-management's existing gate.
+        f.core
+            .store
+            .write(|tx| {
+                let mut session: Session = tx.get("sessions", &session_id)?.unwrap();
+                session.identity.mfa = false;
+                tx.put("sessions", &session_id, &session)
+            })
+            .unwrap();
+        let session_before: Value = f.core.store.get("sessions", &session_id).unwrap().unwrap();
+        let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+        let account = || {
+            f.core
+                .store
+                .get::<User>("users", &user_id)
+                .unwrap()
+                .unwrap()
+        };
+        let factor_before = account();
+        let failures = || {
+            f.core
+                .store
+                .get::<Attempts>("attempts", "workflow-recovery")
+                .unwrap()
+                .map_or(0, |attempts| attempts.failures)
+        };
+        assert!(f.core.recovery_codes(&alice).is_err());
+
+        let cancelled = primary(&f, &upstream, &alice, password).await;
+        assert!(
+            f.core
+                .workflow_recovery_challenge(&alice, &cancelled, None)
+                .is_err()
+        );
+        let old_totp = f.core.workflow_totp_challenge(&alice, &cancelled).unwrap();
+        f.core
+            .workflow_totp(&alice, &cancelled, &old_totp.challenge, "invalid".into())
+            .unwrap();
+        let totp = f.core.workflow_totp_challenge(&alice, &cancelled).unwrap();
+        assert!(
+            f.core
+                .workflow_recovery_challenge(&alice, &cancelled, Some(&old_totp.challenge))
+                .is_err()
+        );
+        for token in [&bob, &second] {
+            assert!(
+                f.core
+                    .workflow_recovery_challenge(token, &cancelled, Some(&totp.challenge))
+                    .is_err()
+            );
+        }
+        let recovery = f
+            .core
+            .workflow_recovery_challenge(&alice, &cancelled, Some(&totp.challenge))
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_totp(&alice, &cancelled, &totp.challenge, "000000".into())
+                .is_err()
+        );
+        assert!(
+            f.core
+                .workflow_recovery_code(&alice, &cancelled, &totp.challenge, codes[1].clone())
+                .is_err()
+        );
+        f.core
+            .workflow_recovery_code(
+                &alice,
+                &cancelled,
+                &recovery.challenge,
+                "ri_recovery_wrong".into(),
+            )
+            .unwrap();
+        assert_eq!(failures(), 2);
+        let retry = f
+            .core
+            .workflow_recovery_challenge(&alice, &cancelled, None)
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_recovery_code(&alice, &cancelled, &recovery.challenge, codes[1].clone())
+                .is_err()
+        );
+        f.core.workflow_cancel(&alice, &cancelled).unwrap();
+        assert!(
+            f.core
+                .workflow_recovery_code(&alice, &cancelled, &retry.challenge, codes[1].clone())
+                .is_err()
+        );
+        assert_eq!(account().recovery_codes, factor_before.recovery_codes);
+
+        let run_id = primary(&f, &upstream, &alice, password).await;
+        assert_eq!(failures(), 2); // A new primary proof cannot reset the budget.
+        let totp = f.core.workflow_totp_challenge(&alice, &run_id).unwrap();
+        let recovery = f
+            .core
+            .workflow_recovery_challenge(&alice, &run_id, Some(&totp.challenge))
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_recovery_code(&alice, &run_id, &retry.challenge, codes[1].clone())
+                .is_err()
+        );
+        for token in [&bob, &second] {
+            assert!(
+                f.core
+                    .workflow_recovery_code(token, &run_id, &recovery.challenge, codes[1].clone())
+                    .is_err()
+            );
+        }
+        let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+        let request = text(&run["record"], "request");
+        let receipt = text(&run["record"]["steps"][0], "evidence");
+        for (bucket, key, field, value) in [
+            (
+                "workflow_requests",
+                request.as_str(),
+                "id",
+                json!("different-request"),
+            ),
+            (
+                "workflow_evidence",
+                receipt.as_str(),
+                "run",
+                json!(cancelled),
+            ),
+            ("workflow_evidence", receipt.as_str(), "attempt", json!(2)),
+            (
+                "workflow_evidence",
+                receipt.as_str(),
+                "expires_at",
+                json!(now()),
+            ),
+            (
+                "workflow_evidence",
+                receipt.as_str(),
+                "consumed",
+                json!(true),
+            ),
+            ("sessions", session_id.as_str(), "revoked", json!(true)),
+            (
+                "users",
+                user_id.as_str(),
+                "epoch",
+                json!(factor_before.epoch + 1),
+            ),
+            ("users", user_id.as_str(), "totp_secret", Value::Null),
+        ] {
+            let original: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+            let mut changed = original.clone();
+            changed[field] = value;
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, key, &changed))
+                .unwrap();
+            assert!(
+                f.core
+                    .workflow_recovery_code(&alice, &run_id, &recovery.challenge, codes[1].clone())
+                    .is_err(),
+                "{bucket}/{field}"
+            );
+            assert!(account().recovery_codes.contains(&digest(&codes[1])));
+            assert!(
+                !f.core
+                    .workflow_resume(&alice, &run_id)
+                    .is_ok_and(|v| v.state.is_final())
+            );
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, key, &original))
+                .unwrap();
+        }
+        let outcomes = std::thread::scope(|scope| {
+            let first = scope.spawn(|| {
+                f.core.workflow_recovery_code(
+                    &alice,
+                    &run_id,
+                    &recovery.challenge,
+                    codes[1].clone(),
+                )
+            });
+            let second = scope.spawn(|| {
+                f.core.workflow_recovery_code(
+                    &alice,
+                    &run_id,
+                    &recovery.challenge,
+                    codes[1].clone(),
+                )
+            });
+            [first.join().unwrap(), second.join().unwrap()]
+        });
+        assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+        assert!(matches!(
+            outcomes.into_iter().find_map(Result::ok).unwrap().state,
+            RunState::Finished {
+                outcome: Outcome::Authenticated,
+                ..
+            }
+        ));
+        assert!(!account().recovery_codes.contains(&digest(&codes[1])));
+        assert_eq!(
+            account().recovery_codes.len(),
+            factor_before.recovery_codes.len() - 1
+        );
+        assert_eq!(account().totp_secret, factor_before.totp_secret);
+        assert_eq!(account().totp_last_step, factor_before.totp_last_step);
+        assert_eq!(account().epoch, factor_before.epoch);
+        assert_eq!(failures(), 0);
+        let receipts: Vec<Value> = f
+            .core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .into_iter()
+            .filter(|(_, value)| value["run"] == run_id)
+            .map(|(_, value)| value)
+            .collect();
+        assert_eq!(receipts.len(), 2);
+        for evidence in &receipts {
+            assert_eq!(evidence["consumed"], true);
+            assert_eq!(evidence["attempt"], 1);
+            for field in ["account", "account_epoch", "session", "request", "binding"] {
+                assert_eq!(evidence[field], run["record"][field], "{field}");
+            }
+        }
+        assert!(receipts.iter().any(|r| r["proof"] == "recovery_code"));
+        assert!(
+            receipts
+                .iter()
+                .any(|r| r["proof"] == if password { "password" } else { "source" })
+        );
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("sessions", &session_id)
+                .unwrap()
+                .unwrap(),
+            session_before
+        );
+        assert_eq!(
+            f.core.store.list::<Session>("sessions").unwrap().len(),
+            sessions
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("browser_logins")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(f.core.recovery_codes(&alice).is_err());
+        assert!(f.core.mfa_begin(&alice).is_err());
+        assert!(
+            f.core
+                .workflow_recovery_code(&alice, &run_id, &recovery.challenge, codes[1].clone())
+                .is_err()
+        );
+        assert_eq!(
+            f.core
+                .login(
+                    "workflow-recovery".into(),
+                    common::PASSWORD.into(),
+                    Some(codes[1].clone())
+                )
+                .unwrap_err()
+                .code,
+            "invalid_credentials"
+        );
+
+        // The same account code cannot be reused in a fresh workflow either.
+        let replay = primary(&f, &upstream, &alice, password).await;
+        let totp = f.core.workflow_totp_challenge(&alice, &replay).unwrap();
+        let recovery = f
+            .core
+            .workflow_recovery_challenge(&alice, &replay, Some(&totp.challenge))
+            .unwrap();
+        let rejected = f
+            .core
+            .workflow_recovery_code(&alice, &replay, &recovery.challenge, codes[1].clone())
+            .unwrap();
+        assert!(matches!(
+            rejected.state,
+            RunState::Active { attempt: 2, .. }
+        ));
+        assert_eq!(failures(), 2);
+        f.core.workflow_cancel(&alice, &replay).unwrap();
+
+        // Exhausting TOTP reaches recovery automatically, without clearing
+        // lockout or letting an unspent code bypass the shared account gate.
+        let locked = primary(&f, &upstream, &alice, password).await;
+        for _ in 0..3 {
+            let challenge = f.core.workflow_totp_challenge(&alice, &locked).unwrap();
+            f.core
+                .workflow_totp(&alice, &locked, &challenge.challenge, "invalid".into())
+                .unwrap();
+        }
+        let recovery = f
+            .core
+            .workflow_recovery_challenge(&alice, &locked, None)
+            .unwrap();
+        assert_eq!(
+            f.core
+                .workflow_recovery_code(&alice, &locked, &recovery.challenge, codes[2].clone())
+                .unwrap_err()
+                .code,
+            "rate_limited"
+        );
+        assert_eq!(
+            f.core
+                .login(
+                    "workflow-recovery".into(),
+                    common::PASSWORD.into(),
+                    Some(codes[2].clone())
+                )
+                .unwrap_err()
+                .code,
+            "rate_limited"
+        );
+        f.core.workflow_cancel(&alice, &locked).unwrap();
+        assert_eq!(failures(), 5);
+        assert!(account().recovery_codes.contains(&digest(&codes[2])));
+    }
+}
+
 /// The signed source proof remains pending until a bound, one-use local factor
 /// commits through the same completion writer.
 #[cfg(feature = "platform")]

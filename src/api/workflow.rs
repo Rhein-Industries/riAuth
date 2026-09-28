@@ -3,7 +3,7 @@
 use super::{App, bearer, credential_floor};
 use crate::{
     error::Result,
-    workflow::executor::{PasskeyChallenge, SourceStart, TotpChallenge, View},
+    workflow::executor::{PasskeyChallenge, RecoveryChallenge, SourceStart, TotpChallenge, View},
 };
 use axum::{
     Json, Router,
@@ -27,6 +27,11 @@ pub(super) fn routes() -> Router<App> {
         .route("/api/workflows/{id}/source", post(source_finish))
         .route("/api/workflows/{id}/totp/start", post(totp_challenge))
         .route("/api/workflows/{id}/totp", post(totp))
+        .route(
+            "/api/workflows/{id}/recovery-code/start",
+            post(recovery_challenge),
+        )
+        .route("/api/workflows/{id}/recovery-code", post(recovery_code))
         .route("/api/workflows/{id}/cancel", post(cancel))
 }
 
@@ -57,6 +62,44 @@ async fn totp(
     let started = Instant::now();
     let result = app
         .run_credentials(move |core| core.workflow_totp(&token, &id, &input.challenge, input.code))
+        .await;
+    credential_floor(started, true).await;
+    result.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecoveryStart {
+    #[serde(default)]
+    totp_challenge: Option<String>,
+}
+
+async fn recovery_challenge(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<RecoveryStart>,
+) -> Result<Json<RecoveryChallenge>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_recovery_challenge(&token, &id, input.totp_challenge.as_deref())
+            .map(Json)
+    })
+    .await
+}
+
+async fn recovery_code(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Totp>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    let started = Instant::now();
+    let result = app
+        .run_credentials(move |core| {
+            core.workflow_recovery_code(&token, &id, &input.challenge, input.code)
+        })
         .await;
     credential_floor(started, true).await;
     result.map(Json)

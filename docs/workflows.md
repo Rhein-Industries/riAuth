@@ -3,7 +3,7 @@
 Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication for a live bearer session.
-Password and source paths require local TOTP when enrolled. All use the existing
+Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. They do not complete a
 downstream OIDC sign-in transaction or issue a new session. Other built-in
 verifier actions remain unconnected. The existing
@@ -159,7 +159,7 @@ today's [source stage](../src/source.rs) behavior.
 On Platform, `POST /api/workflows/password` pins a workflow to the live bearer
 session's account. Accounts with a local password and enrolled TOTP use the
 server-owned `platform-password-totp-reauthentication` definition, whose success
-requires both proofs. Accounts without TOTP retain the shipped password-only
+requires password and local-factor proofs. Accounts without TOTP retain the shipped password-only
 path. Neither path accepts a directory-managed password or a caller-selected
 definition. Essentials ordinary sign-in is unchanged.
 
@@ -174,9 +174,9 @@ A correct password advances an MFA run to TOTP and leaves its account-wide
 failed-credential count intact. The full chain must succeed before that count
 is cleared. Cancellation, correct-password retries and new runs cannot restore
 the guessing budget. The existing bound TOTP endpoints below consume both
-receipts and complete the run in one transaction. The two-factor definition
-allows three attempts per factor within ten minutes; exhaustion denies instead
-of entering the model's unconnected recovery-code fallback.
+receipts and complete the run in one transaction. Revision two allows three
+attempts per verifier within ten minutes; exhausted TOTP leads to recovery code,
+and exhausted recovery denies. Revision-one runs retain their original path.
 
 ## Local passkey reauthentication
 
@@ -237,8 +237,8 @@ MFA assertions are not converted into local-factor proofs.
 ## Local TOTP after primary verification
 
 An account with TOTP uses the distinct, pinned
-`platform-source-totp-reauthentication` definition. It requires both source and
-TOTP evidence. The original source-only definition remains available for its
+`platform-source-totp-reauthentication` definition. It requires source evidence
+and TOTP or recovery-code evidence. The original source-only definition remains available for its
 existing pinned runs. Password-plus-TOTP uses the same local-factor adapter and
 requires a fresh password receipt instead. After the primary step,
 `POST /api/workflows/{id}/totp/start`
@@ -261,8 +261,37 @@ cannot complete it. The ordinary account lockout also applies, so cancellation
 or a new workflow does not reset failed-code counts. The factor deadline cannot
 extend the primary proof's expiry, its 120-second freshness bound, or the
 run/request deadline. A source proof also retains its signed assertion expiry.
-Epoch changes invalidate pending verification. Recovery-code fallback remains
-unconnected.
+Epoch changes invalidate pending verification.
+
+## Recovery-code fallback
+
+Revision two of both canonical MFA definitions permits a one-time recovery code
+after a fresh password or source proof. It does not authorize factor replacement,
+factor removal, password reset, or a session-assurance upgrade. Existing
+factor-management restrictions still apply to the original session.
+
+To choose recovery while TOTP is active, first obtain its current handle from
+`POST /api/workflows/{id}/totp/start`, then send
+`{"totp_challenge":"<handle>"}` to
+`POST /api/workflows/{id}/recovery-code/start`. This retires that exact TOTP
+attempt without producing evidence and returns a new `workflow`, `challenge`
+and `expires_at`. Once TOTP attempts are exhausted, or to retry recovery, send
+`{}` to the recovery start endpoint. Selection never clears failed-code counts.
+
+`POST /api/workflows/{id}/recovery-code` accepts the recovery `challenge` and
+`code`. Its handle has a separate factor binding and pins the exact account,
+epoch, live session, request, run, definition, primary receipt, step and attempt.
+Neither an old TOTP handle nor a recovery handle from another attempt can be
+substituted. Recovery inherits the primary receipt's freshness and signed expiry;
+switching factors cannot extend either deadline.
+
+The verifier is shared with ordinary password sign-in and removes the digest
+from the account's live recovery-code set. Code removal, primary and recovery
+receipt consumption, lockout clearing, audit and completion share one write
+transaction. A completion error rolls these changes back. A wrong or already-used code
+spends an attempt and debits the same account lockout as password/TOTP sign-in;
+a locked account cannot use an otherwise valid recovery code. Rotation takes
+effect immediately, and no plaintext recovery code is persisted by the workflow.
 
 ## Bounds
 
@@ -305,7 +334,7 @@ These are not implemented or established by this slice:
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Arbitrary configured workflows, custom stage execution, trusted upstream MFA
-  assertion adapters, recovery-code fallback, invitation
+  assertion adapters, invitation
   acceptance, and the other built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
@@ -328,6 +357,9 @@ These are not implemented or established by this slice:
   The password-plus-TOTP regression checks both real verifiers, retained lockout
   across correct passwords and cancelled runs, proof substitution/expiry,
   ordinary sign-in replay rejection and competing finalization writers.
+  The recovery-code contract exercises both real primary chains, handle
+  substitution, cancellation, revoked/expired authority, competing consumption,
+  shared sign-in replay/lockout and unchanged factor-management restrictions.
   PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

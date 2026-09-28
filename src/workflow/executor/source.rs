@@ -12,6 +12,13 @@ pub struct SourceStart {
 pub(super) const TOTP_WORKFLOW: &str = "platform-source-totp-reauthentication";
 
 pub(super) fn definition(source: &Id, totp: bool) -> Result<Validated> {
+    definition_at_revision(source, totp, if totp { 2 } else { 1 })
+}
+
+pub(super) fn definition_at_revision(source: &Id, totp: bool, revision: u32) -> Result<Validated> {
+    if revision != 1 && !(totp && revision == 2) {
+        return Err(Error::conflict("Workflow revision is unavailable"));
+    }
     if !cfg!(feature = "platform") {
         return Err(Error::forbidden());
     }
@@ -90,6 +97,9 @@ pub(super) fn definition(source: &Id, totp: bool) -> Result<Validated> {
             ],
         });
         definition.terminals[0].requires = vec![vec![Proof::Source, Proof::Totp]];
+        if revision == 2 {
+            recovery::extend(&mut definition)?;
+        }
     }
     let mut environment = Environment::platform();
     environment.sources.insert(source.clone());
@@ -177,6 +187,7 @@ impl Core {
                 source: None,
                 passkey: None,
                 totp: None,
+                recovery_code: None,
             };
             let (attempt, authorization_url) =
                 self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
@@ -224,6 +235,7 @@ impl Core {
             if reservation.step != *step
                 || reservation.passkey.is_some()
                 || reservation.totp.is_some()
+                || reservation.recovery_code.is_some()
                 || reservation.attempt != *attempt
                 || reservation.step_started_at != run.step_started_at
                 || checked.step(step).map(|s| &s.action)

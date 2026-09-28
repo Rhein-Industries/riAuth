@@ -118,8 +118,8 @@ fn password_totp_chain_binds_both_proofs_and_preserves_shared_lockout() {
     assert_eq!(last_step(), initial_step);
 
     // Correct passwords across new runs cannot erase bad-factor history. The
-    // third local-factor failure denies the bounded chain and the fifth account
-    // failure also locks ordinary sign-in, using the same durable counter.
+    // third local-factor failure reaches recovery, but the fifth account failure
+    // locks every factor and ordinary sign-in using the same durable counter.
     let denied = f.core.workflow_start(&alice).unwrap().id;
     f.core
         .workflow_password(&alice, &denied, PASSWORD.into())
@@ -133,15 +133,12 @@ fn password_totp_chain_binds_both_proofs_and_preserves_shared_lockout() {
             .unwrap();
         assert_eq!(failures(), expected);
         if expected == 5 {
-            assert!(matches!(
-                view.state,
-                RunState::Finished {
-                    outcome: Outcome::Denied,
-                    ..
-                }
-            ));
+            assert!(
+                matches!(view.state, RunState::Active { ref step, .. } if step.as_str() == "recovery-code")
+            );
         }
     }
+    f.core.workflow_cancel(&alice, &denied).unwrap();
     let locked = f.core.workflow_start(&alice).unwrap().id;
     assert_eq!(
         f.core

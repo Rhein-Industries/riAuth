@@ -105,6 +105,14 @@ fn new_recovery_codes() -> Vec<String> {
         .collect()
 }
 
+/// The account's existing single-use recovery verifier. The caller must check
+/// live authority and lockout, and persist the changed account in its transaction.
+pub(crate) fn consume_recovery_code(user: &mut User, code: &str) -> bool {
+    user.totp_secret.is_some()
+        && code.starts_with("ri_recovery_")
+        && user.recovery_codes.remove(&digest(code))
+}
+
 fn no_pending() -> Error {
     Error::new(
         StatusCode::BAD_REQUEST,

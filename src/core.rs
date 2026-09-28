@@ -282,7 +282,7 @@ impl Core {
             if let Some(u) = user.as_mut().filter(|_| valid)
                 && let Some(secret) = &u.totp_secret {
                     if let Some(code) = otp.as_deref().filter(|c| c.starts_with("ri_recovery_")) {
-                        valid = u.recovery_codes.remove(&digest(code));
+                        valid = crate::authenticator::consume_recovery_code(u, code);
                     } else {
                         let step = crypto::totp_step_with(secret, &u.username, otp.as_deref().unwrap_or(""), at, u.totp_last_step, &u.totp_settings)?;
                         valid = step.is_some();

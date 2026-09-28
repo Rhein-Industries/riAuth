@@ -2,11 +2,13 @@
 
 mod passkey;
 mod password;
+mod recovery;
 mod source;
 mod totp;
 pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
 pub use totp::TotpChallenge;
+pub use totp::TotpChallenge as RecoveryChallenge;
 
 use super::{
     Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
@@ -71,6 +73,7 @@ enum AttemptResult {
     Verified,
     Failed,
     TimedOut,
+    Fallback,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -96,6 +99,8 @@ struct InFlight {
     passkey: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     totp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,7 +126,7 @@ impl RuntimeRun {
         ) {
             validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
         } else if self.definition.id.as_str() == password::TOTP_WORKFLOW {
-            let checked = password::definition()?;
+            let checked = password::definition_at_revision(self.definition.revision)?;
             if checked.definition() != &self.definition {
                 return Err(Error::conflict("Workflow definition changed"));
             }
@@ -132,8 +137,11 @@ impl RuntimeRun {
             else {
                 return Err(Error::conflict("Workflow definition is unavailable"));
             };
-            let checked =
-                source::definition(source, self.definition.id.as_str() == source::TOTP_WORKFLOW)?;
+            let checked = source::definition_at_revision(
+                source,
+                self.definition.id.as_str() == source::TOTP_WORKFLOW,
+                self.definition.revision,
+            )?;
             if checked.definition() != &self.definition {
                 return Err(Error::conflict("Workflow definition changed"));
             }
@@ -331,9 +339,11 @@ fn evidence_authority(
     match (&receipt.source, &request.source) {
         (Some(evidence), Some(pin)) => upstream::evidence_authority(tx, pin, &user, evidence),
         (None, Some(_))
-            if receipt.proof == Proof::Totp
-                && matches!(receipt.action, Action::VerifyTotp {})
-                && request.requires_mfa
+            if matches!(
+                (receipt.proof, &receipt.action),
+                (Proof::Totp, Action::VerifyTotp {})
+                    | (Proof::RecoveryCode, Action::VerifyRecoveryCode {})
+            ) && request.requires_mfa
                 && user.totp_secret.is_some() =>
         {
             Ok(())
@@ -902,6 +912,7 @@ mod tests {
                     source: None,
                     passkey: None,
                     totp: None,
+                    recovery_code: None,
                 });
                 run.executions = 1;
                 tx.put(RUNS, &id, &run)

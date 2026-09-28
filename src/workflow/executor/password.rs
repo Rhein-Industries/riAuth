@@ -11,11 +11,17 @@ use zeroize::Zeroizing;
 
 pub(super) const TOTP_WORKFLOW: &str = "platform-password-totp-reauthentication";
 
-/// A closed two-verifier path. Exhausted factors deny; the model's unconnected
-/// recovery-code fallback cannot strand or complete this production run.
 pub(super) fn definition() -> Result<Validated> {
+    definition_at_revision(2)
+}
+
+/// Keep revision one's pinned path intact while new runs allow recovery codes.
+pub(super) fn definition_at_revision(revision: u32) -> Result<Validated> {
+    if !matches!(revision, 1 | 2) {
+        return Err(Error::conflict("Workflow revision is unavailable"));
+    }
     let id = |value| Id::new(value).map_err(Error::internal);
-    let definition = Definition {
+    let mut definition = Definition {
         format: Format::V1,
         id: id(TOTP_WORKFLOW)?,
         revision: 1,
@@ -73,6 +79,9 @@ pub(super) fn definition() -> Result<Validated> {
             },
         ],
     };
+    if revision == 2 {
+        recovery::extend(&mut definition)?;
+    }
     validate(definition, &Environment::platform()).map_err(invalid_error)
 }
 
@@ -137,6 +146,7 @@ impl Core {
                 source: None,
                 passkey: None,
                 totp: None,
+                recovery_code: None,
             };
             run.in_flight = Some(reservation.clone());
             run.executions += 1;
