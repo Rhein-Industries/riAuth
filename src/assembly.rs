@@ -85,6 +85,20 @@ impl RecordTransitions for IdentityTransitions {
     }
 }
 
+#[cfg(not(feature = "platform"))]
+impl crate::core::Core {
+    pub(crate) fn radius_eap_validate_identity(
+        &self,
+        _tx: &Tx<'_>,
+        identity: &crate::model::Identity,
+    ) -> Result<()> {
+        if identity.source.is_none() && identity.amr.iter().any(|method| method == "x509") {
+            return Err(Error::unauthorized());
+        }
+        Ok(())
+    }
+}
+
 impl Store {
     pub fn from_config(config: &Config) -> Result<Self> {
         let key = config

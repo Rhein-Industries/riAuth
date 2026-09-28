@@ -496,24 +496,31 @@ impl Core {
         })
     }
 
-    pub(crate) fn radius_eap_binding(
+    pub(crate) fn radius_eap_validate_identity(
         &self,
         tx: &Tx<'_>,
         identity: &Identity,
-    ) -> Result<(String, String, String)> {
-        let binding = tx
-            .get::<IdentityBinding>("radius_eap_identities", &identity.session_id)?
-            .filter(|b| b.expires_at > now())
-            .ok_or_else(Error::unauthorized)?;
-        let cert = tx
-            .get::<Certificate>("radius_certificates", &binding.certificate_key)?
-            .filter(|c| {
-                c.id == binding.certificate_id
-                    && c.user_id == identity.user_id
-                    && c.expires_at > now()
-            })
-            .ok_or_else(Error::unauthorized)?;
-        Ok((cert.listener, binding.listener, binding.profile_fingerprint))
+    ) -> Result<()> {
+        if identity.source.is_none() && identity.amr.iter().any(|a| a == "x509") {
+            let binding = tx
+                .get::<IdentityBinding>("radius_eap_identities", &identity.session_id)?
+                .filter(|b| b.expires_at > now())
+                .ok_or_else(Error::unauthorized)?;
+            let cert = tx
+                .get::<Certificate>("radius_certificates", &binding.certificate_key)?
+                .filter(|c| {
+                    c.id == binding.certificate_id
+                        && c.user_id == identity.user_id
+                        && c.expires_at > now()
+                })
+                .ok_or_else(Error::unauthorized)?;
+            if cert.listener != binding.listener
+                || eap::profile_fingerprint(self, &binding.listener)? != binding.profile_fingerprint
+            {
+                return Err(Error::unauthorized());
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn radius_eap_cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {

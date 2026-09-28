@@ -312,7 +312,9 @@ def main() -> None:
                 errors.append("src/radius.rs: RADIUS protocol refers directly to storage")
         if path == SRC / "radius/eap.rs":
             eap_source = masked_rust_source(path.read_text())
-            if re.search(r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source) or re.search(
+            if refs & STORAGE or re.search(r"\bfn\s+validate_identity\s*\(", eap_source) or re.search(
+                r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source
+            ) or re.search(
                 r"\.\s*mutation\s*\(|\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\s*(?:<|\()",
                 eap_source,
             ):

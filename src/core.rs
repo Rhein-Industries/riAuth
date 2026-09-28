@@ -987,7 +987,7 @@ impl Core {
     }
     /// Every identity check except the session row, for identities not yet bound to a session.
     pub(crate) fn identity_user_unbound(&self, tx: &Tx<'_>, identity: &Identity) -> Result<User> {
-        crate::radius::eap::validate_identity(self, tx, identity)?;
+        self.radius_eap_validate_identity(tx, identity)?;
         crate::mtls::validate_identity(tx, identity)?;
         crate::directory::validate_identity(self, tx, identity)?;
         crate::source::validate_identity(tx, identity)?;

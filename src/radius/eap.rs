@@ -5,7 +5,6 @@ use crate::{
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{Client, Identity},
-    store::Tx,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use md5::{Digest, Md5};
@@ -179,6 +178,9 @@ fn profile<'a>(core: &'a Core, listener: &str) -> Result<&'a Config> {
         .and_then(|c| c.eap_tls.as_ref())
         .ok_or_else(|| Error::bad("RADIUS listener has no EAP-TLS trust profile"))
 }
+pub(crate) fn profile_fingerprint(core: &Core, listener: &str) -> Result<String> {
+    Ok(profile(core, listener)?.material()?.fp)
+}
 fn certificate_fingerprint(der: &[u8]) -> String {
     use sha2::Digest as ShaDigest;
     URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(der))
@@ -227,18 +229,6 @@ impl Core {
         let key = certificate_key(listener, &fingerprint);
         self.radius_eap_create_identity(client, listener, profile_fp, key)
     }
-}
-pub(crate) fn validate_identity(core: &Core, tx: &Tx<'_>, identity: &Identity) -> Result<()> {
-    if identity.source.is_none() && identity.amr.iter().any(|a| a == "x509") {
-        let (certificate_listener, binding_listener, profile_fingerprint) =
-            core.radius_eap_binding(tx, identity)?;
-        if certificate_listener != binding_listener
-            || profile(core, &binding_listener)?.material()?.fp != profile_fingerprint
-        {
-            return Err(Error::unauthorized());
-        }
-    }
-    Ok(())
 }
 
 struct Conversation {

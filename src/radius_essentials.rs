@@ -13,17 +13,6 @@ impl Settings {
 pub mod eap {
     pub use crate::radius_eap_types::Config;
     pub const CERTIFICATE_ACR: &str = "urn:riauth:acr:certificate";
-
-    pub(crate) fn validate_identity(
-        _core: &crate::core::Core,
-        _tx: &crate::store::Tx<'_>,
-        identity: &crate::model::Identity,
-    ) -> crate::error::Result<()> {
-        if identity.source.is_none() && identity.amr.iter().any(|method| method == "x509") {
-            return Err(crate::error::Error::unauthorized());
-        }
-        Ok(())
-    }
 }
 
 pub fn cleanup(_tx: &crate::store::Tx<'_>, _at: u64) -> crate::error::Result<()> {
