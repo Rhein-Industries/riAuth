@@ -64,6 +64,7 @@ legend{font-size:12px;font-weight:600;margin-bottom:6px;padding:0}
 .button.danger:hover{background:#951f19}
 .button.small{min-height:36px;padding:6px 12px}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.row-actions .text-button{white-space:nowrap}
 .inline-form{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 20px}
 .inline-form .field{margin:0;flex:1;min-width:200px;max-width:360px}
 .inline-form .form-error{flex-basis:100%;margin:0}
