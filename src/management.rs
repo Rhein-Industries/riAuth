@@ -11,6 +11,7 @@
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
 //! this seam. Agent create, rotate and revoke use the writers below, as does
 //! signing-key rotation. Inbound SCIM User and Group writes reach their shared writers.
+//! Source unlink has a separate self-service receipt scope tied to a live session.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -28,19 +29,21 @@ use crate::{
     agent::{ACTIONS, Agent, NewAgent, Principal, parent_active},
     config::Config,
     core::{
-        Core, audit, ensure_remaining_admin, keys, make_user, revoke_client_grants, user_by_name,
-        validate_client, validate_display, validate_email, validate_name,
+        Core, audit, ensure_remaining_admin, keys, make_user, require_factor_session,
+        revoke_client_grants, user_by_name, validate_client, validate_display, validate_email,
+        validate_name,
     },
     crypto::{self, RetiredKey, SigningKey, digest, now},
     directory::{Binding as DirectoryBinding, binding_key as directory_binding_key},
     error::{Error, Result},
     jose::ClientAuthMethod,
     lifecycle::{Invitation, InvitationReservation, Purpose},
-    model::{Client, Group, NewUser, ProviderSettings, User, UserPatch, UserView},
+    model::{Client, Group, NewUser, ProviderSettings, Session, User, UserPatch, UserView},
     registration::{
         InitialAccess, RegistrationAuthority, RegistrationRequest, RegistrationTemplate,
     },
-    source::Source,
+    signin::FRESH_SECONDS,
+    source::{Link, Source},
     state::{Change, UserSpec, user_spec},
     store::Tx,
 };
@@ -2315,6 +2318,87 @@ pub(crate) enum SourceWrite<'a> {
         version: &'a Option<String>,
         preview: bool,
     },
+}
+
+/// The bearer, CLI and browser adapters supply their authenticated local
+/// session. Browser account/session binding is checked before this call. A
+/// receipt is scoped to that same live session, after fresh-factor validation,
+/// so retrying a removed link cannot transfer authority to another sign-in.
+pub(crate) fn unlink_source(
+    tx: &Tx<'_>,
+    user: &User,
+    session: &Session,
+    link_id: &str,
+) -> Result<Value> {
+    if session.identity.user_id != user.id || session.revoked || session.expires_at <= now() {
+        return Err(Error::unauthorized());
+    }
+    if session.identity.source.is_some()
+        || now().saturating_sub(session.identity.auth_time) > FRESH_SECONDS
+    {
+        return Err(Error::forbidden());
+    }
+    require_factor_session(user, session)?;
+
+    let context = crate::context::current();
+    let receipt_key = context
+        .as_ref()
+        .and_then(|context| context.idempotency_key.as_ref())
+        .map(|key| {
+            digest(&format!(
+                "source.unlink\0{}\0{}\0{key}",
+                user.id, session.id
+            ))
+        });
+    let receipt_scope =
+        json!({"self_service": "source.unlink", "user_id": user.id, "session_id": session.id});
+    if let Some(key) = &receipt_key
+        && let Some(result) = crate::context::replay_receipt(
+            tx,
+            key,
+            &context.as_ref().unwrap().fingerprint,
+            &receipt_scope,
+        )?
+    {
+        return Ok(result);
+    }
+
+    let link = tx
+        .get::<Link>("source_links", link_id)?
+        .filter(|link| link.user_id == user.id)
+        .ok_or_else(Error::forbidden)?;
+    tx.delete("source_links", link_id)?;
+    for (_, mut linked_session) in tx.list::<Session>("sessions")? {
+        if linked_session
+            .identity
+            .source
+            .as_ref()
+            .is_some_and(|source| source.link == link_id)
+            && !linked_session.revoked
+        {
+            linked_session.revoked = true;
+            tx.put("sessions", &linked_session.id, &linked_session)?;
+            crate::logout::queue_session(tx, &linked_session.id)?;
+            crate::ssf::enqueue(
+                tx,
+                &linked_session.identity.user_id,
+                crate::ssf::SESSION_REVOKED,
+                "",
+            )?;
+        }
+    }
+    audit(tx, &user.id, "source.unlink", &link.source)?;
+    let result = json!({"unlinked": true});
+    if let Some(key) = receipt_key {
+        crate::context::save_receipt(
+            tx,
+            &key,
+            context.unwrap().fingerprint,
+            receipt_scope,
+            &result,
+        )?;
+    }
+    Ok(result)
 }
 
 pub(crate) fn write_source(

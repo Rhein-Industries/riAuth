@@ -47,7 +47,8 @@
   function post(path, body, options = {}) {
     return retrying(() => send(path, {
       method: "POST", body: JSON.stringify(body ?? {}),
-      headers: { "X-Riauth-Portal": "1", "Content-Type": "application/json", "Accept": "application/json" }
+      headers: { "X-Riauth-Portal": "1", "Content-Type": "application/json", "Accept": "application/json",
+        ...(options.key ? { "Idempotency-Key": options.key } : {}) }
     }), options.retry === true);
   }
   // Buttons that act on a decision ignore activation for a moment after their screen

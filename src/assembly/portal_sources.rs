@@ -379,7 +379,7 @@ impl Core {
     ) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.linking_session(tx, sso, binding)?;
-            crate::source::unlink(tx, &user, &session, link_id)
+            crate::management::unlink_source(tx, &user, &session, link_id)
         })
     }
 }

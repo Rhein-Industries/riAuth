@@ -90,11 +90,11 @@ pub struct SourceSpec {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Link {
-    source: String,
+pub(crate) struct Link {
+    pub(crate) source: String,
     issuer: String,
     subject: String,
-    user_id: String,
+    pub(crate) user_id: String,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1410,7 +1410,7 @@ impl Core {
     pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
-            unlink(tx, &user, &session, link_id)
+            crate::management::unlink_source(tx, &user, &session, link_id)
         })
     }
 }
@@ -1424,41 +1424,6 @@ pub(crate) fn links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
         .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
         .collect())
 }
-/// Removes one of the user's links from a fresh local session and revokes only the sessions
-/// that link signed in.
-pub(crate) fn unlink(tx: &Tx<'_>, user: &User, session: &Session, link_id: &str) -> Result<Value> {
-    if session.identity.source.is_some() || now().saturating_sub(session.identity.auth_time) > 300 {
-        return Err(Error::forbidden());
-    }
-    require_factor_session(user, session)?;
-    let link = tx
-        .get::<Link>("source_links", link_id)?
-        .filter(|l| l.user_id == user.id)
-        .ok_or_else(Error::forbidden)?;
-    tx.delete("source_links", link_id)?;
-    for (_, mut session) in tx.list::<Session>("sessions")? {
-        if session
-            .identity
-            .source
-            .as_ref()
-            .is_some_and(|s| s.link == link_id)
-            && !session.revoked
-        {
-            session.revoked = true;
-            tx.put("sessions", &session.id, &session)?;
-            crate::logout::queue_session(tx, &session.id)?;
-            crate::ssf::enqueue(
-                tx,
-                &session.identity.user_id,
-                crate::ssf::SESSION_REVOKED,
-                "",
-            )?;
-        }
-    }
-    audit(tx, &user.id, "source.unlink", &link.source)?;
-    Ok(json!({"unlinked":true}))
-}
-
 fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
     tx.get::<Source>("sources", id)?
         .filter(|s| s.enabled)

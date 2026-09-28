@@ -123,9 +123,11 @@
       details.append(node("strong", "", link.name), node("p", "", `Provider account ${link.subject} at ${host(link.issuer)}`));
       const button = node("button", "button secondary", "Unlink");
       button.type = "button"; button.setAttribute("aria-label", `Unlink ${link.name}`);
+      let retryKey = null;
       RiAuth.guard(button, () => changeProvider(button, async () => {
         if (!window.confirm(`Unlink ${link.name}? You won't be able to sign in with it any more, and the sessions it started end now.`)) return;
-        await RiAuth.post(`api/portal/sources/links/${encodeURIComponent(link.id)}/unlink`, providerBinding());
+        retryKey ||= crypto.randomUUID();
+        await RiAuth.post(`api/portal/sources/links/${encodeURIComponent(link.id)}/unlink`, providerBinding(), { key: retryKey, retry: true });
         await loadProviders(); showStatus(`${link.name} unlinked. Sessions it started have ended.`);
       }));
       row.append(details, button); return row;
