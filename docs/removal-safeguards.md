@@ -1,11 +1,11 @@
 # Connector removal safeguards
 
-LDAP import, Google Workspace import, Microsoft Entra import and outbound SCIM
-share the guard in `connector_guard`. It validates bounded pagination, removal
-impact and exact plan content. LDAP, cloud and outbound SCIM apply now use its
-common eligibility, authority binding and recomputed removal-impact gate.
-Outbound SCIM, LDAP, Workspace and Entra each have an explicit per-connector
-controller mode. No scheduler is installed by these modes.
+LDAP import, Google Workspace import, Microsoft Entra import, outbound SCIM and
+desired state share the plan guard in `connector_guard`. The remote connectors
+also use its bounded pagination checks. Apply uses common eligibility,
+authority binding and recomputed removal-impact checks.
+Outbound SCIM, LDAP, Workspace, Entra and desired state have explicit
+controller modes. No scheduler is installed by these modes.
 
 `[ldap_reconciliation_modes]`, `[workspace_reconciliation_modes]`,
 `[entra_reconciliation_modes]` and `[scim_reconciliation_modes]` map configured
@@ -21,22 +21,35 @@ mode still stops at the fixed P03 review floor, and guarded automatic stops at
 any removal. SCIM's `queued` decision reports a durable job, not remote
 completion.
 
+Desired-state plans include the same exact review binding and a recomputed
+removal impact. `state_reconciliation_mode` defaults to manual review.
+`Core::state_reconcile` accepts an authorized manifest and reports a pending
+plan or a committed local apply. It holds credential and trust changes for
+review even in automatic mode. The desired-state CLI and HTTP apply path accept
+the same exact plan-ID removal confirmation.
+
 | Path | Snapshot checks | Destructive boundary |
 | --- | --- | --- |
 | LDAP users and mapped memberships | Critical paged-results control on every page; successful completion; bounded cookies, pages, rows, bytes and time; no referrals, duplicate DNs or stable IDs | Apply re-fetches entries, checks plan content, current authority, configuration and local revision, recomputes impact and requires confirmation before reconciliation |
 | Workspace/Entra users, groups and members | Required collection shape; unique IDs across pages; bounded pages, rows, bytes and time; no empty continuation pages or repeated cursors; exact totals, when supplied, must agree and complete; next links stay on the same collection and origin | Same apply checks as LDAP; existing tenant and stable-identity ownership checks remain |
+| Desired-state named resources | Explicit manifest resources only; omission leaves them unchanged | Apply recomputes disable and membership impact before the first mutation, validates exact content and current actor authority, then commits atomically |
 | Outbound SCIM filtered lookup | Explicit Resources array and exact totalResults; at most one matching externalId; optional startIndex must be 1 and itemsPerPage must match; continuation/error responses fail | No POST/PATCH or successful item advancement from incomplete lookup; a missing previously linked resource requires inspection |
 | Outbound SCIM group/user update | Complete bounded, unique member-value arrays before membership replacement, and before accepting a group as already up to date whenever it has reviewed managed or desired members (an omitted, `null` or paginated `members` field never counts as empty); the post-write read-back must report the same explicit membership; explicit boolean active state before disabling | Remote member removals must belong to the exact reviewed previous managed link; unexpected remote membership and omission of retained managed members fail closed. ETags protect the conditional PATCH. Authority, revision and lease are checked again before dispatch |
 
 ## Review policy
 
 Each plan reports `removal_impact`: `disabled_users`, `missing_users`,
-`removed_memberships` and `review_required`. The fixed baseline policy requires
-review for every missing imported user or managed membership removal. Disabling
-explicitly present users requires review when all active linked users would be
+`removed_memberships` and `review_required`. Desired-state plans also report
+nonzero `disabled_clients`, `disabled_sources` and `disabled_passwords`; each
+requires review. The fixed baseline policy requires review for every missing
+imported user or managed membership removal. Disabling explicitly present users
+requires review when all active linked users would be
 disabled, at least five would be disabled and that is at least 20% of active
 linked users, or at least two would be disabled and that is at least 50%.
-Equality crosses a threshold. Outbound SCIM measures departures against its
+Equality crosses a threshold.
+Desired state uses all active local users as its baseline because a manifest
+does not own a separate connector population.
+Outbound SCIM measures departures against its
 previously delivered active links and managed group members; it never deletes
 remote accounts. An ordinary explicit disable below those thresholds, with no
 membership removal, can use the ordinary apply operation.
@@ -85,8 +98,8 @@ outside that reviewed membership is rejected rather than implicitly approved.
 Remote delivery remains at least once and can be partial or uncertain. Revocation
 cannot roll back a remote write already accepted by a peer. Inspect job errors
 and partial results before replanning; local apply does not mean downstream work
-has completed. Desired-state reconciliation still needs controller-mode
-integration before the full P01 scope is complete.
+has completed. Scheduled controller triggers and acceptance across supported
+deployment modes remain follow-up scope.
 Two-build parity, PostgreSQL/concurrency contracts and controlled real-peer
 acceptance remain integration gates; local fake-peer tests establish only the
 paths they exercise.

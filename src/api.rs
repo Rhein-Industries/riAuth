@@ -1806,7 +1806,11 @@ async fn apply_state(
     Json(input): Json<crate::state::ApplyRequest>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.apply_state(&token, input).map(Json))
+    let reviewed_plan = removal_confirmation(&headers)?;
+    app.run(move |core| {
+        core.apply_state_confirmed(&token, input, reviewed_plan.as_deref())
+            .map(Json)
+    })
         .await
 }
 async fn plan_status(

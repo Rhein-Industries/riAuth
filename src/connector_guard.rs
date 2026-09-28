@@ -13,7 +13,9 @@ use std::collections::BTreeSet;
 
 /// A controller policy is scoped to one configured connector. Absence of a
 /// policy means manual review; a controller never infers an automatic mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReconciliationMode {
     #[default]
@@ -42,10 +44,18 @@ impl ReconciliationMode {
     /// Guarded automation stops at any removal. Automatic mode may queue a
     /// below-threshold disable, but the shared P03 review floor always wins.
     pub fn decide(self, impact: &RemovalImpact) -> ReconciliationDecision {
-        let any_removal =
-            impact.disabled_users > 0 || impact.missing_users > 0 || impact.removed_memberships > 0;
-        let floor_review =
-            impact.review_required || impact.missing_users > 0 || impact.removed_memberships > 0;
+        let any_removal = impact.disabled_users > 0
+            || impact.missing_users > 0
+            || impact.removed_memberships > 0
+            || impact.disabled_clients > 0
+            || impact.disabled_sources > 0
+            || impact.disabled_passwords > 0;
+        let floor_review = impact.review_required
+            || impact.missing_users > 0
+            || impact.removed_memberships > 0
+            || impact.disabled_clients > 0
+            || impact.disabled_sources > 0
+            || impact.disabled_passwords > 0;
         match self {
             Self::ManualReview => ReconciliationDecision::AwaitingReview,
             Self::GuardedAutomatic if any_removal => ReconciliationDecision::AwaitingReview,
@@ -62,6 +72,9 @@ impl ReconciliationMode {
         } else if impact.review_required
             || impact.missing_users > 0
             || impact.removed_memberships > 0
+            || impact.disabled_clients > 0
+            || impact.disabled_sources > 0
+            || impact.disabled_passwords > 0
         {
             "removal_review_required"
         } else {
@@ -86,6 +99,7 @@ pub fn reconcile_plan(
     }
     let id = plan["id"]
         .as_str()
+        .or_else(|| plan["plan_id"].as_str())
         .ok_or_else(|| Error::internal("Connector plan has no ID"))?;
     let result = apply(id)?;
     Ok(json!({"decision":"applied","mode":mode,"plan":plan,"result":result}))
@@ -96,7 +110,17 @@ pub struct RemovalImpact {
     pub disabled_users: usize,
     pub missing_users: usize,
     pub removed_memberships: usize,
+    /// Desired-state access removals. Omitted from existing connector plans.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub disabled_clients: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub disabled_sources: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub disabled_passwords: usize,
     pub review_required: bool,
+}
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 impl RemovalImpact {
     /// Preserve the cloud guard's conservative policy: every absence or managed
@@ -105,6 +129,9 @@ impl RemovalImpact {
     pub fn assess(&mut self, active_users: usize) {
         self.review_required = self.missing_users > 0
             || self.removed_memberships > 0
+            || self.disabled_clients > 0
+            || self.disabled_sources > 0
+            || self.disabled_passwords > 0
             || large_removal(self.disabled_users, active_users);
     }
 }

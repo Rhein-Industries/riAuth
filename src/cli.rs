@@ -304,6 +304,8 @@ pub enum Command {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        #[arg(long)]
+        confirm_removals: bool,
     },
     /// Export visible desired state without credentials
     Export {
@@ -1462,13 +1464,16 @@ pub async fn run(cli: Cli) -> Result<()> {
             manifest.validate()?;
             let plan = remote.call(Method::POST, "/api/state/plan", Some(json!(manifest)), true).await?;
             write_private(&out, &serde_json::to_vec_pretty(&plan)?, false)?;
-            json!({"plan_file": out, "plan_id": plan["plan_id"], "hash": plan["hash"], "base_revision": plan["base_revision"], "changes": plan["changes"], "expires_at": plan["expires_at"]})
+            json!({"plan_file": out, "plan_id": plan["plan_id"], "hash": plan["hash"], "base_revision": plan["base_revision"], "changes": plan["changes"], "removal_impact": plan["removal_impact"], "reconciliation_mode": plan["reconciliation_mode"], "expires_at": plan["expires_at"]})
         }
-        Command::Apply { plan } => {
+        Command::Apply { plan, confirm_removals } => {
             let plan: crate::state::Plan = serde_json::from_slice(&fs::read(plan)?)?;
             let status = remote.call(Method::GET, &format!("/api/state/plans/{}", segment(&plan.plan_id)?), None, true).await?;
             if status["plan"] != json!(plan) { bail!("Saved plan was modified or belongs to another server"); }
             if status["applied"] == true { status["result"].clone() } else {
+                if plan.removal_impact.review_required && !confirm_removals {
+                    bail!("Inspect desired-state removal_impact and changes, then rerun with --confirm-removals");
+                }
                 let mut secrets = std::collections::BTreeMap::new();
                 let references=plan.changes.iter().flat_map(|c|c.secret_references.iter()).collect::<std::collections::BTreeSet<_>>();
                 for reference in references {
@@ -1477,7 +1482,8 @@ pub async fn run(cli: Cli) -> Result<()> {
                         else { bail!("Unsupported secret reference"); };
                     secrets.insert(reference.to_owned(), value);
                 }
-                remote.call(Method::POST, "/api/state/apply", Some(json!(crate::state::ApplyRequest { plan, secrets, run_id: remote.run_id.clone() })), true).await?
+                let reviewed = confirm_removals.then(|| plan.plan_id.clone());
+                remote.call_with_review(Method::POST, "/api/state/apply", Some(json!(crate::state::ApplyRequest { plan, secrets, run_id: remote.run_id.clone() })), true, reviewed.as_deref()).await?
             }
         }
         Command::Export { out } => {

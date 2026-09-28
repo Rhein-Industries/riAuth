@@ -1,5 +1,9 @@
 use crate::{
     agent::Principal,
+    connector_guard::{
+        ApplyGate, ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding,
+        plan_content, reconcile_plan,
+    },
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -104,6 +108,12 @@ pub struct Plan {
     pub expires_at: u64,
     pub manifest: Manifest,
     pub changes: Vec<Change>,
+    #[serde(default)]
+    pub reconciliation_mode: ReconciliationMode,
+    #[serde(default)]
+    pub removal_impact: RemovalImpact,
+    #[serde(default)]
+    pub review: ReviewBinding,
 }
 #[derive(schemars::JsonSchema, Serialize, Deserialize)]
 struct StoredPlan {
@@ -219,6 +229,151 @@ impl Manifest {
     }
 }
 
+/// Desired-state manifests name only the resources they manage. Omission is
+/// never a removal; an explicit disable or membership subtraction is.
+fn state_removal_impact(tx: &Tx<'_>, manifest: &Manifest) -> Result<RemovalImpact> {
+    let mut impact = RemovalImpact::default();
+    let active_users = tx
+        .list::<User>("users")?
+        .into_iter()
+        .filter(|(_, user)| user.enabled)
+        .count();
+    for spec in &manifest.users {
+        if let Some(id) = tx.get::<String>("usernames", &spec.username)? {
+            let user = tx
+                .get::<User>("users", &id)?
+                .ok_or_else(|| Error::internal("Username index points to a missing user"))?;
+            impact.disabled_users += usize::from(user.enabled && !spec.enabled);
+            impact.disabled_passwords +=
+                usize::from(!user.password_hash.is_empty() && spec.password_disabled);
+        }
+    }
+    for spec in &manifest.groups {
+        if let Some(group) = tx.get::<Group>("groups", &spec.name)? {
+            for id in group.members {
+                let username = tx
+                    .get::<User>("users", &id)?
+                    .ok_or_else(|| Error::internal("Group member points to a missing user"))?
+                    .username;
+                impact.removed_memberships += usize::from(!spec.members.contains(&username));
+            }
+        }
+    }
+    for spec in &manifest.clients {
+        if let Some(client) = tx.get::<Client>("clients", &spec.client_id)? {
+            impact.disabled_clients += usize::from(client.enabled && !spec.enabled);
+        }
+    }
+    for spec in &manifest.sources {
+        if let Some(source) = tx.get::<crate::source::Source>("sources", &spec.source.id)? {
+            impact.disabled_sources += usize::from(source.enabled && !spec.source.enabled);
+        }
+    }
+    impact.assess(active_users);
+    Ok(impact)
+}
+
+/// Automation can apply the narrow locally checkable part of a manifest.
+/// Only passwordless non-admin creation, a pure user disable and additive
+/// group changes qualify. Other profile, credential and trust edits stay
+/// reviewed even when the mode is automatic.
+fn state_automation_safe(changes: &[Change]) -> bool {
+    changes.iter().all(|change| {
+        let kind = change.resource.split('/').next().unwrap_or("");
+        if matches!(kind, "client" | "source" | "source_link") {
+            return false;
+        }
+        if kind == "user" {
+            let before = &change.before;
+            let after = &change.after;
+            if before.is_null() {
+                return after["password_disabled"] == true
+                    && after["admin"] == false
+                    && after["subjects"]
+                        .as_object()
+                        .is_some_and(|subjects| subjects.is_empty())
+                    && change.secret_references.is_empty();
+            }
+            if change.credential_change || before["enabled"] != true || after["enabled"] != false {
+                return false;
+            }
+            let mut old = before.clone();
+            let mut new = after.clone();
+            let (Some(old_fields), Some(new_fields)) = (old.as_object_mut(), new.as_object_mut())
+            else {
+                return false;
+            };
+            old_fields.remove("enabled");
+            new_fields.remove("enabled");
+            return old == new;
+        }
+        kind == "group" && !change.credential_change
+    })
+}
+
+fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
+    for spec in &plan.manifest.users {
+        actor.require("user.write", &format!("user/{}", spec.username))?;
+    }
+    for spec in &plan.manifest.groups {
+        actor.require("group.members", &format!("group/{}", spec.name))?;
+    }
+    for spec in &plan.manifest.clients {
+        actor.require("client.write", &format!("client/{}", spec.client_id))?;
+    }
+    for spec in &plan.manifest.sources {
+        actor.require("source.write", &format!("source/{}", spec.source.id))?;
+    }
+    for spec in &plan.manifest.source_links {
+        actor.require("source.write", &format!("source/{}", spec.source))?;
+        actor.require("user.write", &format!("user/{}", spec.username))?;
+    }
+    for change in &plan.changes {
+        let resource = change.resource.as_str();
+        match resource.split('/').next().unwrap_or("") {
+            "user" => actor.require("user.write", resource)?,
+            "group" => {
+                actor.require("group.members", resource)?;
+                if change.action == "create" {
+                    actor.require("group.write", resource)?;
+                }
+            }
+            "client" => {
+                actor.require("client.write", resource)?;
+                if change.credential_change && change.action != "create" {
+                    actor.require("client.rotate", resource)?;
+                }
+            }
+            "source" => actor.require("source.write", resource)?,
+            "source_link" => {
+                let source = change.after["source"]
+                    .as_str()
+                    .ok_or_else(Error::forbidden)?;
+                let username = change.after["username"]
+                    .as_str()
+                    .ok_or_else(Error::forbidden)?;
+                actor.require("source.write", &format!("source/{source}"))?;
+                actor.require("user.write", &format!("user/{username}"))?;
+            }
+            _ => return Err(Error::forbidden()),
+        }
+    }
+    Ok(())
+}
+
+fn validate_state_review(tx: &Tx<'_>, actor: &Principal, stored: &StoredPlan) -> Result<()> {
+    if stored.result.is_some() {
+        // A successful apply can advance its actor's epoch or the global
+        // revision. Authorize current access to its result without requiring
+        // the old pre-apply authority digest to remain unchanged.
+        return authorize_state_result(actor, &stored.plan);
+    }
+    stored
+        .plan
+        .review
+        .validate(tx, actor, &plan_content(&stored.plan)?)
+}
+
 impl Core {
     pub fn plan_status(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
@@ -229,16 +384,69 @@ impl Core {
             if plan.actor != actor.id {
                 return Err(Error::forbidden());
             }
+            validate_state_review(tx, &actor, &plan)?;
             Ok(json!({"plan": plan.plan, "applied": plan.result.is_some(), "result": plan.result}))
+        })
+    }
+    /// Scoped controller trigger for a supplied desired-state manifest. P02 may
+    /// schedule this later; the decision reports only a committed local apply.
+    pub fn state_reconcile(&self, token: &str, manifest: Manifest) -> Result<Value> {
+        manifest.validate()?;
+        let mode = self.config.state_reconciliation_mode;
+        let desired = serde_json::to_value(&manifest).map_err(Error::internal)?;
+        let pending = self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let impact = state_removal_impact(tx, &manifest)?;
+            for (_, stored) in tx.list::<StoredPlan>("plans")? {
+                let plan = &stored.plan;
+                if stored.actor == actor.id
+                    && stored.result.is_none()
+                    && plan.expires_at > now()
+                    && plan.base_revision == revision
+                    && plan.issuer == self.config.issuer
+                    && plan.reconciliation_mode == mode
+                    && plan.removal_impact == impact
+                    && serde_json::to_value(&plan.manifest).map_err(Error::internal)? == desired
+                    && validate_state_review(tx, &actor, &stored).is_ok()
+                {
+                    return Ok(Some(plan.clone()));
+                }
+            }
+            Ok(None)
+        })?;
+        let plan = match pending {
+            Some(plan) => plan,
+            None => self.plan_state(token, manifest)?,
+        };
+        let impact = plan.removal_impact.clone();
+        if mode.decide(&impact) == ReconciliationDecision::Eligible
+            && !state_automation_safe(&plan.changes)
+        {
+            return Ok(json!({"decision":"awaiting_review","mode":mode,"reason":"change_review_required","plan":plan}));
+        }
+        let view = json!(&plan);
+        reconcile_plan(mode, &impact, view, |_id| {
+            self.apply_state_confirmed(
+                token,
+                ApplyRequest {
+                    plan,
+                    secrets: BTreeMap::new(),
+                    run_id: None,
+                },
+                None,
+            )
         })
     }
     pub fn plan_state(&self, token: &str, manifest: Manifest) -> Result<Plan> {
         manifest.validate()?;
-        let (actor, revision, changes) = self.store.preview(|tx| {
+        let (actor, revision, changes, impact, authority_digest) = self.store.preview(|tx| {
             let actor = self.principal(tx, token)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let impact = state_removal_impact(tx, &manifest)?;
+            let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
             let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
-            Ok((actor.id, revision, changes))
+            Ok((actor, revision, changes, impact, authority_digest))
         })?;
         let mut plan = Plan {
             api_version: "riauth.plan/v1".into(),
@@ -249,21 +457,28 @@ impl Core {
             expires_at: now() + 900,
             manifest,
             changes,
+            reconciliation_mode: self.config.state_reconciliation_mode,
+            removal_impact: impact,
+            review: ReviewBinding::default(),
         };
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
-            if current.id != actor || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
+            if current.id != actor.id
+                || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
+                || ReviewBinding::new(tx, &current, &())?.authority_digest != authority_digest
+            {
                 return Err(Error::conflict(
-                    "Instance changed during planning; plan again",
+                    "Instance or plan authority changed during planning; plan again",
                 ));
             }
+            plan.review = ReviewBinding::new(tx, &current, &plan_content(&plan)?)?;
             tx.put(
                 "plans",
                 &plan.plan_id,
                 &StoredPlan {
                     plan: plan.clone(),
-                    actor,
+                    actor: actor.id,
                     result: None,
                 },
             )
@@ -271,6 +486,14 @@ impl Core {
         Ok(plan)
     }
     pub fn apply_state(&self, token: &str, input: ApplyRequest) -> Result<Value> {
+        self.apply_state_confirmed(token, input, None)
+    }
+    pub fn apply_state_confirmed(
+        &self,
+        token: &str,
+        input: ApplyRequest,
+        reviewed_plan: Option<&str>,
+    ) -> Result<Value> {
         if input
             .run_id
             .as_ref()
@@ -285,9 +508,23 @@ impl Core {
             if serde_json::to_value(&input.plan).map_err(Error::internal)? != serde_json::to_value(&stored.plan).map_err(Error::internal)? {
                 return Err(Error::conflict("Plan was modified; create a new plan"));
             }
-            if let Some(result) = stored.result { return Ok(result); }
-            if input.plan.expires_at <= now() { return Err(Error::conflict("Plan expired; create a new plan")); }
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != input.plan.base_revision { return Err(Error::conflict("Stale plan; instance configuration changed")); }
+            if let Some(result) = stored.result.as_ref() {
+                validate_state_review(tx, &actor, &stored)?;
+                return Ok(result.clone());
+            }
+            let impact = state_removal_impact(tx, &input.plan.manifest)?;
+            ApplyGate {
+                id: &input.plan.plan_id,
+                revision: input.plan.base_revision,
+                expires_at: input.plan.expires_at,
+                fingerprint_matches: input.plan.issuer == self.config.issuer
+                    && input.plan.reconciliation_mode == self.config.state_reconciliation_mode,
+                expected_impact: &input.plan.removal_impact,
+                observed_impact: &impact,
+                review: &input.plan.review,
+                reviewed_plan,
+            }
+            .validate(tx, &actor, &input.plan)?;
             let changes = reconcile(self, tx, &actor, &input.plan.manifest, &input.secrets, false)?;
             if serde_json::to_value(&changes).map_err(Error::internal)? != serde_json::to_value(&stored.plan.changes).map_err(Error::internal)? {
                 return Err(Error::conflict("Planned changes differ from current state"));

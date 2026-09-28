@@ -49,8 +49,8 @@ Grant `operations.backup=operations/backup` only to a backup custodian: backups 
 1. Read `riauth --json schema manifest` and `riauth --json capabilities`.
 2. Write a JSON or TOML manifest with `api_version = "riauth/v1"`.
 3. Run local `validate --file examples/identity.toml`. This checks structure without reading secrets; dependency and permission checks occur during server planning.
-4. Run `plan --file examples/identity.toml --out deployment-private/plan.json`. Inspect its redacted changes.
-5. Run `apply --plan deployment-private/plan.json --non-interactive --json --run-id <run>` using the same agent.
+4. Run `plan --file examples/identity.toml --out deployment-private/plan.json`. Inspect its redacted changes and `removal_impact`.
+5. Run `apply --plan deployment-private/plan.json --non-interactive --json --run-id <run>` using the same agent. Add `--confirm-removals` after reviewing a plan whose `removal_impact.review_required` is true.
 6. Use `get`, `inventory`, `explain`, and `audit` to verify the result.
 
 Include global `--agent-file deployment-private/deployer.json` on remote commands, or set its environment equivalent. Authorized automation may execute this workflow unattended; end-user consent remains a separate interaction.
@@ -61,7 +61,9 @@ Use `password_ref` or `password_hash_ref`, paired with `password_version`, and `
 
 An unchanged credential version preserves the existing credential. Changing the version requests rotation. Replanning an already reconciled manifest yields no changes, and applying that plan performs no resource mutations. `export --out deployment-private/current.json` contains visible state and stable IDs but omits credential references/hashes; add references before using an export to create users or confidential clients on another instance.
 
-Plans expire after 15 minutes and are bound to issuer, principal, complete content and global configuration revision. Applying is one database transaction: failed validation, missing secrets or stale revision commits no resource changes. A repeated successful apply returns its original result, including after loss of the first HTTP response. Applied receipts remain available for roughly one day after plan expiry. The CLI checks applied status before rereading secrets.
+Plans expire after 15 minutes and are bound to issuer, principal, current authority, controller mode, complete plan content and global configuration revision. They record explicit user, client, source and password disables and included-group membership removals. Missing manifest resources are unchanged. Every membership or client/source/password disable needs exact plan-ID confirmation; explicit user disables use the shared P03 threshold. The HTTP apply header is `X-riAuth-Confirm-Removals: <exact-plan-id>`. Apply recomputes impact and checks its review binding before reconciling. Applying is one database transaction: failed validation, missing secrets or stale revision commits no resource changes. A repeated successful apply returns its original result to a currently authorized actor, including after loss of the first HTTP response. Applied receipts remain available for roughly one day after plan expiry. The CLI checks applied status before rereading secrets. Unapplied plans created before the review binding was introduced must be replanned.
+
+The optional `state_reconciliation_mode` setting accepts `manual-review`, `guarded-automatic` or `automatic` and controls the server-side `Core::state_reconcile` trigger. Omission stays manual. Guarded automatic stops on every removal. Automatic permits below-threshold explicit user disables, but both modes stop at the shared review floor. Passwordless non-admin user creation and group additions are eligible for automatic apply; other user updates, credential, client, source, source-link and administrator changes remain review-only. Automated apply accepts only changes that need no supplied secret. Scheduling and a remote trigger are separate work.
 
 ## Direct mutation retries
 

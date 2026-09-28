@@ -41,6 +41,9 @@ pub struct Config {
     /// Explicit per-target controller policy. Omitted targets stay manual-review.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub scim_reconciliation_modes: BTreeMap<String, crate::connector_guard::ReconciliationMode>,
+    /// Instance-wide desired-state controller policy. Omitted means manual-review.
+    #[serde(default)]
+    pub state_reconciliation_mode: crate::connector_guard::ReconciliationMode,
     #[serde(default)]
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
@@ -159,6 +162,7 @@ impl Default for Config {
             entra_reconciliation_modes: BTreeMap::new(),
             scim_targets: Default::default(),
             scim_reconciliation_modes: BTreeMap::new(),
+            state_reconciliation_mode: Default::default(),
             signers: Default::default(),
             postgres: None,
             mail: None,
