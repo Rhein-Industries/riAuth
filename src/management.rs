@@ -17,6 +17,7 @@
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
 use crate::{
     agent::Principal,
+    config::Config,
     core::{
         Core, audit, ensure_remaining_admin, make_user, revoke_client_grants, user_by_name,
         validate_client, validate_display, validate_email, validate_name,
@@ -1241,6 +1242,7 @@ pub(crate) fn new_client(input: crate::model::NewClient) -> (Client, Secret<'sta
 /// sessions were established with.
 pub(crate) fn write_client(
     tx: &Tx<'_>,
+    config: &Config,
     actor: &Principal,
     existing: Option<&Client>,
     next: Client,
@@ -1249,6 +1251,7 @@ pub(crate) fn write_client(
 ) -> Result<ClientWrite> {
     write_client_as(
         tx,
+        config,
         Authority::Management(actor, record),
         existing,
         next,
@@ -1261,13 +1264,14 @@ pub(crate) fn write_client(
 /// its draft with this, so its answers are the write path's own.
 pub(crate) fn check_client(
     tx: &Tx<'_>,
+    config: &Config,
     actor: &Principal,
     existing: Option<&Client>,
     next: Client,
     secret: Secret<'_>,
 ) -> Result<Client> {
     let authority = Authority::Management(actor, Record::Direct("client.check"));
-    Ok(check_client_as(tx, &authority, existing, next, secret)?.client)
+    Ok(check_client_as(tx, config, &authority, existing, next, secret)?.client)
 }
 
 /// An authorized, validated record that `write_client_as` persists.
@@ -1280,6 +1284,7 @@ struct Checked {
 
 fn write_client_as(
     tx: &Tx<'_>,
+    config: &Config,
     authority: Authority<'_>,
     existing: Option<&Client>,
     next: Client,
@@ -1290,7 +1295,7 @@ fn write_client_as(
         issued,
         credential_change,
         other_change,
-    } = check_client_as(tx, &authority, existing, next, secret)?;
+    } = check_client_as(tx, config, &authority, existing, next, secret)?;
     if existing.is_some() && !other_change && !credential_change {
         return Ok(ClientWrite {
             client: existing.unwrap().clone(),
@@ -1328,6 +1333,7 @@ fn write_client_as(
 
 fn check_client_as(
     tx: &Tx<'_>,
+    config: &Config,
     authority: &Authority<'_>,
     existing: Option<&Client>,
     mut next: Client,
@@ -1397,6 +1403,7 @@ fn check_client_as(
     {
         return Err(Error::bad("Existing client type is immutable"));
     }
+    crate::capability::validate_client_policy(config, &next).map_err(registration_error)?;
     // Authentication-setting changes are record changes and are validated.
     if other_change {
         validate_client(tx, &next).map_err(registration_error)?;
@@ -1592,6 +1599,7 @@ pub(crate) fn revoke_registration_template(
 /// committed in the caller's single store transaction.
 pub(crate) fn register_client(
     tx: &Tx<'_>,
+    config: &Config,
     initial_token: &str,
     request: RegistrationRequest,
 ) -> Result<Value> {
@@ -1709,6 +1717,7 @@ pub(crate) fn register_client(
     authority.consume(tx)?;
     let ClientWrite { client, secret } = write_client_as(
         tx,
+        config,
         Authority::Registration(&authority),
         None,
         client,

@@ -41,21 +41,12 @@ pub fn validate_config(config: &Config) -> anyhow::Result<()> {
 /// A retained policy is an active downgrade/activation dependency even when
 /// its client is disabled. Run this before migrations or network workers.
 pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
-    let trust_usable = compiled("identity.device_trust")
-        && config.capabilities.enabled("identity.device_trust")
-        && config
-            .device_trust
-            .as_ref()
-            .is_some_and(|profile| crate::device_trust::validate_config(profile).is_ok());
-    if trust_usable {
+    if device_trust_usable(config) {
         return Ok(());
     }
     store.read(|tx| {
         for (id, client) in tx.list::<Value>("clients")? {
-            let settings = &client["settings"];
-            if settings["require_device_trust"] == true
-                || conditional_requires_device(&settings["policy"]["conditional"])
-            {
+            if settings_require_device_trust(&client["settings"]) {
                 return Err(Error::bad(format!(
                     "Stored client {id:?} requires identity.device_trust; enable and configure its verifier before serving"
                 )));
@@ -63,6 +54,37 @@ pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
         }
         Ok(())
     })
+}
+
+fn device_trust_usable(config: &Config) -> bool {
+    compiled("identity.device_trust")
+        && config.capabilities.enabled("identity.device_trust")
+        && config
+            .device_trust
+            .as_ref()
+            .is_some_and(|profile| crate::device_trust::validate_config(profile).is_ok())
+}
+
+/// Apply the startup dependency to the candidate record before any authorized
+/// client write commits. Only this record is inspected; the full collection is
+/// checked once at startup for retained records and edition downgrades.
+pub(crate) fn validate_client_policy(config: &Config, client: &Client) -> Result<()> {
+    if device_trust_usable(config) {
+        return Ok(());
+    }
+    let settings = serde_json::to_value(&client.settings).map_err(Error::internal)?;
+    if settings_require_device_trust(&settings) {
+        return Err(Error::bad(format!(
+            "Client {:?} requires identity.device_trust; enable and configure its verifier before writing",
+            client.id
+        )));
+    }
+    Ok(())
+}
+
+fn settings_require_device_trust(settings: &Value) -> bool {
+    settings["require_device_trust"] == true
+        || conditional_requires_device(&settings["policy"]["conditional"])
 }
 
 fn conditional_requires_device(conditional: &Value) -> bool {
@@ -328,8 +350,10 @@ mod tests {
     use crate::{
         config::CapabilityActivation,
         model::{
-            NewUser, ProviderSettings,
-            claims::{ConditionalPolicy, Predicate},
+            ClientPatch, NewClient, NewUser, ProviderSettings,
+            claims::{
+                ClaimMapping, ClaimSource, ConditionalClaimMapping, ConditionalPolicy, Predicate,
+            },
         },
     };
     use std::collections::BTreeSet;
@@ -417,5 +441,114 @@ mod tests {
                 .to_string()
                 .contains("device_trust requires enabled capability")
         );
+    }
+
+    #[test]
+    fn live_client_writes_reject_unusable_device_trust_dependencies() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = core
+            .login("admin".into(), "capability-test-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let new_client = |id: &str, settings: ProviderSettings| NewClient {
+            client_id: id.into(),
+            name: id.into(),
+            confidential: false,
+            redirect_uris: vec!["https://client.example/callback".into()],
+            scopes: BTreeSet::from(["openid".into()]),
+            allowed_groups: BTreeSet::new(),
+            require_mfa: false,
+            service: false,
+            settings,
+        };
+
+        let required = ProviderSettings {
+            require_device_trust: true,
+            ..Default::default()
+        };
+        let error = core
+            .create_client(&token, new_client("required", required))
+            .unwrap_err();
+        assert!(error.message.contains("identity.device_trust"));
+        assert!(
+            core.store
+                .read(|tx| tx.get::<Client>("clients", "required"))
+                .unwrap()
+                .is_none()
+        );
+
+        core.create_client(&token, new_client("existing", ProviderSettings::default()))
+            .unwrap();
+        let approved = || Predicate::ApprovedDevice {
+            max_age_seconds: 300,
+        };
+        let nested = || Predicate::Not {
+            condition: Box::new(Predicate::Any {
+                of: vec![Predicate::All { of: vec![approved()] }],
+            }),
+        };
+        let policies = [
+            ConditionalPolicy {
+                access: vec![nested()],
+                ..Default::default()
+            },
+            ConditionalPolicy {
+                scopes: [("openid".into(), vec![nested()])].into(),
+                ..Default::default()
+            },
+            ConditionalPolicy {
+                claim_mappings: vec![ConditionalClaimMapping {
+                    mapping: ClaimMapping {
+                        scope: "openid".into(),
+                        claim: "device_status".into(),
+                        source: ClaimSource::Username,
+                    },
+                    when: nested(),
+                }],
+                ..Default::default()
+            },
+        ];
+        for conditional in policies {
+            let settings = ProviderSettings {
+                policy: crate::model::claims::Policy {
+                    conditional: Some(conditional),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let error = core
+                .update_client(
+                    &token,
+                    "existing",
+                    ClientPatch {
+                        settings: Some(settings),
+                        ..Default::default()
+                    },
+                )
+                .unwrap_err();
+            assert!(error.message.contains("identity.device_trust"));
+            let stored = core
+                .store
+                .read(|tx| tx.get::<Client>("clients", "existing"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(stored.settings, ProviderSettings::default());
+        }
     }
 }

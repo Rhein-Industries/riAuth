@@ -762,6 +762,7 @@ fn reconcile(
         };
         crate::management::write_client(
             tx,
+            &core.config,
             actor,
             existing.as_ref(),
             client,

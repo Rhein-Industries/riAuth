@@ -32,7 +32,8 @@ impl Core {
                 &format!("client/{}", input.client_id),
             )?;
             let (client, secret) = crate::management::new_client(input);
-            let client = crate::management::check_client(tx, &actor, None, client, secret)?;
+            let client =
+                crate::management::check_client(tx, &self.config, &actor, None, client, secret)?;
             Ok(json!({
                 "valid": true,
                 "client": client.view(),

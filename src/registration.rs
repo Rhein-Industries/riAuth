@@ -143,8 +143,9 @@ impl Core {
         initial_token: &str,
         request: RegistrationRequest,
     ) -> Result<Value> {
-        self.store
-            .write(|tx| crate::management::register_client(tx, initial_token, request))
+        self.store.write(|tx| {
+            crate::management::register_client(tx, &self.config, initial_token, request)
+        })
     }
 }
 

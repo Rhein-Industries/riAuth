@@ -556,6 +556,7 @@ impl Core {
             let (client, secret) = crate::management::new_client(input);
             let written = crate::management::write_client(
                 tx,
+                &self.config,
                 &actor,
                 None,
                 client,
@@ -607,6 +608,7 @@ impl Core {
             }
             let written = crate::management::write_client(
                 tx,
+                &self.config,
                 &actor,
                 Some(&existing),
                 c,
@@ -627,6 +629,7 @@ impl Core {
             }
             let written = crate::management::write_client(
                 tx,
+                &self.config,
                 &actor,
                 Some(&existing),
                 existing.clone(),
