@@ -197,7 +197,7 @@ fn canonical(f: &Fixture) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn ldap_membership_removal_waits_for_durable_paged_snapshot() {
+async fn ldap_membership_removal_waits_for_durable_plan_and_apply_crawls() {
     let peer = peer().await;
     let url = peer.url.clone();
     let mode = peer.mode.clone();
@@ -214,6 +214,8 @@ async fn ldap_membership_removal_waits_for_durable_paged_snapshot() {
         assert_eq!(first["decision"], "snapshot_in_progress");
         let imported = f.core.directory_plan(&f.admin, "staff").unwrap();
         assert_eq!(imported["entries"].as_array().unwrap().len(), 2);
+        assert_eq!(f.core.directory_apply(&f.admin, &text(&imported, "id"))
+            .unwrap()["decision"], "snapshot_in_progress");
         f.core.directory_apply(&f.admin, &text(&imported, "id")).unwrap();
         let ids: BTreeMap<_, _> = ["person0", "person1"].into_iter().map(|name| {
             (name.to_owned(), f.core.store.get::<String>("usernames", name).unwrap().unwrap())
@@ -245,11 +247,36 @@ async fn ldap_membership_removal_waits_for_durable_paged_snapshot() {
         assert!(f.core.store.list::<Value>("directory_snapshots").unwrap().is_empty());
         assert!(!progress_id.is_empty());
         let id = text(&plan, "id");
+        let pending_progress = f.core.directory_reconcile(&f.admin, "staff").unwrap();
+        assert_eq!(pending_progress["decision"], "snapshot_in_progress");
         let pending = f.core.directory_reconcile(&f.admin, "staff").unwrap();
         assert_eq!(pending["decision"], "awaiting_review");
         assert_eq!(pending["plan"]["id"], id);
         assert!(f.core.directory_apply(&f.admin, &id).is_err());
-        f.core.directory_apply_confirmed(&f.admin, &id, Some(&id)).unwrap();
+        let before_apply = canonical(&f);
+        let progress = f.core.directory_apply_confirmed(&f.admin, &id, Some(&id)).unwrap();
+        assert_eq!(progress["decision"], "snapshot_in_progress");
+        assert_eq!(progress["operation"], "apply_validation");
+        assert_eq!(progress["plan_id"], id);
+        assert_eq!(progress["phase"], "users");
+        assert_eq!(progress["users"], 4);
+        assert_eq!(canonical(&f), before_apply);
+        let staged = f.core.store.list::<Value>("directory_apply_snapshots").unwrap();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1["draft"]["cookie"], json!([b'4']));
+
+        *mode.lock().unwrap() = Mode::PartialError;
+        assert_eq!(f.core.directory_apply_confirmed(&f.admin, &id, Some(&id))
+            .unwrap_err().code, "directory_unavailable");
+        assert_eq!(canonical(&f), before_apply);
+        assert_eq!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap()[0]
+            .1["draft"]["cookie"], json!([b'4']));
+
+        let f = f.reopen_with(|_| {});
+        *mode.lock().unwrap() = Mode::PagedRemoval;
+        assert_eq!(f.core.directory_apply_confirmed(&f.admin, &id, Some(&id))
+            .unwrap()["applied"], true);
+        assert!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap().is_empty());
         for (name, user_id) in ids {
             assert_eq!(f.core.store.get::<String>("usernames", &name).unwrap(), Some(user_id.clone()));
             assert!(f.core.store.get::<User>("users", &user_id).unwrap().unwrap().enabled);

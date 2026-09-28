@@ -38,6 +38,7 @@ const LDAP_MAX_USERS: usize = 2_000;
 const LDAP_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 const LDAP_SNAPSHOT_SECONDS: u64 = 300;
 const LDAP_SNAPSHOTS: &str = "directory_snapshots";
+const LDAP_APPLY_SNAPSHOTS: &str = "directory_apply_snapshots";
 
 /// What each directory step may take: `STEP_TIMEOUT`, or what is left until a deadline.
 #[derive(Clone, Copy)]
@@ -220,18 +221,6 @@ impl Directory {
             .map_err(|_| unavailable())?;
         Ok(conn)
     }
-    fn snapshot(&self) -> Result<Snapshot> {
-        let mut draft = SnapshotDraft::new(String::new(), String::new(), 0, String::new(), String::new());
-        self.advance_snapshot(
-            &mut draft,
-            LDAP_MAX_PAGES_PER_SEARCH * (self.group_user_filters.len() + 1),
-        )?;
-        if !draft.complete(self) {
-            return Err(unavailable());
-        }
-        Ok(draft.into_snapshot())
-    }
-
     /// Advance a bounded number of LDAP pages on one service connection. The
     /// opaque cookie and converted rows can be persisted between calls.
     fn advance_snapshot(&self, draft: &mut SnapshotDraft, max_pages: usize) -> Result<()> {
@@ -546,6 +535,47 @@ impl SnapshotDraft {
         Ok(())
     }
 }
+
+/// Apply validation has its own durable cookie and is bound to one immutable
+/// reviewed plan. A new plan cannot inherit pages from an old apply crawl.
+#[derive(Clone, Serialize, Deserialize)]
+struct ApplySnapshotDraft {
+    plan_id: String,
+    review: ReviewBinding,
+    draft: SnapshotDraft,
+}
+impl ApplySnapshotDraft {
+    fn new(directory: &str, actor: &Principal, plan: &Plan) -> Self {
+        Self {
+            plan_id: plan.id.clone(),
+            review: plan.review.clone(),
+            draft: SnapshotDraft::new(directory.into(), actor.id.clone(), plan.revision,
+                plan.fingerprint.clone(), plan.review.authority_digest.clone()),
+        }
+    }
+    fn valid(&self, directory_id: &str, directory: &Directory, plan: &Plan) -> bool {
+        self.plan_id == plan.id && self.review == plan.review
+            && self.draft.directory == directory_id && self.draft.actor == plan.actor
+            && self.draft.revision == plan.revision && self.draft.fingerprint == plan.fingerprint
+            && self.draft.authority_digest == plan.review.authority_digest
+            && self.draft.expires_at > now()
+            && !self.draft.complete(directory)
+            && self.draft.phase <= directory.group_user_filters.len()
+    }
+    fn bounded(&self) -> Result<()> {
+        self.draft.bounded()?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > LDAP_SNAPSHOT_BYTES {
+            return Err(Error::bad("LDAP snapshot staging quota exceeded"));
+        }
+        Ok(())
+    }
+    fn progress(&self, directory: &Directory, restarted: bool) -> Value {
+        let mut progress = self.draft.progress(directory, restarted);
+        progress["plan_id"] = json!(self.plan_id);
+        progress["operation"] = json!("apply_validation");
+        progress
+    }
+}
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub(crate) directory: String,
@@ -620,9 +650,8 @@ impl Core {
             Ok(json!(plan))
         })
     }
-    /// A pending reviewed plan keeps its exact ID while the complete streamed
-    /// source, local revision and authority remain bound. Apply re-fetches the
-    /// source before any local mutation.
+    /// A pending reviewed plan keeps its exact ID after a complete streamed
+    /// source check. Eligible apply crawls resume their own durable cookie.
     pub fn directory_reconcile(&self, token: &str, id: &str) -> Result<Value> {
         let directory = self
             .config
@@ -630,44 +659,31 @@ impl Core {
             .get(id)
             .ok_or_else(|| Error::missing("LDAP directory not configured"))?;
         let mode = self.directory_mode(id);
+        let key = digest(id);
         let pending = self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
-            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-            let fingerprint = self.directory_fingerprint(id, directory)?;
-            for (_, plan) in tx.list::<Plan>("directory_plans")? {
-                if plan.directory == id
-                    && plan.actor == actor.id
-                    && !plan.applied
-                    && plan.expires_at > now()
-                    && plan.revision == revision
-                    && plan.fingerprint == fingerprint
-                    && plan
-                        .review
-                        .validate(tx, &actor, &plan_content(&plan)?)
-                        .is_ok()
-                {
-                    return Ok(Some(plan));
-                }
+            let Some(apply) = tx.get::<ApplySnapshotDraft>(LDAP_APPLY_SNAPSHOTS, &key)? else {
+                return Ok(None);
+            };
+            let Some(plan) = tx.get::<Plan>("directory_plans", &apply.plan_id)? else {
+                return Ok(None);
+            };
+            if plan.applied || plan.expires_at <= now() || plan.directory != id
+                || plan.fingerprint != self.directory_fingerprint(id, directory)?
+                || !apply.valid(id, directory, &plan)
+                || mode.decide(&plan.removal_impact)
+                    != crate::connector_guard::ReconciliationDecision::Eligible
+            {
+                return Ok(None);
             }
-            Ok(None)
+            let actor = self.directory_snapshot_actor(tx, token, id, directory,
+                &plan.actor, plan.revision, &plan.fingerprint,
+                &plan.review.authority_digest)?;
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
+            Ok(Some(json!(plan)))
         })?;
         let plan = match pending {
-            Some(plan) if directory.snapshot()?.users == plan.entries => {
-                // The remote read can take seconds. Recheck authority and the
-                // local revision before returning saved entries to the caller.
-                let bound = self.store.read(|tx| {
-                    let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
-                    Ok(plan.actor == actor.id
-                        && plan.expires_at > now()
-                        && plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                        && plan.fingerprint == self.directory_fingerprint(id, directory)?
-                        && tx.get::<Plan>("directory_plans", &plan.id)?
-                            .is_some_and(|stored| !stored.applied && stored.review == plan.review)
-                        && plan.review.validate(tx, &actor, &plan_content(&plan)?).is_ok())
-                })?;
-                if bound { json!(plan) } else { self.directory_plan_internal(token, id, true)? }
-            }
-            _ => self.directory_plan_internal(token, id, true)?,
+            Some(plan) => plan,
+            None => self.directory_plan_internal(token, id, true)?,
         };
         if plan["decision"] == "snapshot_in_progress" {
             return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
@@ -696,6 +712,27 @@ impl Core {
         {
             return Err(Error::conflict("LDAP source, authority or local revision changed during snapshot"));
         }
+        Ok(actor)
+    }
+
+    fn directory_apply_actor(
+        &self, tx: &Tx<'_>, token: &str, directory: &Directory,
+        expected: &Plan, reviewed_plan: Option<&str>,
+    ) -> Result<Principal> {
+        let actor = self.directory_snapshot_actor(tx, token, &expected.directory, directory,
+            &expected.actor, expected.revision, &expected.fingerprint,
+            &expected.review.authority_digest)?;
+        let stored = tx.get::<Plan>("directory_plans", &expected.id)?
+            .ok_or_else(|| Error::missing("LDAP plan not found"))?;
+        if stored.applied || stored.directory != expected.directory
+            || stored.review != expected.review
+            || plan_content(&stored)? != plan_content(expected)?
+            || stored.expires_at <= now()
+        {
+            return Err(Error::conflict("LDAP plan changed during snapshot validation; create a new plan"));
+        }
+        expected.review.validate(tx, &actor, &plan_content(expected)?)?;
+        expected.review.confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
         Ok(actor)
     }
 
@@ -758,6 +795,23 @@ impl Core {
                 return Err(Error::conflict("LDAP snapshot advanced concurrently; resume the latest cursor"));
             }
             let plans = tx.list::<Plan>("directory_plans")?;
+            if supersede {
+                if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
+                    existing.actor == actor.id && existing.directory == id && !existing.applied
+                        && existing.expires_at > now() && existing.revision == revision
+                        && existing.fingerprint == fingerprint
+                        && existing.entries == snapshot.users
+                        && existing.changes == changes
+                        && existing.removal_impact == impact
+                        && plan_content(existing).and_then(|content|
+                            existing.review.validate(tx, &current_actor, &content)).is_ok()
+                }) {
+                    if prior.is_some() {
+                        tx.delete(LDAP_SNAPSHOTS, &key)?;
+                    }
+                    return Ok(json!(existing));
+                }
+            }
             if plans
                 .iter()
                 .filter(|(_, p)| {
@@ -825,28 +879,54 @@ impl Core {
             .directories
             .get(&plan.directory)
             .ok_or_else(Error::forbidden)?;
-        self.store.read(|tx| {
-            self.management(
-                tx,
-                token,
-                "directory.sync",
-                &format!("directory/{}", plan.directory),
-            )
-        })?;
-        if !plan.applied {
-            if plan.expires_at <= now()
-                || plan.fingerprint != self.directory_fingerprint(&plan.directory, directory)?
-            {
-                return Err(Error::conflict(
-                    "LDAP plan expired or directory configuration changed",
-                ));
+        let key = digest(&plan.directory);
+        let initially_applied = plan.applied;
+        let snapshot_prior = if initially_applied {
+            self.store.read(|tx| {
+                let actor = self.management(tx, token, "directory.sync",
+                    &format!("directory/{}", plan.directory))?;
+                if actor.id != plan.actor { return Err(Error::forbidden()); }
+                Ok(())
+            })?;
+            None
+        } else {
+            let (prior, mut apply, restarted) = self.store.read(|tx| {
+                let actor = self.directory_apply_actor(tx, token, directory, &plan, reviewed_plan)?;
+                let previous = tx.get::<ApplySnapshotDraft>(LDAP_APPLY_SNAPSHOTS, &key)?;
+                let prior = previous.as_ref().map(|apply|
+                    (apply.draft.id.clone(), apply.draft.sequence));
+                let valid = previous.as_ref().is_some_and(|apply|
+                    apply.valid(&plan.directory, directory, &plan));
+                let restarted = previous.is_some() && !valid;
+                let apply = previous.filter(|_| valid).unwrap_or_else(||
+                    ApplySnapshotDraft::new(&plan.directory, &actor, &plan));
+                apply.bounded()?;
+                Ok((prior, apply, restarted))
+            })?;
+            directory.advance_snapshot(&mut apply.draft, LDAP_PAGES_PER_PLAN_CALL)?;
+            apply.draft.expires_at = now().saturating_add(LDAP_SNAPSHOT_SECONDS);
+            apply.bounded()?;
+            if !apply.draft.complete(directory) {
+                return self.store.write(|tx| {
+                    self.directory_apply_actor(tx, token, directory, &plan, reviewed_plan)?;
+                    let current = tx.get::<ApplySnapshotDraft>(LDAP_APPLY_SNAPSHOTS, &key)?;
+                    if current.as_ref().map(|apply| (&apply.draft.id, apply.draft.sequence))
+                        != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+                    {
+                        return Err(Error::conflict(
+                            "LDAP apply snapshot advanced concurrently; resume the latest cursor"));
+                    }
+                    tx.put(LDAP_APPLY_SNAPSHOTS, &key, &apply)?;
+                    Ok(apply.progress(directory, restarted))
+                });
             }
-            if directory.snapshot()?.users != plan.entries {
-                return Err(Error::conflict(
-                    "LDAP changed after planning; create a new plan",
-                ));
+            self.store.read(|tx| self.directory_apply_actor(
+                tx, token, directory, &plan, reviewed_plan).map(|_| ()))?;
+            if apply.draft.into_snapshot().users != plan.entries {
+                return Err(Error::conflict("LDAP changed after planning; create a new plan"));
             }
-        }
+            prior
+        };
         let observed_review = plan.review.clone();
         let planned_directory = plan.directory.clone();
         self.mutation(token, |tx| {
@@ -867,8 +947,19 @@ impl Core {
                     "LDAP plan directory changed; create a new plan",
                 ));
             }
+            if initially_applied && !plan.applied {
+                return Err(Error::conflict("LDAP plan changed during snapshot validation; create a new plan"));
+            }
             if plan.applied {
                 return Ok(json!({"id":id,"applied":true,"changes":plan.changes}));
+            }
+            self.directory_apply_actor(tx, token, directory, &plan, reviewed_plan)?;
+            let current = tx.get::<ApplySnapshotDraft>(LDAP_APPLY_SNAPSHOTS, &key)?;
+            if current.as_ref().map(|apply| (&apply.draft.id, apply.draft.sequence))
+                != snapshot_prior.as_ref().map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "LDAP apply snapshot advanced concurrently; resume the latest cursor"));
             }
             let impact = removal_impact(tx, &plan.directory, &plan.entries)?;
             ApplyGate {
@@ -897,6 +988,9 @@ impl Core {
             }
             plan.applied = true;
             tx.put("directory_plans", id, &plan)?;
+            if current.is_some() {
+                tx.delete(LDAP_APPLY_SNAPSHOTS, &key)?;
+            }
             crate::delegation::audit_scoped(
                 tx,
                 &actor,
@@ -1329,6 +1423,11 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, draft) in tx.maintenance_page::<SnapshotDraft>(LDAP_SNAPSHOTS)? {
         if draft.expires_at <= at {
             tx.delete(LDAP_SNAPSHOTS, &id)?;
+        }
+    }
+    for (id, apply) in tx.maintenance_page::<ApplySnapshotDraft>(LDAP_APPLY_SNAPSHOTS)? {
+        if apply.draft.expires_at <= at {
+            tx.delete(LDAP_APPLY_SNAPSHOTS, &id)?;
         }
     }
     for (id, p) in tx.maintenance_page::<Plan>("directory_plans")? {

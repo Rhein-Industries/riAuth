@@ -268,7 +268,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/directories` | Configured LDAP directories visible to the caller |
 | POST | `/api/directories/{id}/plan` | LDAP import plan; no account writes |
 | GET | `/api/directory-plans/{id}` | Caller-bound LDAP plan |
-| POST | `/api/directory-plans/{id}/apply` | Apply one reviewed LDAP plan |
+| POST | `/api/directory-plans/{id}/apply` | Validate one reviewed LDAP plan in bounded pages; repeat on `snapshot_in_progress` with the same plan ID and removal-confirmation header |
 | GET | `/api/workspace-directories` | Configured Workspace directories; no secrets |
 | POST | `/api/workspace-directories/{id}/plan` | Workspace sync plan; no account writes |
 | GET | `/api/workspace-directory-plans/{id}` | Caller-bound Workspace plan |

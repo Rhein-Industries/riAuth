@@ -1643,7 +1643,17 @@ pub async fn run(cli: Cli) -> Result<()> {
                 let mut saved=saved; saved["applied"]=plan["applied"].clone();
                 if saved!=plan {bail!("LDAP plan was modified or belongs to another instance");}
                 if plan["removal_impact"]["review_required"]==true && !confirm_removals { bail!("Inspect LDAP removal_impact and changes, then rerun with --confirm-removals"); }
-                remote.call_with_review(Method::POST,&format!("/api/directory-plans/{}/apply",segment(id)?),None,true,if confirm_removals {Some(id)} else {None}).await?
+                let path=format!("/api/directory-plans/{}/apply",segment(id)?);
+                let mut result=Value::Null;
+                for _ in 0..1024 {
+                    result=remote.call_with_review(Method::POST,&path,None,true,
+                        if confirm_removals {Some(id)} else {None}).await?;
+                    if result["decision"]!="snapshot_in_progress" {break;}
+                }
+                if result["decision"]=="snapshot_in_progress" {
+                    bail!("LDAP apply validation did not finish within the CLI page limit; retry directory apply to resume");
+                }
+                result
             },
             DirectoryCommand::Workspace { command } => cloud_directory(&remote, "workspace", &command).await?,
             DirectoryCommand::Entra { command } => cloud_directory(&remote, "entra", &command).await?,
