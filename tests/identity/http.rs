@@ -643,7 +643,13 @@ async fn http_remembered_consent_prompt_none_is_an_httponly_cookie_redirect() {
                 .header("authorization", format!("Bearer {}", f.admin))
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"code": code, "approve": true, "remember": true}).to_string(),
+                    json!({
+                        "code": code,
+                        "approve": true,
+                        "remember": true,
+                        "transaction_id": details["transaction_id"],
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )

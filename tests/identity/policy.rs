@@ -466,6 +466,7 @@ fn requested_claims_require_consent_scopes_and_enforce_essential_values() {
         f.core.authorize(&alice, wrong).unwrap_err().code,
         "unmet_authentication_requirements"
     );
+    request.transaction_id = details["transaction_id"].as_str().map(str::to_owned);
     let callback = f.core.authorize(&alice, request).unwrap();
     let code = url::Url::parse(&callback)
         .unwrap()
@@ -495,12 +496,14 @@ fn requested_claims_require_consent_scopes_and_enforce_essential_values() {
     assert_eq!(id["acr"], riauth::assurance::PASSWORD);
     let mut step_up = f.request("app", &crypto::random_token(""));
     step_up.acr_values = Some(riauth::assurance::MFA.into());
-    assert!(
-        f.core
-            .authorization_prepare(Some(&alice), step_up.clone())
-            .unwrap()["reauthentication_required"]
-            == true
-    );
+    let step_up_details = f
+        .core
+        .authorization_prepare(Some(&alice), step_up.clone())
+        .unwrap();
+    assert_eq!(step_up_details["reauthentication_required"], true);
+    step_up.transaction_id = step_up_details["transaction_id"]
+        .as_str()
+        .map(str::to_owned);
     assert_eq!(
         f.core.authorize(&alice, step_up).unwrap_err().code,
         "login_required"
