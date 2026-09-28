@@ -9,8 +9,8 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::{cmp::Ordering, collections::BTreeSet};
+use serde_json::{Map, Value, json};
+use std::{cmp::Ordering, collections::{BTreeMap, BTreeSet}};
 
 pub use crate::scim_shared::{GROUP, USER, response};
 const LIST: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
@@ -37,6 +37,15 @@ pub struct Query {
     pub filter: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
+    pub attributes: Option<String>,
+    pub excluded_attributes: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectionQuery {
+    pub attributes: Option<String>,
+    pub excluded_attributes: Option<String>,
 }
 
 pub fn metadata(kind: &str) -> Result<Value> {
@@ -642,6 +651,193 @@ fn compare_sort(left: &Value, right: &Value, spec: SortSpec) -> Ordering {
     primary.then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
 }
 
+const MAX_PROJECTION_SELECTORS: usize = 32;
+
+enum FieldSelection {
+    Whole,
+    Subfields(BTreeSet<&'static str>),
+}
+
+enum Projection {
+    Full,
+    Include(BTreeMap<&'static str, FieldSelection>),
+    Exclude(BTreeMap<&'static str, FieldSelection>),
+}
+
+fn projection_path(kind: &str, raw: &str) -> Result<(&'static str, Option<&'static str>)> {
+    let schema = if kind == "Users" { USER } else { GROUP };
+    let path = if raw.get(..schema.len()).is_some_and(|prefix| prefix.eq_ignore_ascii_case(schema))
+        && raw.as_bytes().get(schema.len()) == Some(&b':') {
+        &raw[schema.len() + 1..]
+    } else {
+        raw
+    };
+    match (kind, path.to_ascii_lowercase().as_str()) {
+        (_, "schemas") => Ok(("schemas", None)),
+        (_, "id") => Ok(("id", None)),
+        (_, "externalid") => Ok(("externalId", None)),
+        (_, "meta") => Ok(("meta", None)),
+        (_, "meta.resourcetype") => Ok(("meta", Some("resourceType"))),
+        (_, "meta.location") => Ok(("meta", Some("location"))),
+        (_, "meta.version") => Ok(("meta", Some("version"))),
+        (_, "displayname") => Ok(("displayName", None)),
+        ("Users", "username") => Ok(("userName", None)),
+        ("Users", "active") => Ok(("active", None)),
+        ("Users", "name") => Ok(("name", None)),
+        ("Users", "name.formatted") => Ok(("name", Some("formatted"))),
+        ("Users", "name.givenname") => Ok(("name", Some("givenName"))),
+        ("Users", "name.familyname") => Ok(("name", Some("familyName"))),
+        ("Users", "emails") => Ok(("emails", None)),
+        ("Users", "emails.value") => Ok(("emails", Some("value"))),
+        ("Users", "emails.type") => Ok(("emails", Some("type"))),
+        ("Users", "emails.primary") => Ok(("emails", Some("primary"))),
+        ("Users", "groups") => Ok(("groups", None)),
+        ("Users", "groups.value") => Ok(("groups", Some("value"))),
+        ("Users", "groups.display") => Ok(("groups", Some("display"))),
+        ("Groups", "members") => Ok(("members", None)),
+        ("Groups", "members.value") => Ok(("members", Some("value"))),
+        ("Groups", "members.display") => Ok(("members", Some("display"))),
+        ("Users", "password") => Err(Error::bad("Write-only SCIM attribute cannot be projected")),
+        _ => Err(Error::bad("Unsupported SCIM projection attribute")),
+    }
+}
+
+fn parse_projection(kind: &str, attributes: Option<&str>, excluded: Option<&str>) -> Result<Projection> {
+    let (include, raw) = match (attributes, excluded) {
+        (None, None) => return Ok(Projection::Full),
+        (Some(_), Some(_)) => return Err(Error::bad("attributes and excludedAttributes are mutually exclusive")),
+        (Some(raw), None) => (true, raw),
+        (None, Some(raw)) => (false, raw),
+    };
+    if raw.len() > 1024 || raw.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(Error::bad("Invalid SCIM projection list"));
+    }
+    let mut fields = BTreeMap::new();
+    let mut count = 0;
+    for item in raw.split(',') {
+        count += 1;
+        if count > MAX_PROJECTION_SELECTORS {
+            return Err(Error::bad("Too many SCIM projection attributes"));
+        }
+        let item = item.trim_matches(' ');
+        if item.is_empty() || item.len() > 128 {
+            return Err(Error::bad("Invalid SCIM projection attribute"));
+        }
+        let (root, sub) = projection_path(kind, item)?;
+        if let Some(sub) = sub {
+            match fields.entry(root).or_insert_with(|| FieldSelection::Subfields(BTreeSet::new())) {
+                FieldSelection::Whole => {}
+                FieldSelection::Subfields(selected) => { selected.insert(sub); }
+            }
+        } else {
+            fields.insert(root, FieldSelection::Whole);
+        }
+    }
+    Ok(if include { Projection::Include(fields) } else { Projection::Exclude(fields) })
+}
+
+fn projection_subfields(root: &str) -> &'static [&'static str] {
+    match root {
+        "meta" => &["resourceType", "location", "version"],
+        "name" => &["formatted", "givenName", "familyName"],
+        "emails" => &["value", "type", "primary"],
+        "groups" | "members" => &["value", "display"],
+        _ => &[],
+    }
+}
+
+fn project_complex(value: Value, root: &str, selected: Option<&BTreeSet<&str>>) -> Option<Value> {
+    let fields = projection_subfields(root);
+    if fields.is_empty() {
+        return Some(value);
+    }
+    let project_object = |source: Map<String, Value>| {
+        let mut projected = Map::new();
+        for field in fields.iter().copied().filter(|field| selected.is_none_or(|set| set.contains(field))) {
+            if let Some(value) = source.get(field).or_else(|| source.iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(field)).map(|(_, value)| value)) {
+                projected.insert(field.to_owned(), value.clone());
+            }
+        }
+        projected
+    };
+    match value {
+        Value::Object(source) => {
+            let projected = project_object(source);
+            if projected.is_empty() && selected.is_some() { None } else { Some(Value::Object(projected)) }
+        }
+        Value::Array(items) => {
+            let projected: Vec<_> = items.into_iter().filter_map(|item| match item {
+                Value::Object(source) => {
+                    let projected = project_object(source);
+                    if projected.is_empty() { None } else { Some(Value::Object(projected)) }
+                }
+                _ => None,
+            }).collect();
+            if projected.is_empty() && selected.is_some() { None } else { Some(Value::Array(projected)) }
+        }
+        _ => None,
+    }
+}
+
+impl Projection {
+    fn apply(&self, kind: &str, mut value: Value) -> Value {
+        let fields = match self {
+            Self::Full => return value,
+            Self::Include(fields) | Self::Exclude(fields) => fields,
+        };
+        let source = value.as_object_mut().expect("SCIM view is an object");
+        source.retain(|key, _| match (kind, key.as_str()) {
+            (_, "schemas" | "id" | "externalId" | "meta" | "displayName") => true,
+            ("Users", "userName" | "active" | "name" | "emails" | "groups") => true,
+            ("Groups", "members") => true,
+            _ => false,
+        });
+        for root in ["meta", "name", "emails", "groups", "members"] {
+            if let Some(original) = source.remove(root) {
+                if let Some(safe) = project_complex(original, root, None) {
+                    source.insert(root.to_owned(), safe);
+                }
+            }
+        }
+        match self {
+            Self::Include(_) => {
+                let mut projected = Map::new();
+                for root in ["schemas", "id"] {
+                    if let Some(required) = source.remove(root) { projected.insert(root.to_owned(), required); }
+                }
+                for (root, selection) in fields {
+                    if matches!(*root, "schemas" | "id") { continue; }
+                    if let Some(original) = source.remove(*root) {
+                        let selected = match selection {
+                            FieldSelection::Whole => Some(original),
+                            FieldSelection::Subfields(subfields) => project_complex(original, root, Some(subfields)),
+                        };
+                        if let Some(selected) = selected { projected.insert((*root).to_owned(), selected); }
+                    }
+                }
+                Value::Object(projected)
+            }
+            Self::Exclude(_) => {
+                for (root, selection) in fields {
+                    if matches!(*root, "schemas" | "id") { continue; }
+                    if let Some(original) = source.remove(*root) {
+                        if let FieldSelection::Subfields(excluded) = selection {
+                            let remaining = projection_subfields(root).iter().copied()
+                                .filter(|field| !excluded.contains(field)).collect();
+                            if let Some(selected) = project_complex(original, root, Some(&remaining)) {
+                                source.insert((*root).to_owned(), selected);
+                            }
+                        }
+                    }
+                }
+                value
+            }
+            Self::Full => unreachable!(),
+        }
+    }
+}
+
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
         let mut value = record.data.clone();
@@ -740,6 +936,18 @@ impl Core {
             self.scim_view(tx, id, &record)
         })
     }
+    pub fn scim_get_projected(&self, token: &str, kind: &str, id: &str, query: ProjectionQuery) -> Result<(Value, String, String)> {
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let record = owned(tx, &actor, kind, id)?;
+            require(&actor, &record, "read")?;
+            let projection = parse_projection(kind, query.attributes.as_deref(), query.excluded_attributes.as_deref())?;
+            let full = self.scim_view(tx, id, &record)?;
+            let version = full["meta"]["version"].as_str().unwrap_or("").to_owned();
+            let location = full["meta"]["location"].as_str().unwrap_or("").to_owned();
+            Ok((projection.apply(kind, full), version, location))
+        })
+    }
     pub fn scim_list(&self, token: &str, kind: &str, query: Query) -> Result<Value> {
         self.store.read(|tx|{
         let actor=self.principal(tx,token)?;
@@ -747,6 +955,7 @@ impl Core {
         // Validate once, including when the collection is empty.
         let filter=parse_filter(kind,query.filter.as_deref())?;
         let sort=parse_sort(kind,query.sort_by.as_deref(),query.sort_order.as_deref())?;
+        let projection=parse_projection(kind,query.attributes.as_deref(),query.excluded_attributes.as_deref())?;
         let start=query.start_index.unwrap_or(1).max(1);let count=query.count.unwrap_or(100).min(1000);
         let mut values=Vec::new();
         let mut total=0;
@@ -764,6 +973,7 @@ impl Core {
             values.sort_by(|left,right| compare_sort(left,right,spec));
             values.into_iter().skip(start-1).take(count).collect()
         } else { values };
+        let page:Vec<_>=page.into_iter().map(|value| projection.apply(kind,value)).collect();
         Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
     })
     }
