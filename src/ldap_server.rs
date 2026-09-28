@@ -113,13 +113,13 @@ impl Settings {
         }
         Ok(())
     }
-    fn user_dn(&self, name: &str) -> String {
+    pub(crate) fn user_dn(&self, name: &str) -> String {
         format!("uid={name},ou=users,{}", self.base_dn)
     }
     fn group_dn(&self, name: &str) -> String {
         format!("cn={name},ou=groups,{}", self.base_dn)
     }
-    fn agent_dn(&self) -> String {
+    pub(crate) fn agent_dn(&self) -> String {
         format!("cn=riauth-agent,{}", self.base_dn)
     }
 }
@@ -670,47 +670,8 @@ async fn connection(
 fn crypto_token() -> Vec<u8> {
     crate::crypto::random_token("").into_bytes()
 }
-fn profile(tx: &Tx<'_>, id: &str) -> Result<(Client, Settings)> {
-    let client = tx
-        .get::<Client>("clients", id)?
-        .filter(|c| c.enabled)
-        .ok_or_else(Error::forbidden)?;
-    let settings = client.settings.ldap.clone().ok_or_else(Error::forbidden)?;
-    settings.validate(&client)?;
-    for group in &settings.search_groups {
-        if tx.get::<Group>("groups", group)?.is_none() {
-            return Err(Error::bad("LDAP search group does not exist"));
-        }
-    }
-    Ok((client, settings))
-}
 fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
-    let (settings, username) = core.store.read(|tx| {
-        let (_, settings) = profile(tx, cid)?;
-        if dn.eq_ignore_ascii_case(&settings.agent_dn()) {
-            core.management(tx, password, "ldap.search", &format!("client/{cid}"))?;
-            if !password.starts_with("ri_agent_") {
-                return Err(Error::forbidden());
-            }
-            return Ok((settings, None));
-        }
-        let matches: Vec<_> = tx
-            .list::<User>("users")?
-            .into_iter()
-            .map(|(_, u)| u)
-            .filter(|u| settings.user_dn(&u.username).eq_ignore_ascii_case(dn))
-            .collect();
-        if matches.len() != 1 {
-            return Err(Error::unauthorized());
-        }
-        Ok((
-            settings,
-            Some((
-                matches[0].username.clone(),
-                matches[0].totp_secret.is_some(),
-            )),
-        ))
-    })?;
+    let (settings, username) = core.ldap_bind_target(cid, dn, password)?;
     let Some((username, mfa)) = username else {
         return Ok(Auth::Agent(zeroize::Zeroizing::new(password.into())));
     };
@@ -729,15 +690,7 @@ fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
             .ok_or_else(Error::unauthorized)?
             .to_owned(),
     );
-    let allowed = core.store.read(|tx| {
-        let (client, _) = profile(tx, cid)?;
-        let (_, session) = core.session(tx, &token)?;
-        core.authorize_identity(tx, &client, &session.identity)?;
-        if crate::assurance::needs_step_up(&client, &Default::default(), &session.identity) {
-            return Err(Error::forbidden());
-        }
-        Ok(())
-    });
+    let allowed = core.ldap_bind_authorized(cid, &token);
     if let Err(error) = allowed {
         let _ = core.logout(&token);
         return Err(error);
@@ -746,7 +699,7 @@ fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
     Ok(Auth::User(token))
 }
 fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result<Option<User>> {
-    let (client, _) = profile(tx, cid)?;
+    let (client, _) = core.ldap_profile(tx, cid)?;
     match auth {
         Some(Auth::Agent(token)) => {
             core.management(tx, token, "ldap.search", &format!("client/{cid}"))?;
@@ -765,7 +718,7 @@ fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result
 }
 fn whoami(core: &Core, cid: &str, auth: Option<&Auth>) -> Result<String> {
     core.store.read(|tx| {
-        let (_, settings) = profile(tx, cid)?;
+        let (_, settings) = core.ldap_profile(tx, cid)?;
         if auth.is_none() {
             return Ok(String::new());
         }
@@ -808,7 +761,7 @@ fn search_entries(
     }
     validate_filter(&query.filter, 0, &mut 0)?;
     core.store.read(|tx| {
-        let (client, settings) = profile(tx, cid)?;
+        let (client, settings) = core.ldap_profile(tx, cid)?;
         let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
         if query.base.is_empty() && query.scope == LdapSearchScope::Base {
             let row = entry(

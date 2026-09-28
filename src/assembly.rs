@@ -10,6 +10,8 @@ mod event_map;
 mod exchange;
 mod issuer;
 mod keyring;
+#[cfg(feature = "platform")]
+mod ldap_server;
 mod logout;
 #[cfg(feature = "platform")]
 mod mtls;

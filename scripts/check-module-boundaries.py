@@ -296,6 +296,13 @@ def main() -> None:
             r"\.\s*store\s*\.\s*write\s*\(", masked_rust_source(path.read_text())
         ):
             errors.append("src/windows_login.rs: Windows protocol directly writes storage")
+        if path == SRC / "ldap_server.rs":
+            ldap_source = masked_rust_source(path.read_text())
+            bind = re.search(r"^fn\s+bind_user\s*\(.*?(?=^fn\s+|\Z)", ldap_source, re.M | re.S)
+            if re.search(r"\.\s*get\s*::\s*<\s*(?:Client|Group)\s*>", ldap_source) or (
+                bind and re.search(r"\.\s*store\s*\.\s*read\s*\(", bind.group())
+            ):
+                errors.append("src/ldap_server.rs: LDAP bind/profile reads concrete storage")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
