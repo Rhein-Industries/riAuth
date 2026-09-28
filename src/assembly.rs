@@ -1,6 +1,8 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
 mod issuer;
+mod keyring;
+mod response;
 
 use crate::{
     config::Config,

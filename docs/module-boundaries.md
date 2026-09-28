@@ -539,3 +539,37 @@ Thirty protocol files still name storage directly. Management still owns
 concrete Core/storage operations, and API/server and client still couple to
 Core. These ports are intra-crate seams; separate crate contracts and reviewed
 Essentials/Platform assembly parity remain A03 work.
+
+## Wave 12: signing key and authorization response assembly
+
+[Keyring](../src/keyring.rs) now selects the primary signing key or a client's
+signing domain through a `KeyringTx` read port. The concrete
+[keyring assembly](../src/assembly/keyring.rs) maps those reads to the same
+`meta/keys` and `key_domains` records in the caller's transaction. It also
+owns the existing `Core::configure_key` and `Core::key_domains` methods. Their
+management authorization, key-id uniqueness check, retained-key limits,
+RP-session-based retention deadline and audit write remain in their original
+mutation transaction. The public `KeyInput` and Core method signatures remain.
+
+[Authorization response formatting](../src/response.rs) now accepts a signing
+callback. [Response assembly](../src/assembly/response.rs) supplies the Core
+signer and reads the client's key through the same transaction. The callback
+runs only for JWT response modes, as the earlier key lookup did. Issuer and
+claim construction, encryption, query/fragment placement and response headers
+stay in the protocol module. The `Core::secure_authorization_response` call
+signature used by OIDC and source flows remains.
+
+The source scan covers 114 Rust files before and 116 after this cut. It now
+guards keyring and response against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 12 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 30 | 28 |
+| `protocol -> Core` | 32 | 30 |
+| `server_assembly -> protocol` | 2 | 4 |
+| `server_assembly -> storage` | 2 | 4 |
+
+Twenty-eight protocol files still name storage directly. The broad OIDC,
+SAML, SSF, source and session adapters, management/Core access, API/server
+coupling and client/Core coupling remain. Separate crate contracts and
+reviewed distribution assembly parity are still A03 work.

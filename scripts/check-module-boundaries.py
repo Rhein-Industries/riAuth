@@ -243,6 +243,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: JOSE refers directly to storage")
         if source_module == "issuer" and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: issuer refers directly to storage or Core")
+        if source_module in {"keyring", "response"} and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: {source_module} refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -302,6 +304,22 @@ def main() -> None:
             "issuer_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "issuer"
+            ),
+            "keyring_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "keyring"
+            ),
+            "keyring_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "keyring"
+            ),
+            "response_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "response"
+            ),
+            "response_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "response"
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)
