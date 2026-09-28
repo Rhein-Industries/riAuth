@@ -330,3 +330,51 @@ fn redb_inspection_refuses_a_store_it_cannot_probe_in_place() {
     assert_eq!(error.code, "storage_not_exclusive");
     assert!(!target.exists());
 }
+
+// redb opens without a lock where the filesystem refuses one, and it can
+// initialize or repair a store while opening. Startup therefore proves lock
+// enforcement beside the store before redb touches it; without that proof the
+// store is refused and left byte for byte unchanged.
+#[cfg(unix)]
+#[test]
+fn redb_startup_proves_lock_support_before_redb_writes() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let config = Config {
+        data_dir: dir.path().into(),
+        ..Default::default()
+    };
+    let file = dir.path().join("riauth.redb");
+    Store::from_config(&config)
+        .unwrap()
+        .write(|tx| tx.put("authority", "revoked", &true))
+        .unwrap();
+    let bytes = std::fs::read(&file).unwrap();
+    let mode =
+        |mode| std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+    mode(0o500);
+    // A superuser can still write there; the refusal needs a real denial.
+    if std::fs::File::create(dir.path().join("probe")).is_err() {
+        let error = Store::from_config(&config)
+            .err()
+            .expect("the store opened without a lock proof");
+        assert_eq!(
+            (error.status, error.code),
+            (StatusCode::BAD_REQUEST, "storage_not_exclusive")
+        );
+        assert!(
+            error.message.contains("scratch database"),
+            "{}",
+            error.message
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), bytes);
+    }
+    mode(0o700);
+    let _ = std::fs::remove_file(dir.path().join("probe"));
+    // With the proof possible, the same store opens with its record intact.
+    let store = Store::from_config(&config).unwrap();
+    assert_eq!(
+        store.get::<bool>("authority", "revoked").unwrap(),
+        Some(true)
+    );
+}

@@ -12,7 +12,8 @@
 //! Opening can change what a path reaches: it can trigger an automount or cross
 //! a mount replaced since the check. The owner therefore opens the file itself,
 //! checks it again against a fresh mount table (on Linux through the mount of
-//! the open descriptor) and only then hands that descriptor to redb.
+//! the open descriptor), proves lock enforcement beside it, and only then hands
+//! that descriptor to redb.
 
 use crate::error::{Error, Result};
 use axum::http::StatusCode;
@@ -64,6 +65,17 @@ pub(super) struct Checked {
     existed: bool,
     /// The mount holding `location`, where the platform has a mount table.
     mount: Option<Mount>,
+}
+
+impl Checked {
+    /// The directory that holds, or will hold, the store file.
+    fn directory(&self) -> &Path {
+        if self.existed {
+            self.location.parent().unwrap_or(&self.location)
+        } else {
+            &self.location
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -154,6 +166,9 @@ fn own(
     opened: Opened<'_>,
 ) -> Result<Database> {
     recheck(path, checked, Some(&file), tables, opened)?;
+    // redb opens without a lock where the filesystem refuses one, and it can
+    // initialize or repair the file while opening, so the lock is proven first.
+    prove_locks(path, checked, &file, opened)?;
     let db = Database::builder()
         .create_file(file)
         .map_err(|error| open_error(path, error))?;
@@ -220,7 +235,16 @@ fn probe_in_place(path: &Path, checked: &Checked, opened: Opened<'_>) -> Result<
         ErrorKind::NotFound => changed(path),
         _ => Error::internal(error),
     })?;
-    let directory = checked.location.parent().unwrap_or(&checked.location);
+    prove_locks(path, checked, &store, opened)?;
+    Ok(store)
+}
+
+/// Asks the lock question of a scratch database beside `store`, which must
+/// share its filesystem and mount, and removes it again. A store mounted as a
+/// single file, or a directory without room for the scratch database, has no
+/// answer and fails closed.
+fn prove_locks(path: &Path, checked: &Checked, store: &File, opened: Opened<'_>) -> Result<()> {
+    let directory = checked.directory();
     let probe = directory.join(format!(
         ".riauth-lock-probe-{}",
         crate::crypto::random_token("")
@@ -240,7 +264,7 @@ fn probe_in_place(path: &Path, checked: &Checked, opened: Opened<'_>) -> Result<
     let scratch = options(true).open(&probe).map_err(|error| failed(&error))?;
     // Beside a store mounted as a file, or on another filesystem than its
     // directory, the scratch database would answer for different storage.
-    let result = if same_place(&scratch, &store, opened) {
+    let result = if same_place(&scratch, store, opened) {
         match Database::builder().create_file(scratch) {
             Ok(scratch) => {
                 let enforced = lock_enforced(&probe, path);
@@ -257,7 +281,7 @@ fn probe_in_place(path: &Path, checked: &Checked, opened: Opened<'_>) -> Result<
         )))
     };
     let _ = std::fs::remove_file(&probe);
-    result.map(|()| store)
+    result
 }
 
 /// Whether two open files share a filesystem and, where descriptors report

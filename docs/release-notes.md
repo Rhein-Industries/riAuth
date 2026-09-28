@@ -56,12 +56,16 @@
   fresh mount table before redb uses it, on Linux through the mount of the
   open descriptor. A mount that changes during the open, such as an automount,
   fails with `storage_not_exclusive`, and a file created for that open is
-  removed. `recovery status` and `transition-preflight` confirm file-lock
-  enforcement the way startup does, using a scratch database they create and
-  remove beside the store; they open the store itself only read-only and fail
-  closed where they cannot create the scratch file on the store's own
-  filesystem and mount, as for a store mounted as a single file. A dangling
-  store link is an error for them, not a missing store.
+  removed. Before redb opens the file, startup proves file-lock enforcement on
+  a scratch database beside the store, on the store's own filesystem and
+  mount, so redb never initializes or repairs a store it cannot lock; the data
+  directory must be writable, and a store mounted as a single file is refused.
+  `recovery status` and `transition-preflight` confirm file-lock enforcement
+  the way startup does, using a scratch database they create and remove beside
+  the store; they open the store itself only read-only and fail closed where
+  they cannot create the scratch file on the store's own filesystem and mount,
+  as for a store mounted as a single file. A dangling store link is an error
+  for them, not a missing store.
 
 # Unreleased durable offboarding delivery (P04)
 
