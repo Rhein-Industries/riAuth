@@ -675,3 +675,32 @@ guards session protocol against direct storage and Core references.
 Twenty-seven protocol files still name storage directly. Source, OIDC, SAML
 and SSF remain large adapter cuts. Management and API contracts still depend
 on Core/storage, and independently compiled crate contracts remain A03 work.
+
+## Wave 16: OIDC transaction and Core boundary
+
+[OIDC](../src/oidc.rs) now keeps authorization request validation, client
+authentication, device-code lookup, proxy-client rejection and shared policy
+helpers behind an `OidcTx` port. The concrete [OIDC assembly](../src/assembly/oidc.rs)
+maps client, issuer and device reads plus authorization-reference validation to
+the caller's storage transaction. `OidcTx` extends the existing assertion
+replay port, so private-key JWT replay consumption stays in that same write
+transaction. The `Core` OIDC method bodies moved intact to assembly; their
+public signatures, transaction mode and order of code consumption, device
+approval, grant issuance, revocation and audit are unchanged.
+
+This cut is based on accepted `833149c`, including the A05 edition split and
+W03 verifier changes. It adds no edition gate or source-verifier change. The
+source scan covers 150 Rust files before and 151 after the cut, and now guards
+OIDC against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 16 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 27 | 26 |
+| `protocol -> Core` | 30 | 29 |
+| `server_assembly -> protocol` | 8 | 9 |
+| `server_assembly -> storage` | 8 | 9 |
+
+Twenty-six protocol files still name storage, including authorization,
+browser, exchange, source, SAML and SSF. Management and API files still
+reference Core/storage directly, and independently compiled crate contracts
+remain A03 work.

@@ -7,6 +7,7 @@ mod device_trust;
 mod event_map;
 mod issuer;
 mod keyring;
+mod oidc;
 mod response;
 mod session_protocol;
 

@@ -253,6 +253,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: device_trust refers directly to storage or Core")
         if source_module == "session_protocol" and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: session_protocol refers directly to storage or Core")
+        if source_module == "oidc" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: OIDC refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -360,6 +362,14 @@ def main() -> None:
             "session_protocol_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "session_protocol"
+            ),
+            "oidc_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "oidc"
+            ),
+            "oidc_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "oidc"
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)
