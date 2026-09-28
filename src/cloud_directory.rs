@@ -7,6 +7,7 @@
 //! must not disable accounts.
 use crate::{
     agent::Principal,
+    connector_guard::{Pagination, ReviewBinding, plan_content},
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -32,9 +33,6 @@ const MAX_OBJECTS: usize = 2000;
 const MAX_PAGE_BYTES: usize = 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 const SYNC_BUDGET: Duration = Duration::from_secs(30);
-const REVIEW_DISABLE_COUNT: usize = 5;
-const REVIEW_PERCENT: usize = 20;
-const REVIEW_SMALL_PERCENT: usize = 50;
 
 fn graph_scope() -> String {
     "https://graph.microsoft.com/.default".into()
@@ -473,18 +471,20 @@ fn paginate(
     started: Instant,
     mut next_page: impl FnMut(&Value, &Url) -> Result<Option<Url>>,
 ) -> Result<Vec<Value>> {
+    let collection_path = first.path().to_owned();
     let mut url = first;
     let mut items = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut pages = Pagination::new(MAX_PAGES, MAX_OBJECTS);
+    let mut ids = BTreeSet::new();
     let mut total = 0usize;
     for page_index in 0..MAX_PAGES {
         if started.elapsed() > SYNC_BUDGET {
             return Err(unavailable("Cloud directory sync exceeded its time limit"));
         }
-        if !seen.insert(url.to_string()) {
-            return Err(unavailable("Cloud directory pagination did not finish"));
-        }
         let body = get_json(http, token, &url)?;
+        if started.elapsed() > SYNC_BUDGET {
+            return Err(unavailable("Cloud directory sync exceeded its time limit"));
+        }
         total = total.saturating_add(body.to_string().len());
         if total > MAX_TOTAL_BYTES {
             return Err(unavailable("Cloud directory page is too large"));
@@ -523,8 +523,43 @@ fn paginate(
                 "Cloud directory result exceeds the supported size",
             ));
         }
+        let next = next_page(&body, &url)?;
+        if next
+            .as_ref()
+            .is_some_and(|next| next.path() != collection_path)
+        {
+            return Err(unavailable(
+                "Cloud directory pagination changed collection; retry a complete snapshot",
+            ));
+        }
+        let mut reported_total = None;
+        for key in ["@odata.count", "totalResults"] {
+            if let Some(value) = object.get(key) {
+                let count = value
+                    .as_u64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .ok_or_else(|| unavailable("Cloud directory returned an invalid total"))?;
+                if reported_total.is_some_and(|old| old != count) {
+                    return Err(unavailable("Cloud directory returned inconsistent totals"));
+                }
+                reported_total = Some(count);
+            }
+        }
+        for row in &page {
+            let id = row
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| valid_upstream_id(id))
+                .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
+            if !ids.insert(id.to_owned()) {
+                return Err(unavailable(
+                    "Cloud directory repeated an object in its snapshot",
+                ));
+            }
+        }
+        pages.page(url.as_str(), page.len(), reported_total, next.is_some())?;
         items.extend(page);
-        match next_page(&body, &url)? {
+        match next {
             Some(next) => url = next,
             None => return Ok(items),
         }
@@ -887,13 +922,7 @@ pub struct Change {
     pub action: String,
     pub groups: BTreeSet<String>,
 }
-#[derive(schemars::JsonSchema, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct RemovalImpact {
-    pub disabled_users: usize,
-    pub missing_users: usize,
-    pub removed_memberships: usize,
-    pub review_required: bool,
-}
+pub use crate::connector_guard::RemovalImpact;
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 pub struct Plan {
     pub id: String,
@@ -907,6 +936,8 @@ pub struct Plan {
     pub changes: Vec<Change>,
     #[serde(default)]
     pub removal_impact: RemovalImpact,
+    #[serde(default)]
+    pub review: ReviewBinding,
     pub applied: bool,
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -961,19 +992,7 @@ fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Resul
             }
         }
     }
-    let all_users_disabled = active_linked > 0 && impact.disabled_users == active_linked;
-    let large_disable = impact.disabled_users >= REVIEW_DISABLE_COUNT
-        && impact.disabled_users.saturating_mul(100)
-            >= active_linked.saturating_mul(REVIEW_PERCENT)
-        || impact.disabled_users >= 2
-            && impact.disabled_users.saturating_mul(100)
-                >= active_linked.saturating_mul(REVIEW_SMALL_PERCENT);
-    // An absent user can also be caused by an upstream page that ended early.
-    // A successful but truncated member page can omit just one linked member.
-    impact.review_required = impact.missing_users > 0
-        || all_users_disabled
-        || large_disable
-        || impact.removed_memberships > 0;
+    impact.assess(active_linked);
     Ok(impact)
 }
 
@@ -1478,7 +1497,8 @@ impl Core {
             Ok((changes, impact))
         })?;
         self.store.write(|tx| {
-            self.management(tx, token, "directory.sync", &settings.resource())?;
+            let current_actor =
+                self.management(tx, token, "directory.sync", &settings.resource())?;
             if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
                 return Err(Error::conflict(
                     "Local configuration changed during cloud directory search",
@@ -1497,7 +1517,7 @@ impl Core {
                     "At most 16 unexpired cloud directory plans per actor",
                 ));
             }
-            let plan = Plan {
+            let mut plan = Plan {
                 id: crypto::id(),
                 kind: settings.kind.into(),
                 directory: settings.id.clone(),
@@ -1508,8 +1528,12 @@ impl Core {
                 entries,
                 changes,
                 removal_impact: impact,
+                review: ReviewBinding::default(),
                 applied: false,
             };
+            plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
+            plan.review
+                .validate(tx, &current_actor, &plan_content(&plan)?)?;
             tx.put("cloud_directory_plans", &plan.id, &plan)?;
             audit(tx, &actor.id, "cloud_directory.plan", &settings.resource())?;
             Ok(json!(plan))
@@ -1549,6 +1573,7 @@ impl Core {
                 ));
             }
         }
+        let observed_review = plan.review.clone();
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
             let mut plan = tx
@@ -1556,6 +1581,14 @@ impl Core {
                 .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
             if plan.kind != settings.kind || plan.directory != settings.id {
                 return Err(Error::missing("Cloud directory plan not found"));
+            }
+            if actor.id != plan.actor {
+                return Err(Error::forbidden());
+            }
+            if plan.review != observed_review {
+                return Err(Error::conflict(
+                    "Cloud directory plan changed during snapshot validation; create a new plan",
+                ));
             }
             if plan.applied {
                 return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
@@ -1569,17 +1602,14 @@ impl Core {
                     "Cloud directory plan expired or local revision changed",
                 ));
             }
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
             let impact = removal_impact(tx, &settings, &plan.entries)?;
             if impact != plan.removal_impact {
                 return Err(Error::conflict(
                     "Cloud directory removal impact changed; create a new plan",
                 ));
             }
-            if impact.review_required && reviewed_plan != Some(id) {
-                return Err(Error::conflict(
-                    "Cloud directory removals require review and confirmation with the plan ID",
-                ));
-            }
+            plan.review.confirm(id, &impact, reviewed_plan)?;
             let changes = reconcile(tx, &actor, &settings, &plan.entries)?;
             if changes != plan.changes {
                 return Err(Error::conflict(

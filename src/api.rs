@@ -423,11 +423,35 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         };
         use sha2::{Digest, Sha256};
         let mut digest = Sha256::new();
+        let reviewed_removals = parts.headers.contains_key("x-riauth-confirm-removals")
+            || parts
+                .headers
+                .contains_key("x-riauth-confirm-cloud-removals");
+        if reviewed_removals {
+            digest.update(b"riauth-reviewed-removals-v1\0");
+        }
         digest.update(parts.method.as_str());
         digest.update([0]);
         digest.update(parts.uri.to_string());
         digest.update([0]);
+        if reviewed_removals {
+            digest.update((body.len() as u64).to_be_bytes());
+        }
         digest.update(&body);
+        for name in [
+            "x-riauth-confirm-removals",
+            "x-riauth-confirm-cloud-removals",
+        ] {
+            if parts.headers.contains_key(name) {
+                digest.update([0]);
+                digest.update(name.as_bytes());
+                digest.update([0]);
+                for value in parts.headers.get_all(name) {
+                    digest.update(value.as_bytes());
+                    digest.update([0]);
+                }
+            }
+        }
         use std::fmt::Write as _;
         let mut fingerprint = String::with_capacity(64);
         for byte in digest.finalize() {
@@ -2438,14 +2462,49 @@ async fn directory_plan_get(
     app.run(move |core| core.directory_plan_get(&token, &id).map(Json))
         .await
 }
+fn removal_confirmation(headers: &HeaderMap) -> Result<Option<String>> {
+    let mut confirmed = None;
+    for name in [
+        "x-riauth-confirm-removals",
+        "x-riauth-confirm-cloud-removals",
+    ] {
+        let values: Vec<_> = headers.get_all(name).iter().collect();
+        if values.len() > 1 {
+            return Err(Error::bad(
+                "Supply exactly one removal confirmation plan ID per header",
+            ));
+        }
+        if let Some(value) = values.first() {
+            let value = value
+                .to_str()
+                .map_err(|_| Error::bad("Invalid removal confirmation plan ID"))?;
+            if value.is_empty()
+                || value.len() > 128
+                || !value.bytes().all(|b| b.is_ascii_graphic())
+                || confirmed.as_deref().is_some_and(|old| old != value)
+            {
+                return Err(Error::bad(
+                    "Invalid or conflicting removal confirmation plan IDs",
+                ));
+            }
+            confirmed = Some(value.to_owned());
+        }
+    }
+    Ok(confirmed)
+}
+
 async fn directory_apply(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.directory_apply(&token, &id).map(Json))
-        .await
+    let reviewed_plan = removal_confirmation(&headers)?;
+    app.run(move |core| {
+        core.directory_apply_confirmed(&token, &id, reviewed_plan.as_deref())
+            .map(Json)
+    })
+    .await
 }
 async fn workspace_directories(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
@@ -2499,10 +2558,7 @@ async fn workspace_apply(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    let reviewed_plan = headers
-        .get("x-riauth-confirm-cloud-removals")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned);
+    let reviewed_plan = removal_confirmation(&headers)?;
     app.run(move |core| {
         core.cloud_apply_confirmed(&token, "workspace", &id, reviewed_plan.as_deref())
             .map(Json)
@@ -2515,10 +2571,7 @@ async fn entra_apply(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    let reviewed_plan = headers
-        .get("x-riauth-confirm-cloud-removals")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned);
+    let reviewed_plan = removal_confirmation(&headers)?;
     app.run(move |core| {
         core.cloud_apply_confirmed(&token, "entra", &id, reviewed_plan.as_deref())
             .map(Json)
@@ -2550,8 +2603,12 @@ async fn provisioning_apply(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.provisioning_apply(&token, &id).map(Json))
-        .await
+    let reviewed_plan = removal_confirmation(&headers)?;
+    app.run(move |core| {
+        core.provisioning_apply_confirmed(&token, &id, reviewed_plan.as_deref())
+            .map(Json)
+    })
+    .await
 }
 
 fn saml_response(reply: crate::saml::Reply) -> Result<Response> {

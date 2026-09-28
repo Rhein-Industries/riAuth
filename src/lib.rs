@@ -9,6 +9,7 @@ pub mod claims;
 pub mod cli;
 pub mod cloud_directory;
 pub mod config;
+pub mod connector_guard;
 pub mod context;
 pub mod core;
 pub mod crypto;

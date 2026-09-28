@@ -2,6 +2,7 @@
 //! Targets use either a static `token_file` or an OAuth `client_credentials` / `refresh_token` grant.
 use crate::{
     agent::{Agent, Principal},
+    connector_guard::{Pagination, RemovalImpact, ReviewBinding, plan_content},
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -182,6 +183,12 @@ pub struct Plan {
     pub expires_at: u64,
     pub target_fingerprint: String,
     pub resources: Vec<Resource>,
+    #[serde(default)]
+    pub removal_impact: RemovalImpact,
+    #[serde(default)]
+    pub managed_links: BTreeMap<String, String>,
+    #[serde(default)]
+    pub review: ReviewBinding,
 }
 // Bound both a single snapshot and retained un-applied snapshots. Jobs keep
 // their own immutable copy, so replacing a pending plan cannot alter a job.
@@ -203,6 +210,8 @@ struct Job {
     attempts: u32,
     lease: Option<String>,
     error: Option<String>,
+    #[serde(default)]
+    reviewed_removals: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Link {
@@ -249,6 +258,7 @@ fn compact_terminal_job(job: &mut Job) {
     if job.completed || job.stale {
         job.total = job.total.max(job.plan.resources.len());
         job.plan.resources.clear();
+        job.plan.managed_links.clear();
     }
 }
 
@@ -336,7 +346,9 @@ impl Core {
                 return Err(Error::bad("SCIM plan exceeds the total resource limit"));
             }
             let mut resources:Vec<_>=resources.into_values().collect();resources.sort_by(|a,b|(a.kind!="Users",&a.local_id).cmp(&(b.kind!="Users",&b.local_id)));
-            let plan=Plan{id:crypto::id(),target:target_id.into(),actor:actor.id.clone(),revision:tx.get::<u64>("meta","revision")?.unwrap_or(0),expires_at:now()+3600,target_fingerprint:target.fingerprint()?,resources};
+            let removal_impact = provisioning_impact(tx, target_id, &resources)?;
+            let mut plan=Plan{id:crypto::id(),target:target_id.into(),actor:actor.id.clone(),revision:tx.get::<u64>("meta","revision")?.unwrap_or(0),expires_at:now()+3600,target_fingerprint:target.fingerprint()?,resources,removal_impact,managed_links:managed_links(tx,target_id)?,review:ReviewBinding::default()};
+            plan.review=ReviewBinding::new(tx, &actor,&plan_content(&plan)?)?;
             let plan_bytes = serde_json::to_vec(&plan).map_err(Error::internal)?.len();
             if plan_bytes > MAX_PLAN_BYTES {
                 return Err(Error::bad("SCIM plan exceeds the serialized size limit"));
@@ -370,6 +382,14 @@ impl Core {
         })
     }
     pub fn provisioning_apply(&self, token: &str, id: &str) -> Result<Value> {
+        self.provisioning_apply_confirmed(token, id, None)
+    }
+    pub fn provisioning_apply_confirmed(
+        &self,
+        token: &str,
+        id: &str,
+        reviewed_plan: Option<&str>,
+    ) -> Result<Value> {
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             // A completed job remains an idempotent apply result even after
@@ -404,6 +424,19 @@ impl Core {
                     "Provisioning plan expired or configuration changed",
                 ));
             }
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
+            if managed_links(tx, &plan.target)? != plan.managed_links {
+                return Err(Error::conflict(
+                    "SCIM managed snapshot changed; create a new plan",
+                ));
+            }
+            let impact = provisioning_impact(tx, &plan.target, &plan.resources)?;
+            if impact != plan.removal_impact {
+                return Err(Error::conflict(
+                    "SCIM removal impact changed; create a new plan",
+                ));
+            }
+            plan.review.confirm(id, &impact, reviewed_plan)?;
             for (_, job) in tx.list::<Job>("provisioning_jobs")? {
                 if job.plan.target == plan.target && !job.completed && !job.stale {
                     return Err(Error::conflict(
@@ -421,6 +454,7 @@ impl Core {
                 attempts: 0,
                 lease: None,
                 error: None,
+                reviewed_removals: reviewed_plan == Some(id),
             };
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
@@ -447,7 +481,11 @@ impl Core {
         self.store.write(|tx|{
             for (id,mut job) in tx.due::<Job>("provisioning_jobs", now(), 16)? {
                 if job.completed || job.stale || job.next_attempt>now(){continue;}
-                let permitted=actor(tx,&job.plan.actor).and_then(|a|a.require("provisioner.sync",&format!("provisioner/{}",job.plan.target))).is_ok();
+                let permitted=actor(tx,&job.plan.actor).and_then(|a| {
+                    a.require("provisioner.sync",&format!("provisioner/{}",job.plan.target))?;
+                    job.plan.review.validate(tx, &a,&plan_content(&job.plan)?)?;
+                    job.plan.review.confirm(&job.plan.id,&job.plan.removal_impact,if job.reviewed_removals {Some(&job.plan.id)} else {None})
+                }).is_ok();
                 if !permitted || job.plan.revision!=tx.get::<u64>("meta","revision")?.unwrap_or(0) || self.config.scim_targets.get(&job.plan.target).is_none_or(|t|t.fingerprint().ok().as_ref()!=Some(&job.plan.target_fingerprint)) || job.plan.expires_at+86400<now() {
                     job.stale=true;job.error=Some("Plan authority or source configuration changed; inspect partial results and create a new plan".into());compact_terminal_job(&mut job);tx.put("provisioning_jobs",&id,&job)?;continue;
                 }
@@ -508,11 +546,22 @@ impl Core {
                     .header("accept", "application/scim+json")
             })?;
             let (found, _) = scim_json(response)?;
+            validate_lookup(&found)?;
             let remote = scim_lookup(&found, &external_id)?;
-            let known = self.store.get::<Link>(
-                "provisioning_links",
-                &link_key(&job.plan.target, &resource.kind, &resource.local_id),
-            )?;
+            let key = link_key(&job.plan.target, &resource.kind, &resource.local_id);
+            let known = self.store.get::<Link>("provisioning_links", &key)?;
+            // Bind every outcome, including "already equal" and "absent", to the
+            // reviewed managed link: those outcomes advance the cursor and
+            // overwrite the link without dispatching a reviewed change.
+            let observed = known
+                .as_ref()
+                .map(crate::connector_guard::hash)
+                .transpose()?;
+            if job.plan.managed_links.get(&key) != observed.as_ref() {
+                return Err(Error::conflict(
+                    "SCIM managed binding changed after review; create a new plan",
+                ));
+            }
             let remote_id = if let Some(id) = remote {
                 if known.as_ref().is_some_and(|l| l.remote_id != id) {
                     return Err(Error::conflict(
@@ -532,13 +581,24 @@ impl Core {
                 if current["externalId"] != external_id || current["id"] != id {
                     return Err(Error::conflict("Remote account binding changed"));
                 }
+                let membership_at_stake =
+                    membership_at_stake(&resource.kind, &body, known.as_ref())?;
                 let equal = body
                     .as_object()
                     .unwrap()
                     .iter()
                     .filter(|(key, _)| key.as_str() != "schemas")
                     .all(|(key, value)| managed_member_equal(key, value, current.get(key)));
+                // An omitted, null or paginated remote members field must not
+                // count as equal to a desired empty group while managed members
+                // could still be present remotely.
+                if !equal || membership_at_stake {
+                    validate_remote_removals(&resource.kind, &body, &current, known.as_ref())?;
+                }
                 if !equal {
+                    // Check live authority/lease after the remote reads, immediately
+                    // before dispatch. Accepted remote writes cannot be rolled back.
+                    self.validate_dispatch(&job)?;
                     let etag = etag
                         .or_else(|| current["meta"]["version"].as_str().map(String::from))
                         .ok_or_else(|| {
@@ -586,22 +646,24 @@ impl Core {
                     if updated["id"] != id
                         || updated["externalId"] != external_id
                         || !managed_equal(&body, &updated)
+                        || membership_at_stake && member_values(&updated)? != member_values(&body)?
                     {
                         return Err(remote_error());
                     }
                 }
                 id.to_owned()
             } else {
+                if known.is_some() {
+                    return Err(Error::conflict(
+                        "Linked remote account is missing; inspect the complete remote snapshot before replanning",
+                    ));
+                }
                 if body["active"] == false
                     || resource.kind == "Groups" && resource.member_ids.is_empty()
                 {
                     return Ok(None);
                 }
-                if known.is_some() {
-                    return Err(Error::conflict(
-                        "Linked remote account is missing; review before recreating it",
-                    ));
-                }
+                self.validate_dispatch(&job)?;
                 let response =
                     authorized(self, &job.plan.target, &target, &http, |http, token| {
                         http.post(&url)
@@ -645,13 +707,37 @@ impl Core {
                     .filter(|j| j.lease == job.lease)
                 {
                     current.lease = None;
-                    current.error = Some(error.code.into());
+                    current.error = Some(
+                        if error.code == "conflict" || error.code == "connector_incomplete_snapshot"
+                        {
+                            format!("{}: {}", error.code, error.message)
+                        } else {
+                            error.code.into()
+                        },
+                    );
                     current.next_attempt = now() + 2u64.pow(current.attempts.min(12)).min(3600);
                     tx.put("provisioning_jobs", &job.plan.id, &current)?;
                 }
                 Ok(())
             }),
         }
+    }
+    fn validate_dispatch(&self, job: &Job) -> Result<()> {
+        self.store.read(|tx| {
+            let current = tx.get::<Job>("provisioning_jobs", &job.plan.id)?
+                .ok_or_else(Error::forbidden)?;
+            let actor = actor(tx, &job.plan.actor)?;
+            actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
+            job.plan.review.validate(tx, &actor, &plan_content(&job.plan)?)?;
+            if current.lease != job.lease || current.stale || current.completed
+                || current.next_attempt <= now()
+                || current.plan.review != job.plan.review
+                || job.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                || self.config.scim_targets.get(&job.plan.target).is_none_or(|t|t.fingerprint().ok().as_ref()!=Some(&job.plan.target_fingerprint)) {
+                return Err(Error::conflict("SCIM delivery authority, lease or source changed; inspect partial results and replan"));
+            }
+            Ok(())
+        })
     }
     fn finish_provisioning(&self, job: &mut Job, link: Option<Link>) -> Result<()> {
         self.store.write(|tx|{
@@ -668,6 +754,159 @@ impl Core {
         })
     }
 }
+fn managed_links(tx: &Tx<'_>, target: &str) -> Result<BTreeMap<String, String>> {
+    tx.list::<Link>("provisioning_links")?
+        .into_iter()
+        .filter(|(_, link)| link.target == target)
+        .map(|(key, link)| Ok((key, crate::connector_guard::hash(&link)?)))
+        .collect()
+}
+
+fn provisioning_impact(tx: &Tx<'_>, target: &str, resources: &[Resource]) -> Result<RemovalImpact> {
+    let links: Vec<Link> = tx
+        .list::<Link>("provisioning_links")?
+        .into_iter()
+        .map(|(_, link)| link)
+        .filter(|link| link.target == target)
+        .collect();
+    let mut impact = RemovalImpact::default();
+    let mut active = 0;
+    for link in &links {
+        let desired = resources
+            .iter()
+            .find(|r| r.kind == link.kind && r.local_id == link.local_id)
+            .ok_or_else(|| {
+                Error::conflict("SCIM plan omitted a linked resource; create a new plan")
+            })?;
+        if link.kind == "Users" && link.body["active"] == true {
+            active += 1;
+            if desired.body["active"] == false {
+                impact.disabled_users += 1;
+            }
+        } else if link.kind == "Groups" {
+            let old = member_values(&link.body)?;
+            let desired_ids: BTreeSet<_> = desired
+                .member_ids
+                .iter()
+                .filter_map(|id| {
+                    links
+                        .iter()
+                        .find(|l| l.kind == "Users" && &l.local_id == id)
+                        .map(|l| l.remote_id.clone())
+                })
+                .collect();
+            impact.removed_memberships += old.difference(&desired_ids).count();
+        }
+    }
+    impact.assess(active);
+    Ok(impact)
+}
+fn validate_lookup(body: &Value) -> Result<()> {
+    if body.get("error").is_some()
+        || body.get("nextLink").is_some()
+        || body.get("@odata.nextLink").is_some()
+    {
+        return Err(Error::conflict(
+            "SCIM lookup is incomplete; require a complete filtered result",
+        ));
+    }
+    let list = body["Resources"].as_array().ok_or_else(remote_error)?;
+    let total = body["totalResults"]
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(remote_error)?;
+    if body
+        .get("startIndex")
+        .is_some_and(|n| n.as_u64() != Some(1))
+        || body
+            .get("itemsPerPage")
+            .is_some_and(|n| n.as_u64() != Some(list.len() as u64))
+    {
+        return Err(Error::conflict(
+            "SCIM lookup has inconsistent page metadata; no changes were dispatched",
+        ));
+    }
+    Pagination::new(1, 2).page("filtered", list.len(), Some(total), false)
+}
+fn member_values(body: &Value) -> Result<BTreeSet<String>> {
+    let rows=body.get("members").and_then(Value::as_array)
+        .ok_or_else(||Error::conflict("SCIM group members are missing or malformed; require an explicit complete members array before replacing membership"))?;
+    if rows.len() > 2000
+        || body.get("members.totalResults").is_some()
+        || body.get("membersNextLink").is_some()
+        || body.get("@odata.nextLink").is_some()
+    {
+        return Err(Error::conflict(
+            "SCIM group membership is incomplete or too large; no replacement was dispatched",
+        ));
+    }
+    let mut members = BTreeSet::new();
+    for row in rows {
+        let id = row["value"]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control))
+            .ok_or_else(|| {
+                Error::conflict(
+                    "SCIM group contains a malformed member; no replacement was dispatched",
+                )
+            })?;
+        if !members.insert(id.to_owned()) {
+            return Err(Error::conflict(
+                "SCIM group contains repeated members; no replacement was dispatched",
+            ));
+        }
+    }
+    Ok(members)
+}
+/// A group needs explicit complete remote membership before equality or a
+/// replacement is accepted whenever a reviewed managed member or a desired
+/// member exists. Only a group that was and remains managed-empty may rely on
+/// SCIM's omission of empty multi-valued attributes.
+fn membership_at_stake(kind: &str, desired: &Value, known: Option<&Link>) -> Result<bool> {
+    if kind != "Groups" {
+        return Ok(false);
+    }
+    let managed = known
+        .map(|link| member_values(&link.body))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(!managed.is_empty() || !member_values(desired)?.is_empty())
+}
+fn validate_remote_removals(
+    kind: &str,
+    desired: &Value,
+    current: &Value,
+    known: Option<&Link>,
+) -> Result<()> {
+    if current.get("error").is_some() {
+        return Err(remote_error());
+    }
+    if kind == "Users" && desired["active"] == false && !current["active"].is_boolean() {
+        return Err(Error::conflict(
+            "SCIM active state is missing or malformed; no disable was dispatched",
+        ));
+    }
+    if kind == "Groups" {
+        let old = member_values(current)?;
+        let next = member_values(desired)?;
+        let managed = known
+            .map(|link| member_values(&link.body))
+            .transpose()?
+            .unwrap_or_default();
+        if managed.intersection(&next).any(|id| !old.contains(id)) {
+            return Err(Error::conflict(
+                "SCIM snapshot omitted retained managed members; require a complete remote snapshot before replacing membership",
+            ));
+        }
+        if old.difference(&next).any(|id| !managed.contains(id)) {
+            return Err(Error::conflict(
+                "SCIM snapshot would remove members outside the reviewed managed snapshot; inspect remote drift before replanning",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_oauth(oauth: &Oauth) -> Result<()> {
     crate::config::validate_server_url(&oauth.token_url)
         .map_err(|_| Error::bad("SCIM OAuth token URL must be canonical HTTPS or HTTP loopback"))?;
@@ -1183,7 +1422,7 @@ pub(crate) fn fuzz_scim_response(bytes: &[u8]) {
         return;
     }
     if let Ok(found) = parse_scim_body(bytes) {
-        let _ = scim_lookup(&found, "fuzz-external");
+        let _ = validate_lookup(&found).and_then(|_| scim_lookup(&found, "fuzz-external"));
     }
 }
 
@@ -1262,7 +1501,7 @@ fn managed_member_equal(key: &str, expected: &Value, actual: Option<&Value>) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{managed_equal, parse_scim_body, scim_lookup};
+    use super::{Link, managed_equal, parse_scim_body, scim_lookup, validate_remote_removals};
     use serde_json::json;
 
     #[test]
@@ -1280,7 +1519,6 @@ mod tests {
             &json!({"id":"group-1"})
         ));
     }
-
     #[test]
     fn outbound_response_parser_keeps_remote_identity_bound() {
         assert!(
@@ -1319,5 +1557,38 @@ mod tests {
         ] {
             assert!(scim_lookup(&invalid, "fuzz-external").is_err(), "{invalid}");
         }
+    }
+
+    #[test]
+    fn scim_membership_replacements_need_complete_reviewed_managed_members() {
+        let desired = json!({"members":[]});
+        let known = Link {
+            target: "t".into(),
+            url: "http://127.0.0.1:9".into(),
+            kind: "Groups".into(),
+            local_id: "staff".into(),
+            remote_id: "g".into(),
+            external_id: "x".into(),
+            body: json!({"members":[{"value":"managed"}]}),
+        };
+        for current in [
+            json!({}),
+            json!({"members":null}),
+            json!({"members":[{}]}),
+            json!({"members":[{"value":"managed"},{"value":"managed"}]}),
+            json!({"members":[{"value":"unreviewed"}]}),
+            json!({"members":[],"membersNextLink":"next"}),
+        ] {
+            assert!(
+                validate_remote_removals("Groups", &desired, &current, Some(&known)).is_err(),
+                "{current}"
+            );
+        }
+        assert!(
+            validate_remote_removals("Groups", &known.body, &json!({"members":[]}), Some(&known))
+                .is_err()
+        );
+        assert!(validate_remote_removals("Groups", &desired, &known.body, Some(&known)).is_ok());
+        assert!(validate_remote_removals("Groups", &desired, &known.body, None).is_err());
     }
 }

@@ -53,3 +53,5 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | Signals and administration | [Shared Signals](enterprise/ENT-07.md), [audit review](enterprise/ENT-09.md), [Windows device-login protocol](enterprise/ENT-13.md), [Events Map](enterprise/ENT-14.md), [CSV export](enterprise/ENT-15.md), [deployment alert routing](enterprise/PLATFORM-04.md) |
 
 SAML XML handling uses Rhein Industries' maintained [risaml](https://github.com/Rhein-Industries/risaml), [ribergshamra](https://github.com/Rhein-Industries/ribergshamra), [ritsp-ltv](https://github.com/Rhein-Industries/ritsp-ltv), and [riptering](https://github.com/Rhein-Industries/riptering) forks. Their source and licenses are documented in [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+[Connector removal safeguards](removal-safeguards.md) describes snapshot validation, thresholds and exact-plan confirmation.

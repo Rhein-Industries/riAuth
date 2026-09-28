@@ -275,7 +275,9 @@ fn openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync() {
     ldap.delete(renamed).unwrap().success().unwrap();
     let plan = core.directory_plan(&admin, "staff").unwrap();
     assert_eq!(plan["changes"][0]["action"], "disable");
-    core.directory_apply(&admin, &text(&plan, "id")).unwrap();
+    assert!(core.directory_apply(&admin, &text(&plan, "id")).is_err());
+    core.directory_apply_confirmed(&admin, &text(&plan, "id"), Some(&text(&plan, "id")))
+        .unwrap();
     assert!(
         !core
             .store

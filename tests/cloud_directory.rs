@@ -52,6 +52,12 @@ enum Mode {
     NullMembers,
     MemberWithoutId,
     TruncatedMembers,
+    RepeatPage,
+    RepeatRows,
+    WrongCollection,
+    MissingLastPage,
+    ChangedTotal,
+    InvalidTotal,
 }
 
 struct State {
@@ -376,7 +382,39 @@ fn users(state: &State, page: usize) -> (u16, String) {
     } else {
         Some(format!("{base}/v1.0/users?$skiptoken=users-2"))
     };
-    (200, render_users(state.kind, &shown, next))
+    let next = if mode == Mode::RepeatPage && page == 1 {
+        if state.kind == "workspace" {
+            Some("users-2".into())
+        } else {
+            Some(format!("{base}/v1.0/users?$skiptoken=users-2"))
+        }
+    } else if mode == Mode::WrongCollection && state.kind == "entra" {
+        Some(format!("{base}/v1.0/groups?$skiptoken=users-2"))
+    } else {
+        next
+    };
+    let shown = if mode == Mode::RepeatRows && page == 1 {
+        vec![people[0].clone()]
+    } else {
+        shown
+    };
+    let mut body: Value = serde_json::from_str(&render_users(state.kind, &shown, next)).unwrap();
+    if matches!(
+        mode,
+        Mode::MissingLastPage | Mode::ChangedTotal | Mode::InvalidTotal
+    ) {
+        body["@odata.count"] = if mode == Mode::InvalidTotal {
+            json!("2")
+        } else {
+            json!(
+                people.len()
+                    + usize::from(
+                        mode == Mode::MissingLastPage || mode == Mode::ChangedTotal && page == 1
+                    )
+            )
+        };
+    }
+    (200, body.to_string())
 }
 
 fn render_users(kind: &str, people: &[Person], next: Option<String>) -> String {
@@ -1638,6 +1676,77 @@ fn cloud_disable_and_removal_revoke_children_permanently_and_signal_once() {
             apply(&f);
             assert_eq!(user_named(&users_of(&f), "alice").unwrap()["enabled"], true);
             children.assert_revoked_after_reenable(&f);
+        }
+    }
+}
+
+#[test]
+fn repeated_pages_and_inconsistent_totals_cannot_plan_or_apply_removals() {
+    for kind in ["workspace", "entra"] {
+        let directory = serve(
+            kind,
+            vec![
+                person("ext-a", "a@example.test", "A", true),
+                person("ext-b", "b@example.test", "B", true),
+            ],
+            SECRET,
+        );
+        let mut f = Fixture::new();
+        configure(&mut f, kind, "corp", &directory, "");
+        f.core.create_group(&f.admin, "staff").unwrap();
+        let initial = f.core.cloud_plan(&f.admin, kind, "corp").unwrap();
+        f.core
+            .cloud_apply(&f.admin, kind, initial["id"].as_str().unwrap())
+            .unwrap();
+        let reviewed = f.core.cloud_plan(&f.admin, kind, "corp").unwrap();
+        let users = users_of(&f);
+        let members = group_members(&f, "staff");
+        for mode in [
+            Mode::RepeatPage,
+            Mode::RepeatRows,
+            Mode::MissingLastPage,
+            Mode::ChangedTotal,
+            Mode::InvalidTotal,
+        ] {
+            *directory.state.mode.lock().unwrap() = mode;
+            assert!(
+                f.core.cloud_plan(&f.admin, kind, "corp").is_err(),
+                "{kind}/{mode:?}"
+            );
+            assert!(
+                f.core
+                    .cloud_apply_confirmed(
+                        &f.admin,
+                        kind,
+                        reviewed["id"].as_str().unwrap(),
+                        reviewed["id"].as_str()
+                    )
+                    .is_err(),
+                "{kind}/{mode:?}"
+            );
+            assert_eq!(users_of(&f), users);
+            assert_eq!(group_members(&f, "staff"), members);
+            assert_eq!(
+                f.core
+                    .cloud_plan_get(&f.admin, kind, reviewed["id"].as_str().unwrap())
+                    .unwrap()["applied"],
+                false
+            );
+            // Fetch attempts are deliberately throttled, so reset only that local test counter.
+            f.core
+                .store
+                .write(|tx| {
+                    for (id, _) in tx.list::<Value>("cloud_directory_runs")? {
+                        tx.delete("cloud_directory_runs", &id)?;
+                    }
+                    Ok(())
+                })
+                .unwrap();
+        }
+        if kind == "entra" {
+            *directory.state.mode.lock().unwrap() = Mode::WrongCollection;
+            assert!(f.core.cloud_plan(&f.admin, kind, "corp").is_err());
+            assert_eq!(users_of(&f), users);
         }
     }
 }

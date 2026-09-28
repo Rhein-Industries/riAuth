@@ -1,6 +1,7 @@
 //! Bounded LDAP import plans and online LDAP password authentication.
 use crate::{
     agent::Principal,
+    connector_guard::{Pagination, RemovalImpact, ReviewBinding, plan_content},
     core::{Core, Delivery, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -9,6 +10,7 @@ use crate::{
     store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use ldap3::controls::{MakeCritical, PagedResults};
 use ldap3::{LdapConn, LdapConnSettings, Scope, SearchEntry, SearchOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -293,7 +295,7 @@ fn unavailable() -> Error {
     Error::new(
         axum::http::StatusCode::SERVICE_UNAVAILABLE,
         "directory_unavailable",
-        "LDAP operation failed or did not return a complete result",
+        "LDAP operation failed or did not return a complete result; verify bind credentials and paged-results support, then retry the complete snapshot",
     )
 }
 fn search(
@@ -306,46 +308,128 @@ fn search(
     if started.elapsed() > Duration::from_secs(30) {
         return Err(unavailable());
     }
-    conn.with_timeout(STEP_TIMEOUT)
-        .with_search_options(SearchOptions::new().timelimit(5).sizelimit(2001));
-    let mut stream = conn
-        .streaming_search_with(
-            ldap3::adapters::PagedResults::new(200),
-            base,
-            Scope::Subtree,
-            filter,
-            attrs,
-        )
-        .map_err(|_| unavailable())?;
     let mut rows = Vec::new();
-    let mut bytes = 0;
-    while let Some(entry) = stream.next().map_err(|_| unavailable())? {
-        if entry.is_ref() || started.elapsed() > Duration::from_secs(30) || rows.len() >= 2000 {
+    let mut bytes = 0usize;
+    let mut cookie = Vec::new();
+    let mut pages = Pagination::new(20, 2000);
+    let mut dns = BTreeSet::new();
+    loop {
+        if started.elapsed() > Duration::from_secs(30) {
             return Err(unavailable());
         }
-        let entry = SearchEntry::construct(entry);
-        bytes += entry.dn.len()
-            + entry
-                .attrs
-                .iter()
-                .map(|(k, v)| k.len() + v.iter().map(String::len).sum::<usize>())
-                .sum::<usize>()
-            + entry
-                .bin_attrs
-                .iter()
-                .map(|(k, v)| k.len() + v.iter().map(Vec::len).sum::<usize>())
-                .sum::<usize>();
-        if bytes > 4 * 1024 * 1024 || entry.dn.is_empty() || entry.dn.len() > 2048 {
+        conn.with_timeout(STEP_TIMEOUT)
+            .with_search_options(SearchOptions::new().timelimit(5).sizelimit(2001))
+            .with_controls(
+                PagedResults {
+                    size: 200,
+                    cookie: cookie.clone(),
+                }
+                .critical(),
+            );
+        let mut stream = conn
+            .streaming_search(base, Scope::Subtree, filter, attrs.clone())
+            .map_err(|_| unavailable())?;
+        let before = rows.len();
+        while let Some(entry) = stream.next().map_err(|_| unavailable())? {
+            if entry.is_ref() || started.elapsed() > Duration::from_secs(30) || rows.len() >= 2000 {
+                return Err(unavailable());
+            }
+            let entry = SearchEntry::construct(entry);
+            bytes = bytes.saturating_add(
+                entry.dn.len()
+                    + entry
+                        .attrs
+                        .iter()
+                        .map(|(k, v)| k.len() + v.iter().map(String::len).sum::<usize>())
+                        .sum::<usize>()
+                    + entry
+                        .bin_attrs
+                        .iter()
+                        .map(|(k, v)| k.len() + v.iter().map(Vec::len).sum::<usize>())
+                        .sum::<usize>(),
+            );
+            if bytes > 4 * 1024 * 1024
+                || entry.dn.is_empty()
+                || entry.dn.len() > 2048
+                || !dns.insert(entry.dn.clone())
+            {
+                return Err(unavailable());
+            }
+            rows.push(entry);
+        }
+        let result = stream.result().success().map_err(|_| unavailable())?;
+        if !result.refs.is_empty() || started.elapsed() > Duration::from_secs(30) {
             return Err(unavailable());
         }
-        rows.push(entry);
+        let controls: Vec<_> = result
+            .ctrls
+            .iter()
+            .filter(|c| c.1.ctype == "1.2.840.113556.1.4.319")
+            .collect();
+        if controls.len() != 1 {
+            return Err(unavailable());
+        }
+        // ldap3's control parser panics on malformed BER; parse this small,
+        // untrusted control fallibly. Its count is an estimate, not an exact total.
+        let next = page_cookie(controls[0].1.val.as_deref().ok_or_else(unavailable)?)?;
+        pages.page(
+            &URL_SAFE_NO_PAD.encode(&cookie),
+            rows.len() - before,
+            None,
+            !next.is_empty(),
+        )?;
+        if next.is_empty() {
+            return Ok(rows);
+        }
+        cookie = next;
     }
-    let result = stream.result().success().map_err(|_| unavailable())?;
-    if !result.refs.is_empty() {
+}
+fn page_cookie(bytes: &[u8]) -> Result<Vec<u8>> {
+    fn tlv<'a>(input: &mut &'a [u8], tag: u8) -> Result<&'a [u8]> {
+        if input.len() < 2 || input[0] != tag {
+            return Err(unavailable());
+        }
+        let first = input[1];
+        *input = &input[2..];
+        let length = if first < 128 {
+            first as usize
+        } else {
+            let n = (first & 127) as usize;
+            if n == 0 || n > 4 || input.len() < n {
+                return Err(unavailable());
+            }
+            let length = input[..n]
+                .iter()
+                .fold(0usize, |a, b| (a << 8) | *b as usize);
+            *input = &input[n..];
+            length
+        };
+        if length > input.len() {
+            return Err(unavailable());
+        }
+        let value = &input[..length];
+        *input = &input[length..];
+        Ok(value)
+    }
+    if bytes.len() > 4096 {
         return Err(unavailable());
     }
-    Ok(rows)
+    let mut input = bytes;
+    let mut sequence = tlv(&mut input, 0x30)?;
+    if !input.is_empty() {
+        return Err(unavailable());
+    }
+    let size = tlv(&mut sequence, 0x02)?;
+    if size.is_empty() || size.len() > 4 || size[0] & 128 != 0 {
+        return Err(unavailable());
+    }
+    let cookie = tlv(&mut sequence, 0x04)?;
+    if !sequence.is_empty() || cookie.len() > 2048 {
+        return Err(unavailable());
+    }
+    Ok(cookie.to_vec())
 }
+
 fn attr_bytes(entry: &SearchEntry, name: &str) -> Result<Option<Vec<u8>>> {
     let mut values: Vec<Vec<u8>> = Vec::new();
     for (key, items) in &entry.attrs {
@@ -422,6 +506,10 @@ pub struct Plan {
     pub fingerprint: String,
     pub entries: Vec<Entry>,
     pub changes: Vec<Change>,
+    #[serde(default)]
+    pub removal_impact: RemovalImpact,
+    #[serde(default)]
+    pub review: ReviewBinding,
     pub applied: bool,
 }
 #[derive(Serialize, Deserialize, Default)]
@@ -465,11 +553,13 @@ impl Core {
             Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
         })?;
         let snapshot = directory.snapshot()?;
-        let changes = self
-            .store
-            .preview(|tx| reconcile(tx, &actor, id, directory, &snapshot))?;
+        let (changes, impact) = self.store.preview(|tx| {
+            let impact = removal_impact(tx, id, &snapshot.users)?;
+            Ok((reconcile(tx, &actor, id, directory, &snapshot)?, impact))
+        })?;
         self.store.write(|tx| {
-            self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
+            let current_actor =
+                self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
             if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
                 return Err(Error::conflict(
                     "Local configuration changed during LDAP search",
@@ -484,7 +574,7 @@ impl Core {
             {
                 return Err(Error::conflict("At most 16 unexpired LDAP plans per actor"));
             }
-            let plan = Plan {
+            let mut plan = Plan {
                 id: crypto::id(),
                 directory: id.into(),
                 actor: actor.id.clone(),
@@ -493,14 +583,27 @@ impl Core {
                 fingerprint: directory.fingerprint()?,
                 entries: snapshot.users,
                 changes,
+                removal_impact: impact,
+                review: ReviewBinding::default(),
                 applied: false,
             };
+            plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
+            plan.review
+                .validate(tx, &current_actor, &plan_content(&plan)?)?;
             tx.put("directory_plans", &plan.id, &plan)?;
             audit(tx, &actor.id, "directory.plan", id)?;
             Ok(json!(plan))
         })
     }
     pub fn directory_apply(&self, token: &str, id: &str) -> Result<Value> {
+        self.directory_apply_confirmed(token, id, None)
+    }
+    pub fn directory_apply_confirmed(
+        &self,
+        token: &str,
+        id: &str,
+        reviewed_plan: Option<&str>,
+    ) -> Result<Value> {
         let plan: Plan =
             serde_json::from_value(self.directory_plan_get(token, id)?).map_err(Error::internal)?;
         let directory = self
@@ -528,6 +631,8 @@ impl Core {
                 ));
             }
         }
+        let observed_review = plan.review.clone();
+        let planned_directory = plan.directory.clone();
         self.mutation(token, |tx| {
             let actor = self.management(
                 tx,
@@ -538,16 +643,33 @@ impl Core {
             let mut plan = tx
                 .get::<Plan>("directory_plans", id)?
                 .ok_or_else(|| Error::missing("LDAP plan not found"))?;
+            if actor.id != plan.actor {
+                return Err(Error::forbidden());
+            }
+            if plan.directory != planned_directory || plan.review != observed_review {
+                return Err(Error::conflict(
+                    "LDAP plan directory changed; create a new plan",
+                ));
+            }
             if plan.applied {
                 return Ok(json!({"id":id,"applied":true,"changes":plan.changes}));
             }
             if plan.expires_at <= now()
                 || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                || plan.fingerprint != directory.fingerprint()?
             {
                 return Err(Error::conflict(
                     "LDAP plan expired or local revision changed",
                 ));
             }
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
+            let impact = removal_impact(tx, &plan.directory, &plan.entries)?;
+            if impact != plan.removal_impact {
+                return Err(Error::conflict(
+                    "LDAP removal impact changed; create a new plan",
+                ));
+            }
+            plan.review.confirm(id, &impact, reviewed_plan)?;
             let changes = reconcile(
                 tx,
                 &actor,
@@ -690,6 +812,44 @@ impl Core {
             audit(tx,&user.id,"directory.login_succeeded",&session.id)?;Ok(Ok(Some(json!({"session_token":token,"expires_at":session.expires_at,"user":UserView::from(&user)}))))
         })?
     }
+}
+
+fn removal_impact(tx: &Tx<'_>, directory: &str, entries: &[Entry]) -> Result<RemovalImpact> {
+    let entries: BTreeMap<_, _> = entries
+        .iter()
+        .map(|e| (e.external_id.as_str(), e))
+        .collect();
+    let mut active = 0;
+    let mut impact = RemovalImpact::default();
+    for (_, binding) in tx.list::<Binding>("directory_bindings")? {
+        if binding.directory != directory {
+            continue;
+        }
+        let user = tx
+            .get::<User>("users", &binding.user_id)?
+            .ok_or_else(|| Error::conflict("LDAP owned user is missing"))?;
+        let desired = entries.get(binding.external_id.as_str());
+        if desired.is_none() {
+            impact.missing_users += 1;
+        }
+        if user.enabled {
+            active += 1;
+            if desired.is_none() {
+                impact.disabled_users += 1;
+            }
+        }
+        for group in &binding.groups {
+            if desired.is_none_or(|e| !e.groups.contains(group))
+                && tx
+                    .get::<Group>("groups", group)?
+                    .is_some_and(|g| g.members.contains(&user.id))
+            {
+                impact.removed_memberships += 1;
+            }
+        }
+    }
+    impact.assess(active);
+    Ok(impact)
 }
 
 fn reconcile(

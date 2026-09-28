@@ -181,7 +181,9 @@ impl Remote {
             req = req.header("x-riauth-run-id", run_id);
         }
         if let Some(plan_id) = reviewed_plan {
-            req = req.header("x-riauth-confirm-cloud-removals", plan_id);
+            req = req
+                .header("x-riauth-confirm-cloud-removals", plan_id)
+                .header("x-riauth-confirm-removals", plan_id);
         }
         if mutation {
             if let Some(key) = &self.idempotency_key {

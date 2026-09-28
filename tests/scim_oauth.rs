@@ -64,6 +64,19 @@ struct ScimState {
     patch_no_content: Arc<AtomicBool>,
     patch_error_after_apply_once: Arc<AtomicBool>,
     patch_hits: Arc<AtomicUsize>,
+    lookup_override: Arc<Mutex<Option<Value>>>,
+    groups: Arc<Mutex<Vec<Value>>>,
+    // Replaces the members-related fields of a single-resource GET for a group.
+    group_read_override: Arc<Mutex<Option<Value>>>,
+}
+impl ScimState {
+    fn collection(&self, kind: &str) -> Option<&Arc<Mutex<Vec<Value>>>> {
+        match kind {
+            "Users" => Some(&self.users),
+            "Groups" => Some(&self.groups),
+            _ => None,
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -102,7 +115,10 @@ async fn ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link()
         .provisioning_apply(&agent, &text(&plan, "id"))
         .unwrap();
     step(&f.core).await;
-    assert_eq!(job_error(&f, &agent), "conflict");
+    assert_eq!(
+        job_error(&f, &agent),
+        "conflict: Remote external identity is ambiguous; refusing to choose an account"
+    );
     assert_eq!(scim.hits.load(Ordering::SeqCst), 1);
     assert_eq!(
         scim.seen.lock().unwrap().as_slice(),
@@ -1202,6 +1218,9 @@ fn scim_state() -> ScimState {
         patch_no_content: Arc::new(AtomicBool::new(false)),
         patch_error_after_apply_once: Arc::new(AtomicBool::new(false)),
         patch_hits: Arc::new(AtomicUsize::new(0)),
+        lookup_override: Arc::new(Mutex::new(None)),
+        groups: Arc::new(Mutex::new(Vec::new())),
+        group_read_override: Arc::new(Mutex::new(None)),
     }
 }
 
@@ -1227,8 +1246,8 @@ async fn serve(tokens: &TokenState, scim: &ScimState) -> (Servers, String, Strin
         .route("/oauth/metadata", get(token_metadata))
         .with_state(tokens.clone());
     let scim_app = Router::new()
-        .route("/scim/v2/Users", get(list_users).post(create_user))
-        .route("/scim/v2/Users/{id}", get(get_user).patch(patch_user))
+        .route("/scim/v2/{kind}", get(list_users).post(create_user))
+        .route("/scim/v2/{kind}/{id}", get(get_user).patch(patch_user))
         .with_state(scim.clone());
     let token_task = tokio::spawn(async move {
         axum::serve(token_listener, token_app).await.unwrap();
@@ -1317,6 +1336,7 @@ async fn token_metadata(State(state): State<TokenState>) -> Response {
 
 async fn list_users(
     State(state): State<ScimState>,
+    Path(kind): Path<String>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
@@ -1324,11 +1344,17 @@ async fn list_users(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     if let Some(response) = state.list_override.lock().unwrap().clone() {
         return Json(response).into_response();
     }
+    if let Some(body) = state.lookup_override.lock().unwrap().clone() {
+        return Json(body).into_response();
+    }
     let filter = query.get("filter").cloned().unwrap_or_default();
-    let users = state.users.lock().unwrap();
+    let users = collection.lock().unwrap();
     let matched: Vec<_> = users
         .iter()
         .filter(|user| {
@@ -1343,6 +1369,7 @@ async fn list_users(
 
 async fn create_user(
     State(state): State<ScimState>,
+    Path(kind): Path<String>,
     headers: HeaderMap,
     Json(mut body): Json<Value>,
 ) -> Response {
@@ -1350,31 +1377,49 @@ async fn create_user(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    body["id"] = json!("remote-user-1");
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut resources = collection.lock().unwrap();
+    body["id"] = if kind == "Users" {
+        json!("remote-user-1")
+    } else {
+        json!(format!("remote-group-{}", resources.len() + 1))
+    };
     body["meta"] = json!({"version": "1"});
-    state.users.lock().unwrap().push(body.clone());
+    resources.push(body.clone());
     (StatusCode::CREATED, etag(), Json(body)).into_response()
 }
 
 async fn get_user(
     State(state): State<ScimState>,
-    Path(id): Path<String>,
+    Path((kind, id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Response {
     state.hits.fetch_add(1, Ordering::SeqCst);
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let users = state.users.lock().unwrap();
-    let Some(user) = users.iter().find(|user| user["id"] == id).cloned() else {
+    let Some(collection) = state.collection(&kind) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let users = collection.lock().unwrap();
+    let Some(mut user) = users.iter().find(|user| user["id"] == id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if kind == "Groups"
+        && let Some(fields) = state.group_read_override.lock().unwrap().clone()
+    {
+        let user = user.as_object_mut().unwrap();
+        user.remove("members");
+        user.extend(fields.as_object().unwrap().clone());
+    }
     (StatusCode::OK, etag(), Json(user)).into_response()
 }
 
 async fn patch_user(
     State(state): State<ScimState>,
-    Path(id): Path<String>,
+    Path((kind, id)): Path<(String, String)>,
     headers: HeaderMap,
     Json(patch): Json<Value>,
 ) -> Response {
@@ -1382,7 +1427,10 @@ async fn patch_user(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let mut users = state.users.lock().unwrap();
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut users = collection.lock().unwrap();
     let Some(user) = users.iter_mut().find(|user| user["id"] == id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -1546,4 +1594,356 @@ fn assert_redacted(haystack: &str, secrets: &[&str]) {
             haystack.len()
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("guarded-offboarding");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("provisioned");
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", true)
+        .unwrap();
+    let agent = provisioner(&f, &name);
+    deliver(&f, &agent, &name).await;
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", false)
+        .unwrap();
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let jobs = f.core.store.list::<Value>("provisioning_jobs").unwrap();
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some("wrong-id"))
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("provisioning_jobs").unwrap(),
+        jobs
+    );
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0);
+    f.core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    let remote = scim.users.lock().unwrap()[0].clone();
+    let cases = [
+        json!({}),
+        json!({"Resources":[],"totalResults":1}),
+        json!({"Resources":[remote.clone()],"totalResults":2}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"startIndex":2}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"itemsPerPage":0}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"nextLink":"another-page"}),
+        json!({"Resources":[remote.clone(),remote.clone()],"totalResults":2}),
+        json!({"Resources":[],"totalResults":0}),
+    ];
+    for body in cases {
+        *scim.lookup_override.lock().unwrap() = Some(body.clone());
+        step(&f.core).await;
+        assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0, "{body}");
+        assert_eq!(scim.users.lock().unwrap()[0], remote);
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links
+        );
+        let job = f
+            .core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(job["cursor"], 0);
+        assert_eq!(job["completed"], false);
+        assert!(job["error"].is_string());
+        f.core
+            .store
+            .write(|tx| {
+                let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
+                job["next_attempt"] = json!(crypto::now());
+                tx.put("provisioning_jobs", &id, &job)
+            })
+            .unwrap();
+    }
+    *scim.lookup_override.lock().unwrap() = None;
+    scim.users.lock().unwrap()[0]
+        .as_object_mut()
+        .unwrap()
+        .remove("active");
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0);
+    scim.users.lock().unwrap()[0] = remote;
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
+            job["next_attempt"] = json!(crypto::now());
+            tx.put("provisioning_jobs", &id, &job)
+        })
+        .unwrap();
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 1);
+    assert_eq!(scim.users.lock().unwrap()[0]["active"], false);
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_last_group_member_removal_requires_complete_remote_membership() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("guarded-group");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["everyone", "staff"]),
+            export_groups: true,
+        },
+    );
+    // The user stays provisioned through "everyone", so the reviewed plan only
+    // removes the last managed member of the linked "staff" group.
+    f.core.create_group(&f.admin, "everyone").unwrap();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    for group in ["everyone", "staff"] {
+        f.core
+            .group_member(&f.admin, group, "member", true)
+            .unwrap();
+    }
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    f.core.provisioning_apply(&agent, &id).unwrap();
+    for _ in 0..3 {
+        step(&f.core).await;
+    }
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+    let staff = scim
+        .groups
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|g| g["displayName"] == "staff")
+        .cloned()
+        .unwrap();
+    assert_eq!(staff["members"], json!([{"value":"remote-user-1"}]));
+
+    f.core
+        .group_member(&f.admin, "staff", "member", false)
+        .unwrap();
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 1);
+    assert_eq!(plan["removal_impact"]["disabled_users"], 0);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert_eq!(plan["resources"][2]["local_id"], "staff");
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    f.core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    // The unchanged user and the unchanged "everyone" group advance normally.
+    step(&f.core).await;
+    step(&f.core).await;
+    let job = |f: &Fixture| {
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(job(&f)["cursor"], 2);
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let patches = scim.patch_hits.load(Ordering::SeqCst);
+    for fields in [
+        json!({}),
+        json!({"members":null}),
+        json!({"members":[],"membersNextLink":"/scim/v2/Groups/next"}),
+        json!({"members":[{"value":"remote-user-1"}],"membersNextLink":"/next"}),
+        json!({"members":[],"@odata.nextLink":"/scim/v2/Groups/next"}),
+    ] {
+        *scim.group_read_override.lock().unwrap() = Some(fields.clone());
+        step(&f.core).await;
+        assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches, "{fields}");
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links,
+            "{fields}"
+        );
+        let current = job(&f);
+        assert_eq!(current["cursor"], 2, "{fields}");
+        assert_eq!(current["completed"], false, "{fields}");
+        assert!(
+            current["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("members")),
+            "{fields}: {}",
+            current["error"]
+        );
+        f.core
+            .store
+            .write(|tx| {
+                let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
+                job["next_attempt"] = json!(crypto::now());
+                tx.put("provisioning_jobs", &id, &job)
+            })
+            .unwrap();
+    }
+    assert_eq!(
+        scim.groups
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|g| g["displayName"] == "staff")
+            .unwrap()["members"],
+        json!([{"value":"remote-user-1"}])
+    );
+    // A complete, explicit remote membership lets the reviewed removal proceed.
+    *scim.group_read_override.lock().unwrap() = None;
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches + 1);
+    assert_eq!(
+        scim.groups
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|g| g["displayName"] == "staff")
+            .unwrap()["members"],
+        json!([])
+    );
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+    let key = digest(&format!("{name}\0Groups\0staff"));
+    let link = f
+        .core
+        .store
+        .get::<Value>("provisioning_links", &key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(link["body"]["members"], json!([]));
+}
+
+#[test]
+fn scim_apply_binds_reviewed_content_authority_and_previous_links() {
+    let mut f = Fixture::new();
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("apply-binding");
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    f.core
+        .group_member(&f.admin, "staff", "member", true)
+        .unwrap();
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: "http://127.0.0.1:9/scim/v2".into(),
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut p = tx.get::<Value>("provisioning_plans", &id)?.unwrap();
+            p["resources"][0]["body"]["active"] = json!(false);
+            tx.put("provisioning_plans", &id, &p)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    let actor = plan["actor"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("agent:")
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut a = tx.get::<Value>("agents", actor)?.unwrap();
+            a["permissions"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"action":"audit.read","resource":"*"}));
+            tx.put("agents", actor, &a)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    let resource = &plan["resources"][0];
+    let local = resource["local_id"].as_str().unwrap();
+    let key = digest(&format!("{name}\0Users\0{local}"));
+    f.core.store.write(|tx|tx.put("provisioning_links",&key,&json!({"target":name,"url":f.core.config.scim_targets[&name].url,"kind":"Users","local_id":local,"remote_id":"remote-changed","external_id":resource["body"]["externalId"],"body":resource["body"]}))).unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
 }

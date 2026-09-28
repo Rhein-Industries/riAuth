@@ -541,6 +541,9 @@ pub enum ProvisionCommand {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        /// Confirm the exact reviewed plan's removals
+        #[arg(long)]
+        confirm_removals: bool,
     },
     Jobs,
 }
@@ -555,6 +558,9 @@ pub enum DirectoryCommand {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        /// Confirm the exact reviewed plan's removals
+        #[arg(long)]
+        confirm_removals: bool,
     },
     /// Review a Google Workspace user and group sync
     Workspace {
@@ -1589,13 +1595,14 @@ pub async fn run(cli: Cli) -> Result<()> {
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"changes":plan["changes"]})
             },
-            DirectoryCommand::Apply{plan}=>{
+            DirectoryCommand::Apply{plan,confirm_removals}=>{
                 let plan:Value=serde_json::from_slice(&fs::read(plan)?)?;
                 let id=plan["id"].as_str().context("Invalid LDAP plan ID")?;
                 let saved=remote.call(Method::GET,&format!("/api/directory-plans/{}",segment(id)?),None,true).await?;
                 let mut saved=saved; saved["applied"]=plan["applied"].clone();
                 if saved!=plan {bail!("LDAP plan was modified or belongs to another instance");}
-                remote.call(Method::POST,&format!("/api/directory-plans/{}/apply",segment(id)?),None,true).await?
+                if plan["removal_impact"]["review_required"]==true && !confirm_removals { bail!("Inspect LDAP removal_impact and changes, then rerun with --confirm-removals"); }
+                remote.call_with_review(Method::POST,&format!("/api/directory-plans/{}/apply",segment(id)?),None,true,if confirm_removals {Some(id)} else {None}).await?
             },
             DirectoryCommand::Workspace { command } => cloud_directory(&remote, "workspace", &command).await?,
             DirectoryCommand::Entra { command } => cloud_directory(&remote, "entra", &command).await?,
@@ -1609,7 +1616,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"target":plan["target"],"resources":plan["resources"]})
             },
-            ProvisionCommand::Apply{plan}=>{
+            ProvisionCommand::Apply{plan,confirm_removals}=>{
                 let plan:Value=serde_json::from_slice(&fs::read(plan)?)?;
                 let id=plan["id"].as_str().context("Invalid provisioning plan ID")?;
                 let plan_path=format!("/api/provisioning/plans/{}",segment(id)?);
@@ -1617,7 +1624,8 @@ pub async fn run(cli: Cli) -> Result<()> {
                 match remote.call(Method::GET,&plan_path,None,true).await {
                     Ok(saved) => {
                         if saved!=plan {bail!("Provisioning plan was modified or belongs to another instance");}
-                        remote.call(Method::POST,&apply_path,None,true).await?
+                        if plan["removal_impact"]["review_required"]==true && !confirm_removals { bail!("Inspect SCIM removal_impact and resources, then rerun with --confirm-removals"); }
+                        remote.call_with_review(Method::POST,&apply_path,None,true,if confirm_removals {Some(id)} else {None}).await?
                     },
                     Err(error) if error.downcast_ref::<RemoteFailure>().is_some_and(|failure| failure.status==404) => {
                         // A later plan may have removed this bulky snapshot while

@@ -581,7 +581,7 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
     let plan = source.core.provisioning_plan(&agent, "directory").unwrap();
     source
         .core
-        .provisioning_apply(&agent, &text(&plan, "id"))
+        .provisioning_apply_confirmed(&agent, &text(&plan, "id"), Some(&text(&plan, "id")))
         .unwrap();
     for _ in 0..2 {
         let core = source.core.clone();
