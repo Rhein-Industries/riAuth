@@ -123,6 +123,7 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
     let store = core.store.clone();
     let config = core.config.clone();
     tokio::task::spawn_blocking(move || {
+        crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
         crate::recovery::require_serving(&store)
     })

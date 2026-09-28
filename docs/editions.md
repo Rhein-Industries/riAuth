@@ -61,6 +61,13 @@ Essentials downgrade, even when the row is terminal. Shared LDAP and outbound
 SCIM controller rows are accepted after their stored shape is checked; their
 worker still revalidates current config, agent authority, and lease before apply.
 Workspace and Entra controller configuration is rejected by Essentials as well.
+Essentials rejects client defaults requiring certificate assurance, which its
+build cannot establish. Retained dynamic-registration templates are checked for
+the same Platform-only client settings, including disabled templates: their
+initial-access credentials and settings survive restore and could create clients
+after a later transition. Core open and serving preflight reject these records
+before migrations or workers; authorized client and template writes use the same
+edition setting check.
 
 The release workflow builds separate x86-64 Essentials and Platform native
 archives and container image archives from the checked tag, plus the standalone

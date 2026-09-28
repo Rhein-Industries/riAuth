@@ -10,6 +10,11 @@ use riauth::{
     reconciliation::{ControllerConfig, EventTrigger, Job, Origin, Schedule, Status},
     recovery::{self, Class},
 };
+#[cfg(not(feature = "platform"))]
+use riauth::{
+    model::{NewClient, ProviderSettings},
+    registration::RegistrationTemplate,
+};
 use tempfile::TempDir;
 
 struct Fixture {
@@ -82,6 +87,151 @@ fn job(id: &str, scope: &str) -> Job {
         outcome: None,
         created_at: now(),
     }
+}
+
+#[cfg(not(feature = "platform"))]
+#[test]
+fn certificate_assurance_clients_and_registration_templates_block_essentials() {
+    use serde_json::{Value, json};
+
+    let certificate = riauth::radius::eap::CERTIFICATE_ACR;
+    let error =
+        "Client setting default_acr_values requires the Platform build for certificate assurance";
+    let settings = ProviderSettings {
+        default_acr_values: vec![certificate.into()],
+        ..Default::default()
+    };
+    let fixture = Fixture::new();
+    let admin_id = fixture.core.me(&fixture.admin).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let client = |settings| NewClient {
+        client_id: "app".into(),
+        name: "App".into(),
+        confidential: true,
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        scopes: ["openid".into()].into(),
+        allowed_groups: Default::default(),
+        require_mfa: false,
+        service: false,
+        settings,
+    };
+    assert_eq!(
+        fixture
+            .core
+            .create_client(&fixture.admin, client(settings.clone()))
+            .unwrap_err()
+            .message,
+        error
+    );
+    let template = RegistrationTemplate {
+        id: "partners".into(),
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        scopes: ["openid".into()].into(),
+        grant_types: ["authorization_code".into()].into(),
+        auth_methods: ["client_secret_basic".into()].into(),
+        settings,
+        allowed_groups: Default::default(),
+        require_mfa: false,
+        ttl: 300,
+        max_uses: 1,
+    };
+    assert_eq!(
+        fixture
+            .core
+            .registration_template(&fixture.admin, template.clone())
+            .unwrap_err()
+            .message,
+        error
+    );
+    assert!(
+        fixture
+            .core
+            .store
+            .list::<Value>("registrations")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        fixture
+            .core
+            .store
+            .list::<Value>("clients")
+            .unwrap()
+            .is_empty()
+    );
+
+    fixture
+        .core
+        .create_client(&fixture.admin, client(ProviderSettings::default()))
+        .unwrap();
+    assert_eq!(
+        fixture.core.me(&fixture.admin).unwrap()["user"]["id"],
+        admin_id
+    );
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            let mut stored: Value = tx.get("clients", "app")?.unwrap();
+            stored["settings"]["default_acr_values"] = json!([certificate]);
+            tx.put("clients", "app", &stored)
+        })
+        .unwrap();
+    let downgrade = riauth::edition::validate_store(&fixture.core.store).unwrap_err();
+    assert!(downgrade.message.contains("Stored client \"app\""));
+    assert!(downgrade.message.contains(error));
+    assert_eq!(
+        fixture
+            .core
+            .rotate_client_secret(&fixture.admin, "app")
+            .unwrap_err()
+            .message,
+        error
+    );
+    let Fixture { _dir, core, .. } = fixture;
+    let config = core.config.clone();
+    drop(core);
+    let startup = match Core::open(config) {
+        Ok(_) => panic!("Essentials opened a certificate-assurance client"),
+        Err(error) => error,
+    };
+    assert_eq!(startup.message, downgrade.message);
+
+    let fixture = Fixture::new();
+    let mut allowed_template = template;
+    allowed_template.settings = ProviderSettings::default();
+    fixture
+        .core
+        .registration_template(&fixture.admin, allowed_template)
+        .unwrap();
+    assert_eq!(recovery::classify("registrations"), Some(Class::Reconcile));
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            let mut stored: Value = tx.get("registrations", "partners")?.unwrap();
+            stored["enabled"] = json!(false);
+            stored["template"]["settings"]["default_acr_values"] = json!([certificate]);
+            tx.put("registrations", "partners", &stored)
+        })
+        .unwrap();
+    let downgrade = riauth::edition::validate_store(&fixture.core.store).unwrap_err();
+    assert!(
+        downgrade
+            .message
+            .contains("Stored registration template \"partners\"")
+    );
+    assert!(downgrade.message.contains(error));
+    let Fixture { _dir, core, .. } = fixture;
+    let config = core.config.clone();
+    drop(core);
+    let startup = match Core::open(config) {
+        Ok(_) => panic!("Essentials opened a certificate-assurance registration template"),
+        Err(error) => error,
+    };
+    assert_eq!(startup.message, downgrade.message);
 }
 
 #[cfg(not(feature = "platform"))]

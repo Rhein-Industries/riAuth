@@ -135,6 +135,15 @@ pub fn validate_client_settings(settings: &ProviderSettings) -> Result<()> {
             )));
         }
     }
+    if settings
+        .default_acr_values
+        .iter()
+        .any(|value| value == crate::radius::eap::CERTIFICATE_ACR)
+    {
+        return Err(Error::bad(
+            "Client setting default_acr_values requires the Platform build for certificate assurance",
+        ));
+    }
     Ok(())
 }
 
@@ -153,8 +162,32 @@ pub fn validate_store(store: &Store) -> Result<()> {
         return Ok(());
     }
     store.read(|tx| {
-        for (_, client) in tx.list::<Client>("clients")? {
-            validate_client_settings(&client.settings)?;
+        for (id, client) in tx.list::<Client>("clients")? {
+            validate_client_settings(&client.settings)
+                .map_err(|error| Error::bad(format!("Stored client {id:?}: {}", error.message)))?;
+        }
+        // Registration credentials are reconciled after a restore. Their
+        // templates remain durable authority to create future clients, even
+        // when disabled or exhausted, so a downgrade must inspect them too.
+        for (id, value) in tx.list::<Value>("registrations")? {
+            if value["template"]["settings"]["policy"]
+                .get("conditional")
+                .is_some()
+            {
+                return Err(Error::bad(format!(
+                    "Stored registration template {id:?} has a conditional policy requiring the Platform build"
+                )));
+            }
+            let template: crate::registration::RegistrationTemplate =
+                serde_json::from_value(value["template"].clone()).map_err(|_| {
+                    Error::bad(format!("Stored registration template {id:?} is malformed"))
+                })?;
+            validate_client_settings(&template.settings).map_err(|error| {
+                Error::bad(format!(
+                    "Stored registration template {id:?}: {}",
+                    error.message
+                ))
+            })?;
         }
         for (_, source) in tx.list::<Source>("sources")? {
             validate_source(&source)?;
