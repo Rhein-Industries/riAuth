@@ -383,3 +383,105 @@ async fn session_revoke_writer_preserves_authority_and_replay_across_interfaces(
     );
     assert_eq!(count_audit(&f, "session.revoke", &logout_id), 1);
 }
+
+#[tokio::test]
+async fn fresh_selected_rerevocation_rejects_across_interfaces_without_writes() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    let target = login(&f, "alice");
+    let target_id = session_id(&f, &target);
+    let browser_reply = f
+        .core
+        .portal_password(None, "alice".into(), PASSWORD.into(), None, false)
+        .unwrap();
+    let cookie = reply_cookie(&browser_reply.cookies, "riauth_sso");
+    let page = f.core.portal_security(Some(&cookie)).unwrap();
+    let binding = json!({"expected_user_id":page["user"]["id"],"expected_session_id":page["current_session_id"]});
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let scoped_agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "repeat-session-revoker".into(),
+                permissions: vec![Permission {
+                    action: "session.revoke".into(),
+                    resource: format!("session/{target_id}"),
+                }],
+                ttl: 600,
+                parent: None,
+            },
+        )
+        .unwrap();
+    let agent = text(&scoped_agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let api_path = format!("/api/sessions/{target_id}");
+    let browser_path = format!("/api/portal/security/sessions/{target_id}/revoke");
+
+    let committed = send(
+        &app,
+        bearer(Method::DELETE, &api_path, &alice, "original-revocation"),
+    )
+    .await;
+    assert_eq!(committed.0, StatusCode::OK);
+    let state = f.snapshot().unwrap();
+    assert_eq!(
+        send(
+            &app,
+            bearer(Method::DELETE, &api_path, &alice, "new-bearer-key")
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        f.core
+            .revoke_session(&alice, &target_id)
+            .unwrap_err()
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(
+            &app,
+            bearer(Method::DELETE, &api_path, &agent, "new-agent-key")
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        f.core
+            .revoke_session(&agent, &target_id)
+            .unwrap_err()
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(
+            &app,
+            browser(&cookie, &browser_path, "new-browser-key", &origin, &binding)
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(
+            &app,
+            bearer(Method::DELETE, &api_path, &alice, "original-revocation")
+        )
+        .await,
+        committed
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
+}

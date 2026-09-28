@@ -254,6 +254,11 @@ fn session(tx: &Tx<'_>, id: &str) -> Result<Session> {
 }
 
 fn revoke_one(tx: &Tx<'_>, actor: &str, mut target: Session) -> Result<()> {
+    // Selected-revocation receipts replay before reaching this helper. A fresh
+    // attempt against the same row must not queue logout or SSF a second time.
+    if target.revoked {
+        return Err(Error::missing("Session not found"));
+    }
     target.revoked = true;
     tx.put("sessions", &target.id, &target)?;
     crate::logout::queue_session(tx, &target.id)?;
