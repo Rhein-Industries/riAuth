@@ -1669,6 +1669,29 @@ fn metadata_registration_response_types_match_grants() {
     let metadata = f.core.provider_discovery(&client_id).unwrap();
     assert_eq!(metadata["grant_types_supported"], json!([DEVICE_GRANT]));
     assert_eq!(metadata["response_types_supported"], json!([]));
+    assert_eq!(metadata["response_modes_supported"], json!([]));
+    for field in [
+        "authorization_endpoint",
+        "code_challenge_methods_supported",
+        "pushed_authorization_request_endpoint",
+        "request_object_signing_alg_values_supported",
+        "authorization_signing_alg_values_supported",
+        "authorization_encryption_alg_values_supported",
+        "authorization_encryption_enc_values_supported",
+        "token_endpoint_auth_signing_alg_values_supported",
+        "introspection_endpoint",
+        "introspection_endpoint_auth_methods_supported",
+    ] {
+        assert!(metadata.get(field).is_none(), "{field} is unusable");
+    }
+    assert_eq!(metadata["request_parameter_supported"], false);
+    assert_eq!(metadata["request_uri_parameter_supported"], false);
+    assert_eq!(metadata["require_pushed_authorization_requests"], false);
+    assert_eq!(metadata["claims_parameter_supported"], false);
+    assert_eq!(metadata["authorization_response_iss_parameter_supported"], false);
+    assert_eq!(metadata["token_endpoint_auth_methods_supported"], json!(["none"]));
+    assert_eq!(metadata["revocation_endpoint_auth_methods_supported"], json!(["none"]));
+    assert!(metadata.get("device_authorization_endpoint").is_some());
     assert_eq!(
         f.core
             .authorization_details(f.request(&client_id, &crypto::random_token("")))
@@ -1676,6 +1699,25 @@ fn metadata_registration_response_types_match_grants() {
             .code,
         "unauthorized_client"
     );
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .push_authorization(
+                &axum::http::HeaderMap::new(),
+                vec![
+                    ("client_id".into(), client_id.clone()),
+                    ("response_type".into(), "code".into()),
+                    ("redirect_uri".into(), "https://app.example.test/callback".into()),
+                    ("scope".into(), "openid".into()),
+                    ("code_challenge".into(), digest(&crypto::random_token(""))),
+                    ("code_challenge_method".into(), "S256".into()),
+                ],
+            )
+            .unwrap_err()
+            .code,
+        "unauthorized_client"
+    );
+    f.assert_snapshot(&before);
     assert!(
         f.core
             .device_start(TokenRequest {
@@ -1685,6 +1727,83 @@ fn metadata_registration_response_types_match_grants() {
             })
             .is_ok()
     );
+}
+
+#[test]
+fn metadata_authorization_code_clients_advertise_usable_requests_and_authentication() {
+    use riauth::jose::ClientAuthMethod;
+
+    let f = Fixture::new();
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "code".into(),
+                name: "Code client".into(),
+                confidential: true,
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    token_endpoint_auth_method: Some(ClientAuthMethod::ClientSecretBasic),
+                    jwks: Some(fixture_jwks(&f)),
+                    require_pushed_authorization_requests: true,
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let server = f.core.discovery().unwrap();
+    let metadata = f.core.provider_discovery("code").unwrap();
+    assert_eq!(metadata["grant_types_supported"], json!(["authorization_code"]));
+    assert_eq!(metadata["response_types_supported"], json!(["code"]));
+    assert_eq!(metadata["response_modes_supported"], server["response_modes_supported"]);
+    assert!(!metadata["response_modes_supported"].as_array().unwrap().is_empty());
+    for field in [
+        "authorization_endpoint",
+        "code_challenge_methods_supported",
+        "pushed_authorization_request_endpoint",
+    ] {
+        assert_eq!(metadata[field], server[field], "{field} must remain available");
+    }
+    assert_eq!(metadata["request_parameter_supported"], true);
+    assert_eq!(metadata["request_uri_parameter_supported"], true);
+    assert_eq!(metadata["require_pushed_authorization_requests"], true);
+    assert_eq!(metadata["request_object_signing_alg_values_supported"], json!(["RS256"]));
+    assert_eq!(metadata["token_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
+    assert_eq!(metadata["revocation_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
+    assert_eq!(metadata["introspection_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
+    assert!(metadata.get("token_endpoint_auth_signing_alg_values_supported").is_none());
+    assert!(metadata.get("device_authorization_endpoint").is_none());
+    assert!(!metadata["scopes_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("offline_access")));
+
+    f.client("plain-code", false);
+    f.core
+        .update_client(
+            &f.admin,
+            "plain-code",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let plain = f.core.provider_discovery("plain-code").unwrap();
+    assert!(plain.get("authorization_endpoint").is_some());
+    assert!(plain.get("pushed_authorization_request_endpoint").is_some());
+    assert_eq!(plain["request_uri_parameter_supported"], true);
+    assert_eq!(plain["request_parameter_supported"], false);
+    assert!(plain.get("request_object_signing_alg_values_supported").is_none());
+    assert_eq!(plain["token_endpoint_auth_methods_supported"], json!(["none"]));
 }
 
 #[test]
@@ -1775,6 +1894,15 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
         .unwrap();
     assert!(out.get("client_secret").is_none());
     assert_eq!(out["token_endpoint_auth_method"], "private_key_jwt");
+    let metadata = f.core.provider_discovery(&text(&out, "client_id")).unwrap();
+    for field in [
+        "token_endpoint_auth_methods_supported",
+        "revocation_endpoint_auth_methods_supported",
+        "introspection_endpoint_auth_methods_supported",
+    ] {
+        assert_eq!(metadata[field], json!(["private_key_jwt"]), "{field}");
+    }
+    assert_eq!(metadata["token_endpoint_auth_signing_alg_values_supported"], json!(["RS256"]));
     let c: Client = f
         .core
         .store

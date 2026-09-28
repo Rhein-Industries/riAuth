@@ -1,6 +1,7 @@
 //! Per-provider issuers share identities and management while preserving protocol identifiers.
 use crate::{
     error::{Error, Result},
+    jose::ClientAuthMethod,
     model::Client,
 };
 use serde_json::{Value, json};
@@ -59,12 +60,97 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
+    let configured_auth_methods: &[&str] =
+        match client.settings.token_endpoint_auth_method.as_ref() {
+            Some(ClientAuthMethod::None) => &["none"],
+            Some(ClientAuthMethod::ClientSecretBasic) => &["client_secret_basic"],
+            Some(ClientAuthMethod::ClientSecretPost) => &["client_secret_post"],
+            Some(ClientAuthMethod::PrivateKeyJwt) => &["private_key_jwt"],
+            None if client.secret_hash.is_some() => &["client_secret_basic", "client_secret_post"],
+            None => &["none"],
+        };
+    let supported_auth_methods = |field: &str| {
+        document[field]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|method| configured_auth_methods.contains(method))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    let token_methods = supported_auth_methods("token_endpoint_auth_methods_supported");
+    let private_key_jwt_available = token_methods
+        .iter()
+        .any(|method| method == "private_key_jwt");
+    let revocation_methods = supported_auth_methods("revocation_endpoint_auth_methods_supported");
+    let introspection_methods = if client.confidential() {
+        supported_auth_methods("introspection_endpoint_auth_methods_supported")
+    } else {
+        Vec::new()
+    };
+    let pinned_algs: BTreeSet<&str> = client
+        .settings
+        .jwks
+        .as_ref()
+        .into_iter()
+        .flat_map(|jwks| jwks.keys.iter().map(|key| key.alg.as_str()))
+        .collect();
+    let supported_pinned_algs = |field: &str| {
+        document[field]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|alg| pinned_algs.contains(*alg))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    let request_object_algs =
+        supported_pinned_algs("request_object_signing_alg_values_supported");
+    let token_auth_algs = supported_pinned_algs("token_endpoint_auth_signing_alg_values_supported");
+    let private_key_jwt_configured = matches!(
+        client.settings.token_endpoint_auth_method.as_ref(),
+        Some(ClientAuthMethod::PrivateKeyJwt)
+    );
+    let client_auth_usable = !private_key_jwt_configured
+        || (private_key_jwt_available && !token_auth_algs.is_empty());
+    let token_usable = client_auth_usable
+        && !token_methods.is_empty()
+        && document.get("token_endpoint").is_some();
+    let revocation_usable = client_auth_usable
+        && !revocation_methods.is_empty()
+        && document.get("revocation_endpoint").is_some();
+    let introspection_usable = client_auth_usable
+        && !introspection_methods.is_empty()
+        && document.get("introspection_endpoint").is_some();
+    let code_supported = document.get("authorization_endpoint").is_some()
+        && document["response_types_supported"]
+            .as_array()
+            .is_some_and(|types| types.contains(&json!("code")))
+        && document["code_challenge_methods_supported"]
+            .as_array()
+            .is_some_and(|methods| methods.contains(&json!("S256")));
+    let device_supported = document.get("device_authorization_endpoint").is_some();
+    let par_supported = document.get("pushed_authorization_request_endpoint").is_some()
+        && document["request_uri_parameter_supported"] == true;
+    let jar_supported =
+        document["request_parameter_supported"] == true && !request_object_algs.is_empty();
     let grant_available = |grant: &str| {
-        if !server_grants.contains(grant) || !crate::provider::grant_enabled(client, grant) {
+        if !token_usable
+            || !server_grants.contains(grant)
+            || !crate::provider::grant_enabled(client, grant)
+        {
             return false;
         }
         match grant {
-            "authorization_code" | crate::oidc::DEVICE_GRANT => !client.service,
+            "authorization_code" => {
+                code_supported
+                    && !client.service
+                    && (!client.settings.require_pushed_authorization_requests || par_supported)
+                    && (!client.settings.require_signed_request || jar_supported)
+            }
+            crate::oidc::DEVICE_GRANT => device_supported && !client.service,
             "refresh_token" => !client.service && client.scopes.contains("offline_access"),
             "client_credentials" => client.service && client.confidential(),
             crate::exchange::TOKEN_EXCHANGE => {
@@ -109,6 +195,73 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
     } else {
         json!([])
     };
+    let code_available = grant_available("authorization_code");
+    let par_available = code_available && par_supported;
+    let jar_available = code_available && jar_supported;
+    if !code_available {
+        document["response_modes_supported"] = json!([]);
+        for field in [
+            "authorization_endpoint",
+            "code_challenge_methods_supported",
+            "authorization_signing_alg_values_supported",
+            "authorization_encryption_alg_values_supported",
+            "authorization_encryption_enc_values_supported",
+        ] {
+            document.as_object_mut().unwrap().remove(field);
+        }
+    }
+    document["authorization_response_iss_parameter_supported"] = json!(code_available
+        && document["authorization_response_iss_parameter_supported"] == true);
+    document["claims_parameter_supported"] =
+        json!(code_available && document["claims_parameter_supported"] == true);
+    document["request_parameter_supported"] = json!(jar_available);
+    document["request_uri_parameter_supported"] = json!(par_available);
+    if jar_available {
+        document["request_object_signing_alg_values_supported"] = json!(request_object_algs);
+    } else {
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("request_object_signing_alg_values_supported");
+    }
+    if !par_available {
+        document.as_object_mut().unwrap().remove("pushed_authorization_request_endpoint");
+    }
+    if token_usable {
+        document["token_endpoint_auth_methods_supported"] = json!(token_methods);
+    } else {
+        document.as_object_mut().unwrap().remove("token_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("token_endpoint_auth_methods_supported");
+    }
+    if !revocation_usable {
+        document.as_object_mut().unwrap().remove("revocation_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("revocation_endpoint_auth_methods_supported");
+    } else {
+        document["revocation_endpoint_auth_methods_supported"] = json!(revocation_methods);
+    }
+    if !introspection_usable {
+        document.as_object_mut().unwrap().remove("introspection_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("introspection_endpoint_auth_methods_supported");
+    } else {
+        document["introspection_endpoint_auth_methods_supported"] = json!(introspection_methods);
+    }
+    if private_key_jwt_available && token_usable {
+        document["token_endpoint_auth_signing_alg_values_supported"] = json!(token_auth_algs);
+    } else {
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("token_endpoint_auth_signing_alg_values_supported");
+    }
     document["scopes_supported"] = json!(client
         .scopes
         .iter()
@@ -134,7 +287,6 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
     } else {
         json!(["public"])
     };
-    let par_available = document.get("pushed_authorization_request_endpoint").is_some();
     document["require_pushed_authorization_requests"] =
         json!(client.settings.require_pushed_authorization_requests && par_available);
     document
