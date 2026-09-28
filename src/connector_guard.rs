@@ -234,6 +234,7 @@ pub struct ApplyGate<'a> {
 
 impl ApplyGate<'_> {
     pub fn validate(&self, tx: &Tx<'_>, actor: &Principal, plan: &impl Serialize) -> Result<()> {
+        crate::reconciliation::validate_apply_lease(tx, actor)?;
         if self.expires_at <= now()
             || self.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
             || !self.fingerprint_matches

@@ -170,6 +170,7 @@ impl Core {
     ) -> Result<Principal> {
         let actor = self.principal(tx, token)?;
         actor.require(action, resource)?;
+        crate::reconciliation::validate_apply_lease(tx, &actor)?;
         Ok(actor)
     }
     pub fn create_agent(&self, token: &str, input: NewAgent) -> Result<Value> {

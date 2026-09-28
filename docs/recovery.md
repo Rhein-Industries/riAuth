@@ -24,7 +24,8 @@ the same function. It runs in one storage transaction, before any traffic is ser
 | Every account | Epoch advanced by 2³² | Every restored identity reference is rejected by the shared epoch check. A post-snapshot artifact that carries a later epoch cannot match either. |
 | Configuration revision | Advanced by 2³² | Stale plans, provisioning jobs, conditional writes and sealed cursors fail their revision check. |
 | Replay caches: client assertions, DPoP, JAR request objects, SAML assertions, SETs | Kept | Deleting them would permit replay. |
-| Users, subjects, pairwise seeds, clients, groups, sources, signing keys, audit, receipts and queued jobs | Kept | User IDs, subjects, issuer and JWKS continue. |
+| Reconciliation controller schedules and jobs | Deleted | A restored cursor or pending job cannot dispatch work from an older timeline. After the recovery gate is completed, the worker builds fresh schedule cursors from current connector configuration and scoped agent authority. Source event producers must resend any needed events with current IDs. |
+| Users, subjects, pairwise seeds, clients, groups, sources, signing keys, audit, receipts and other queued jobs | Kept | User IDs, subjects, issuer and JWKS continue. Restored plans and retained provisioning jobs fail their advanced-revision check before new delivery. |
 | Persistent credentials and bindings | Kept and listed | These must be reconciled; see [Serving gate](#serving-gate). |
 
 The policy writes a recovery record to `meta/recovery` and a summary audit event

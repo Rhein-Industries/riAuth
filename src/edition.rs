@@ -5,9 +5,48 @@ use crate::{
     error::{Error, Result},
     model::{Client, ProviderSettings},
     source::Source,
-    store::Store,
+    store::{Store, Tx, maintenance::PAGE},
 };
 use serde_json::Value;
+
+fn essentials_controller_scope(scope: &str) -> Result<()> {
+    let (kind, id) = scope.split_once('/').ok_or_else(|| {
+        Error::bad("Stored reconciliation controller scope requires an explicit migration")
+    })?;
+    crate::core::validate_name(id)?;
+    if matches!(kind, "ldap" | "scim") {
+        Ok(())
+    } else {
+        Err(Error::bad(
+            "Stored Platform reconciliation controller requires the Platform build or an explicit migration",
+        ))
+    }
+}
+
+fn validate_controller_rows(tx: &Tx<'_>) -> Result<()> {
+    for bucket in ["reconciliation_jobs", "reconciliation_schedules"] {
+        let mut after = None;
+        loop {
+            let page = tx.scan::<Value>(bucket, after.as_deref(), PAGE)?;
+            let Some((last, _)) = page.last() else { break };
+            after = Some(last.clone());
+            for (_, value) in page {
+                let scope = value["scope"].as_str().ok_or_else(|| {
+                    Error::bad("Stored reconciliation controller has no valid scope")
+                })?;
+                essentials_controller_scope(scope)?;
+                if bucket == "reconciliation_jobs" {
+                    serde_json::from_value::<crate::reconciliation::Job>(value)
+                        .map_err(|_| Error::bad("Stored reconciliation job is malformed"))?;
+                } else {
+                    serde_json::from_value::<crate::reconciliation::Schedule>(value)
+                        .map_err(|_| Error::bad("Stored reconciliation schedule is malformed"))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 pub const NAME: &str = if cfg!(feature = "platform") {
     "platform"
@@ -149,6 +188,17 @@ pub fn validate_store(store: &Store) -> Result<()> {
             }
             after = page.last().map(|(key, _)| key.clone());
         }
+        // Shared LDAP/SCIM controller rows can be safely revalidated by the
+        // Essentials worker. Historical cloud rows, including terminal jobs,
+        // must not be silently retained across a downgrade and later upgrade.
+        for bucket in ["reconciliation_jobs", "reconciliation_schedules"] {
+            if crate::recovery::classify(bucket).is_none() {
+                return Err(Error::internal(
+                    "Reconciliation collection missing from recovery policy",
+                ));
+            }
+        }
+        validate_controller_rows(tx)?;
         // Audited against recovery::{INVALIDATED, REPLAY_CACHES, RECONCILE,
         // RETAINED}: include persistent bindings and pending authority alike.
         for bucket in [

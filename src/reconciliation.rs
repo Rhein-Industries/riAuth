@@ -12,8 +12,12 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
+    sync::mpsc,
+    thread,
+    time::Duration,
 };
 
 const SCHEDULES: &str = "reconciliation_schedules";
@@ -21,6 +25,120 @@ const JOBS: &str = "reconciliation_jobs";
 const MAX_JOBS: usize = 256;
 const MAX_ATTEMPTS: u32 = 4;
 const LEASE_SECONDS: u64 = 900;
+
+#[derive(Clone)]
+struct ExecutionLease {
+    id: String,
+    owner: String,
+    scope: String,
+    actor: String,
+    config_fingerprint: String,
+}
+
+thread_local! {
+    static EXECUTION_LEASE: RefCell<Option<ExecutionLease>> = const { RefCell::new(None) };
+}
+
+struct LeaseScope(Option<ExecutionLease>);
+
+impl LeaseScope {
+    fn enter(job: &Job, owner: &str) -> Self {
+        let current = ExecutionLease {
+            id: job.id.clone(),
+            owner: owner.into(),
+            scope: job.scope.clone(),
+            actor: job.actor.clone(),
+            config_fingerprint: job.config_fingerprint.clone(),
+        };
+        Self(EXECUTION_LEASE.with(|slot| slot.replace(Some(current))))
+    }
+}
+
+impl Drop for LeaseScope {
+    fn drop(&mut self) {
+        EXECUTION_LEASE.with(|slot| {
+            slot.replace(self.0.take());
+        });
+    }
+}
+
+/// Called inside the same write transaction as a P01 apply. The writer lock
+/// prevents another worker from reclaiming the lease between this check and
+/// the local mutation or SCIM job enqueue.
+pub(crate) fn validate_apply_lease(tx: &Tx<'_>, actor: &Principal) -> Result<()> {
+    let Some(lease) = EXECUTION_LEASE.with(|slot| slot.borrow().clone()) else {
+        return Ok(());
+    };
+    let current = tx
+        .get::<Job>(JOBS, &lease.id)?
+        .ok_or_else(Error::forbidden)?;
+    let schedule = tx
+        .get::<Schedule>(SCHEDULES, &lease.scope)?
+        .ok_or_else(Error::forbidden)?;
+    if current.status != Status::Running
+        || current.lease_owner.as_deref() != Some(&lease.owner)
+        || current.lease_until <= now()
+        || current.scope != lease.scope
+        || current.actor != lease.actor
+        || actor.id != lease.actor
+        || current.config_fingerprint != lease.config_fingerprint
+        || schedule.config_fingerprint != lease.config_fingerprint
+    {
+        return Err(Error::conflict(
+            "Reconciliation dispatch lease changed or expired; inspect the job before retrying",
+        ));
+    }
+    current
+        .authority
+        .validate(
+            tx,
+            actor,
+            &authority_content(&lease.scope, &lease.config_fingerprint),
+        )
+        .map_err(|_| Error::conflict("Reconciliation caller authority changed"))?;
+    Ok(())
+}
+
+struct LeaseHeartbeat {
+    stop: mpsc::Sender<()>,
+    task: Option<thread::JoinHandle<()>>,
+}
+
+impl LeaseHeartbeat {
+    fn start(core: Core, job: &Job, owner: &str) -> Result<Self> {
+        let (stop, receiver) = mpsc::channel();
+        let id = job.id.clone();
+        let owner = owner.to_owned();
+        let task = thread::Builder::new()
+            .name("reconciliation-lease".into())
+            .spawn(move || {
+                while receiver
+                    .recv_timeout(Duration::from_secs(LEASE_SECONDS / 3))
+                    .is_err()
+                {
+                    match core.renew_reconciliation(&id, &owner) {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        Err(error) => tracing::warn!(%error, "Reconciliation lease renewal failed"),
+                    }
+                }
+            })
+            .map_err(Error::internal)?;
+        Ok(Self {
+            stop,
+            task: Some(task),
+        })
+    }
+}
+
+impl Drop for LeaseHeartbeat {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        if let Some(task) = self.task.take() {
+            let _ = task.join();
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -577,6 +695,49 @@ impl Core {
         })
     }
 
+    fn renew_reconciliation(&self, id: &str, owner: &str) -> Result<bool> {
+        self.store.write(|tx| {
+            let Some(mut job) = tx.get::<Job>(JOBS, id)? else {
+                return Ok(false);
+            };
+            if job.status != Status::Running
+                || job.lease_owner.as_deref() != Some(owner)
+                || job.lease_until <= now()
+            {
+                return Ok(false);
+            }
+            let Some(config) = self.config.reconciliation_controllers.get(&job.scope) else {
+                return Ok(false);
+            };
+            let current_fingerprint = fingerprint(&self.config, &job.scope, config)?;
+            let schedule = tx.get::<Schedule>(SCHEDULES, &job.scope)?;
+            if job.config_fingerprint != current_fingerprint
+                || schedule
+                    .as_ref()
+                    .is_none_or(|schedule| schedule.config_fingerprint != current_fingerprint)
+            {
+                return Ok(false);
+            }
+            let actor = scoped_agent(tx, &self.config, &job.scope, &config.agent_id)?;
+            if actor.id != job.actor
+                || job
+                    .authority
+                    .validate(
+                        tx,
+                        &actor,
+                        &authority_content(&job.scope, &current_fingerprint),
+                    )
+                    .is_err()
+            {
+                return Ok(false);
+            }
+            job.lease_until = now().saturating_add(LEASE_SECONDS);
+            job.next_attempt = job.lease_until;
+            tx.put(JOBS, id, &job)?;
+            Ok(true)
+        })
+    }
+
     fn execute_reconciliation(&self, job: &Job, owner: &str) -> Result<Value> {
         let config = self
             .config
@@ -624,6 +785,8 @@ impl Core {
             .scope
             .split_once('/')
             .ok_or_else(|| Error::internal("Invalid controller scope"))?;
+        let _heartbeat = LeaseHeartbeat::start(self.clone(), job, owner)?;
+        let _lease = LeaseScope::enter(job, owner);
         let result = match kind {
             "ldap" => self.directory_reconcile(&token, id)?,
             "workspace" | "entra" => self.cloud_reconcile(&token, kind, id)?,
@@ -700,6 +863,7 @@ impl Core {
     /// Process at most one durable job. Each claim is serialized by the store;
     /// expired leases and transient failures retry at most four times.
     pub fn reconciliation_process(&self) -> Result<bool> {
+        crate::recovery::require_serving(&self.store)?;
         self.sync_reconciliation_schedules()?;
         let owner = crypto::id();
         let Some(job) = self.claim_reconciliation(&owner)? else {
@@ -708,5 +872,25 @@ impl Core {
         let outcome = self.execute_reconciliation(&job, &owner);
         self.finish_reconciliation(&job.id, &owner, outcome)?;
         Ok(true)
+    }
+
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn reconciliation_claim_for_test(&self, owner: &str) -> Result<Option<Job>> {
+        crate::recovery::require_serving(&self.store)?;
+        self.sync_reconciliation_schedules()?;
+        self.claim_reconciliation(owner)
+    }
+
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn reconciliation_with_lease_for_test<T>(
+        &self,
+        job: &Job,
+        owner: &str,
+        run: impl FnOnce() -> T,
+    ) -> T {
+        let _lease = LeaseScope::enter(job, owner);
+        run()
     }
 }

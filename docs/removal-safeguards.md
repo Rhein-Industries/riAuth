@@ -40,7 +40,10 @@ Keys may also be `ldap/<id>`, `workspace/<id>`, or `entra/<id>`; interval bounds
 are 60–86400 seconds. Schedule cursors and jobs survive restart. The worker
 claims one due job at a time with a lease and at most four attempts. It checks
 the current controller/connector config, the agent's live scoped authority and
-the current credential before invoking the P01 plan/apply path. The event
+the current credential before invoking the P01 plan/apply path. A heartbeat
+renews a long read, and the shared apply gate checks the current lease inside
+the same write transaction that commits local changes or queues SCIM delivery.
+An expired worker cannot apply after another worker reclaims its job. The event
 endpoint is `POST /api/reconciliation/{kind}/{id}/events` with
 `{"event_id":"stable-source-event-id"}` and that agent's bearer token. Repeating
 an event ID returns the same retained job. Scoped status is available at

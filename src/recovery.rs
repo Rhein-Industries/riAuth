@@ -90,6 +90,11 @@ pub const INVALIDATED: &[&str] = &[
     "workflow_requests",
     "workflow_evidence",
     "workflow_active_sessions",
+    // A restored controller cursor can schedule work from an older timeline;
+    // pending or uncertain jobs must not resume after the recovery gate opens.
+    // Fresh cursors are derived from current config on the first worker tick.
+    "reconciliation_schedules",
+    "reconciliation_jobs",
     // Queued mail bodies carry the plaintext proofs deleted above.
     "mail_deliveries",
     // Consent withdrawn after the snapshot must not return; users are asked again.

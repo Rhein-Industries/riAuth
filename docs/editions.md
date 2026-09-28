@@ -34,6 +34,10 @@ Essentials agent issuance requires exact `directory/<id>` scopes for directory
 actions. Parent-owned agents, `workspace/<id>` and `entra/<id>` scopes, and a
 directory wildcard require Platform. Essentials also rejects stored agents with
 those scopes or ownership on downgrade, including disabled agents.
+Stored reconciliation schedules and jobs for Workspace or Entra also block an
+Essentials downgrade, even when the row is terminal. Shared LDAP and outbound
+SCIM controller rows are accepted after their stored shape is checked; their
+worker still revalidates current config, agent authority, and lease before apply.
 
 The release workflow builds separate x86-64 Essentials and Platform native
 archives and container image archives from the checked tag, plus the standalone
