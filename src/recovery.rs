@@ -82,6 +82,12 @@ pub const INVALIDATED: &[&str] = &[
     "source_stages",
     "source_stage_requests",
     "windows_tickets",
+    // Platform workflow runs, verifier requests, evidence, and session bindings
+    // cannot survive a restore of potentially stale authority.
+    "workflow_runs",
+    "workflow_requests",
+    "workflow_evidence",
+    "workflow_active_sessions",
     // Queued mail bodies carry the plaintext proofs deleted above.
     "mail_deliveries",
     // Consent withdrawn after the snapshot must not return; users are asked again.

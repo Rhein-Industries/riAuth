@@ -172,6 +172,10 @@ pub fn validate_store(store: &Store) -> Result<()> {
             "proxy_sessions",
             "source_stages",
             "source_stage_requests",
+            "workflow_runs",
+            "workflow_requests",
+            "workflow_evidence",
+            "workflow_active_sessions",
         ] {
             if crate::recovery::classify(bucket).is_none() {
                 return Err(Error::internal(
