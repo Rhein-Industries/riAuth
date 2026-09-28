@@ -1000,7 +1000,7 @@ fn cli_application_writes_share_management_seam() {
 }
 
 #[test]
-fn cli_api_and_scim_user_delete_share_management_seam() {
+fn cli_api_and_scim_user_writes_share_management_seam() {
     use serde_json::json;
 
     let dir = TempDir::new().unwrap();
@@ -1116,6 +1116,38 @@ fn cli_api_and_scim_user_delete_share_management_seam() {
     assert_eq!(after_cli["displayName"], "CLI name");
     assert_ne!(after_cli["meta"]["version"], after_api["meta"]["version"]);
 
+    let scim_patch = json!({
+        "schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+        "Operations":[{"op":"replace","path":"displayName","value":"SCIM revised"}]
+    });
+    let changed_response = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-update")
+        .json(&scim_patch)
+        .send()
+        .unwrap();
+    assert_eq!(changed_response.status(), reqwest::StatusCode::OK);
+    let changed: Value = changed_response.json().unwrap();
+    assert_eq!(changed["displayName"], "SCIM revised");
+    assert_ne!(changed["meta"]["version"], after_cli["meta"]["version"]);
+    let changed_replay: Value = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-update")
+        .json(&scim_patch)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(changed_replay, changed);
+    assert_eq!(
+        success(cli(&["get", "user", "parity-user"]))["display_name"],
+        "SCIM revised",
+    );
+
     let stale = http
         .delete(&resource)
         .bearer_auth(token)
@@ -1126,7 +1158,7 @@ fn cli_api_and_scim_user_delete_share_management_seam() {
     let deleted = http
         .delete(&resource)
         .bearer_auth(token)
-        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
         .header("idempotency-key", "parity-scim-delete")
         .send()
         .unwrap();
@@ -1134,7 +1166,7 @@ fn cli_api_and_scim_user_delete_share_management_seam() {
     let replay = http
         .delete(&resource)
         .bearer_auth(token)
-        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
         .header("idempotency-key", "parity-scim-delete")
         .send()
         .unwrap();
@@ -1150,7 +1182,7 @@ fn cli_api_and_scim_user_delete_share_management_seam() {
             event["action"] == action && event["target"] == "parity-user"
         }).count()
     };
-    assert_eq!(count("user.scim"), 1);
+    assert_eq!(count("user.scim"), 2);
     assert_eq!(count("user.scim_delete"), 1);
     assert_eq!(
         events.as_array().unwrap().iter().filter(|event| event["action"] == "user.update").count(),

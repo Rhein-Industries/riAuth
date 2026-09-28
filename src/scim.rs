@@ -1324,7 +1324,12 @@ impl Core {
                     user.epoch += 1;
                     crate::logout::queue_user(tx, &user.id)?;
                 }
-                tx.put("users", &user.id, &user)?;
+                crate::management::write_scim_user(
+                    tx,
+                    &actor,
+                    existing.as_ref().map(|record| record.local_id.as_str()),
+                    &user,
+                )?;
                 if existing.is_none() && !actor.agent && !actor.delegated {
                     crate::delegation::record_elevation_provenance(
                         tx,
@@ -1332,7 +1337,6 @@ impl Core {
                         crate::delegation::ProvenanceBasis::HumanScim,
                     )?;
                 }
-                tx.put("usernames", &label, &user.id)?;
                 data.as_object_mut().unwrap().remove("groups");
                 user.id
             } else {
@@ -1421,7 +1425,7 @@ impl Core {
                 tx.put(bucket(kind)?, &id, &record)?;
                 view = self.scim_view(tx, &id, &record)?;
             }
-            if kind == "Users" || record_changed || group_changed {
+            if kind != "Users" && (record_changed || group_changed) {
                 audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
             }
             Ok(view)

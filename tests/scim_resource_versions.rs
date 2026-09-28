@@ -8,7 +8,7 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use common::{Fixture, PASSWORD, text};
-use riauth::{agent::{NewAgent, Permission}, identity::downstream, model::User, scim};
+use riauth::{agent::{NewAgent, Permission}, identity::downstream, model::{User, UserPatch}, scim};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -235,4 +235,51 @@ async fn scim_user_delete_commits_shared_revocation_and_downstream_intent() {
     assert_eq!(audits.as_array().unwrap().iter().filter(|event| {
         event["action"] == "user.scim_delete" && event["target"] == "delete-linked"
     }).count(), 1);
+}
+
+#[tokio::test]
+async fn scim_user_update_fails_closed_on_broken_management_identity_index() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-index-agent".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write"]
+            .map(|action| Permission { action: action.into(), resource: "user/index-bound".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::USER],"userName":"index-bound","displayName":"Original"});
+    let (status, Some(version), created) = request(&app, Method::POST, "/scim/v2/Users", &token, None, None, Some(&input)).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let id = text(&created, "id");
+    let local_id: String = f.core.store.get("usernames", "index-bound").unwrap().unwrap();
+    let path = format!("/scim/v2/Users/{id}");
+    let patch = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"displayName","value":"Changed"}]});
+
+    f.core.store.write(|tx| tx.delete("usernames", "index-bound")).unwrap();
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, Some(&version), None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(
+        f.core.update_user(&token, "index-bound", UserPatch {
+            display_name: Some("Changed".into()),
+            ..Default::default()
+        }).unwrap_err().status,
+        StatusCode::NOT_FOUND,
+    );
+    f.assert_http_mutation_snapshot(&before);
+    let stored: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert_eq!(stored.display_name, "Original");
+    assert_eq!(f.core.audit_events(&f.admin, 1000).unwrap().as_array().unwrap().iter()
+        .filter(|event| event["action"] == "user.scim" && event["target"] == "index-bound").count(), 1);
+
+    f.core.store.write(|tx| tx.put("usernames", "index-bound", &local_id)).unwrap();
+    let (status, _, updated) = request(&app, Method::PATCH, &path, &token, Some(&version), None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["displayName"], "Changed");
+    assert_eq!(f.core.audit_events(&f.admin, 1000).unwrap().as_array().unwrap().iter()
+        .filter(|event| event["action"] == "user.scim" && event["target"] == "index-bound").count(), 2);
 }

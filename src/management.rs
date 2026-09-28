@@ -9,7 +9,7 @@
 //! record are decided here, inside the caller's transaction.
 //!
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
-//! this seam. Inbound SCIM User deletion reaches the shared user writer.
+//! this seam. Inbound SCIM User writes reach the shared user writer.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -1163,6 +1163,81 @@ pub(crate) fn update_user(
         patch.revoke_sessions,
     )?;
     Ok(json!(UserView::from(&user)))
+}
+
+#[cfg(feature = "platform")]
+/// Commit the SCIM adapter's prepared local user through the same account
+/// boundary as API/CLI writes. The adapter keeps its SCIM representation,
+/// password-history preparation and connector-specific provenance hooks in
+/// this transaction; this writer owns final authority, validation, persistence,
+/// dependent revocation and the single `user.scim` mutation audit.
+pub(crate) fn write_scim_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    existing_id: Option<&str>,
+    user: &User,
+) -> Result<()> {
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    validate_name(&user.username)?;
+    validate_display(&user.display_name)?;
+    if let Some(email) = &user.email {
+        validate_email(email)?;
+    }
+    let previous = existing_id
+        .map(|id| {
+            tx.get::<User>("users", id)?
+                .ok_or_else(|| Error::missing("User missing"))
+        })
+        .transpose()?;
+    if user.admin || previous.as_ref().is_some_and(|previous| previous.admin) {
+        return Err(Error::forbidden());
+    }
+    if let Some(previous) = &previous {
+        if previous.id != user.id || previous.username != user.username {
+            return Err(Error::conflict("SCIM user identity does not match"));
+        }
+        if (previous.enabled != user.enabled || previous.password_hash != user.password_hash)
+            && user.epoch <= previous.epoch
+        {
+            return Err(Error::conflict(
+                "SCIM security change must revoke prior sessions",
+            ));
+        }
+        if previous.password_hash.is_empty()
+            && previous.password_hash != user.password_hash
+            && crate::passkey::passkey_count(tx, &user.id)? > 0
+        {
+            return Err(Error::conflict(
+                "Passkey-only account password recovery is an offline operator operation",
+            ));
+        }
+        if previous.email != user.email && user.email_verified {
+            return Err(Error::conflict("Changed SCIM email cannot remain verified"));
+        }
+    } else if tx
+        .list::<User>("users")?
+        .iter()
+        .any(|(_, previous)| previous.username.eq_ignore_ascii_case(&user.username))
+    {
+        return Err(Error::conflict(
+            "Username already exists; provisioning cannot take ownership",
+        ));
+    }
+    crate::claims::validate_user(tx, user)?;
+    if previous
+        .as_ref()
+        .is_some_and(|previous| previous.password_hash != user.password_hash)
+    {
+        tx.delete("attempts", &user.username)?;
+    }
+    write_user_record(
+        tx,
+        actor,
+        previous.as_ref(),
+        user,
+        UserRecord::Scim("user.scim"),
+        false,
+    )
 }
 
 #[cfg(feature = "platform")]
