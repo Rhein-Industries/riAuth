@@ -8,7 +8,7 @@
 //! credential handling, dependent revocation, persistence and the direct audit
 //! record are decided here, inside the caller's transaction.
 //!
-//! Applications (OAuth/OIDC/SAML/proxy client records) are the first resource.
+//! Applications (OAuth/OIDC/SAML/proxy client records) and groups use this seam.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -18,7 +18,7 @@ use crate::{
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::ClientAuthMethod,
-    model::{Client, ProviderSettings},
+    model::{Client, Group, ProviderSettings, User},
     registration::{RegistrationAuthority, RegistrationRequest},
     store::Tx,
 };
@@ -52,6 +52,124 @@ pub(crate) struct ClientWrite {
     pub(crate) client: Client,
     /// A newly generated secret; never persisted in plaintext.
     pub(crate) secret: Option<String>,
+}
+
+/// Adapters supply intent, while the service reads the current group and
+/// applies the change in their transaction.
+pub(crate) enum GroupIntent<'a> {
+    Create(&'a BTreeSet<String>),
+    ReplaceMembers(&'a BTreeSet<String>),
+    Member { user_id: &'a str, present: bool },
+}
+
+/// Some adapters finish other records before emitting one enclosing audit.
+pub(crate) enum GroupAudit<'a> {
+    OnChange { action: &'a str, target: &'a str },
+    Deferred,
+}
+
+pub(crate) struct GroupWrite {
+    pub(crate) group: Group,
+    pub(crate) changed: bool,
+}
+
+/// Create or change group membership. Every call rechecks the relevant right
+/// at the write boundary; unchanged membership needs the right but emits no
+/// group write or audit. Creation conflicts even when a caller repeats a name
+/// without an idempotency receipt, including a SCIM tombstone's local row.
+pub(crate) fn write_group(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    name: &str,
+    intent: GroupIntent<'_>,
+    record: GroupAudit<'_>,
+) -> Result<GroupWrite> {
+    let resource = format!("group/{name}");
+    match intent {
+        GroupIntent::Create(members) => {
+            actor.require("group.write", &resource)?;
+            if !members.is_empty() {
+                actor.require("group.members", &resource)?;
+            }
+            validate_name(name)?;
+            if tx.get::<Group>("groups", name)?.is_some() {
+                return Err(Error::conflict("Group already exists"));
+            }
+            validate_group_members(tx, members)?;
+            let group = Group {
+                name: name.into(),
+                members: members.clone(),
+            };
+            tx.put("groups", name, &group)?;
+            audit_group(tx, actor, record)?;
+            Ok(GroupWrite {
+                group,
+                changed: true,
+            })
+        }
+        GroupIntent::ReplaceMembers(members) => {
+            actor.require("group.members", &resource)?;
+            validate_name(name)?;
+            let mut group = existing_group(tx, name)?;
+            validate_group_members(tx, members)?;
+            let changed = group.members != *members;
+            if changed {
+                group.members = members.clone();
+                tx.put("groups", name, &group)?;
+                audit_group(tx, actor, record)?;
+            }
+            Ok(GroupWrite { group, changed })
+        }
+        GroupIntent::Member { user_id, present } => {
+            actor.require("group.members", &resource)?;
+            validate_name(name)?;
+            let mut group = existing_group(tx, name)?;
+            if present {
+                validate_group_member(tx, user_id)?;
+            }
+            let changed = if present {
+                group.members.insert(user_id.into())
+            } else {
+                group.members.remove(user_id)
+            };
+            if changed {
+                tx.put("groups", name, &group)?;
+                audit_group(tx, actor, record)?;
+            }
+            Ok(GroupWrite { group, changed })
+        }
+    }
+}
+
+fn existing_group(tx: &Tx<'_>, name: &str) -> Result<Group> {
+    let group = tx
+        .get::<Group>("groups", name)?
+        .ok_or_else(|| Error::missing("Group not found"))?;
+    if group.name != name {
+        return Err(Error::conflict("Group identity does not match its key"));
+    }
+    Ok(group)
+}
+
+fn validate_group_member(tx: &Tx<'_>, user_id: &str) -> Result<()> {
+    if tx.get::<User>("users", user_id)?.is_none() {
+        return Err(Error::bad("Group references unknown user"));
+    }
+    Ok(())
+}
+
+fn validate_group_members(tx: &Tx<'_>, members: &BTreeSet<String>) -> Result<()> {
+    for member in members {
+        validate_group_member(tx, member)?;
+    }
+    Ok(())
+}
+
+fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result<()> {
+    if let GroupAudit::OnChange { action, target } = record {
+        audit(tx, &actor.id, action, target)?;
+    }
+    Ok(())
 }
 
 /// The direct and manifest adapters interpret `service` and private-key

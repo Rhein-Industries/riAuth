@@ -545,19 +545,19 @@ impl Core {
         })
     }
     pub fn create_group(&self, token: &str, name: &str) -> Result<Value> {
-        validate_name(name)?;
         self.mutation(token, |tx| {
-            let user = self.management(tx, token, "group.write", &format!("group/{name}"))?;
-            if tx.get::<Group>("groups", name)?.is_some() {
-                return Err(Error::conflict("Group already exists"));
-            }
-            let group = Group {
-                name: name.into(),
-                members: BTreeSet::new(),
-            };
-            tx.put("groups", name, &group)?;
-            audit(tx, &user.id, "group.create", name)?;
-            Ok(json!(group))
+            let actor = self.management(tx, token, "group.write", &format!("group/{name}"))?;
+            let written = crate::management::write_group(
+                tx,
+                &actor,
+                name,
+                crate::management::GroupIntent::Create(&BTreeSet::new()),
+                crate::management::GroupAudit::OnChange {
+                    action: "group.create",
+                    target: name,
+                },
+            )?;
+            Ok(json!(written.group))
         })
     }
     pub fn group_member(
@@ -570,26 +570,24 @@ impl Core {
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "group.members", &format!("group/{name}"))?;
             let user = user_by_name(tx, username)?;
-            let mut group = tx
-                .get::<Group>("groups", name)?
-                .ok_or_else(|| Error::missing("Group not found"))?;
-            if add {
-                group.members.insert(user.id.clone());
-            } else {
-                group.members.remove(&user.id);
-            }
-            tx.put("groups", name, &group)?;
-            audit(
+            let written = crate::management::write_group(
                 tx,
-                &actor.id,
-                if add {
-                    "group.member.add"
-                } else {
-                    "group.member.remove"
+                &actor,
+                name,
+                crate::management::GroupIntent::Member {
+                    user_id: &user.id,
+                    present: add,
                 },
-                &format!("{name}/{}", user.id),
+                crate::management::GroupAudit::OnChange {
+                    action: if add {
+                        "group.member.add"
+                    } else {
+                        "group.member.remove"
+                    },
+                    target: &format!("{name}/{}", user.id),
+                },
             )?;
-            Ok(json!(group))
+            Ok(json!(written.group))
         })
     }
     pub fn create_client(&self, token: &str, input: NewClient) -> Result<Value> {

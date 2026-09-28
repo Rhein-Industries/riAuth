@@ -21,7 +21,7 @@ pub const GROUP: &str = "urn:ietf:params:scim:schemas:core:2.0:Group";
 const LIST: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
 const PATCH: &str = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct Record {
     owner: String,
     kind: String,
@@ -332,14 +332,21 @@ impl Core {
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             let existing = id.map(|id| owned(tx, &actor, kind, id)).transpose()?;
+            let member_patch = kind == "Groups" && patch && patches_members(&input);
             let mut data = if patch {
-                patch_resource(
-                    &existing
-                        .as_ref()
-                        .ok_or_else(|| Error::bad("Patch requires a resource"))?
-                        .data,
-                    input,
-                )?
+                let mut base = existing
+                    .as_ref()
+                    .ok_or_else(|| Error::bad("Patch requires a resource"))?
+                    .data
+                    .clone();
+                if member_patch {
+                    // A PATCH starts from live SCIM-visible membership. Stored
+                    // metadata may lag direct or directory group changes.
+                    base["members"] =
+                        self.scim_view(tx, id.unwrap(), existing.as_ref().unwrap())?["members"]
+                            .clone();
+                }
+                patch_resource(&base, input)?
             } else {
                 normalize(input)?
             };
@@ -390,6 +397,7 @@ impl Core {
                 ));
             }
             let id = id.map(String::from).unwrap_or_else(crypto::id);
+            let mut group_changed = false;
             let local_id = if kind == "Users" {
                 if data.get("members").is_some() {
                     return Err(Error::bad("Users cannot supply group members"));
@@ -488,37 +496,58 @@ impl Core {
                         "Group already exists; provisioning cannot take ownership",
                     ));
                 }
-                let mut members = BTreeSet::new();
-                let mut public = Vec::new();
-                let array = data
-                    .get("members")
-                    .map(|v| {
-                        v.as_array()
-                            .ok_or_else(|| Error::bad("members must be an array"))
-                    })
-                    .transpose()?;
-                for member in array.into_iter().flatten() {
-                    let id = member["value"]
-                        .as_str()
-                        .ok_or_else(|| Error::bad("Member ID required"))?;
-                    let member = owned(tx, &actor, "Users", id)?;
-                    if !members.insert(member.local_id.clone()) {
-                        return Err(Error::bad("Duplicate group member"));
+                if !patch || member_patch {
+                    let mut members = BTreeSet::new();
+                    let mut public = Vec::new();
+                    let array = data
+                        .get("members")
+                        .map(|v| {
+                            v.as_array()
+                                .ok_or_else(|| Error::bad("members must be an array"))
+                        })
+                        .transpose()?;
+                    for member in array.into_iter().flatten() {
+                        let id = member["value"]
+                            .as_str()
+                            .ok_or_else(|| Error::bad("Member ID required"))?;
+                        let member = owned(tx, &actor, "Users", id)?;
+                        if !members.insert(member.local_id.clone()) {
+                            return Err(Error::bad("Duplicate group member"));
+                        }
+                        public.push(json!({"value":id,"display":name(&member)}));
                     }
-                    public.push(json!({"value":id,"display":name(&member)}));
+                    if patch {
+                        // A SCIM PATCH changes only this owner's live SCIM
+                        // memberships; direct and connector members survive.
+                        let current = tx
+                            .get::<Group>("groups", &label)?
+                            .ok_or_else(|| Error::missing("Group not found"))?;
+                        let owned_members: BTreeSet<_> = tx
+                            .list::<Record>("scim_users")?
+                            .into_iter()
+                            .filter(|(_, user)| !user.deleted && user.owner == actor.id)
+                            .map(|(_, user)| user.local_id)
+                            .collect();
+                        members.extend(current.members.difference(&owned_members).cloned());
+                    }
+                    if members.len() > 1000 {
+                        return Err(Error::bad("Too many group members"));
+                    }
+                    data["members"] = json!(public);
+                    let intent = if existing.is_none() {
+                        crate::management::GroupIntent::Create(&members)
+                    } else {
+                        crate::management::GroupIntent::ReplaceMembers(&members)
+                    };
+                    group_changed = crate::management::write_group(
+                        tx,
+                        &actor,
+                        &label,
+                        intent,
+                        crate::management::GroupAudit::Deferred,
+                    )?
+                    .changed;
                 }
-                if members.len() > 1000 {
-                    return Err(Error::bad("Too many group members"));
-                }
-                data["members"] = json!(public);
-                tx.put(
-                    "groups",
-                    &label,
-                    &Group {
-                        name: label.clone(),
-                        members,
-                    },
-                )?;
                 label.clone()
             };
             data.as_object_mut().unwrap().remove("meta");
@@ -531,8 +560,13 @@ impl Core {
                 data,
                 deleted: false,
             };
-            tx.put(bucket(kind)?, &id, &record)?;
-            audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
+            let record_changed = existing.as_ref() != Some(&record);
+            if kind == "Users" || record_changed {
+                tx.put(bucket(kind)?, &id, &record)?;
+            }
+            if kind == "Users" || record_changed || group_changed {
+                audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
+            }
             self.scim_view(tx, &id, &record)
         })
     }
@@ -558,20 +592,28 @@ impl Core {
                         tx.put("scim_groups", &group_id, &group)?;
                     }
                 }
-                for (key, mut group) in tx.list::<Group>("groups")? {
-                    if group.members.remove(&user.id) {
-                        tx.put("groups", &key, &group)?;
+                for (key, group) in tx.list::<Group>("groups")? {
+                    if group.members.contains(&user.id) {
+                        crate::management::write_group(
+                            tx,
+                            &actor,
+                            &key,
+                            crate::management::GroupIntent::Member {
+                                user_id: &user.id,
+                                present: false,
+                            },
+                            crate::management::GroupAudit::Deferred,
+                        )?;
                     }
                 }
             } else {
                 require(&actor, &record, "members")?;
-                tx.put(
-                    "groups",
+                crate::management::write_group(
+                    tx,
+                    &actor,
                     &record.local_id,
-                    &Group {
-                        name: record.local_id.clone(),
-                        members: Default::default(),
-                    },
+                    crate::management::GroupIntent::ReplaceMembers(&BTreeSet::new()),
+                    crate::management::GroupAudit::Deferred,
                 )?;
             }
             record.deleted = true;
@@ -613,6 +655,19 @@ fn read_email(data: &Value) -> Result<Option<String>> {
     }
     Ok(primary.or(first))
 }
+fn patches_members(input: &Value) -> bool {
+    input["Operations"].as_array().is_some_and(|operations| {
+        operations.iter().any(|op| {
+            op["path"].as_str().is_some_and(|path| {
+                path.eq_ignore_ascii_case("members") || path.starts_with("members[")
+            }) || op["path"].is_null()
+                && op["value"].as_object().is_some_and(|value| {
+                    value.keys().any(|key| key.eq_ignore_ascii_case("members"))
+                })
+        })
+    })
+}
+
 fn patch_resource(old: &Value, input: Value) -> Result<Value> {
     if input["schemas"] != json!([PATCH]) {
         return Err(Error::bad("Invalid SCIM patch schema"));

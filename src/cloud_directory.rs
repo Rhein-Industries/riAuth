@@ -1074,19 +1074,25 @@ fn membership(
     let mut changed = false;
     for name in old.union(&desired) {
         actor.require("group.members", &format!("group/{name}"))?;
-        let mut group = tx.get::<Group>("groups", name)?.ok_or_else(|| {
-            Error::bad("Cloud directory mappings require an existing local group")
-        })?;
-        let updated = if desired.contains(name) {
-            group.members.insert(uid.to_owned())
-        } else {
-            group.members.remove(uid)
-        };
-        if updated {
-            changed = true;
-            tx.put("groups", name, &group)?;
-            audit(tx, &actor.id, "group.cloud_directory_membership", name)?;
+        if tx.get::<Group>("groups", name)?.is_none() {
+            return Err(Error::bad(
+                "Cloud directory mappings require an existing local group",
+            ));
         }
+        changed |= crate::management::write_group(
+            tx,
+            actor,
+            name,
+            crate::management::GroupIntent::Member {
+                user_id: uid,
+                present: desired.contains(name),
+            },
+            crate::management::GroupAudit::OnChange {
+                action: "group.cloud_directory_membership",
+                target: name,
+            },
+        )?
+        .changed;
     }
     Ok(changed)
 }
@@ -1210,6 +1216,10 @@ fn reconcile(
             ));
         }
         let is_new = old.is_none();
+        // The shared group writer validates members against local user rows.
+        if is_new {
+            tx.put("users", &user.id, &user)?;
+        }
         let previous_groups = old
             .as_ref()
             .map(|binding| binding.groups.clone())

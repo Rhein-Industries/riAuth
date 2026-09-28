@@ -1014,6 +1014,11 @@ fn reconcile(
                 "LDAP username collides with an existing account; accounts are never automatically linked",
             ));
         }
+        // Stage a new user so the shared writer can validate the member ID.
+        // A later failure rolls this row back with the whole reconciliation.
+        if old.is_none() {
+            tx.put("users", &user.id, &user)?;
+        }
         let groups_changed = membership(
             tx,
             actor,
@@ -1109,19 +1114,23 @@ fn membership(
     let mut changed = false;
     for name in old.union(desired) {
         actor.require("group.members", &format!("group/{name}"))?;
-        let mut group = tx
-            .get::<Group>("groups", name)?
-            .ok_or_else(|| Error::bad("LDAP mappings require an existing local group"))?;
-        let change = if desired.contains(name) {
-            group.members.insert(uid.into())
-        } else {
-            group.members.remove(uid)
-        };
-        if change {
-            changed = true;
-            tx.put("groups", name, &group)?;
-            audit(tx, &actor.id, "group.directory_membership", name)?;
+        if tx.get::<Group>("groups", name)?.is_none() {
+            return Err(Error::bad("LDAP mappings require an existing local group"));
         }
+        changed |= crate::management::write_group(
+            tx,
+            actor,
+            name,
+            crate::management::GroupIntent::Member {
+                user_id: uid,
+                present: desired.contains(name),
+            },
+            crate::management::GroupAudit::OnChange {
+                action: "group.directory_membership",
+                target: name,
+            },
+        )?
+        .changed;
     }
     Ok(changed)
 }

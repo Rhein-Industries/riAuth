@@ -584,13 +584,17 @@ fn reconcile(
                     .ok_or_else(|| Error::bad("Group references unknown username"))
             })
             .collect::<Result<BTreeSet<_>>>()?;
-        tx.put(
-            "groups",
+        let intent = if existing.is_none() {
+            crate::management::GroupIntent::Create(&members)
+        } else {
+            crate::management::GroupIntent::ReplaceMembers(&members)
+        };
+        crate::management::write_group(
+            tx,
+            actor,
             &spec.name,
-            &Group {
-                name: spec.name.clone(),
-                members,
-            },
+            intent,
+            crate::management::GroupAudit::Deferred,
         )?;
         changes.push(Change {
             resource,
