@@ -1122,33 +1122,78 @@ impl Core {
         })
     }
     pub fn scim_list(&self, token: &str, kind: &str, query: Query) -> Result<Value> {
-        self.store.read(|tx|{
-        let actor=self.principal(tx,token)?;
-        bucket(kind)?;
-        // Validate once, including when the collection is empty.
-        let filter=parse_filter(kind,query.filter.as_deref())?;
-        let sort=parse_sort(kind,query.sort_by.as_deref(),query.sort_order.as_deref())?;
-        let projection=parse_projection(kind,query.attributes.as_deref(),query.excluded_attributes.as_deref())?;
-        let start=query.start_index.unwrap_or(1).max(1);let count=query.count.unwrap_or(100).min(1000);
-        let mut values=Vec::new();
-        let mut total=0;
-        for (id,record) in tx.list::<Record>(bucket(kind)?)? {
-            if record.deleted || record.owner!=actor.id || require(&actor,&record,"read").is_err(){continue;}
-            let value=self.scim_view(tx,&id,&record)?;
-            if filter.as_ref().is_none_or(|filter| filter.matches(&value)) {
-                total+=1;
-                // Unsorted queries only retain the requested page. Sorted
-                // queries reuse this one scoped result vector in place.
-                if sort.is_some() || (total>=start && values.len()<count) { values.push(value); }
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let bucket = bucket(kind)?;
+            // Validate once, including when the collection is empty.
+            let filter = parse_filter(kind, query.filter.as_deref())?;
+            let sort = parse_sort(kind, query.sort_by.as_deref(), query.sort_order.as_deref())?;
+            let projection = parse_projection(
+                kind,
+                query.attributes.as_deref(),
+                query.excluded_attributes.as_deref(),
+            )?;
+            let start = query.start_index.unwrap_or(1).max(1);
+            let count = query.count.unwrap_or(100).min(1000);
+            let mut total = 0;
+            let mut values = Vec::new();
+            let mut page_records = Vec::new();
+            let mut after = None;
+            loop {
+                // The read transaction holds one snapshot across all pages on
+                // both backends. Never decode the whole SCIM bucket at once.
+                let records = tx.scan::<Record>(bucket, after.as_deref(), 128)?;
+                if records.is_empty() {
+                    break;
+                }
+                let last_page = records.len() < 128;
+                after = Some(records.last().unwrap().0.clone());
+                for (id, record) in records {
+                    if record.deleted
+                        || record.owner != actor.id
+                        || require(&actor, &record, "read").is_err()
+                    {
+                        continue;
+                    }
+                    if filter.is_none() && sort.is_none() {
+                        total += 1;
+                        if total >= start && page_records.len() < count {
+                            page_records.push((id, record));
+                        }
+                    } else {
+                        let value = self.scim_view(tx, &id, &record)?;
+                        if filter.as_ref().is_none_or(|filter| filter.matches(&value)) {
+                            total += 1;
+                            if sort.is_some() || (total >= start && values.len() < count) {
+                                values.push(value);
+                            }
+                        }
+                    }
+                }
+                if last_page {
+                    break;
+                }
             }
-        }
-        let page:Vec<_>=if let Some(spec)=sort {
-            values.sort_by(|left,right| compare_sort(left,right,spec));
-            values.into_iter().skip(start-1).take(count).collect()
-        } else { values };
-        let page:Vec<_>=page.into_iter().map(|value| projection.apply(kind,value)).collect();
-        Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
-    })
+            // A plain key-order page needs full views only for its returned
+            // resources. Those views retain the resource-level ETags and live
+            // memberships used by GET, filters, and sorted list requests.
+            if filter.is_none() && sort.is_none() {
+                for (id, record) in page_records {
+                    values.push(self.scim_view(tx, &id, &record)?);
+                }
+            }
+            let page: Vec<_> = if let Some(spec) = sort {
+                values.sort_by(|left, right| compare_sort(left, right, spec));
+                values.into_iter().skip(start - 1).take(count).collect()
+            } else {
+                values
+            };
+            let page: Vec<_> = page
+                .into_iter()
+                .map(|value| projection.apply(kind, value))
+                .collect();
+            Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
+        })
     }
     pub fn scim_write(
         &self,
