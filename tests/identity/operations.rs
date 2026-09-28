@@ -2310,6 +2310,320 @@ fn authentik_membership_expressions_factor_into_two_lists_or_block() {
 }
 
 #[test]
+fn authentik_scope_mappings_convert_exact_claims_or_block() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let f = Fixture::new();
+    let issuer = f.core.config.issuer.clone();
+    // Authentik 2025.10's default mappings, verbatim.
+    let openid = "# This scope is required by the OpenID-spec, and must as such exist in authentik.\n# The scope by itself does not grant any information\nreturn {}\n";
+    let email = "return {\n    \"email\": request.user.email,\n    \"email_verified\": True\n}\n";
+    let profile = r#"return {
+    # Because authentik only saves the user's full name, and has no concept of first and last names,
+    # the full name is used as given name.
+    # You can override this behaviour in custom mappings, i.e. `request.user.name.split(" ")`
+    "name": request.user.name,
+    "given_name": request.user.name,
+    "preferred_username": request.user.username,
+    "nickname": request.user.username,
+    "groups": [group.name for group in request.user.ak_groups.all()],
+}
+"#;
+    let offline = "# This scope grants the application a refresh token that can be used to refresh user data\n# and let the application access authentik without the users interaction\nreturn {}\n";
+    let api = "# This scope grants the application the ability to access the authentik API\n# on behalf of the authorizing user\nreturn {}\n";
+    let entitlements = "entitlements = [entitlement.name for entitlement in request.user.app_entitlements(provider.application)]\nreturn {\n    \"entitlements\": entitlements,\n    \"roles\": entitlements,\n}\n";
+    // Authentik's current profile mapping calls helpers riAuth never evaluates.
+    let profile_main = "avatar = request.user.avatar\nreturn delete_none_values({\n    \"name\": request.user.name,\n    \"given_name\": ak_obj_attr(request.user, \"given_name\", \"name\"),\n    \"preferred_username\": request.user.username,\n})\n";
+    let mapping = |pk: &str, scope: &str, expression: &str| json!({"pk":pk,"managed":null,"name":format!("mapping {pk}"),"scope_name":scope,"expression":expression});
+    let mappings = json!([
+        mapping("m-openid", "openid", openid),
+        mapping("m-email", "email", email),
+        mapping("m-profile", "profile", profile),
+        mapping("m-profile2", "profile", profile),
+        mapping("m-offline", "offline_access", offline),
+        mapping("m-api", "goauthentik.io/api", api),
+        mapping("m-entitlements", "entitlements", entitlements),
+        mapping("m-profile-main", "profile", profile_main),
+        mapping(
+            "m-custom",
+            "department",
+            "return {\"department_admin\": True, \"login\": request.user.username}"
+        ),
+        mapping(
+            "m-contact",
+            "contact",
+            "return {'contact': request.user.email}"
+        ),
+        mapping("m-sub", "legacy", "return {\"sub\": request.user.username}"),
+        mapping("m-secret", "extra", "return {\"token\": \"s3cr3t-token\"}"),
+        mapping(
+            "m-reserved",
+            "extra",
+            "return {\"email\": request.user.email}"
+        ),
+        mapping(
+            "m-name-only",
+            "profile",
+            "return {\"name\": request.user.name}"
+        ),
+    ]);
+    // (client, mappings, scopes, acknowledged mapping IDs, reviewed claim mappings)
+    let clients: Vec<(&str, Vec<&str>, Vec<&str>, Vec<&str>, Value)> = vec![
+        (
+            "app",
+            vec!["m-openid", "m-profile", "m-offline"],
+            vec!["openid", "profile", "offline_access"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "custom",
+            vec!["m-openid", "m-custom"],
+            vec!["openid", "department"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "contact",
+            vec!["m-contact"],
+            vec!["openid", "contact"],
+            vec![],
+            json!([]),
+        ),
+        // riAuth reports its own verification state, so acknowledging the email mapping is a choice.
+        (
+            "mailack",
+            vec!["m-openid", "m-email"],
+            vec!["openid", "email"],
+            vec!["m-email"],
+            json!([]),
+        ),
+        (
+            "mail",
+            vec!["m-email"],
+            vec!["openid", "email"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "subject",
+            vec!["m-sub"],
+            vec!["openid", "legacy"],
+            vec!["m-sub"],
+            json!([]),
+        ),
+        (
+            "authentik",
+            vec!["m-api", "m-entitlements", "m-profile-main"],
+            vec!["openid", "profile", "entitlements"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "noscope",
+            vec!["m-custom"],
+            vec!["openid"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "dup",
+            vec!["m-profile", "m-profile2"],
+            vec!["openid", "profile"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "secret",
+            vec!["m-secret"],
+            vec!["openid", "extra"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "reserved",
+            vec!["m-reserved"],
+            vec!["openid", "extra"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "nameonly",
+            vec!["m-name-only"],
+            vec!["openid", "profile"],
+            vec![],
+            json!([]),
+        ),
+        (
+            "clash",
+            vec!["m-custom"],
+            vec!["openid", "department"],
+            vec![],
+            json!([{"scope":"openid","claim":"login","source":{"type":"display_name"}}]),
+        ),
+        (
+            "unknown",
+            vec!["m-missing"],
+            vec!["openid"],
+            vec![],
+            json!([]),
+        ),
+    ];
+    let user = |pk: u64, name: &str, display: &str, email: &str, groups: &[&str]| {
+        json!({"pk":pk,"uid":format!("uid-{pk}"),"username":name,"name":display,"email":email,"groups":groups,
+            "attributes":{},"type":"internal","is_active":true,"roles":[]})
+    };
+    let bundle = |names: &[&str], users: Value| {
+        let chosen = clients
+            .iter()
+            .enumerate()
+            .filter(|(_, (cid, ..))| names.contains(cid))
+            .collect::<Vec<_>>();
+        let passwords = users
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| {
+                (
+                    u["username"].as_str().unwrap().to_owned(),
+                    json!({"reference":"env:PASSWORD","version":"v1"}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        json!({"api_version":"riauth.authentik-import/v1","issuer":issuer,"users":users,
+            "groups":[{"pk":"g-staff","name":"staff","parents":[]},{"pk":"g-ops","name":"ops","parents":[]},
+                {"pk":"g-child","name":"child","parents":["g-staff"]}],
+            "scope_mappings":mappings,"applications":[],"policy_bindings":[],"sources":[],"passwords":passwords,
+            "providers":chosen.iter().map(|(i, (cid, mappings, ..))| json!({"pk":i + 1,"name":cid,"client_id":cid,"client_type":"public",
+                "grant_types":["authorization_code"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],
+                "property_mappings":mappings,"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true})).collect::<Vec<_>>(),
+            "clients":chosen.iter().map(|(_, (cid, _, scopes, acknowledged, reviewed))| (cid.to_string(), json!({"issuer":format!("{issuer}/application/o/{cid}/"),
+                "scopes":scopes,"settings":{"claim_mappings":reviewed},"translated_mapping_ids":acknowledged,"translated_binding_ids":[],
+                "authentication_flow_reviewed":true,"require_mfa":false}))).collect::<serde_json::Map<_, _>>()})
+    };
+    let convert =
+        |input: Value| riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
+    // Every account has a name and an email, keeps its username, and has flat groups.
+    let exact_users = json!([
+        user(1, "alice", "Alice", "alice@example.test", &["g-staff"]),
+        user(2, "bob", "Bob", "bob@example.test", &["g-ops"])
+    ]);
+    let all = clients.iter().map(|(cid, ..)| *cid).collect::<Vec<_>>();
+    let report = convert(bundle(&all, exact_users.clone()));
+    assert_eq!(report["ready_for_plan"], false);
+    for (id, expected) in [
+        ("app/m-openid", vec![(Exact, false)]),
+        ("app/m-profile", vec![(Convertible, false)]),
+        ("app/m-offline", vec![(Exact, false)]),
+        ("custom/m-custom", vec![(Convertible, false)]),
+        ("contact/m-contact", vec![(Convertible, false)]),
+        ("mailack/m-email", vec![(Manual, false)]),
+        ("mail/m-email", vec![(Manual, true)]),
+        // A mapping that changes subjects blocks even when acknowledged.
+        ("subject/m-sub", vec![(Unsupported, true)]),
+        ("authentik/m-api", vec![(Manual, true)]),
+        ("authentik/m-entitlements", vec![(Manual, true)]),
+        ("authentik/m-profile-main", vec![(Manual, true)]),
+        ("noscope/m-custom", vec![(Manual, true)]),
+        ("dup/m-profile", vec![(Manual, true)]),
+        ("dup/m-profile2", vec![(Manual, true)]),
+        ("secret/m-secret", vec![(Manual, true)]),
+        ("reserved/m-reserved", vec![(Manual, true)]),
+        ("nameonly/m-name-only", vec![(Manual, true)]),
+        ("clash/m-custom", vec![(Manual, true)]),
+        ("unknown/m-missing", vec![(Manual, true)]),
+    ] {
+        assert_eq!(findings(&report, PropertyMapping, id), expected, "{id}");
+    }
+    // Mapping sources are never quoted in the report.
+    let rendered = report.to_string();
+    for fragment in ["s3cr3t-token", "app_entitlements", "delete_none_values"] {
+        assert!(!rendered.contains(fragment), "{fragment}");
+    }
+    let claim_mappings = |report: &Value, cid: &str| {
+        report["draft"]["clients"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["client_id"] == cid)
+            .unwrap()["settings"]["claim_mappings"]
+            .clone()
+    };
+    assert_eq!(
+        claim_mappings(&report, "app"),
+        json!([
+        {"scope":"profile","claim":"given_name","source":{"type":"display_name"}},
+        {"scope":"profile","claim":"nickname","source":{"type":"username"}},
+        {"scope":"profile","claim":"groups","source":{"type":"groups"}}])
+    );
+    assert_eq!(
+        claim_mappings(&report, "custom"),
+        json!([
+        {"scope":"department","claim":"department_admin","source":{"type":"literal","value":true}},
+        {"scope":"department","claim":"login","source":{"type":"username"}}])
+    );
+
+    // An empty name, a missing email or an ancestor group changes the value riAuth would return.
+    let inexact = json!([
+        user(1, "alice", "Alice", "alice@example.test", &["g-staff"]),
+        user(3, "carol", "", "", &["g-child"])
+    ]);
+    let report = convert(bundle(&["app", "contact"], inexact));
+    for id in ["app/m-profile", "contact/m-contact"] {
+        assert_eq!(
+            findings(&report, PropertyMapping, id),
+            [(Manual, true)],
+            "{id}"
+        );
+    }
+
+    // Converted claims are exactly what Authentik's mappings returned.
+    let report = convert(bundle(&["app", "custom", "mailack"], exact_users));
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    let plan = f
+        .core
+        .plan_state(
+            &f.admin,
+            serde_json::from_value(report["manifest"].clone()).unwrap(),
+        )
+        .unwrap();
+    f.core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan,
+                secrets: [("env:PASSWORD".into(), PASSWORD.into())].into(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    let userinfo = |cid: &str, username: &str, scopes: &[&str]| {
+        let mut claims = f
+            .core
+            .explain(
+                &f.admin,
+                riauth::claims::Explain {
+                    client_id: cid.into(),
+                    username: username.into(),
+                    scope: strings(scopes),
+                    mfa: false,
+                },
+            )
+            .unwrap()["userinfo"]
+            .clone();
+        claims.as_object_mut().unwrap().remove("sub");
+        claims
+    };
+    assert_eq!(
+        userinfo("app", "alice", &["openid", "profile", "offline_access"]),
+        json!({"name":"Alice","given_name":"Alice","preferred_username":"alice","nickname":"alice","groups":["staff"]})
+    );
+    assert_eq!(
+        userinfo("custom", "bob", &["openid", "department"]),
+        json!({"department_admin":true,"login":"bob"})
+    );
+}
+
+#[test]
 fn authentik_reimport_keeps_verified_accounts_and_never_moves_identities() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();

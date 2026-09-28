@@ -187,6 +187,13 @@
   factor, always passes, or checks more than 12 groups is a manual finding that
   needs a rewrite in Authentik. It always blocks where its condition is
   required, and `translated_binding_ids` cannot clear it.
+- With the new `scope_mappings` input, OAuth2 scope mappings that return a plain
+  dictionary of names, usernames, emails, booleans or direct groups convert
+  into riAuth claims. This applies only where riAuth returns the same value
+  for every converted account. Authentik 2025.10's `openid`, `offline_access`
+  and `profile` defaults qualify. Email-scope mappings, Authentik API scopes,
+  merged scopes and other expressions stay manual. A mapping that returns `sub`
+  always blocks. Mapping text never appears in the report.
 - Membership expressions may now use parentheses, up to 8 levels deep. They
   factor into at most two any-of lists, `allowed_groups` and
   `settings.policy.access.any_groups`, so `(a or b) and (c or d)` converts

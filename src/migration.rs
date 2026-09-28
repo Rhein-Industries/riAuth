@@ -40,6 +40,11 @@ pub struct Import {
     /// never executes an expression or reports its text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expression_policies: Option<Value>,
+    /// Complete export of `/api/v3/propertymappings/provider/scope/`. Scope mappings that return a
+    /// plain dictionary of values riAuth reproduces exactly become claim mappings; the preflight
+    /// never executes a mapping or reports its text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_mappings: Option<Value>,
     #[serde(default)]
     pub totp: BTreeMap<String, PasswordReference>,
     #[serde(default)]
@@ -687,6 +692,275 @@ struct Directory<'a> {
     accounts: BTreeMap<String, (&'a str, bool)>,
     /// Exported expression policy ID -> name and expression.
     expressions: BTreeMap<String, (&'a str, &'a str)>,
+}
+
+/// A value a recognized scope mapping returns for one claim.
+#[derive(Clone, Copy, PartialEq)]
+enum ClaimValue {
+    /// `request.user.name`
+    Name,
+    /// `request.user.username`
+    Username,
+    /// `request.user.email`
+    Email,
+    /// `True` or `False`
+    Bool(bool),
+    /// `[group.name for group in request.user.ak_groups.all()]`, or `.groups.all()`: direct groups.
+    DirectGroups,
+}
+
+/// The scope mappings riAuth converts: comment and blank lines, then one statement
+/// `return {"<claim>": <value>, ...}` whose dictionary may span lines and hold comments and a
+/// trailing comma. Each value is `request.user.name`, `request.user.username`,
+/// `request.user.email`, `True`, `False` or `[group.name for group in
+/// request.user.ak_groups.all()]` (or `request.user.groups.all()`). Anything else is not recognized,
+/// including other statements, calls, keys or values, escapes, semicolons, duplicate claims, more
+/// than 32 claims and any character outside ASCII.
+fn claim_dictionary(expression: &str) -> Option<Vec<(&str, ClaimValue)>> {
+    if !expression.is_ascii() {
+        return None;
+    }
+    let bytes = expression.as_bytes();
+    let (mut tokens, mut at) = (Vec::new(), 0);
+    while at < bytes.len() {
+        let start = at;
+        match bytes[at] {
+            b' ' | b'\t' | b'\r' => {
+                at += 1;
+                continue;
+            }
+            b'#' => {
+                while at < bytes.len() && bytes[at] != b'\n' {
+                    at += 1;
+                }
+                continue;
+            }
+            b'\n' | b'{' | b'}' | b'[' | b']' | b'(' | b')' | b',' | b':' => at += 1,
+            quote @ (b'"' | b'\'') => {
+                let end = expression[at + 1..].find(|c| c == char::from(quote) || c == '\n')?;
+                if bytes[at + 1 + end] != quote {
+                    return None;
+                }
+                at += end + 2;
+            }
+            b if b.is_ascii_alphabetic() || b == b'_' => {
+                while at < bytes.len()
+                    && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'_' | b'.'))
+                {
+                    at += 1;
+                }
+            }
+            _ => return None,
+        }
+        tokens.push(&expression[start..at]);
+    }
+    // Only blank and comment lines come before `return {`, and only they come after the `}`.
+    let first = tokens.iter().position(|t| *t != "\n")?;
+    if tokens[first] != "return" || tokens.get(first + 1) != Some(&"{") {
+        return None;
+    }
+    let close = first + 2 + tokens[first + 2..].iter().position(|t| *t == "}")?;
+    if tokens[close + 1..].iter().any(|t| *t != "\n") {
+        return None;
+    }
+    let inner = tokens[first + 2..close]
+        .iter()
+        .copied()
+        .filter(|t| *t != "\n")
+        .collect::<Vec<_>>();
+    let mut claims = Vec::new();
+    let mut i = 0;
+    while i < inner.len() {
+        let key = inner[i]
+            .strip_prefix(['"', '\''])?
+            .strip_suffix(['"', '\''])?;
+        if key.is_empty() || key.contains(['"', '\'']) || inner.get(i + 1) != Some(&":") {
+            return None;
+        }
+        let (value, used) = match inner.get(i + 2..)? {
+            ["request.user.name", ..] => (ClaimValue::Name, 1),
+            ["request.user.username", ..] => (ClaimValue::Username, 1),
+            ["request.user.email", ..] => (ClaimValue::Email, 1),
+            ["True", ..] => (ClaimValue::Bool(true), 1),
+            ["False", ..] => (ClaimValue::Bool(false), 1),
+            [
+                "[",
+                "group.name",
+                "for",
+                "group",
+                "in",
+                groups,
+                "(",
+                ")",
+                "]",
+                ..,
+            ] if matches!(
+                *groups,
+                "request.user.ak_groups.all" | "request.user.groups.all"
+            ) =>
+            {
+                (ClaimValue::DirectGroups, 9)
+            }
+            _ => return None,
+        };
+        i += 2 + used;
+        match inner.get(i) {
+            None => {}
+            Some(&",") => i += 1,
+            Some(_) => return None,
+        }
+        if claims.iter().any(|(claimed, _)| *claimed == key) || claims.len() == 32 {
+            return None;
+        }
+        claims.push((key, value));
+    }
+    Some(claims)
+}
+
+/// Whether each exported value reads the same in riAuth for every converted account.
+struct ClaimFacts {
+    /// Every account has a non-empty Authentik name, which riAuth keeps as its display name.
+    names: bool,
+    /// Every account keeps its Authentik username in riAuth.
+    usernames: bool,
+    /// Every account has an email address.
+    emails: bool,
+    /// Every account's riAuth groups are exactly its direct Authentik groups.
+    groups: bool,
+}
+
+/// What one exported scope mapping becomes: the claim mappings that reproduce its claims, or the
+/// classification and reason it does not convert. riAuth returns `name` and `preferred_username`
+/// for `profile`, `groups` for `groups`, and derives the `email` scope's claims itself; every other
+/// claim is a claim mapping on the mapping's scope, which the reviewed client must register.
+fn scope_claims(
+    (name, scope, expression): (&str, &str, &str),
+    facts: &ClaimFacts,
+    scopes: &BTreeSet<String>,
+    claimed: &BTreeSet<String>,
+) -> std::result::Result<Vec<crate::model::claims::ClaimMapping>, (Classification, String)> {
+    use crate::model::claims::{ClaimMapping, ClaimSource};
+    let manual = |reason: String| Err((Classification::Manual, reason));
+    if scope.starts_with("goauthentik.io/") {
+        return manual(format!(
+            "Scope mapping {name} grants scope {scope}, access to Authentik's own API or client registration, which riAuth does not provide"
+        ));
+    }
+    let Some(claims) = claim_dictionary(expression) else {
+        return manual(format!(
+            "Scope mapping {name} is not a dictionary of values riAuth reproduces exactly, and mappings are never executed or assumed equivalent"
+        ));
+    };
+    if claims.iter().any(|(key, _)| *key == "sub") {
+        return Err((
+            Classification::Unsupported,
+            format!(
+                "Scope mapping {name} returns sub, which would change every subject this client issues"
+            ),
+        ));
+    }
+    if scope == "email" {
+        return manual(format!(
+            "Scope mapping {name} sets the email scope, whose email and email_verified claims riAuth derives from its own verified addresses"
+        ));
+    }
+    let builtin: &[(&str, ClaimValue)] = match scope {
+        "profile" => &[
+            ("name", ClaimValue::Name),
+            ("preferred_username", ClaimValue::Username),
+        ],
+        "groups" => &[("groups", ClaimValue::DirectGroups)],
+        _ => &[],
+    };
+    if let Some((key, _)) = builtin
+        .iter()
+        .find(|(key, _)| !claims.iter().any(|(k, _)| k == key))
+    {
+        return manual(format!(
+            "riAuth always returns {key} for scope {scope}, which scope mapping {name} omits"
+        ));
+    }
+    let mut mappings = Vec::new();
+    for (key, value) in claims {
+        let (exact, why) = match value {
+            ClaimValue::Name => (
+                facts.names,
+                "request.user.name is empty for some accounts, while riAuth's display name falls back to the username",
+            ),
+            ClaimValue::Username => (
+                facts.usernames,
+                "some accounts keep an earlier riAuth username after an Authentik rename",
+            ),
+            ClaimValue::Email => (
+                facts.emails,
+                "some accounts have no email address, which Authentik returns as an empty string and riAuth as null",
+            ),
+            ClaimValue::DirectGroups => (
+                facts.groups,
+                "riAuth group claims list ancestor groups and converted groups only, while this list names each account's direct Authentik groups",
+            ),
+            ClaimValue::Bool(_) => (true, ""),
+        };
+        if !exact {
+            return manual(format!(
+                "Scope mapping {name} returns {key} from a value riAuth does not reproduce: {why}"
+            ));
+        }
+        if builtin.contains(&(key, value)) {
+            continue;
+        }
+        if [
+            "iss",
+            "aud",
+            "exp",
+            "iat",
+            "nbf",
+            "jti",
+            "nonce",
+            "auth_time",
+            "amr",
+            "acr",
+            "at_hash",
+            "c_hash",
+            "sid",
+            "client_id",
+            "scope",
+            "cnf",
+            "act",
+            "email",
+            "email_verified",
+        ]
+        .contains(&key)
+        {
+            return manual(format!(
+                "Scope mapping {name} returns {key}, which riAuth reserves"
+            ));
+        }
+        if !scopes.contains(scope) {
+            return manual(format!(
+                "Scope {scope} is not in the reviewed scopes, so the claims of scope mapping {name} could not be issued"
+            ));
+        }
+        if claimed.contains(key) || mappings.iter().any(|m: &ClaimMapping| m.claim == key) {
+            return manual(format!(
+                "Claim {key} of scope mapping {name} is already mapped for this client"
+            ));
+        }
+        mappings.push(ClaimMapping {
+            scope: scope.to_owned(),
+            claim: key.to_owned(),
+            source: match value {
+                ClaimValue::Name => ClaimSource::DisplayName,
+                ClaimValue::Username => ClaimSource::Username,
+                ClaimValue::Email => ClaimSource::Email,
+                ClaimValue::Bool(value) => ClaimSource::Literal {
+                    value: json!(value),
+                },
+                ClaimValue::DirectGroups => ClaimSource::Groups,
+            },
+        });
+    }
+    Ok(mappings)
 }
 
 /// A binding's boolean field, or its default when absent. Any other value fails the conversion,
@@ -1776,6 +2050,58 @@ pub fn convert(input: Import) -> Result<Value> {
             .collect::<Result<_>>()?,
         expressions,
     };
+    let mut scope_mappings = BTreeMap::new();
+    if let Some(mappings) = &input.scope_mappings {
+        for mapping in rows(mappings)? {
+            let entry = (
+                field(mapping, "name")?,
+                field(mapping, "scope_name")?,
+                field(mapping, "expression")?,
+            );
+            if scope_mappings
+                .insert(identifier(&mapping["pk"])?, entry)
+                .is_some()
+            {
+                return Err(Error::bad("Duplicate exported scope mapping"));
+            }
+        }
+    }
+    // Claim values an exact conversion needs to read the same for every converted account.
+    let mut facts = ClaimFacts {
+        names: true,
+        usernames: true,
+        emails: true,
+        groups: true,
+    };
+    for user in users {
+        let username = field(user, "username")?;
+        let Some(account) = accounts.get(username) else {
+            continue;
+        };
+        facts.names &= user["name"].as_str().is_some_and(|name| !name.is_empty());
+        facts.usernames &= account.name == username;
+        facts.emails &= account.email.is_some();
+        let direct = ids(&user["groups"])?;
+        let name = |id: &str| {
+            group_names
+                .get(id)
+                .cloned()
+                .ok_or_else(|| Error::bad("User references unexported group"))
+        };
+        let listed = direct
+            .iter()
+            .map(|id| name(id))
+            .collect::<Result<BTreeSet<_>>>()?;
+        let flattened = direct
+            .iter()
+            .flat_map(|id| {
+                std::iter::once(id).chain(ancestors.get(id.as_str()).into_iter().flatten())
+            })
+            .filter(|id| converted_groups.contains(*id))
+            .map(|id| name(id))
+            .collect::<Result<BTreeSet<_>>>()?;
+        facts.groups &= listed == flattened;
+    }
     let mut subject_modes = BTreeMap::new();
     let mut client_issuers = Vec::new();
     let mut exported_subjects = BTreeMap::<String, Vec<String>>::new();
@@ -1812,6 +2138,14 @@ pub fn convert(input: Import) -> Result<Value> {
         let mapping_blocker = format!(
             "{cid}: every exported property mapping must have a reviewed declarative translation"
         );
+        // Authentik merges several mappings of one scope, which riAuth does not reproduce.
+        let mut per_scope = BTreeMap::<&str, usize>::new();
+        for mapping in &exported_mappings {
+            if let Some((_, scope, _)) = scope_mappings.get(mapping) {
+                *per_scope.entry(*scope).or_default() += 1;
+            }
+        }
+        let mut claim_mappings = Vec::new();
         for mapping in exported_mappings.union(&resolution.translated_mapping_ids) {
             let id = format!("{cid}/{mapping}");
             if !exported_mappings.contains(mapping) {
@@ -1825,11 +2159,73 @@ pub fn convert(input: Import) -> Result<Value> {
                 .block(&mapping_blocker);
                 continue;
             }
-            let item = p.add(ItemKind::PropertyMapping, id, Classification::Manual,
-                "Mapping expressions are never executed or assumed equivalent",
-                "Translate the mapping into reviewed declarative claim settings and list its ID in translated_mapping_ids; a mapping that returns sub cannot be translated, so its relying party needs an explicit account migration");
-            if !resolution.translated_mapping_ids.contains(mapping) {
-                item.block(&mapping_blocker);
+            let outcome = match scope_mappings.get(mapping) {
+                None => Err((
+                    Classification::Manual,
+                    "Mapping expressions are never executed or assumed equivalent".to_owned(),
+                )),
+                Some((name, scope, _)) if per_scope[scope] > 1 => Err((
+                    Classification::Manual,
+                    format!(
+                        "Authentik merges the {} mappings of scope {scope}, including {name}, which riAuth does not reproduce",
+                        per_scope[scope]
+                    ),
+                )),
+                Some(definition) => {
+                    let claimed = resolution
+                        .settings
+                        .claim_mappings
+                        .iter()
+                        .chain(&claim_mappings)
+                        .map(|m| m.claim.clone())
+                        .collect::<BTreeSet<_>>();
+                    scope_claims(*definition, &facts, &resolution.scopes, &claimed)
+                }
+            };
+            match outcome {
+                Ok(mappings) => {
+                    let (name, scope, _) = scope_mappings[mapping];
+                    let (classification, reason) = if mappings.is_empty() {
+                        (
+                            Classification::Exact,
+                            format!(
+                                "Scope mapping {name} returns exactly the claims riAuth returns for scope {scope}"
+                            ),
+                        )
+                    } else {
+                        (
+                            Classification::Convertible,
+                            format!(
+                                "Scope mapping {name} becomes riAuth claim mappings for {} on scope {scope}, with the same values for every converted account",
+                                mappings
+                                    .iter()
+                                    .map(|m| m.claim.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        )
+                    };
+                    p.add(
+                        ItemKind::PropertyMapping,
+                        id,
+                        classification,
+                        reason,
+                        "Review the converted claims with the relying party",
+                    );
+                    claim_mappings.extend(mappings);
+                }
+                Err((Classification::Unsupported, reason)) => {
+                    p.add(ItemKind::PropertyMapping, id, Classification::Unsupported, reason,
+                        "Remove the sub claim from the mapping in Authentik, or plan an explicit relying-party account migration; translated_mapping_ids cannot clear it")
+                        .block(format!("{cid}: property mapping {mapping} would change subjects"));
+                }
+                Err((classification, reason)) => {
+                    let item = p.add(ItemKind::PropertyMapping, id, classification, reason,
+                        "Translate the mapping into reviewed declarative claim settings and list its ID in translated_mapping_ids; a mapping that returns sub cannot be translated, so its relying party needs an explicit account migration");
+                    if !resolution.translated_mapping_ids.contains(mapping) {
+                        item.block(&mapping_blocker);
+                    }
+                }
             }
         }
         resolved_bindings.extend(resolution.translated_binding_ids.clone());
@@ -1873,6 +2269,7 @@ pub fn convert(input: Import) -> Result<Value> {
                 "Import the key with riauth keys import and set settings.signing_key to keep its kid, or have the relying party accept riAuth's JWKS"
             });
         let mut settings = resolution.settings.clone();
+        settings.claim_mappings.extend(claim_mappings);
         let provider_id = identifier(&provider["pk"])?;
         let associated = applications
             .iter()

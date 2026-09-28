@@ -24,6 +24,7 @@ Inspect `riauth --json schema authentik-import`. The bundle uses `api_version: "
 | `policy_bindings` | [`/api/v3/policies/bindings/`](https://api.goauthentik.io/reference/policies-bindings-list/) |
 | `sources` | [`/api/v3/sources/all/`](https://api.goauthentik.io/reference/sources-all-list/) |
 | `expression_policies` (optional) | `/api/v3/policies/expression/`; needed to convert group-membership expressions bound to applications |
+| `scope_mappings` (optional) | `/api/v3/propertymappings/provider/scope/`; needed to convert the OAuth2 scope mappings of providers (see [scope mappings](#scope-mappings)) |
 | `user_source_connections` | `/api/v3/sources/user_connections/all/` (Authentik 2025.4 and later); for older versions, the `oauth/` and `saml/` connection lists combined |
 
 Collect every page into an array. A single complete `results` response is accepted only when its pagination reports a complete collection. Incomplete pages are rejected. Supply empty arrays only when the inventory establishes that the collection is empty. Keep the original exports private: provider responses can contain client secrets. The converter uses the [Authentik user serializer](https://github.com/goauthentik/authentik/blob/main/authentik/core/api/users.py) and [OAuth provider serializer](https://github.com/goauthentik/authentik/blob/main/authentik/providers/oauth2/api/providers.py) field names.
@@ -40,7 +41,7 @@ Add `clients`, keyed by client ID. Each entry requires:
 
 - Exact `issuer` from that provider's discovery document or `/api/v3/providers/oauth2/<pk>/setup_urls/`, and the scopes to preserve. The preflight checks it against the exported `issuer_mode` and application slug (see [identity continuity](#identity-continuity)).
 - Reviewed `settings` containing declarative claims and policy translations.
-- `translated_mapping_ids` and `translated_binding_ids` identifying reviewed source mappings/bindings. Every exported mapping/binding must be accounted for; expressions are never executed or automatically deemed equivalent. Exact group and user bindings of this provider's application are converted into its access conditions without a translation (see [application access](#identity-continuity)).
+- `translated_mapping_ids` and `translated_binding_ids` identifying reviewed source mappings/bindings. Scope mappings that riAuth reproduces exactly convert without a translation (see [scope mappings](#scope-mappings)). Every exported mapping/binding must be accounted for; expressions are never executed or automatically deemed equivalent. Exact group and user bindings of this provider's application are converted into its access conditions without a translation (see [application access](#identity-continuity)).
 - `authentication_flow_reviewed: true` only after checking browser and terminal login, consent and MFA requirements; set `require_mfa` and scope rules accordingly. Until then the report carries the blocker "authentication flow has not been reviewed for browser/terminal login and MFA".
 - `federation_reviewed: true` only after translating exported JWT federation trust into pinned `machine_trust`, `exchange` and `token_managers` settings. Exported encryption keys require reviewed recipient keys for both ID and access tokens.
 - For confidential clients, `secret_ref` and `secret_version` pointing to the existing secret, or a deliberate new secret coordinated with the RP.
@@ -60,8 +61,8 @@ The importer carries over exact redirects, supported grant permissions, token li
 | `blocking`, `blocker` | Whether this item keeps `ready_for_plan` false, and its entry in `blockers` |
 | `reason`, `action` | Why it has this classification, and what to do next |
 
-- **exact**: carried over unchanged. Examples: strict redirect URIs, grant lists, `hashed_user_id`, `user_id` and `user_uuid` subjects, issuers that match the exported issuer mode, source links backed by an exported connection, logout URIs, group names without parents, and disabled application bindings, which admit and refuse no one.
-- **convertible**: carried over through a documented transformation. Examples: flattened parent groups, `user_username`, `user_email` and `user_upn` subjects, which stay fixed after import, `authentik-<pk>` local IDs, duration strings, logout redirects, application portal metadata, enabled group and user bindings of a converted application that riAuth expresses exactly, and single `ak_is_group_member` expressions bound to it, which become its access conditions, the built-in source, referenced password hashes and TOTP secrets.
+- **exact**: carried over unchanged. Examples: strict redirect URIs, grant lists, `hashed_user_id`, `user_id` and `user_uuid` subjects, issuers that match the exported issuer mode, source links backed by an exported connection, logout URIs, group names without parents, and disabled application bindings, which admit and refuse no one, and scope mappings that return exactly the claims riAuth returns for their scope, such as Authentik's `openid` and `offline_access` defaults.
+- **convertible**: carried over through a documented transformation. Examples: flattened parent groups, `user_username`, `user_email` and `user_upn` subjects, which stay fixed after import, `authentik-<pk>` local IDs, duration strings, logout redirects, application portal metadata, enabled group and user bindings of a converted application that riAuth expresses exactly, and single `ak_is_group_member` expressions bound to it, which become its access conditions, the built-in source, referenced password hashes and TOTP secrets, and scope mappings whose claims become riAuth claim mappings.
 - **manual**: depends on reviewed operator input or an explicit decision. A manual item is non-blocking once that input is present. Examples: client resolutions, authentication flows, property mappings, policy bindings, federation, client secrets, source resolutions and newly established passwords. Group attributes and Authentik superuser status or roles granted through groups are non-blocking manual findings. They are not copied or promoted, so grant any riAuth permissions explicitly. Identity continuity adds the target issuer binding (non-blocking), reviewed issuers that do not match the export or lack `issuer_mode`, source links the export does not establish, exported connections that are not carried over, excluded groups (non-blocking) and stale `passwords`, `totp` or `excluded_groups` entries. A group-membership expression that does not factor is manual too, but where its condition is required it stays blocking until it is rewritten in Authentik.
 - **unsupported**: cannot be represented or transferred. Examples: regex redirects, unknown subject modes or logout methods, non-OAuth2 providers, provisioning providers, sources without an adapter, subjects outside the OIDC format and duplicate subjects. Usernames, names, emails, group names and client IDs that riAuth cannot store unchanged, several groups with one name, one upstream identity linked to several accounts, issuers that several providers share or that collide with riAuth's own, and application bindings riAuth cannot keep exactly are unsupported and blocking. Authentik's internal service accounts are unsupported and non-blocking, and are never converted. Passkeys, live sessions and tokens, static recovery tokens, other authenticator devices, app passwords and API tokens always appear as non-blocking unsupported items, because they cannot move and users must sign in and enroll again.
 
@@ -219,6 +220,34 @@ A binding whose `enabled`, `negate` or `expiring` field is present but not a boo
 Custom attributes are copied. `email_verified` starts false, and Authentik administrative status is not promoted automatically. Keep the riAuth bootstrap administrator while reviewing administrative roles. Imported authentication sources, service identities and administrative roles require explicit handling and can block conversion.
 
 Password hash imports support Django `pbkdf2_sha256` with 1,000–2,000,000 iterations and Argon2id/i v19 with bounded memory/time/parallelism. Django's Argon2 prefix is normalized. PBKDF2 and Argon2i hashes, and Argon2id hashes whose memory, time or parallelism differ from riAuth's defaults, are rehashed to default Argon2id after the first successful login, without changing user identity or invalidating a legacy short password. Until then, an imported hash that is slower to verify than riAuth's one-second floor on failed logins (for example Argon2 with `m=262144,t=10`) makes failures for that account measurably slower than for others, which can reveal that the account exists. New password creation/reset still enforces the new-password policy. Invalid or excessive-cost hashes fail the atomic apply.
+
+## Scope mappings
+
+With `scope_mappings`, each OAuth2 scope mapping of a provider is classified from its definition. A mapping converts only when its whole expression is comment and blank lines followed by one `return` of a plain dictionary. The dictionary may span lines and hold comments and a trailing comma. Each value must be one of:
+
+- `request.user.name`, `request.user.username` or `request.user.email`;
+- `True` or `False`;
+- `[group.name for group in request.user.ak_groups.all()]`, or `request.user.groups.all()` in newer versions (direct groups).
+
+A value converts only when riAuth returns the same value for every converted account:
+
+- a name when every account has a non-empty Authentik name, because riAuth's display name otherwise falls back to the username;
+- a username when no account kept an earlier riAuth username after an Authentik rename;
+- an email when every account has an address, because Authentik returns an empty string and riAuth returns null;
+- direct groups when every account's riAuth groups are exactly its direct Authentik groups, with no ancestor added by flattening and no direct group excluded or unconverted.
+
+riAuth itself returns `name` and `preferred_username` for `profile` and `groups` for `groups`. So a mapping for those scopes must return those claims, and the other claims become `claim_mappings` on the mapping's scope, which the reviewed `scopes` must include. Authentik 2025.10's default `openid` and `offline_access` mappings are exact. Its default `profile` mapping converts into `given_name`, `nickname` and `groups` claim mappings when the values above hold.
+
+Every other mapping is manual, and blocks until its ID is in `translated_mapping_ids`, when it:
+
+- sets the `email` scope, whose `email` and `email_verified` claims riAuth derives from its own verified addresses (Authentik's default asserts every address as verified);
+- grants an Authentik scope such as `goauthentik.io/api`;
+- is one of several mappings for one scope, which Authentik merges;
+- returns another reserved claim, omits a claim riAuth returns for its scope, or maps a claim the client already maps;
+- uses any other expression, such as Authentik's current `profile` default with its helper calls, or the `entitlements` default;
+- is missing from `scope_mappings`.
+
+A mapping that returns `sub` is unsupported and blocks even when acknowledged, because it would change every subject the client issues. The report names a mapping but never quotes its expression.
 
 ## Rehearse and cut over
 
