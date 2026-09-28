@@ -114,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
         issuer: issuer.clone(),
         listen,
         data_dir: dir.path().into(),
+        reviewed_membership_groups: ["m05-protected".into()].into(),
         ..Default::default()
     };
     // Every engine signs in many times from one address.

@@ -6,7 +6,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
@@ -171,6 +171,7 @@
   // any open secret or confirmation dialog, so a later account in this tab can't see them.
   function forget() {
     RiAuthGrantReview.reset();
+    RiAuthMembershipReview.reset(true);
     draft = null; captureWizard = null;
     data.deliveries = []; data.deliveryLoadedAt = 0;
     workflowDraft = null; workflowPlan = null;
@@ -272,6 +273,7 @@
     }
     document.querySelector('[data-section="operations"]').hidden = !cloudAvailable() || !data.directories.length;
     document.querySelector('[data-section="grant-review"]').hidden = !data.me?.user?.admin;
+    document.querySelector('[data-section="membership-review"]').hidden = !data.me?.user?.admin;
   }
 
   // ---- Routing -----------------------------------------------------------------------------
@@ -291,6 +293,7 @@
     if (!loaded) return;
     const { section, id } = route();
     RiAuthGrantReview.reset();
+    RiAuthMembershipReview.reset();
     // A refresh re-renders the open step; keep what was typed since the last Continue.
     if (captureWizard) { try { captureWizard(); } catch { /* a partial step is re-read on Continue */ } captureWizard = null; }
     // A created application's one-time secret is dropped once the wizard route is left; an
@@ -304,7 +307,10 @@
     const grantReview = (id) => RiAuthGrantReview.view({ id, api, h, me: data.me, users: data.users,
       identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
       sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
-    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
+    const membershipReview = (id) => RiAuthMembershipReview.view({ id, api, h, me: data.me, users: data.users, groups: data.groups,
+      identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
+      sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
+    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null], "membership-review": [membershipReview, membershipReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -1678,7 +1684,8 @@
     const apps = data.clients.filter((c) => c.allowed_groups.includes(name)).sort((a, b) => byName(a.name, b.name));
     const temporary = accessRoutes() ? activeGrants().filter((grant) => grant.group === name) : [];
     const node = h("div", {},
-      heading("GROUP", name, `${members.length} ${members.length === 1 ? "member" : "members"}`),
+      heading("GROUP", name, `${members.length} ${members.length === 1 ? "member" : "members"}`,
+        data.me?.user?.admin ? link(hash("membership-review", `group:${name}`), "Review membership change", { class: "button secondary" }) : null),
       h("div", { class: "detail-grid" },
         h("div", {}, card("Members", others.length ? addTo("group-add-member", "Add a person", others.map((u) => [u.username, `${personName(u)} (${u.username})`]), (button, username) => member(button, name, username, true)) : null, grid.node)),
         h("div", { class: "detail-side" },

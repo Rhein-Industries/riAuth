@@ -34,10 +34,38 @@ content, policy, expiry or a caller-selected revision binding.
 | Cancel | `POST /api/group-membership-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
 Browser JSON uses `/api/admin` instead of `/api`, with the existing session and
-origin guards. There is no new group-review browser page in this slice.
+origin guards. Administration now includes **Reviewed membership** at
+`/admin#/membership-review`, also linked from each group's page.
 Approve/execute/cancel accept only `{"digest":"..."}`; extra fields are rejected.
 The CLI uses the normal remote transport, including `--if-revision` and
 idempotency keys. No CLI or browser adapter implements an alternate writer.
+
+In the browser, load the current members of an existing protected group, then edit
+the complete replacement as one exact username per line. The page displays the
+loaded current members, warns about removals, and requires explicit confirmation
+before staging. Ordinary groups retain their immediate controls; trying to stage
+an ordinary group is refused by the shared service.
+
+Share the staged change's review link or ID with the other administrators. Its
+read-only view shows before/after usernames and stable IDs, added/removed/retained
+members, author/reviewers/executor, digest, dependency fingerprints, management
+revision, creation time and expiry. Approve and execute require a fresh explicit
+confirmation and send only the displayed digest. The page disables these actions
+for authors, prior reviewers, affected members, expired/consumed changes and known
+stale proposals. The server remains authoritative: policy or authority drift not
+visible in a revision read is checked inside each final mutation transaction.
+Cancellation remains available for open stale proposals under the service's rules.
+
+Toolbar refresh retains an unsent draft's content and original revision, clears
+its confirmation, and never silently rebases it. **Load current members** explicitly
+loads a new baseline while retaining the typed replacement for another check.
+Drafts live only in memory and are cleared on account/sign-out transitions; a full
+page reload discards unsent edits. Staged links reload their stored exact proposal
+with confirmation cleared. A lost staging response locks the content, revision and
+idempotency key so **Retry same staging request** retrieves the original receipt,
+including after toolbar refresh. Resolve that outcome before reloading the page.
+A lost approval/execution/cancellation response disables actions until the change
+is refreshed. Error messages never display raw server detail.
 
 The author, every reviewer, and executor must be distinct, currently authorized
 full human administrators. None may be a member whose membership this proposal
@@ -99,8 +127,8 @@ validation (`7b61a8a`), while this slice adds the independent membership-review
 setting and its name/count validation in different sections. Both must be retained
 at integration; no merge or combined-tree validation was performed here.
 
-Remaining M05 work includes group lifecycle/policy changes, larger groups, a group
-review browser page, configurable reviewer roles/quorums, other mutation classes
+Remaining M05 work includes group lifecycle/policy changes, larger groups,
+configurable reviewer roles/quorums, other mutation classes
 listed in [reviewed-grants.md](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries),
 and a general multi-resource review protocol.
 
@@ -144,3 +172,38 @@ cargo test --locked --offline --no-default-features --features essentials --test
 
 Platform: 6 passed; Essentials: 2 passed. `git diff --check` and formatting checks
 for `management.rs` and `reviewed_memberships.rs` also passed.
+
+The browser slice starts from accepted `5da0fec`, after verifying that source
+`90920ba`/`a508be9` exactly match accepted `1a3940e`/`4cf1422`. The previous source
+tip is retained at `refs/riwork-recovery/m05-before-group-browser-a508be9`.
+The page adds no management writer or authorization-policy changes.
+
+Browser continuation validation (2026-09-28), using the same shared accepted
+Cargo target, `CARGO_INCREMENTAL=0`, two build jobs and disabled dev/test debug info:
+
+```text
+cargo test --locked --offline --test reviewed_memberships_browser --test reviewed_grants_browser
+cargo build --locked --offline --example portal_fixture
+cargo test --locked --offline --no-default-features --features essentials --test reviewed_memberships_browser --test reviewed_grants_browser
+cargo build --locked --offline --no-default-features --features essentials --example portal_fixture
+```
+
+Both editions passed both API regressions. After each edition's fixture build,
+only `tools/browser/membership-review.spec.js` ran in Chromium: both scenarios
+passed in each edition. The browser runner used the shared fixture through
+`CARGO_TARGET_DIR`, the existing Playwright dependencies, a line reporter, and
+`/tmp` results instead of another build/report tree. Coverage includes exact
+digest-only actions, grant/revoke, distinct and affected participants, receipt
+retry after a lost staging response and toolbar refresh, lost execution response,
+single execution/audit and replay refusal, stale/cancelled/expired status, safe
+errors, draft confirmation reset, account-switch refusal and session-loss cleanup.
+The API regression also verifies Origin/session guards and browser-disabled asset
+gating. The existing human-grant API browser regression remains passing.
+
+Desktop and 320-pixel mobile screenshots were inspected; the page has no horizontal
+overflow and the tested WCAG A/AA accessibility scan reported no violations.
+JavaScript syntax checks, new Rust test formatting and `git diff --check` passed.
+No broad suite, other browser engines or PostgreSQL execution ran for this slice.
+At the final integration read, accepted was `46a93e1`; its changes since `5da0fec`
+touch only LDAP implementation, boundary checks and network tests, with no file
+overlap here. No merge or combined-tree validation was performed.
