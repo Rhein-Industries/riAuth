@@ -29,6 +29,7 @@ pub mod kms;
 pub mod ldap_server;
 pub mod lifecycle;
 pub mod logout;
+pub(crate) mod management;
 pub mod migration;
 pub mod model;
 pub mod mtls;

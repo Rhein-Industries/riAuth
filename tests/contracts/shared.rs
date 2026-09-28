@@ -1121,6 +1121,427 @@ pub fn plan_binding_atomicity_and_retry(backend: Backend) {
     }
 }
 
+// M03 first slice; RI-MGT-001/002/003/004, RI-STORE-001/002, Q02-C04/C08/C09.
+// One application intent reaches the same management seam from HTTP (the CLI's
+// transport) and desired state, while an ambient browser cookie cannot reach it.
+// Oracles are the documented rules: client type is immutable, credential changes
+// need client.rotate, direct retries replay exactly, stale revisions change
+// nothing, each committed write is audited once and secrets never leave the
+// authorized response.
+pub fn application_writers_share_management_seam(backend: Backend) {
+    let f = backend.fixture();
+    let jwks = f.core.jwks().unwrap();
+    let mut managed = Vec::new();
+    for id in ["signed", "public", "shared"] {
+        for action in ["client.write", "client.read", "client.rotate"] {
+            managed.push((action, format!("client/{id}")));
+        }
+    }
+    let managed: Vec<_> = managed.iter().map(|(a, r)| (*a, r.as_str())).collect();
+    let token = agent(&f, "app-manager", &managed);
+    let writer = agent(
+        &f,
+        "app-writer",
+        &[
+            ("client.write", "client/shared"),
+            ("client.read", "client/shared"),
+        ],
+    );
+    f.core
+        .create_client(
+            &f.admin,
+            riauth::model::NewClient {
+                client_id: "shared".into(),
+                name: "shared".into(),
+                confidential: true,
+                redirect_uris: vec![],
+                scopes: strings(&["openid"]),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: Default::default(),
+            },
+        )
+        .unwrap();
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let send = |method: &str, path: &str, headers: Vec<(&str, String)>, body: Option<&Value>| {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/json")
+            .header("x-riauth-run-id", "m03-run");
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        let body = body.map_or_else(Body::empty, |b| Body::from(b.to_string()));
+        runtime.block_on(async {
+            let response = app
+                .clone()
+                .oneshot(request.body(body).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+            )
+        })
+    };
+    let direct = |token: &str, key: &str, at: u64| {
+        vec![
+            ("authorization", format!("Bearer {token}")),
+            ("idempotency-key", key.to_owned()),
+            ("if-match", format!("\"{at}\"")),
+        ]
+    };
+    let plan = |token: &str, clients: Value| {
+        f.core.plan_state(
+            token,
+            serde_json::from_value(json!({"api_version": "riauth/v1", "clients": clients}))
+                .unwrap(),
+        )
+    };
+    let refused = |result: Result<riauth::state::Plan, Error>| match result {
+        Ok(_) => panic!("desired state accepted a refused application change"),
+        Err(error) => error,
+    };
+    let audited = |action: &str, target: &str| {
+        audit(&f)
+            .into_iter()
+            .filter(|e| e["action"] == action && e["target"] == target)
+            .collect::<Vec<_>>()
+    };
+
+    // Authorized create and exact retry through the direct adapter.
+    let signed = json!({"client_id":"signed","name":"signed","confidential":true,"scopes":["openid"],
+        "settings":{"token_endpoint_auth_method":"private_key_jwt","jwks":jwks}});
+    let at = revision();
+    let created = send(
+        "POST",
+        "/api/clients",
+        direct(&token, "create-signed", at),
+        Some(&signed),
+    );
+    assert_eq!(created.0, StatusCode::OK, "{}", created.1);
+    assert_eq!(created.1["client"]["confidential"], true);
+    assert!(created.1["client_secret"].is_null());
+    assert_eq!(revision(), at + 1);
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        send(
+            "POST",
+            "/api/clients",
+            direct(&token, "create-signed", at),
+            Some(&signed)
+        ),
+        created
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    let public = json!({"client_id":"public","name":"public","scopes":["openid"]});
+    let at = revision();
+    let (status, body) = send(
+        "POST",
+        "/api/clients",
+        direct(&token, "create-public", at),
+        Some(&public),
+    );
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["client"]["confidential"], false);
+
+    // Denied type changes: both writers reject the same intent with the same
+    // rule, and neither changes records, receipts, revision or audit.
+    let before = f.snapshot().unwrap();
+    let at = revision();
+    for (id, key, settings) in [
+        ("signed", "downgrade-unset", json!({})),
+        (
+            "signed",
+            "downgrade-none",
+            json!({"token_endpoint_auth_method":"none"}),
+        ),
+        (
+            "public",
+            "upgrade",
+            json!({"token_endpoint_auth_method":"private_key_jwt","jwks":jwks}),
+        ),
+    ] {
+        let (status, body) = send(
+            "PATCH",
+            &format!("/api/clients/{id}"),
+            direct(&token, key, at),
+            Some(&json!({"settings": settings})),
+        );
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{id}/{key}: {body}");
+        assert_eq!(
+            body["error_description"],
+            "Existing client type is immutable"
+        );
+        f.assert_http_mutation_snapshot(&before);
+    }
+    for (id, confidential) in [("signed", false), ("public", true)] {
+        let error = refused(plan(
+            &token,
+            json!([{"client_id":id,"name":id,"confidential":confidential,"scopes":["openid"]}]),
+        ));
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "Existing client type is immutable");
+        f.assert_http_mutation_snapshot(&before);
+    }
+
+    // Authorization precedes validation in both writers: without client.rotate
+    // a type-changing authentication edit is forbidden, not merely invalid.
+    let (status, _) = send(
+        "PATCH",
+        "/api/clients/shared",
+        direct(&writer, "writer-downgrade", at),
+        Some(&json!({"settings":{"token_endpoint_auth_method":"none"}})),
+    );
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        refused(plan(
+            &writer,
+            json!([{"client_id":"shared","name":"shared","confidential":false,"scopes":["openid"],
+                "settings":{"token_endpoint_auth_method":"none"}}]),
+        ))
+        .status,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_http_mutation_snapshot(&before);
+
+    // Denied credential changes: client.write alone cannot rotate or change
+    // authentication through either writer.
+    let rotate_v2 = json!([{"client_id":"shared","name":"shared","confidential":true,"scopes":["openid"],
+            "secret_ref":"env:M03_SECRET","secret_version":"v2"}]);
+    let (status, _) = send(
+        "POST",
+        "/api/clients/shared/rotate-secret",
+        direct(&writer, "writer-rotate", at),
+        None,
+    );
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(
+        "PATCH",
+        "/api/clients/shared",
+        direct(&writer, "writer-auth", at),
+        Some(&json!({"settings":{"token_endpoint_auth_method":"client_secret_post"}})),
+    );
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        refused(plan(&writer, rotate_v2.clone())).status,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_http_mutation_snapshot(&before);
+
+    // Browser boundary: an ambient SSO cookie, even one holding an
+    // administrator session, is not a management credential.
+    let cookie = format!(
+        "{}={}",
+        riauth::signin::sso_cookie_name(&f.core.config.issuer),
+        f.admin
+    );
+    for (method, path, body) in [
+        (
+            "POST",
+            "/api/clients",
+            Some(json!({"client_id":"browser","name":"browser","scopes":["openid"]})),
+        ),
+        (
+            "PATCH",
+            "/api/clients/shared",
+            Some(json!({"enabled": false})),
+        ),
+        ("POST", "/api/clients/shared/rotate-secret", None),
+    ] {
+        let (status, _) = send(
+            method,
+            path,
+            vec![
+                ("cookie", cookie.clone()),
+                ("x-riauth-portal", "1".into()),
+                ("origin", f.core.config.issuer.trim_end_matches('/').into()),
+                ("sec-fetch-site", "same-origin".into()),
+            ],
+            body.as_ref(),
+        );
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {path}");
+        f.assert_http_mutation_snapshot(&before);
+    }
+
+    // Authorized rotation: direct retry replays the one returned secret; a
+    // stale revision is rejected before any effect.
+    let (status, rotated) = send(
+        "POST",
+        "/api/clients/shared/rotate-secret",
+        direct(&token, "rotate-shared", at),
+        None,
+    );
+    assert_eq!(status, StatusCode::OK, "{rotated}");
+    let first = text(&rotated, "client_secret");
+    assert_eq!(revision(), at + 1);
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        send(
+            "POST",
+            "/api/clients/shared/rotate-secret",
+            direct(&token, "rotate-shared", at),
+            None
+        ),
+        (StatusCode::OK, rotated)
+    );
+    let (status, _) = send(
+        "POST",
+        "/api/clients/shared/rotate-secret",
+        direct(&token, "rotate-stale", at),
+        None,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&committed);
+
+    // Desired state rotates through the same seam; a stale plan changes nothing.
+    let second = "m03-desired-state-secret-0123456789abcdef";
+    let secrets =
+        || -> BTreeMap<String, String> { [("env:M03_SECRET".into(), second.into())].into() };
+    let stale = plan(&token, rotate_v2.clone()).unwrap();
+    f.core.create_group(&f.admin, "unrelated-change").unwrap();
+    let changed = f.snapshot().unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &token,
+            ApplyRequest {
+                plan: stale,
+                secrets: secrets(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status, StatusCode::CONFLICT);
+    f.assert_snapshot(&changed);
+    let fresh = plan(&token, rotate_v2).unwrap();
+    let at = revision();
+    let applied = f
+        .core
+        .apply_state(
+            &token,
+            ApplyRequest {
+                plan: fresh.clone(),
+                secrets: secrets(),
+                run_id: Some("m03-run".into()),
+            },
+        )
+        .unwrap();
+    assert_eq!(applied["changed"], true);
+    assert_eq!(revision(), at + 1);
+    let stored: Client = f.core.store.get("clients", "shared").unwrap().unwrap();
+    assert_eq!(stored.secret_hash.as_deref(), Some(digest(second).as_str()));
+
+    // Pure rotation does not revalidate drifted, unrelated configuration (a
+    // policy user renamed by directory sync), so an emergency rotation still
+    // works; a record change is fully validated and refused atomically.
+    f.user("policy-user");
+    let mut drifted = f
+        .core
+        .store
+        .get::<Client>("clients", "shared")
+        .unwrap()
+        .unwrap();
+    drifted.settings.policy.access.users = strings(&["policy-user"]);
+    let drifted_view = f
+        .core
+        .update_client(
+            &f.admin,
+            "shared",
+            ClientPatch {
+                settings: Some(drifted.settings.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(drifted_view["client_id"], "shared");
+    f.core
+        .store
+        .write(|tx| tx.delete("usernames", "policy-user"))
+        .unwrap();
+    let before_rotation = revision();
+    let emergency = f.core.rotate_client_secret(&f.admin, "shared").unwrap();
+    assert_eq!(revision(), before_rotation + 1);
+    let emergency = text(&emergency, "client_secret");
+    let unchanged = f.snapshot().unwrap();
+    let error = f
+        .core
+        .update_client(
+            &f.admin,
+            "shared",
+            ClientPatch {
+                name: Some("Renamed".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.message, "Unknown policy user: policy-user");
+    f.assert_snapshot(&unchanged);
+
+    // One audit per committed write, with correlation, redacted changes and
+    // no secret, digest or agent credential anywhere in audit, plan or export.
+    for (action, target, expected) in [
+        ("client.create", "signed", 1),
+        ("client.create", "public", 1),
+        ("client.update", "signed", 0),
+        ("client.update", "public", 0),
+        ("client.update", "shared", 1),
+        ("client.secret.rotate", "shared", 2),
+        ("client.reconcile", "client/shared", 1),
+    ] {
+        let events = audited(action, target);
+        assert_eq!(events.len(), expected, "{action} {target}");
+        for event in events {
+            // HTTP writes carry correlation; plan correlation is on state.apply
+            // and the administrator's in-process calls have no request context.
+            if action != "client.reconcile" && event["actor"] == "agent:app-manager" {
+                assert_eq!(event["run_id"], "m03-run");
+                assert!(event["details"]["request_id"].is_string());
+            }
+            assert!(
+                event["details"]["changes"]
+                    .as_array()
+                    .is_some_and(|c| !c.is_empty())
+            );
+        }
+    }
+    let applied_events = audited("state.apply", &fresh.plan_id);
+    assert_eq!(applied_events.len(), 1);
+    assert_eq!(applied_events[0]["run_id"], "m03-run");
+    let events = json!(audit(&f)).to_string();
+    for view in [
+        events,
+        serde_json::to_value(&fresh).unwrap().to_string(),
+        f.core.export_state(&f.admin).unwrap().to_string(),
+    ] {
+        for sensitive in [
+            first.clone(),
+            digest(&first),
+            emergency.clone(),
+            digest(&emergency),
+            second.to_owned(),
+            digest(second),
+            token.clone(),
+            writer.clone(),
+        ] {
+            assert!(!view.contains(&sensitive));
+        }
+    }
+}
+
 // RI-CRED-001/002, RI-STORE-001, Q02-C02: a failed password is accounted for,
 // while rejected writes leave the credential and existing authority intact.
 pub fn password_attempts_and_change(backend: Backend) {

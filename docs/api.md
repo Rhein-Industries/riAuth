@@ -228,7 +228,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET, POST | `/api/groups` | Visible groups / create group |
 | PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member |
 | GET, POST | `/api/clients` | Visible clients / register application |
-| PATCH | `/api/clients/{id}` | Client configuration, including `settings` |
+| PATCH | `/api/clients/{id}` | Client configuration, including `settings`; client ID and type are immutable |
 | POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants |
 | GET | `/api/resources/{kind}/{name}` | Exact user/client/group lookup |
 | GET | `/api/inventory/{kind}` | Users/groups/clients/sources/audit; `after`, `limit`, optional `filter` (exact run id for audit, name substring otherwise) |
@@ -300,7 +300,7 @@ Workspace and Entra plans expose `removal_impact` with `disabled_users`, `missin
 
 Provider settings include explicit grant lists, lifetimes, native profile, exact origins, post-logout/back-channel URLs, mappings, claim placement and policy. Use the generated `provider`, `client-create`, `client-update`, `user-create`, `user-update`, `manifest` and `apply` schemas rather than inferring fields from examples.
 
-Direct administrative resource writes support `Idempotency-Key` and `If-Match: "<revision>"`; agent mutations require the latter. Successful results and their receipt commit in one transaction. Identical authenticated retries return the original result for 24 hours. Reusing a key for a different request fails. Plan/apply uses its own immutable-plan identity and preconditions. `X-riAuth-Run-ID` supplies correlation; the server creates `X-Request-ID` and records redacted mutation details.
+Direct administrative resource writes support `Idempotency-Key` and `If-Match: "<revision>"`; agent mutations require the latter. Successful results and their receipt commit in one transaction. Identical authenticated retries return the original result for 24 hours. Reusing a key for a different request fails. Plan/apply uses its own immutable-plan identity and preconditions. Direct client writes and plan/apply share one application write path for authorization, validation, type immutability and grant revocation. A record change needs `client.write`; a secret or authentication-settings change also needs `client.rotate`. `rotate-secret` needs only `client.rotate` and does not revalidate unrelated client configuration; a manifest must still hold `client.write` for every client it names. A settings change cannot turn a confidential client (shared secret or `private_key_jwt`) into a public one, or the reverse; create a new client instead. `X-riAuth-Run-ID` supplies correlation; the server creates `X-Request-ID` and records redacted mutation details.
 
 ## Inbound SCIM
 

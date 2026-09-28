@@ -763,3 +763,205 @@ fn migration_preflight_classifies_keycloak_native_kinds_without_leaking() {
         assert!(!text.contains(secret), "{name}: {text}");
     }
 }
+
+/// Initializes an instance in `dir`, serves it and logs the administrator in.
+fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
+    let config = dir.join("riauth.toml");
+    let session = dir.join("session.json");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    let issuer = format!("http://127.0.0.1:{}", addr.port());
+    success(invoke(
+        dir,
+        &config,
+        &session,
+        &[
+            "init",
+            "--issuer",
+            &issuer,
+            "--listen",
+            &addr.to_string(),
+            "--password-stdin",
+        ],
+        Some("cli-integration-password\n"),
+    ));
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_riauth"))
+            .arg("--config")
+            .arg(&config)
+            .arg("serve")
+            .env_remove("RIAUTH_SERVER")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while TcpListener::bind(addr).is_ok() {
+        assert!(
+            server.0.try_wait().unwrap().is_none(),
+            "server exited early"
+        );
+        assert!(Instant::now() < deadline, "server did not start");
+        thread::sleep(Duration::from_millis(30));
+    }
+    success(invoke(
+        dir,
+        &config,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("cli-integration-password\n"),
+    ));
+    (config, session, server)
+}
+
+fn failure(output: Output) -> (i32, Value) {
+    assert!(!output.status.success());
+    let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["ok"], false);
+    (output.status.code().unwrap(), envelope["error"].clone())
+}
+
+/// M03: the CLI's direct and desired-state application writes reach the same
+/// management seam as the HTTP API, with the same type, retry and stale rules.
+#[test]
+fn cli_application_writes_share_management_seam() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let agent = dir.path().join("agent.json");
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "agent",
+            "create",
+            "cli-manager",
+            "--permission",
+            "client.write=client/cli-signed",
+            "--permission",
+            "client.read=client/cli-signed",
+            "--permission",
+            "client.rotate=client/cli-signed",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let call = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent.to_str().unwrap()];
+        all.extend(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(call(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let key = riauth::crypto::SigningKey::generate().unwrap();
+    let signed = dir.path().join("signed.json");
+    std::fs::write(
+        &signed,
+        serde_json::to_vec(&serde_json::json!({"token_endpoint_auth_method":"private_key_jwt","jwks":{"keys":[key.jwk().unwrap()]}})).unwrap(),
+    )
+    .unwrap();
+    let unset = dir.path().join("unset.json");
+    std::fs::write(&unset, b"{}").unwrap();
+
+    // Authorized create; an exact retry with the same key replays the result.
+    let at = revision();
+    let create = |out: &Path| {
+        success(call(&[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "cli-create-signed",
+            "--output-file",
+            out.to_str().unwrap(),
+            "client",
+            "create",
+            "cli-signed",
+            "--confidential",
+            "--scope",
+            "openid",
+            "--settings-file",
+            signed.to_str().unwrap(),
+        ]))
+    };
+    let (first, second) = (
+        dir.path().join("create1.json"),
+        dir.path().join("create2.json"),
+    );
+    create(&first);
+    create(&second);
+    let created: Value = serde_json::from_slice(&std::fs::read(&first).unwrap()).unwrap();
+    assert_eq!(
+        std::fs::read(&first).unwrap(),
+        std::fs::read(&second).unwrap()
+    );
+    assert_eq!(created["client"]["confidential"], true);
+    assert!(created["client_secret"].is_null());
+
+    // The type rule is enforced identically for the direct and plan writers.
+    let at = revision();
+    let (code, error) = failure(call(&[
+        "--if-revision",
+        &at,
+        "client",
+        "update",
+        "cli-signed",
+        "--settings-file",
+        unset.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 2);
+    assert_eq!(error["message"], "Existing client type is immutable");
+    let manifest = dir.path().join("downgrade.json");
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&serde_json::json!({"api_version":"riauth/v1","clients":[{"client_id":"cli-signed","name":"cli-signed","confidential":false,"scopes":["openid"]}]})).unwrap(),
+    )
+    .unwrap();
+    let (code, plan_error) = failure(call(&[
+        "plan",
+        "--file",
+        manifest.to_str().unwrap(),
+        "--out",
+        dir.path().join("downgrade-plan.json").to_str().unwrap(),
+    ]));
+    assert_eq!(code, 2);
+    assert_eq!(plan_error["message"], error["message"]);
+    assert_eq!(
+        revision(),
+        at,
+        "refused writes must not advance the revision"
+    );
+
+    // A stale revision is refused before the write; the current one succeeds once.
+    let stale = (at.parse::<u64>().unwrap() - 1).to_string();
+    let (code, _) = failure(call(&[
+        "--if-revision",
+        &stale,
+        "client",
+        "update",
+        "cli-signed",
+        "--name",
+        "Renamed",
+    ]));
+    assert_eq!(code, 5);
+    let updated = success(call(&[
+        "--if-revision",
+        &at,
+        "client",
+        "update",
+        "cli-signed",
+        "--name",
+        "Renamed",
+    ]));
+    assert_eq!(updated["name"], "Renamed");
+    assert_eq!(updated["confidential"], true);
+    assert_eq!(revision(), (at.parse::<u64>().unwrap() + 1).to_string());
+}

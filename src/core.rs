@@ -595,19 +595,15 @@ impl Core {
                 "client.write",
                 &format!("client/{}", input.client_id),
             )?;
-            validate_name(&input.client_id)?;
-            validate_display(&input.name)?;
-            if tx.get::<Client>("clients", &input.client_id)?.is_some() {
-                return Err(Error::conflict("Client already exists"));
-            }
-            let secret = (input.settings.token_endpoint_auth_method
-                != Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
-                && (input.confidential || input.service))
-                .then(|| crypto::random_token("ri_client_"));
+            let secret = if input.confidential || input.service {
+                crate::management::Secret::Issue
+            } else {
+                crate::management::Secret::Keep
+            };
             let client = Client {
                 id: input.client_id,
                 name: input.name,
-                secret_hash: secret.as_deref().map(digest),
+                secret_hash: None,
                 redirect_uris: input.redirect_uris,
                 scopes: input.scopes,
                 allowed_groups: input.allowed_groups,
@@ -616,10 +612,15 @@ impl Core {
                 service: input.service,
                 settings: input.settings,
             };
-            validate_client(tx, &client)?;
-            tx.put("clients", &client.id, &client)?;
-            audit(tx, &actor.id, "client.create", &client.id)?;
-            Ok(json!({"client": client.view(), "client_secret": secret}))
+            let written = crate::management::write_client(
+                tx,
+                &actor,
+                None,
+                client,
+                secret,
+                crate::management::Record::Direct("client.create"),
+            )?;
+            Ok(json!({"client": written.client.view(), "client_secret": written.secret}))
         })
     }
     pub fn list_clients(&self, token: &str) -> Result<Value> {
@@ -637,19 +638,15 @@ impl Core {
     pub fn update_client(&self, token: &str, cid: &str, patch: ClientPatch) -> Result<Value> {
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "client.write", &format!("client/{cid}"))?;
-            let mut c = tx
+            let existing = tx
                 .get::<Client>("clients", cid)?
                 .ok_or_else(|| Error::missing("Client not found"))?;
+            let mut c = existing.clone();
             if let Some(name) = patch.name {
-                validate_display(&name)?;
                 c.name = name;
             }
             if let Some(enabled) = patch.enabled {
                 c.enabled = enabled;
-                // Disabling then enabling a client must never resurrect existing grants.
-                if !enabled {
-                    revoke_client_grants(tx, cid)?;
-                }
             }
             if let Some(groups) = patch.allowed_groups {
                 c.allowed_groups = groups;
@@ -664,44 +661,37 @@ impl Core {
                 c.scopes = scopes;
             }
             if let Some(settings) = patch.settings {
-                let auth_change = c.settings.authentication_credentials_differ(&settings);
-                if auth_change {
-                    actor.require("client.rotate", &format!("client/{cid}"))?;
-                }
-                if auth_change
-                    || settings.issuer != c.settings.issuer
-                    || settings.pairwise_sector != c.settings.pairwise_sector
-                {
-                    revoke_client_grants(tx, cid)?;
-                }
-                if settings.token_endpoint_auth_method
-                    == Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
-                {
-                    c.secret_hash = None;
-                }
                 c.settings = settings;
             }
-            validate_client(tx, &c)?;
-            tx.put("clients", cid, &c)?;
-            audit(tx, &actor.id, "client.update", cid)?;
-            Ok(c.view())
+            let written = crate::management::write_client(
+                tx,
+                &actor,
+                Some(&existing),
+                c,
+                crate::management::Secret::Keep,
+                crate::management::Record::Direct("client.update"),
+            )?;
+            Ok(written.client.view())
         })
     }
     pub fn rotate_client_secret(&self, token: &str, cid: &str) -> Result<Value> {
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "client.rotate", &format!("client/{cid}"))?;
-            let mut c = tx
+            let existing = tx
                 .get::<Client>("clients", cid)?
                 .ok_or_else(|| Error::missing("Client not found"))?;
-            if c.secret_hash.is_none() {
+            if existing.secret_hash.is_none() {
                 return Err(Error::bad("Public clients do not have a secret"));
             }
-            let secret = crypto::random_token("ri_client_");
-            c.secret_hash = Some(digest(&secret));
-            tx.put("clients", cid, &c)?;
-            revoke_client_grants(tx, cid)?;
-            audit(tx, &actor.id, "client.secret.rotate", cid)?;
-            Ok(json!({"client_id": cid, "client_secret": secret}))
+            let written = crate::management::write_client(
+                tx,
+                &actor,
+                Some(&existing),
+                existing.clone(),
+                crate::management::Secret::Issue,
+                crate::management::Record::Direct("client.secret.rotate"),
+            )?;
+            Ok(json!({"client_id": cid, "client_secret": written.secret}))
         })
     }
     pub fn mfa_begin(&self, token: &str) -> Result<Value> {

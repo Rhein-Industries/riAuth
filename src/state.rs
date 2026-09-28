@@ -1,6 +1,6 @@
 use crate::{
     agent::Principal,
-    core::{Core, audit, validate_client, validate_display, validate_email, validate_name},
+    core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     model::*,
@@ -610,12 +610,6 @@ fn reconcile(
         let resource = format!("client/{}", spec.client_id);
         actor.require("client.write", &resource)?;
         let existing = tx.get::<Client>("clients", &spec.client_id)?;
-        if existing
-            .as_ref()
-            .is_some_and(|c| c.confidential() != spec.confidential || c.service != spec.service)
-        {
-            return Err(Error::bad("Existing client type is immutable"));
-        }
         if spec.service && !spec.confidential {
             return Err(Error::bad("Service clients must be confidential"));
         }
@@ -639,11 +633,7 @@ fn reconcile(
         if before == after && !credential_change {
             continue;
         }
-        let mut secret_hash = existing.as_ref().and_then(|c| c.secret_hash.clone());
-        if auth_change || (secret_change && existing.is_some()) {
-            actor.require("client.rotate", &resource)?;
-        }
-        if secret_change {
+        let supplied = if secret_change {
             if spec.secret_ref.is_none() {
                 return Err(Error::bad(
                     "Confidential clients require a secret reference when created or rotated",
@@ -657,18 +647,15 @@ fn reconcile(
             if !preview && !(32..=1024).contains(&supplied.len()) {
                 return Err(Error::bad("Client secrets must contain 32–1024 bytes"));
             }
-            secret_hash = Some(digest(supplied));
             tx.put("credential_versions", &resource, &spec.secret_version)?;
-        }
-        if spec.settings.token_endpoint_auth_method
-            == Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
-        {
-            secret_hash = None;
-        }
+            crate::management::Secret::Supplied(supplied)
+        } else {
+            crate::management::Secret::Keep
+        };
         let client = Client {
             id: spec.client_id.clone(),
             name: spec.name.clone(),
-            secret_hash,
+            secret_hash: None,
             redirect_uris: spec.redirect_uris.clone(),
             scopes: spec.scopes.clone(),
             allowed_groups: spec.allowed_groups.clone(),
@@ -677,16 +664,20 @@ fn reconcile(
             service: spec.service,
             settings: spec.settings.clone(),
         };
-        validate_client(tx, &client)?;
-        tx.put("clients", &client.id, &client)?;
-        if !spec.enabled
-            || credential_change
-            || existing.as_ref().is_some_and(|c| {
-                c.settings.issuer != spec.settings.issuer
-                    || c.settings.pairwise_sector != spec.settings.pairwise_sector
-            })
+        crate::management::write_client(
+            tx,
+            actor,
+            existing.as_ref(),
+            client,
+            supplied,
+            crate::management::Record::Plan,
+        )?;
+        // The shared write kept the stored type; the manifest must declare it too.
+        if existing
+            .as_ref()
+            .is_some_and(|c| c.confidential() != spec.confidential)
         {
-            crate::core::revoke_client_grants(tx, &client.id)?;
+            return Err(Error::bad("Existing client type is immutable"));
         }
         changes.push(Change {
             resource,

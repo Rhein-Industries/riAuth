@@ -25,6 +25,7 @@ dependencies, lockfiles and the Q01 documents are unchanged.
 | `last_admin_failure_is_atomic` | RI-ACC-002, RI-STORE-001 / C04/C08: a password/history update staged before last-admin rejection rolls back all records, indexes and audit; the original credential still works. |
 | `http_mutation_receipts_and_audit` | RI-MGT-001/003/004, RI-STORE-001/002 / C04/C08/C09: real HTTP fingerprints and If-Match, actor-scoped receipts, exact retry result/secret, conflicting reuse, permission reduction/revocation, one committed audit per mutation and selected secret redaction. |
 | `plan_binding_atomicity_and_retry` | RI-MGT-002/004, RI-STORE-001/002 / C04/C08/C09: actor/issuer/content/revision binding, preview isolation, missing-secret rollback after staged group creation, exact apply retry, one apply audit and selected plan/export/audit secret redaction. |
+| `application_writers_share_management_seam` | RI-MGT-001/002/003/004, RI-STORE-001/002 / C04/C08/C09 (M03 first slice): one application write seam behind HTTP (`/api/clients`, the CLI's transport) and desired-state reconcile. Both writers refuse confidential↔public type changes with the same error and no state change; `client.write` alone cannot rotate or change authentication through either; an ambient SSO cookie with `X-riAuth-Portal` cannot reach management writes; direct retries replay the exact result/secret, stale If-Match and stale plans change nothing; each committed direct write advances revision once with one correlated `client.*` audit, plan apply records one `client.reconcile` and one `state.apply`; no secret, digest or agent credential appears in audit, plan or export. |
 | `password_attempts_and_change` | RI-CRED-001/002, RI-STORE-001 / C02: failed attempts persist without changing the credential; lockout denies a valid password; admin reset clears attempts and revokes old authority; rejected password reuse is atomic; owner reauthentication changes the password once while another account remains live. |
 | `totp_and_recovery_code_binding` | RI-CRED-001/002 / C02: enrollment is account/session-bound; invalid confirmation leaves state unchanged; confirmation revokes old authority; a TOTP step cannot be replayed; only the owner's fresh MFA session can rotate recovery codes; wrong password preserves a code, but a valid factor with rejected transaction binding consumes it without creating a session. |
 | `passkey_ceremony_binding_and_replay` | RI-CRED-001/002, RI-STORE-001 / C02: a wrong-account or same-account/different-session registration finish cannot enroll; a duplicate finish cannot enroll twice; authentication rejects another account's transaction, wrong origin and stale counter, with each specific ceremony present beforehand and absent afterward; only the owner can remove the key, which revokes the live passkey session and invalidates an older challenge. |
@@ -69,8 +70,8 @@ From the repository root, ordinary tests need no external services:
 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=target CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked --features test-support --test contracts
 ```
 
-This selects 54 redb cases and explicitly ignores 54 PostgreSQL cases. Without
-`test-support`, five clock/deadline bodies are absent: 44 run and 44 are ignored.
+This selects 56 redb cases and explicitly ignores 56 PostgreSQL cases. Without
+`test-support`, five clock/deadline bodies are absent: 46 run and 46 are ignored.
 A PostgreSQL skip is not backend evidence.
 
 Install/use local PostgreSQL programs (`initdb`, `pg_ctl`) and run:
@@ -80,7 +81,7 @@ CARGO_PROFILE_DEV_DEBUG=0 bash scripts/test-contracts-postgres.sh
 ```
 
 The script creates a fresh loopback-only cluster under `target/`, a private
-connection file and a marker, then runs the 54 ignored PostgreSQL cases with
+connection file and a marker, then runs the 56 ignored PostgreSQL cases with
 `CARGO_BUILD_JOBS=2`. Each fixture creates its own empty database. Before any
 database creation/drop, the fixture checks the actual server data directory
 against the cluster's `primary` directory, rather than trusting only an environment
@@ -106,7 +107,7 @@ acceptance.
 | C01 identity/session | Stable issuer/identity reopen and selected disable/re-enable writers. | Browser/CLI adapters, all opaque classes and actual distribution transitions. |
 | C02 credential/recovery | Password, TOTP, recovery, passkey and selected mail proofs. | Other password writers, mail classes, browser/CLI completion, device/directory paths and other passkey ceremonies. |
 | C03 proof/grant binding | Selected session, code, refresh and mail proofs. | Resource, scope, key, algorithm, OAuth/SAML/DPoP/assertion and other proof paths. |
-| C04 management parity | Selected direct core, HTTP, plan/receipt and scoped creator checks. | Full CLI/browser and actor/role/retry matrix. |
+| C04 management parity | Selected direct core, HTTP, plan/receipt and scoped creator checks; application writes share one seam across HTTP, CLI (`tests/cli.rs`) and plan apply, with the browser cookie boundary refused. | Users, groups, SCIM, directory, invitation and dynamic-registration writers; full actor/role/retry matrix. |
 | C05 policy consumers | Group policy at selected online consumers. | PAM, client/resource/ACR/device/source/consent and wider adapters. |
 | C06 connector/jobs | One Workspace plan/apply and local offboarding intent, retry and authority paths on four backend modes. | Entra, LDAP, SCIM/provisioning, other offboarding states, malformed/large/empty snapshots, remote partial completion and worker crash/recovery. |
 | C07 workflow/device | No shared body. | Required stages, device/certificate/peer binding and future adapters. |

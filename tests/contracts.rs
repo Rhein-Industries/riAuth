@@ -44,6 +44,7 @@ backend_contract!(prepared_deadline_revalidation);
 backend_contract!(last_admin_failure_is_atomic);
 backend_contract!(http_mutation_receipts_and_audit);
 backend_contract!(plan_binding_atomicity_and_retry);
+backend_contract!(application_writers_share_management_seam);
 backend_contract!(password_attempts_and_change);
 backend_contract!(totp_and_recovery_code_binding);
 backend_contract!(passkey_ceremony_binding_and_replay);

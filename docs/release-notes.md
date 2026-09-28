@@ -1,3 +1,20 @@
+# Unreleased management changes
+
+- `PATCH /api/clients/{id}` and `riauth client update` now reject a settings
+  change that would turn a confidential client into a public one or the reverse
+  (for example, removing `private_key_jwt` from a key-authenticated client). This
+  matches the documented manifest rule that client type is immutable. Create a
+  new client instead. The same check now answers a key-authenticated client
+  switched to a secret method with "Existing client type is immutable" instead
+  of "Secret authentication requires a confidential client"; without
+  `client.rotate` the response remains 403. Direct client writes and manifest
+  apply now use one shared application write path.
+- Manifest apply that disables a client or changes its credentials now queues
+  back-channel logout before storing the new settings, as direct updates already
+  did, so ended sessions are notified at the endpoint they were established with.
+  A manifest that bumps `secret_version` without `secret_ref` now reports the
+  missing reference before a missing `client.rotate` permission.
+
 # Unreleased dependency refresh
 
 - Updated direct Rust dependencies to their current stable releases, including
