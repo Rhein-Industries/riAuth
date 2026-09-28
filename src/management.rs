@@ -47,6 +47,8 @@ pub(crate) use consents::{
 };
 pub(crate) use devices::{DeviceDecisionAuthority, decide_device, device_approval_policy};
 #[cfg(feature = "platform")]
+pub(crate) use pam::review_access;
+#[cfg(feature = "platform")]
 pub(crate) use pam::{decide_access, request_access, revoke_access, validate_access_request};
 pub(crate) use portal_approvals::{
     PortalPollOutcome, cancel_portal_sign_in, decide_portal_sign_in, poll_portal_sign_in,

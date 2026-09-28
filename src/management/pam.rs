@@ -241,6 +241,69 @@ fn require_revoke_authority(core: &Core, actor: &User, grant: &AccessGrant) -> R
     Ok(())
 }
 
+/// A separate browser review surface for configured human approvers. Read
+/// visibility follows the same live resource checks as the transaction
+/// writers, so the page does not grant general management read authority.
+pub(crate) fn review_access(core: &Core, tx: &Tx<'_>, token: &str) -> Result<Value> {
+    let (actor, _, _) = core.pam_actor(tx, token)?;
+    let configured = core
+        .config
+        .pam_approvers
+        .values()
+        .any(|names| names.contains(&actor.username));
+    if !actor.admin && !configured {
+        return Err(Error::forbidden());
+    }
+    let at = now();
+    let mut requests = Vec::new();
+    for (_, request) in tx.list::<AccessRequest>("access_requests")? {
+        if request.status != PENDING || request.created_at.saturating_add(RETAIN_SECONDS) <= at {
+            continue;
+        }
+        match require_decision_authority(core, tx, &actor, &request) {
+            Ok(()) => requests.push(request),
+            Err(error) if error.status.is_server_error() => return Err(error),
+            Err(_) => {}
+        }
+    }
+    requests.sort_by(|left, right| {
+        left.created_at
+            .cmp(&right.created_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let mut grants = Vec::new();
+    for (_, grant) in tx.list::<AccessGrant>("access_grants")? {
+        if grant.revoked_at.is_some() || grant.expires_at <= at {
+            continue;
+        }
+        if require_revoke_authority(core, &actor, &grant).is_err() {
+            continue;
+        }
+        let username = tx
+            .get::<User>("users", &grant.user_id)?
+            .map(|user| user.username)
+            .unwrap_or_else(|| grant.user_id.clone());
+        grants.push(json!({
+            "id": grant.id,
+            "username": username,
+            "group": grant.group,
+            "expires_at": grant.expires_at,
+        }));
+    }
+    grants.sort_by(|left, right| {
+        left["expires_at"]
+            .as_u64()
+            .cmp(&right["expires_at"].as_u64())
+            .then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
+    });
+    Ok(json!({
+        "user": {"id": actor.id, "username": actor.username},
+        "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+        "requests": requests,
+        "grants": grants,
+    }))
+}
+
 pub(crate) fn revoke_access(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> Result<Value> {
     let (actor, session, channel) = core.pam_actor(tx, token)?;
     let mut grant = tx

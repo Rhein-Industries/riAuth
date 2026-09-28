@@ -481,11 +481,19 @@ pub fn router(core: Core) -> Router {
         .route("/api/operations/backup/stream", post(backup::stream))
         .route("/api/inventory/{kind}", get(inventory));
     #[cfg(feature = "platform")]
-    let routes = routes.merge(platform_routes());
+    let routes = routes
+        .merge(platform_routes())
+        .merge(crate::portal::access_review::routes());
     let routes = if browser_ui {
         routes.merge(crate::portal::http::browser_routes())
             .merge(crate::portal::admin::browser_routes())
             .merge(interaction::browser_routes())
+    } else {
+        routes
+    };
+    #[cfg(feature = "platform")]
+    let routes = if browser_ui {
+        routes.merge(crate::portal::access_review::browser_routes())
     } else {
         routes
     };

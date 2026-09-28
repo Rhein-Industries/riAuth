@@ -81,6 +81,13 @@ impl Core {
         self.store
             .write(|tx| crate::management::revoke_access(self, tx, token, id))
     }
+    /// The browser review contains only requests this live approver can decide
+    /// and grants this live actor can revoke. It carries the same revision as
+    /// the bearer management writer without requiring unrelated state.read.
+    pub fn review_access(&self, token: &str) -> Result<Value> {
+        self.store
+            .read(|tx| crate::management::review_access(self, tx, token))
+    }
     pub fn list_access_requests(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             self.read_access(tx, token, "access/requests")?;

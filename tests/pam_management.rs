@@ -112,6 +112,16 @@ fn browser(path: &str, cookie: &str, origin: &str, key: &str, revision: u64) -> 
         .unwrap()
 }
 
+fn review_read(path: &str, cookie: &str) -> Request<Body> {
+    Request::builder()
+        .uri(path)
+        .header("cookie", format!("riauth_sso={cookie}"))
+        .header("x-riauth-portal", "1")
+        .header("sec-fetch-site", "same-origin")
+        .body(Body::empty())
+        .unwrap()
+}
+
 fn terminal_cookie(core: &Core, token: &str) -> String {
     let started = core.portal_sign_in().unwrap();
     core.portal_decide(token, started.body["code"].as_str().unwrap(), true)
@@ -348,4 +358,208 @@ async fn pam_writers_bind_retries_revision_and_browser_authority() {
     );
     f.core.logout(&f.approver).unwrap();
     assert_eq!(send(&app, deny()).await.0, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn configured_approver_browser_review_uses_scoped_reads_and_exact_retries() {
+    let f = PamFixture::new();
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Release support".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let request_id = text(&request, "id");
+    let own = f
+        .core
+        .request_access(
+            &f.approver,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Own maintenance".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let own_id = text(&own, "id");
+    let cookie = terminal_cookie(&f.core, &f.approver);
+    let alice_cookie = terminal_cookie(&f.core, &f.alice);
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let app = riauth::api::router(f.core.clone());
+    assert_eq!(
+        f.core.portal_apps(Some(&cookie)).unwrap()["access_review_available"],
+        true
+    );
+    assert_eq!(
+        f.core.portal_apps(Some(&alice_cookie)).unwrap()["access_review_available"],
+        false
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/access/review")
+                    .body(Body::empty())
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, review_read("/api/admin/session", &cookie))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            &app,
+            review_read("/api/portal/access/review", &alice_cookie)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let mut missing_header = review_read("/api/portal/access/review", &cookie);
+    missing_header.headers_mut().remove("x-riauth-portal");
+    assert_eq!(send(&app, missing_header).await.0, StatusCode::FORBIDDEN);
+    let review = send(&app, review_read("/api/portal/access/review", &cookie)).await;
+    assert_eq!(review.0, StatusCode::OK);
+    assert_eq!(review.1["requests"].as_array().unwrap().len(), 1);
+    assert_eq!(review.1["requests"][0]["id"], request_id);
+    assert_ne!(review.1["requests"][0]["id"], own_id);
+    let decision_at = review.1["revision"].as_u64().unwrap();
+    let approve_path = format!("/api/portal/access/requests/{request_id}/approve");
+    let approve = || {
+        browser(
+            &approve_path,
+            &cookie,
+            &origin,
+            "browser-approval",
+            decision_at,
+        )
+    };
+    let mut cross_origin = approve();
+    cross_origin
+        .headers_mut()
+        .insert("origin", "https://attacker.example".parse().unwrap());
+    assert_eq!(send(&app, cross_origin).await.0, StatusCode::FORBIDDEN);
+    let mut no_key = approve();
+    no_key.headers_mut().remove("idempotency-key");
+    assert_eq!(
+        send(&app, no_key).await.0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    let mut no_revision = approve();
+    no_revision.headers_mut().remove("if-match");
+    assert_eq!(
+        send(&app, no_revision).await.0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(f.audit_count("access.approve", &request_id), 0);
+    let approved = send(&app, approve()).await;
+    assert_eq!(approved.0, StatusCode::OK);
+    let grant_id = text(&approved.1["grant"], "id");
+    assert_eq!(send(&app, approve()).await, approved);
+    assert_eq!(f.audit_count("access.approve", &request_id), 1);
+    assert_eq!(f.revision(), decision_at + 1);
+    assert_eq!(
+        send(
+            &app,
+            browser(&approve_path, &cookie, &origin, "new-approval", decision_at)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let other_cookie = terminal_cookie(&f.core, &f.approver);
+    assert_eq!(
+        send(
+            &app,
+            browser(
+                &approve_path,
+                &other_cookie,
+                &origin,
+                "browser-approval",
+                decision_at
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let self_path = format!("/api/portal/access/requests/{own_id}/approve");
+    assert_eq!(
+        send(
+            &app,
+            browser(&self_path, &cookie, &origin, "self-approval", f.revision())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let stale_at = f.revision();
+    let later = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Later support".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let later_id = text(&later, "id");
+    let deny_path = format!("/api/portal/access/requests/{later_id}/deny");
+    assert_eq!(
+        send(
+            &app,
+            browser(&deny_path, &cookie, &origin, "stale-denial", stale_at)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.audit_count("access.deny", &later_id), 0);
+    let current = send(&app, review_read("/api/portal/access/review", &cookie)).await;
+    assert_eq!(current.0, StatusCode::OK);
+    let deny_at = current.1["revision"].as_u64().unwrap();
+    let deny = || browser(&deny_path, &cookie, &origin, "fresh-denial", deny_at);
+    let denied = send(&app, deny()).await;
+    assert_eq!(denied.0, StatusCode::OK);
+    assert_eq!(send(&app, deny()).await, denied);
+    assert_eq!(f.audit_count("access.deny", &later_id), 1);
+
+    let current = send(&app, review_read("/api/portal/access/review", &cookie)).await;
+    assert_eq!(current.1["grants"].as_array().unwrap().len(), 1);
+    assert_eq!(current.1["grants"][0]["id"], grant_id);
+    let revoke_at = current.1["revision"].as_u64().unwrap();
+    let revoke_path = format!("/api/portal/access/grants/{grant_id}/revoke");
+    let revoke = || {
+        browser(
+            &revoke_path,
+            &cookie,
+            &origin,
+            "browser-revocation",
+            revoke_at,
+        )
+    };
+    let revoked = send(&app, revoke()).await;
+    assert_eq!(revoked.0, StatusCode::OK);
+    assert_eq!(send(&app, revoke()).await, revoked);
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 1);
+    assert_eq!(f.revision(), revoke_at + 1);
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
 }

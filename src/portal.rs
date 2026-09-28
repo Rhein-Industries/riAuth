@@ -1,5 +1,7 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
 pub mod admin;
+#[cfg(feature = "platform")]
+pub mod access_review;
 pub mod http;
 mod mfa;
 pub mod self_service;
@@ -171,9 +173,17 @@ impl Core {
                 }));
             }
             apps.sort_by(|a,b| a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase()).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
+            let access_review_available = cfg!(feature = "platform")
+                && (user.admin
+                    || self
+                        .config
+                        .pam_approvers
+                        .values()
+                        .any(|names| names.contains(&user.username)));
             Ok(json!({"user":{"id":user.id,"username":user.username,"display_name":user.display_name,"admin":user.admin,
                 "email_verified":user.email_verified,"has_email":user.email.is_some()},"apps":apps,"expires_at":session.expires_at,"mfa":session.identity.mfa,
-                "mfa_available":user.totp_secret.is_some() || user.has_passkeys}))
+                "mfa_available":user.totp_secret.is_some() || user.has_passkeys,
+                "access_review_available":access_review_available}))
         })
     }
 

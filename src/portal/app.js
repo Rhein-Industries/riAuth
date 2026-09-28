@@ -69,6 +69,7 @@
     $("welcome").textContent = "Everything you need, one sign-in away."; $("access-count").textContent = "";
     $("account").hidden = true; $("signed-out-label").hidden = false;
     $("admin-link").hidden = true;
+    $("access-review-link").hidden = true;
     $("nav-all").disabled = true; $("nav-favorites").disabled = true;
     $("all-count").textContent = "—"; $("favorite-count").textContent = "—";
     $("search").value = ""; $("category").replaceChildren(new Option("All categories", ""));
@@ -133,6 +134,7 @@
       savePreferences(); stopRequest();
       $("account").hidden = false; $("signed-out-label").hidden = true;
       $("admin-link").hidden = data.user.admin !== true;
+      $("access-review-link").hidden = data.access_review_available !== true || !RiAuthCapabilities.compiled("access.temporary_entitlements");
       $("nav-all").disabled = false; $("nav-favorites").disabled = false;
       $("account-name").textContent = data.user.display_name;
       $("account-username").textContent = `@${data.user.username}`;
