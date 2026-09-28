@@ -522,6 +522,67 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
 
 #[cfg(feature = "test-support")]
 #[tokio::test]
+async fn browser_source_sign_in_delivery_failure_rolls_back_and_retries_once() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f).await;
+    let started = f.core.portal_source_start(None, "upstream", None).unwrap();
+    let credential = reply_cookie(&started, "riauth_source")
+        .split_once('.')
+        .unwrap()
+        .0
+        .to_owned();
+    upstream
+        .callback(&f, &started.body, "new-browser-user", json!({}))
+        .await;
+    assert_eq!(
+        f.core.portal_source_review(Some(&credential)).unwrap()["status"],
+        "review"
+    );
+    let before = f.snapshot().unwrap();
+    let users = f.core.store.list::<User>("users").unwrap().len();
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let bearer_tokens = f.core.store.list::<String>("session_tokens").unwrap().len();
+    let finish = || {
+        f.core
+            .portal_source_finish(Some(&credential), None, true, None)
+    };
+
+    assert_eq!(
+        riauth::portal::sources::with_failed_delivery(finish)
+            .err()
+            .unwrap()
+            .code,
+        "server_error"
+    );
+    // The proof, new identity, link, session and browser pointer share one transaction.
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core.portal_source_review(Some(&credential)).unwrap()["status"],
+        "review"
+    );
+
+    let finished = finish().unwrap();
+    assert_eq!(finished.body["signed_in"], true);
+    let sso = reply_cookie(&finished, "riauth_sso");
+    let page = f.core.portal_source_links(Some(&sso)).unwrap();
+    assert_eq!(page["user"]["id"], finished.body["user"]["id"]);
+    assert_eq!(page["links"].as_array().unwrap().len(), 1);
+    assert_eq!(f.core.store.list::<User>("users").unwrap().len(), users + 1);
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions + 1
+    );
+    assert_eq!(
+        f.core.store.list::<String>("session_tokens").unwrap().len(),
+        bearer_tokens
+    );
+    let committed = f.snapshot().unwrap();
+    assert_eq!(finish().err().unwrap().code, "source_login_expired");
+    f.assert_snapshot(&committed);
+}
+
+#[cfg(feature = "test-support")]
+#[tokio::test]
 async fn browser_and_bearer_source_links_require_an_enrolled_factor_session() {
     let f = Fixture::new();
     let alice = f.user("alice");
