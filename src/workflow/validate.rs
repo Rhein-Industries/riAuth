@@ -64,6 +64,14 @@ pub enum Code {
     Precondition,
     ImplicitSuccess,
     InsufficientProof,
+    Evidence,
+    Binding,
+    Stale,
+    Replay,
+    Provenance,
+    Path,
+    RunExpired,
+    MutationPending,
 }
 
 /// Validation failure. Messages name fields and identifiers, never field values
@@ -83,7 +91,7 @@ impl fmt::Display for Invalid {
 
 impl std::error::Error for Invalid {}
 
-fn fail(code: Code, path: impl Into<String>, message: impl Into<String>) -> Invalid {
+pub(super) fn fail(code: Code, path: impl Into<String>, message: impl Into<String>) -> Invalid {
     Invalid {
         code,
         path: path.into(),
@@ -214,41 +222,34 @@ impl Validated {
             .map(Target::Terminal)
             .ok_or_else(|| fail(Code::UnknownNode, transition.to.as_str(), "Unknown node"))
     }
-    /// Check that a run may finish at `terminal` holding `held`. Validation
-    /// proves the account-independent floor on every path; this also applies
-    /// the account- and request-relative factor rules, which a definition
-    /// cannot express away. The executor must call it before recording success.
-    pub fn complete(
-        &self,
-        terminal: &Id,
-        held: &[Proof],
-        facts: &dyn Facts,
-    ) -> Result<Outcome, Invalid> {
-        let target = self
-            .definition
-            .terminals
-            .iter()
-            .find(|t| &t.id == terminal)
-            .ok_or_else(|| fail(Code::UnknownNode, terminal.as_str(), "Unknown terminal"))?;
-        if !target.outcome.is_success() {
-            return Ok(target.outcome);
-        }
-        let proofs = mask(held);
-        let required = target.requires.is_empty()
-            || target.requires.iter().any(|a| proofs & mask(a) == mask(a));
-        if floor(target.outcome, proofs) && required && factors(target.outcome, proofs, facts) {
-            Ok(target.outcome)
-        } else {
-            Err(fail(
-                Code::InsufficientProof,
-                terminal.as_str(),
-                format!(
-                    "{:?} needs more than {} for this account and request",
-                    target.outcome,
-                    describe(proofs)
-                ),
-            ))
-        }
+}
+
+/// Factor rules are applied only after the evidence module has loaded and
+/// checked every held proof against the trusted run and its recorded path.
+#[allow(dead_code)] // Called by the W03 seam when W02 wires a production store.
+pub(super) fn completion_rules(
+    target: &Terminal,
+    held: &[Proof],
+    facts: &dyn Facts,
+) -> Result<(), Invalid> {
+    if !target.outcome.is_success() {
+        return Ok(());
+    }
+    let proofs = mask(held);
+    let required =
+        target.requires.is_empty() || target.requires.iter().any(|a| proofs & mask(a) == mask(a));
+    if floor(target.outcome, proofs) && required && factors(target.outcome, proofs, facts) {
+        Ok(())
+    } else {
+        Err(fail(
+            Code::InsufficientProof,
+            target.id.as_str(),
+            format!(
+                "{:?} needs more than {} for this account and request",
+                target.outcome,
+                describe(proofs)
+            ),
+        ))
     }
 }
 
@@ -409,6 +410,7 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
 
 /// Account- and request-relative factor rules applied at completion. A
 /// passkey, TOTP or recovery code satisfies a second-factor requirement.
+#[allow(dead_code)] // Called through completion_rules once W02 uses the seam.
 fn factors(outcome: Outcome, held: u16, facts: &dyn Facts) -> bool {
     let any = |proofs: &[Proof]| held & mask(proofs) != 0;
     let second = any(&[Proof::Passkey, Proof::Totp, Proof::RecoveryCode]);

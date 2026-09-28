@@ -1,8 +1,8 @@
 //! Canonical typed, versioned workflow definitions.
 //!
-//! This module is the W01 model: a storage- and protocol-neutral description of
-//! authentication, enrollment, recovery, consent and sensitive-action journeys.
-//! It imports no Core, storage or protocol module and executes nothing. A later
+//! The W01 definition model and W03 completion seam describe authentication,
+//! enrollment, recovery, consent and sensitive-action journeys. This module
+//! imports no Core, storage or protocol module and executes nothing. A later
 //! executor consumes only [`Validated`] definitions; see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
 
 mod essentials;
+// W02 will connect this checked seam to its durable executor.
+#[allow(dead_code)]
+pub(crate) mod evidence;
 mod validate;
 
 pub use essentials::{builtin, defaults};
@@ -221,9 +224,9 @@ impl Condition {
     }
 }
 
-/// Evidence gained inside one run. Each proof is produced only by the listed
-/// built-in action on its success signal and is bound to the run's account,
-/// request and run instance (see [`Proof::binding`]).
+/// Kind of evidence a built-in action can produce on its success signal.
+/// A kind alone is never sufficient to finish a run: completion loads a
+/// store-backed record with provenance and exact run bindings.
 #[derive(
     JsonSchema, Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
@@ -259,9 +262,9 @@ impl Proof {
     pub(crate) fn bit(self) -> u16 {
         1 << self as u16
     }
-    /// Binding that an executor must record with the proof. It is intrinsic to
-    /// the proof type, not a definition field, so a definition cannot declare or
-    /// accept an unbound proof.
+    /// Required binding for a stored evidence record. All records also bind to
+    /// the run's optional session when one exists. Sign-in may have no session
+    /// until the credential is attached; session and consent evidence require one.
     pub fn binding(self) -> Binding {
         Binding {
             account: true,
@@ -289,7 +292,7 @@ pub struct Terminal {
     /// all proofs of at least one alternative. Empty means only the category
     /// floor applies. Denial terminals must leave it empty.
     pub requires: Vec<Vec<Proof>>,
-    /// Maximum age of proofs at completion, enforced by the executor.
+    /// Maximum age of stored evidence at completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_proof_age_seconds: Option<u32>,
 }
