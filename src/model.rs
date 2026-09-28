@@ -100,6 +100,14 @@ pub struct ClientPolicyInput {
 }
 
 pub type ClientPolicyBinding = crate::delegation::GrantChangeBinding;
+pub type ClientStatusBinding = crate::delegation::GrantChangeBinding;
+
+/// Exact enable/disable intent; effects are computed and bound by the service.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientStatusInput {
+    pub enabled: bool,
+}
 pub type ClientCreationBinding = crate::delegation::GrantChangeBinding;
 
 #[derive(Clone, Serialize, Deserialize)]

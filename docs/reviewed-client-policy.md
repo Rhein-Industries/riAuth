@@ -47,7 +47,9 @@ The **Reviewed access policies** page (`/admin#/client-policy-review`) stages
 changes for an existing human sign-in application or opens a shared change ID.
 The application's Access card shows its current policy and links here; ordinary
 **Save changes** no longer offers or sends the two reviewed fields. Non-policy
-edits and explicit secret rotation keep their existing paths.
+edits and explicit secret rotation keep their existing paths. Enable/disable uses
+the separate [status review](reviewed-client-status.md) and its exact revocation
+snapshot.
 
 **Load current policy** reads the browser session/revision before and after the
 client snapshot. The form shows both complete fields before and after, including
@@ -152,8 +154,10 @@ with the resulting policy. A state plan is not an M05 approval.
 Remaining client classes are advanced/initially-disabled creation beyond the
 bounded creation review, other existing-client provider settings
 (including conditional access/claims, scopes, redirects, grants, issuer and
-sector), enable/disable, credentials, registration templates and registration
-tokens. The complete remaining M05 resource inventory is in
+sector), credentials, registration templates and registration
+tokens. [Enable/disable review](reviewed-client-status.md) now covers bounded
+revocation snapshots; large snapshots, cross-client families and exchange dependencies fail closed.
+The complete remaining M05 resource inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).
 Configurable quorums, delegated review roles, shared review
 inbox/notifications and finer invalidation remain outside this slice.

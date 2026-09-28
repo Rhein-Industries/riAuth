@@ -42,6 +42,8 @@ fn unchanged_client_updates_do_not_write_or_audit() {
         .unwrap();
     assert_eq!(revision(&f), at);
 
+    common::client_status::set(&f.core, &f.admin, "app", false);
+    let disabled_at = revision(&f);
     f.core
         .update_client(
             &f.admin,
@@ -52,25 +54,14 @@ fn unchanged_client_updates_do_not_write_or_audit() {
             },
         )
         .unwrap();
-    assert_eq!(revision(&f), at + 1);
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                enabled: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    assert_eq!(revision(&f), at + 1);
+    assert_eq!(revision(&f), disabled_at);
     let events = f.core.audit_events(&f.admin, 100).unwrap();
     assert_eq!(
         events
             .as_array()
             .unwrap()
             .iter()
-            .filter(|event| event["action"] == "client.update" && event["target"] == "app")
+            .filter(|event| event["action"] == "client.status.reviewed" && event["target"] == "app")
             .count(),
         1
     );

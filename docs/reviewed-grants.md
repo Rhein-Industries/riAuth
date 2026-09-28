@@ -143,7 +143,8 @@ and Platform use this same implementation and policy.
 This is not the complete generic M05 workflow. Review covers privileged delegated
 human grant-set replacement, bounded protected group membership, existing-client
 `allowed_groups` / `require_mfa` changes through [client policy review](reviewed-client-policy.md),
-and opt-in [bounded client creation](reviewed-client-creation.md).
+opt-in [bounded client creation](reviewed-client-creation.md), and bounded
+[application enable/disable with exact revocation effects](reviewed-client-status.md).
 The following management resource classes have no M05 author/reviewer/executor
 workflow; unsupported creation fails closed when creation review is enabled:
 
@@ -156,9 +157,11 @@ workflow; unsupported creation fails closed when creation review is enabled:
   desired-state credential ownership remain outside bounded creation review;
   all unreviewed creation is blocked when that policy is enabled. Other
   existing-client provider settings (conditional access/claims, scopes, redirects,
-  grants, issuer/sector), enable/disable, credentials, registration templates and
+  grants, issuer/sector), credentials, registration templates and
   tokens have no M05 review. Existing-client `allowed_groups` and `require_mfa`
-  changes require exact review.
+  changes require exact review. Enable/disable now requires exact review; oversized
+  snapshots, cross-client token families and exchange dependencies remain outside the bounded slice
+  and fail closed.
 - Agents, their permissions, parent bindings, credential rotation and revocation.
 - Federation sources/source links, directory/Workspace/Entra configuration and
   reconciliation plans, inbound/outbound SCIM and reconciliation controllers.

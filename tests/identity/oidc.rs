@@ -1707,16 +1707,7 @@ fn metadata_server_discovery_tracks_enabled_client_scopes_and_claims() {
     assert!(!other["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
     assert!(!other["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
 
-    f.core
-        .update_client(
-            &f.admin,
-            "custom",
-            ClientPatch {
-                enabled: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_status::set(&f.core, &f.admin, "custom", false);
     let disabled = f.core.discovery().unwrap();
     assert!(!disabled["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
     assert!(!disabled["claims_supported"].as_array().unwrap().contains(&json!("tenant")));

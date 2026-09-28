@@ -6,7 +6,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies", "client-status-review": "Reviewed application status" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
@@ -174,6 +174,7 @@
     RiAuthMembershipReview.reset(true);
     RiAuthClientCreationReview.reset(true);
     RiAuthClientPolicyReview.reset(true);
+    RiAuthClientStatusReview.reset(true);
     draft = null; captureWizard = null;
     data.deliveries = []; data.deliveryLoadedAt = 0;
     workflowDraft = null; workflowPlan = null;
@@ -286,6 +287,7 @@
     document.querySelector('[data-section="membership-review"]').hidden = !data.me?.user?.admin;
     document.querySelector('[data-section="client-creation-review"]').hidden = !data.me?.user?.admin;
     document.querySelector('[data-section="client-policy-review"]').hidden = !data.me?.user?.admin;
+    document.querySelector('[data-section="client-status-review"]').hidden = !data.me?.user?.admin;
   }
 
   // ---- Routing -----------------------------------------------------------------------------
@@ -308,6 +310,7 @@
     RiAuthMembershipReview.reset();
     RiAuthClientCreationReview.reset();
     RiAuthClientPolicyReview.reset();
+    RiAuthClientStatusReview.reset();
     // A refresh re-renders the open step; keep what was typed since the last Continue.
     if (captureWizard) { try { captureWizard(); } catch { /* a partial step is re-read on Continue */ } captureWizard = null; }
     // A created application's one-time secret is dropped once the wizard route is left; an
@@ -330,7 +333,10 @@
     const clientPolicyReview = (id) => RiAuthClientPolicyReview.view({ id, api, h, me: data.me, users: data.users, clients: data.clients,
       identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
       sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
-    const views = { applications: [applications, application, data.me.reviewed_client_creation ? () => clientCreationReview() : newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null], "membership-review": [membershipReview, membershipReview, null], "client-creation-review": [clientCreationReview, clientCreationReview, null], "client-policy-review": [clientPolicyReview, clientPolicyReview, null] }[section];
+    const clientStatusReview = (id) => RiAuthClientStatusReview.view({ id, api, h, me: data.me, users: data.users, clients: data.clients,
+      identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
+      sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
+    const views = { applications: [applications, application, data.me.reviewed_client_creation ? () => clientCreationReview() : newApplication], people: [people, person, newPerson], groups: [groups, group, null], workflows: [workflows, workflowEditor, workflowTemplates], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null], "membership-review": [membershipReview, membershipReview, null], "client-creation-review": [clientCreationReview, clientCreationReview, null], "client-policy-review": [clientPolicyReview, clientPolicyReview, null], "client-status-review": [clientStatusReview, clientStatusReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -535,7 +541,10 @@
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Details",
         field("Name", h("input", { id: "app-name", maxlength: "200", required: true, value: client.name })),
-        check("app-enabled", "Enabled", client.enabled, "Disabling signs this application out: its existing grants are revoked and are not restored by enabling it again.")),
+        h("p", {}, `Status: ${client.enabled ? "Enabled" : "Disabled"}. Enabling and disabling require independent review of the revocation effects.`),
+        !data.me?.user?.admin ? h("p", { class: "field-hint" }, "A full administrator must stage an enabled-state review.")
+          : RiAuthClientStatusReview.unavailable(client) ? h("p", { class: "notice" }, "Enabled-state review is unavailable with this application's current capabilities.")
+          : link(hash("client-status-review", `client:${client.client_id}`), "Review enabled state", { class: "button secondary" })),
       client.service
         ? card("API access", field("API scopes", scopeInput, SERVICE_HINT))
         : card("Access", h("p", {}, `Allowed groups: ${access(client)}. MFA: ${client.require_mfa ? "Required" : "Not required"}.`),
@@ -563,7 +572,6 @@
       const name = value(form, "app-name");
       if (!name) throw invalid("Enter a name.");
       if (name !== client.name) patch.name = name;
-      if (checked(form, "app-enabled") !== client.enabled) patch.enabled = checked(form, "app-enabled");
       if (!client.service) {
         const uris = lines(redirects.value);
         if (!same(uris, client.redirect_uris)) patch.redirect_uris = uris;

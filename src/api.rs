@@ -390,6 +390,11 @@ pub fn router(core: Core) -> Router {
         .route("/api/client-creation-changes/{id}/approve", post(approve_client_creation_change))
         .route("/api/client-creation-changes/{id}/execute", post(execute_client_creation_change))
         .route("/api/client-creation-changes/{id}/cancel", post(cancel_client_creation_change))
+        .route("/api/clients/{id}/status-changes", post(stage_client_status))
+        .route("/api/client-status-changes/{id}", get(client_status_change))
+        .route("/api/client-status-changes/{id}/approve", post(approve_client_status_change))
+        .route("/api/client-status-changes/{id}/execute", post(execute_client_status_change))
+        .route("/api/client-status-changes/{id}/cancel", post(cancel_client_status_change))
         .route("/api/clients/{id}/policy-changes", post(stage_client_policy))
         .route("/api/client-policy-changes/{id}", get(client_policy_change))
         .route("/api/client-policy-changes/{id}/approve", post(approve_client_policy_change))
@@ -2015,6 +2020,29 @@ async fn client_policy_change(
 grant_change_handler!(approve_client_policy_change);
 grant_change_handler!(execute_client_policy_change);
 grant_change_handler!(cancel_client_policy_change);
+
+async fn stage_client_status(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::model::ClientStatusInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_client_status(&token, &id, input).map(Json))
+        .await
+}
+async fn client_status_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.client_status_change(&token, &id).map(Json))
+        .await
+}
+grant_change_handler!(approve_client_status_change);
+grant_change_handler!(execute_client_status_change);
+grant_change_handler!(cancel_client_status_change);
 
 async fn stage_client_creation(
     State(app): State<App>,

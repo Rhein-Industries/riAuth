@@ -28,6 +28,7 @@ mod devices;
 pub(crate) mod grants;
 mod client_creation;
 mod client_policy;
+mod client_status;
 mod memberships;
 mod portal_approvals;
 mod sessions;
@@ -102,6 +103,7 @@ enum Authority<'a> {
 enum ClientReview {
     Immediate,
     AccessPolicy,
+    Status,
     Creation,
 }
 
@@ -2335,6 +2337,12 @@ fn check_client_as(
     // Authentication-setting changes are record changes and are validated.
     if other_change {
         validate_client(tx, &next).map_err(registration_error)?;
+    }
+    // Keep existing provider/listener validation and permission errors intact.
+    if review != ClientReview::Status && existing.is_some_and(|c| c.enabled != next.enabled) {
+        return Err(Error::conflict(
+            "Client enabled changes require a reviewed client status change",
+        ));
     }
     Ok(Checked {
         client: next,

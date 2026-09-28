@@ -212,16 +212,7 @@ fn disable_then_enable_never_resurrects_user_or_client_tokens() {
     );
     let tokens = f.tokens("app", &alice, None);
     for enabled in [false, true] {
-        f.core
-            .update_client(
-                &f.admin,
-                "app",
-                ClientPatch {
-                    enabled: Some(enabled),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+        crate::common::client_status::set(&f.core, &f.admin, "app", enabled);
     }
     assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
 }

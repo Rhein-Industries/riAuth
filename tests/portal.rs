@@ -1,5 +1,7 @@
 #[path = "common/client_policy.rs"]
 mod client_policy;
+#[path = "common/client_status.rs"]
+mod client_status;
 
 use axum::{
     Router,
@@ -345,16 +347,7 @@ fn portal_inherits_live_access_without_admin_bypass_or_information_leaks() {
     hidden.app.as_mut().unwrap().hidden = true;
     f.client("hidden", hidden, &[]);
     f.client("disabled", metadata(), &[]);
-    f.core
-        .update_client(
-            &f.admin,
-            "disabled",
-            ClientPatch {
-                enabled: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    client_status::set(&f.core, &f.admin, "disabled", false);
     f.client("mfa", metadata(), &[]);
     client_policy::replace(&f.core, &f.admin, "mfa", None, Some(true));
     let mut acr = metadata();

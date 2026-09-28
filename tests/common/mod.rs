@@ -2,6 +2,7 @@
 
 pub mod backend;
 pub mod client_policy;
+pub mod client_status;
 #[cfg(feature = "platform")]
 pub mod security;
 
