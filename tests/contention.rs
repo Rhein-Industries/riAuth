@@ -126,7 +126,7 @@ fn maintenance_passes_are_attributed_to_maintenance() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn delivery_workers_attribute_writes_and_skip_idle_logout() {
+async fn delivery_workers_attribute_writes_and_skip_idle_queues() {
     let fixture = Fixture::new();
     let telemetry = fixture.core.store.telemetry();
     let holds = |activity| telemetry.activity_write_hold.get(activity).count();
@@ -135,15 +135,15 @@ async fn delivery_workers_attribute_writes_and_skip_idle_logout() {
         holds(Activity::LogoutDelivery),
         holds(Activity::SsfDelivery),
     ];
-    // Match S01's ten idle logout + SSF ticks. Only SSF still takes the writer.
+    // Match S01's ten idle logout + SSF ticks. Neither idle queue needs a writer.
     for _ in 0..10 {
         riauth::logout::deliver(fixture.core.clone()).await.unwrap();
         riauth::ssf::deliver(fixture.core.clone()).await.unwrap();
     }
     assert_eq!(holds(Activity::LogoutDelivery) - before[1], 0);
-    assert_eq!(holds(Activity::SsfDelivery) - before[2], 10);
+    assert_eq!(holds(Activity::SsfDelivery) - before[2], 0);
     assert_eq!(holds(Activity::Foreground), before[0]);
-    println!("10 idle logout + SSF ticks: logout writer holds=0, SSF writer holds=10");
+    println!("10 idle logout + SSF ticks: logout writer holds=0, SSF writer holds=0");
 }
 
 #[test]
@@ -307,6 +307,320 @@ fn logout_idle_probe_preserves_atomic_claims() {
             holds,
             "completed work is not due"
         );
+    }
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+fn ssf_idle_probe_preserves_claim_receipt_and_retry() {
+    use common::backend::Backend;
+    use riauth::{
+        core::Core,
+        crypto::{digest, now, with_test_time},
+        model::{Audit, User},
+        ssf::{ACCOUNT_DISABLED, Delivery, DeliverySpec, MAX_ATTEMPTS, PUSH, SsfAuth, StreamInput},
+    };
+    use std::sync::{Arc, Mutex};
+
+    let mut backends = vec![Backend::Redb, Backend::EncryptedRedb];
+    if std::env::var_os("RIAUTH_TEST_CONTRACT_PG_ROOT").is_some() {
+        backends.extend([Backend::Postgres, Backend::EncryptedPostgres]);
+    }
+    for backend in backends {
+        let mut sender = backend.fixture();
+        let receiver = backend.fixture();
+        let session = sender.user("alice");
+        receiver.user("alice");
+        let user_id: String = sender
+            .core
+            .store
+            .get("usernames", "alice")
+            .unwrap()
+            .unwrap();
+        let receiver_id: String = receiver
+            .core
+            .store
+            .get("usernames", "alice")
+            .unwrap()
+            .unwrap();
+        let subject =
+            json!({"format": "iss_sub", "iss": sender.core.config.issuer, "sub": "alice"})
+                .to_string();
+        let at = now();
+        let received = Arc::new(Mutex::new(Vec::<String>::new()));
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let listener = runtime
+            .block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))
+            .unwrap();
+        let endpoint = format!("http://{}/events", listener.local_addr().unwrap());
+        let core = receiver.core.clone();
+        let hits = received.clone();
+        let app = axum::Router::new().route(
+            "/events",
+            axum::routing::post(move |body: String| {
+                let core = core.clone();
+                let hits = hits.clone();
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        assert_eq!(
+                            with_test_time(at, || core.accept_set(&body)).unwrap()["accepted"],
+                            true
+                        );
+                        let mut hits = hits.lock().unwrap();
+                        hits.push(body);
+                        // The receiver commits the receipt, but its first response
+                        // requests retry: delivery is at least once, effects are not.
+                        if hits.len() == 1 {
+                            StatusCode::SERVICE_UNAVAILABLE
+                        } else {
+                            StatusCode::ACCEPTED
+                        }
+                    })
+                    .await
+                    .unwrap()
+                }
+            }),
+        );
+        let server = runtime.spawn(async move { axum::serve(listener, app).await.unwrap() });
+        for fixture in [&*sender, &*receiver] {
+            fixture
+                .core
+                .ssf_create(
+                    &SsfAuth::Bearer(fixture.admin.clone()),
+                    StreamInput {
+                        id: "idle-probe".into(),
+                        issuer: sender.core.config.issuer.clone(),
+                        audience: "idle-probe-receiver".into(),
+                        events_requested: [ACCOUNT_DISABLED.into()].into(),
+                        events: Default::default(),
+                        delivery: Some(DeliverySpec {
+                            method: PUSH.into(),
+                            endpoint_url: endpoint.clone(),
+                            authorization_header: None,
+                        }),
+                        delivery_method: None,
+                        endpoint_url: None,
+                        jwks: serde_json::from_value(sender.core.jwks().unwrap()).unwrap(),
+                        subjects: [(subject.clone(), "alice".into())].into(),
+                    },
+                )
+                .unwrap();
+        }
+        let worker = |fixture: &Fixture| {
+            if fixture.core.config.postgres.is_some() {
+                Core::open(fixture.core.config.clone()).unwrap()
+            } else {
+                fixture.core.clone()
+            }
+        };
+        // Separate PostgreSQL pools let two remote claimants reach the writer.
+        let mut peer = worker(&sender);
+        let mut poller = None;
+        let idle = with_test_time(at, || {
+            sender.core.store.write(|tx| {
+                let mut user: User = tx.get("users", &user_id)?.unwrap();
+                user.enabled = false;
+                tx.put("users", &user.id, &user)?;
+                assert_eq!(tx.due::<Delivery>("ssf_deliveries", at, 32)?.len(), 1);
+                let node = peer.clone();
+                let (done, received) = mpsc::channel();
+                poller = Some(std::thread::spawn(move || {
+                    let result = with_test_time(at, || {
+                        in_activity(Activity::SsfDelivery, || {
+                            let t = node.store.telemetry();
+                            let before = (
+                                t.write_wait.count(),
+                                t.write_hold.count(),
+                                t.commit.count(),
+                                t.signing.count(),
+                                t.reads.scans(ReadContext::Read, true).count(),
+                            );
+                            let mut deliveries = 0;
+                            for _ in 0..10 {
+                                deliveries += node.deliver_once()?.len();
+                            }
+                            Ok::<_, Error>((
+                                deliveries,
+                                t.write_wait.count() - before.0,
+                                t.write_hold.count() - before.1,
+                                t.commit.count() - before.2,
+                                t.signing.count() - before.3,
+                                t.reads.scans(ReadContext::Read, true).count() - before.4,
+                            ))
+                        })
+                    });
+                    let _ = done.send(result);
+                }));
+                // Even on regression, release the writer before joining the poller.
+                Ok(received.recv_timeout(Duration::from_secs(10)))
+            })
+        })
+        .unwrap();
+        poller.unwrap().join().unwrap();
+        let idle = idle
+            .expect("idle SSF polling must finish before revocation commits")
+            .unwrap();
+        assert_eq!(
+            idle,
+            (0, 0, 0, 0, 0, 10),
+            "{backend:?}: ten bounded read-only polls"
+        );
+        assert!(
+            received.lock().unwrap().is_empty(),
+            "no send before revocation commits"
+        );
+        assert!(peer.me(&session).is_err());
+        println!(
+            "{backend:?}: 10 idle SSF polls: writer waits={}, holds={}, commits={}, signatures={}, bounded read scans={}",
+            idle.1, idle.2, idle.3, idle.4, idle.5
+        );
+
+        let mut claimers = Vec::new();
+        let signatures = peer.store.telemetry().signing.count();
+        sender
+            .core
+            .store
+            .write(|_| {
+                for _ in 0..2 {
+                    let node = peer.clone();
+                    claimers.push(std::thread::spawn(move || {
+                        with_test_time(at, || node.deliver_once())
+                    }));
+                }
+                // Both see a due snapshot before either can claim it. The loser
+                // must reread the durable lease/backoff after acquiring the writer.
+                until(|| peer.store.telemetry().write_waiters.current() == 2);
+                Ok(())
+            })
+            .unwrap();
+        let results: Vec<_> = claimers
+            .into_iter()
+            .flat_map(|thread| thread.join().unwrap().unwrap())
+            .collect();
+        assert_eq!(
+            results.len(),
+            1,
+            "{backend:?}: exactly one initial delivery"
+        );
+        assert_eq!(results[0]["status"], 503);
+        assert_eq!(results[0]["attempt"], 1);
+        assert_eq!(peer.store.telemetry().signing.count() - signatures, 1);
+        assert_eq!(received.lock().unwrap().len(), 1);
+        let id = results[0]["id"].as_str().unwrap();
+        let pending: Delivery = peer.store.get("ssf_deliveries", id).unwrap().unwrap();
+        assert_eq!(pending.attempts, 1);
+        assert_eq!(pending.next_attempt, at + 2);
+        assert_eq!(pending.last_status, Some(503));
+        assert!(pending.last_failed && !pending.stopped && pending.delivered_at.is_none());
+
+        // Reopen the sender to prove the retry deadline and JTI are durable.
+        drop(peer);
+        sender = sender.reopen_with(|_| {});
+        peer = worker(&sender);
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(
+            with_test_time(at + 1, || peer.deliver_once())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            peer.store.telemetry().write_hold.count(),
+            holds,
+            "future retry is idle"
+        );
+        let retry = with_test_time(at + 2, || peer.deliver_once()).unwrap();
+        assert_eq!(retry.len(), 1);
+        assert_eq!(retry[0]["id"], id);
+        assert_eq!(retry[0]["attempt"], 2);
+        assert_eq!(retry[0]["status"], 202);
+        let completed: Delivery = peer.store.get("ssf_deliveries", id).unwrap().unwrap();
+        assert_eq!(completed.jti, pending.jti);
+        assert_eq!(completed.attempts, 2);
+        assert_eq!(completed.delivered_at, Some(at + 2));
+        assert!(!completed.last_failed);
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(
+            with_test_time(at + 3, || peer.deliver_once())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            peer.store.telemetry().write_hold.count(),
+            holds,
+            "completed work is idle"
+        );
+        assert_eq!(received.lock().unwrap().len(), 2);
+        let receipt = digest(&format!("{}\0{}", sender.core.config.issuer, pending.jti));
+        assert!(
+            receiver
+                .core
+                .store
+                .get::<u64>("ssf_jti", &receipt)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(receiver.core.store.list::<u64>("ssf_jti").unwrap().len(), 1);
+        let disabled: User = receiver
+            .core
+            .store
+            .get("users", &receiver_id)
+            .unwrap()
+            .unwrap();
+        assert!(!disabled.enabled);
+        assert_eq!(
+            receiver
+                .core
+                .store
+                .list::<Audit>("audit")
+                .unwrap()
+                .into_iter()
+                .filter(|(_, event)| event.action == "ssf.account-disabled"
+                    && event.target == receiver_id)
+                .count(),
+            1,
+            "a retried JTI applies exactly once"
+        );
+
+        // A due row that needs retirement is work, even when it cannot be sent.
+        let mut exhausted = pending.clone();
+        exhausted.id = "exhausted".into();
+        exhausted.jti = exhausted.id.clone();
+        exhausted.attempts = MAX_ATTEMPTS;
+        exhausted.next_attempt = at + 3;
+        peer.store
+            .write(|tx| tx.put("ssf_deliveries", &exhausted.id, &exhausted))
+            .unwrap();
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(
+            with_test_time(at + 3, || peer.deliver_once())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(peer.store.telemetry().write_hold.count() - holds, 1);
+        assert!(
+            peer.store
+                .get::<Delivery>("ssf_deliveries", &exhausted.id)
+                .unwrap()
+                .unwrap()
+                .stopped
+        );
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(
+            with_test_time(at + 3, || peer.deliver_once())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            peer.store.telemetry().write_hold.count(),
+            holds,
+            "stopped work is idle"
+        );
+        assert_eq!(received.lock().unwrap().len(), 2);
+        server.abort();
     }
 }
 

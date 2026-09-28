@@ -651,6 +651,16 @@ impl Core {
     }
 
     pub fn deliver_once(&self) -> Result<Vec<Value>> {
+        // The due index commits with each delivery. An empty snapshot needs no
+        // writer; a concurrent enqueue will be picked up by a later pass. Treat
+        // this only as a hint: reread claims, stream state and retries below.
+        if self
+            .store
+            .read(|tx| tx.due_deliveries(now(), 1))?
+            .is_empty()
+        {
+            return Ok(Vec::new());
+        }
         let pending = self.store.write(|tx| claim_deliveries(tx))?;
         let http = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
