@@ -2209,12 +2209,17 @@ pub(crate) fn register_client(
     let grants = request
         .grant_types
         .unwrap_or_else(|| BTreeSet::from(["authorization_code".into()]));
+    let response_types = if grants.contains("authorization_code") {
+        BTreeSet::from(["code".to_owned()])
+    } else {
+        BTreeSet::new()
+    };
     if grants.is_empty()
         || !grants.is_subset(&template.grant_types)
         || request
             .response_types
             .as_ref()
-            .is_some_and(|r| r != &BTreeSet::from(["code".into()]))
+            .is_some_and(|r| r != &response_types)
     {
         return Err(metadata("Unsupported grant or response type"));
     }
@@ -2294,7 +2299,7 @@ pub(crate) fn register_client(
         "redirect_uris": client.redirect_uris,
         "scope": client.scopes.iter().cloned().collect::<Vec<_>>().join(" "),
         "grant_types": client.settings.allowed_grants,
-        "response_types": ["code"],
+        "response_types": response_types,
         "token_endpoint_auth_method": method,
         "application_type": if client.settings.native { "native" } else { "web" },
         "post_logout_redirect_uris": client.settings.post_logout_redirect_uris,

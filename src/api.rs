@@ -479,7 +479,7 @@ pub fn router(core: Core) -> Router {
                 &format!("/.well-known/oauth-authorization-server{prefix}"),
                 get(move || {
                     let app = discovery_app.clone();
-                    async move { app.run(|core| Ok(Json(core.discovery()))).await }
+                    async move { app.run(|core| core.discovery().map(Json)).await }
                 }),
             );
         #[cfg(feature = "platform")]
@@ -1216,7 +1216,7 @@ async fn discovery(
             Err(e) => return Err(e),
         }
     }
-    app.run(|core| Ok(Json(core.discovery()))).await
+    app.run(|core| core.discovery().map(Json)).await
 }
 async fn jwks(State(app): State<App>) -> Result<Json<Value>> {
     app.run(|core| core.jwks().map(Json)).await

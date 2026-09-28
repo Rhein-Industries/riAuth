@@ -790,7 +790,7 @@ async fn trailing_slash_issuers_advertise_reachable_saml_endpoints() {
             "session_token",
         );
         assert_eq!(core.config.issuer, issuer);
-        assert_eq!(core.discovery()["issuer"], issuer);
+        assert_eq!(core.discovery().unwrap()["issuer"], issuer);
         let base = issuer.trim_end_matches('/');
         let idp_keys: crypto::Keys = core.store.get("meta", "keys").unwrap().unwrap();
         let idp_key = PKey::private_key_from_pem(idp_keys.active.pem.as_bytes()).unwrap();

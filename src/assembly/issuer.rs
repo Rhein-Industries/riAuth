@@ -23,16 +23,13 @@ impl IssuerTx for Tx<'_> {
 
 impl Core {
     pub fn provider_discovery(&self, cid: &str) -> Result<Value> {
+        let document = self.discovery()?;
         self.store.read(|tx| {
             let client = tx
                 .get::<Client>("clients", cid)?
                 .filter(|client| client.enabled)
                 .ok_or_else(|| Error::missing("Provider not found"))?;
-            Ok(issuer::discovery(
-                self.discovery(),
-                &self.config.issuer,
-                &client,
-            ))
+            Ok(issuer::discovery(document, &self.config.issuer, &client))
         })
     }
 

@@ -4,6 +4,7 @@ use crate::{
     model::Client,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 /// Issuer ownership facts read from the caller's transaction.
 pub trait IssuerTx {
@@ -44,8 +45,22 @@ pub fn validate(tx: &impl IssuerTx, client: &Client) -> Result<()> {
 }
 
 pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> Value {
+    let server_grants: BTreeSet<String> = document["grant_types_supported"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    let server_scopes: BTreeSet<String> = document["scopes_supported"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
     let grant_available = |grant: &str| {
-        if !crate::provider::grant_enabled(client, grant) {
+        if !server_grants.contains(grant) || !crate::provider::grant_enabled(client, grant) {
             return false;
         }
         match grant {
@@ -61,6 +76,25 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             _ => false,
         }
     };
+    let offline_access_usable = grant_available("refresh_token");
+    let mut client_claims: BTreeSet<&str> = crate::oidc::STANDARD_CLAIMS.iter().copied().collect();
+    client_claims.extend(
+        client
+            .settings
+            .claim_mappings
+            .iter()
+            .filter(|mapping| mapping.scope != "offline_access" || offline_access_usable)
+            .map(|mapping| mapping.claim.as_str()),
+    );
+    if let Some(policy) = client.settings.policy.conditional() {
+        client_claims.extend(
+            policy
+                .claim_mappings
+                .iter()
+                .filter(|mapping| mapping.mapping.scope != "offline_access" || offline_access_usable)
+                .map(|mapping| mapping.mapping.claim.as_str()),
+        );
+    }
     document["issuer"] = json!(for_client(default, client));
     let grants: Vec<_> = document["grant_types_supported"]
         .as_array()
@@ -78,18 +112,31 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
     document["scopes_supported"] = json!(client
         .scopes
         .iter()
+        .filter(|scope| server_scopes.contains(*scope))
         .filter(|scope| scope.as_str() != "offline_access" || grant_available("refresh_token"))
+        .collect::<Vec<_>>());
+    document["claims_supported"] = json!(document["claims_supported"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|claim| client_claims.contains(*claim))
         .collect::<Vec<_>>());
     if !grant_available(crate::oidc::DEVICE_GRANT) {
         document.as_object_mut().unwrap().remove("device_authorization_endpoint");
     }
-    document["subject_types_supported"] = if client.settings.pairwise_sector.is_some() {
+    document["subject_types_supported"] = if client.settings.pairwise_sector.is_some()
+        && document["subject_types_supported"]
+            .as_array()
+            .is_some_and(|types| types.contains(&json!("pairwise")))
+    {
         json!(["pairwise"])
     } else {
         json!(["public"])
     };
+    let par_available = document.get("pushed_authorization_request_endpoint").is_some();
     document["require_pushed_authorization_requests"] =
-        json!(client.settings.require_pushed_authorization_requests);
+        json!(client.settings.require_pushed_authorization_requests && par_available);
     document
 }
 

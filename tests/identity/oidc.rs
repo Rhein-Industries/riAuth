@@ -1528,6 +1528,166 @@ fn token_exchange_enforces_target_dpop_binding_for_impersonation_and_delegation(
 }
 
 #[test]
+fn metadata_server_discovery_tracks_enabled_client_scopes_and_claims() {
+    use riauth::claims::{ClaimMapping, ClaimSource};
+
+    let f = Fixture::new();
+    f.client("other", false);
+    let capabilities = riauth::capability::runtime(&f.core).unwrap();
+    let baseline = f.core.discovery().unwrap();
+    for (feature, field) in [
+        ("oidc.code.pkce_s256", "code_challenge_methods_supported"),
+        ("oidc.device", "device_authorization_endpoint"),
+        ("oidc.par", "pushed_authorization_request_endpoint"),
+        ("oidc.dynamic_registration", "registration_endpoint"),
+    ] {
+        assert_eq!(
+            baseline.get(field).is_some(),
+            capabilities["feature_states"][feature]["usable"] == true,
+            "{field} disagrees with {feature}"
+        );
+    }
+    assert!(!baseline["scopes_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("api.read")));
+
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "custom".into(),
+                name: "Custom claims".into(),
+                confidential: false,
+                redirect_uris: vec!["http://localhost:7777/callback?existing=1".into()],
+                scopes: strings(&["openid", "api.read", "offline_access"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    claim_mappings: vec![
+                        ClaimMapping {
+                            scope: "api.read".into(),
+                            claim: "tenant".into(),
+                            source: ClaimSource::Username,
+                        },
+                        ClaimMapping {
+                            scope: "offline_access".into(),
+                            claim: "unusable_offline_claim".into(),
+                            source: ClaimSource::Username,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let server = f.core.discovery().unwrap();
+    assert!(server["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
+    assert!(server["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+    assert!(!server["claims_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("unusable_offline_claim")));
+    let custom = f.core.provider_discovery("custom").unwrap();
+    assert!(custom["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
+    assert!(custom["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+    assert!(!custom["scopes_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("offline_access")));
+    assert!(!custom["claims_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("unusable_offline_claim")));
+    let other = f.core.provider_discovery("other").unwrap();
+    assert!(!other["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
+    assert!(!other["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+
+    f.core
+        .update_client(
+            &f.admin,
+            "custom",
+            ClientPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let disabled = f.core.discovery().unwrap();
+    assert!(!disabled["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
+    assert!(!disabled["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+}
+
+#[test]
+fn metadata_registration_response_types_match_grants() {
+    use riauth::registration::{RegistrationRequest, RegistrationTemplate};
+
+    let f = Fixture::new();
+    let result = f
+        .core
+        .registration_template(
+            &f.admin,
+            RegistrationTemplate {
+                id: "device-only".into(),
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid"]),
+                grant_types: strings(&[DEVICE_GRANT]),
+                auth_methods: strings(&["none"]),
+                settings: ProviderSettings::default(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                ttl: 300,
+                max_uses: 1,
+            },
+        )
+        .unwrap();
+    let credential = text(&result, "initial_access_token");
+    let mut request = RegistrationRequest {
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        scope: Some("openid".into()),
+        grant_types: Some(strings(&[DEVICE_GRANT])),
+        token_endpoint_auth_method: Some("none".into()),
+        ..Default::default()
+    };
+    request.response_types = Some(strings(&["code"]));
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, request.clone())
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    assert_eq!(f.core.registration_templates(&f.admin).unwrap()[0]["used"], 0);
+
+    request.response_types = None;
+    let registered = f.core.dynamic_register(&credential, request).unwrap();
+    assert_eq!(registered["grant_types"], json!([DEVICE_GRANT]));
+    assert_eq!(registered["response_types"], json!([]));
+    let client_id = text(&registered, "client_id");
+    let metadata = f.core.provider_discovery(&client_id).unwrap();
+    assert_eq!(metadata["grant_types_supported"], json!([DEVICE_GRANT]));
+    assert_eq!(metadata["response_types_supported"], json!([]));
+    assert_eq!(
+        f.core
+            .authorization_details(f.request(&client_id, &crypto::random_token("")))
+            .unwrap_err()
+            .code,
+        "unauthorized_client"
+    );
+    assert!(
+        f.core
+            .device_start(TokenRequest {
+                client_id: Some(client_id),
+                scope: Some("openid".into()),
+                ..Default::default()
+            })
+            .is_ok()
+    );
+}
+
+#[test]
 fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     use riauth::registration::{RegistrationRequest, RegistrationTemplate};
     let f = Fixture::new();

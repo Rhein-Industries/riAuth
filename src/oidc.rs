@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
+pub(crate) const STANDARD_CLAIMS: &[&str] = &[
+    "iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "amr", "at_hash", "name",
+    "preferred_username", "email", "email_verified", "groups",
+];
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
 pub struct Authorization {

@@ -132,7 +132,7 @@ async fn discovery_certificate_acr_follows_usable_trust_material() {
             expected
         );
         assert_eq!(
-            core.discovery()["acr_values_supported"]
+            core.discovery().unwrap()["acr_values_supported"]
                 .as_array()
                 .unwrap()
                 .iter()

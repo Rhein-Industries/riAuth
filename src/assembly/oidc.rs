@@ -44,13 +44,101 @@ impl OidcTx for Tx<'_> {
 }
 
 impl Core {
-    pub fn discovery(&self) -> Value {
+    pub fn discovery(&self) -> Result<Value> {
         let base = self.config.issuer.trim_end_matches('/');
+        let capabilities = crate::capability::runtime(self)?;
+        let usable = |name: &str| capabilities["feature_states"][name]["usable"] == true;
+        let code = usable("oidc.code.pkce_s256");
+        let refresh = usable("oidc.refresh_rotation");
+        let device = usable("oidc.device");
+        let par = code && usable("oidc.par");
+        let jar = code && usable("oidc.jar");
+        let jarm = code && usable("oidc.jarm");
+        let jwe = usable("oidc.jwe");
+        let private_key_jwt = usable("oidc.private_key_jwt");
+        let mut grants = Vec::new();
+        if code {
+            grants.push("authorization_code");
+        }
+        if refresh {
+            grants.push("refresh_token");
+        }
+        grants.push("client_credentials");
+        if device {
+            grants.push(DEVICE_GRANT);
+        }
+        if usable("oidc.token_exchange") {
+            grants.push(crate::exchange::TOKEN_EXCHANGE);
+        }
+        if usable("oidc.federated_machine_grants") {
+            grants.push(crate::jose::JWT_GRANT);
+        }
+        let mut scopes = vec![
+            "openid".to_owned(),
+            "profile".to_owned(),
+            "email".to_owned(),
+            "groups".to_owned(),
+        ];
+        if refresh {
+            scopes.push("offline_access".to_owned());
+        }
+        let mut custom_scopes = BTreeSet::new();
+        let mut custom_claims = BTreeSet::new();
+        for (_, client) in self.store.list::<Client>("clients")? {
+            if !client.enabled {
+                continue;
+            }
+            for scope in &client.scopes {
+                if scope == "offline_access" && !refresh {
+                    continue;
+                }
+                if !scopes.contains(scope) {
+                    custom_scopes.insert(scope.clone());
+                }
+            }
+            if usable("oidc.claim_mappings") && client.scopes.contains("openid") {
+                let offline_access_usable = refresh
+                    && !client.service
+                    && crate::provider::grant_enabled(&client, "refresh_token");
+                custom_claims.extend(
+                    client
+                        .settings
+                        .claim_mappings
+                        .iter()
+                        .filter(|mapping| mapping.scope != "offline_access" || offline_access_usable)
+                        .map(|mapping| mapping.claim.clone()),
+                );
+                if let Some(policy) = client.settings.policy.conditional() {
+                    custom_claims.extend(
+                        policy
+                            .claim_mappings
+                            .iter()
+                            .filter(|mapping| {
+                                mapping.mapping.scope != "offline_access" || offline_access_usable
+                            })
+                            .map(|mapping| mapping.mapping.claim.clone()),
+                    );
+                }
+            }
+        }
+        scopes.extend(custom_scopes);
+        let mut claims: Vec<String> = crate::oidc::STANDARD_CLAIMS
+            .iter()
+            .map(|claim| (*claim).to_owned())
+            .collect();
+        custom_claims.retain(|claim| !claims.contains(claim));
+        claims.extend(custom_claims);
+        let mut auth_methods = vec!["client_secret_basic", "client_secret_post"];
+        if private_key_jwt {
+            auth_methods.push("private_key_jwt");
+        }
+        let mut public_auth_methods = auth_methods.clone();
+        public_auth_methods.push("none");
         let mut acr_values: Vec<&str> = crate::assurance::SUPPORTED.to_vec();
         if crate::capability::https_client_certificates_usable(&self.config) {
             acr_values.push(crate::radius::eap::CERTIFICATE_ACR);
         }
-        json!({
+        let mut document = json!({
             "issuer": self.config.issuer,
             "authorization_endpoint": format!("{base}/oauth/authorize"),
             "token_endpoint": format!("{base}/oauth/token"),
@@ -59,17 +147,23 @@ impl Core {
             "jwks_uri": format!("{base}/oauth/jwks"),
             "revocation_endpoint": format!("{base}/oauth/revoke"),
             "end_session_endpoint": format!("{base}/oauth/logout"),
-            "frontchannel_logout_supported": true,
-            "frontchannel_logout_session_supported": true,
+            "frontchannel_logout_supported": usable("oidc.frontchannel_logout"),
+            "frontchannel_logout_session_supported": usable("oidc.frontchannel_logout"),
             "check_session_iframe": format!("{base}/oauth/session/iframe"),
-            "backchannel_logout_supported": true,
-            "backchannel_logout_session_supported": true,
+            "backchannel_logout_supported": usable("oidc.backchannel_logout"),
+            "backchannel_logout_session_supported": usable("oidc.backchannel_logout"),
             "introspection_endpoint": format!("{base}/oauth/introspect"),
-            "response_types_supported": ["code"],
-            "response_modes_supported": crate::response::MODES,
+            "response_types_supported": if code { vec!["code"] } else { vec![] },
+            "response_modes_supported": if code {
+                crate::response::MODES.iter().copied()
+                    .filter(|mode| jarm || !mode.contains("jwt"))
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            },
             "authorization_signing_alg_values_supported": ["RS256", "ES256", "EdDSA"],
-            "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials", DEVICE_GRANT, crate::exchange::TOKEN_EXCHANGE, crate::jose::JWT_GRANT],
-            "subject_types_supported": ["public", "pairwise"],
+            "grant_types_supported": grants,
+            "subject_types_supported": if usable("oidc.pairwise_subjects") { vec!["public", "pairwise"] } else { vec!["public"] },
             "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA"],
             "id_token_encryption_alg_values_supported": ["RSA-OAEP-256"],
             "id_token_encryption_enc_values_supported": ["A256GCM", "A256CBC-HS512"],
@@ -80,22 +174,46 @@ impl Core {
             "authorization_encryption_enc_values_supported": ["A256GCM", "A256CBC-HS512"],
             "token_endpoint_auth_signing_alg_values_supported": ["RS256", "ES256", "EdDSA"],
             "registration_endpoint": format!("{base}/oauth/register"),
-            "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "private_key_jwt", "none"],
-            "revocation_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "private_key_jwt", "none"],
-            "introspection_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "private_key_jwt"],
+            "token_endpoint_auth_methods_supported": public_auth_methods,
+            "revocation_endpoint_auth_methods_supported": public_auth_methods,
+            "introspection_endpoint_auth_methods_supported": auth_methods,
             "code_challenge_methods_supported": ["S256"],
             "dpop_signing_alg_values_supported": ["RS256", "ES256", "EdDSA"],
-            "scopes_supported": ["openid", "profile", "email", "groups", "offline_access"],
-            "claims_supported": ["iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "amr", "at_hash", "name", "preferred_username", "email", "email_verified", "groups"],
-            "authorization_response_iss_parameter_supported": true,
-            "claims_parameter_supported": true,
+            "scopes_supported": scopes,
+            "claims_supported": claims,
+            "authorization_response_iss_parameter_supported": code,
+            "claims_parameter_supported": usable("oidc.claims_requests"),
             "acr_values_supported": acr_values,
-            "request_parameter_supported": true,
+            "request_parameter_supported": jar,
             "request_object_signing_alg_values_supported": ["RS256", "ES256", "EdDSA"],
             "pushed_authorization_request_endpoint": format!("{base}/oauth/par"),
             "require_pushed_authorization_requests": false,
-            "request_uri_parameter_supported": true
-        })
+            "request_uri_parameter_supported": par
+        });
+        for (field, available) in [
+            ("authorization_endpoint", code),
+            ("device_authorization_endpoint", device),
+            ("end_session_endpoint", usable("oidc.rp_logout")),
+            ("check_session_iframe", usable("oidc.session_management")),
+            ("authorization_signing_alg_values_supported", jarm),
+            ("authorization_encryption_alg_values_supported", jarm && jwe),
+            ("authorization_encryption_enc_values_supported", jarm && jwe),
+            ("id_token_encryption_alg_values_supported", jwe),
+            ("id_token_encryption_enc_values_supported", jwe),
+            ("userinfo_encryption_alg_values_supported", jwe),
+            ("userinfo_encryption_enc_values_supported", jwe),
+            ("token_endpoint_auth_signing_alg_values_supported", private_key_jwt),
+            ("registration_endpoint", usable("oidc.dynamic_registration")),
+            ("code_challenge_methods_supported", code),
+            ("dpop_signing_alg_values_supported", usable("oidc.dpop")),
+            ("request_object_signing_alg_values_supported", jar),
+            ("pushed_authorization_request_endpoint", par),
+        ] {
+            if !available {
+                document.as_object_mut().unwrap().remove(field);
+            }
+        }
+        Ok(document)
     }
     pub fn jwks(&self) -> Result<Value> {
         self.store
