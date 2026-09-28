@@ -1,7 +1,10 @@
 //! Bounded LDAP import plans and online LDAP password authentication.
 use crate::{
     agent::Principal,
-    connector_guard::{ApplyGate, Pagination, RemovalImpact, ReviewBinding, plan_content},
+    connector_guard::{
+        ApplyGate, Pagination, ReconciliationMode, RemovalImpact, ReviewBinding, plan_content,
+        reconcile_plan,
+    },
     core::{Core, Delivery, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -522,8 +525,21 @@ fn binding_key(directory: &str, external_id: &str) -> String {
 }
 
 impl Core {
+    fn directory_mode(&self, id: &str) -> ReconciliationMode {
+        self.config
+            .ldap_reconciliation_modes
+            .get(id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn directory_fingerprint(&self, id: &str, directory: &Directory) -> Result<String> {
+        self.directory_mode(id)
+            .fingerprint(&directory.fingerprint()?)
+    }
+
     pub fn directories(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| { let actor=self.principal(tx,token)?; Ok(json!(self.config.directories.iter().filter(|(id,_)|actor.allows("directory.read",&format!("directory/{id}"))).map(|(id,d)|json!({"id":id,"url":d.url,"user_base":d.user_base,"groups":d.group_user_filters.keys().collect::<Vec<_>>()})).collect::<Vec<_>>())) })
+        self.store.read(|tx| { let actor=self.principal(tx,token)?; Ok(json!(self.config.directories.iter().filter(|(id,_)|actor.allows("directory.read",&format!("directory/{id}"))).map(|(id,d)|json!({"id":id,"url":d.url,"user_base":d.user_base,"groups":d.group_user_filters.keys().collect::<Vec<_>>(),"reconciliation_mode":self.directory_mode(id)})).collect::<Vec<_>>())) })
     }
     pub fn directory_plan_get(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
@@ -542,7 +558,76 @@ impl Core {
             Ok(json!(plan))
         })
     }
+    /// Controller trigger for one LDAP directory. A pending reviewed plan keeps
+    /// its exact ID while the source, local revision and authority remain bound.
+    /// The existing apply path re-fetches the source before any local mutation.
+    pub fn directory_reconcile(&self, token: &str, id: &str) -> Result<Value> {
+        let directory = self
+            .config
+            .directories
+            .get(id)
+            .ok_or_else(|| Error::missing("LDAP directory not configured"))?;
+        let mode = self.directory_mode(id);
+        let pending = self.store.read(|tx| {
+            let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let fingerprint = self.directory_fingerprint(id, directory)?;
+            for (_, plan) in tx.list::<Plan>("directory_plans")? {
+                if plan.directory == id
+                    && plan.actor == actor.id
+                    && !plan.applied
+                    && plan.expires_at > now()
+                    && plan.revision == revision
+                    && plan.fingerprint == fingerprint
+                    && plan
+                        .review
+                        .validate(tx, &actor, &plan_content(&plan)?)
+                        .is_ok()
+                {
+                    return Ok(Some(plan));
+                }
+            }
+            Ok(None)
+        })?;
+        let plan = match pending {
+            Some(plan) if directory.snapshot()?.users == plan.entries => {
+                // The remote read can take seconds. Recheck authority and the
+                // local revision before returning its saved entries to caller.
+                let bound = self.store.read(|tx| {
+                    let actor =
+                        self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
+                    Ok(plan.actor == actor.id
+                        && plan.expires_at > now()
+                        && plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                        && plan.fingerprint == self.directory_fingerprint(id, directory)?
+                        && tx
+                            .get::<Plan>("directory_plans", &plan.id)?
+                            .is_some_and(|stored| !stored.applied && stored.review == plan.review)
+                        && plan
+                            .review
+                            .validate(tx, &actor, &plan_content(&plan)?)
+                            .is_ok())
+                })?;
+                if bound {
+                    json!(plan)
+                } else {
+                    self.directory_plan_internal(token, id, true)?
+                }
+            }
+            _ => self.directory_plan_internal(token, id, true)?,
+        };
+        let impact: RemovalImpact =
+            serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
+        reconcile_plan(mode, &impact, plan, |plan_id| {
+            self.directory_apply_confirmed(token, plan_id, None)
+        })
+    }
+
     pub fn directory_plan(&self, token: &str, id: &str) -> Result<Value> {
+        self.directory_plan_internal(token, id, false)
+    }
+
+    fn directory_plan_internal(&self, token: &str, id: &str, supersede: bool) -> Result<Value> {
         let directory = self
             .config
             .directories
@@ -565,10 +650,15 @@ impl Core {
                     "Local configuration changed during LDAP search",
                 ));
             }
-            if tx
-                .list::<Plan>("directory_plans")?
+            let plans = tx.list::<Plan>("directory_plans")?;
+            if plans
                 .iter()
-                .filter(|(_, p)| p.actor == actor.id && p.expires_at > now() && !p.applied)
+                .filter(|(_, p)| {
+                    p.actor == actor.id
+                        && p.expires_at > now()
+                        && !p.applied
+                        && !(supersede && p.directory == id)
+                })
                 .count()
                 >= 16
             {
@@ -580,7 +670,7 @@ impl Core {
                 actor: actor.id.clone(),
                 revision,
                 expires_at: now() + 300,
-                fingerprint: directory.fingerprint()?,
+                fingerprint: self.directory_fingerprint(id, directory)?,
                 entries: snapshot.users,
                 changes,
                 removal_impact: impact,
@@ -590,6 +680,13 @@ impl Core {
             plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
             plan.review
                 .validate(tx, &current_actor, &plan_content(&plan)?)?;
+            if supersede {
+                for (old_id, old) in plans {
+                    if old.actor == actor.id && old.directory == id && !old.applied {
+                        tx.delete("directory_plans", &old_id)?;
+                    }
+                }
+            }
             tx.put("directory_plans", &plan.id, &plan)?;
             audit(tx, &actor.id, "directory.plan", id)?;
             Ok(json!(plan))
@@ -620,7 +717,9 @@ impl Core {
             )
         })?;
         if !plan.applied {
-            if plan.expires_at <= now() || plan.fingerprint != directory.fingerprint()? {
+            if plan.expires_at <= now()
+                || plan.fingerprint != self.directory_fingerprint(&plan.directory, directory)?
+            {
                 return Err(Error::conflict(
                     "LDAP plan expired or directory configuration changed",
                 ));
@@ -659,7 +758,8 @@ impl Core {
                 id,
                 revision: plan.revision,
                 expires_at: plan.expires_at,
-                fingerprint_matches: plan.fingerprint == directory.fingerprint()?,
+                fingerprint_matches: plan.fingerprint
+                    == self.directory_fingerprint(&plan.directory, directory)?,
                 expected_impact: &plan.removal_impact,
                 observed_impact: &impact,
                 review: &plan.review,

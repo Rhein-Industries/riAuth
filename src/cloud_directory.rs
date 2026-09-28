@@ -1,4 +1,4 @@
-//! Agent-reviewed Google Workspace and Microsoft Entra ID directory sync.
+//! Bounded Google Workspace and Microsoft Entra ID directory sync.
 //!
 //! The supported token profile is OAuth 2.0 `client_credentials`. Google's
 //! public token endpoint does not issue Admin SDK tokens with that grant;
@@ -7,7 +7,9 @@
 //! must not disable accounts.
 use crate::{
     agent::Principal,
-    connector_guard::{ApplyGate, Pagination, ReviewBinding, plan_content},
+    connector_guard::{
+        ApplyGate, Pagination, ReconciliationMode, ReviewBinding, plan_content, reconcile_plan,
+    },
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -1339,6 +1341,14 @@ fn window_open(run: &SyncRun) -> bool {
 }
 
 impl Core {
+    fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
+        let modes = match provider {
+            Provider::Workspace => &self.config.workspace_reconciliation_modes,
+            Provider::Entra => &self.config.entra_reconciliation_modes,
+        };
+        modes.get(id).copied().unwrap_or_default()
+    }
+
     fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
         let provider = Provider::parse(kind)?;
         validate_name(id)?;
@@ -1363,7 +1373,9 @@ impl Core {
                     groups: directory.groups.clone(),
                     attributes: directory.attributes.clone(),
                     username_prefix: directory.username_prefix.clone(),
-                    fingerprint: fingerprint_of(provider.as_str(), directory)?,
+                    fingerprint: self
+                        .cloud_mode(provider, id)
+                        .fingerprint(&fingerprint_of(provider.as_str(), directory)?)?,
                     identity_fingerprint: digest(&format!(
                         "workspace\0{}\0{}\0{}",
                         directory.customer_id,
@@ -1392,7 +1404,9 @@ impl Core {
                     groups: directory.groups.clone(),
                     attributes: directory.attributes.clone(),
                     username_prefix: directory.username_prefix.clone(),
-                    fingerprint: fingerprint_of(provider.as_str(), directory)?,
+                    fingerprint: self
+                        .cloud_mode(provider, id)
+                        .fingerprint(&fingerprint_of(provider.as_str(), directory)?)?,
                     identity_fingerprint: digest(&format!(
                         "entra\0{}\0{}\0{}",
                         directory.tenant_id,
@@ -1474,6 +1488,7 @@ impl Core {
                             "domain": directory.domain,
                             "directory_url": directory.directory_url,
                             "groups": directory.groups.keys().collect::<Vec<_>>(),
+                            "reconciliation_mode": self.cloud_mode(provider, id),
                         })
                     })
                     .collect::<Vec<_>>(),
@@ -1489,6 +1504,7 @@ impl Core {
                             "tenant_id": directory.tenant_id,
                             "graph_url": directory.graph_url,
                             "groups": directory.groups.keys().collect::<Vec<_>>(),
+                            "reconciliation_mode": self.cloud_mode(provider, id),
                         })
                     })
                     .collect::<Vec<_>>(),
@@ -1517,7 +1533,79 @@ impl Core {
             Ok(json!(plan))
         })
     }
+    /// Controller trigger for one cloud directory. A still-bound pending plan
+    /// retains its exact ID; apply re-fetches the remote source and rechecks
+    /// current authority before committing local changes.
+    pub fn cloud_reconcile(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        let provider = Provider::parse(kind)?;
+        let settings = self.cloud_settings(kind, id)?;
+        let mode = self.cloud_mode(provider, id);
+        let pending = self.store.read(|tx| {
+            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            for (_, plan) in tx.list::<Plan>("cloud_directory_plans")? {
+                if plan.kind == settings.kind
+                    && plan.directory == id
+                    && plan.actor == actor.id
+                    && !plan.applied
+                    && plan.expires_at > now()
+                    && plan.revision == revision
+                    && plan.fingerprint == settings.fingerprint
+                    && plan
+                        .review
+                        .validate(tx, &actor, &plan_content(&plan)?)
+                        .is_ok()
+                {
+                    return Ok(Some(plan));
+                }
+            }
+            Ok(None)
+        })?;
+        let plan = match pending {
+            Some(plan) if self.fetch_entries(&settings)? == plan.entries => {
+                // A remote fetch can outlive the caller's authority or plan
+                // revision. Recheck both before returning its saved entries.
+                let bound = self.store.read(|tx| {
+                    let actor =
+                        self.management(tx, token, "directory.sync", &settings.resource())?;
+                    Ok(plan.actor == actor.id
+                        && plan.expires_at > now()
+                        && plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+                        && plan.fingerprint == settings.fingerprint
+                        && tx
+                            .get::<Plan>("cloud_directory_plans", &plan.id)?
+                            .is_some_and(|stored| !stored.applied && stored.review == plan.review)
+                        && plan
+                            .review
+                            .validate(tx, &actor, &plan_content(&plan)?)
+                            .is_ok())
+                })?;
+                if bound {
+                    json!(plan)
+                } else {
+                    self.cloud_plan_internal(token, kind, id, true)?
+                }
+            }
+            _ => self.cloud_plan_internal(token, kind, id, true)?,
+        };
+        let impact: RemovalImpact =
+            serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
+        reconcile_plan(mode, &impact, plan, |plan_id| {
+            self.cloud_apply_confirmed(token, kind, plan_id, None)
+        })
+    }
+
     pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        self.cloud_plan_internal(token, kind, id, false)
+    }
+
+    fn cloud_plan_internal(
+        &self,
+        token: &str,
+        kind: &str,
+        id: &str,
+        supersede: bool,
+    ) -> Result<Value> {
         let settings = self.cloud_settings(kind, id)?;
         let (actor, revision) = self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
@@ -1537,11 +1625,14 @@ impl Core {
                     "Local configuration changed during cloud directory search",
                 ));
             }
-            if tx
-                .list::<Plan>("cloud_directory_plans")?
+            let plans = tx.list::<Plan>("cloud_directory_plans")?;
+            if plans
                 .iter()
                 .filter(|(_, plan)| {
-                    plan.actor == actor.id && plan.expires_at > now() && !plan.applied
+                    plan.actor == actor.id
+                        && plan.expires_at > now()
+                        && !plan.applied
+                        && !(supersede && plan.kind == settings.kind && plan.directory == id)
                 })
                 .count()
                 >= 16
@@ -1567,6 +1658,17 @@ impl Core {
             plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
             plan.review
                 .validate(tx, &current_actor, &plan_content(&plan)?)?;
+            if supersede {
+                for (old_id, old) in plans {
+                    if old.actor == actor.id
+                        && old.kind == settings.kind
+                        && old.directory == id
+                        && !old.applied
+                    {
+                        tx.delete("cloud_directory_plans", &old_id)?;
+                    }
+                }
+            }
             tx.put("cloud_directory_plans", &plan.id, &plan)?;
             audit(tx, &actor.id, "cloud_directory.plan", &settings.resource())?;
             Ok(json!(plan))

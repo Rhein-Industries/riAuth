@@ -20,6 +20,7 @@ use riauth::{
     agent::{NewAgent, Permission},
     cloud_directory::{Attributes, EntraDirectory, WorkspaceDirectory},
     config::write_private,
+    connector_guard::ReconciliationMode,
     model::{Session, User, UserPatch},
 };
 use serde_json::{Value, json};
@@ -962,6 +963,133 @@ fn linked_pair(kind: &'static str) -> (Directory, Fixture) {
         .cloud_apply(&fixture.admin, kind, plan["id"].as_str().unwrap())
         .unwrap();
     (directory, fixture)
+}
+
+#[test]
+fn controller_modes_keep_exact_plan_binding_and_removal_review() {
+    for kind in ["workspace", "entra"] {
+        let directory = serve(
+            kind,
+            vec![
+                person("ext-alice", "alice@example.test", "Alice Cloud", true),
+                person("ext-bob", "bob@example.test", "Bob Cloud", true),
+            ],
+            SECRET,
+        );
+        let mut fixture = Fixture::new();
+        configure(&mut fixture, kind, "corp", &directory, "");
+        fixture.core.create_group(&fixture.admin, "staff").unwrap();
+
+        let manual = fixture
+            .core
+            .cloud_reconcile(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(manual["decision"], "awaiting_review");
+        assert_eq!(manual["mode"], "manual-review");
+        assert_eq!(
+            fixture
+                .core
+                .cloud_reconcile(&fixture.admin, kind, "corp")
+                .unwrap()["plan"]["id"],
+            manual["plan"]["id"]
+        );
+        assert!(user_named(&users_of(&fixture), "alice").is_none());
+
+        let modes = if kind == "workspace" {
+            &mut fixture.core.config.workspace_reconciliation_modes
+        } else {
+            &mut fixture.core.config.entra_reconciliation_modes
+        };
+        modes.insert("corp".into(), ReconciliationMode::GuardedAutomatic);
+        fixture.core.config.validate().unwrap();
+        let manual_id = manual["plan"]["id"].as_str().unwrap();
+        assert_eq!(
+            fixture
+                .core
+                .cloud_apply(&fixture.admin, kind, manual_id)
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        let created = fixture
+            .core
+            .cloud_reconcile(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(created["decision"], "applied");
+        assert_eq!(created["result"]["applied"], true);
+        assert!(
+            fixture
+                .core
+                .cloud_plan_get(&fixture.admin, kind, manual_id)
+                .is_err()
+        );
+        assert_eq!(
+            user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+            true
+        );
+
+        directory.state.people.lock().unwrap()[1].staff = false;
+        let guarded = fixture
+            .core
+            .cloud_reconcile(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(guarded["decision"], "awaiting_review");
+        assert_eq!(guarded["plan"]["removal_impact"]["removed_memberships"], 1);
+        assert_eq!(group_members(&fixture, "staff").len(), 2);
+        assert_eq!(
+            fixture
+                .core
+                .cloud_reconcile(&fixture.admin, kind, "corp")
+                .unwrap()["plan"]["id"],
+            guarded["plan"]["id"]
+        );
+
+        let modes = if kind == "workspace" {
+            &mut fixture.core.config.workspace_reconciliation_modes
+        } else {
+            &mut fixture.core.config.entra_reconciliation_modes
+        };
+        modes.insert("corp".into(), ReconciliationMode::Automatic);
+        fixture.core.config.validate().unwrap();
+        let automatic = fixture
+            .core
+            .cloud_reconcile(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(automatic["decision"], "awaiting_review");
+        assert_eq!(automatic["reason"], "removal_review_required");
+        assert_ne!(automatic["plan"]["id"], guarded["plan"]["id"]);
+        assert_eq!(group_members(&fixture, "staff").len(), 2);
+        let exact_id = automatic["plan"]["id"].as_str().unwrap();
+        assert_eq!(
+            fixture
+                .core
+                .cloud_apply(&fixture.admin, kind, exact_id)
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        fixture
+            .core
+            .cloud_apply_confirmed(&fixture.admin, kind, exact_id, Some(exact_id))
+            .unwrap();
+        assert_eq!(group_members(&fixture, "staff").len(), 1);
+
+        directory.state.people.lock().unwrap()[0].disabled = true;
+        let below_floor = fixture
+            .core
+            .cloud_reconcile(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(below_floor["decision"], "applied");
+        assert_eq!(below_floor["plan"]["removal_impact"]["disabled_users"], 1);
+        assert_eq!(
+            below_floor["plan"]["removal_impact"]["review_required"],
+            false
+        );
+        assert_eq!(
+            user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+            false
+        );
+    }
 }
 
 #[test]

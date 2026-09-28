@@ -20,12 +20,22 @@ pub struct Config {
     pub ldap_listeners: std::collections::BTreeMap<String, crate::ldap_server::Listener>,
     #[serde(default)]
     pub directories: std::collections::BTreeMap<String, crate::directory::Directory>,
+    /// Explicit per-directory controller policy. Omitted LDAP directories stay manual-review.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ldap_reconciliation_modes: BTreeMap<String, crate::connector_guard::ReconciliationMode>,
     #[serde(default)]
     pub workspace_directories:
         std::collections::BTreeMap<String, crate::cloud_directory::WorkspaceDirectory>,
+    /// Explicit per-directory controller policy. Omitted Workspace directories stay manual-review.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workspace_reconciliation_modes:
+        BTreeMap<String, crate::connector_guard::ReconciliationMode>,
     #[serde(default)]
     pub entra_directories:
         std::collections::BTreeMap<String, crate::cloud_directory::EntraDirectory>,
+    /// Explicit per-directory controller policy. Omitted Entra directories stay manual-review.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub entra_reconciliation_modes: BTreeMap<String, crate::connector_guard::ReconciliationMode>,
     #[serde(default)]
     pub scim_targets: std::collections::BTreeMap<String, crate::provisioning::Target>,
     /// Explicit per-target controller policy. Omitted targets stay manual-review.
@@ -142,8 +152,11 @@ impl Default for Config {
             radius_listeners: Default::default(),
             ldap_listeners: Default::default(),
             directories: Default::default(),
+            ldap_reconciliation_modes: BTreeMap::new(),
             workspace_directories: Default::default(),
+            workspace_reconciliation_modes: BTreeMap::new(),
             entra_directories: Default::default(),
+            entra_reconciliation_modes: BTreeMap::new(),
             scim_targets: Default::default(),
             scim_reconciliation_modes: BTreeMap::new(),
             signers: Default::default(),
@@ -221,6 +234,11 @@ impl Config {
             crate::core::validate_name(id)?;
             directory.validate()?;
         }
+        for id in self.ldap_reconciliation_modes.keys() {
+            if !self.directories.contains_key(id) {
+                bail!("LDAP reconciliation mode references an unconfigured directory {id}");
+            }
+        }
         if self.workspace_directories.len() > 16 {
             bail!("Configure at most 16 Google Workspace directories");
         }
@@ -228,12 +246,22 @@ impl Config {
             crate::core::validate_name(id)?;
             directory.validate()?;
         }
+        for id in self.workspace_reconciliation_modes.keys() {
+            if !self.workspace_directories.contains_key(id) {
+                bail!("Workspace reconciliation mode references an unconfigured directory {id}");
+            }
+        }
         if self.entra_directories.len() > 16 {
             bail!("Configure at most 16 Microsoft Entra directories");
         }
         for (id, directory) in &self.entra_directories {
             crate::core::validate_name(id)?;
             directory.validate()?;
+        }
+        for id in self.entra_reconciliation_modes.keys() {
+            if !self.entra_directories.contains_key(id) {
+                bail!("Entra reconciliation mode references an unconfigured directory {id}");
+            }
         }
         if self.scim_targets.len() > 32 {
             bail!("Configure at most 32 SCIM targets");
@@ -569,6 +597,24 @@ pub fn write_private(path: &Path, data: &[u8], replace: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_reconciliation_modes_reject_dangling_targets_and_unknown_values() {
+        let base = "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n";
+        for section in [
+            "ldap_reconciliation_modes",
+            "workspace_reconciliation_modes",
+            "entra_reconciliation_modes",
+        ] {
+            let document = format!("{base}[{section}]\nmissing='automatic'\n");
+            let configured: Config = toml::from_str(&document).unwrap();
+            assert!(configured.validate().is_err(), "{section}");
+            assert!(
+                toml::from_str::<Config>(&document.replace("'automatic'", "'unsafe'")).is_err(),
+                "{section}"
+            );
+        }
+    }
 
     #[test]
     fn scim_reconciliation_policy_is_scoped_and_rejects_unknown_modes() {

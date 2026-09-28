@@ -29,6 +29,16 @@ pub enum ReconciliationDecision {
 }
 
 impl ReconciliationMode {
+    /// Bind an explicit automatic policy into a connector fingerprint while
+    /// retaining existing manual plan fingerprints across upgrade.
+    pub fn fingerprint(self, base: &str) -> Result<String> {
+        if self == Self::ManualReview {
+            Ok(base.to_owned())
+        } else {
+            hash(&(base, self))
+        }
+    }
+
     /// Guarded automation stops at any removal. Automatic mode may queue a
     /// below-threshold disable, but the shared P03 review floor always wins.
     pub fn decide(self, impact: &RemovalImpact) -> ReconciliationDecision {
@@ -45,6 +55,40 @@ impl ReconciliationMode {
             Self::Automatic | Self::GuardedAutomatic => ReconciliationDecision::Eligible,
         }
     }
+
+    pub fn review_reason(self, impact: &RemovalImpact) -> &'static str {
+        if self == Self::ManualReview {
+            "manual_mode"
+        } else if impact.review_required
+            || impact.missing_users > 0
+            || impact.removed_memberships > 0
+        {
+            "removal_review_required"
+        } else {
+            "guarded_removal"
+        }
+    }
+}
+
+/// Run a local connector plan through the shared controller decision. The
+/// connector's existing apply transaction remains the only mutation boundary
+/// and must re-fetch its source and revalidate the exact plan and authority.
+pub fn reconcile_plan(
+    mode: ReconciliationMode,
+    impact: &RemovalImpact,
+    plan: serde_json::Value,
+    apply: impl FnOnce(&str) -> Result<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    use serde_json::json;
+    if mode.decide(impact) == ReconciliationDecision::AwaitingReview {
+        let reason = mode.review_reason(impact);
+        return Ok(json!({"decision":"awaiting_review","mode":mode,"reason":reason,"plan":plan}));
+    }
+    let id = plan["id"]
+        .as_str()
+        .ok_or_else(|| Error::internal("Connector plan has no ID"))?;
+    let result = apply(id)?;
+    Ok(json!({"decision":"applied","mode":mode,"plan":plan,"result":result}))
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

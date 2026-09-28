@@ -320,28 +320,29 @@ impl Core {
     }
 
     fn provisioning_fingerprint(&self, target_id: &str, target: &Target) -> Result<String> {
-        let fingerprint = target.fingerprint()?;
-        let mode = self.provisioning_mode(target_id);
         // Preserve bindings for pre-existing manual plans and jobs. Switching
         // either direction changes the fingerprint and stales pending work.
-        if mode == ReconciliationMode::ManualReview {
-            Ok(fingerprint)
-        } else {
-            crate::connector_guard::hash(&(fingerprint, mode))
-        }
+        self.provisioning_mode(target_id)
+            .fingerprint(&target.fingerprint()?)
     }
 
     fn provisioning_fingerprint_matches(&self, plan: &Plan) -> bool {
-        self.config.scim_targets.get(&plan.target).is_some_and(|target| {
-            self.provisioning_fingerprint(&plan.target, target)
-                .is_ok_and(|fingerprint| fingerprint == plan.target_fingerprint)
-        })
+        self.config
+            .scim_targets
+            .get(&plan.target)
+            .is_some_and(|target| {
+                self.provisioning_fingerprint(&plan.target, target)
+                    .is_ok_and(|fingerprint| fingerprint == plan.target_fingerprint)
+            })
     }
 
     fn provisioning_job_eligible(&self, tx: &Tx<'_>, job: &Job) -> Result<bool> {
         let permitted = actor(tx, &job.plan.actor)
             .and_then(|actor| {
-                actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
+                actor.require(
+                    "provisioner.sync",
+                    &format!("provisioner/{}", job.plan.target),
+                )?;
                 job.plan
                     .review
                     .validate(tx, &actor, &plan_content(&job.plan)?)?;
@@ -449,20 +450,13 @@ impl Core {
             Some(plan) => plan,
             None => self.provisioning_plan(token, target_id)?,
         };
-        let impact: RemovalImpact = serde_json::from_value(plan["removal_impact"].clone())
-            .map_err(Error::internal)?;
-        let reason = if mode == ReconciliationMode::ManualReview {
-            "manual_mode"
-        } else if impact.review_required
-            || impact.missing_users > 0
-            || impact.removed_memberships > 0
-        {
-            "removal_review_required"
-        } else {
-            "guarded_removal"
-        };
+        let impact: RemovalImpact =
+            serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
+        let reason = mode.review_reason(&impact);
         if mode.decide(&impact) == ReconciliationDecision::AwaitingReview {
-            return Ok(json!({"decision":"awaiting_review","mode":mode,"reason":reason,"plan":plan,"prior_delivery_settling":settling}));
+            return Ok(
+                json!({"decision":"awaiting_review","mode":mode,"reason":reason,"plan":plan,"prior_delivery_settling":settling}),
+            );
         }
         if settling {
             return Ok(json!({"decision":"awaiting_prior_delivery","mode":mode,"plan":plan}));
