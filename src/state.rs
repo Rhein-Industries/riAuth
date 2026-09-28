@@ -967,10 +967,17 @@ fn reconcile(
         } else {
             None
         };
-        crate::source::put(tx, &spec.source, supplied, preview)?;
-        if credential_change {
-            tx.put("credential_versions", &resource, &spec.secret_version)?;
-        }
+        crate::management::write_source(
+            tx,
+            actor,
+            &spec.source,
+            crate::management::SourceWrite::Plan {
+                secret: supplied,
+                credential_change,
+                version: &spec.secret_version,
+                preview,
+            },
+        )?;
         changes.push(Change {
             resource,
             action: if existing.is_some() {

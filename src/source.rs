@@ -394,49 +394,6 @@ impl Source {
     }
 }
 
-pub(crate) fn put(tx: &Tx<'_>, source: &Source, secret: Option<&str>, preview: bool) -> Result<()> {
-    if source.token_endpoint_auth_method == ClientAuthMethod::None {
-        if secret.is_some() {
-            return Err(Error::bad("A public source cannot have a client secret"));
-        }
-        tx.delete("source_secrets", &source.id)?;
-    } else {
-        if let Some(secret) = secret {
-            if !preview && (secret.is_empty() || secret.len() > 4096) {
-                return Err(Error::bad("Invalid upstream client secret"));
-            }
-            tx.put("source_secrets", &source.id, &secret)?;
-        }
-        if tx.get::<String>("source_secrets", &source.id)?.is_none() {
-            return Err(Error::bad("Confidential source requires a secret"));
-        }
-    }
-    let changed = tx.get::<Source>("sources", &source.id)?.as_ref() != Some(source);
-    tx.put("sources", &source.id, source)?;
-    if changed {
-        for (_, mut session) in tx.list::<Session>("sessions")? {
-            if session
-                .identity
-                .source
-                .as_ref()
-                .is_some_and(|s| s.id == source.id)
-                && !session.revoked
-            {
-                session.revoked = true;
-                tx.put("sessions", &session.id, &session)?;
-                crate::logout::queue_session(tx, &session.id)?;
-                crate::ssf::enqueue(
-                    tx,
-                    &session.identity.user_id,
-                    crate::ssf::SESSION_REVOKED,
-                    "",
-                )?;
-            }
-        }
-    }
-    Ok(())
-}
-
 pub(crate) struct StageStart {
     pub authorization_id: String,
     pub request: crate::oidc::Authorization,
@@ -497,21 +454,14 @@ impl Core {
         let secret = input.client_secret.map(zeroize::Zeroizing::new);
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
-            input.source.require_write(tx, &actor)?;
-            put(
+            crate::management::write_source(
                 tx,
+                &actor,
                 &input.source,
-                secret.as_deref().map(String::as_str),
-                false,
+                crate::management::SourceWrite::Direct {
+                    secret: secret.as_deref().map(String::as_str),
+                },
             )?;
-            // Direct mutations invalidate declarative credential receipts.
-            if secret.is_some() {
-                tx.delete(
-                    "credential_versions",
-                    &format!("source/{}", input.source.id),
-                )?;
-            }
-            audit(tx, &actor.id, "source.configure", &input.source.id)?;
             Ok(json!(input.source))
         })
     }

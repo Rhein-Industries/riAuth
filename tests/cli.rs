@@ -1324,3 +1324,106 @@ fn cli_api_and_scim_group_writes_share_management_seam() {
         }).count(), 1);
     }
 }
+
+#[test]
+fn cli_api_and_state_source_writes_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str().unwrap().to_owned();
+    let agent_file = dir.path().join("source-manager.json");
+    success(invoke(dir.path(), &config, &session, &[
+        "agent", "create", "source-manager",
+        "--permission", "source.write=source/parity-source",
+        "--permission", "source.read=source/parity-source",
+        "--permission", "state.read=state/revision",
+        "--out", agent_file.to_str().unwrap(),
+    ], None));
+    let credential: Value = serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let http = reqwest::blocking::Client::new();
+    let endpoint = format!("{issuer}/api/sources");
+    let secret = "upstream-parity-secret-fixture";
+    let mut source = json!({
+        "id":"parity-source", "name":"CLI source",
+        "issuer":"https://source.example.test",
+        "authorization_endpoint":"https://source.example.test/authorize",
+        "token_endpoint":"https://source.example.test/token",
+        "client_id":"parity", "token_endpoint_auth_method":"client_secret_post",
+        "scopes":["read:user"],
+        "oauth_profile":{"userinfo_endpoint":"https://source.example.test/me","subject_pointer":"/id"}
+    });
+    let input_file = dir.path().join("source-input.json");
+    std::fs::write(&input_file, serde_json::to_vec(&json!({"source":source,"client_secret":secret})).unwrap()).unwrap();
+    let before_create = revision();
+    let direct = |at: &str| success(cli(&[
+        "--if-revision", at, "--idempotency-key", "parity-source-create",
+        "source", "put", "--file", input_file.to_str().unwrap(),
+    ]));
+    let created = direct(&before_create);
+    assert_eq!(created["name"], "CLI source");
+    assert_eq!(direct(&before_create), created);
+    assert_eq!(revision().parse::<u64>().unwrap(), before_create.parse::<u64>().unwrap() + 1);
+
+    source["name"] = json!("API source");
+    let api_input = json!({"source":source,"client_secret":null});
+    let before_api = revision();
+    let api = || http.post(&endpoint).bearer_auth(token)
+        .header("if-match", format!("\"{before_api}\""))
+        .header("idempotency-key", "parity-source-api-update")
+        .json(&api_input).send().unwrap();
+    let response = api();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let updated: Value = response.json().unwrap();
+    assert_eq!(updated["name"], "API source");
+    assert_eq!(api().json::<Value>().unwrap(), updated);
+    assert_eq!(revision().parse::<u64>().unwrap(), before_api.parse::<u64>().unwrap() + 1);
+
+    source["name"] = json!("Planned source");
+    let manifest_file = dir.path().join("source-plan-input.json");
+    let plan_file = dir.path().join("source-plan.json");
+    std::fs::write(&manifest_file, serde_json::to_vec(&json!({
+        "api_version":"riauth/v1", "sources":[{"source":source}]
+    })).unwrap()).unwrap();
+    let planned = success(cli(&["plan", "--file", manifest_file.to_str().unwrap(), "--out", plan_file.to_str().unwrap()]));
+    assert_eq!(planned["changes"][0]["resource"], "source/parity-source");
+    let applied = success(cli(&["apply", "--plan", plan_file.to_str().unwrap()]));
+    assert_eq!(applied["applied"], true);
+    let listed = success(cli(&["source", "list"]));
+    assert_eq!(listed[0]["name"], "Planned source");
+    let api_list: Value = http.get(&endpoint).bearer_auth(token).send().unwrap().json().unwrap();
+    assert_eq!(api_list[0], listed[0]);
+
+    source["allow_admin_login"] = json!(true);
+    let before_denied = revision();
+    let denied = http.post(&endpoint).bearer_auth(token)
+        .header("if-match", format!("\"{before_denied}\""))
+        .json(&json!({"source":source,"client_secret":null})).send().unwrap();
+    assert_eq!(denied.status(), reqwest::StatusCode::FORBIDDEN);
+    std::fs::write(&manifest_file, serde_json::to_vec(&json!({
+        "api_version":"riauth/v1", "sources":[{"source":source}]
+    })).unwrap()).unwrap();
+    let (code, _) = failure(cli(&["plan", "--file", manifest_file.to_str().unwrap(), "--out", dir.path().join("denied-plan.json").to_str().unwrap()]));
+    assert_eq!(code, 4);
+    assert_eq!(revision(), before_denied);
+
+    let events = success(invoke(dir.path(), &config, &session, &["audit", "--limit", "1000"], None));
+    let count = |action: &str| events.as_array().unwrap().iter().filter(|event| {
+        event["action"] == action && event["target"] == "parity-source"
+    }).count();
+    assert_eq!(count("source.configure"), 2);
+    assert_eq!(events.as_array().unwrap().iter().filter(|event| {
+        event["action"] == "source.reconcile" && event["target"] == "source/parity-source"
+    }).count(), 1);
+    assert_eq!(events.as_array().unwrap().iter().filter(|event| event["action"] == "state.apply").count(), 1);
+    assert!(!events.to_string().contains(secret));
+    assert!(!planned.to_string().contains(secret));
+}

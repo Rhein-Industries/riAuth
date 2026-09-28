@@ -38,6 +38,7 @@ use crate::{
     registration::{
         InitialAccess, RegistrationAuthority, RegistrationRequest, RegistrationTemplate,
     },
+    source::Source,
     state::{Change, UserSpec, user_spec},
     store::Tx,
 };
@@ -2094,6 +2095,94 @@ fn check_client_as(
         credential_change,
         other_change,
     })
+}
+
+/// A direct source update clears declarative credential ownership and emits
+/// its own audit. Plan apply records its reviewed version here, then emits the
+/// reconciliation audit after the complete change set has matched.
+pub(crate) enum SourceWrite<'a> {
+    Direct {
+        secret: Option<&'a str>,
+    },
+    Plan {
+        secret: Option<&'a str>,
+        credential_change: bool,
+        version: &'a Option<String>,
+        preview: bool,
+    },
+}
+
+pub(crate) fn write_source(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    source: &Source,
+    write: SourceWrite<'_>,
+) -> Result<()> {
+    source.require_write(tx, actor)?;
+    let (secret, preview) = match &write {
+        SourceWrite::Direct { secret } => (*secret, false),
+        SourceWrite::Plan {
+            secret, preview, ..
+        } => (*secret, *preview),
+    };
+    if source.token_endpoint_auth_method == ClientAuthMethod::None {
+        if secret.is_some() {
+            return Err(Error::bad("A public source cannot have a client secret"));
+        }
+        tx.delete("source_secrets", &source.id)?;
+    } else {
+        if let Some(secret) = secret {
+            if !preview && (secret.is_empty() || secret.len() > 4096) {
+                return Err(Error::bad("Invalid upstream client secret"));
+            }
+            tx.put("source_secrets", &source.id, &secret)?;
+        }
+        if tx.get::<String>("source_secrets", &source.id)?.is_none() {
+            return Err(Error::bad("Confidential source requires a secret"));
+        }
+    }
+    let changed = tx.get::<Source>("sources", &source.id)?.as_ref() != Some(source);
+    tx.put("sources", &source.id, source)?;
+    if changed {
+        for (_, mut session) in tx.list::<crate::model::Session>("sessions")? {
+            if session
+                .identity
+                .source
+                .as_ref()
+                .is_some_and(|linked| linked.id == source.id)
+                && !session.revoked
+            {
+                session.revoked = true;
+                tx.put("sessions", &session.id, &session)?;
+                crate::logout::queue_session(tx, &session.id)?;
+                crate::ssf::enqueue(
+                    tx,
+                    &session.identity.user_id,
+                    crate::ssf::SESSION_REVOKED,
+                    "",
+                )?;
+            }
+        }
+    }
+    let resource = format!("source/{}", source.id);
+    match write {
+        SourceWrite::Direct { secret } => {
+            if secret.is_some() {
+                tx.delete("credential_versions", &resource)?;
+            }
+            audit(tx, &actor.id, "source.configure", &source.id)?;
+        }
+        SourceWrite::Plan {
+            credential_change,
+            version,
+            ..
+        } => {
+            if credential_change {
+                tx.put("credential_versions", &resource, version)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn metadata(message: &str) -> Error {
