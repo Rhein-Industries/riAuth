@@ -155,6 +155,7 @@ async fn exercise(nginx: Option<String>) {
                         "authorization": header("authorization"),
                         "cookie": header("cookie"),
                         "intent": header("x-riauth-request-intent"),
+                        "custom_dotted": header("x.app.version"),
                         "uri": uri.to_string(),
                         "auth_alias": header("x_auth_user"),
                         "identity_alias": header("x_authentik_username"),
@@ -335,16 +336,12 @@ async fn exercise(nginx: Option<String>) {
     assert_eq!(callback.status(), 302);
     assert_eq!(callback.headers()["location"].to_str().unwrap(), target);
     let proxy_cookie = cookie(&callback);
-    let value = http
+    let mut request = http
         .get(&target)
         .header("cookie", format!("{proxy_cookie}; app-session=fixture"))
         .header("x-authentik-username", "root")
         .header("x-auth-user", "root")
-        .header("x_auth_user", "root")
-        .header("x_authentik_username", "root")
-        .header("x_riauth_app_cookie", "planted")
         .header("forwarded", "for=attacker.test")
-        .header("x_forwarded_for", "attacker.test")
         .header("x-forwarded-for", "attacker.test")
         .header("x-forwarded-host", "attacker.test")
         .header("x-forwarded-proto", "https")
@@ -352,13 +349,15 @@ async fn exercise(nginx: Option<String>) {
         .header("x-original-host", "attacker.test")
         .header("x-real-ip", "203.0.113.4")
         .header("remote-user", "root")
-        .header("authorization", "Bearer attacker")
-        .send()
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
+        .header("authorization", "Bearer attacker");
+    if !builtin {
+        request = request
+            .header("x_auth_user", "root")
+            .header("x_authentik_username", "root")
+            .header("x_riauth_app_cookie", "planted")
+            .header("x_forwarded_for", "attacker.test");
+    }
+    let value = request.send().await.unwrap().json::<Value>().await.unwrap();
     assert_eq!(value["username"], "admin");
     assert_eq!(value["authorization"], Value::Null);
     assert_eq!(value["cookie"], "app-session=fixture");
@@ -382,6 +381,44 @@ async fn exercise(nginx: Option<String>) {
         assert_eq!(value["forwarded_proto"], "http");
     }
     let _ = receiver.recv().await;
+    if builtin {
+        // Each request has a valid session. A 400 and an empty upstream channel
+        // prove that header aliases are refused at ingress, before authorization
+        // or forwarding can turn them into a trusted backend variable.
+        for alias in [
+            "X.Auth.User",
+            "X!Auth!User",
+            "X_Auth_User",
+            "X_Authentik_Username",
+            "X_Riauth_App_Cookie",
+        ] {
+            let rejected = http
+                .get(&target)
+                .header("cookie", &proxy_cookie)
+                .header(alias, "root")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(rejected.status(), 400, "{alias}");
+            assert!(receiver.try_recv().is_err(), "{alias} reached upstream");
+        }
+        for alias in [
+            "X.Riauth.Request.Intent",
+            "X!Riauth!Request!Intent",
+            "X_Riauth_Request_Intent",
+        ] {
+            let rejected = http
+                .post(&target)
+                .header("cookie", &proxy_cookie)
+                .header("x-riauth-request-intent", "api")
+                .header(alias, "api")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(rejected.status(), 400, "{alias}");
+            assert!(receiver.try_recv().is_err(), "{alias} reached upstream");
+        }
+    }
     let missing_provenance = http
         .post(&target)
         .header("cookie", &proxy_cookie)
@@ -390,17 +427,21 @@ async fn exercise(nginx: Option<String>) {
         .unwrap();
     assert_eq!(missing_provenance.status(), 403);
     assert!(receiver.try_recv().is_err());
-    let explicit_api = http
+    let mut explicit_request = http
         .post(&target)
         .header("cookie", &proxy_cookie)
-        .header("x-riauth-request-intent", "api")
-        .send()
-        .await
-        .unwrap();
+        .header("x-riauth-request-intent", "api");
+    if builtin {
+        explicit_request = explicit_request.header("x.app.version", "1");
+    }
+    let explicit_api = explicit_request.send().await.unwrap();
     assert_eq!(explicit_api.status(), 200);
     let api_seen = receiver.recv().await.unwrap();
     assert_eq!(api_seen["username"], "admin");
     assert_eq!(api_seen["intent"], Value::Null);
+    if builtin {
+        assert_eq!(api_seen["custom_dotted"], "1");
+    }
     for (request_origin, site) in [
         ("http://evil.example.test", "same-site"),
         (&origin[..], "same-site"),

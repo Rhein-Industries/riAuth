@@ -794,7 +794,12 @@ async fn traefik_forward_auth_real() {
         Json(json!({
             "username": header(&headers, "x-authentik-username"),
             "auth_user": header(&headers, "x-auth-user"),
-            "alias": header(&headers, "x_auth_user"),
+            "identity_dot": header(&headers, "x.auth.user"),
+            "identity_bang": header(&headers, "x!auth!user"),
+            "identity_underscore": header(&headers, "x_auth_user"),
+            "intent_dot": header(&headers, "x.riauth.request.intent"),
+            "intent_bang": header(&headers, "x!riauth!request!intent"),
+            "intent_underscore": header(&headers, "x_riauth_request_intent"),
             "authorization": header(&headers, "authorization"),
             "cookie": header(&headers, "cookie"),
             "uri": uri.to_string(),
@@ -931,7 +936,12 @@ async fn traefik_forward_auth_real() {
         )
         .header("x-authentik-username", "root")
         .header("x-auth-user", "root")
-        .header("x_auth_user", "root")
+        .header("X.Auth.User", "root")
+        .header("X!Auth!User", "root")
+        .header("X_Auth_User", "root")
+        .header("X.Riauth.Request.Intent", "api")
+        .header("X!Riauth!Request!Intent", "api")
+        .header("X_Riauth_Request_Intent", "api")
         .header("authorization", "Bearer attacker")
         .header("x-original-url", "http://attacker.test/")
         .send()
@@ -942,7 +952,16 @@ async fn traefik_forward_auth_real() {
         .unwrap();
     assert_eq!(seen["username"], "alice");
     assert_eq!(seen["auth_user"], "alice");
-    assert_eq!(seen["alias"], Value::Null);
+    for alias in [
+        "identity_dot",
+        "identity_bang",
+        "identity_underscore",
+        "intent_dot",
+        "intent_bang",
+        "intent_underscore",
+    ] {
+        assert_eq!(seen[alias], Value::Null, "{alias} reached upstream");
+    }
     assert_eq!(seen["authorization"], Value::Null);
     assert_eq!(seen["cookie"], "app-session=fixture");
     assert_eq!(seen["uri"], "/ui/?one=1&two=2");

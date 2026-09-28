@@ -70,7 +70,7 @@ Run `RIAUTH_TEST_NGINX=/path/to/nginx cargo test --test outpost -- --ignored`; s
 
 1. **One client per application**, created as [above](#browser-sso-for-forward-auth-proxies), for example `reports` with `external_origin` `https://reports.example.test` and callback `https://reports.example.test/outpost/reports/callback`. Forward auth needs single-application mode: do not set `proxy.domain`.
 2. **`trusted_proxies`** on every riAuth node must list every address Traefik connects from, as exact IPs. Run Traefik with host networking or a static address. Ranges (CIDR) are deliberately not supported: `trusted_proxies` also decides whose `X-Forwarded-For` and forwarded client-certificate headers riAuth believes, so a range would let any host in it assert both.
-3. **Static configuration.** On every entrypoint that serves protected applications, set `http.aliasHeadersStrategy: delete` (the default is `keep`, and Traefik warns about it). It removes header-name aliases such as `X_Auth_User` that forwardAuth does not replace. If the Traefik dashboard is enabled, keep `api.insecure: false`.
+3. **Static configuration.** Use Traefik v3.7.12 or newer. On every entrypoint that serves protected applications, set `http.aliasHeadersStrategy: delete` or `reject` (the default is `keep`). It removes or refuses punctuation aliases such as `X.Auth.User`, `X!Auth!User` and `X_Riauth_Request_Intent` that forwardAuth's canonical `authResponseHeaders` does not replace. The dynamic template cannot set this static option. If the Traefik dashboard is enabled, keep `api.insecure: false`.
 
    ```yaml
    entryPoints:

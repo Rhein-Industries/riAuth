@@ -52,13 +52,24 @@ fn single<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
     }
     Ok(value)
 }
+fn backend_header_name(name: &str) -> String {
+    name.bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() {
+                byte.to_ascii_lowercase() as char
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
 fn identity_header(name: &str) -> bool {
-    // CGI-style backends can map underscores and hyphens to the same variable.
-    let name = name.replace('_', "-");
+    // CGI, WSGI and PHP can map punctuation to the same variable as a dash.
+    let name = backend_header_name(name);
     name.starts_with("x-authentik-") || name.starts_with("x-auth-") || name.starts_with("x-riauth-")
 }
 fn untrusted_request_header(name: &str) -> bool {
-    let name = name.replace('_', "-");
+    let name = backend_header_name(name);
     matches!(
         name.as_str(),
         "host" | "authorization" | "cookie" | "set-cookie" | "forwarded"
@@ -75,6 +86,29 @@ fn untrusted_request_header(name: &str) -> bool {
         ]
         .iter()
         .any(|prefix| name.starts_with(prefix))
+}
+fn reject_ambiguous_headers(headers: &HeaderMap) -> Result<()> {
+    for name in headers.keys() {
+        let name = name.as_str();
+        if name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            continue;
+        }
+        let normalized = backend_header_name(name);
+        if untrusted_request_header(&normalized)
+            || matches!(
+                normalized.as_str(),
+                "origin" | "connection" | "upgrade" | "content-length" | "transfer-encoding"
+            )
+            || normalized.starts_with("sec-fetch-")
+            || normalized.starts_with("sec-websocket-")
+        {
+            return Err(Error::bad("Ambiguous proxy header name"));
+        }
+    }
+    Ok(())
 }
 fn private_cookie(name: &str) -> bool {
     name.starts_with("riauth_")
@@ -178,6 +212,7 @@ async fn handle(
     {
         return Err(Error::bad("Unsupported proxy request target or method"));
     }
+    reject_ambiguous_headers(request.headers())?;
     let host = single(request.headers(), "host")?.ok_or_else(|| Error::bad("Host is required"))?;
     let route = runtime
         .routes
