@@ -21,6 +21,9 @@ use std::{
 };
 use tokio::{runtime::Runtime, sync::Semaphore, task::JoinHandle};
 
+mod targets;
+pub(crate) use targets::{ConnectorWork, TargetPermit};
+
 const DEADLINE: Duration = Duration::from_secs(60);
 const LANES: [(&str, usize); 3] = [("connectors", 2), ("delivery", 2), ("maintenance", 1)];
 
@@ -86,6 +89,7 @@ struct JobStats {
     finished: AtomicU64,
     failed: AtomicU64,
     deferred: AtomicU64,
+    target_deferred: AtomicU64,
     timeouts: AtomicU64,
 }
 #[derive(Default)]
@@ -94,9 +98,9 @@ impl Stats {
     pub(crate) fn snapshot(&self) -> Value {
         let jobs: serde_json::Map<_, _> = Job::ALL.into_iter().map(|job| {
             let s = &self.0[job as usize];
-            (job.label().into(), json!({"active":s.active.current(),"finished":s.finished.load(Relaxed),"failed":s.failed.load(Relaxed),"deferred":s.deferred.load(Relaxed),"timeouts":s.timeouts.load(Relaxed),"retry_after_ms":job.cadence().as_millis(),"lane":LANES[job.lane()].0}))
+            (job.label().into(), json!({"active":s.active.current(),"finished":s.finished.load(Relaxed),"failed":s.failed.load(Relaxed),"deferred":s.deferred.load(Relaxed),"target_deferred":s.target_deferred.load(Relaxed),"timeouts":s.timeouts.load(Relaxed),"retry_after_ms":job.cadence().as_millis(),"lane":LANES[job.lane()].0}))
         }).collect();
-        json!({"deadline_seconds":DEADLINE.as_secs(),"queue_capacity":0,"lanes":LANES.into_iter().map(|(name, capacity)| (name, capacity)).collect::<std::collections::BTreeMap<_,_>>(),"jobs":jobs})
+        json!({"deadline_seconds":DEADLINE.as_secs(),"queue_capacity":0,"connector_target_capacity":1,"lanes":LANES.into_iter().map(|(name, capacity)| (name, capacity)).collect::<std::collections::BTreeMap<_,_>>(),"jobs":jobs})
     }
     pub(crate) fn render(&self, output: &mut String) {
         for (metric, kind) in [
@@ -104,6 +108,7 @@ impl Stats {
             ("finished_total", "counter"),
             ("failed_total", "counter"),
             ("deferred_total", "counter"),
+            ("target_deferred_total", "counter"),
             ("timeouts_total", "counter"),
             ("retry_after_seconds", "gauge"),
         ] {
@@ -115,6 +120,7 @@ impl Stats {
                     "finished_total" => s.finished.load(Relaxed) as f64,
                     "failed_total" => s.failed.load(Relaxed) as f64,
                     "deferred_total" => s.deferred.load(Relaxed) as f64,
+                    "target_deferred_total" => s.target_deferred.load(Relaxed) as f64,
                     "timeouts_total" => s.timeouts.load(Relaxed) as f64,
                     _ => job.cadence().as_secs_f64(),
                 };
@@ -193,6 +199,8 @@ pub(crate) struct Background {
     jobs: [Arc<Semaphore>; Job::ALL.len()],
     store: Store,
     deadline: Duration,
+    // Only active targets are retained; rejected callers never enter a queue.
+    targets: Mutex<[Option<String>; LANES[0].1]>,
 }
 impl Background {
     fn new(store: Store) -> Self {
@@ -205,6 +213,7 @@ impl Background {
             jobs: std::array::from_fn(|i| Arc::new(Semaphore::new(Job::ALL[i].capacity()))),
             store,
             deadline: DEADLINE,
+            targets: Mutex::new(std::array::from_fn(|_| None)),
         }
     }
     /// API routers, bootstrap activation and scheduled workers sharing a Store
@@ -416,6 +425,153 @@ mod tests {
     }
 
     #[test]
+    fn busy_target_cannot_starve_unrelated_manual_or_due_work() {
+        use crate::{config::write_private, identity::downstream::BUCKET, provisioning::Target};
+        use http_body_util::BodyExt;
+
+        let (dir, mut core) = fixture();
+        let admin = core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "staff").unwrap();
+        let token_file = dir.path().join("target-token");
+        write_private(&token_file, b"local-fairness-test-only", false).unwrap();
+        let mut jobs = Vec::new();
+        for target in ["busy", "independent"] {
+            core.config.scim_targets.insert(
+                target.into(),
+                Target {
+                    url: "http://127.0.0.1:9/scim/v2".into(),
+                    token_file: Some(token_file.clone()),
+                    oauth: None,
+                    ca_file: None,
+                    groups: ["staff".into()].into(),
+                    export_groups: false,
+                },
+            );
+            let plan = core.provisioning_plan(&admin, target).unwrap();
+            let id = plan["id"].as_str().unwrap().to_owned();
+            core.provisioning_apply(&admin, &id).unwrap();
+            jobs.push(id);
+        }
+        // A whole due page belongs to the busy target. The unrelated row is
+        // later, so repeatedly reading just the oldest 16 would starve it.
+        core.store.write(|tx| {
+            for i in 0..17 {
+                let id = format!("fairness-{i}");
+                let row = json!({
+                    "id":id, "link":"removed", "target":if i < 16 { "busy" } else { "independent" },
+                    "target_url":"http://127.0.0.1:9/scim/v2", "user_id":"removed", "username":"removed",
+                    "epoch":1, "remote_id":"removed", "external_id":"removed", "link_digest":"removed",
+                    "status":"pending", "attempts":0, "next_attempt":if i < 16 { 0 } else { 1 },
+                    "created_at":0,
+                });
+                tx.put(BUCKET, &id, &row)?;
+            }
+            // Apply replays must resolve the target from the retained job,
+            // even without the original source plan.
+            tx.delete("provisioning_plans", &jobs[0])
+        }).unwrap();
+        let busy_job = core
+            .store
+            .get::<Value>("provisioning_jobs", &jobs[0])
+            .unwrap()
+            .unwrap();
+        let busy_rows: Vec<_> = core
+            .store
+            .list::<Value>(BUCKET)
+            .unwrap()
+            .into_iter()
+            .filter(|(_, row)| row["target"] == "busy")
+            .collect();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let background = Background::shared(&core.store);
+            let app = App::new(core.clone());
+            let (release, wait) = mpsc::channel();
+            let (started, ready) = tokio::sync::oneshot::channel();
+            let waiter = tokio::spawn(async move {
+                app.run_connector(ConnectorWork::target("scim", "busy"), move |_| {
+                    let _ = started.send(());
+                    wait.recv_timeout(Duration::from_secs(15)).map_err(Error::internal)
+                }).await
+            });
+            ready.await.unwrap();
+            waiter.abort();
+            assert!(waiter.await.unwrap_err().is_cancelled());
+            let routes = crate::api::router(core.clone());
+            for _ in 0..4 {
+                for path in [
+                    "/api/provisioning/targets/busy/plan".to_owned(),
+                    format!("/api/provisioning/plans/{}/apply", jobs[0]),
+                ] {
+                    let response = tokio::time::timeout(Duration::from_secs(1), routes.clone().oneshot(
+                        Request::post(path).header("authorization", format!("Bearer {admin}"))
+                            .body(Body::empty()).unwrap()
+                    )).await.unwrap().unwrap();
+                    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                    assert_eq!(response.headers()["retry-after"], "1");
+                    let body: Value = serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+                    assert_eq!(body["error"], "connector_overloaded");
+                }
+                // This real manual operation and both durable SCIM claim paths
+                // progress on the second lane slot despite continued pressure.
+                let response = tokio::time::timeout(Duration::from_secs(1), routes.clone().oneshot(
+                    Request::post("/api/provisioning/targets/independent/plan")
+                        .header("authorization", format!("Bearer {admin}"))
+                        .body(Body::empty()).unwrap()
+                )).await.unwrap().unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                tokio::time::timeout(Duration::from_secs(1), background.run(
+                    Job::Provisioning, crate::provisioning::deliver(core.clone())
+                )).await.unwrap().unwrap();
+            }
+            let independent = core.store.get::<Value>("provisioning_jobs", &jobs[1]).unwrap().unwrap();
+            assert_eq!(independent["completed"], true);
+            assert_eq!(independent["stale"], false);
+            assert!(independent["lease"].is_null());
+            let independent_row = core.store.get::<Value>(BUCKET, "fairness-16").unwrap().unwrap();
+            assert_eq!(independent_row["status"], "stale", "unrelated row was inspected past the busy page");
+            assert_eq!(independent_row["attempts"], 0, "no authority or link means no remote dispatch");
+            assert_eq!(core.store.get::<Value>("provisioning_jobs", &jobs[0]).unwrap().unwrap(), busy_job);
+            for (id, row) in &busy_rows {
+                assert_eq!(core.store.get::<Value>(BUCKET, id).unwrap().as_ref(), Some(row),
+                    "busy rows must not consume leases, attempts or backoff");
+            }
+            assert_eq!(background.targets.lock().unwrap().iter().flatten().count(), 1);
+            assert!(core.store.list::<Value>("connector_due_cursors").unwrap().len() <= 2);
+            let stats = core.store.telemetry().background.snapshot();
+            assert_eq!(stats["connector_target_capacity"], 1);
+            assert_eq!(stats["jobs"]["manual_connector"]["target_deferred"], 8);
+            assert!(stats["jobs"]["provisioning"]["target_deferred"].as_u64().unwrap() >= 16);
+            let mut metrics = String::new();
+            core.store.telemetry().background.render(&mut metrics);
+            assert!(metrics.contains("riauth_background_target_deferred_total{job=\"manual_connector\",lane=\"connectors\"} 8"));
+
+            release.send(()).unwrap();
+            drained(&background, Job::ManualConnector).await;
+            // Cursor wrap revisits the untouched durable job after admission
+            // becomes available. Normal authority/finish rules still apply.
+            for _ in 0..3 {
+                background.run(Job::Provisioning, crate::provisioning::deliver(core.clone())).await.unwrap();
+                if core.store.get::<Value>("provisioning_jobs", &jobs[0]).unwrap().unwrap()["completed"] == true {
+                    break;
+                }
+            }
+            let finished = core.store.get::<Value>("provisioning_jobs", &jobs[0]).unwrap().unwrap();
+            assert_eq!(finished["completed"], true);
+            assert_eq!(finished["stale"], false);
+            assert!(finished["lease"].is_null());
+            assert_eq!(background.targets.lock().unwrap().iter().flatten().count(), 0);
+        });
+    }
+
+    #[test]
     fn manual_connector_overload_preserves_foreground_and_durable_work() {
         use crate::{config::write_private, provisioning::Target};
         use http_body_util::BodyExt;
@@ -466,7 +622,7 @@ mod tests {
             let (release_manual, wait) = mpsc::channel();
             let (started, manual_started) = tokio::sync::oneshot::channel();
             let manual_waiter = tokio::spawn(async move {
-                app.run_connector(move |_| {
+                app.run_connector(ConnectorWork::target("scim", "slow"), move |_| {
                     let _ = started.send(());
                     wait.recv_timeout(Duration::from_secs(15))
                         .map_err(Error::internal)

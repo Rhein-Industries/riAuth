@@ -2,6 +2,7 @@
 //! A controller credential is read afresh for every run. It is never stored in a job.
 use crate::{
     agent::{Agent, Principal},
+    background::{Background, Job as BackgroundJob, TargetPermit},
     config::Config,
     connector_guard::{ReconciliationMode, ReviewBinding, hash},
     core::{Core, audit, validate_name},
@@ -806,7 +807,8 @@ impl Core {
         })
     }
 
-    fn claim_reconciliation(&self, owner: &str) -> Result<Option<Job>> {
+    fn claim_reconciliation(&self, owner: &str) -> Result<Option<(Job, TargetPermit)>> {
+        let background = Background::shared(&self.store);
         self.store.write(|tx| {
             let at = now();
             let mut jobs = tx.list::<Job>(JOBS)?;
@@ -820,6 +822,17 @@ impl Core {
                 .collect();
             jobs.sort_by(|a, b| (a.1.next_attempt, a.1.created_at, &a.0).cmp(&(b.1.next_attempt, b.1.created_at, &b.0)));
             for (_, mut job) in jobs {
+                let due = match job.status {
+                    Status::Queued => job.next_attempt <= at,
+                    Status::Running => job.lease_until <= at && job.next_attempt <= at,
+                    _ => false,
+                };
+                if !due || running_scopes.contains(&job.scope) {
+                    continue;
+                }
+                let Some(target) = background.try_target(BackgroundJob::Reconciliation, &job.scope) else {
+                    continue;
+                };
                 if job.status == Status::Running && job.lease_until <= at && job.attempts >= MAX_ATTEMPTS {
                     job.status = Status::Failed;
                     job.last_error = Some("Worker lease expired after the final attempt; delivery outcome may be unknown; inspect the connector plan and downstream job".into());
@@ -833,12 +846,6 @@ impl Core {
                     }
                     continue;
                 }
-                let due = match job.status {
-                    Status::Queued => job.next_attempt <= at,
-                    Status::Running => job.lease_until <= at && job.next_attempt <= at,
-                    _ => false,
-                };
-                if !due || running_scopes.contains(&job.scope) { continue; }
                 job.status = Status::Running;
                 job.attempts = job.attempts.saturating_add(1);
                 job.lease_owner = Some(owner.into());
@@ -846,7 +853,7 @@ impl Core {
                 job.next_attempt = job.lease_until;
                 tx.put(JOBS, &job.id, &job)?;
                 running_scopes.insert(job.scope.clone());
-                return Ok(Some(job));
+                return Ok(Some((job, target)));
             }
             Ok(None)
         })
@@ -1048,7 +1055,7 @@ impl Core {
         crate::recovery::require_serving(&self.store)?;
         self.sync_reconciliation_schedules()?;
         let owner = crypto::id();
-        let Some(job) = self.claim_reconciliation(&owner)? else {
+        let Some((job, _target)) = self.claim_reconciliation(&owner)? else {
             return Ok(false);
         };
         let outcome = self.execute_reconciliation(&job, &owner);
@@ -1062,6 +1069,7 @@ impl Core {
         crate::recovery::require_serving(&self.store)?;
         self.sync_reconciliation_schedules()?;
         self.claim_reconciliation(owner)
+            .map(|claim| claim.map(|(job, _)| job))
     }
 
     #[cfg(feature = "test-support")]

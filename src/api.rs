@@ -18,6 +18,7 @@ pub use rates::RateTable;
 #[cfg(feature = "platform")]
 use crate::offboarding::{RescheduleRequest, ScheduleRequest};
 use crate::{
+    background::ConnectorWork,
     core::Core,
     delegation::GrantInput,
     error::{Error, Result},
@@ -91,15 +92,33 @@ impl App {
     /// both runtime hops for audit, revision guards and mutation receipts.
     pub(crate) async fn run_connector<T: Send + 'static>(
         &self,
+        target: ConnectorWork,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
     ) -> Result<T> {
         let core = self.core.clone();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
+        let background = self.background.clone();
         self.background
             .connector(async move {
-                tokio::task::spawn_blocking(move || crate::context::scope(context, || f(&core)))
-                    .await
-                    .map_err(Error::internal)?
+                tokio::task::spawn_blocking(move || {
+                    crate::context::scope(context, || {
+                        let _target = target
+                            .scope(&core.store)?
+                            .map(|scope| {
+                                background
+                                    .try_target(crate::background::Job::ManualConnector, &scope)
+                                    .ok_or_else(|| Error::new(
+                                        StatusCode::SERVICE_UNAVAILABLE,
+                                        "connector_overloaded",
+                                        "Connector target occupied; no work started; retry after capacity is available",
+                                    ))
+                            })
+                            .transpose()?;
+                        f(&core)
+                    })
+                })
+                .await
+                .map_err(Error::internal)?
             })
             .await
     }
@@ -2862,7 +2881,7 @@ async fn reconciliation_event(
     Json(input): Json<crate::reconciliation::EventTrigger>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| {
+    app.run_connector(ConnectorWork::target(&kind, &id), move |core| {
         core.reconciliation_event(&token, &kind, &id, input)
             .map(Json)
     })
@@ -2875,8 +2894,10 @@ async fn directory_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| core.directory_plan(&token, &id).map(Json))
-        .await
+    app.run_connector(ConnectorWork::target("ldap", &id), move |core| {
+        core.directory_plan(&token, &id).map(Json)
+    })
+    .await
 }
 async fn directory_plan_get(
     State(app): State<App>,
@@ -2925,7 +2946,7 @@ async fn directory_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run_connector(move |core| {
+    app.run_connector(ConnectorWork::plan("ldap", &id), move |core| {
         core.directory_apply_confirmed(&token, &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -2960,8 +2981,10 @@ async fn cloud_test_connection(
     Path((kind, id)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
-        .await
+    app.run_connector(ConnectorWork::target(&kind, &id), move |core| {
+        core.cloud_test_connection(&token, &kind, &id).map(Json)
+    })
+    .await
 }
 
 #[cfg(feature = "platform")]
@@ -2985,8 +3008,10 @@ async fn workspace_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| core.cloud_plan(&token, "workspace", &id).map(Json))
-        .await
+    app.run_connector(ConnectorWork::target("workspace", &id), move |core| {
+        core.cloud_plan(&token, "workspace", &id).map(Json)
+    })
+    .await
 }
 #[cfg(feature = "platform")]
 async fn entra_plan(
@@ -2995,8 +3020,10 @@ async fn entra_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| core.cloud_plan(&token, "entra", &id).map(Json))
-        .await
+    app.run_connector(ConnectorWork::target("entra", &id), move |core| {
+        core.cloud_plan(&token, "entra", &id).map(Json)
+    })
+    .await
 }
 #[cfg(feature = "platform")]
 async fn workspace_plan_get(
@@ -3026,7 +3053,7 @@ async fn workspace_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run_connector(move |core| {
+    app.run_connector(ConnectorWork::plan("workspace", &id), move |core| {
         core.cloud_apply_confirmed(&token, "workspace", &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -3040,7 +3067,7 @@ async fn entra_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run_connector(move |core| {
+    app.run_connector(ConnectorWork::plan("entra", &id), move |core| {
         core.cloud_apply_confirmed(&token, "entra", &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -3072,8 +3099,10 @@ async fn provisioning_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run_connector(move |core| core.provisioning_plan(&token, &id).map(Json))
-        .await
+    app.run_connector(ConnectorWork::target("scim", &id), move |core| {
+        core.provisioning_plan(&token, &id).map(Json)
+    })
+    .await
 }
 async fn provisioning_plan_get(
     State(app): State<App>,
@@ -3091,7 +3120,7 @@ async fn provisioning_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run_connector(move |core| {
+    app.run_connector(ConnectorWork::plan("scim", &id), move |core| {
         core.provisioning_apply_confirmed(&token, &id, reviewed_plan.as_deref())
             .map(Json)
     })

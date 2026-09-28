@@ -195,7 +195,7 @@ Errors keep the `{"error","error_description"}` shape.
 | `unauthorized_client` | 400 | A token request for a proxy client from outside riAuth |
 | `rate_limited` | 429 | Rate bucket exceeded; CLI lockout on `/api/login` |
 | `temporarily_unavailable`, `transaction_conflict` | 503 | Admission timeout, store conflict or outage, or a staged login that expired between the two sign-in phases |
-| `connector_overloaded` | 503 | Manual connector lane is full; `Retry-After: 1`. The operation has not started or claimed durable work. |
+| `connector_overloaded` | 503 | Connector lane is full or this configured target already has an active operation; `Retry-After: 1`. The operation has not started or claimed durable work. |
 | `connector_operation_pending` | 409 | An admitted connector operation exceeded its 60-second response deadline and may still commit; inspect state before retrying. No `Retry-After` hint. |
 
 For HTML requests, a 4xx from a resume path renders a short page ("This sign-in belongs to another browser", "This sign-in has expired or was already completed…") with a link to the portal instead of JSON.

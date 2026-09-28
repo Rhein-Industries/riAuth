@@ -176,6 +176,7 @@ const RETAINED: &[&str] = &[
     "mail_limits",
     "maintenance_cursors",
     "maintenance_bounds",
+    "connector_due_cursors",
     "password_history",
     "credential_versions",
     "human_grant_generations",

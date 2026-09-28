@@ -56,6 +56,7 @@ enum Attempt {
 }
 
 struct Claim {
+    _target: crate::background::TargetPermit,
     row: Deactivation,
     owner: String,
     actor: Principal,
@@ -333,13 +334,20 @@ impl Core {
     }
 
     fn claim_deactivation(&self, owner: &str) -> Result<Option<Claim>> {
+        let background = crate::background::Background::shared(&self.store);
         self.store.write(|tx| {
             let at = now();
-            for (_, mut row) in tx.due::<Deactivation>(BUCKET, at, 16)? {
+            tx.connector_due::<Deactivation, _>(BUCKET, at, |_, mut row| {
                 let expired = row.status == Status::Running && row.lease_until <= at;
                 if !(expired || row.status == Status::Pending && row.next_attempt <= at) {
-                    continue;
+                    return Ok(None);
                 }
+                let Some(target) = background.try_target(
+                    crate::background::Job::Provisioning,
+                    &scope(&row.target),
+                ) else {
+                    return Ok(None);
+                };
                 if expired && row.attempts >= MAX_ATTEMPTS {
                     // The expired worker may have sent its PATCH.
                     row.uncertain = true;
@@ -351,7 +359,7 @@ impl Core {
                         Some("The worker lease expired after the final attempt; the remote state may be unknown".into()),
                         at,
                     )?;
-                    continue;
+                    return Ok(None);
                 }
                 match self.deactivation_gate(tx, &row, at)? {
                     Gate::Hold(reason, delay) => hold(tx, &mut row, reason, delay, at)?,
@@ -368,6 +376,7 @@ impl Core {
                         row.actor = Some(actor.id.clone());
                         tx.put(BUCKET, &row.id, &row)?;
                         return Ok(Some(Claim {
+                            _target: target,
                             row,
                             owner: owner.into(),
                             actor,
@@ -376,8 +385,8 @@ impl Core {
                         }));
                     }
                 }
-            }
-            Ok(None)
+                Ok(None)
+            })
         })
     }
 

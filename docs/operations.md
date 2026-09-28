@@ -193,7 +193,9 @@ existing runtime and admission pools.
 | `maintenance` | 1 | Cleanup, including scheduled local offboarding |
 
 Each scheduled worker admits at most one pass at a time; manual requests can
-use up to the two shared connector slots. There is no in-memory waiting queue: a busy lane defers the pass before it claims durable work. Existing
+use up to the two shared connector slots for different targets. There is no
+in-memory waiting queue: a busy lane defers the pass before it claims durable
+work. Existing
 outboxes, job leases, retry limits, removal review and authorization checks
 remain authoritative. Mail and logout each retain their 16-item batch bound and
 drain all child finishes before releasing the pass, including after an error.
@@ -205,12 +207,30 @@ Manual plan/apply and reconciliation event requests use the same connector
 runtime and slots as scheduled work, including after bootstrap activation.
 Routers sharing a store share one executor; creating a router starts no extra
 runtime until needed. Delivery and maintenance retain their separate 2/1
-budgets. An occupied connector lane returns `503 connector_overloaded` with
+budgets. An occupied connector lane or target returns `503 connector_overloaded` with
 `Retry-After: 1` immediately, without queuing the operation, claiming a durable
 job, or consuming a foreground worker. The one-second hint is not a completion
 promise. Existing read/status, stop and deactivation retry operations remain
 available through foreground admission; accepted durable retries still dispatch
 through their scheduled lane.
+
+Each configured target (`ldap/id`, `workspace/id`, `entra/id` or `scim/id`)
+admits one active operation across manual requests, reconciliation, reviewed
+SCIM delivery and offboarding deactivation. Apply requests resolve the target
+from the stored plan or retained SCIM job, so different plan IDs cannot bypass
+admission. The fixed registry has only two active entries and no waiters; a
+cancelled or timed-out caller keeps its target permit until the operation and
+durable finish actually return. Busy scheduled candidates are skipped before
+claiming: their status, leases, attempts and retry times are unchanged.
+
+The SCIM claim paths inspect at most 16 due index entries per pass. Two durable
+`connector_due_cursors` records advance past inspected entries and wrap at a
+fixed due-time cutoff, preventing a busy target's oldest page from hiding
+unrelated due work. New retries do not extend the current sweep. Reconciliation
+keeps its existing bounded 256-job, oldest-due selection and skips active
+targets. Selection may interleave targets; it does not reorder resources inside
+a reviewed job, split claim/dispatch/finish, bypass current authority or lease
+fences, or change local revocation before downstream intent/delivery ordering.
 
 Manual requests also have a 60-second response deadline. An admitted operation
 that exceeds it returns `409 connector_operation_pending` without a retry hint;
@@ -238,14 +258,18 @@ backoff. Warnings include the finite `job`, `lane`, error `code` and
 `retry_after_ms`; unchanged admission errors are logged once until recovery.
 
 Authenticated JSON metrics expose this policy and each worker's `active`,
-`finished`, `failed`, `deferred`, `timeouts` and `retry_after_ms` under
-`runtime.background`. Prometheus exposes `riauth_background_active`,
+`finished`, `failed`, `deferred`, `target_deferred`, `timeouts` and
+`retry_after_ms` under `runtime.background`. Prometheus exposes `riauth_background_active`,
 `riauth_background_finished_total`, `riauth_background_failed_total`,
-`riauth_background_deferred_total`, `riauth_background_timeouts_total`,
+`riauth_background_deferred_total`, `riauth_background_target_deferred_total`,
+`riauth_background_timeouts_total`,
 `riauth_background_retry_after_seconds` (job/lane labels) and
 `riauth_background_capacity` (lane label). `finished` counts all terminated
-passes, including failures; it is not a remote delivery outcome. Rising
-timeouts/deferred counts with occupied slots identify the lane to investigate.
+passes, including failures; it is not a remote delivery outcome.
+`target_deferred` counts target admission refusals/skipped candidates;
+these use only fixed job/lane labels, never target IDs or URLs. JSON policy
+reports `connector_target_capacity: 1`. Rising timeouts/deferred counts with
+occupied slots identify the lane to investigate.
 Check its connector timeout, network dependency and storage contention; do not
 force a second claim or infer successful delivery from a runtime timeout.
 
@@ -260,10 +284,14 @@ for the whole deployment. Storage locks/connections, CPU and memory remain
 shared; synchronous connector calls are not forcibly interrupted. Separate
 store handles/processes have separate budgets. Direct Core callers, protocol
 login/federation exchanges and bulk administrative operations outside the listed
-connector routes retain their existing limits. Fairness between targets and
-between manual and scheduled work, reserved storage capacity, cross-node quotas,
-hard process isolation and
-production load/latency characterization remain O05 follow-up work.
+connector routes retain their existing limits (durable Core claim paths also
+use target admission). This prevents one configured target occupying both
+connector slots; it does not reserve a turn for each caller. Multiple busy
+target IDs can still fill the lane, and one stalled scheduled pass still delays
+its own serialized worker. Strict fairness between manual and scheduled work,
+per-tenant or endpoint-wide quotas, reserved CPU/storage capacity, cross-node
+quotas, hard process isolation and production load/latency characterization
+remain O05 follow-up work.
 
 ## Rate limits and admission
 

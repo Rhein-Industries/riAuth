@@ -985,24 +985,37 @@ impl Core {
             Ok(Value::Array(views))
         })
     }
-    fn claim_provisioning(&self) -> Result<Option<Job>> {
-        self.store.write(|tx|{
-            for (id,mut job) in tx.due::<Job>("provisioning_jobs", now(), 16)? {
-                if job.completed || job.stale || job.next_attempt>now(){continue;}
+    fn claim_provisioning(&self) -> Result<Option<(Job, crate::background::TargetPermit)>> {
+        let background = crate::background::Background::shared(&self.store);
+        self.store.write(|tx| {
+            let at = now();
+            tx.connector_due::<Job, _>("provisioning_jobs", at, |id, mut job| {
+                if job.completed || job.stale || job.next_attempt > at {
+                    return Ok(None);
+                }
+                let Some(target) = background.try_target(
+                    crate::background::Job::Provisioning,
+                    &format!("scim/{}", job.plan.target),
+                ) else {
+                    return Ok(None);
+                };
                 if !self.provisioning_job_eligible(tx, &job)? {
                     job.stale = true;
                     job.error = Some("Plan authority or source configuration changed; inspect partial results and create a new plan".into());
                     compact_terminal_job(&mut job);
                     tx.put("provisioning_jobs", &id, &job)?;
-                    continue;
+                    return Ok(None);
                 }
-                job.next_attempt=now()+60;job.attempts+=1;job.lease=Some(crypto::id());tx.put("provisioning_jobs",&id,&job)?;return Ok(Some(job));
-            }
-            Ok(None)
+                job.next_attempt = at + 60;
+                job.attempts += 1;
+                job.lease = Some(crypto::id());
+                tx.put("provisioning_jobs", &id, &job)?;
+                Ok(Some((job, target)))
+            })
         })
     }
     pub fn provisioning_step(&self) -> Result<()> {
-        let Some(mut job) = self.claim_provisioning()? else {
+        let Some((mut job, _target)) = self.claim_provisioning()? else {
             return Ok(());
         };
         let Some(resource) = job.plan.resources.get(job.cursor) else {

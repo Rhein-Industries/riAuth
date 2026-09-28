@@ -136,8 +136,11 @@ async fn cloud_test_connection(
     Path((kind, id)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
     let token = writer(&app, &headers)?;
-    app.run_connector(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
-        .await
+    app.run_connector(
+        crate::background::ConnectorWork::target(&kind, &id),
+        move |core| core.cloud_test_connection(&token, &kind, &id).map(Json),
+    )
+    .await
 }
 
 #[cfg(feature = "platform")]

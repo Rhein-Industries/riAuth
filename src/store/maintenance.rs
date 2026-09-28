@@ -415,6 +415,59 @@ impl Tx<'_> {
             .unwrap_or(0);
         Ok(stats)
     }
+    /// Bounded round-robin selection for connector claims. Advance only past
+    /// inspected entries, so a busy target at the head cannot hide later due
+    /// jobs. Freeze the due cutoff until wraparound; new retries/appends cannot
+    /// keep the cursor chasing the tail forever. Only cursor metadata changes
+    /// on a refused claim, never a job's retry time, lease or attempt count.
+    pub(crate) fn connector_due<T: DeserializeOwned, R>(
+        &self,
+        bucket: &str,
+        at: u64,
+        mut claim: impl FnMut(String, T) -> Result<Option<R>>,
+    ) -> Result<Option<R>> {
+        const CURSORS: &str = "connector_due_cursors";
+        const LIMIT: usize = 16;
+        if !matches!(bucket, "provisioning_jobs" | "provisioning_deactivations") {
+            return Err(Error::internal("Collection has no connector cursor"));
+        }
+        let cursor = self.get::<(String, u64)>(CURSORS, bucket)?;
+        let cutoff = cursor.as_ref().map_or(at, |(_, cutoff)| (*cutoff).min(at));
+        let entries = self.scan::<String>(
+            &format!("index_due_{bucket}"),
+            cursor.as_ref().map(|(key, _)| key.as_str()),
+            LIMIT,
+        )?;
+        let mut exhausted = entries.len() < LIMIT;
+        let mut last = None;
+        let mut selected = None;
+        for (key, id) in entries {
+            let due = key
+                .split('/')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .ok_or_else(|| Error::internal("Invalid due index"))?;
+            if due > cutoff {
+                exhausted = true;
+                break;
+            }
+            last = Some(key);
+            if let Some(record) = self.get(bucket, &id)?
+                && let Some(result) = claim(id, record)?
+            {
+                selected = Some(result);
+                // Remaining entries in this page have not been inspected.
+                exhausted = false;
+                break;
+            }
+        }
+        if let Some(last) = last.filter(|_| !exhausted) {
+            self.put(CURSORS, bucket, &(last, cutoff))?;
+        } else {
+            self.delete(CURSORS, bucket)?;
+        }
+        Ok(selected)
+    }
     /// A durable cursor advances at most PAGE records per collection each pass.
     /// Freeze the sweep's upper bound so continuous appends cannot prevent wraparound.
     pub fn maintenance_page<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
