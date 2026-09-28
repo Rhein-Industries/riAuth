@@ -1325,6 +1325,13 @@ impl Core {
                     crate::logout::queue_user(tx, &user.id)?;
                 }
                 tx.put("users", &user.id, &user)?;
+                if existing.is_none() && !actor.agent && !actor.delegated {
+                    crate::delegation::record_elevation_provenance(
+                        tx,
+                        &user,
+                        crate::delegation::ProvenanceBasis::HumanScim,
+                    )?;
+                }
                 tx.put("usernames", &label, &user.id)?;
                 data.as_object_mut().unwrap().remove("groups");
                 user.id

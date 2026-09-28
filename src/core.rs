@@ -174,6 +174,11 @@ impl Core {
                 &user.password_hash,
             )?;
             tx.put("users", &user.id, &user)?;
+            crate::delegation::record_elevation_provenance(
+                tx,
+                &user,
+                crate::delegation::ProvenanceBasis::Bootstrap,
+            )?;
             tx.put("usernames", &user.username, &user.id)?;
             tx.delete("meta", "browser_setup")?;
             tx.delete("meta", "browser_setup_passkeys")?;
@@ -369,9 +374,11 @@ impl Core {
             }
             let mut user = user_by_name(tx, username)?;
             let credential_exposed = crate::delegation::credential_exposure(tx, &user.id)?.is_some();
-            if credential_exposed && !reset_mfa {
+            let legacy_unproven = !user.admin
+                && !crate::delegation::proven_for_elevation(tx, &user)?;
+            if (credential_exposed || legacy_unproven) && !reset_mfa {
                 return Err(Error::conflict(
-                    "Operator-exposed credentials require offline recovery with factor reset",
+                    "Unproven or operator-exposed credentials require offline recovery with factor reset",
                 ));
             }
             if user.password_hash.is_empty() && user.totp_secret.is_none() && !reset_mfa {
@@ -400,12 +407,19 @@ impl Core {
                 user.totp_pending = None;
                 user.totp_last_step = None;
             }
-            if credential_exposed {
-                // An address changed by a third-party operator may be under
-                // their control. The offline operator must re-establish it.
+            if credential_exposed || legacy_unproven {
+                // A legacy address may have been set by an agent before
+                // exposure tracking. Do not use it for recovery after elevation.
                 user.email = None;
                 user.email_verified = false;
                 tx.delete(crate::delegation::CREDENTIAL_EXPOSURE, &user.id)?;
+            }
+            if reset_mfa {
+                crate::delegation::record_elevation_provenance(
+                    tx,
+                    &user,
+                    crate::delegation::ProvenanceBasis::OfflineRecovery,
+                )?;
             }
             tx.put("users", &user.id, &user)?;
             crate::logout::queue_user(tx, &user.id)?;

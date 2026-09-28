@@ -1450,3 +1450,250 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
         StatusCode::CONFLICT
     );
 }
+
+#[cfg(feature = "platform")]
+#[test]
+fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery() {
+    let mut f = Fixture::new();
+    f.core.config.mail = Some(MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: MailSecurity::Loopback,
+        username: None,
+        password_file: None,
+    });
+    f.user("legacy");
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "legacy",
+            vec![grant(HumanRole::Auditor, "audit/events")],
+        )
+        .unwrap();
+    let legacy_id: String = f.core.store.get("usernames", "legacy").unwrap().unwrap();
+    let planted = "pre-correction-agent-password";
+    let binding_id = "pre-correction-agent-cert";
+    let fingerprint = "pre-correction-agent-fingerprint";
+    // Model a store written before agent exposure tracking existed. The
+    // certificate binding has no creator field, and the old password change
+    // has no exposure row. Neither can be trusted retroactively.
+    f.core
+        .store
+        .write(|tx| {
+            let mut user = tx.get::<User>("users", &legacy_id)?.unwrap();
+            user.password_hash = riauth::crypto::password_hash(planted)?;
+            user.email = Some("agent-controlled@example.test".into());
+            user.email_verified = true;
+            user.epoch += 1;
+            tx.put("users", &legacy_id, &user)?;
+            tx.put("mtls_users", &legacy_id, &binding_id)?;
+            tx.put("mtls_fingerprints", fingerprint, &binding_id)?;
+            tx.put("mtls_bindings", binding_id, &json!({
+                "id": binding_id,
+                "username": "legacy",
+                "user_id": legacy_id,
+                "fingerprint": fingerprint,
+                "san_uri": null,
+                "san_email": null,
+                "not_after": null,
+                "created_at": 1
+            }))?;
+            tx.delete("elevation_provenance", &legacy_id)?;
+            tx.delete("support_credential_exposure", &legacy_id)
+        })
+        .unwrap();
+    let planted_session = f
+        .core
+        .login("legacy".into(), planted.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(f.core.audit_events(&planted_session, 1).is_err());
+    assert!(f.core.me(&f.admin).is_ok(), "existing administrators stay usable");
+    assert_eq!(
+        f.core
+            .update_user(
+                &f.admin,
+                "legacy",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "legacy",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .recover_admin("legacy", "owner-offline-password", false)
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    f.core
+        .recover_admin("legacy", "owner-offline-password", true)
+        .unwrap();
+    assert!(f.core.login("legacy".into(), planted.into(), None).is_err());
+    let recovered: User = f.core.store.get("users", &legacy_id).unwrap().unwrap();
+    assert!(recovered.admin);
+    assert!(f
+        .core
+        .human_grants(&f.admin, "legacy")
+        .unwrap()["grants"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert!(recovered.email.is_none());
+    assert!(!recovered.email_verified);
+    assert!(f
+        .core
+        .store
+        .get::<Value>("mtls_bindings", binding_id)
+        .unwrap()
+        .is_none());
+    assert!(f
+        .core
+        .store
+        .get::<String>("mtls_fingerprints", fingerprint)
+        .unwrap()
+        .is_none());
+    assert!(f
+        .core
+        .store
+        .get::<String>("mtls_users", &legacy_id)
+        .unwrap()
+        .is_none());
+    let recovered_session = f
+        .core
+        .login("legacy".into(), "owner-offline-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(f.core.me(&recovered_session).unwrap()["user"]["admin"], true);
+    assert!(f
+        .core
+        .store
+        .list::<Value>("audit")
+        .unwrap()
+        .into_iter()
+        .any(|(_, event)| event["actor"] == "local-recovery"
+            && event["action"] == "admin.recover.factors_reset"
+            && event["target"] == legacy_id));
+
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "legacy-inviter".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "user.write".into(),
+                    resource: "user/oldinvite".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let invitation = Invitation {
+        username: "oldinvite".into(),
+        email: "agent-invite@example.test".into(),
+        display_name: "Old Invitation".into(),
+        groups: Default::default(),
+    };
+    f.core.account_invite(&agent, invitation).unwrap();
+    let invited_id: String = f.core.store.get("usernames", "oldinvite").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("elevation_provenance", &invited_id)?;
+            tx.delete("support_credential_exposure", &invited_id)
+        })
+        .unwrap();
+    // Reissuing an old pending identity cannot prove who controlled its
+    // earlier recipient or credentials, even when a full admin reissues it.
+    f.core
+        .account_invite(
+            &f.admin,
+            Invitation {
+                username: "oldinvite".into(),
+                email: "reissued-recipient@example.test".into(),
+                display_name: "Old Invitation".into(),
+                groups: Default::default(),
+            },
+        )
+        .unwrap();
+    assert!(f
+        .core
+        .store
+        .get::<Value>("elevation_provenance", &invited_id)
+        .unwrap()
+        .is_none());
+    let latest_mail = f
+        .core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "reissued-recipient@example.test")
+        .unwrap();
+    let code = latest_mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap();
+    f.core
+        .account_complete(code.into(), Purpose::Invite, Some("invite-planted".into()))
+        .unwrap();
+    assert!(f
+        .core
+        .store
+        .get::<Value>("support_credential_exposure", &invited_id)
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        f.core
+            .update_user(
+                &f.admin,
+                "oldinvite",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "oldinvite",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+}

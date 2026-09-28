@@ -106,14 +106,9 @@ fn user_security_transition(
 ) -> Result<()> {
     let disabled = after.is_none_or(|user| user["enabled"] == false);
     let promoted = after.is_some_and(|user| before["admin"] == false && user["admin"] == true);
-    if promoted
-        && tx
-            .get::<Value>(crate::delegation::CREDENTIAL_EXPOSURE, user_id)?
-            .is_some()
-    {
-        return Err(Error::conflict(
-            "This account needs independent credential recovery before privilege elevation",
-        ));
+    if promoted {
+        let prior: User = serde_json::from_value(before.clone()).map_err(Error::internal)?;
+        crate::delegation::require_elevation_ready(tx, &prior)?;
     }
     // A disabled or promoted account must not regain old delegated authority
     // if it is later enabled or demoted. This covers every user writer.

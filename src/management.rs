@@ -1012,6 +1012,12 @@ pub(crate) fn create_user(
     )?;
     if actor.agent {
         crate::delegation::mark_credential_exposure(tx, actor, &user)?;
+    } else if !actor.delegated {
+        crate::delegation::record_elevation_provenance(
+            tx,
+            &user,
+            crate::delegation::ProvenanceBasis::HumanCreate,
+        )?;
     }
     Ok(json!(UserView::from(&user)))
 }
@@ -1371,6 +1377,13 @@ pub(crate) fn write_desired_user(
         crate::delegation::mark_credential_exposure(tx, actor, &exposure_baseline)?;
     }
     write_user_record(tx, actor, existing.as_ref(), &user, UserRecord::Plan, false)?;
+    if existing.is_none() && !preview && !actor.agent && !actor.delegated {
+        crate::delegation::record_elevation_provenance(
+            tx,
+            &user,
+            crate::delegation::ProvenanceBasis::HumanPlan,
+        )?;
+    }
     Ok(Some(Change {
         resource,
         action: if existing.is_some() {
@@ -1443,6 +1456,12 @@ pub(crate) fn invite_user(
     tx.put("usernames", &user.username, &user.id)?;
     if actor.agent {
         crate::delegation::mark_invitation_exposure(tx, actor, &user)?;
+    } else if !actor.delegated {
+        crate::delegation::record_elevation_provenance(
+            tx,
+            &user,
+            crate::delegation::ProvenanceBasis::HumanInvite,
+        )?;
     }
     tx.put(
         "invitation_reservations",

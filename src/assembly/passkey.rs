@@ -399,6 +399,11 @@ impl Core {
             let user = pending
                 .enrollment
                 .finish(&self.config.issuer, tx, response)?;
+            crate::delegation::record_elevation_provenance(
+                tx,
+                &user,
+                crate::delegation::ProvenanceBasis::HumanCreate,
+            )?;
             tx.delete("admin_passkey_registration", &digest(ceremony))?;
             audit(tx, &owner.id, "user.create.passkey_only", &user.id)?;
             Ok(json!({"user":crate::model::UserView::from(&user),"passkeys":2}))

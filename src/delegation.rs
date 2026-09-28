@@ -6,6 +6,7 @@ use crate::{
     core::{Core, audit_with_details, user_by_name, validate_name},
     crypto::{Keys, digest, now},
     error::{Error, Result},
+    identity::persistence::IdentityTx,
     model::{Client, User},
     store::Tx,
 };
@@ -17,6 +18,84 @@ const BUCKET: &str = "human_grants";
 // Keep the original bucket so exposure recorded before agents were covered
 // continues to block elevation after an upgrade or restore.
 pub(crate) const CREDENTIAL_EXPOSURE: &str = "support_credential_exposure";
+pub(crate) const ELEVATION_PROVENANCE: &str = "elevation_provenance";
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProvenanceBasis {
+    Bootstrap,
+    HumanCreate,
+    HumanInvite,
+    HumanPlan,
+    HumanScim,
+    OfflineRecovery,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ElevationProvenance {
+    user_id: String,
+    identity_stamp: String,
+    basis: ProvenanceBasis,
+    at: u64,
+}
+
+fn identity_stamp(user: &User) -> String {
+    digest(&format!(
+        "{}\0{}\0{}",
+        user.id, user.created_at, user.pairwise_seed
+    ))
+}
+
+/// Only a trusted creation adapter or explicit offline factor reset records
+/// provenance. Existing non-administrator rows intentionally have no record.
+pub(crate) fn record_elevation_provenance(
+    tx: &Tx<'_>,
+    user: &User,
+    basis: ProvenanceBasis,
+) -> Result<()> {
+    tx.put(
+        ELEVATION_PROVENANCE,
+        &user.id,
+        &ElevationProvenance {
+            user_id: user.id.clone(),
+            identity_stamp: identity_stamp(user),
+            basis,
+            at: now(),
+        },
+    )
+}
+
+pub(crate) fn proven_for_elevation(tx: &impl IdentityTx, user: &User) -> Result<bool> {
+    Ok(tx
+        .get::<ElevationProvenance>(ELEVATION_PROVENANCE, &user.id)?
+        .is_some_and(|proof| {
+            proof.user_id == user.id && proof.identity_stamp == identity_stamp(user)
+        }))
+}
+
+pub(crate) fn ready_for_elevation(tx: &impl IdentityTx, user: &User) -> Result<bool> {
+    Ok(proven_for_elevation(tx, user)?
+        && tx
+            .get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?
+            .is_none())
+}
+
+pub(crate) fn require_elevation_ready(tx: &impl IdentityTx, user: &User) -> Result<()> {
+    if !proven_for_elevation(tx, user)? {
+        return Err(Error::conflict(
+            "This account needs independent offline credential recovery with factor reset before privilege elevation",
+        ));
+    }
+    if tx
+        .get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?
+        .is_some()
+    {
+        return Err(Error::conflict(
+            "This account needs independent credential recovery before privilege elevation",
+        ));
+    }
+    Ok(())
+}
 
 /// A third-party operator may know a password, control a recovery address,
 /// or have removed the target's factors. Only recovery through the address
@@ -117,16 +196,6 @@ pub(crate) fn mark_invitation_exposure(tx: &Tx<'_>, actor: &Principal, user: &Us
     mark_credential_exposure(tx, actor, &unverified)
 }
 
-pub(crate) fn require_unexposed(tx: &Tx<'_>, user_id: &str) -> Result<()> {
-    if credential_exposure(tx, user_id)?.is_some() {
-        Err(Error::conflict(
-            "This account needs independent credential recovery before privilege elevation",
-        ))
-    } else {
-        Ok(())
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HumanRole {
@@ -182,8 +251,18 @@ pub(crate) fn stored(tx: &Tx<'_>, user_id: &str) -> Result<Vec<HumanGrant>> {
 /// Load only grants still bound to their original target and still safe for
 /// support. A newly privileged support target becomes inaccessible at once.
 pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<HumanGrant>> {
+    let grants = stored(tx, user_id)?;
+    if grants.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Some(holder) = tx.get::<User>("users", user_id)? else {
+        return Ok(Vec::new());
+    };
+    if !ready_for_elevation(tx, &holder)? {
+        return Ok(Vec::new());
+    }
     let mut result = Vec::new();
-    for grant in stored(tx, user_id)? {
+    for grant in grants {
         let valid = match grant.role {
             HumanRole::HelpDesk => {
                 if let Some(name) = grant.scope.strip_prefix("user/") {
@@ -338,7 +417,7 @@ impl Core {
                 return Err(Error::forbidden());
             }
             if !grants.is_empty() {
-                require_unexposed(tx, &holder.id)?;
+                require_elevation_ready(tx, &holder)?;
             }
             let mut seen = BTreeSet::new();
             let mut bound = Vec::new();
