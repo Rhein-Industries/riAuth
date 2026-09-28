@@ -1188,7 +1188,30 @@ impl Tx<'_> {
         limit: usize,
         max_raw_bytes: usize,
     ) -> Result<Vec<(String, Value)>> {
-        let page = self.snapshot_page_raw_bounded(after, limit, max_raw_bytes)?;
+        self.snapshot_page_bounded_inner(after, limit, max_raw_bytes, false)
+    }
+    /// Migration verifies its target under a PostgreSQL table lock in a writer
+    /// transaction. The lock keeps these pages stable across READ COMMITTED
+    /// statements while the ordinary writer lock excludes other riAuth writers.
+    pub(crate) fn snapshot_page_bounded_locked_writer(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+        max_raw_bytes: usize,
+    ) -> Result<Vec<(String, Value)>> {
+        if !matches!(self.transaction, Transaction::Postgres(_, true)) {
+            return Err(Error::internal("Locked snapshot requires a PostgreSQL writer"));
+        }
+        self.snapshot_page_bounded_inner(after, limit, max_raw_bytes, true)
+    }
+    fn snapshot_page_bounded_inner(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+        max_raw_bytes: usize,
+        locked_writer: bool,
+    ) -> Result<Vec<(String, Value)>> {
+        let page = self.snapshot_page_raw_bounded(after, limit, max_raw_bytes, locked_writer)?;
         self.telemetry
             .snapshot_records
             .fetch_add(page.len() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -1204,6 +1227,7 @@ impl Tx<'_> {
         after: Option<&str>,
         limit: usize,
         max_raw_bytes: usize,
+        locked_writer: bool,
     ) -> Result<Vec<(String, Vec<u8>)>> {
         if limit == 0 {
             return Ok(Vec::new());
@@ -1211,12 +1235,13 @@ impl Tx<'_> {
         if max_raw_bytes == 0 {
             return Err(Error::bad("Snapshot page byte limit must be positive"));
         }
-        if self.prepared.borrow().is_some()
-            || !matches!(
-                self.transaction,
-                Transaction::Read(_) | Transaction::Postgres(_, false)
-            )
-        {
+        let ordinary_read = matches!(
+            self.transaction,
+            Transaction::Read(_) | Transaction::Postgres(_, false)
+        );
+        let locked_postgres_writer =
+            locked_writer && matches!(self.transaction, Transaction::Postgres(_, true));
+        if self.prepared.borrow().is_some() || !(ordinary_read || locked_postgres_writer) {
             return Err(Error::internal(
                 "Paged snapshots require an ordinary read transaction",
             ));

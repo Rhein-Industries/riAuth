@@ -710,57 +710,199 @@ pub fn migrate_postgres(
     target: crate::postgres_store::PostgresConfig,
     output: &Path,
 ) -> Result<Value> {
+    migrate_postgres_checkpointed(config, target, output, |_| Ok(()))
+}
+
+/// A target prefix is the checkpoint: each page commits atomically, and a retry
+/// compares that prefix with the exclusively opened source before appending.
+/// The callback runs only after a page commit (also used by the interruption
+/// regression); production has no callback side effects.
+fn migrate_postgres_checkpointed(
+    config: Config,
+    mut target: crate::postgres_store::PostgresConfig,
+    output: &Path,
+    mut checkpoint: impl FnMut(u64) -> Result<()>,
+) -> Result<Value> {
     if output.exists() {
         return Err(Error::conflict("Output configuration already exists"));
     }
     if config.postgres.is_some() {
         return Err(Error::bad("This migration requires an offline redb source"));
     }
+    // The published file must reopen the same target that was verified, even
+    // when a caller supplied paths relative to its current directory.
+    target.connection_file = target.connection_file.canonicalize().map_err(Error::internal)?;
+    target.ca_file = target
+        .ca_file
+        .map(|file| file.canonicalize().map_err(Error::internal))
+        .transpose()?;
+    let mut migrated_config = config.clone();
+    migrated_config.postgres = Some(target.clone());
+    migrated_config.validate().map_err(Error::internal)?;
+    let config_bytes = toml::to_string_pretty(&migrated_config).map_err(Error::internal)?;
     let core = Core::open(config.clone())?;
-    let snapshot = core.store.read(|tx| tx.snapshot())?;
+    core.jwks()?;
     let target_key = config
         .database_key_file
         .as_deref()
         .map(crypto::read_key)
         .transpose()?;
-    let store = Store::open_postgres(target.clone(), target_key)?;
-    store.write(|tx| {
-        let mut existing = tx.snapshot()?;
-        // Opening the target records its lineage; that alone is not a mismatch.
-        existing.remove("meta/storage_lineage");
-        if !existing.is_empty() {
-            if existing == snapshot {
-                return Ok(());
+    let store = Store::open_postgres(target, target_key)?;
+    let count = core.store.read(|source| {
+        let (mut after, mut copied) = store.read(|destination| {
+            require_isolated_migration_target(destination)?;
+            let prefix = compare_migration_records(source, destination, false, false)?;
+            let _ = destination.get::<crate::recovery::Lineage>("meta", "storage_lineage")?;
+            Ok(prefix)
+        })?;
+        loop {
+            let page = source.snapshot_page_bounded(
+                after.as_deref(),
+                crate::store::maintenance::PAGE,
+                MAX_BACKUP_PAGE_BYTES,
+            )?;
+            let Some((next, _)) = page.last() else {
+                break;
+            };
+            let next = next.clone();
+            if after
+                .as_ref()
+                .is_some_and(|previous| next.as_str() <= previous.as_str())
+            {
+                return Err(Error::internal("Migration page did not advance"));
             }
-            return Err(Error::conflict(
-                "Target database is not empty and does not match this migration",
-            ));
+            store.write(|destination| {
+                require_isolated_migration_target(destination)?;
+                for (name, value) in &page {
+                    let (bucket, key) = split_record_key(name)?;
+                    match destination.get::<Value>(bucket, key)? {
+                        Some(existing) if existing == *value => {}
+                        Some(_) => {
+                            return Err(Error::conflict(
+                                "Target database does not match this migration",
+                            ));
+                        }
+                        None => destination.import_record(bucket, key, value)?,
+                    }
+                }
+                Ok(())
+            })?;
+            copied += page.len() as u64;
+            after = Some(next);
+            checkpoint(copied)?;
         }
-        for (name, value) in &snapshot {
-            let (bucket, key) = name
-                .split_once('/')
-                .ok_or_else(|| Error::bad("Invalid source record key"))?;
-            tx.import_record(bucket, key, value)?;
-        }
-        Ok(())
+        // The PostgreSQL table lock fences direct SQL writers as well as the
+        // ordinary riAuth writer lock for this complete, bounded comparison.
+        store.write(|destination| {
+            require_isolated_migration_target(destination)?;
+            destination.lock_records_for_transition()?;
+            let (_, verified) = compare_migration_records(source, destination, true, true)?;
+            let _ = destination.get::<crate::recovery::Lineage>("meta", "storage_lineage")?;
+            if verified != copied {
+                return Err(Error::internal("Migrated storage verification failed"));
+            }
+            Ok(())
+        })?;
+        Ok(copied)
     })?;
-    let count = snapshot.len();
-    if store.read(|tx| tx.snapshot())? != snapshot {
-        return Err(Error::internal("Migrated storage verification failed"));
-    }
-    let mut config = config;
-    config.postgres = Some(target);
-    write_private(
-        output,
-        toml::to_string_pretty(&config)
-            .map_err(Error::internal)?
-            .as_bytes(),
-        false,
-    )
-    .map_err(Error::internal)?;
+    // Keep PostgreSQL lineage out of the copy. On first Core open, its normal
+    // lineage gate stamps a new target or applies recovery to a changed one.
+    write_private(output, config_bytes.as_bytes(), false).map_err(Error::internal)?;
     Ok(
         json!({"migrated":true,"records":count,"config":output,"issuer":config.issuer,"source_preserved":true}),
     )
+}
+
+fn require_isolated_migration_target(tx: &crate::store::Tx<'_>) -> Result<()> {
+    if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+        return Err(Error::conflict(
+            "Stop every riAuth process connected to the PostgreSQL target before migration",
+        ));
+    }
+    Ok(())
+}
+
+struct MigrationCursor<'tx, 'db> {
+    tx: &'tx crate::store::Tx<'db>,
+    after: Option<String>,
+    page: std::vec::IntoIter<(String, Value)>,
+    locked_writer: bool,
+    skip_lineage: bool,
+}
+
+impl MigrationCursor<'_, '_> {
+    fn next(&mut self) -> Result<Option<(String, Value)>> {
+        loop {
+            if let Some((name, value)) = self.page.next() {
+                if self.skip_lineage && name == "meta/storage_lineage" {
+                    continue;
+                }
+                return Ok(Some((name, value)));
+            }
+            let page = if self.locked_writer {
+                self.tx.snapshot_page_bounded_locked_writer(
+                    self.after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?
+            } else {
+                self.tx.snapshot_page_bounded(
+                    self.after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?
+            };
+            let Some((last, _)) = page.last() else {
+                return Ok(None);
+            };
+            if self.after.as_ref().is_some_and(|previous| last <= previous) {
+                return Err(Error::internal("Migration page did not advance"));
+            }
+            self.after = Some(last.clone());
+            self.page = page.into_iter();
+        }
+    }
+}
+
+/// Return the last matching source key and count. Existing target records must
+/// form a prefix of the source (apart from backend-specific lineage).
+fn compare_migration_records(
+    source: &crate::store::Tx<'_>,
+    destination: &crate::store::Tx<'_>,
+    complete: bool,
+    locked_writer: bool,
+) -> Result<(Option<String>, u64)> {
+    let mut source = MigrationCursor {
+        tx: source,
+        after: None,
+        page: Vec::new().into_iter(),
+        locked_writer: false,
+        skip_lineage: false,
+    };
+    let mut destination = MigrationCursor {
+        tx: destination,
+        after: None,
+        page: Vec::new().into_iter(),
+        locked_writer,
+        skip_lineage: true,
+    };
+    let mut last = None;
+    let mut count = 0u64;
+    while let Some((target_name, target_value)) = destination.next()? {
+        let Some((source_name, source_value)) = source.next()? else {
+            return Err(Error::conflict("Target database does not match this migration"));
+        };
+        split_record_key(&source_name)?;
+        if target_name != source_name || target_value != source_value {
+            return Err(Error::conflict("Target database does not match this migration"));
+        }
+        last = Some(source_name);
+        count += 1;
+    }
+    if complete && source.next()?.is_some() {
+        return Err(Error::conflict("Migrated storage verification failed"));
+    }
+    Ok((last, count))
 }
 
 struct AlertPost {
@@ -905,4 +1047,120 @@ fn note_alert_failure(core: &Core, reason: &'static str) {
         .alert_delivery_errors
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     tracing::warn!(reason, "alert webhook delivery failed");
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    use crate::{model::NewUser, postgres_store::PostgresConfig};
+
+    #[test]
+    #[ignore = "requires a disposable PostgreSQL cluster in RIAUTH_TEST_PG_CONNECTION"]
+    fn interrupted_postgres_migration_checks_its_checkpoint_before_resuming() {
+        let shared = std::fs::read_to_string(
+            std::env::var_os("RIAUTH_TEST_PG_CONNECTION")
+                .expect("set RIAUTH_TEST_PG_CONNECTION to a disposable cluster"),
+        )
+        .unwrap();
+        let database = format!("riauth_s06_{}", uuid::Uuid::new_v4().simple());
+        let mut admin = postgres::Client::connect(shared.trim(), postgres::NoTls).unwrap();
+        admin
+            .batch_execute(&format!("CREATE DATABASE {database}"))
+            .unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let connection_file = local.path().join("connection");
+        let connection = shared.replace("dbname=postgres", &format!("dbname={database}"));
+        assert_ne!(connection, shared);
+        write_private(&connection_file, connection.as_bytes(), false).unwrap();
+        let postgres = PostgresConfig {
+            connection_file,
+            ca_file: None,
+            local_unencrypted: true,
+            pool_size: 2,
+        };
+        let config = Config {
+            data_dir: local.path().join("data"),
+            ..Default::default()
+        };
+        let source = Core::initialize(
+            config.clone(),
+            NewUser {
+                username: "admin".into(),
+                password: "migration-interruption-password".into(),
+                email: None,
+                display_name: "Admin".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = source
+            .login("admin".into(), "migration-interruption-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        source
+            .store
+            .write(|tx| {
+                for index in 0..300 {
+                    tx.put("audit", &format!("migration-{index:04}"), &json!({"index":index}))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        let before = source.store.read(|tx| tx.snapshot()).unwrap();
+        drop(source);
+
+        let output = local.path().join("postgres.toml");
+        let error = migrate_postgres_checkpointed(config.clone(), postgres.clone(), &output, |_| {
+            Err(Error::conflict("simulated interruption after a committed page"))
+        })
+        .unwrap_err();
+        assert!(error.message.contains("simulated interruption"));
+        assert!(!output.exists());
+        let source = Core::open(config.clone()).unwrap();
+        assert_eq!(source.store.read(|tx| tx.snapshot()).unwrap(), before);
+        drop(source);
+        let target = Store::open_postgres(postgres.clone(), None).unwrap();
+        let partial = target.read(|tx| tx.snapshot()).unwrap();
+        assert!(partial.len() >= crate::store::maintenance::PAGE);
+        assert!(partial.len() < before.len());
+        drop(target);
+
+        let first = before.keys().next().unwrap();
+        let mut raw = postgres::Client::connect(connection.trim(), postgres::NoTls).unwrap();
+        raw.execute(
+            "UPDATE riauth_store.records_v1 SET value=$2 WHERE key=$1",
+            &[&first.as_bytes(), &b"null".as_slice()],
+        )
+        .unwrap();
+        let error = migrate_postgres(config.clone(), postgres.clone(), &output).unwrap_err();
+        assert!(error.message.contains("does not match this migration"));
+        assert!(!output.exists());
+        let value: Vec<u8> = raw
+            .query_one(
+                "SELECT value FROM riauth_store.records_v1 WHERE key=$1",
+                &[&first.as_bytes()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(value, b"null");
+        raw.execute(
+            "UPDATE riauth_store.records_v1 SET value=$2 WHERE key=$1",
+            &[&first.as_bytes(), &serde_json::to_vec(&before[first]).unwrap()],
+        )
+        .unwrap();
+
+        let result = migrate_postgres(config.clone(), postgres.clone(), &output).unwrap();
+        assert_eq!(result["migrated"], true);
+        assert_eq!(result["records"], before.len());
+        let target = Core::open(Config::load(&output).unwrap()).unwrap();
+        let mut after = target.store.read(|tx| tx.snapshot()).unwrap();
+        after.remove("meta/storage_lineage");
+        assert_eq!(after, before);
+        assert_eq!(target.me(&token).unwrap()["user"]["username"], "admin");
+        drop(target);
+        let source = Core::open(config).unwrap();
+        assert_eq!(source.store.read(|tx| tx.snapshot()).unwrap(), before);
+    }
 }
