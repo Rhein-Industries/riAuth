@@ -546,10 +546,10 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     let input = json!({"api_version":"riauth.authentik-import/v1","issuer":f.core.config.issuer,
         "users":[{"pk":42,"uid":"existing-authentik-subject","username":"alice","name":"Alice","email":"alice@example.test","groups":["child"],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
         "groups":[{"pk":"child","name":"engineering","parent":"parent"},{"pk":"parent","name":"employees","parent":null}],
-        "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code","refresh_token"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],"property_mappings":["profile-mapping"],"sub_mode":"hashed_user_id","include_claims_in_id_token":true,"access_code_validity":"minutes=1","access_token_validity":"minutes=5","refresh_token_validity":"days=30"}],
+        "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code","refresh_token"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],"property_mappings":["profile-mapping"],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true,"access_code_validity":"minutes=1","access_token_validity":"minutes=5","refresh_token_validity":"days=30"}],
         "applications":[{"slug":"app","provider":1,"name":"Team workspace","meta_launch_url":"https://app.example.test/","meta_description":"The team’s applications","group":"Engineering"}],"policy_bindings":[{"pk":"binding-1"}],"sources":[],
         "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"import-v1"}},
-        "clients":{"app":{"issuer":f.core.config.issuer,"scopes":["openid","profile","groups","offline_access"],"settings":{"groups_in_profile":true,"policy":{"access":{"all_groups":["engineering"]}}},"translated_mapping_ids":["profile-mapping"],"translated_binding_ids":["binding-1"],"authentication_flow_reviewed":true,"require_mfa":false}}});
+        "clients":{"app":{"issuer":format!("{}/application/o/app/", f.core.config.issuer),"scopes":["openid","profile","groups","offline_access"],"settings":{"groups_in_profile":true,"policy":{"access":{"all_groups":["engineering"]}}},"translated_mapping_ids":["profile-mapping"],"translated_binding_ids":["binding-1"],"authentication_flow_reviewed":true,"require_mfa":false}}});
     let report =
         riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap();
     assert_eq!(report["ready_for_plan"], true, "{report}");
@@ -566,6 +566,11 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     assert_eq!(classified("group", "employees"), ["exact"]);
     assert_eq!(classified("group", "engineering"), ["convertible"]);
     assert_eq!(classified("subject", "app"), ["exact"]);
+    assert_eq!(classified("issuer", "app"), ["exact"]);
+    assert_eq!(
+        report["manifest"]["clients"][0]["settings"]["issuer"],
+        format!("{}/application/o/app/", f.core.config.issuer)
+    );
     assert_eq!(classified("grant", "app"), ["exact"]);
     assert_eq!(classified("password", "alice"), ["manual"]);
     assert_eq!(classified("passkey", "*"), ["unsupported"]);
@@ -683,7 +688,7 @@ fn authentik_import_flattens_parents_arrays_and_diamonds() {
         "groups":[{"pk":"leaf","name":"leaf","parents":["left","right"]},{"pk":"left","name":"left","parents":["root"]},
             {"pk":"right","name":"right","parents":[],"parent":"root"},{"pk":"root","name":"root","parents":[]},
             {"pk":"other","name":"other","parents":["root"],"parents_obj":null}],
-        "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback"}],"property_mappings":[],"sub_mode":"user_username","include_claims_in_id_token":true}],
+        "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback"}],"property_mappings":[],"sub_mode":"user_username","issuer_mode":"per_provider","include_claims_in_id_token":true}],
         "applications":[],"policy_bindings":[],"sources":[],
         "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"v1"},"bob":{"reference":"env:BOB_PASSWORD","version":"v1"}},
         "clients":{"app":{"issuer":"https://id.example.test","scopes":["openid","profile"],"settings":{},"translated_mapping_ids":[],"translated_binding_ids":[],"authentication_flow_reviewed":true,"require_mfa":true}}});
@@ -783,7 +788,7 @@ fn authentik_preflight_classifies_every_exported_item() {
             {"pk":1,"name":"legacy","client_id":"legacy","client_type":"confidential","client_secret":secret,"signing_key":null,
              "redirect_uris":[{"matching_mode":"strict","url":"https://legacy.example.test/cb"},{"matching_mode":"regex","url":"https://.*\\.example\\.test/cb"},
                 {"matching_mode":"strict","url":"https://legacy.example.test/bye","redirect_uri_type":"logout"}],
-             "property_mappings":["mapped","unmapped"],"sub_mode":"user_upn","include_claims_in_id_token":true,
+             "property_mappings":["mapped","unmapped"],"sub_mode":"user_upn","issuer_mode":"per_provider","include_claims_in_id_token":true,
              "logout_uri":"https://legacy.example.test/logout","logout_method":"backchannel"}],
         "applications":[
             {"slug":"legacy","provider":1,"name":"Legacy","meta_launch_url":"https://legacy.example.test/","meta_hide":true},
@@ -886,7 +891,8 @@ fn authentik_preflight_classifies_every_exported_item() {
             vec![(Unsupported, true)],
         ),
         (Logout, "legacy", vec![(Exact, false)]),
-        (Subject, "legacy", vec![(Exact, false)]),
+        (Subject, "legacy", vec![(Convertible, false)]),
+        (Issuer, "legacy", vec![(Exact, false)]),
         (Application, "legacy", vec![(Convertible, false)]),
         (Application, "wiki", vec![(Unsupported, true)]),
         (Application, "bookmark", vec![(Unsupported, false)]),
@@ -1056,7 +1062,12 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
         ),
         (Logout, "orphan", vec![(Exact, false)]),
         // Duplicate subjects are detected even though the client is not reviewed yet.
-        (Subject, "orphan", vec![(Exact, false), (Unsupported, true)]),
+        (
+            Subject,
+            "orphan",
+            vec![(Convertible, false), (Unsupported, true)],
+        ),
+        (Issuer, "orphan", vec![(Manual, true)]),
         (
             Application,
             "orphan-app",
@@ -1129,6 +1140,343 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
     }
     assert!(entry.get("manifest").is_none() && entry.get("draft").is_none());
     assert!(!entry.to_string().contains(secret));
+}
+
+/// Sorted (classification, blocking) pairs of a report's findings for one kind and ID.
+fn findings(
+    report: &Value,
+    kind: riauth::migration::ItemKind,
+    id: &str,
+) -> Vec<(riauth::migration::Classification, bool)> {
+    let items: Vec<riauth::migration::Finding> =
+        serde_json::from_value(report["items"].clone()).unwrap();
+    let mut found = items
+        .iter()
+        .filter(|i| i.kind == kind && i.id == id)
+        .map(|i| (i.classification, i.blocking))
+        .collect::<Vec<_>>();
+    found.sort();
+    found
+}
+
+#[test]
+fn authentik_preflight_keeps_or_blocks_each_exported_issuer() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let provider = |pk: u64, cid: &str, mode: Value| {
+        json!({"pk":pk,"name":cid,"client_id":cid,"client_type":"public","grant_types":["authorization_code"],
+            "redirect_uris":[{"matching_mode":"strict","url":format!("https://{cid}.example.test/cb")}],
+            "property_mappings":[],"sub_mode":"user_uuid","issuer_mode":mode,"include_claims_in_id_token":true})
+    };
+    let client = |issuer: &str| {
+        json!({"issuer":issuer,"scopes":["openid"],"settings":{},"translated_mapping_ids":[],"translated_binding_ids":[],
+            "authentication_flow_reviewed":true,"require_mfa":false})
+    };
+    let providers = [
+        ("wiki", json!("per_provider")),
+        ("chat", json!("per_provider")),
+        ("grafana", json!("global")),
+        ("vault", json!("global")),
+        ("docs", json!("global")),
+        ("git", json!("global")),
+        ("legacy", Value::Null),
+        ("odd", json!("per_tenant")),
+    ];
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+        "users":[{"pk":1,"uuid":"user-1","uid":"a","username":"alice","name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+        "groups":[],"policy_bindings":[],"sources":[],
+        "providers":providers.iter().enumerate().map(|(i, (cid, mode))| provider(i as u64 + 1, cid, mode.clone())).collect::<Vec<_>>(),
+        "applications":providers.iter().enumerate().map(|(i, (cid, _))| json!({"slug":cid,"provider":i + 1,"name":cid})).collect::<Vec<_>>(),
+        "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"v1"}},
+        "clients":{
+            "wiki":client("https://auth.example.test/application/o/wiki/"),
+            // Another application's issuer: its relying party would see a different issuer.
+            "chat":client("https://auth.example.test/application/o/wiki-chat/"),
+            // One global Authentik issuer, but riAuth serves a non-primary issuer for one client.
+            "grafana":client("https://auth.example.test/"),
+            "vault":client("https://auth.example.test/"),
+            // Authentik's global issuer ends in a slash; this one would differ from it.
+            "docs":client("https://auth.example.test"),
+            // Shares riAuth's discovery URL without being riAuth's issuer.
+            "git":client("https://id.example.test/"),
+            "legacy":client("https://auth.example.test/application/o/legacy/"),
+            "odd":client("https://auth.example.test/application/o/odd/")}});
+    let report =
+        riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    for (cid, expected) in [
+        ("wiki", vec![(Exact, false)]),
+        ("chat", vec![(Manual, true)]),
+        ("grafana", vec![(Exact, false), (Unsupported, true)]),
+        ("vault", vec![(Exact, false), (Unsupported, true)]),
+        ("docs", vec![(Manual, true)]),
+        ("git", vec![(Exact, false), (Unsupported, true)]),
+        ("legacy", vec![(Manual, true)]),
+        ("odd", vec![(Unsupported, true)]),
+    ] {
+        assert_eq!(findings(&report, Issuer, cid), expected, "{cid}");
+    }
+    for blocker in [
+        "chat: reviewed issuer does not match the exported per_provider issuer",
+        "docs: reviewed issuer does not match the exported global issuer",
+        "Issuer https://auth.example.test/: several providers share it, but it is not riAuth's issuer",
+        "git: issuer collides with riAuth's own issuer",
+        "legacy: export issuer_mode so the reviewed issuer can be checked",
+        "odd: unknown issuer mode per_tenant",
+    ] {
+        assert!(
+            report["blockers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(blocker)),
+            "{blocker}: {}",
+            report["blockers"]
+        );
+    }
+    // Serving the shared global issuer as riAuth's own issuer keeps it for every provider.
+    let mut shared = input.clone();
+    shared["issuer"] = json!("https://auth.example.test/");
+    shared["providers"] = json!([
+        provider(3, "grafana", json!("global")),
+        provider(4, "vault", json!("global"))
+    ]);
+    shared["applications"] = json!([{"slug":"grafana","provider":3,"name":"grafana"},{"slug":"vault","provider":4,"name":"vault"}]);
+    for cid in ["wiki", "chat", "docs", "git", "legacy", "odd"] {
+        shared["clients"].as_object_mut().unwrap().remove(cid);
+    }
+    let report = riauth::migration::convert(serde_json::from_value(shared).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    for (index, cid) in ["grafana", "vault"].into_iter().enumerate() {
+        assert_eq!(findings(&report, Issuer, cid), [(Exact, false)], "{cid}");
+        assert_eq!(report["manifest"]["clients"][index]["client_id"], cid);
+        assert!(report["manifest"]["clients"][index]["settings"]["issuer"].is_null());
+    }
+}
+
+#[tokio::test]
+async fn authentik_import_links_only_exported_source_connections() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f).await;
+    assert!(upstream.source.auto_provision);
+    let link = |username: &str, subject: &str| json!({"source":"upstream","username":username,"subject":subject});
+    let connection = |user: u64, identifier: &str| json!({"pk":user + 100,"user":user,"source":"oauth-uuid","identifier":identifier});
+    let user = |pk: u64, username: &str, kind: &str| {
+        json!({"pk":pk,"uid":format!("uid-{pk}"),"username":username,"name":username,"email":"shared@example.test",
+            "groups":[],"attributes":{},"type":kind,"is_active":true,"roles":[]})
+    };
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":f.core.config.issuer,
+        "users":[user(7, "alice", "external"), user(8, "bob", "internal"), user(9, "carol", "internal")],
+        "groups":[],"providers":[],"applications":[],"policy_bindings":[],
+        "sources":[{"pk":"oauth-uuid","slug":"corp","meta_model_name":"authentik_sources_oauth.oauthsource","user_matching_mode":"identifier"}],
+        "source_resolutions":{"oauth-uuid":{"source":upstream.source,"secret_ref":"env:UPSTREAM_SECRET","secret_version":"v1"}},
+        "user_source_connections":[connection(7, "subject-1"), connection(8, "subject-2")],
+        "source_links":[link("alice", "subject-1")],
+        "passwords":{"bob":{"reference":"env:BOB_PASSWORD","version":"v1"},"carol":{"reference":"env:CAROL_PASSWORD","version":"v1"}},
+        "clients":{}});
+    let convert = |input: &Value| {
+        riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap()
+    };
+    // Bob's connection is not carried over, and the auto-provisioning source would give him a
+    // second account on his next upstream sign-in.
+    let report = convert(&input);
+    assert_eq!(
+        report["blockers"],
+        json!([
+            "bob/upstream: exported connection is not linked and the source provisions accounts"
+        ])
+    );
+    assert_eq!(
+        findings(&report, SourceLink, "alice/upstream"),
+        [(Exact, false)]
+    );
+    assert_eq!(findings(&report, Password, "alice"), [(Manual, false)]);
+    assert_eq!(
+        report["draft"]["source_links"],
+        json!([link("alice", "subject-1")])
+    );
+
+    // Links the export does not establish are never applied, and never stand in for a password.
+    let mut forged = input.clone();
+    forged["source_links"] = json!([link("alice", "subject-2"), link("bob", "subject-2"),
+        link("carol", "subject-3"), link("mallory", "subject-4"),
+        {"source":"elsewhere","username":"bob","subject":"subject-2"}]);
+    let report = convert(&forged);
+    assert_eq!(
+        report["draft"]["source_links"],
+        json!([link("bob", "subject-2")])
+    );
+    for (id, blocker) in [
+        (
+            "alice/upstream",
+            "alice/upstream: source link subject differs from the exported connection",
+        ),
+        (
+            "carol/upstream",
+            "carol/upstream: source link is not backed by an exported connection",
+        ),
+        (
+            "mallory/upstream",
+            "mallory/upstream: source link names no converted account",
+        ),
+        (
+            "bob/elsewhere",
+            "bob/elsewhere: source link names no applied source resolution",
+        ),
+    ] {
+        let found = findings(&report, SourceLink, id);
+        assert!(
+            !found.is_empty() && found.iter().all(|f| *f == (Manual, true)),
+            "{id}"
+        );
+        assert!(
+            report["blockers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(blocker)),
+            "{blocker}"
+        );
+    }
+    assert_eq!(findings(&report, Password, "alice"), [(Manual, true)]);
+    assert!(report["blockers"].as_array().unwrap().contains(&json!(
+        "alice: external/service identity requires explicit source or service-account migration"
+    )));
+    let mut unverified = input.clone();
+    unverified
+        .as_object_mut()
+        .unwrap()
+        .remove("user_source_connections");
+    let report = convert(&unverified);
+    assert_eq!(report["draft"]["source_links"], json!([]));
+    assert_eq!(findings(&report, SourceLink, "*"), [(Manual, true)]);
+    assert_eq!(
+        findings(&report, SourceLink, "alice/upstream"),
+        [(Manual, true)]
+    );
+    let mut merged = input.clone();
+    merged["user_source_connections"] =
+        json!([connection(7, "subject-1"), connection(8, "subject-1")]);
+    merged["source_links"] = json!([link("alice", "subject-1"), link("bob", "subject-1")]);
+    let report = convert(&merged);
+    assert_eq!(report["draft"]["source_links"], json!([]));
+    for id in ["alice/upstream", "bob/upstream"] {
+        assert!(
+            findings(&report, SourceLink, id).contains(&(Unsupported, true)),
+            "{id}"
+        );
+    }
+
+    // With every exported connection carried over, each upstream identity signs in to the
+    // migrated account it had in Authentik instead of provisioning a new one.
+    let mut ready = input;
+    ready["source_links"] = json!([link("alice", "subject-1"), link("bob", "subject-2")]);
+    let report = convert(&ready);
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    let manifest = serde_json::from_value(report["manifest"].clone()).unwrap();
+    let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+    f.core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan,
+                secrets: [
+                    ("env:BOB_PASSWORD".into(), PASSWORD.into()),
+                    ("env:CAROL_PASSWORD".into(), PASSWORD.into()),
+                    ("env:UPSTREAM_SECRET".into(), "source-client-secret".into()),
+                ]
+                .into(),
+                run_id: Some("migration-links".into()),
+            },
+        )
+        .unwrap();
+    assert!(f.core.login("alice".into(), PASSWORD.into(), None).is_err());
+    for (subject, id) in [("subject-1", "authentik-7"), ("subject-2", "authentik-8")] {
+        let start = upstream.start(&f, None);
+        upstream.callback(&f, &start, subject, json!({})).await;
+        assert_eq!(
+            upstream.finish(&f, &start, true).unwrap()["user"]["id"],
+            id,
+            "{subject}"
+        );
+    }
+}
+
+#[test]
+fn authentik_preflight_never_renames_merges_or_invents_identities() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let user = |pk: u64, username: &str, kind: &str, groups: &[&str]| {
+        json!({"pk":pk,"uid":format!("uid-{pk}"),"username":username,"name":username,"groups":groups,"attributes":{},
+            "type":kind,"is_active":true,"roles":[]})
+    };
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+        "users":[user(1, "alice", "internal", &["eng-a", "staff"]), user(2, "bob", "internal", &["eng-b"]),
+            user(3, "ak-outpost-1", "internal_service_account", &[]), user(4, "Jane Doe", "internal", &["staff"])],
+        "groups":[{"pk":"admins","name":"authentik Admins","parents":[],"is_superuser":true},
+            {"pk":"staff","name":"staff","parents":["admins"]},
+            {"pk":"eng-a","name":"engineering","parents":[]},{"pk":"eng-b","name":"engineering","parents":["staff"]}],
+        "providers":[],"applications":[],"policy_bindings":[],"sources":[],
+        "excluded_groups":["admins","gone"],
+        "passwords":{"alice":{"reference":"env:ALICE","version":"v1"},"bob":{"reference":"env:BOB","version":"v1"},
+            "ghost":{"reference":"env:GHOST","version":"v1"}},
+        "totp":{"Jane Doe":{"reference":"file:jane-totp","version":"v1"}},
+        "clients":{}});
+    let report =
+        riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap();
+    for (kind, id, expected) in [
+        // Deliberately excluded, and a stale exclusion that is not applied.
+        (Group, "authentik Admins", vec![(Manual, false)]),
+        (Group, "gone", vec![(Manual, true)]),
+        (Group, "staff", vec![(Convertible, false)]),
+        // Two exported groups share a name; neither absorbs the other's members.
+        (Group, "engineering", vec![(Unsupported, true)]),
+        // Authentik's outpost account is reported but never converted.
+        (User, "ak-outpost-1", vec![(Unsupported, false)]),
+        (User, "Jane Doe", vec![(Unsupported, true)]),
+        // Credentials for accounts that are not converted are never applied elsewhere.
+        (Password, "ghost", vec![(Manual, true)]),
+        (Totp, "Jane Doe", vec![(Manual, true)]),
+        (Credential, "static_tokens", vec![(Unsupported, false)]),
+        (Credential, "authenticators", vec![(Unsupported, false)]),
+        (Credential, "tokens", vec![(Unsupported, false)]),
+        // Every problem is named by its own finding, not by a whole-manifest failure.
+        (Manifest, "manifest", vec![]),
+    ] {
+        assert_eq!(findings(&report, kind, id), expected, "{kind:?} {id}");
+    }
+    assert!(findings(&report, Password, "ak-outpost-1").is_empty());
+    let draft = &report["draft"];
+    assert_eq!(
+        draft["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u["username"].clone())
+            .collect::<Vec<_>>(),
+        [json!("alice"), json!("bob")]
+    );
+    // Only staff survives: Bob reaches it through his unconverted child group, and the excluded
+    // ancestor is not flattened into anyone.
+    assert_eq!(
+        draft["groups"],
+        json!([{"name":"staff","members":["alice","bob"]}])
+    );
+    let mut unexcluded = input.clone();
+    unexcluded["excluded_groups"] = json!([]);
+    let report = riauth::migration::convert(serde_json::from_value(unexcluded).unwrap()).unwrap();
+    assert_eq!(
+        findings(&report, Group, "authentik Admins"),
+        [(Unsupported, true)]
+    );
+    assert!(report["blockers"].as_array().unwrap().contains(&json!(
+        "Group authentik Admins: name cannot be represented unchanged"
+    )));
+    let mut duplicate = input;
+    duplicate["users"][1]["pk"] = json!(1);
+    assert_eq!(
+        riauth::migration::convert(serde_json::from_value(duplicate).unwrap())
+            .unwrap_err()
+            .message,
+        "Duplicate exported user"
+    );
 }
 
 #[test]

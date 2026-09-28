@@ -2,6 +2,7 @@
 use crate::{
     claims,
     config::validate_server_url,
+    core::{validate_display, validate_email, validate_name},
     crypto,
     error::{Error, Result},
     model::ProviderSettings,
@@ -16,8 +17,19 @@ const MAX_GROUP_ANCESTORS: usize = 1024;
 #[derive(schemars::JsonSchema, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Import {
+    /// Explicit links to carry over. Each must match an exported connection in
+    /// `user_source_connections`; the converter never derives or rewrites a link.
     #[serde(default)]
     pub source_links: Vec<crate::source::LinkSpec>,
+    /// Complete export of `/api/v3/sources/user_connections/all/` (Authentik 2025.4 and later), or
+    /// of its `oauth/` and `saml/` lists combined. Required whenever a source resolution is applied
+    /// or `source_links` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_source_connections: Option<Value>,
+    /// Exported group IDs deliberately left out, such as Authentik's own administrator group.
+    /// Their members lose them, including in group claims.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub excluded_groups: BTreeSet<String>,
     #[serde(default)]
     pub totp: BTreeMap<String, PasswordReference>,
     #[serde(default)]
@@ -83,9 +95,13 @@ pub enum ItemKind {
     Totp,
     Passkey,
     Session,
+    /// Other credential classes, such as recovery tokens, app passwords and API tokens.
+    Credential,
     Subject,
+    Issuer,
     Group,
     Source,
+    SourceLink,
     Provider,
     AuthenticationFlow,
     PropertyMapping,
@@ -300,16 +316,349 @@ fn source_adapter(source: &crate::source::Source) -> &'static str {
         "OIDC"
     }
 }
-fn subject_source(mode: &str) -> Option<&'static str> {
+/// Exported value a supported subject mode copies, and whether Authentik could change it later.
+fn subject_source(mode: &str) -> Option<(&'static str, bool)> {
     Some(match mode {
-        "hashed_user_id" => "uid",
-        "user_id" => "numeric user ID",
-        "user_uuid" => "user UUID",
-        "user_username" => "username",
-        "user_email" => "email",
-        "user_upn" => "upn attribute (uid when absent)",
+        "hashed_user_id" => ("uid", false),
+        "user_id" => ("numeric user ID", false),
+        "user_uuid" => ("user UUID", false),
+        "user_username" => ("username", true),
+        "user_email" => ("email", true),
+        "user_upn" => ("upn attribute (uid when absent)", true),
         _ => return None,
     })
+}
+
+/// An exported account converted under its exported values.
+struct Account {
+    pk: String,
+    display_name: String,
+    email: Option<String>,
+}
+/// Accounts to convert, by username. riAuth never rewrites a username, name or email, so an account
+/// it cannot store unchanged is reported and left out, as are Authentik's internal service
+/// accounts, which back its own outposts.
+fn accounts(p: &mut Preflight, users: &[Value]) -> Result<BTreeMap<String, Account>> {
+    let mut accounts = BTreeMap::new();
+    let (mut pks, mut usernames) = (BTreeSet::new(), BTreeSet::new());
+    for user in users {
+        let username = field(user, "username")?;
+        let pk = identifier(&user["pk"])?;
+        if !pks.insert(pk.clone()) || !usernames.insert(username) {
+            return Err(Error::bad("Duplicate exported user"));
+        }
+        if user["type"] == "internal_service_account" {
+            p.add(ItemKind::User, username, Classification::Unsupported,
+                "Authentik manages this internal service account for its own outposts; it is not converted",
+                "Deploy riAuth outposts or agents for the integrations it served; its tokens never carry over");
+            continue;
+        }
+        let display_name = user["name"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(username)
+            .to_owned();
+        let email = user["email"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        if let Err(error) = validate_name(username)
+            .and_then(|_| validate_display(&display_name))
+            .and_then(|_| email.as_deref().map_or(Ok(()), validate_email))
+        {
+            p.add(ItemKind::User, username, Classification::Unsupported,
+                format!("riAuth cannot keep this account's username, name or email unchanged ({}); identities are never rewritten", error.message),
+                "Correct the account in Authentik before the final export, coordinating a username change with every relying party that stores it, or retire the account")
+                .block(format!("{username}: account cannot be represented unchanged"));
+            continue;
+        }
+        accounts.insert(
+            username.to_owned(),
+            Account {
+                pk,
+                display_name,
+                email,
+            },
+        );
+    }
+    Ok(accounts)
+}
+
+/// One exported user source connection: the owning user's ID, the source ID and the upstream
+/// identifier Authentik matched at sign-in.
+fn connection(row: &Value) -> Result<(String, String, String)> {
+    let source = if row["source"].is_object() {
+        identifier(&row["source"]["pk"])?
+    } else {
+        identifier(&row["source"])?
+    };
+    Ok((
+        identifier(&row["user"])?,
+        source,
+        field(row, "identifier")?.to_owned(),
+    ))
+}
+
+/// Carry over only links that an exported connection establishes. A link is never derived from an
+/// email, username or DN, moved to another subject, or attached to an account the export lacks.
+fn verify_links(
+    p: &mut Preflight,
+    input: &Import,
+    users: &[Value],
+    accounts: &BTreeMap<String, Account>,
+    applied: &BTreeMap<String, &crate::source::SourceSpec>,
+    exported_sources: &BTreeSet<String>,
+) -> Result<Vec<crate::source::LinkSpec>> {
+    let owners = users
+        .iter()
+        .map(|u| Ok((identifier(&u["pk"])?, field(u, "username")?)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let connections = input
+        .user_source_connections
+        .as_ref()
+        .map(|value| {
+            rows(value)?
+                .iter()
+                .map(|row| {
+                    let (user, source, identifier) = connection(row)?;
+                    let owner = owners.get(&user).ok_or_else(|| {
+                        Error::bad("Source connection references an unexported user")
+                    })?;
+                    if !exported_sources.contains(&source) {
+                        return Err(Error::bad(
+                            "Source connection references an unexported source",
+                        ));
+                    }
+                    Ok((owner.to_string(), source, identifier))
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?;
+    let unverifiable = "Export user_source_connections so every source link can be verified";
+    if connections.is_none() && (!applied.is_empty() || !input.source_links.is_empty()) {
+        p.add(ItemKind::SourceLink, "*", Classification::Manual,
+            "The bundle has no user_source_connections export, so existing links can be neither verified nor accounted for",
+            "Add the complete /api/v3/sources/user_connections/all/ export, or an empty array when no account has a connection")
+            .block(unverifiable);
+    }
+    let mut matched = Vec::new();
+    let mut seen = BTreeSet::new();
+    for link in &input.source_links {
+        if !seen.insert((&link.source, &link.username, &link.subject)) {
+            continue;
+        }
+        let id = format!("{}/{}", link.username, link.source);
+        let replaced = applied
+            .iter()
+            .filter(|(_, spec)| spec.source.id == link.source)
+            .map(|(pk, _)| pk.as_str())
+            .collect::<BTreeSet<_>>();
+        let (reason, action, blocker) = if replaced.is_empty() {
+            (
+                "The link names a riAuth source that no applied source resolution provides; it was not applied",
+                "Resolve the Authentik source it replaces in source_resolutions, or link the account after cutover",
+                format!("{id}: source link names no applied source resolution"),
+            )
+        } else if !accounts.contains_key(&link.username) {
+            (
+                "The link names an account that is not in the export or is not converted; it was not applied",
+                "Remove the link, or correct the account and export again",
+                format!("{id}: source link names no converted account"),
+            )
+        } else if let Some(connections) = &connections {
+            let exported = connections
+                .iter()
+                .filter(|(owner, source, _)| {
+                    owner == &link.username && replaced.contains(source.as_str())
+                })
+                .map(|(_, _, identifier)| identifier)
+                .collect::<Vec<_>>();
+            if exported.contains(&&link.subject) {
+                matched.push(link);
+                continue;
+            } else if exported.is_empty() {
+                (
+                    "No exported connection links this account to the source; riAuth never creates a link the export does not show",
+                    "Remove the link and have the user link the source after signing in, or export the connections again",
+                    format!("{id}: source link is not backed by an exported connection"),
+                )
+            } else {
+                (
+                    "The link's subject differs from the exported connection's identifier; riAuth never moves an upstream identity to another subject",
+                    "Use the exported identifier, or remove the link",
+                    format!("{id}: source link subject differs from the exported connection"),
+                )
+            }
+        } else {
+            (
+                "The link cannot be verified without the exported user source connections; it was not applied",
+                "Add the complete user source connection export",
+                unverifiable.to_owned(),
+            )
+        };
+        p.add(
+            ItemKind::SourceLink,
+            id,
+            Classification::Manual,
+            reason,
+            action,
+        )
+        .block(blocker);
+    }
+    let mut claims = BTreeMap::<(&str, &str), usize>::new();
+    for link in &matched {
+        *claims.entry((&link.source, &link.subject)).or_default() += 1;
+    }
+    let mut carried = Vec::new();
+    for link in matched {
+        let id = format!("{}/{}", link.username, link.source);
+        if link.subject.is_empty()
+            || link.subject.len() > 255
+            || link.subject.chars().any(char::is_control)
+        {
+            p.add(ItemKind::SourceLink, id, Classification::Unsupported,
+                "The exported identifier is empty, longer than 255 bytes or contains control characters, so it cannot be a riAuth source subject",
+                "Have the user link the source again after signing in")
+                .block(format!("{}/{}: exported identifier is not a valid source subject", link.username, link.source));
+        } else if claims[&(link.source.as_str(), link.subject.as_str())] > 1 {
+            p.add(ItemKind::SourceLink, id, Classification::Unsupported,
+                "The same upstream identity is connected to several exported accounts; riAuth never merges identities",
+                "Remove all but one of these connections in Authentik before the final export")
+                .block(format!("{}: one upstream identity is linked to several accounts", link.source));
+        } else if !applied
+            .values()
+            .any(|spec| spec.source.id == link.source && spec.source.enabled)
+        {
+            p.add(
+                ItemKind::SourceLink,
+                id,
+                Classification::Manual,
+                "The reviewed source is disabled, so the link cannot be applied",
+                "Enable the reviewed source, or remove the link",
+            )
+            .block(format!(
+                "{}/{}: source link needs an enabled source",
+                link.username, link.source
+            ));
+        } else {
+            p.add(
+                ItemKind::SourceLink,
+                id,
+                Classification::Exact,
+                "The exported Authentik connection is carried over unchanged as an explicit link",
+                "Rehearse this user's sign-in; the reviewed source must return the identifier Authentik stored as its subject",
+            );
+            carried.push(link.clone());
+        }
+    }
+    // Every exported connection is accounted for: one that is not carried over no longer reaches
+    // its account, and an auto-provisioning source would create a second account instead.
+    for (owner, source, identifier) in connections.iter().flatten() {
+        if !accounts.contains_key(owner) {
+            continue;
+        }
+        let Some(spec) = applied.get(source) else {
+            p.add(ItemKind::SourceLink, format!("{owner}/{source}"), Classification::Unsupported,
+                "The connection's source is not converted, so this upstream sign-in does not carry over",
+                "Resolve the source, or retire it before the final export");
+            continue;
+        };
+        if carried
+            .iter()
+            .any(|l| &l.username == owner && l.source == spec.source.id && &l.subject == identifier)
+        {
+            continue;
+        }
+        let id = format!("{owner}/{}", spec.source.id);
+        if spec.source.auto_provision {
+            p.add(ItemKind::SourceLink, &id, Classification::Manual,
+                "The exported connection is not carried over, and the reviewed source creates a separate account on the next upstream sign-in",
+                "Carry the connection over in source_links, or turn off auto_provision so the user links the source again after signing in")
+                .block(format!("{id}: exported connection is not linked and the source provisions accounts"));
+        } else {
+            p.add(ItemKind::SourceLink, id, Classification::Manual,
+                "The exported connection is not carried over; the upstream sign-in is refused until the user links the source again",
+                "Carry the connection over in source_links, or have the user link the source after signing in locally");
+        }
+    }
+    Ok(carried)
+}
+
+/// Whether relying parties keep the issuer Authentik published for a provider. Authentik derives it
+/// from its base URL: `application/o/<slug>/` below it in `per_provider` mode, and the base URL
+/// itself in `global` mode. The host is not in the export, so the reviewed issuer supplies it.
+fn classify_issuer(
+    p: &mut Preflight,
+    cid: &str,
+    provider: &Value,
+    application: Option<&str>,
+    reviewed: Option<&ClientResolution>,
+    target: &str,
+) {
+    let Some(resolution) = reviewed else {
+        p.add(ItemKind::Issuer, cid, Classification::Manual,
+            "Relying parties keep the exported issuer only through a reviewed resolution, which is missing",
+            "Add a clients entry with the exact issuer from this provider's discovery document")
+            .block(format!("{cid}: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients"));
+        return;
+    };
+    let issuer = resolution.issuer.as_str();
+    let path = url::Url::parse(issuer)
+        .map(|u| u.path().to_owned())
+        .unwrap_or_default();
+    let mode = provider["issuer_mode"].as_str();
+    let (matches, shape) = match (mode, application) {
+        (Some("per_provider"), Some(slug)) => {
+            let suffix = format!("/application/o/{slug}/");
+            (
+                path.ends_with(&suffix),
+                format!("a path ending in {suffix}"),
+            )
+        }
+        (Some("per_provider"), None) => {
+            p.add(ItemKind::Issuer, cid, Classification::Manual,
+                "Authentik publishes no issuer for a per-provider provider without an application, so no relying party can depend on one",
+                "Configure relying parties with the reviewed issuer's discovery document");
+            return;
+        }
+        (Some("global"), _) => (
+            issuer.ends_with('/') && !path.contains("/application/o/"),
+            "its base URL with a trailing slash".into(),
+        ),
+        (Some(other), _) => {
+            p.add(
+                ItemKind::Issuer,
+                cid,
+                Classification::Unsupported,
+                format!("Issuer mode {other} is not recognized"),
+                "Export the provider again from a supported Authentik version",
+            )
+            .block(format!("{cid}: unknown issuer mode {other}"));
+            return;
+        }
+        (None, _) => {
+            p.add(ItemKind::Issuer, cid, Classification::Manual,
+                "The export has no issuer_mode, so the reviewed issuer cannot be checked against the issuer Authentik publishes",
+                "Export the OAuth2 providers again; issuer_mode is part of each provider")
+                .block(format!("{cid}: export issuer_mode so the reviewed issuer can be checked"));
+            return;
+        }
+    };
+    let mode = mode.unwrap_or_default();
+    if !matches {
+        p.add(ItemKind::Issuer, cid, Classification::Manual,
+            format!("The reviewed issuer does not have the form Authentik publishes in {mode} mode ({shape}); relying parties would see a different issuer"),
+            "Copy the issuer from this provider's discovery document; changing the issuer needs an explicit relying-party account migration")
+            .block(format!("{cid}: reviewed issuer does not match the exported {mode} issuer"));
+    } else if issuer == target {
+        p.add(ItemKind::Issuer, cid, Classification::Exact,
+            format!("Tokens keep the issuer Authentik published in {mode} mode, which is riAuth's own issuer"),
+            "Check discovery and token validation from every relying party before cutover");
+    } else {
+        p.add(ItemKind::Issuer, cid, Classification::Exact,
+            format!("Tokens keep the issuer Authentik published in {mode} mode as this client's own riAuth issuer"),
+            format!("Route the issuer's host to riAuth and check {}/.well-known/openid-configuration from every relying party before cutover", issuer.trim_end_matches('/')));
+    }
 }
 
 pub fn convert(input: Import) -> Result<Value> {
@@ -325,10 +674,11 @@ pub fn convert(input: Import) -> Result<Value> {
     let mut p = Preflight::default();
     let mut manifest = Manifest {
         api_version: "riauth/v1".into(),
-        source_links: input.source_links.clone(),
         ..Default::default()
     };
     let mut exported_sources = BTreeSet::new();
+    // Exported source ID -> the reviewed riAuth source that replaces it.
+    let mut applied = BTreeMap::new();
     for source in rows(&input.sources)? {
         let id = identifier(&source["pk"])?;
         exported_sources.insert(id.clone());
@@ -369,12 +719,13 @@ pub fn convert(input: Import) -> Result<Value> {
                 }
                 spec.source.validate()?;
                 manifest.sources.push(spec.clone());
+                applied.insert(id.clone(), spec);
                 let matching = source["user_matching_mode"]
                     .as_str()
                     .unwrap_or("unspecified");
                 p.add(ItemKind::Source, &id, Classification::Manual,
                     format!("Exported {family} source is replaced by reviewed riAuth {supplied} source {}; its Authentik flows, policies and user matching mode ({matching}) are not translated", spec.source.id),
-                    "Link upstream subjects explicitly in source_links and rehearse sign-in; riAuth never links accounts by email or username");
+                    "Carry over its exported connections explicitly in source_links, make sure the reviewed source reads the identifier Authentik stored for them, and rehearse sign-in; riAuth never links accounts by email or username");
             }
             _ => {
                 if family == "ldap" {
@@ -419,6 +770,14 @@ pub fn convert(input: Import) -> Result<Value> {
     }
     let mut group_names = BTreeMap::new();
     let mut parents = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut name_uses = BTreeMap::<&str, usize>::new();
+    for group in groups {
+        if !input.excluded_groups.contains(&identifier(&group["pk"])?) {
+            *name_uses.entry(field(group, "name")?).or_default() += 1;
+        }
+    }
+    // Only these groups receive members; a group is never converted under another name.
+    let mut converted_groups = BTreeSet::new();
     for group in groups {
         let id = identifier(&group["pk"])?;
         let name = field(group, "name")?.to_owned();
@@ -433,7 +792,35 @@ pub fn convert(input: Import) -> Result<Value> {
         if !group["parent"].is_null() {
             direct.insert(identifier(&group["parent"])?);
         }
-        if direct.is_empty() {
+        let flattened = !direct.is_empty();
+        if flattened {
+            parents.insert(id.clone(), direct);
+        }
+        if input.excluded_groups.contains(&id) {
+            p.add(ItemKind::Group, &name, Classification::Manual,
+                "The group is deliberately excluded; its members lose it, including in group claims and access policies",
+                "Confirm that no relying party or reviewed policy still depends on this group");
+            continue;
+        }
+        if let Err(error) = validate_name(&name) {
+            p.add(ItemKind::Group, &name, Classification::Unsupported,
+                format!("riAuth cannot keep this group name unchanged ({}); group names are never rewritten", error.message),
+                "Rename it in Authentik and in every relying party that reads it before the final export, or list it in excluded_groups")
+                .block(format!("Group {name}: name cannot be represented unchanged"));
+            continue;
+        }
+        if name_uses[name.as_str()] > 1 {
+            p.add(ItemKind::Group, &name, Classification::Unsupported,
+                "Several exported groups share this name; riAuth never merges groups",
+                "Rename all but one of them in Authentik before the final export, or list the others in excluded_groups")
+                .block(format!("Group {name}: several exported groups share this name"));
+            continue;
+        }
+        if flattened {
+            p.add(ItemKind::Group, &name, Classification::Convertible,
+                "Parent groups are flattened into explicit memberships, so members also carry every ancestor group, including in group claims where Authentik's default mapping listed only direct groups; later hierarchy changes do not propagate",
+                "Review flattened memberships and group claims");
+        } else {
             p.add(
                 ItemKind::Group,
                 &name,
@@ -441,11 +828,6 @@ pub fn convert(input: Import) -> Result<Value> {
                 "Group name and direct memberships are copied",
                 "None",
             );
-        } else {
-            p.add(ItemKind::Group, &name, Classification::Convertible,
-                "Parent groups are flattened into explicit memberships; later hierarchy changes do not propagate",
-                "Review flattened memberships and group claims");
-            parents.insert(id, direct);
         }
         if group["attributes"]
             .as_object()
@@ -465,10 +847,25 @@ pub fn convert(input: Import) -> Result<Value> {
                 "Authentik superuser status and roles granted through this group are not promoted",
                 "Grant riAuth administration or agent permissions explicitly if members still need them");
         }
+        converted_groups.insert(id);
         manifest.groups.push(GroupSpec {
             name,
             members: BTreeSet::new(),
         });
+    }
+    for id in &input.excluded_groups {
+        if !group_names.contains_key(id) {
+            p.add(
+                ItemKind::Group,
+                id,
+                Classification::Manual,
+                "The exclusion names a group that is not in the export; it was not applied",
+                "Remove the stale entry or export the groups again",
+            )
+            .block(format!(
+                "Group {id}: excluded_groups entry does not match an exported group"
+            ));
+        }
     }
     // Every exported group is walked, so a cycle fails even where no user reaches it.
     let ancestors = group_names
@@ -476,6 +873,7 @@ pub fn convert(input: Import) -> Result<Value> {
         .map(|id| Ok((id.as_str(), group_ancestors(&parents, id)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
     let mut subject_modes = BTreeMap::new();
+    let mut client_issuers = Vec::new();
     let mut exported_subjects = BTreeMap::<String, Vec<String>>::new();
     let mut resolved_bindings = BTreeSet::new();
     for provider in providers {
@@ -489,12 +887,8 @@ pub fn convert(input: Import) -> Result<Value> {
             validate_server_url(&resolution.issuer)
                 .map_err(|_| Error::bad("Invalid reviewed provider issuer"))?;
             p.add(ItemKind::Provider, &cid, Classification::Manual,
-                if resolution.issuer == input.issuer {
-                    "Client uses the target issuer named in the reviewed resolution".to_owned()
-                } else {
-                    format!("Client keeps the reviewed per-provider issuer {}", resolution.issuer)
-                },
-                "Verify every relying party's discovery and token validation against this issuer before cutover");
+                "A reviewed client resolution supplies the issuer, scopes, claims, policies and authentication requirements",
+                "Verify every relying party's discovery and token validation against the converted client before cutover");
         } else {
             p.add(ItemKind::Provider, &cid, Classification::Manual,
                 "Exported OAuth2/OIDC provider has no reviewed client resolution",
@@ -528,7 +922,7 @@ pub fn convert(input: Import) -> Result<Value> {
             }
             let item = p.add(ItemKind::PropertyMapping, id, Classification::Manual,
                 "Mapping expressions are never executed or assumed equivalent",
-                "Translate the mapping into reviewed declarative claim settings and list its ID in translated_mapping_ids");
+                "Translate the mapping into reviewed declarative claim settings and list its ID in translated_mapping_ids; a mapping that returns sub cannot be translated, so its relying party needs an explicit account migration");
             if !resolution.translated_mapping_ids.contains(mapping) {
                 item.block(&mapping_blocker);
             }
@@ -631,6 +1025,14 @@ pub fn convert(input: Import) -> Result<Value> {
                 "Review the portal entry");
         }
         settings.issuer = (resolution.issuer != input.issuer).then(|| resolution.issuer.clone());
+        classify_issuer(
+            &mut p,
+            &cid,
+            provider,
+            application.and_then(|a| a["slug"].as_str()),
+            reviewed,
+            &input.issuer,
+        );
         // Authentik exports `grant_types` from 2026.5; older exports have no grant inventory.
         let legacy_grants = provider["grant_types"].is_null();
         let exported_grants = if legacy_grants {
@@ -809,25 +1211,41 @@ pub fn convert(input: Import) -> Result<Value> {
             )
             .block(format!("{cid}: {}", error.message));
         }
+        // The client ID is the relying party's registration; it is never rewritten.
+        let representable = validate_name(&cid).and_then(|_| validate_display(&client.name));
+        if let Err(error) = &representable {
+            p.add(ItemKind::Provider, &cid, Classification::Unsupported,
+                format!("riAuth cannot keep this client ID or name unchanged ({}); the relying party would need a new registration", error.message),
+                "Change it in Authentik and in the relying party before the final export, or register the relying party again in riAuth")
+                .block(format!("{cid}: client cannot be represented unchanged"));
+        }
+        let converted = reviewed.is_some() && representable.is_ok();
         let mode = field(provider, "sub_mode")?.to_owned();
-        if let Some(source) = subject_source(&mode) {
-            p.add(
-                ItemKind::Subject,
-                &cid,
-                Classification::Exact,
-                format!("Subjects are copied from the exported {source}"),
-                "Compare sample subjects with the relying party's stored account IDs",
-            );
+        if let Some((source, mutable)) = subject_source(&mode) {
+            if mutable {
+                p.add(ItemKind::Subject, &cid, Classification::Convertible,
+                    format!("Subjects are copied from the exported {source} and then stay fixed; Authentik derived them at each sign-in, so a later change no longer changes the subject"),
+                    "Compare sample subjects with the relying party's stored account IDs; a scope mapping that returns sub overrides the subject mode");
+            } else {
+                p.add(
+                    ItemKind::Subject,
+                    &cid,
+                    Classification::Exact,
+                    format!("Subjects are copied from the exported {source}"),
+                    "Compare sample subjects with the relying party's stored account IDs; a scope mapping that returns sub overrides the subject mode",
+                );
+            }
         } else {
             p.add(ItemKind::Subject, &cid, Classification::Unsupported,
                 format!("Subject mode {mode} is not supported"),
                 "Choose a supported subject mode and export again, or plan an explicit relying-party account migration")
                 .block(format!("{cid}: unsupported subject mode {mode}"));
         }
-        subject_modes.insert(cid.clone(), (mode, reviewed.is_some()));
-        if reviewed.is_none() {
+        subject_modes.insert(cid.clone(), (mode, converted));
+        if !converted {
             continue;
         }
+        client_issuers.push((cid.clone(), resolution.issuer.clone()));
         manifest.clients.push(ClientSpec {
             client_id: cid,
             name: client.name,
@@ -842,6 +1260,28 @@ pub fn convert(input: Import) -> Result<Value> {
             secret_ref: resolution.secret_ref.clone(),
             secret_version: resolution.secret_version.clone(),
         });
+    }
+    // riAuth publishes an issuer other than its own for one client only, at that issuer's own
+    // discovery URL, so a shared or colliding issuer would change for some relying party.
+    let mut issuer_uses = BTreeMap::<&str, usize>::new();
+    for (_, issuer) in &client_issuers {
+        *issuer_uses.entry(issuer).or_default() += 1;
+    }
+    for (cid, issuer) in &client_issuers {
+        if issuer == &input.issuer {
+            continue;
+        }
+        if issuer.trim_end_matches('/') == input.issuer.trim_end_matches('/') {
+            p.add(ItemKind::Issuer, cid, Classification::Unsupported,
+                format!("The issuer differs from riAuth's issuer {} only by a trailing slash, and both cannot be published at one discovery URL", input.issuer),
+                format!("Initialize riAuth with the issuer {issuer} exactly, or migrate the relying parties explicitly"))
+                .block(format!("{cid}: issuer collides with riAuth's own issuer"));
+        } else if issuer_uses[issuer.as_str()] > 1 {
+            p.add(ItemKind::Issuer, cid, Classification::Unsupported,
+                format!("{} providers keep the issuer {issuer}, but riAuth publishes an issuer other than its own for one client only", issuer_uses[issuer.as_str()]),
+                format!("Initialize riAuth with the issuer {issuer} so these providers keep it as riAuth's own issuer, or migrate their relying parties explicitly"))
+                .block(format!("Issuer {issuer}: several providers share it, but it is not riAuth's issuer"));
+        }
     }
     for cid in input.clients.keys() {
         if !subject_modes.contains_key(cid) {
@@ -912,11 +1352,37 @@ pub fn convert(input: Import) -> Result<Value> {
                 .block(format!("Application {slug} has provisioning providers requiring separate migration"));
         }
     }
+    let accounts = accounts(&mut p, users)?;
+    manifest.source_links = verify_links(
+        &mut p,
+        &input,
+        users,
+        &accounts,
+        &applied,
+        &exported_sources,
+    )?;
+    for (entries, kind, name) in [
+        (&input.passwords, ItemKind::Password, "passwords"),
+        (&input.totp, ItemKind::Totp, "totp"),
+    ] {
+        for username in entries.keys() {
+            if !accounts.contains_key(username) {
+                p.add(kind, username, Classification::Manual,
+                    "The entry names an account that is not in the export or is not converted; it was not applied",
+                    "Remove the stale entry or export the users again")
+                    .block(format!("{username}: {name} entry does not match a converted account"));
+            }
+        }
+    }
     for user in users {
         let username = field(user, "username")?.to_owned();
+        let Some(account) = accounts.get(&username) else {
+            continue;
+        };
         let password = input.passwords.get(&username);
-        let external =
-            user["type"] == "external" && input.source_links.iter().any(|l| l.username == username);
+        // Only a verified link lets an external account sign in without a local password.
+        let external = user["type"] == "external"
+            && manifest.source_links.iter().any(|l| l.username == username);
         p.add(ItemKind::User, &username, Classification::Convertible,
             "The local ID becomes authentik-<pk>; name, email, attributes, active state and flattened memberships are copied; email_verified starts false",
             "Review profile data and email verification");
@@ -948,7 +1414,7 @@ pub fn convert(input: Import) -> Result<Value> {
         {
             p.add(ItemKind::User, &username, Classification::Manual,
                 format!("Authentik {kind} accounts are not converted as ordinary local users"),
-                "Link the user to a reviewed source in source_links, or recreate it as a riAuth service client or agent")
+                "Carry the account's exported source connection over in source_links, or recreate it as a riAuth service client or agent")
                 .block(format!("{username}: external/service identity requires explicit source or service-account migration"));
         }
         if user["roles"].as_array().is_some_and(|v| !v.is_empty()) {
@@ -975,6 +1441,9 @@ pub fn convert(input: Import) -> Result<Value> {
             let name = group_names
                 .get(&id)
                 .ok_or_else(|| Error::bad("User references unexported group"))?;
+            if !converted_groups.contains(&id) {
+                continue;
+            }
             manifest
                 .groups
                 .iter_mut()
@@ -1018,22 +1487,14 @@ pub fn convert(input: Import) -> Result<Value> {
                 subjects.insert(cid.clone(), subject);
             }
         }
-        let email = user["email"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(String::from);
         manifest.users.push(UserSpec {
             password_disabled: external && password.is_none(),
             totp_ref: input.totp.get(&username).map(|t| t.reference.clone()),
             totp_version: input.totp.get(&username).map(|t| t.version.clone()),
-            id: Some(format!("authentik-{}", identifier(&user["pk"])?)),
+            id: Some(format!("authentik-{}", account.pk)),
             username: username.clone(),
-            display_name: user["name"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .unwrap_or(&username)
-                .into(),
-            email,
+            display_name: account.display_name.clone(),
+            email: account.email.clone(),
             email_verified: false,
             enabled: user["is_active"] == true,
             admin: false,
@@ -1076,6 +1537,20 @@ pub fn convert(input: Import) -> Result<Value> {
         "TOTP devices are not in the API export; only users listed in totp keep their factor",
         "Supply TOTP references from an authorized offline export, or have users enroll again",
     );
+    // Credentials the export cannot carry are listed, so a report never implies they move.
+    p.add(
+        ItemKind::Credential,
+        "static_tokens",
+        Classification::Unsupported,
+        "Authentik static recovery tokens are not in the API export, and riAuth accepts only recovery codes it issued",
+        "Users generate new recovery codes in riAuth after signing in",
+    );
+    p.add(ItemKind::Credential, "authenticators", Classification::Unsupported,
+        "Duo, SMS, email and other Authentik authenticator devices are not exported and have no riAuth equivalent",
+        "Users enroll a passkey or TOTP factor in riAuth; plan this before moving require_mfa applications");
+    p.add(ItemKind::Credential, "tokens", Classification::Unsupported,
+        "Authentik app passwords, API tokens and upstream tokens stored with source connections are not imported, and riAuth accepts only credentials it issued",
+        "Issue riAuth agent credentials for automation and replace app-password sign-ins before cutover");
     if let Err(error) = manifest.validate() {
         p.add(
             ItemKind::Manifest,
@@ -1164,8 +1639,17 @@ fn rebuild_action(kind: ItemKind) -> &'static str {
         ItemKind::Session => {
             "Users sign in again; plan relying-party sessions and offline token validators"
         }
+        ItemKind::Credential => {
+            "Have users enroll riAuth factors and replace automation credentials with riAuth agents; this system's credentials are not converted"
+        }
         ItemKind::Subject => {
             "Record each relying party's subject contract; riAuth never derives another issuer's subjects, and a changed subject needs an explicit relying-party account migration"
+        }
+        ItemKind::Issuer => {
+            "Record each relying party's issuer; it is kept only by serving that exact issuer from riAuth, and a changed issuer needs an explicit relying-party account migration"
+        }
+        ItemKind::SourceLink => {
+            "Link each upstream identity through reviewed source_links with its exact subject, or have the user link it after signing in; accounts are never linked by email, username or DN"
         }
         ItemKind::Group => {
             "Recreate the group and its memberships in a reviewed manifest or through a riAuth directory"

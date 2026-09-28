@@ -63,6 +63,29 @@
   by `Core::backup_stream`; the server and CLI still create v2 archives.
   Restores and rollbacks now sign every user out.
 
+# Unreleased migration identity continuity (G02)
+
+- The Authentik preflight and `import-authentik --out` now classify issuer and
+  source-link continuity. A reviewed issuer must match the exported
+  `issuer_mode` and application slug. Providers must therefore export
+  `issuer_mode`, and several providers that share one non-riAuth issuer block.
+- `source_links` are applied only when the new `user_source_connections` export
+  shows the same connection. That export is required once a source resolution
+  is applied or links are supplied. An exported connection that is not carried
+  over blocks when the source auto-provisions accounts. Only a carried link
+  disables an external account's local password.
+- Accounts, groups and clients that riAuth cannot store unchanged, and groups
+  that share a name, now get their own blocking findings and stay out of the
+  draft, instead of failing manifest validation. The new `excluded_groups` input
+  leaves groups such as `authentik Admins` out deliberately. Authentik's internal
+  service accounts are reported and not converted. Stale `passwords` and `totp`
+  entries block.
+- Username, email and UPN subjects are now classified as convertible, because
+  they stay fixed after import. New finding kinds `issuer`, `source_link` and
+  `credential` report issuer continuity, links, and credentials that never move.
+  Inventories can declare these kinds, and they can no longer be used as a
+  `source_kind`.
+
 # Unreleased dependency refresh
 
 - Updated direct Rust dependencies to their current stable releases, including
