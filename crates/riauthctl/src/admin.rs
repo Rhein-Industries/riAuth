@@ -85,18 +85,20 @@ pub(crate) struct ListOptions {
 #[derive(Subcommand)]
 pub(crate) enum GroupCommand {
     /// List groups visible to this principal.
-    List,
-    Create {
-        name: String,
+    List {
+        #[command(flatten)]
+        page: ListOptions,
     },
-    AddMember {
-        group: String,
-        username: String,
-    },
-    RemoveMember {
-        group: String,
-        username: String,
-    },
+    /// Read one group with exact group.read authority.
+    Get { name: String },
+    /// Check whether a named user belongs to a group; requires exact group.read and user.read.
+    HasMember { group: String, username: String },
+    /// Create an empty group.
+    Create { name: String },
+    /// Add a named user to a group using group.members authority.
+    AddMember { group: String, username: String },
+    /// Remove a named user from a group using group.members authority.
+    RemoveMember { group: String, username: String },
 }
 
 #[derive(Subcommand)]
@@ -314,10 +316,28 @@ pub(crate) async fn group(
     options: &MutationOptions<'_>,
 ) -> Result<Value> {
     match command {
-        GroupCommand::List => {
-            remote
-                .authenticated(Method::GET, "/api/groups", None::<&()>)
-                .await
+        GroupCommand::List { page } => list(remote, "groups", "/api/groups", page).await,
+        GroupCommand::Get { name } => get(remote, "group", &name, "name").await,
+        GroupCommand::HasMember { group, username } => {
+            let group_view = get(remote, "group", &group, "name").await?;
+            let user_view = get(remote, "user", &username, "username").await?;
+            let user_id = user_view
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .context("User response is missing an ID")?;
+            let members = group_view
+                .get("members")
+                .and_then(Value::as_array)
+                .context("Group response is missing members")?;
+            if members.iter().any(|member| !member.is_string()) {
+                bail!("Group response has an invalid member ID");
+            }
+            Ok(json!({
+                "group": group,
+                "username": username,
+                "member": members.iter().any(|member| member.as_str() == Some(user_id)),
+            }))
         }
         GroupCommand::Create { name } => {
             mutate(

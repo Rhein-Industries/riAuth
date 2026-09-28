@@ -13,6 +13,7 @@ riauthctl --server https://id.example.com inventory users --limit 100
 riauthctl --server https://id.example.com user list
 riauthctl --server https://id.example.com user get alice
 riauthctl --server https://id.example.com group list
+riauthctl --server https://id.example.com group get operators
 riauthctl --server https://id.example.com client list
 riauthctl --server https://id.example.com client get dashboard
 riauthctl --server https://id.example.com session list
@@ -38,6 +39,8 @@ riauthctl --server https://id.example.com user disable alice
 riauthctl --server https://id.example.com user revoke-sessions alice
 riauthctl --server https://id.example.com user list --filter ali --limit 100
 riauthctl --server https://id.example.com group create operators
+riauthctl --server https://id.example.com group list --filter oper --limit 100
+riauthctl --server https://id.example.com group has-member operators alice
 riauthctl --server https://id.example.com group add-member operators alice
 riauthctl --server https://id.example.com group remove-member operators alice
 riauthctl --server https://id.example.com client create dashboard --redirect-uri https://dashboard.example.com/callback
@@ -49,7 +52,7 @@ riauthctl --server https://id.example.com client rotate-secret worker --secret-f
 riauthctl --server https://id.example.com session revoke SESSION_ID
 ```
 
-`user get` and `client get` use `/api/resources` with exact resource read permission. Plain `user list` and `client list` retain the existing array response from `/api/users` and `/api/clients`. Adding `--filter`, `--limit`, or `--after` uses the bounded `/api/inventory` page response (`items`, `next_cursor`, `revision`); filters match case-sensitive name substrings. Continue a page with `--after` and the same filter. The server filters every read by the caller's authority.
+`user get`, `group get`, and `client get` use `/api/resources` with exact resource read permission. Plain `user list`, `group list`, and `client list` retain the existing array response from `/api/users`, `/api/groups`, and `/api/clients`. Adding `--filter`, `--limit`, or `--after` uses the bounded `/api/inventory` page response (`items`, `next_cursor`, `revision`); filters match case-sensitive name substrings. Continue a page with `--after` and the same filter. The server filters every read by the caller's authority. Group reads return member IDs as stored by the server. `group has-member GROUP USERNAME` checks the exact group and user resources, so it requires both `group.read` and `user.read`; it returns a `member` boolean only after both reads succeed.
 
 Each direct user, group, or client mutation sends a quoted `If-Match` configuration revision and an `Idempotency-Key`. By default the client reads `/api/state/revision` and generates a fresh key. Use `--if-revision N` when the caller has a known revision or lacks `state.read` permission. Supply `--idempotency-key KEY` to retry the **same command and body** after an uncertain result; the server retains a matching receipt for 24 hours. `--run-id` adds audit correlation. `user disable` also requests session revocation through the shared user management writer; `user revoke-sessions` leaves the enabled state alone. `client disable` uses the shared client writer, including its dependent-grant revocation. Client creation uses the usual interactive scopes by default, or `api` for a service client. `--settings-file` supplies a complete ProviderSettings JSON object; on update it replaces the complete settings object. The server applies all client type and setting rules.
 

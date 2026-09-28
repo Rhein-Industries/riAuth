@@ -1237,6 +1237,148 @@ fn routine_admin_commands_use_conditional_management_routes_and_private_secrets(
 }
 
 #[test]
+fn groups_use_exact_reads_and_conditional_membership_writes() {
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => login_reply("ri_session_groups"),
+        "/api/groups" if request.method == "GET" => {
+            Reply::json("[{\"name\":\"operators\",\"members\":[\"user-alice\"]}]")
+        }
+        "/api/groups" if request.method == "POST" => {
+            Reply::json("{\"name\":\"new-group\",\"members\":[]}")
+        }
+        "/api/resources/group/operators" => {
+            Reply::json("{\"name\":\"operators\",\"members\":[\"user-alice\"]}")
+        }
+        "/api/resources/group/restricted" => Reply {
+            status: "403 Forbidden",
+            headers: Vec::new(),
+            body: "{\"error\":\"permission_denied\",\"description\":\"private server detail\"}"
+                .into(),
+        },
+        "/api/resources/user/alice" => {
+            Reply::json("{\"username\":\"alice\",\"id\":\"user-alice\"}")
+        }
+        "/api/resources/user/bob" => Reply::json("{\"username\":\"bob\",\"id\":\"user-bob\"}"),
+        target if target.starts_with("/api/inventory/groups?") => Reply::json(
+            "{\"items\":[{\"name\":\"operators\",\"members\":[\"user-alice\"]}],\"next_cursor\":null,\"revision\":13}",
+        ),
+        "/api/groups/operators/members/alice" => {
+            Reply::json("{\"name\":\"operators\",\"members\":[\"user-alice\"]}")
+        }
+        _ => Reply::error("{\"error\":\"invalid_request\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("admin-password\n"),
+    ));
+
+    let plain = run(&server.origin, &session, &["group", "list"], None);
+    assert_ok(&plain);
+    let plain: serde_json::Value = serde_json::from_slice(&plain.stdout).unwrap();
+    assert_eq!(plain["data"][0]["name"], "operators");
+    let page = run(
+        &server.origin,
+        &session,
+        &["group", "list", "--filter", "oper", "--limit", "2"],
+        None,
+    );
+    assert_ok(&page);
+    let page: serde_json::Value = serde_json::from_slice(&page.stdout).unwrap();
+    assert_eq!(page["data"]["items"][0]["name"], "operators");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["group", "get", "operators"],
+        None,
+    ));
+    for (username, expected) in [("alice", true), ("bob", false)] {
+        let result = run(
+            &server.origin,
+            &session,
+            &["group", "has-member", "operators", username],
+            None,
+        );
+        assert_ok(&result);
+        let result: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(result["data"]["member"], expected);
+    }
+
+    let user_reads_before = server
+        .requests()
+        .iter()
+        .filter(|request| request.target == "/api/resources/user/alice")
+        .count();
+    let denied = run(
+        &server.origin,
+        &session,
+        &["group", "has-member", "restricted", "alice"],
+        None,
+    );
+    assert!(!denied.status.success());
+    assert!(output_text(&denied).contains("HTTP 403 permission_denied"));
+    assert!(!output_text(&denied).contains("private server detail"));
+    assert_eq!(
+        server
+            .requests()
+            .iter()
+            .filter(|request| request.target == "/api/resources/user/alice")
+            .count(),
+        user_reads_before
+    );
+
+    for (command, key) in [
+        (vec!["group", "create", "new-group"], "group-create"),
+        (
+            vec!["group", "add-member", "operators", "alice"],
+            "group-add",
+        ),
+        (
+            vec!["group", "remove-member", "operators", "alice"],
+            "group-remove",
+        ),
+    ] {
+        let mut args = vec!["--if-revision", "13", "--idempotency-key", key];
+        args.extend(command);
+        assert_ok(&run(&server.origin, &session, &args, None));
+    }
+    let requests = server.requests();
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.target == "/api/inventory/groups?limit=2&filter=oper")
+    );
+    let writes: Vec<_> = requests
+        .iter()
+        .filter(|request| {
+            matches!(request.method.as_str(), "POST" | "PUT" | "DELETE")
+                && request.target != "/api/login"
+        })
+        .collect();
+    assert_eq!(writes.len(), 3);
+    for (write, key) in writes
+        .iter()
+        .zip(["group-create", "group-add", "group-remove"])
+    {
+        assert_eq!(write.header("if-match"), Some("\"13\""));
+        assert_eq!(write.header("idempotency-key"), Some(key));
+        assert_eq!(
+            write.header("authorization"),
+            Some("Bearer ri_session_groups")
+        );
+    }
+    assert!(
+        !requests
+            .iter()
+            .any(|request| request.target == "/api/state/revision")
+    );
+}
+
+#[test]
 fn approval_browser_request_preserves_transaction_and_uses_fresh_session() {
     const TRANSACTION: &str = "ri_auth_bound_sentinel";
     const PASSWORD: &str = "fresh-approval-password";
