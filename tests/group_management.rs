@@ -77,7 +77,7 @@ fn scim_and_direct_group_writes_preserve_live_membership_and_tombstones() {
 
     let at = revision(&f);
     f.core
-        .scim_write(&token, "Groups", Some(&group_id), input, false)
+        .scim_write(&token, "Groups", Some(&group_id), input.clone(), false)
         .unwrap();
     assert_eq!(revision(&f), at);
     f.core
@@ -88,6 +88,28 @@ fn scim_and_direct_group_writes_preserve_live_membership_and_tombstones() {
         .group_member(&f.admin, "managed", "local", true)
         .unwrap();
     assert_eq!(revision(&f), at);
+
+    let at = revision(&f);
+    f.core
+        .scim_write(&token, "Groups", Some(&group_id), input.clone(), false)
+        .unwrap();
+    assert_eq!(revision(&f), at);
+    assert_eq!(
+        group(&f, "managed").members,
+        [local_id.clone(), remote_local_id.clone()].into()
+    );
+    let empty = json!({"schemas":[scim::GROUP],"displayName":"managed","members":[]});
+    f.core
+        .scim_write(&token, "Groups", Some(&group_id), empty, false)
+        .unwrap();
+    assert_eq!(group(&f, "managed").members, [local_id.clone()].into());
+    f.core
+        .scim_write(&token, "Groups", Some(&group_id), input, false)
+        .unwrap();
+    assert_eq!(
+        group(&f, "managed").members,
+        [local_id.clone(), remote_local_id.clone()].into()
+    );
 
     let metadata = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"tag"}]});
     f.core
@@ -113,10 +135,19 @@ fn scim_and_direct_group_writes_preserve_live_membership_and_tombstones() {
     f.core
         .scim_write(&token, "Groups", Some(&group_id), remove, true)
         .unwrap();
-    assert_eq!(group(&f, "managed").members, [local_id].into());
+    assert_eq!(group(&f, "managed").members, [local_id.clone()].into());
+
+    let add = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"add","path":"members","value":[{"value":remote_id}]}]});
+    f.core
+        .scim_write(&token, "Groups", Some(&group_id), add, true)
+        .unwrap();
+    assert_eq!(
+        group(&f, "managed").members,
+        [local_id.clone(), remote_local_id].into()
+    );
 
     f.core.scim_delete(&token, "Groups", &group_id).unwrap();
-    assert!(group(&f, "managed").members.is_empty());
+    assert_eq!(group(&f, "managed").members, [local_id].into());
     assert!(f.core.scim_get(&token, "Groups", &group_id).is_err());
     let duplicate = json!({"schemas":[scim::GROUP],"displayName":"managed"});
     assert_eq!(

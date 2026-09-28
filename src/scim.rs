@@ -177,6 +177,26 @@ fn require(actor: &Principal, record: &Record, action: &str) -> Result<()> {
         &format!("{kind}/{}", name(record)),
     )
 }
+fn owner_scoped_group_members(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    group_name: &str,
+    mut requested: BTreeSet<String>,
+) -> Result<BTreeSet<String>> {
+    let current = tx
+        .get::<Group>("groups", group_name)?
+        .ok_or_else(|| Error::missing("Group not found"))?;
+    // Group edges have no source tag. Live SCIM User records owned by this
+    // operator are the ownership boundary; preserve all other members.
+    let owned_members: BTreeSet<_> = tx
+        .list::<Record>("scim_users")?
+        .into_iter()
+        .filter(|(_, user)| !user.deleted && user.owner == actor.id)
+        .map(|(_, user)| user.local_id)
+        .collect();
+    requested.extend(current.members.difference(&owned_members).cloned());
+    Ok(requested)
+}
 fn normalize(mut value: Value) -> Result<Value> {
     let map = value
         .as_object_mut()
@@ -516,19 +536,8 @@ impl Core {
                         }
                         public.push(json!({"value":id,"display":name(&member)}));
                     }
-                    if patch {
-                        // A SCIM PATCH changes only this owner's live SCIM
-                        // memberships; direct and connector members survive.
-                        let current = tx
-                            .get::<Group>("groups", &label)?
-                            .ok_or_else(|| Error::missing("Group not found"))?;
-                        let owned_members: BTreeSet<_> = tx
-                            .list::<Record>("scim_users")?
-                            .into_iter()
-                            .filter(|(_, user)| !user.deleted && user.owner == actor.id)
-                            .map(|(_, user)| user.local_id)
-                            .collect();
-                        members.extend(current.members.difference(&owned_members).cloned());
+                    if existing.is_some() {
+                        members = owner_scoped_group_members(tx, &actor, &label, members)?;
                     }
                     if members.len() > 1000 {
                         return Err(Error::bad("Too many group members"));
@@ -608,11 +617,13 @@ impl Core {
                 }
             } else {
                 require(&actor, &record, "members")?;
+                let members =
+                    owner_scoped_group_members(tx, &actor, &record.local_id, BTreeSet::new())?;
                 crate::management::write_group(
                     tx,
                     &actor,
                     &record.local_id,
-                    crate::management::GroupIntent::ReplaceMembers(&BTreeSet::new()),
+                    crate::management::GroupIntent::ReplaceMembers(&members),
                     crate::management::GroupAudit::Deferred,
                 )?;
             }
