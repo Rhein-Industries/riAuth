@@ -267,6 +267,8 @@ def main() -> None:
             errors.append("src/saml/logout.rs: SAML logout refers directly to storage or Core")
         if path == SRC / "passkey.rs" and refs & (STORAGE | {"core", "assembly"}):
             errors.append("src/passkey.rs: passkey protocol refers directly to storage, Core or assembly")
+        if path == SRC / "authenticator.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/authenticator.rs: authenticator protocol refers directly to storage, Core or assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -424,6 +426,12 @@ def main() -> None:
             ),
             "passkey_core_reference_files": int(
                 "core" in references(SRC / "passkey.rs")
+            ),
+            "authenticator_storage_reference_files": int(
+                bool(references(SRC / "authenticator.rs") & STORAGE)
+            ),
+            "authenticator_core_reference_files": int(
+                "core" in references(SRC / "authenticator.rs")
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

@@ -1,5 +1,6 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
+mod authenticator;
 mod authorization;
 mod claims;
 #[cfg(feature = "platform")]
