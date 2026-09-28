@@ -437,3 +437,39 @@ that name storage directly, the model's embedded protocol types, and the
 management, API/server and client coupling described above. The new port is
 an intra-crate seam; it does not by itself establish independently compiled
 components or both distribution assemblies.
+
+## Wave 9: assemble identity record effects outside storage
+
+[store.rs](../src/store.rs) now requires a `RecordTransitions` hook at
+construction and carries it through redb, PostgreSQL, preview and prepared
+transactions. Its `put` and `delete` operations keep the existing order:
+read prior account state, prepare the new record, update indexes and change
+projection, persist the record, then apply account and credential effects
+before commit. [Server assembly](../src/assembly.rs) supplies the identity
+implementation for every public `Store::open*` and `Store::from_config` path.
+Storage's raw constructors are crate-private, so ordinary callers cannot open
+a writable store without this policy. The read-only `Store::inspect` handle
+has no hook and rejects mutation.
+
+The assembly also owns the `IdentityTx for Tx` adapter and the agent's public
+audit projection. Those were the other direct identity references in storage.
+The agent view still omits the credential hash, and user disable, passkey,
+logout and security-signal effects still run in the caller's transaction.
+No collection layout, schema, encrypted record format or public constructor
+signature changed.
+
+The source scan covers 101 Rust files before and after this cut. The checker
+now requires zero direct storage-to-identity references.
+
+| Explicit source edge | Before | Wave 9 |
+| --- | ---: | ---: |
+| `storage -> identity` | 1 | 0 |
+| `server_assembly -> identity` | 0 | 1 |
+| `identity -> storage` | 0 | 0 |
+| `protocol -> storage` | 31 | 31 |
+| `model -> protocol` | 1 | 1 |
+
+The single-crate graph still has other cycles, including model/protocol/storage
+references. Protocol adapters and management still reach storage directly;
+API/server and client still reach Core. Independent crates and distribution
+assembly contracts remain A03 work.

@@ -32,7 +32,7 @@ PROTOCOL = {
     "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
 }
 IDENTITY_ALLOWED = {"crypto", "error", "model", "identity"}
-STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf", "assembly"}
+STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf", "assembly", "identity"}
 MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost", "jose", "encryption"}
 MODEL_CONFIG_LEGACY = {
     "jose": {"ClientAuthMethod", "MachineTrust"},
@@ -271,6 +271,10 @@ def main() -> None:
             ),
             "storage_adapter_reference_files": sum(
                 bool(references(path) & STORAGE_FORBIDDEN)
+                for path in paths if group(root_module(path)) == "storage"
+            ),
+            "storage_identity_reference_files": sum(
+                "identity" in references(path)
                 for path in paths if group(root_module(path)) == "storage"
             ),
             "storage_protocol_reference_files": sum(

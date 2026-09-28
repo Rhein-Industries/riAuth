@@ -99,6 +99,7 @@ impl Store {
                 security_events: RefCell::default(),
                 telemetry: &self.telemetry,
                 prepared: RefCell::new(Some(Prepared::default())),
+                transitions: Some(self.transitions.as_ref()),
             };
             let output = f(&tx)?;
             drop(preparing);

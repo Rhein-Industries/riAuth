@@ -27,11 +27,27 @@ const FORMAT: TableDefinition<&str, &str> = TableDefinition::new("storage_format
 /// Rate-limit windows kept per node (in memory) and in the shared PostgreSQL table.
 pub(crate) const RATE_WINDOWS: usize = 100_000;
 
+/// Record effects supplied by server assembly for every writable transaction.
+/// Storage owns the write order; the hook owns account security semantics.
+pub(crate) trait RecordTransitions: Send + Sync {
+    fn prepare_record(&self, bucket: &str, before: Option<&Value>, after: &mut Value);
+    fn public_agent(&self, value: &Value) -> Result<Value>;
+    fn record_transition(
+        &self,
+        tx: &Tx<'_>,
+        bucket: &str,
+        key: &str,
+        before: Option<&Value>,
+        after: Option<&Value>,
+    ) -> Result<()>;
+}
+
 #[derive(Clone)]
 pub struct Store {
     db: Backend,
     key: Option<Arc<Zeroizing<[u8; 32]>>>,
     telemetry: Arc<crate::telemetry::Telemetry>,
+    transitions: Arc<dyn RecordTransitions>,
 }
 #[derive(Clone)]
 enum Backend {
@@ -51,41 +67,8 @@ pub struct Tx<'a> {
     security_events: RefCell<BTreeSet<(String, String, String)>>,
     telemetry: &'a crate::telemetry::Telemetry,
     prepared: RefCell<Option<Prepared>>,
-}
-
-impl crate::identity::persistence::IdentityTx for Tx<'_> {
-    fn get<T: DeserializeOwned>(&self, bucket: &str, key: &str) -> Result<Option<T>> {
-        Tx::get(self, bucket, key)
-    }
-
-    fn list<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
-        Tx::list(self, bucket)
-    }
-
-    fn scan<T: DeserializeOwned>(
-        &self,
-        bucket: &str,
-        after: Option<&str>,
-        limit: usize,
-    ) -> Result<Vec<(String, T)>> {
-        Tx::scan(self, bucket, after, limit)
-    }
-
-    fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
-        Tx::put(self, bucket, key, value)
-    }
-
-    fn delete(&self, bucket: &str, key: &str) -> Result<()> {
-        Tx::delete(self, bucket, key)
-    }
-
-    fn maintenance_page<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
-        Tx::maintenance_page(self, bucket)
-    }
-
-    fn mark_security_event(&self, user: &str, event: &str, credential: &str) -> bool {
-        Tx::mark_security_event(self, user, event, credential)
-    }
+    /// Absent only on read-only inspection handles.
+    transitions: Option<&'a dyn RecordTransitions>,
 }
 
 macro_rules! read_table {
@@ -113,18 +96,6 @@ impl Store {
 
     pub fn telemetry(&self) -> &crate::telemetry::Telemetry {
         &self.telemetry
-    }
-    pub fn from_config(config: &crate::config::Config) -> Result<Self> {
-        let key = config
-            .database_key_file
-            .as_deref()
-            .map(crypto::read_key)
-            .transpose()?;
-        if let Some(pg) = &config.postgres {
-            Self::open_postgres(pg.clone(), key)
-        } else {
-            Self::open_with_key(&config.data_dir.join("riauth.redb"), key)
-        }
     }
     pub fn backend(&self) -> &'static str {
         match self.db {
@@ -183,9 +154,10 @@ impl Store {
             Ok(count >= limit)
         })
     }
-    pub fn open_postgres(
+    pub(crate) fn open_postgres_raw(
         config: crate::postgres_store::PostgresConfig,
         key: Option<Zeroizing<[u8; 32]>>,
+        transitions: Arc<dyn RecordTransitions>,
     ) -> Result<Self> {
         use crate::postgres_store::{WRITE_LOCK, unavailable};
         let telemetry = Arc::new(crate::telemetry::Telemetry::default());
@@ -234,12 +206,14 @@ impl Store {
             db: Backend::Postgres(pool),
             key: key.map(Arc::new),
             telemetry,
+            transitions,
         })
     }
-    pub fn open(path: &Path) -> Result<Self> {
-        Self::open_with_key(path, None)
-    }
-    pub fn open_with_key(path: &Path, key: Option<Zeroizing<[u8; 32]>>) -> Result<Self> {
+    pub(crate) fn open_with_key_raw(
+        path: &Path,
+        key: Option<Zeroizing<[u8; 32]>>,
+        transitions: Arc<dyn RecordTransitions>,
+    ) -> Result<Self> {
         let db = Database::create(path).map_err(Error::internal)?;
         let tx = db.begin_write().map_err(Error::internal)?;
         {
@@ -282,6 +256,7 @@ impl Store {
             db: Backend::Redb(Arc::new(db)),
             key: key.map(Arc::new),
             telemetry: Arc::default(),
+            transitions,
         })
     }
     /// Read the configured store without creating, formatting or writing it.
@@ -311,6 +286,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &telemetry,
             prepared: RefCell::default(),
+            transitions: None,
         };
         if let Some(pg) = &config.postgres {
             use crate::postgres_store::unavailable;
@@ -420,6 +396,7 @@ impl Store {
                 security_events: RefCell::default(),
                 telemetry: &self.telemetry,
                 prepared: RefCell::default(),
+                transitions: Some(self.transitions.as_ref()),
             });
         }
         let Backend::Redb(db) = &self.db else {
@@ -433,6 +410,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })
     }
     pub fn get<T: DeserializeOwned>(&self, bucket: &str, key: &str) -> Result<Option<T>> {
@@ -459,6 +437,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })?;
         let committing = self.telemetry.commit.timer();
         transaction.commit().map_err(Error::internal)?;
@@ -483,6 +462,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })?;
         transaction.abort().map_err(Error::internal)?;
         Ok(output)
@@ -515,6 +495,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         };
         let output = f(&tx)?;
         let Transaction::Postgres(transaction, _) = tx.transaction else {
@@ -614,7 +595,11 @@ pub(crate) fn sensitive_audit_name(name: &str) -> bool {
         || name.contains("auth_header")
 }
 
-fn public_record(bucket: &str, value: Option<&Value>) -> Result<Value> {
+fn public_record(
+    bucket: &str,
+    value: Option<&Value>,
+    transitions: &dyn RecordTransitions,
+) -> Result<Value> {
     let Some(value) = value else {
         return Ok(Value::Null);
     };
@@ -626,11 +611,7 @@ fn public_record(bucket: &str, value: Option<&Value>) -> Result<Value> {
         "clients" => serde_json::from_value::<crate::model::Client>(value.clone())
             .map_err(Error::internal)?
             .view(),
-        "agents" => {
-            serde_json::from_value::<crate::identity::agent_credentials::Agent>(value.clone())
-                .map_err(Error::internal)?
-                .view()
-        }
+        "agents" => transitions.public_agent(value)?,
         _ => value.clone(),
     })
 }
@@ -715,7 +696,13 @@ impl Tx<'_> {
     pub fn changes(&self) -> Value {
         serde_json::json!(self.changes.borrow().values().collect::<Vec<_>>())
     }
-    fn record_change(&self, bucket: &str, key: &str, after: Option<Value>) -> Result<()> {
+    fn record_change(
+        &self,
+        bucket: &str,
+        key: &str,
+        after: Option<Value>,
+        transitions: &dyn RecordTransitions,
+    ) -> Result<()> {
         if bucket == "source_secrets" {
             return self.record_redacted_secret(key, after.is_some());
         }
@@ -733,8 +720,8 @@ impl Tx<'_> {
         }
         let name = record_key(bucket, key);
         let before_raw = self.get::<Value>(bucket, key)?;
-        let mut before_view = public_record(bucket, before_raw.as_ref())?;
-        let mut after_view = public_record(bucket, after.as_ref())?;
+        let mut before_view = public_record(bucket, before_raw.as_ref(), transitions)?;
+        let mut after_view = public_record(bucket, after.as_ref(), transitions)?;
         redact_audit_value(&mut before_view);
         redact_audit_value(&mut after_view);
         let changed = credential_markers(
@@ -843,17 +830,20 @@ impl Tx<'_> {
         })
     }
     pub fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
+        let transitions = self.transitions.ok_or_else(|| {
+            Error::internal("Mutation attempted inside a read transaction")
+        })?;
         let mut public = serde_json::to_value(value).map_err(Error::internal)?;
         let before = if matches!(bucket, "users" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None
         };
-        crate::identity::prepare_record(bucket, before.as_ref(), &mut public);
+        transitions.prepare_record(bucket, before.as_ref(), &mut public);
         self.update_indexes(bucket, key, Some(&public))?;
-        self.record_change(bucket, key, Some(public.clone()))?;
+        self.record_change(bucket, key, Some(public.clone()), transitions)?;
         self.import_record(bucket, key, &public)?;
-        crate::identity::record_transition(self, bucket, key, before.as_ref(), Some(&public))
+        transitions.record_transition(self, bucket, key, before.as_ref(), Some(&public))
     }
     pub(crate) fn import_record<T: Serialize>(
         &self,
@@ -870,15 +860,18 @@ impl Tx<'_> {
         self.raw_put(&name, Some(bytes))
     }
     pub fn delete(&self, bucket: &str, key: &str) -> Result<()> {
+        let transitions = self.transitions.ok_or_else(|| {
+            Error::internal("Mutation attempted inside a read transaction")
+        })?;
         let before = if matches!(bucket, "users" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None
         };
         self.update_indexes(bucket, key, None)?;
-        self.record_change(bucket, key, None)?;
+        self.record_change(bucket, key, None, transitions)?;
         self.raw_put(&record_key(bucket, key), None)?;
-        crate::identity::record_transition(self, bucket, key, before.as_ref(), None)
+        transitions.record_transition(self, bucket, key, before.as_ref(), None)
     }
 
     pub(crate) fn mark_security_event(&self, user: &str, event: &str, credential: &str) -> bool {
