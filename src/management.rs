@@ -9,7 +9,7 @@
 //! record are decided here, inside the caller's transaction.
 //!
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
-//! this seam.
+//! this seam. Inbound SCIM User deletion reaches the shared user writer.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -436,6 +436,8 @@ pub(crate) struct CloudUserOwner<'a> {
 
 enum UserRecord<'a> {
     Direct(&'a str),
+    #[cfg(feature = "platform")]
+    Scim(&'a str),
     Plan,
     DirectorySync(DirectoryUserOwner<'a>),
     DirectoryDisable(DirectoryUserOwner<'a>),
@@ -896,6 +898,20 @@ fn write_user_record(
                 audit(tx, &actor.id, action, &user.id)?;
             }
         }
+        #[cfg(feature = "platform")]
+        UserRecord::Scim(action) => {
+            if actor.delegated {
+                crate::delegation::audit_for(
+                    tx,
+                    actor,
+                    action,
+                    &user.username,
+                    &format!("user/{}", user.username),
+                )?;
+            } else {
+                audit(tx, &actor.id, action, &user.username)?;
+            }
+        }
         UserRecord::DirectorySync(owner) => {
             crate::delegation::audit_scoped(
                 tx,
@@ -1147,6 +1163,35 @@ pub(crate) fn update_user(
         patch.revoke_sessions,
     )?;
     Ok(json!(UserView::from(&user)))
+}
+
+#[cfg(feature = "platform")]
+pub(crate) fn disable_scim_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    username: &str,
+    local_id: &str,
+) -> Result<User> {
+    actor.require("user.write", &format!("user/{username}"))?;
+    let previous = user_by_name(tx, username)?;
+    if previous.id != local_id || previous.username != username {
+        return Err(Error::conflict("SCIM user identity does not match"));
+    }
+    if previous.admin {
+        return Err(Error::forbidden());
+    }
+    let mut user = previous.clone();
+    user.enabled = false;
+    user.epoch += 1;
+    write_user_record(
+        tx,
+        actor,
+        Some(&previous),
+        &user,
+        UserRecord::Scim("user.scim_delete"),
+        false,
+    )?;
+    Ok(user)
 }
 
 /// Validate the user-specific part of a desired-state manifest. Planning and

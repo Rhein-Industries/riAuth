@@ -998,3 +998,162 @@ fn cli_application_writes_share_management_seam() {
     assert_eq!(updated["confidential"], true);
     assert_eq!(revision(), (at.parse::<u64>().unwrap() + 1).to_string());
 }
+
+#[test]
+fn cli_api_and_scim_user_delete_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent_file = dir.path().join("scim-manager.json");
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "agent",
+            "create",
+            "scim-manager",
+            "--permission",
+            "user.write=user/parity-user",
+            "--permission",
+            "user.read=user/parity-user",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent_file.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let credential: Value =
+        serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+
+    let input = json!({
+        "schemas": [riauth::scim::USER],
+        "userName": "parity-user",
+        "displayName": "SCIM name",
+        "emails": [{"value": "parity@example.test", "primary": true}]
+    });
+    let collection = format!("{issuer}/scim/v2/Users");
+    let created_response = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-scim-create")
+        .json(&input)
+        .send()
+        .unwrap();
+    assert_eq!(created_response.status(), reqwest::StatusCode::CREATED);
+    let original_etag = created_response.headers()["etag"].to_str().unwrap().to_owned();
+    let created: Value = created_response.json().unwrap();
+    let replay: Value = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-scim-create")
+        .json(&input)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(replay, created);
+    let scim_id = created["id"].as_str().unwrap();
+    let resource = format!("{collection}/{scim_id}");
+    let local = success(cli(&["get", "user", "parity-user"]));
+    assert_eq!(local["display_name"], "SCIM name");
+    assert_eq!(local["email"], "parity@example.test");
+
+    let denied = http
+        .post(&collection)
+        .bearer_auth(token)
+        .json(&json!({"schemas":[riauth::scim::USER],"userName":"outside-scope"}))
+        .send()
+        .unwrap();
+    assert_eq!(denied.status(), reqwest::StatusCode::FORBIDDEN);
+    let duplicate = http
+        .post(&collection)
+        .bearer_auth(token)
+        .json(&input)
+        .send()
+        .unwrap();
+    assert_eq!(duplicate.status(), reqwest::StatusCode::CONFLICT);
+
+    let api_response = http
+        .patch(format!("{issuer}/api/users/parity-user"))
+        .bearer_auth(token)
+        .header("if-match", format!("\"{}\"", revision()))
+        .json(&json!({"display_name":"API name"}))
+        .send()
+        .unwrap();
+    assert_eq!(api_response.status(), reqwest::StatusCode::OK);
+    let api: Value = api_response.json().unwrap();
+    assert_eq!(api["display_name"], "API name");
+    let after_api: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
+    assert_eq!(after_api["displayName"], "API name");
+    assert_ne!(after_api["meta"]["version"], original_etag);
+
+    let at = revision();
+    let cli_update = success(cli(&[
+        "--if-revision", &at, "user", "update", "parity-user", "--name", "CLI name",
+    ]));
+    assert_eq!(cli_update["display_name"], "CLI name");
+    let after_cli: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
+    assert_eq!(after_cli["displayName"], "CLI name");
+    assert_ne!(after_cli["meta"]["version"], after_api["meta"]["version"]);
+
+    let stale = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", &original_etag)
+        .send()
+        .unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::PRECONDITION_FAILED);
+    let deleted = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-delete")
+        .send()
+        .unwrap();
+    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
+    let replay = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-delete")
+        .send()
+        .unwrap();
+    assert_eq!(replay.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(success(cli(&["get", "user", "parity-user"]))["enabled"], false);
+    assert_eq!(
+        http.get(&resource).bearer_auth(token).send().unwrap().status(),
+        reqwest::StatusCode::NOT_FOUND,
+    );
+    let events = success(invoke(dir.path(), &config, &session, &["audit", "--limit", "1000"], None));
+    let count = |action: &str| {
+        events.as_array().unwrap().iter().filter(|event| {
+            event["action"] == action && event["target"] == "parity-user"
+        }).count()
+    };
+    assert_eq!(count("user.scim"), 1);
+    assert_eq!(count("user.scim_delete"), 1);
+    assert_eq!(
+        events.as_array().unwrap().iter().filter(|event| event["action"] == "user.update").count(),
+        2,
+    );
+}

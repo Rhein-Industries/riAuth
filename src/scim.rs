@@ -1,7 +1,7 @@
 //! SCIM 2.0 user/group provisioning. Each authenticated operator owns its provisioned records.
 use crate::{
     agent::Principal,
-    core::{Core, audit, make_user, user_by_name, validate_display, validate_email, validate_name},
+    core::{Core, audit, make_user, validate_display, validate_email, validate_name},
     crypto,
     error::{Error, Result},
     model::{Group, NewUser, User},
@@ -1437,17 +1437,12 @@ impl Core {
             let mut record = owned(tx, &actor, kind, id)?;
             require(&actor, &record, "write")?;
             if kind == "Users" {
-                let mut user = user_by_name(tx, name(&record))?;
-                if user.id != record.local_id || user.username != name(&record) {
-                    return Err(Error::conflict("SCIM user identity does not match"));
-                }
-                if user.admin {
-                    return Err(Error::forbidden());
-                }
-                user.enabled = false;
-                user.epoch += 1;
-                tx.put("users", &user.id, &user)?;
-                crate::logout::queue_user(tx, &user.id)?;
+                let user = crate::management::disable_scim_user(
+                    tx,
+                    &actor,
+                    name(&record),
+                    &record.local_id,
+                )?;
                 for (group_id, mut group) in tx.list::<Record>("scim_groups")? {
                     if !group.deleted && group.owner == actor.id {
                         if let Some(members) = group.data["members"].as_array_mut() {
@@ -1484,12 +1479,14 @@ impl Core {
             }
             record.deleted = true;
             tx.put(bucket(kind)?, id, &record)?;
-            audit(
-                tx,
-                &actor.id,
-                &format!("{}.scim_delete", scope(kind)),
-                name(&record),
-            )?;
+            if kind != "Users" {
+                audit(
+                    tx,
+                    &actor.id,
+                    &format!("{}.scim_delete", scope(kind)),
+                    name(&record),
+                )?;
+            }
             Ok(json!({}))
             },
         )

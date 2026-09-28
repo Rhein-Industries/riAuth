@@ -8,7 +8,7 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use common::{Fixture, PASSWORD, text};
-use riauth::{agent::{NewAgent, Permission}, scim};
+use riauth::{agent::{NewAgent, Permission}, identity::downstream, model::User, scim};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -174,4 +174,65 @@ async fn scim_idempotency_key_rejects_a_changed_resource_if_match() {
     assert_eq!(replay_version.as_deref(), Some(disabled_version.as_str()));
     assert_eq!(replay, disabled);
     assert_eq!(f.core.scim_get(&token, "Users", &id).unwrap()["active"], true);
+}
+
+#[tokio::test]
+async fn scim_user_delete_commits_shared_revocation_and_downstream_intent() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-delete-agent".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write"]
+            .map(|action| Permission { action: action.into(), resource: "user/delete-linked".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::USER],"userName":"delete-linked","password":PASSWORD});
+    let (status, Some(_created_version), created) = request(&app, Method::POST, "/scim/v2/Users", &token, None, None, Some(&input)).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let scim_id = text(&created, "id");
+    let user_id: String = f.core.store.get("usernames", "delete-linked").unwrap().unwrap();
+    let before_user: User = f.core.store.get("users", &user_id).unwrap().unwrap();
+    let session = text(&f.core.login("delete-linked".into(), PASSWORD.into(), None).unwrap(), "session_token");
+    let target = "delete-linked-target";
+    let external = format!("urn:riauth:test:Users:{user_id}");
+    let link = json!({
+        "target": target,
+        "url": "https://scim.example.test/v2",
+        "kind": "Users",
+        "local_id": user_id,
+        "remote_id": "remote-delete-linked",
+        "external_id": external,
+        "body": {"schemas":[scim::USER],"externalId":external,"userName":"delete-linked","active":true}
+    });
+    let key = riauth::crypto::digest(&format!("{target}\0Users\0{user_id}"));
+    f.core.store.write(|tx| tx.put("provisioning_links", &key, &link)).unwrap();
+
+    let path = format!("/scim/v2/Users/{scim_id}");
+    let version = text(&f.core.scim_get(&token, "Users", &scim_id).unwrap()["meta"], "version");
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::DELETE, &path, &token, Some("\"stale\""), None, None).await;
+    assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+    f.assert_http_mutation_snapshot(&before);
+    let (status, _, _) = request(&app, Method::DELETE, &path, &token, Some(&version), Some("delete-linked-once"), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _, _) = request(&app, Method::DELETE, &path, &token, Some(&version), Some("delete-linked-once"), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let user: User = f.core.store.get("users", &user_id).unwrap().unwrap();
+    assert!(!user.enabled);
+    assert!(user.epoch > before_user.epoch);
+    assert!(f.core.me(&session).is_err());
+    assert!(f.core.scim_get(&token, "Users", &scim_id).is_err());
+    let rows = f.core.store.list::<serde_json::Value>(downstream::BUCKET).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1["target"], target);
+    assert_eq!(rows[0].1["user_id"], user_id);
+    assert_eq!(rows[0].1["status"], "pending");
+    let audits = f.core.audit_events(&f.admin, 1000).unwrap();
+    assert_eq!(audits.as_array().unwrap().iter().filter(|event| {
+        event["action"] == "user.scim_delete" && event["target"] == "delete-linked"
+    }).count(), 1);
 }
