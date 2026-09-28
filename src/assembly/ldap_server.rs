@@ -63,22 +63,33 @@ impl Core {
                 }
                 return Ok((settings, None));
             }
-            let matches: Vec<_> = tx
-                .list::<User>("users")?
-                .into_iter()
-                .map(|(_, u)| u)
-                .filter(|u| settings.user_dn(&u.username).eq_ignore_ascii_case(dn))
-                .collect();
+            // A bind still checks every row for a case-insensitive DN collision,
+            // but only the first two matches are needed to decide uniqueness.
+            let mut matches = Vec::with_capacity(2);
+            let mut after = None;
+            loop {
+                let page =
+                    tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = page.last().map(|(key, _)| key.clone());
+                for (_, user) in page {
+                    if matches.len() < 2
+                        && settings.user_dn(&user.username).eq_ignore_ascii_case(dn)
+                    {
+                        matches.push((user.username, user.totp_secret.is_some()));
+                    }
+                }
+                if !full {
+                    break;
+                }
+            }
             if matches.len() != 1 {
                 return Err(Error::unauthorized());
             }
-            Ok((
-                settings,
-                Some((
-                    matches[0].username.clone(),
-                    matches[0].totp_secret.is_some(),
-                )),
-            ))
+            Ok((settings, matches.pop()))
         })
     }
 
@@ -292,5 +303,127 @@ impl Core {
             }
             Ok((rows, revision))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::Config,
+        model::{NewClient, NewUser, ProviderSettings},
+        telemetry::ReadContext,
+    };
+
+    #[test]
+    fn ldap_bind_target_pages_past_128_users_and_rejects_case_collisions() {
+        let directory = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "test-password-for-fixtures-only".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core
+            .login(
+                "admin".into(),
+                "test-password-for-fixtures-only".into(),
+                None,
+            )
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let template = core
+            .store
+            .read(|tx| Ok(tx.list::<User>("users")?.pop().unwrap().1))
+            .unwrap();
+        core.store
+            .write(|tx| {
+                for index in 0..130 {
+                    let mut user = template.clone();
+                    user.id = format!("a{index:03}");
+                    user.username = format!("other-{index:03}");
+                    user.admin = false;
+                    tx.put("users", &user.id, &user)?;
+                }
+                let mut target = template.clone();
+                target.id = "z-target".into();
+                target.username = "Target".into();
+                target.admin = false;
+                target.totp_secret = Some("configured".into());
+                tx.put("users", &target.id, &target)
+            })
+            .unwrap();
+
+        let scans = &core.store.telemetry().reads;
+        let counts = || {
+            (
+                scans.scans(ReadContext::Read, false).count(),
+                scans.scans(ReadContext::Read, true).count(),
+                scans.scans(ReadContext::Read, true).sum(),
+            )
+        };
+        let dn = "uid=target,ou=users,dc=riauth,dc=test";
+        let before = counts();
+        let (_, found) = core.ldap_bind_target("ldap", dn, "unused").unwrap();
+        assert_eq!(found, Some(("Target".into(), true)));
+        let after = counts();
+        assert_eq!(
+            after.0, before.0,
+            "bind must not list the whole user bucket"
+        );
+        assert_eq!(after.1 - before.1, 2);
+        assert_eq!(after.2 - before.2, 132);
+
+        let missing = core
+            .ldap_bind_target("ldap", "uid=missing,ou=users,dc=riauth,dc=test", "unused")
+            .unwrap_err();
+        assert_eq!(missing.status, axum::http::StatusCode::UNAUTHORIZED);
+        core.store
+            .write(|tx| {
+                let mut collision = template.clone();
+                collision.id = "zz-collision".into();
+                collision.username = "tARGET".into();
+                tx.put("users", &collision.id, &collision)
+            })
+            .unwrap();
+        let before = counts();
+        let collision = core.ldap_bind_target("ldap", dn, "unused").unwrap_err();
+        assert_eq!(collision.status, axum::http::StatusCode::UNAUTHORIZED);
+        let after = counts();
+        assert_eq!(after.0, before.0);
+        assert_eq!(after.1 - before.1, 2);
+        assert_eq!(after.2 - before.2, 133);
     }
 }
