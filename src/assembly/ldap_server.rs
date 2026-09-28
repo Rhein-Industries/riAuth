@@ -1,7 +1,7 @@
 //! LDAP bind profile and authorization reads over concrete storage.
 
 use crate::{
-    core::{Core, durable_groups_for},
+    core::Core,
     error::{Error, Result},
     ldap_server::{Auth, PAGED, STARTTLS, Settings, WHOAMI, entry, matches_filter},
     model::{Client, Group, User},
@@ -17,6 +17,54 @@ use std::{
 const MAX_SELECTED_USERS: usize = 2000;
 const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
 const GROUP_INDEX_PAGE: usize = 16;
+const MAX_RESULT_BYTES: usize = 4 * 1024 * 1024;
+
+/// The membership index is hash ordered, while memberOf is Group-name
+/// ordered. Retain only DNs that fit within the existing LDAP result limit;
+/// None signals a provider-limit error after all DN collision checks finish.
+fn member_of_dns(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    user_id: &str,
+    max_bytes: usize,
+) -> Result<Option<Vec<String>>> {
+    let mut names = BTreeSet::new();
+    let mut bytes = 0usize;
+    let mut after = None;
+    loop {
+        let page =
+            tx.user_group_index_page(user_id, after.as_deref(), crate::store::maintenance::PAGE)?;
+        if page.is_empty() {
+            break;
+        }
+        let full = page.len() == crate::store::maintenance::PAGE;
+        after = page.last().map(|(key, _)| key.clone());
+        for (key, name) in page {
+            if crate::crypto::digest(&name) != key {
+                return Err(Error::internal(
+                    "LDAP Group membership index has a mismatched key",
+                ));
+            }
+            if names.contains(&name) {
+                continue;
+            }
+            bytes = bytes.saturating_add(settings.group_dn(&name).len());
+            if bytes > max_bytes {
+                return Ok(None);
+            }
+            names.insert(name);
+        }
+        if !full {
+            break;
+        }
+    }
+    Ok(Some(
+        names
+            .into_iter()
+            .map(|name| settings.group_dn(&name))
+            .collect(),
+    ))
+}
 
 struct GroupIndexCursor {
     user_id: String,
@@ -362,21 +410,24 @@ impl Core {
             let mut base_seen = false;
             let mut result_bytes = 0usize;
             let mut oversized = false;
+            let mut oversized_member_of = false;
+            let in_scope = |dn: &str| {
+                let child = dn.strip_suffix(&suffix);
+                match query.scope {
+                    LdapSearchScope::Base => dn == base,
+                    LdapSearchScope::OneLevel => child.is_some_and(|s| !s.contains(',')),
+                    LdapSearchScope::Subtree => dn == base || child.is_some(),
+                    LdapSearchScope::Children => child.is_some(),
+                }
+            };
             // A filtered-out entry still participates in base discovery and
             // DN collision checks, but does not occupy the result buffer.
             let mut include = |row: LdapSearchResultEntry| {
                 let dn = row.dn.to_ascii_lowercase();
                 base_seen |= dn == base;
-                let child = dn.strip_suffix(&suffix);
-                let in_scope = match query.scope {
-                    LdapSearchScope::Base => dn == base,
-                    LdapSearchScope::OneLevel => child.is_some_and(|s| !s.contains(',')),
-                    LdapSearchScope::Subtree => dn == base || child.is_some(),
-                    LdapSearchScope::Children => child.is_some(),
-                };
-                if in_scope && matches_filter(&query.filter, &row) && !oversized {
+                if in_scope(&dn) && matches_filter(&query.filter, &row) && !oversized {
                     result_bytes = result_bytes.saturating_add(row.size());
-                    if result_bytes <= 4 * 1024 * 1024 {
+                    if result_bytes <= MAX_RESULT_BYTES {
                         rows.push(row);
                     } else {
                         oversized = true;
@@ -415,12 +466,17 @@ impl Core {
             }
             for user in users.into_values() {
                 let dn = settings.user_dn(&user.username);
-                if !unique.insert(dn.to_ascii_lowercase()) {
+                let folded = dn.to_ascii_lowercase();
+                let user_in_scope = in_scope(&folded);
+                if !unique.insert(folded) {
                     return Err(Error::conflict(
                         "LDAP DNs collide under case-insensitive matching",
                     ));
                 }
-                let memberships = durable_groups_for(tx, &user.id)?;
+                if !user_in_scope {
+                    include(entry(dn, vec![]));
+                    continue;
+                }
                 let mut attrs = vec![
                     (
                         "objectClass",
@@ -441,13 +497,9 @@ impl Core {
                     attrs.push(("mail", user.email.into_iter().collect()));
                 }
                 if client.scopes.contains("groups") {
-                    attrs.push((
-                        "memberOf",
-                        memberships
-                            .into_iter()
-                            .map(|g| settings.group_dn(&g))
-                            .collect(),
-                    ));
+                    let memberships = member_of_dns(tx, &settings, &user.id, MAX_RESULT_BYTES)?;
+                    oversized_member_of |= memberships.is_none();
+                    attrs.push(("memberOf", memberships.unwrap_or_default()));
                 }
                 include(entry(dn, attrs));
             }
@@ -478,7 +530,7 @@ impl Core {
                 return Err(Error::missing("LDAP base not found"));
             }
             rows.sort_by(|a, b| a.dn.cmp(&b.dn));
-            if oversized {
+            if oversized || oversized_member_of {
                 return Err(Error::bad("LDAP result exceeds provider limit"));
             }
             Ok((rows, revision))
@@ -1124,6 +1176,39 @@ mod tests {
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].dn, "uid=admin,ou=users,dc=riauth,dc=test");
+        let member_of = &rows[0]
+            .attributes
+            .iter()
+            .find(|attribute| attribute.atype == "memberOf")
+            .unwrap()
+            .vals;
+        assert_eq!(
+            member_of.len(),
+            131,
+            "the index must cross its 128-row page"
+        );
+        assert!(member_of.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            member_of.first().unwrap().as_slice(),
+            b"cn=directory,ou=groups,dc=riauth,dc=test"
+        );
+        assert_eq!(
+            member_of.last().unwrap().as_slice(),
+            b"cn=group-129,ou=groups,dc=riauth,dc=test"
+        );
+        // One byte below the complete projected value must signal a limit,
+        // including when the crossing occurs on a later index page.
+        let one_byte_short = member_of.iter().map(Vec::len).sum::<usize>() - 1;
+        assert!(
+            core.store
+                .read(|tx| {
+                    let (_, settings) = core.ldap_profile(tx, "ldap")?;
+                    let id: String = tx.get("usernames", "admin")?.unwrap();
+                    member_of_dns(tx, &settings, &id, one_byte_short)
+                })
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(after.0, before.0);
         assert_eq!(after.1 - before.1, 142);
         assert_eq!(after.2 - before.2, 393);
