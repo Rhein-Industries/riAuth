@@ -1230,3 +1230,64 @@ async fn http_stream_backpressures_cancels_on_disconnect_and_restores() {
     riauth::operations::restore(&archive_path, &key_path, &output, None).unwrap();
     seed.assert_restored(&output, &before);
 }
+
+/// Shutting a server down cancels its running export and refuses new ones.
+/// The signal belongs to that server: one started later in the same process
+/// exports normally.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_stream_shutdown_cancels_export_and_restart_serves_again() {
+    use axum::{
+        Extension,
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use riauth::api::Shutdown;
+    use tower::ServiceExt;
+
+    let seed = Seed::new(3000);
+    let key = riauth::crypto::random_token("");
+    let admin = seed.fixture.admin.clone();
+    let request = || {
+        Request::post("/api/operations/backup/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin}"))
+            .body(Body::from(
+                serde_json::json!({"encryption_key": key}).to_string(),
+            ))
+            .unwrap()
+    };
+    let server = |shutdown: &Shutdown| {
+        riauth::api::router(seed.fixture.core.clone()).layer(Extension(shutdown.clone()))
+    };
+
+    let stopping = Shutdown::default();
+    let first = server(&stopping);
+    let mut running = first.clone().oneshot(request()).await.unwrap();
+    assert_eq!(running.status(), StatusCode::OK);
+    // Streaming has begun; the export now waits on its full queue.
+    running.body_mut().frame().await.unwrap().unwrap();
+    stopping.begin();
+    assert!(
+        running.into_body().collect().await.is_err(),
+        "a cancelled export ended its body as if complete"
+    );
+    let refused = first.oneshot(request()).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let restarted = server(&Shutdown::default())
+        .oneshot(request())
+        .await
+        .unwrap();
+    assert_eq!(restarted.status(), StatusCode::OK);
+    let bytes = restarted.into_body().collect().await.unwrap().to_bytes();
+    let directory = tempfile::tempdir().unwrap();
+    let key_path = key_file(directory.path(), "restart", &key);
+    let verified = riauth::operations::stream::verify_file(
+        &archive(directory.path(), "restart", &bytes),
+        &riauth::crypto::read_key(&key_path).unwrap(),
+        StreamOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(verified.summary.bytes, bytes.len() as u64);
+}

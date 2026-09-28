@@ -258,9 +258,11 @@ a time and answers 503 while another is running. The export hands frames to the
 connection through a bounded queue of at most 1 MiB, so a slow client slows the
 export rather than growing server memory. A client that disconnects cancels the
 export and ends its read snapshot. The export is also cancelled when the client
-accepts no data for `stall_timeout_seconds`, or is still running after
-`max_duration_seconds`. The export holds a redb read transaction or a PostgreSQL
-`REPEATABLE READ` transaction and pooled connection for its whole duration. A
+accepts no data for `stall_timeout_seconds`, when it is still running after
+`max_duration_seconds`, and when its server starts a graceful shutdown
+(SIGTERM or Ctrl-C), after which that server answers new exports with 503.
+The export holds a redb read transaction or a PostgreSQL `REPEATABLE READ`
+transaction and pooled connection for its whole duration. A
 failure after the response started aborts the body instead of ending it, and
 the partial archive has no trailer, which verification and restore reject. The
 server logs the start of each export's transfer, its progress every 10 seconds,

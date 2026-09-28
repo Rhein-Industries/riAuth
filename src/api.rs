@@ -3,7 +3,7 @@ mod server;
 pub(crate) use server::serve_bootstrap;
 #[cfg(feature = "platform")]
 pub(crate) use server::tls_files;
-pub use server::{into_rustls_server, serve, tls_configuration};
+pub use server::{Shutdown, into_rustls_server, serve, tls_configuration};
 
 mod interaction;
 mod observability;

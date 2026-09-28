@@ -143,7 +143,37 @@ pub(crate) async fn serve_bootstrap(setup: crate::bootstrap::Bootstrap) -> anyho
     }
 }
 
+/// Graceful shutdown of one HTTP server, handed to its requests as an
+/// extension. Work that watches it, such as a streamed backup export, stops
+/// instead of holding the shutdown open. Each server has its own, so stopping
+/// one never reaches another server in the same process.
+#[derive(Clone)]
+pub struct Shutdown(Arc<tokio::sync::watch::Sender<bool>>);
+
+impl Default for Shutdown {
+    fn default() -> Self {
+        Self(Arc::new(tokio::sync::watch::Sender::new(false)))
+    }
+}
+
+impl Shutdown {
+    pub fn begin(&self) {
+        self.0.send_replace(true);
+    }
+    pub fn started(&self) -> bool {
+        *self.0.borrow()
+    }
+    /// Resolves once `begin` was called, at once if it already was.
+    pub async fn wait(&self) {
+        // `self` holds the sender, so the channel cannot close first.
+        let _ = self.0.subscribe().wait_for(|started| *started).await;
+    }
+}
+
 async fn serve_http(config: crate::config::Config, routes: axum::Router) -> anyhow::Result<()> {
+    let stopping = Shutdown::default();
+    // Applied last, so every route, fallback and the bootstrap hand-off sees it.
+    let routes = routes.layer(Extension(stopping.clone()));
     let tls = tls_configuration(&config).await?;
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %listener.local_addr()?, issuer = %config.issuer, "riAuth listening");
@@ -171,6 +201,7 @@ async fn serve_http(config: crate::config::Config, routes: axum::Router) -> anyh
         let signal = handle.clone();
         let shutdown_worker = tokio::spawn(async move {
             shutdown().await;
+            stopping.begin();
             signal.graceful_shutdown(Some(Duration::from_secs(30)));
         });
         let _shutdown_worker = AbortTasks(vec![shutdown_worker]);
@@ -183,7 +214,10 @@ async fn serve_http(config: crate::config::Config, routes: axum::Router) -> anyh
             listener,
             routes.into_make_service_with_connect_info::<SocketAddr>(),
         )
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(async move {
+            shutdown().await;
+            stopping.begin();
+        })
         .await
     };
     result?;

@@ -8,7 +8,9 @@
 //! `backup.max_duration_seconds` cancels it, which ends its read snapshot.
 //! Authorization, the key and the quota are settled before the status line; a
 //! later failure aborts the body instead of ending it, and the partial archive
-//! has no trailer, which verification and restore reject.
+//! has no trailer, which verification and restore reject. When its server
+//! starts a graceful shutdown ([`Shutdown`]), a running export is cancelled
+//! instead of holding the shutdown open, and new exports receive 503.
 
 use super::*;
 use crate::operations::stream::{BACKUP_V3, Progress, StreamLimits, StreamOptions, StreamSummary};
@@ -37,12 +39,27 @@ pub(super) struct StreamInput {
     max_archive_bytes: Option<u64>,
 }
 
+fn shutting_down() -> Error {
+    Error::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "temporarily_unavailable",
+        "The server is shutting down; retry the backup after it restarts",
+    )
+}
+
 pub(super) async fn stream(
     State(app): State<App>,
+    shutdown: Option<axum::Extension<Shutdown>>,
     headers: HeaderMap,
     Json(input): Json<StreamInput>,
 ) -> Result<Response> {
+    // Set by the serving HTTP server (`serve` or setup); a bare router has none.
+    let shutdown = shutdown.map(|axum::Extension(shutdown)| shutdown);
+    let stopping = |shutdown: &Option<Shutdown>| shutdown.as_ref().is_some_and(Shutdown::started);
     let token = bearer(&headers)?;
+    if stopping(&shutdown) {
+        return Err(shutting_down());
+    }
     let key = Zeroizing::new(input.encryption_key);
     let settings = app.core.config.backup.clone();
     let limits = settings.limits(input.max_archive_bytes);
@@ -75,6 +92,7 @@ pub(super) async fn stream(
         stall: Duration::from_secs(settings.stall_timeout_seconds),
         deadline: Instant::now() + Duration::from_secs(settings.max_duration_seconds),
         cancel: cancel.clone(),
+        shutdown: shutdown.clone(),
         failure: None,
         sent: 0,
     };
@@ -88,10 +106,16 @@ pub(super) async fn stream(
         })
     });
     let Some(first) = receiver.recv().await else {
-        // The export ended before its first byte: authorization, key or quota.
-        return Err(match export.await.map_err(Error::internal)? {
+        // The export ended before its first byte: authorization, key, quota
+        // or shutdown.
+        let error = match export.await.map_err(Error::internal)? {
             Err(error) => error,
             Ok(_) => Error::internal("Backup stream ended without data"),
+        };
+        return Err(if stopping(&shutdown) {
+            shutting_down()
+        } else {
+            error
         });
     };
     let mut response = Response::new(body(Transfer {
@@ -178,14 +202,15 @@ fn export(
 }
 
 /// Hands sealed bytes to the response. Waiting while the queue is full is
-/// the backpressure; a closed queue, a stalled client or the export deadline
-/// fail the write and cancel the export.
+/// the backpressure; a closed queue, a stalled client, the export deadline or
+/// the server's shutdown fail the write and cancel the export.
 struct Sink {
     sender: mpsc::Sender<Bytes>,
     runtime: tokio::runtime::Handle,
     stall: Duration,
     deadline: Instant,
     cancel: Arc<AtomicBool>,
+    shutdown: Option<Shutdown>,
     failure: Option<&'static str>,
     sent: u64,
 }
@@ -210,11 +235,22 @@ impl std::io::Write for Sink {
         }
         let len = bytes.len().min(CHUNK);
         let chunk = Bytes::copy_from_slice(&bytes[..len]);
+        let send = self.sender.send_timeout(chunk, self.stall.min(remaining));
         // Runs on the export's blocking thread, never on a runtime worker.
-        match self
-            .runtime
-            .block_on(self.sender.send_timeout(chunk, self.stall.min(remaining)))
-        {
+        let sent = self.runtime.block_on(async {
+            let Some(shutdown) = &self.shutdown else {
+                return Some(send.await);
+            };
+            tokio::select! {
+                biased;
+                _ = shutdown.wait() => None,
+                sent = send => Some(sent),
+            }
+        });
+        let Some(sent) = sent else {
+            return Err(self.fail("server is shutting down"));
+        };
+        match sent {
             Ok(()) => {
                 self.sent += len as u64;
                 Ok(len)
