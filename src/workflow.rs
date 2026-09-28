@@ -312,7 +312,10 @@ pub(crate) fn supported_configured_password_reset(definition: &Definition) -> bo
     };
     let routes = |step: &Step, verified: &'static str, target: &Id| {
         step.transitions.len() == 2
-            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
             && step.transitions.iter().any(|transition| {
                 transition.on == Label::fixed(verified) && &transition.to == target
             })
