@@ -648,7 +648,10 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         "operations.encrypted_storage" => config.database_key_file.is_some(),
         "identity.email_verification"
         | "identity.invitations"
-        | "identity.email_password_reset" => config.mail.is_some(),
+        | "identity.email_password_reset" => config
+            .mail
+            .as_ref()
+            .is_some_and(|mail| mail.require_local_material().is_ok()),
         "directory.ldap_sync" | "identity.ldap_authentication" => !config.directories.is_empty(),
         "directory.scim_outbound" => !config.scim_targets.is_empty(),
         "directory.workspace_sync" => !config.workspace_directories.is_empty(),

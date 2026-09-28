@@ -1,5 +1,50 @@
 use super::*;
 
+#[tokio::test]
+async fn email_capabilities_require_local_smtp_credential_before_serving() {
+    let mut f = Fixture::new();
+    let password_file = f._dir.path().join("smtp-password");
+    assert!(!password_file.exists());
+    f.core.config.mail = Some(riauth::lifecycle::MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: riauth::lifecycle::MailSecurity::Loopback,
+        username: Some("sender".into()),
+        password_file: Some(password_file.clone()),
+    });
+    let states = riauth::capability::runtime(&f.core).unwrap();
+    for name in [
+        "identity.email_verification",
+        "identity.invitations",
+        "identity.email_password_reset",
+    ] {
+        assert_eq!(states["feature_states"][name]["compiled"], true);
+        assert_eq!(states["feature_states"][name]["enabled"], true);
+        assert_eq!(states["feature_states"][name]["configured"], false, "{name}");
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
+    let error = riauth::api::serve(f.core.clone()).await.unwrap_err();
+    assert!(error.to_string().contains("SMTP configuration unusable"));
+
+    riauth::config::write_private(&password_file, b"local-test-password", false).unwrap();
+    let states = riauth::capability::runtime(&f.core).unwrap();
+    for name in [
+        "identity.email_verification",
+        "identity.invitations",
+        "identity.email_password_reset",
+    ] {
+        assert_eq!(states["feature_states"][name]["configured"], true);
+        assert_eq!(states["feature_states"][name]["usable"], true);
+    }
+    std::fs::write(&password_file, b"\n").unwrap();
+    let states = riauth::capability::runtime(&f.core).unwrap();
+    assert_eq!(
+        states["feature_states"]["identity.email_verification"]["usable"],
+        false
+    );
+}
+
 #[test]
 fn storage_survives_restart_and_issuer_cannot_be_changed_silently() {
     let f = Fixture::new();

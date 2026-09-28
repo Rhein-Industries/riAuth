@@ -64,6 +64,29 @@ impl MailConfig {
         }
         Ok(())
     }
+    /// Validate local SMTP material without contacting the remote server.
+    /// Config loading checks the shape before resolving relative paths; the
+    /// serving preflight and capability assembly call this on resolved paths.
+    pub(crate) fn require_local_material(&self) -> Result<()> {
+        self.validate().map_err(Error::internal)?;
+        self.password().map(|_| ())
+    }
+
+    fn password(&self) -> Result<Option<zeroize::Zeroizing<String>>> {
+        let Some(path) = &self.password_file else {
+            return Ok(None);
+        };
+        let mut password = crate::config::read_private_secret(path, 4096).map_err(|_| {
+            Error::bad("SMTP credential must be a private file of at most 4096 bytes")
+        })?;
+        let len = password.trim_end_matches(['\r', '\n']).len();
+        password.truncate(len);
+        if password.is_empty() {
+            return Err(Error::bad("Invalid SMTP credential file"));
+        }
+        Ok(Some(password))
+    }
+
     fn transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>> {
         self.validate().map_err(Error::internal)?;
         let builder = match self.security {
@@ -80,17 +103,10 @@ impl MailConfig {
         }
         .port(self.port)
         .timeout(Some(Duration::from_secs(10)));
-        let builder = if let (Some(username), Some(path)) = (&self.username, &self.password_file) {
-            let password = crate::config::read_private_secret(path, 4096).map_err(|_| {
-                Error::bad("SMTP credential must be a private file of at most 4096 bytes")
-            })?;
-            let password = password.trim_end_matches(['\r', '\n']);
-            if password.is_empty() || password.len() > 4096 {
-                return Err(Error::bad("Invalid SMTP credential file"));
-            }
+        let builder = if let (Some(username), Some(password)) = (&self.username, self.password()?) {
             builder.credentials(lettre::transport::smtp::authentication::Credentials::new(
                 username.clone(),
-                password.into(),
+                password.as_str().to_owned(),
             ))
         } else {
             builder

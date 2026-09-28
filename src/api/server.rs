@@ -104,6 +104,11 @@ async fn serving_preflight(core: &Core) -> anyhow::Result<()> {
     let store = core.store.clone();
     let config = core.config.clone();
     tokio::task::spawn_blocking(move || {
+        if let Some(mail) = &config.mail {
+            mail.require_local_material().map_err(|error| {
+                Error::bad(format!("SMTP configuration unusable: {}", error.message))
+            })?;
+        }
         crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
         store.ready()
