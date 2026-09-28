@@ -13,6 +13,7 @@
   const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [] };
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
+  let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
 
   class ApiError extends Error {
     constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -158,8 +159,18 @@
   function connection(label, live = false) {
     $("connection-label").textContent = label; $("connection").classList.toggle("live", live);
   }
+  // A draft and the one-time client secret belong to the administrator session that made
+  // them. Every session or account transition drops them, the views that rendered them and
+  // any open secret or confirmation dialog, so a later account in this tab can't see them.
+  function forget() {
+    draft = null; captureWizard = null;
+    $("view").replaceChildren();
+    $("secret-value").value = "";
+    for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
+  }
   function gate(kind) {
     generation += 1; loaded = false;
+    forget();
     const who = data.me && data.me.user ? data.me.user.username : null;
     const content = {
       signin: ["i-lock", "Sign in to administer riAuth", "Your session ended or this browser isn't signed in. Sign in on your applications page with an administrator account, then come back to this page.", "Go to sign-in", false],
@@ -187,6 +198,7 @@
         api("GET", "admin/access/requests"), api("GET", "admin/access/grants"), api("GET", "admin/audit?limit=50"),
       ]);
       if (run !== generation) return;
+      if (draft && draft.owner !== me.user.id) forget();
       Object.assign(data, { me, revision: me.revision, clients, users, groups, requests, grants, audit });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -239,6 +251,8 @@
   function render(options = {}) {
     if (!loaded) return;
     const { section, id } = route();
+    // A refresh re-renders the open step; keep what was typed since the last Continue.
+    if (captureWizard) { try { captureWizard(); } catch { /* a partial step is re-read on Continue */ } captureWizard = null; }
     // A created application's one-time secret is dropped once the wizard route is left; an
     // unfinished draft is kept so a detour (for example to create a group) can resume it.
     if (draft && draft.created && !(section === "applications" && id === "new")) draft = null;
@@ -763,7 +777,7 @@
   };
   const REDIRECT_EXAMPLES = { web: "https://app.example.com/auth/callback", spa: "https://app.example.com/callback", native: "com.example.app:/oauth/callback" };
   function freshDraft() {
-    return { step: 0, type: "web", name: "", id: "", idEdited: false, redirects: "", origins: "", logout: "", launch: "",
+    return { owner: data.me.user.id, step: 0, type: "web", name: "", id: "", idEdited: false, redirects: "", origins: "", logout: "", launch: "",
       groups: [], mfa: false, scopes: ["openid", "profile", "email"], extraScopes: "", apiScopes: "",
       delivery: { groups_in_profile: false, claims_in_access_token: false, userinfo_only: false }, mappings: [],
       auth: "client_secret_basic", jwks: "", checked: null, created: null };
@@ -771,6 +785,17 @@
   const slug = (text) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   const confidentialType = (type) => type === "web" || type === "service";
   const draftScopes = (d) => d.type === "service" ? words(d.apiScopes) : [...new Set([...d.scopes, ...words(d.extraScopes)])];
+  // validate_client requires at least one scope, but a service's scopes are collected on its
+  // API access step. Until then the preflight checks this stand-in, so a step is checked only
+  // on what it has collected. Create sends draftBody, which never contains it, and a stand-in
+  // check is not kept for the review.
+  const PENDING_SCOPE = "setup.pending";
+  function preflightBody(d) {
+    const body = draftBody(d);
+    const pending = d.type === "service" && !wizardSteps(d).slice(0, d.step + 1).some(([key]) => key === "api");
+    if (pending) body.scopes = [PENDING_SCOPE];
+    return { body, pending };
+  }
   function draftBody(d) {
     const service = d.type === "service";
     const settings = {};
@@ -961,7 +986,7 @@
     }));
   }
   function newApplication() {
-    if (!draft) draft = freshDraft();
+    if (!draft || draft.owner !== data.me.user.id) draft = freshDraft();
     const d = draft;
     if (d.created) return created(d);
     const steps = wizardSteps(d);
@@ -975,6 +1000,7 @@
       actions(h("button", { class: "button primary", type: "submit" }, last ? "Create application" : "Continue"), back,
         link(hash("applications"), "Cancel", { class: "button secondary", onclick: () => { draft = null; } })));
     const go = (step) => { d.step = step; render(); document.getElementById("wizard-step-title")?.focus(); };
+    captureWizard = () => { if (form.isConnected) readStep(stepKey, form, d); };
     const stepper = wizardStepper(steps, d);
     stepper.addEventListener("click", (event) => {
       const target = event.target.closest("[data-step]");
@@ -992,9 +1018,13 @@
       bindForm(form, async () => {
         readStep(stepKey, form, d);
         localCheck(stepKey, d);
-        // Continue asks riAuth: the whole draft is checked as a create would be, no write.
+        // Continue asks riAuth to check the draft as a create would, without a write, on the
+        // fields collected so far.
+        const preflight = preflightBody(d);
         try {
-          d.checked = await api("POST", "admin/client-checks", draftBody(d));
+          const checked = await api("POST", "admin/client-checks", preflight.body);
+          // A stand-in check says nothing about the final scopes, so the review never shows it.
+          d.checked = preflight.pending ? null : checked;
         } catch (error) {
           if (error.status === 400) throw invalid(error.message);
           throw error;
