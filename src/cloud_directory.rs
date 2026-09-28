@@ -17,8 +17,11 @@ use crate::{
     store::Tx,
 };
 use axum::http::StatusCode;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Read,
@@ -203,12 +206,24 @@ impl EntraDirectory {
             return Err(Error::bad("Entra tenant id must be explicit and bounded"));
         }
         validate_token_url(&self.token_url)?;
-        validate_base(&self.graph_url)?;
-        if !valid_secret_id(&self.client_id, 256) || self.client_secret_file.as_os_str().is_empty()
+        let graph = validate_base(&self.graph_url)?;
+        if !valid_secret_id(&self.client_id, 256) {
+            return Err(Error::bad("Entra client id must be explicit"));
+        }
+        let secret = !self.client_secret_file.as_os_str().is_empty();
+        let certificate = self.certificate_file.as_ref();
+        let private_key = self.private_key_file.as_ref();
+        if !(secret && certificate.is_none() && private_key.is_none()
+            || !secret
+                && certificate.is_some_and(|path| !path.as_os_str().is_empty())
+                && private_key.is_some_and(|path| !path.as_os_str().is_empty()))
         {
             return Err(Error::bad(
-                "Entra client id and secret file must be explicit",
+                "Entra requires either one secret file or a certificate and private key pair",
             ));
+        }
+        if certificate.is_some() {
+            validate_entra_certificate_endpoint(self, &graph)?;
         }
         validate_scope(&self.scope, true)?;
         validate_groups(&self.groups)?;
@@ -222,6 +237,44 @@ impl EntraDirectory {
     }
 }
 
+fn validate_entra_certificate_endpoint(directory: &EntraDirectory, graph: &Url) -> Result<()> {
+    if matches!(graph.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+        let token =
+            Url::parse(&directory.token_url).map_err(|_| Error::bad("Invalid Entra token URL"))?;
+        if matches!(token.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+            return Ok(());
+        }
+        return Err(Error::bad(
+            "Entra loopback Graph requires a loopback token URL",
+        ));
+    }
+    let auth_hosts: &[&str] = match graph.host_str() {
+        Some("graph.microsoft.com") => &["login.microsoftonline.com"],
+        Some("graph.microsoft.us" | "dod-graph.microsoft.us") => &["login.microsoftonline.us"],
+        Some("microsoftgraph.chinacloudapi.cn") => {
+            &["login.chinacloudapi.cn", "login.partner.microsoftonline.cn"]
+        }
+        _ => {
+            return Err(Error::bad(
+                "Entra certificate credential requires a supported Graph cloud",
+            ));
+        }
+    };
+    let token =
+        Url::parse(&directory.token_url).map_err(|_| Error::bad("Invalid Entra token URL"))?;
+    if token.scheme() != "https"
+        || token.port_or_known_default() != Some(443)
+        || !auth_hosts.contains(&token.host_str().unwrap_or_default())
+        || token.path() != format!("/{}/oauth2/v2.0/token", directory.tenant_id)
+        || directory.scope != format!("{}/.default", directory.graph_url.trim_end_matches('/'))
+    {
+        return Err(Error::bad(
+            "Entra certificate token URL, tenant, and Graph scope must match",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 struct Settings {
     kind: &'static str,
@@ -231,6 +284,7 @@ struct Settings {
     token_url: String,
     client_id: String,
     client_secret_file: PathBuf,
+    entra_certificate: Option<(PathBuf, PathBuf)>,
     base_url: String,
     scope: String,
     groups: BTreeMap<String, String>,
@@ -314,16 +368,85 @@ fn read_secret(path: &std::path::Path) -> Result<Zeroizing<String>> {
     Ok(Zeroizing::new(trimmed.to_owned()))
 }
 
+fn certificate_assertion(
+    settings: &Settings,
+    certificate_file: &PathBuf,
+    key_file: &PathBuf,
+) -> Result<Zeroizing<String>> {
+    let unavailable_credential = || unavailable("Entra certificate credential is unavailable");
+    let file = std::fs::File::open(certificate_file).map_err(|_| unavailable_credential())?;
+    let metadata = file.metadata().map_err(|_| unavailable_credential())?;
+    if !metadata.is_file() || metadata.len() > 32_768 {
+        return Err(unavailable_credential());
+    }
+    let mut bytes = Vec::new();
+    file.take(32_769)
+        .read_to_end(&mut bytes)
+        .map_err(|_| unavailable_credential())?;
+    if bytes.len() > 32_768 {
+        return Err(unavailable_credential());
+    }
+    let mut blocks = pem::parse_many(bytes).map_err(|_| unavailable_credential())?;
+    if blocks.len() != 1 || blocks[0].tag() != "CERTIFICATE" {
+        return Err(unavailable_credential());
+    }
+    let der = blocks.remove(0).into_contents();
+    let (remainder, certificate) =
+        x509_parser::parse_x509_certificate(&der).map_err(|_| unavailable_credential())?;
+    if !remainder.is_empty()
+        || !certificate.validity().is_valid()
+        || !matches!(certificate.public_key().parsed(), Ok(x509_parser::public_key::PublicKey::RSA(ref key)) if (2048..=8192).contains(&key.key_size()))
+    {
+        return Err(unavailable_credential());
+    }
+    let private_key = crate::config::read_private_secret(key_file, 16_384)
+        .map_err(|_| unavailable_credential())?;
+    let mut header = Header::new(Algorithm::PS256);
+    header.x5t_s256 = Some(URL_SAFE_NO_PAD.encode(Sha256::digest(&der)));
+    let issued = now();
+    let claims = json!({
+        "aud": settings.token_url,
+        "iss": settings.client_id,
+        "sub": settings.client_id,
+        "jti": crypto::id(),
+        "iat": issued,
+        "nbf": issued,
+        "exp": issued.saturating_add(300),
+    });
+    let encoding =
+        EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|_| unavailable_credential())?;
+    let assertion =
+        jsonwebtoken::encode(&header, &claims, &encoding).map_err(|_| unavailable_credential())?;
+    // A cert/key mismatch during a two-file rotation must stop before any token request.
+    let mut validation = Validation::new(Algorithm::PS256);
+    validation.set_audience(&[settings.token_url.as_str()]);
+    validation.set_issuer(&[settings.client_id.as_str()]);
+    let public_key = DecodingKey::from_rsa_der(&certificate.public_key().subject_public_key.data);
+    jsonwebtoken::decode::<Value>(&assertion, &public_key, &validation)
+        .map_err(|_| unavailable_credential())?;
+    Ok(Zeroizing::new(assertion))
+}
+
 fn access_token(
     settings: &Settings,
     http: &reqwest::blocking::Client,
 ) -> Result<Zeroizing<String>> {
-    let secret = read_secret(&settings.client_secret_file)?;
+    let (field, credential) = if let Some((certificate, key)) = &settings.entra_certificate {
+        (
+            "client_assertion",
+            certificate_assertion(settings, certificate, key)?,
+        )
+    } else {
+        ("client_secret", read_secret(&settings.client_secret_file)?)
+    };
     let mut form = vec![
         ("grant_type", "client_credentials"),
         ("client_id", settings.client_id.as_str()),
-        ("client_secret", secret.as_str()),
+        (field, credential.as_str()),
     ];
+    if settings.entra_certificate.is_some() {
+        form.push(("client_assertion_type", crate::jose::ASSERTION_TYPE));
+    }
     if !settings.scope.is_empty() {
         form.push(("scope", settings.scope.as_str()));
     }
@@ -1327,6 +1450,7 @@ impl Core {
                     token_url: directory.token_url.clone(),
                     client_id: directory.client_id.clone(),
                     client_secret_file: directory.client_secret_file.clone(),
+                    entra_certificate: None,
                     base_url: directory.directory_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),
@@ -1358,6 +1482,11 @@ impl Core {
                     token_url: directory.token_url.clone(),
                     client_id: directory.client_id.clone(),
                     client_secret_file: directory.client_secret_file.clone(),
+                    entra_certificate: directory
+                        .certificate_file
+                        .as_ref()
+                        .zip(directory.private_key_file.as_ref())
+                        .map(|(certificate, key)| (certificate.clone(), key.clone())),
                     base_url: directory.graph_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),

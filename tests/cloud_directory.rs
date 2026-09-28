@@ -14,8 +14,10 @@ use std::{
     time::Duration,
 };
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use common::Fixture;
 use common::security::{Dependents, events, subscribe};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use riauth::{
     agent::{NewAgent, Permission},
     cloud_directory::{Attributes, EntraDirectory, WorkspaceDirectory},
@@ -24,6 +26,7 @@ use riauth::{
     model::{Session, User, UserPatch},
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use url::Url;
 
 const SECRET: &str = "cloud-client-secret-supersecret";
@@ -67,6 +70,7 @@ struct State {
     kind: &'static str,
     client_id: String,
     secret: Mutex<String>,
+    certificate: Mutex<Option<Vec<u8>>>,
     token_status: AtomicU16,
     people: Mutex<Vec<Person>>,
     mode: Mutex<Mode>,
@@ -108,6 +112,40 @@ fn person(id: &str, email: &str, name: &str, staff: bool) -> Person {
     }
 }
 
+fn certificate_pair() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    use openssl::{
+        asn1::Asn1Time,
+        bn::BigNum,
+        hash::MessageDigest,
+        pkey::PKey,
+        rsa::Rsa,
+        x509::{X509, X509NameBuilder},
+    };
+    let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    let mut name = X509NameBuilder::new().unwrap();
+    name.append_entry_by_text("CN", "Entra connector test")
+        .unwrap();
+    let name = name.build();
+    let mut cert = X509::builder().unwrap();
+    cert.set_version(2).unwrap();
+    let serial = BigNum::from_u32(1).unwrap().to_asn1_integer().unwrap();
+    cert.set_serial_number(&serial).unwrap();
+    cert.set_subject_name(&name).unwrap();
+    cert.set_issuer_name(&name).unwrap();
+    cert.set_pubkey(&key).unwrap();
+    cert.set_not_before(&Asn1Time::days_from_now(0).unwrap())
+        .unwrap();
+    cert.set_not_after(&Asn1Time::days_from_now(365).unwrap())
+        .unwrap();
+    cert.sign(&key, MessageDigest::sha256()).unwrap();
+    let cert = cert.build();
+    (
+        cert.to_pem().unwrap(),
+        cert.to_der().unwrap(),
+        key.private_key_to_pem_pkcs8().unwrap(),
+    )
+}
+
 fn serve(kind: &'static str, people: Vec<Person>, secret: &str) -> Directory {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -116,6 +154,7 @@ fn serve(kind: &'static str, people: Vec<Person>, secret: &str) -> Directory {
         kind,
         client_id: CLIENT_ID.into(),
         secret: Mutex::new(secret.into()),
+        certificate: Mutex::new(None),
         token_status: AtomicU16::new(200),
         people: Mutex::new(people),
         mode: Mutex::new(Mode::Split),
@@ -322,10 +361,49 @@ fn token(state: &State, request: &Incoming) -> (u16, String) {
     if let Some(scope) = fields.get("scope") {
         state.seen_scopes.lock().unwrap().push(scope.clone());
     }
-    let secret = state.secret.lock().unwrap().clone();
+    let credential_ok = if let Some(der) = state.certificate.lock().unwrap().clone() {
+        let assertion = fields.get("client_assertion");
+        let cert = openssl::x509::X509::from_der(&der).unwrap();
+        let public_pem = cert.public_key().unwrap().public_key_to_pem().unwrap();
+        let header = assertion.and_then(|assertion| decode_header(assertion).ok());
+        let mut validation = Validation::new(Algorithm::PS256);
+        validation.set_audience(&[format!("{}/token", state.base.lock().unwrap())]);
+        validation.set_issuer(&[state.client_id.as_str()]);
+        let claims = assertion.and_then(|assertion| {
+            decode::<Value>(
+                assertion,
+                &DecodingKey::from_rsa_pem(&public_pem).unwrap(),
+                &validation,
+            )
+            .ok()
+            .map(|token| token.claims)
+        });
+        fields.get("client_secret").is_none()
+            && fields.get("client_assertion_type").map(String::as_str)
+                == Some(riauth::jose::ASSERTION_TYPE)
+            && fields.get("scope").map(String::as_str)
+                == Some("https://graph.microsoft.com/.default")
+            && header.as_ref().is_some_and(|header| {
+                header.alg == Algorithm::PS256
+                    && header.x5t_s256.as_deref()
+                        == Some(URL_SAFE_NO_PAD.encode(Sha256::digest(&der)).as_str())
+            })
+            && claims.as_ref().is_some_and(|claims| {
+                claims["sub"] == state.client_id
+                    && claims["jti"].as_str().is_some_and(|jti| !jti.is_empty())
+                    && claims["exp"]
+                        .as_u64()
+                        .zip(claims["iat"].as_u64())
+                        .is_some_and(|(exp, iat)| exp == iat + 300)
+            })
+    } else {
+        let secret = state.secret.lock().unwrap().clone();
+        fields.get("client_secret").map(String::as_str) == Some(secret.as_str())
+            && fields.get("client_assertion").is_none()
+    };
     if fields.get("grant_type").map(String::as_str) != Some("client_credentials")
         || fields.get("client_id").map(String::as_str) != Some(state.client_id.as_str())
-        || fields.get("client_secret").map(String::as_str) != Some(secret.as_str())
+        || !credential_ok
     {
         return (401, json!({"error": "invalid_client"}).to_string());
     }
@@ -605,6 +683,8 @@ fn configure(fixture: &mut Fixture, kind: &str, id: &str, directory: &Directory,
                 token_url: directory.token_url.clone(),
                 client_id: CLIENT_ID.into(),
                 client_secret_file: secret_file,
+                certificate_file: None,
+                private_key_file: None,
                 graph_url: directory.base.clone(),
                 scope: "https://graph.microsoft.com/.default".into(),
                 groups: BTreeMap::from([("staff".into(), "staff-gid".into())]),
@@ -1042,6 +1122,77 @@ fn entra_transitive_membership_requires_complete_graph_pages() {
             .cloud_plan_get(&fixture.admin, "entra", reviewed["id"].as_str().unwrap())
             .unwrap()["applied"],
         false
+    );
+}
+
+#[test]
+fn entra_certificate_assertion_rotates_without_secret_fallback() {
+    let directory = serve(
+        "entra",
+        vec![person("ext-alice", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "entra", "corp", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    let cert_path = fixture._dir.path().join("entra-cert.pem");
+    let key_path = fixture._dir.path().join("entra-key.pem");
+    let (cert_one, der_one, key_one) = certificate_pair();
+    write_private(&cert_path, &cert_one, true).unwrap();
+    write_private(&key_path, &key_one, true).unwrap();
+    *directory.state.certificate.lock().unwrap() = Some(der_one);
+    let config = fixture
+        .core
+        .config
+        .entra_directories
+        .get_mut("corp")
+        .unwrap();
+    config.certificate_file = Some(cert_path.clone());
+    config.private_key_file = Some(key_path.clone());
+    assert!(config.validate().is_err());
+    config.client_secret_file = std::path::PathBuf::new();
+    let serialized = toml::to_string(config).unwrap();
+    assert!(!serialized.contains("client_secret_file"));
+    let restored: EntraDirectory = toml::from_str(&serialized).unwrap();
+    assert!(restored.client_secret_file.as_os_str().is_empty());
+    fixture.core.config.validate().unwrap();
+
+    let plan = fixture
+        .core
+        .cloud_plan(&fixture.admin, "entra", "corp")
+        .unwrap();
+    assert_redacted(&plan);
+    assert!(user_named(&users_of(&fixture), "alice").is_none());
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    let (cert_two, der_two, key_two) = certificate_pair();
+    write_private(&cert_path, &cert_two, true).unwrap();
+    let error = fixture
+        .core
+        .cloud_apply(&fixture.admin, "entra", plan["id"].as_str().unwrap())
+        .unwrap_err();
+    assert_eq!(error.code, "directory_unavailable");
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert!(user_named(&users_of(&fixture), "alice").is_none());
+
+    write_private(&key_path, &key_two, true).unwrap();
+    *directory.state.certificate.lock().unwrap() = Some(der_two);
+    fixture
+        .core
+        .cloud_apply(&fixture.admin, "entra", plan["id"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+        true
+    );
+    assert!(
+        directory
+            .state
+            .seen_secrets
+            .lock()
+            .unwrap()
+            .iter()
+            .all(String::is_empty)
     );
 }
 
@@ -1944,6 +2095,8 @@ fn directory_urls_reject_non_loopback_http() {
         token_url: "https://login.microsoftonline.com/tenant/oauth2/v2.0/token".into(),
         client_id: CLIENT_ID.into(),
         client_secret_file: std::path::PathBuf::from("secret"),
+        certificate_file: None,
+        private_key_file: None,
         graph_url: "https://graph.microsoft.com".into(),
         scope: "https://graph.microsoft.com/.default".into(),
         groups: BTreeMap::new(),
@@ -1954,6 +2107,24 @@ fn directory_urls_reject_non_loopback_http() {
     let mut unstable_id = entra.clone();
     unstable_id.attributes.external_id = "mail".into();
     assert!(unstable_id.validate().is_err());
+    let mut certificate = entra.clone();
+    certificate.client_secret_file = std::path::PathBuf::new();
+    certificate.certificate_file = Some("cert.pem".into());
+    certificate.private_key_file = Some("key.pem".into());
+    assert!(certificate.validate().is_err());
+    certificate.token_url = format!(
+        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
+        certificate.tenant_id
+    );
+    assert!(certificate.validate().is_ok());
+    certificate.scope = "https://graph.microsoft.us/.default".into();
+    assert!(certificate.validate().is_err());
+    certificate.scope = entra.scope;
+    certificate.token_url = format!(
+        "https://login.microsoftonline.us/{}/oauth2/v2.0/token",
+        certificate.tenant_id
+    );
+    assert!(certificate.validate().is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

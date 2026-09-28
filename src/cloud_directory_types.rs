@@ -5,6 +5,9 @@ use std::{collections::BTreeMap, path::PathBuf};
 fn graph_scope() -> String {
     "https://graph.microsoft.com/.default".into()
 }
+fn empty_path(path: &PathBuf) -> bool {
+    path.as_os_str().is_empty()
+}
 fn workspace_attributes() -> Attributes {
     Attributes {
         email: "primaryEmail".into(),
@@ -56,7 +59,15 @@ pub struct EntraDirectory {
     pub tenant_id: String,
     pub token_url: String,
     pub client_id: String,
+    /// Shared-secret credential. Omit when using the certificate fields.
+    #[serde(default, skip_serializing_if = "empty_path")]
     pub client_secret_file: PathBuf,
+    /// PEM X.509 certificate registered on the Entra application.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub certificate_file: Option<PathBuf>,
+    /// Matching RSA PEM private key, with owner-only file permissions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private_key_file: Option<PathBuf>,
     /// Graph origin. Production is `https://graph.microsoft.com`.
     pub graph_url: String,
     #[serde(default = "graph_scope")]

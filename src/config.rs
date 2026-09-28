@@ -594,11 +594,14 @@ impl Config {
             }
         }
         for directory in value.entra_directories.values_mut() {
-            if directory.client_secret_file.is_relative() {
-                directory.client_secret_file = path
-                    .parent()
-                    .unwrap_or(Path::new("."))
-                    .join(&directory.client_secret_file);
+            for file in std::iter::once(&mut directory.client_secret_file)
+                .filter(|file| !file.as_os_str().is_empty())
+                .chain(directory.certificate_file.iter_mut())
+                .chain(directory.private_key_file.iter_mut())
+            {
+                if file.is_relative() {
+                    *file = path.parent().unwrap_or(Path::new(".")).join(&*file);
+                }
             }
         }
         for listener in value.ldap_listeners.values_mut() {
