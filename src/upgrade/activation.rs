@@ -122,6 +122,41 @@ pub(super) fn stamp(tx: &Tx<'_>, revision: u64) -> Result<()> {
     tx.put("meta", KEY, &current(revision))
 }
 
+/// An explicit maintenance handoff can retire the Platform compiled-capability
+/// fence only when the source marker exactly matches this Platform artifact.
+/// Normal Core open and readiness continue to use `preflight_for` unchanged.
+pub(super) fn preflight_transition_source(tx: &Tx<'_>) -> Result<()> {
+    if edition::CURRENT != edition::Target::Platform {
+        return Err(Error::bad(
+            "Edition transition requires a Platform maintenance build",
+        ));
+    }
+    let previous = read(tx)?.ok_or_else(|| {
+        Error::bad("Stored version activation is missing; source release is unknown")
+    })?;
+    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+    if previous.at_revision > revision {
+        return Err(Error::bad(
+            "Stored configuration revision predates its Platform activation",
+        ));
+    }
+    if previous != current_for(edition::Target::Platform, previous.at_revision) {
+        return Err(Error::bad(
+            "Stored version activation does not match this Platform maintenance build; use the source release and compiled capabilities",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn stamp_transition_target(tx: &Tx<'_>, revision: u64) -> Result<()> {
+    preflight_transition_source(tx)?;
+    tx.put(
+        "meta",
+        KEY,
+        &current_for(edition::Target::Essentials, revision),
+    )
+}
+
 pub(crate) fn stamp_initial(tx: &Tx<'_>) -> Result<()> {
     let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
     stamp(tx, revision)

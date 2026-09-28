@@ -51,9 +51,33 @@ older default Platform installations; older Essentials stores also need an
 explicit, reviewed adoption path and cannot be silently claimed as Essentials.
 Platform activation preserves the source guard and accumulates bounded evidence;
 compaction replaces excess identifiers with category evidence. It never deletes
-referenced records. Retiring Platform provenance requires an
-explicit migration after checking policy, authority, credentials and the
-rollback plan. This preview does not yet provide that migration command.
+referenced records.
+
+For a marked Platform store with no Platform dependency, the Platform
+maintenance binary can perform an explicit Essentials handoff. Stop every
+riAuth writer and use the exact target configuration for both commands:
+
+```sh
+riauth-maintenance --config /etc/riauth/riauth.toml --json transition-plan --target essentials
+riauth-maintenance --config /etc/riauth/riauth.toml --json transition-activate --target essentials --token '<transition_token from the ready plan>'
+```
+
+The read-only plan reports identifiers for every blocker. It accepts the
+last-activated-Platform provenance only when its dependency evidence is empty,
+and requires the source release and compiled capabilities to match this
+Platform maintenance binary. The plan token covers the complete candidate
+configuration and every stored record. Activation checks them again while
+holding the database writer lock (and a PostgreSQL table lock), then atomically
+advances the revision, stamps the Essentials edition and version markers, and
+appends `meta/edition_transition_history/<id>`. Users, IDs, credentials,
+revocations, grants, sessions, and shared configuration are untouched. A
+missing legacy marker, any current or recorded Platform dependency, pending
+recovery, changed PostgreSQL lineage, or changed store/configuration requires
+another review; this command never removes data.
+The ordinary `transition-preflight` continues to show the direct-switch
+blockers until activation finishes. Keep a reviewed pre-transition backup for
+rollback; switching back to Platform is a new activation and requires its own
+review.
 
 Both builds run `riauth`; install only one on a deployment. The local capability
 document includes `edition`, compiled features, permissions and schemas from

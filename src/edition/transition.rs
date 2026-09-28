@@ -1,15 +1,49 @@
-//! Read-only, target-edition inspection of configuration and durable authority.
+//! Target-edition inspection and an explicit, offline activation handoff.
 use super::*;
 use serde_json::{Value, json};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Inspection {
+    DirectOpen,
+    ExplicitTransition,
+}
 
 /// Assess the candidate configuration and current store without opening Core,
 /// running migrations, rebuilding indexes or changing any record.
 pub fn preflight(config: &Config, target: Target) -> Result<Value> {
+    inspect(config, target, Inspection::DirectOpen)
+}
+
+/// Read-only plan for a marked Platform store whose current and historical
+/// authority can be enforced by Essentials. The token binds every stored row
+/// and the full candidate configuration to the later maintenance write.
+pub fn plan(config: &Config, target: Target) -> Result<Value> {
+    inspect(config, target, Inspection::ExplicitTransition)
+}
+
+fn inspect(config: &Config, target: Target, mode: Inspection) -> Result<Value> {
     if !cfg!(feature = "platform") {
         return Err(Error::bad(
             "Transition preflight requires a Platform maintenance build to inspect both editions",
         ));
     }
+    if mode == Inspection::ExplicitTransition && target != Target::Essentials {
+        return Err(Error::bad(
+            "Explicit edition transition currently supports Platform to Essentials only",
+        ));
+    }
+    Store::inspect(config, |backend, tx| {
+        assess(config, target, mode, backend, tx)
+    })
+}
+
+fn assess(
+    config: &Config,
+    target: Target,
+    mode: Inspection,
+    backend: &str,
+    tx: Option<&Tx<'_>>,
+) -> Result<Value> {
     let mut config_issues = config_blockers(config, target);
     if let Err(error) = crate::capability::validate_config_for(config, target) {
         config_issues.push(blocker("config/capabilities", error.to_string()));
@@ -23,76 +57,222 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
     {
         config_issues.push(blocker("config", error.to_string()));
     }
-    Store::inspect(config, |backend, tx| {
-        let mut issues = config_issues;
-        let mut schema = None;
-        let mut revision = None;
-        let mut last_activated_edition = None;
-        if let Some(tx) = tx {
-            schema = tx.get::<u32>("meta", "schema")?;
-            revision = tx.get::<u64>("meta", "revision")?;
-            last_activated_edition = tx
-                .get::<Value>("meta", PROVENANCE_KEY)?
-                .and_then(|value| parse_provenance(value).ok())
-                .map(|record| record.last_activated_edition);
-            match schema {
-                Some(version) if version == crate::upgrade::SCHEMA => {}
-                Some(version) => issues.push(blocker(
-                    "meta/schema",
-                    format!(
-                        "Stored schema {version} differs from this artifact's schema {}; migrate with a reviewed backup before switching",
-                        crate::upgrade::SCHEMA
-                    ),
-                )),
-                None => issues.push(blocker("meta/schema", "Store is not initialized")),
-            }
-            if schema.is_some() {
-                let index = tx.get::<u32>("meta", "index_version")?;
-                if index != Some(crate::store::maintenance::INDEX_VERSION) {
-                    issues.push(blocker(
-                        "meta/index_version",
-                        format!(
-                            "Stored index revision {index:?} differs from this artifact's revision {}; migrate with a reviewed backup before switching",
-                            crate::store::maintenance::INDEX_VERSION
-                        ),
-                    ));
-                }
-            }
-            let issuer = tx.get::<String>("meta", "issuer")?;
-            if issuer.as_deref() != Some(config.issuer.as_str()) {
+    let mut issues = config_issues;
+    let mut schema = None;
+    let mut index = None;
+    let mut revision = None;
+    let mut last_activated_edition = None;
+    let mut transition_token = None;
+    if let Some(tx) = tx {
+        schema = tx.get::<u32>("meta", "schema")?;
+        index = tx.get::<u32>("meta", "index_version")?;
+        revision = tx.get::<u64>("meta", "revision")?;
+        let provenance = tx
+            .get::<Value>("meta", PROVENANCE_KEY)?
+            .and_then(|value| parse_provenance(value).ok());
+        last_activated_edition = provenance
+            .as_ref()
+            .map(|record| record.last_activated_edition);
+        let marked_compatible_source = provenance.as_ref().is_some_and(|record| {
+            record.last_activated_edition == Target::Platform
+                && record.platform_dependencies.is_empty()
+        });
+        match schema {
+            Some(version) if version == crate::upgrade::SCHEMA => {}
+            Some(version) => issues.push(blocker(
+                "meta/schema",
+                format!(
+                    "Stored schema {version} differs from this artifact's schema {}; migrate with a reviewed backup before switching",
+                    crate::upgrade::SCHEMA
+                ),
+            )),
+            None => issues.push(blocker("meta/schema", "Store is not initialized")),
+        }
+        if schema.is_some() && index != Some(crate::store::maintenance::INDEX_VERSION) {
+            issues.push(blocker(
+                "meta/index_version",
+                format!(
+                    "Stored index revision {index:?} differs from this artifact's revision {}; migrate with a reviewed backup before switching",
+                    crate::store::maintenance::INDEX_VERSION
+                ),
+            ));
+        }
+        let issuer = tx.get::<String>("meta", "issuer")?;
+        if issuer.as_deref() != Some(config.issuer.as_str()) {
+            issues.push(blocker(
+                "meta/issuer",
+                "Configured issuer does not match the initialized instance",
+            ));
+        }
+        if tx.get::<Value>("meta", "recovery")?.is_some() {
+            issues.push(blocker(
+                "meta/recovery",
+                "Restored-state recovery is pending; reconcile it before an edition transition",
+            ));
+        }
+        if let Some(observed) = tx.postgres_lineage()? {
+            let recorded = tx.get::<crate::recovery::Lineage>("meta", "storage_lineage")?;
+            if !recorded
+                .as_ref()
+                .is_some_and(|record| record.same_store(&observed))
+            {
                 issues.push(blocker(
-                    "meta/issuer",
-                    "Configured issuer does not match the initialized instance",
+                    "meta/storage_lineage",
+                    "PostgreSQL storage lineage changed or is unknown; complete restored-state recovery before an edition transition",
                 ));
             }
-            if schema.is_some()
-                && let Err(error) = crate::upgrade::preflight_activation_for(tx, target)
-            {
+        }
+        if schema.is_some() {
+            let activation = if mode == Inspection::ExplicitTransition {
+                crate::upgrade::preflight_transition_source(tx)
+            } else {
+                crate::upgrade::preflight_activation_for(tx, target)
+            };
+            if let Err(error) = activation {
                 issues.push(blocker("meta/version_activation", error.message));
             }
-            // Edition provenance and version activation are independent gates;
-            // report both when the target cannot safely open this store.
-            issues.extend(store_blockers(tx, target, usize::MAX)?);
-            if let Err(error) = crate::capability::validate_store_tx_for(config, target, tx) {
-                issues.push(blocker("capability/identity.device_trust", error.message));
-            }
-        } else {
-            issues.push(blocker("store", "Configured store does not exist"));
         }
+        // Edition provenance and version activation are independent gates;
+        // report both when the target cannot safely open this store.
+        issues.extend(
+            store_blockers(tx, target, usize::MAX)?
+                .into_iter()
+                .filter(|issue| {
+                    !(mode == Inspection::ExplicitTransition
+                        && marked_compatible_source
+                        && issue.resource == "meta/edition_provenance")
+                }),
+        );
+        if let Err(error) = crate::capability::validate_store_tx_for(config, target, tx) {
+            issues.push(blocker("capability/identity.device_trust", error.message));
+        }
+        if mode == Inspection::ExplicitTransition && issues.is_empty() {
+            transition_token = Some(snapshot_token(config, target, tx)?);
+        }
+    } else {
+        issues.push(blocker("store", "Configured store does not exist"));
+    }
+    Ok(json!({
+        "schema_version": if mode == Inspection::ExplicitTransition { "riauth.edition-transition-plan/v1" } else { "riauth.edition-transition/v1" },
+        "target_edition": target,
+        "inspecting_build": NAME,
+        "backend": backend,
+        "issuer": config.issuer,
+        "store_schema": schema,
+        "store_index_version": index,
+        "store_revision": revision,
+        "last_activated_edition": last_activated_edition,
+        "ready": issues.is_empty(),
+        "read_only": true,
+        "transition_token": transition_token,
+        "blockers": issues,
+    }))
+}
+
+fn snapshot_token(config: &Config, target: Target, tx: &Tx<'_>) -> Result<String> {
+    let config_json = serde_json::to_string(config).map_err(Error::internal)?;
+    Ok(crate::crypto::digest(&format!(
+        "riauth.edition-transition-plan/v1\0{}\0{config_json}\0{}",
+        target.name(),
+        tx.snapshot_digest()?
+    )))
+}
+
+/// Commit the exact planned handoff in one transaction. Only metadata changes:
+/// neither identities nor credentials, grants, sessions or revocations are
+/// converted or deleted. Every writer must be stopped before this operation.
+pub fn activate(config: &Config, target: Target, expected_token: &str) -> Result<Value> {
+    if !cfg!(feature = "platform") || target != Target::Essentials {
+        return Err(Error::bad(
+            "Explicit Platform to Essentials transition requires a Platform maintenance build",
+        ));
+    }
+    let initial = plan(config, target)?;
+    require_ready(&initial)?;
+    if initial["transition_token"] != expected_token {
+        return Err(Error::conflict(
+            "Transition token does not match this store and configuration; rerun transition-plan",
+        ));
+    }
+    let store = Store::from_config(config)?;
+    store.write(|tx| {
+        tx.lock_records_for_transition()?;
+        if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+            return Err(Error::conflict(
+                "Stop every riAuth process connected to this database before edition transition",
+            ));
+        }
+        let current = assess(
+            config,
+            target,
+            Inspection::ExplicitTransition,
+            store.backend(),
+            Some(tx),
+        )?;
+        require_ready(&current)?;
+        if current["transition_token"] != expected_token {
+            return Err(Error::conflict(
+                "Store or configuration changed since transition-plan; rerun preflight",
+            ));
+        }
+        let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+        let next_revision = revision
+            .checked_add(1)
+            .ok_or_else(|| Error::bad("Configuration revision exhausted"))?;
+        let previous_provenance: Value = tx
+            .get("meta", PROVENANCE_KEY)?
+            .ok_or_else(|| Error::bad("Edition provenance disappeared during transition"))?;
+        let previous_activation: Value = tx
+            .get("meta", "version_activation")?
+            .ok_or_else(|| Error::bad("Version activation disappeared during transition"))?;
+        let mut provenance = parse_provenance(previous_provenance.clone())?;
+        if provenance.last_activated_edition != Target::Platform
+            || !provenance.platform_dependencies.is_empty()
+        {
+            return Err(Error::conflict(
+                "Platform dependency or source edition changed during transition",
+            ));
+        }
+        provenance.last_activated_edition = Target::Essentials;
+        let history_key = format!("edition_transition_history/{}", crate::crypto::id());
+        tx.put("meta", "revision", &next_revision)?;
+        crate::upgrade::stamp_transition_target(tx, next_revision)?;
+        tx.put("meta", PROVENANCE_KEY, &provenance)?;
+        tx.put(
+            "meta",
+            &history_key,
+            &json!({
+                "schema_version": "riauth.edition-transition-history/v1",
+                "from": "platform",
+                "to": "essentials",
+                "source_provenance": previous_provenance,
+                "source_activation": previous_activation,
+                "source_revision": revision,
+                "target_revision": next_revision,
+                "transition_token": expected_token,
+                "at": crate::crypto::now(),
+            }),
+        )?;
         Ok(json!({
-            "schema_version": "riauth.edition-transition/v1",
-            "target_edition": target,
-            "inspecting_build": NAME,
-            "backend": backend,
-            "issuer": config.issuer,
-            "store_schema": schema,
-            "store_revision": revision,
-            "last_activated_edition": last_activated_edition,
-            "ready": issues.is_empty(),
-            "read_only": true,
-            "blockers": issues,
+            "schema_version": "riauth.edition-transition-activation/v1",
+            "activated_edition": "essentials",
+            "source_revision": revision,
+            "target_revision": next_revision,
+            "history_record": format!("meta/{history_key}"),
         }))
     })
+}
+
+fn require_ready(report: &Value) -> Result<()> {
+    if report["ready"] == true {
+        return Ok(());
+    }
+    let first = &report["blockers"][0];
+    Err(Error::conflict(format!(
+        "Edition transition blocked by {}: {}",
+        first["resource"].as_str().unwrap_or("store"),
+        first["reason"].as_str().unwrap_or("incompatible store")
+    )))
 }
 
 /// Shared by startup and the operator report. A bounded first issue keeps the

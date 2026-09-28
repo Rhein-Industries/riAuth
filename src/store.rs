@@ -8,12 +8,14 @@ use crate::{
     crypto,
     error::{Error, Result},
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use redb::{
     Database, ReadTransaction, ReadableDatabase, ReadableTable, ReadableTableMetadata,
     TableDefinition, WriteTransaction,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
@@ -1132,6 +1134,39 @@ impl Tx<'_> {
                 .map_err(crate::postgres_store::unavailable)?
                 .get(0),
         ))
+    }
+    /// Freeze the PostgreSQL record table while an offline edition transition
+    /// compares its planned snapshot and stamps both activation markers. The
+    /// ordinary riAuth writer lock excludes cooperating processes; this table
+    /// lock also excludes direct SQL writes until the transaction commits.
+    pub(crate) fn lock_records_for_transition(&self) -> Result<()> {
+        if let Transaction::Postgres(transaction, true) = &self.transaction {
+            transaction
+                .borrow_mut()
+                .batch_execute("LOCK TABLE riauth_store.records_v1 IN SHARE ROW EXCLUSIVE MODE")
+                .map_err(crate::postgres_store::unavailable)?;
+        }
+        Ok(())
+    }
+
+    /// Bounded-memory fingerprint of every persisted record, including opaque
+    /// authority and revision data. Read inspection has one consistent snapshot;
+    /// a transition writer calls this only after locking out other writers.
+    pub(crate) fn snapshot_digest(&self) -> Result<String> {
+        let mut hash = Sha256::new();
+        hash.update(b"riauth.edition-transition-store/v1\0");
+        let mut after = None;
+        while let Some(name) = self.snapshot_next_key(after.as_deref())? {
+            let value = self.raw_get_base(&name)?.ok_or_else(|| {
+                Error::conflict("Store changed during edition transition inspection")
+            })?;
+            hash.update((name.len() as u64).to_be_bytes());
+            hash.update(name.as_bytes());
+            hash.update((value.len() as u64).to_be_bytes());
+            hash.update(&value);
+            after = Some(name);
+        }
+        Ok(URL_SAFE_NO_PAD.encode(hash.finalize()))
     }
     /// One page of the whole keyspace, strictly after `after`. The sum of
     /// stored key and value bytes never exceeds `max_raw_bytes`; an oversized

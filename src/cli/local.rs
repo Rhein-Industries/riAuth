@@ -109,6 +109,18 @@ pub enum LocalCommand {
         #[arg(long, value_enum)]
         target: crate::edition::Target,
     },
+    /// Plan an explicit Platform to Essentials handoff without writing
+    TransitionPlan {
+        #[arg(long, value_enum)]
+        target: crate::edition::Target,
+    },
+    /// Atomically activate the exact reviewed transition plan; stop all writers first
+    TransitionActivate {
+        #[arg(long, value_enum)]
+        target: crate::edition::Target,
+        #[arg(long)]
+        token: String,
+    },
     /// Create an instance, signing key and first administrator
     Init(InitArgs),
     /// Provision a single-use browser setup proof in a private operator file
@@ -247,6 +259,23 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
             if report["ready"] != true {
                 return Err(TransitionBlocked.into());
             }
+        }
+        LocalCommand::TransitionPlan { target } => {
+            let config = Config::load_for_preflight(options.config)?;
+            let report = tokio::task::spawn_blocking(move || crate::edition::plan(&config, target))
+                .await??;
+            emit_transition(&options, &report)?;
+            if report["ready"] != true {
+                return Err(TransitionBlocked.into());
+            }
+        }
+        LocalCommand::TransitionActivate { target, token } => {
+            let config = Config::load_for_preflight(options.config)?;
+            let result = tokio::task::spawn_blocking(move || {
+                crate::edition::activate(&config, target, &token)
+            })
+            .await??;
+            emit_local(&options, &result)?;
         }
         LocalCommand::ImportAuthentik(ImportAuthentikArgs { file, out, .. }) => {
             let input = serde_json::from_slice(&fs::read(file)?)?;

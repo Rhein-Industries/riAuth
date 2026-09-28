@@ -12,7 +12,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 mod transition;
-pub use transition::preflight;
+pub use transition::{activate, plan, preflight};
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

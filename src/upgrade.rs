@@ -65,3 +65,11 @@ pub(crate) fn preflight_activation_for(
     let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
     activation::preflight_for(tx, schema, index, revision, target).map(|_| ())
 }
+
+pub(crate) fn preflight_transition_source(tx: &crate::store::Tx<'_>) -> Result<()> {
+    activation::preflight_transition_source(tx)
+}
+
+pub(crate) fn stamp_transition_target(tx: &crate::store::Tx<'_>, revision: u64) -> Result<()> {
+    activation::stamp_transition_target(tx, revision)
+}
