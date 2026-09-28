@@ -290,8 +290,9 @@ before the export opens its snapshot, so the archive contains it; if it cannot
 be recorded, the export is refused. At most one terminal event follows, written
 after the export released its snapshot: `operations.backup.completed` (frames,
 records, bytes, transcript) only after every archive byte, trailer included,
-was handed to the connection; otherwise `operations.backup.cancelled` (client
-disconnected or stopped reading, deadline, shutdown) or `operations.backup.failed`
+was handed to the connection; otherwise `operations.backup.cancelled` (request
+ended before the export began, client disconnected or stopped reading, deadline,
+shutdown) or `operations.backup.failed`
 (for example the quota), each with the reason and the bytes handed over. The
 export writes a failure itself, so a client that keeps the connection open
 without reading still gets a terminal event after `stall_timeout_seconds`; the

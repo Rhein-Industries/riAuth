@@ -1486,3 +1486,107 @@ async fn http_stream_stalled_reader_ends_the_trail_while_the_body_is_held() {
     // Reading on never completes the archive.
     assert!(held.into_body().collect().await.is_err());
 }
+
+/// A request dropped while its `started` event is written, as when a client
+/// hangs up, still ends its trail: whichever of the start writer and the
+/// dropped request comes second records `cancelled`. Here the only store
+/// writer is held, so the request waits inside `started` when it is dropped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_stream_request_dropped_while_starting_still_ends_the_trail() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use std::time::{Duration, Instant};
+    use tower::ServiceExt;
+
+    let seed = Seed::new(0);
+    let core = seed.fixture.core.clone();
+    let app = riauth::api::router(core.clone());
+    let key = riauth::crypto::random_token("");
+    let admin = seed.fixture.admin.clone();
+    let request = || {
+        Request::post("/api/operations/backup/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin}"))
+            .body(Body::from(
+                serde_json::json!({"encryption_key": key}).to_string(),
+            ))
+            .unwrap()
+    };
+    let backup_events = || -> Vec<Value> {
+        core.store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .map(|(_, event)| event)
+            .filter(|event| {
+                event["action"]
+                    .as_str()
+                    .is_some_and(|action| action.starts_with("operations.backup."))
+            })
+            .collect()
+    };
+
+    let (locked, lock_taken) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let writer = {
+        let core = core.clone();
+        std::thread::spawn(move || {
+            core.store
+                .write(|_| {
+                    locked.send(()).unwrap();
+                    released.recv().unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        })
+    };
+    lock_taken.recv().unwrap();
+    let dropped =
+        tokio::time::timeout(Duration::from_secs(2), app.clone().oneshot(request())).await;
+    assert!(
+        dropped.is_err(),
+        "the request finished while the store was locked"
+    );
+    release.send(()).unwrap();
+    writer.join().unwrap();
+
+    let waiting = Instant::now();
+    let events = loop {
+        let events = backup_events();
+        if events.len() > 1 {
+            break events;
+        }
+        assert!(
+            waiting.elapsed() < Duration::from_secs(10),
+            "a request dropped while starting left its trail open"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(
+        events
+            .iter()
+            .all(|event| event["target"] == events[0]["target"])
+    );
+    let mut actions: Vec<_> = events
+        .iter()
+        .map(|event| event["action"].as_str().unwrap())
+        .collect();
+    actions.sort();
+    assert_eq!(
+        actions,
+        ["operations.backup.cancelled", "operations.backup.started"]
+    );
+    let cancelled = events
+        .iter()
+        .find(|event| event["action"] == "operations.backup.cancelled")
+        .unwrap();
+    assert_eq!(
+        cancelled["details"]["reason"],
+        "request ended before the export began"
+    );
+    // The dropped request released the export slot.
+    let next = app.oneshot(request()).await.unwrap();
+    assert_eq!(next.status(), StatusCode::OK);
+}

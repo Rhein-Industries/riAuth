@@ -56,6 +56,7 @@ const CANCELLED: &str = "operations.backup.cancelled";
 const SHUTTING_DOWN: &str = "server is shutting down";
 const STALLED: &str = "backup client stopped reading";
 const OVERDUE: &str = "backup stream exceeded backup.max_duration_seconds";
+const ABANDONED: &str = "request ended before the export began";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -125,14 +126,18 @@ pub(super) async fn stream(
         request_id,
         run_id,
     };
-    // Durable before the export opens its snapshot. Without it there is no
-    // export; the snapshot is part of the archive, so the archive contains it.
-    trail
-        .record_async(
-            STARTED,
-            json!({"max_archive_bytes": limits.max_archive_bytes}),
-        )
-        .await?;
+    let ending = Arc::new(Ending::new(trail));
+    // Owns the trail for this request until its transfer does, so a request
+    // dropped while `started` is written still ends it.
+    let starting = Starting(Some(ending.clone()));
+    // Durable before the export opens its snapshot, which may hold the only
+    // storage connection; the archive therefore contains it. Without it there
+    // is no export.
+    let begin = ending.clone();
+    let details = json!({"max_archive_bytes": limits.max_archive_bytes});
+    tokio::task::spawn_blocking(move || begin.start(details))
+        .await
+        .map_err(Error::internal)??;
     let cancel = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel(QUEUE);
     let stall = Duration::from_secs(settings.stall_timeout_seconds);
@@ -146,7 +151,6 @@ pub(super) async fn stream(
         shutdown: shutdown.clone(),
         failure: None,
     };
-    let ending = Arc::new(Ending::new(trail));
     let (finished, result) = oneshot::channel();
     let producer = Producer {
         ending: ending.clone(),
@@ -176,6 +180,9 @@ pub(super) async fn stream(
         done: false,
         _cancel: CancelOnDrop(cancel),
     };
+    // Nothing between `started` and here awaits; the transfer's drop covers
+    // the trail from now on.
+    starting.hand_over();
     // The export sends its preamble only after authorizing the caller in its
     // own snapshot.
     let mut preamble = 0;
@@ -383,26 +390,93 @@ fn terminal(error: &Error) -> &'static str {
 }
 
 /// The terminal event of one started export. Whoever takes the trail first
-/// writes it: the export when it fails, its watchdog when delivery of a
-/// finished archive stops, the body when it completes or stops, or a transfer
-/// dropped before that. Each writes only after the export released its
-/// snapshot. Only the body writes `completed`. A storage error while writing,
-/// or a process exit while a dropped transfer's detached write is pending,
+/// writes it: the start writer or the request when the request went away
+/// before its export began, the export when it fails, its watchdog when
+/// delivery of a finished archive stops, the body when it completes or stops,
+/// or a transfer dropped before that. Each writes only after the export, if
+/// any, released its snapshot. Only the body writes `completed`. A storage
+/// error while writing, or a process exit while a detached write is pending,
 /// leaves the trail without one; the first is logged.
 struct Ending {
     trail: Mutex<Option<Trail>>,
+    phase: Mutex<Phase>,
+    runtime: tokio::runtime::Handle,
     /// Archive bytes handed to the connection.
     delivered: AtomicU64,
     /// Woken by delivery progress and when the trail ends.
     progress: Notify,
 }
 
+#[derive(Clone, Copy)]
+enum Phase {
+    /// `started` is being written.
+    Starting,
+    /// `started` is committed.
+    Started,
+    /// The request went away while `started` was being written.
+    Abandoned,
+    /// No `started` event exists, so there is nothing to end.
+    Refused,
+}
+
 impl Ending {
     fn new(trail: Trail) -> Self {
         Self {
+            runtime: trail.runtime.clone(),
             trail: Mutex::new(Some(trail)),
+            phase: Mutex::new(Phase::Starting),
             delivered: AtomicU64::new(0),
             progress: Notify::new(),
+        }
+    }
+    /// Blocking. Commits `started`. If the request went away meanwhile,
+    /// nothing else will end the trail, so this does.
+    fn start(&self, details: Value) -> Result<()> {
+        let trail = {
+            let mut phase = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+            if matches!(*phase, Phase::Abandoned) {
+                *phase = Phase::Refused;
+                return Err(Error::conflict(ABANDONED));
+            }
+            self.trail
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+                .ok_or_else(|| Error::internal("Backup audit trail ended before it started"))?
+        };
+        let recorded = trail.record(STARTED, details);
+        let abandoned = {
+            let mut phase = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+            match (*phase, recorded.is_ok()) {
+                (Phase::Abandoned, true) => true,
+                (_, true) => {
+                    *phase = Phase::Started;
+                    false
+                }
+                (_, false) => {
+                    *phase = Phase::Refused;
+                    false
+                }
+            }
+        };
+        if abandoned {
+            self.end(CANCELLED, json!({"reason": ABANDONED}));
+        }
+        recorded
+    }
+    /// The request went away before its transfer owned the trail.
+    fn abandon(self: &Arc<Self>) {
+        let mut phase = self.phase.lock().unwrap_or_else(PoisonError::into_inner);
+        match *phase {
+            // The start writer ends the trail if its event commits.
+            Phase::Starting => *phase = Phase::Abandoned,
+            Phase::Started => {
+                drop(phase);
+                let ending = self.clone();
+                self.runtime
+                    .spawn_blocking(move || ending.end(CANCELLED, json!({"reason": ABANDONED})));
+            }
+            Phase::Abandoned | Phase::Refused => {}
         }
     }
     fn take(&self) -> Option<Trail> {
@@ -434,6 +508,23 @@ impl Ending {
         if let Some(trail) = self.take() {
             details["bytes"] = json!(self.delivered());
             let _ = trail.record(action, details);
+        }
+    }
+}
+
+/// Owned by a request until its transfer owns the trail.
+struct Starting(Option<Arc<Ending>>);
+
+impl Starting {
+    fn hand_over(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        if let Some(ending) = self.0.take() {
+            ending.abandon();
         }
     }
 }
