@@ -126,7 +126,7 @@ fn maintenance_passes_are_attributed_to_maintenance() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn delivery_workers_take_the_writer_under_their_own_activity() {
+async fn delivery_workers_attribute_writes_and_skip_idle_logout() {
     let fixture = Fixture::new();
     let telemetry = fixture.core.store.telemetry();
     let holds = |activity| telemetry.activity_write_hold.get(activity).count();
@@ -135,12 +135,179 @@ async fn delivery_workers_take_the_writer_under_their_own_activity() {
         holds(Activity::LogoutDelivery),
         holds(Activity::SsfDelivery),
     ];
-    // Empty queues still claim inside a write transaction on every pass.
-    riauth::logout::deliver(fixture.core.clone()).await.unwrap();
-    riauth::ssf::deliver(fixture.core.clone()).await.unwrap();
-    assert_eq!(holds(Activity::LogoutDelivery) - before[1], 1);
-    assert_eq!(holds(Activity::SsfDelivery) - before[2], 1);
+    // Match S01's ten idle logout + SSF ticks. Only SSF still takes the writer.
+    for _ in 0..10 {
+        riauth::logout::deliver(fixture.core.clone()).await.unwrap();
+        riauth::ssf::deliver(fixture.core.clone()).await.unwrap();
+    }
+    assert_eq!(holds(Activity::LogoutDelivery) - before[1], 0);
+    assert_eq!(holds(Activity::SsfDelivery) - before[2], 10);
     assert_eq!(holds(Activity::Foreground), before[0]);
+    println!("10 idle logout + SSF ticks: logout writer holds=0, SSF writer holds=10");
+}
+
+#[test]
+fn logout_idle_probe_preserves_atomic_claims() {
+    use common::backend::Backend;
+    use riauth::{
+        core::Core,
+        crypto::digest,
+        logout::{Delivery, queue_session},
+        model::{ClientPatch, ProviderSettings, Session},
+    };
+
+    let mut backends = vec![Backend::Redb, Backend::EncryptedRedb];
+    if std::env::var_os("RIAUTH_TEST_CONTRACT_PG_ROOT").is_some() {
+        backends.extend([Backend::Postgres, Backend::EncryptedPostgres]);
+    }
+    for backend in backends {
+        let fixture = backend.fixture();
+        fixture.client("logout-probe", false);
+        fixture
+            .core
+            .update_client(
+                &fixture.admin,
+                "logout-probe",
+                ClientPatch {
+                    settings: Some(ProviderSettings {
+                        backchannel_logout_uri: Some("https://rp.example.test/logout".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        fixture.tokens("logout-probe", &fixture.admin, None);
+        let sid: String = fixture
+            .core
+            .store
+            .get("session_tokens", &digest(&fixture.admin))
+            .unwrap()
+            .unwrap();
+        // An independent PostgreSQL pool models another node. Its two slots let
+        // both claimers reach the advisory lock while this node holds the writer.
+        let peer = if fixture.core.config.postgres.is_some() {
+            Core::open(fixture.core.config.clone()).unwrap()
+        } else {
+            fixture.core.clone()
+        };
+
+        let mut poller = None;
+        let idle = fixture
+            .core
+            .store
+            .write(|tx| {
+                let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+                session.revoked = true;
+                tx.put("sessions", &sid, &session)?;
+                queue_session(tx, &sid)?;
+                assert_eq!(
+                    tx.due::<Delivery>("logout_deliveries", u64::MAX, 32)?.len(),
+                    1
+                );
+                // The revocation and its notification are still uncommitted.
+                // Idle polling must finish while their writer remains held.
+                let node = peer.clone();
+                let (done, received) = mpsc::channel();
+                poller = Some(std::thread::spawn(move || {
+                    let result = in_activity(Activity::LogoutDelivery, || {
+                        let t = node.store.telemetry();
+                        let before = (
+                            t.write_wait.count(),
+                            t.write_hold.count(),
+                            t.commit.count(),
+                            t.signing.count(),
+                            t.reads.scans(ReadContext::Read, true).count(),
+                        );
+                        for _ in 0..10 {
+                            assert!(node.claim_logout_deliveries()?.is_empty());
+                        }
+                        Ok::<_, Error>((
+                            t.write_wait.count() - before.0,
+                            t.write_hold.count() - before.1,
+                            t.commit.count() - before.2,
+                            t.signing.count() - before.3,
+                            t.reads.scans(ReadContext::Read, true).count() - before.4,
+                        ))
+                    });
+                    let _ = done.send(result);
+                }));
+                // Return the timeout before joining so a regression releases
+                // the writer instead of deadlocking the test's cleanup.
+                Ok(received.recv_timeout(Duration::from_secs(10)))
+            })
+            .unwrap();
+        poller.unwrap().join().unwrap();
+        let idle = idle
+            .expect("idle polling must not wait for the revocation writer")
+            .unwrap();
+        assert_eq!(
+            idle,
+            (0, 0, 0, 0, 10),
+            "{backend:?}: bounded read-only polls"
+        );
+        println!(
+            "{backend:?}: 10 idle logout polls: writer waits={}, holds={}, commits={}, signatures={}, bounded read scans={}",
+            idle.0, idle.1, idle.2, idle.3, idle.4
+        );
+        assert!(peer.me(&fixture.admin).is_err(), "revocation committed");
+
+        let mut claimers = Vec::new();
+        let signatures = peer.store.telemetry().signing.count();
+        fixture
+            .core
+            .store
+            .write(|_| {
+                for _ in 0..2 {
+                    let node = peer.clone();
+                    claimers.push(std::thread::spawn(move || {
+                        in_activity(Activity::LogoutDelivery, || node.claim_logout_deliveries())
+                    }));
+                }
+                // Both probes see the same committed due delivery. Neither can
+                // claim it until this writer releases; the loser must reread.
+                until(|| peer.store.telemetry().write_waiters.current() == 2);
+                Ok(())
+            })
+            .unwrap();
+        let claimed: Vec<_> = claimers
+            .into_iter()
+            .flat_map(|thread| thread.join().unwrap().unwrap())
+            .collect();
+        assert_eq!(
+            claimed.len(),
+            1,
+            "{backend:?}: one lease and signed delivery"
+        );
+        assert_eq!(peer.store.telemetry().signing.count() - signatures, 1);
+        let delivery = &claimed[0].0;
+        let stored: Delivery = peer
+            .store
+            .get("logout_deliveries", &delivery.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.attempts, 1);
+        assert_eq!(stored.attempts, delivery.attempts);
+        assert_eq!(stored.sid, delivery.sid);
+        assert!(stored.delivered_at.is_none());
+
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(peer.claim_logout_deliveries().unwrap().is_empty());
+        assert_eq!(
+            peer.store.telemetry().write_hold.count(),
+            holds,
+            "leased work is not due"
+        );
+        peer.finish_logout_delivery(&delivery.id, delivery.attempts, Some(204))
+            .unwrap();
+        let holds = peer.store.telemetry().write_hold.count();
+        assert!(peer.claim_logout_deliveries().unwrap().is_empty());
+        assert_eq!(
+            peer.store.telemetry().write_hold.count(),
+            holds,
+            "completed work is not due"
+        );
+    }
 }
 
 #[test]

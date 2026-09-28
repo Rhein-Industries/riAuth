@@ -120,6 +120,16 @@ impl Core {
         })
     }
     pub fn claim_logout_deliveries(&self) -> Result<Vec<(Delivery, String)>> {
+        // The due index commits with each delivery. An empty snapshot needs no
+        // writer; a concurrent enqueue will be picked up by a later pass. This
+        // is only a hint: claims and leases are reread under the writer below.
+        if self
+            .store
+            .read(|tx| tx.due::<Delivery>("logout_deliveries", now(), 1))?
+            .is_empty()
+        {
+            return Ok(Vec::new());
+        }
         let pending = self.store.write(|tx| {
 
             let mut ready = Vec::new();
