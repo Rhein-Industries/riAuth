@@ -1,14 +1,93 @@
-//! One consent-withdrawal transaction for bearer, CLI and browser self-service.
+//! Protocol-bound consent creation and self-service withdrawal writers.
 
 use crate::{
-    browser::{consent_key, consents_for_user},
+    browser::{Consent, consent_key, consents_for_user},
     core::{Core, audit},
-    crypto::digest,
+    crypto::{digest, now},
     error::{Error, Result},
+    model::{Client, Session},
+    oidc::Authorization,
     portal::self_service::Binding,
     store::Tx,
 };
 use serde_json::{Value, json};
+
+/// These contexts are constructed only after the protocol's request-bound
+/// approval has succeeded. OAuth code issuance precedes this write; SAML
+/// stores its approved decision first and writes consent during one-use resume.
+/// This is deliberately not an API for granting consent to an arbitrary user.
+pub(crate) enum ConsentApproval<'a> {
+    OidcIssued {
+        request: &'a Authorization,
+        client: &'a Client,
+        session: &'a Session,
+    },
+    #[cfg(feature = "platform")]
+    SamlResume {
+        pending: &'a crate::saml::Pending,
+        client: &'a Client,
+    },
+}
+
+pub(crate) fn remember_approved_consent(tx: &Tx<'_>, approval: ConsentApproval<'_>) -> Result<()> {
+    match approval {
+        ConsentApproval::OidcIssued {
+            request,
+            client,
+            session,
+        } => {
+            if request.decision.as_deref() != Some("approve")
+                || request.request_binding.is_none()
+                || request.client_id != client.id
+            {
+                return Err(Error::forbidden());
+            }
+            let live = tx
+                .get::<Session>("sessions", &session.id)?
+                .filter(|live| {
+                    !live.revoked
+                        && live.expires_at > now()
+                        && live.identity.user_id == session.identity.user_id
+                })
+                .ok_or_else(Error::unauthorized)?;
+            let scopes = crate::assurance::requested_scopes(
+                client,
+                request,
+                crate::oidc::scope_request(&request.scope, client)?,
+            )?;
+            tx.put(
+                "consents",
+                &consent_key(&live.identity.user_id, &client.id),
+                &Consent {
+                    resource: request.resource.clone(),
+                    scopes,
+                    expires_at: now() + 2_592_000,
+                },
+            )
+        }
+        #[cfg(feature = "platform")]
+        ConsentApproval::SamlResume { pending, client } => {
+            let decision = pending
+                .decision
+                .as_ref()
+                .filter(|decision| decision.approve && decision.remember)
+                .ok_or_else(Error::forbidden)?;
+            if pending.client_id != client.id
+                || pending.client_fingerprint != crate::saml::fingerprint(client)?
+            {
+                return Err(Error::conflict("SAML client changed"));
+            }
+            tx.put(
+                "saml_consents",
+                &crate::saml::consent_key(&decision.identity, client),
+                &crate::saml::Consent {
+                    fingerprint: pending.client_fingerprint.clone(),
+                    expires_at: now() + 2_592_000,
+                },
+            )
+        }
+    }
+}
 
 pub(crate) enum ConsentWithdraw<'a> {
     Bearer {

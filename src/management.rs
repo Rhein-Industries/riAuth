@@ -14,6 +14,8 @@
 //! Source unlink has a separate self-service receipt scope tied to a live session.
 //! Session revocation has a live-caller receipt only when another session is targeted.
 //! Consent withdrawal has a receipt bound to the live caller session and channel.
+//! Consent creation accepts only an issued OAuth approval or a decided SAML
+//! resume; their protocol adapters retain request-bound proof checks.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -24,7 +26,9 @@ mod client_policy;
 mod memberships;
 mod sessions;
 mod source_links;
-pub(crate) use consents::{ConsentWithdraw, withdraw_consent};
+pub(crate) use consents::{
+    ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
+};
 pub(crate) use sessions::{RevokeIntent, revoke_sessions};
 pub(crate) use source_links::{SourceLinkAuthority, write_source_link};
 

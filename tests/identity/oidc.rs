@@ -944,6 +944,108 @@ fn browser_reauthentication_cannot_be_moved_to_an_identical_request() {
 }
 
 #[test]
+fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
+    use riauth::browser::BrowserDecision;
+
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let (sid, sso) = browser_sign_in(&f, "alice");
+    let started = f
+        .core
+        .browser_start(f.request("app", &crypto::random_token("")), None)
+        .unwrap();
+    let id = text(&started.body, "resume_uri")
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let binding = started
+        .cookies
+        .iter()
+        .find_map(|cookie| cookie.split(';').next()?.strip_prefix("riauth_return="))
+        .unwrap()
+        .to_owned();
+    let state = f.core.authorize_state(&id, Some(&binding), Some(&sso)).unwrap();
+    assert_eq!(state["status"], "consent");
+    assert_eq!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(riauth::signin::session_ref("another-request", &sid)),
+            )
+            .unwrap_err()
+            .code,
+        "account_changed"
+    );
+    assert!(f.core.consents(&alice).unwrap().as_array().unwrap().is_empty());
+    assert_eq!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(text(&state, "session_ref")),
+            )
+            .unwrap()["status"],
+        "complete"
+    );
+    assert_eq!(f.core.consents(&alice).unwrap().as_array().unwrap().len(), 1);
+    assert!(f
+        .core
+        .authorize_decision(
+            &id,
+            Some(&binding),
+            Some(&sso),
+            true,
+            true,
+            Some(text(&state, "session_ref")),
+        )
+        .is_err());
+    assert!(f
+        .core
+        .browser_resume_with(&id, Some(&binding), Some(&sso))
+        .unwrap()
+        .location
+        .is_some());
+    assert!(f.core.browser_resume_with(&id, Some(&binding), Some(&sso)).is_err());
+
+    let terminal = f
+        .core
+        .browser_start(f.request("app", &crypto::random_token("")), None)
+        .unwrap();
+    let code = text(&terminal.body, "user_code");
+    let decision = || BrowserDecision {
+        code: code.clone(),
+        approve: true,
+        transaction_id: None,
+        remember: true,
+    };
+    assert_eq!(f.core.browser_decide(&bob, decision()).unwrap()["remembered"], true);
+    assert!(f.core.browser_decide(&bob, decision()).is_err());
+    assert_eq!(f.core.consents(&bob).unwrap().as_array().unwrap().len(), 1);
+
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    for token in [&alice, &bob] {
+        let user_id = text(&f.core.me(token).unwrap()["user"], "id");
+        assert_eq!(
+            events.as_array().unwrap().iter().filter(|event|
+                event["actor"] == user_id.as_str() && event["action"] == "authorization.approved"
+                    && event["target"] == "app"
+            ).count(),
+            1
+        );
+    }
+}
+
+#[test]
 fn private_key_jwt_binds_issuer_subject_audience_and_consumes_assertions_atomically() {
     use riauth::jose::{ASSERTION_TYPE, ClientAuthMethod};
     let f = Fixture::new();

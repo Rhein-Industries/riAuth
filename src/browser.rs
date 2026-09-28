@@ -5,6 +5,7 @@ use crate::{
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
+    management::{ConsentApproval, remember_approved_consent},
     model::{Client, Identity, Session, User},
     oidc::{Authorization, needs_reauthentication, validate_authorization},
     signin::{insufficient_error, stale},
@@ -53,11 +54,11 @@ pub(crate) struct BrowserSession {
     pub(crate) rotated: bool,
 }
 #[derive(Serialize, Deserialize)]
-struct Consent {
+pub(crate) struct Consent {
     #[serde(default)]
-    resource: Option<String>,
-    scopes: BTreeSet<String>,
-    expires_at: u64,
+    pub(crate) resource: Option<String>,
+    pub(crate) scopes: BTreeSet<String>,
+    pub(crate) expires_at: u64,
 }
 
 pub struct BrowserReply {
@@ -326,13 +327,20 @@ impl Core {
             let mut request = pending.request.clone();
             request.decision = Some(if input.approve { "approve" } else { "deny" }.into());
             request.transaction_id = input.transaction_id;
-            pending.callback = Some(self.authorize_in(tx, token, request)?);
+            pending.callback = Some(self.authorize_in(tx, token, request.clone())?);
             pending.remember = input.remember;
             if input.approve {
-                pending.session_id = Some(session.id);
+                pending.session_id = Some(session.id.clone());
                 if input.remember {
                     let client = tx.get::<Client>("clients", &pending.request.client_id)?.ok_or_else(Error::unauthorized)?;
-                    remember_consent(tx, &pending.request, &client, &session.identity.user_id)?;
+                    remember_approved_consent(
+                        tx,
+                        ConsentApproval::OidcIssued {
+                            request: &request,
+                            client: &client,
+                            session: &session,
+                        },
+                    )?;
                 }
             }
             tx.put("browser_authorizations", &pending.id, &pending)?;
@@ -421,7 +429,7 @@ impl Core {
                 p.callback = Some(self.authorize_session_proof(
                     tx,
                     session.clone(),
-                    request,
+                    request.clone(),
                     false,
                     p.authentication.as_deref(),
                 )?);
@@ -430,7 +438,14 @@ impl Core {
                     .ok_or_else(Error::unauthorized)?;
                 p.remember = remember && !client.settings.implicit_consent;
                 if p.remember {
-                    remember_consent(tx, &p.request, &client, &session.identity.user_id)?;
+                    remember_approved_consent(
+                        tx,
+                        ConsentApproval::OidcIssued {
+                            request: &request,
+                            client: &client,
+                            session,
+                        },
+                    )?;
                 }
                 p.approved_by = Some(session.id.clone());
                 audit(
@@ -881,27 +896,6 @@ fn consent_satisfied(
                     && scopes.is_subset(&c.scopes)
                     && c.resource == request.resource
             }))
-}
-fn remember_consent(
-    tx: &Tx<'_>,
-    request: &Authorization,
-    client: &Client,
-    user_id: &str,
-) -> Result<()> {
-    let scopes = crate::assurance::requested_scopes(
-        client,
-        request,
-        crate::oidc::scope_request(&request.scope, client)?,
-    )?;
-    tx.put(
-        "consents",
-        &consent_key(user_id, &client.id),
-        &Consent {
-            resource: request.resource.clone(),
-            scopes,
-            expires_at: now() + 2_592_000,
-        },
-    )
 }
 /// The browser's own request: its binding cookie proves which browser started it.
 fn interaction(tx: &Tx<'_>, id: &str, binding: Option<&str>) -> Result<Pending> {

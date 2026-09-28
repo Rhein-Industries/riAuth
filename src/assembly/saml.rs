@@ -5,6 +5,7 @@ use crate::{
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
+    management::{ConsentApproval, remember_approved_consent},
     model::{AuthenticationTransaction, Client, Identity, Session, User},
     response::escape,
     saml::{logout, wire, *},
@@ -749,12 +750,11 @@ impl Core {
                     &decision.identity.user_id,
                 )?);
                 if decision.remember {
-                    tx.put(
-                        "saml_consents",
-                        &consent_key(&decision.identity, &client),
-                        &Consent {
-                            fingerprint: p.client_fingerprint.clone(),
-                            expires_at: now() + 2_592_000,
+                    remember_approved_consent(
+                        tx,
+                        ConsentApproval::SamlResume {
+                            pending: &p,
+                            client: &client,
                         },
                     )?;
                 }
