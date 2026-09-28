@@ -867,14 +867,14 @@ fn invitations_require_live_scoped_authority_are_single_use_and_cannot_replace_e
     );
 }
 
-type SoftAuthenticator = webauthn_authenticator_rs::WebauthnAuthenticator<
+pub(super) type SoftAuthenticator = webauthn_authenticator_rs::WebauthnAuthenticator<
     webauthn_authenticator_rs::softpasskey::SoftPasskey,
 >;
 fn issuer_origin(f: &Fixture) -> url::Url {
     url::Url::parse(&f.core.config.issuer).unwrap()
 }
 /// Enrolls a SoftPasskey from `token` and returns it with its base64url credential id.
-fn enroll_passkey(f: &Fixture, token: &str) -> (SoftAuthenticator, String) {
+pub(super) fn enroll_passkey(f: &Fixture, token: &str) -> (SoftAuthenticator, String) {
     use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
     let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
     let start = f
@@ -892,7 +892,11 @@ fn enroll_passkey(f: &Fixture, token: &str) -> (SoftAuthenticator, String) {
         .unwrap();
     (authenticator, credential)
 }
-fn passkey_session(f: &Fixture, username: &str, authenticator: &mut SoftAuthenticator) -> String {
+pub(super) fn passkey_session(
+    f: &Fixture,
+    username: &str,
+    authenticator: &mut SoftAuthenticator,
+) -> String {
     let start = f.core.passkey_login_start(username, None).unwrap();
     let proof = authenticator
         .do_authentication(

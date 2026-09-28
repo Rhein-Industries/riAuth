@@ -5,7 +5,7 @@
 use crate::{
     api::{App, binding_cookie, browser_response, sso_cookie},
     browser::BrowserReply,
-    core::Core,
+    core::{Core, require_factor_session},
     crypto::{digest, now},
     error::{Error, Result},
     model::{Identity, Session, User},
@@ -277,7 +277,7 @@ impl Core {
                 "current_session_id": session.id,
                 "links": links,
                 "linkable": linkable,
-                "can_change": self.linking_check(tx, &session).is_ok(),
+                "can_change": self.linking_check(tx, &user, &session).is_ok(),
                 "local_session": session.identity.source.is_none(),
             }))
         })
@@ -306,11 +306,11 @@ impl Core {
                 "Your browser session changed. Reload this page.",
             ));
         }
-        self.linking_check(tx, &session)?;
+        self.linking_check(tx, &user, &session)?;
         Ok((user, session))
     }
 
-    fn linking_check(&self, tx: &Tx<'_>, session: &Session) -> Result<()> {
+    fn linking_check(&self, tx: &Tx<'_>, user: &User, session: &Session) -> Result<()> {
         if session.identity.source.is_some() {
             return Err(Error::new(
                 StatusCode::FORBIDDEN,
@@ -327,7 +327,7 @@ impl Core {
                 "Sign in again in this browser before changing linked providers.",
             ));
         }
-        Ok(())
+        require_factor_session(user, session)
     }
 
     /// Starts a browser login. Only the authorization URL reaches the page; the credential
@@ -459,7 +459,7 @@ impl Core {
             {
                 return Err(session_changed());
             }
-            self.linking_check(tx, &session)
+            self.linking_check(tx, &user, &session)
         };
         let deliver = |tx: &Tx<'_>, linking: bool, finished: &Value| {
             #[cfg(feature = "test-support")]

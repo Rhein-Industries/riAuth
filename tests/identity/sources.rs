@@ -519,3 +519,192 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
         "source_login_expired"
     );
 }
+
+#[cfg(feature = "test-support")]
+#[tokio::test]
+async fn browser_and_bearer_source_links_require_an_enrolled_factor_session() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    let upstream = Upstream::new(&f).await;
+    let browser = |otp| {
+        reply_cookie(
+            &f.core
+                .portal_password(None, "alice".into(), PASSWORD.into(), otp, false)
+                .unwrap(),
+            "riauth_sso",
+        )
+    };
+    let binding = |sso: &str| {
+        let page = f.core.portal_source_links(Some(sso)).unwrap();
+        riauth::portal::self_service::Binding {
+            expected_user_id: text(&page["user"], "id"),
+            expected_session_id: text(&page, "current_session_id"),
+        }
+    };
+    let password_only = browser(None);
+    let bound = binding(&password_only);
+    let pending = f
+        .core
+        .portal_source_start(Some(&password_only), "upstream", Some(&bound))
+        .unwrap();
+    let credential = reply_cookie(&pending, "riauth_source")
+        .split_once('.')
+        .unwrap()
+        .0
+        .to_owned();
+    upstream
+        .callback(&f, &pending.body, "pending", json!({}))
+        .await;
+
+    // A factor imported while a link is pending must be checked again at finish.
+    let secret = crypto::totp_secret();
+    f.core
+        .store
+        .write(|tx| {
+            let mut user: User = tx.get("users", &bound.expected_user_id)?.unwrap();
+            user.totp_secret = Some(secret.clone());
+            tx.put("users", &user.id, &user)
+        })
+        .unwrap();
+    assert_eq!(
+        f.core.portal_source_links(Some(&password_only)).unwrap()["can_change"],
+        false
+    );
+    assert_eq!(
+        f.core
+            .portal_source_start(Some(&password_only), "upstream", Some(&bound))
+            .err()
+            .unwrap()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        f.core
+            .portal_source_finish(Some(&credential), Some(&password_only), true, None)
+            .err()
+            .unwrap()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        f.core.portal_source_review(Some(&credential)).unwrap()["status"],
+        "review"
+    );
+    let link_start = || riauth::source::Start {
+        link: true,
+        authentication_transaction: None,
+    };
+    assert_eq!(
+        f.core
+            .source_start("upstream", link_start(), Some(&alice))
+            .unwrap_err()
+            .code,
+        "mfa_required"
+    );
+
+    let code = crypto::totp(&secret, "alice")
+        .unwrap()
+        .generate(now())
+        .to_string();
+    let verified = browser(Some(code));
+    let verified_bound = binding(&verified);
+    let started = f
+        .core
+        .portal_source_start(Some(&verified), "upstream", Some(&verified_bound))
+        .unwrap();
+    upstream
+        .callback(&f, &started.body, "verified", json!({}))
+        .await;
+    let verified_credential = reply_cookie(&started, "riauth_source")
+        .split_once('.')
+        .unwrap()
+        .0
+        .to_owned();
+    assert_eq!(
+        f.core
+            .portal_source_finish(Some(&verified_credential), Some(&verified), true, None)
+            .unwrap()
+            .body["linked"],
+        true
+    );
+    let link_id = text(&f.core.source_links(&alice).unwrap()[0], "id");
+    assert_eq!(
+        f.core
+            .portal_source_unlink(Some(&password_only), &bound, &link_id)
+            .unwrap_err()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        f.core.source_unlink(&alice, &link_id).unwrap_err().code,
+        "mfa_required"
+    );
+    assert_eq!(
+        f.core
+            .portal_source_unlink(Some(&verified), &verified_bound, &link_id)
+            .unwrap()["unlinked"],
+        true
+    );
+
+    let p = Fixture::new();
+    let bootstrap = p.user("alice");
+    let upstream = Upstream::new(&p).await;
+    let (mut authenticator, _) = super::factors_tests::enroll_passkey(&p, &bootstrap);
+    let password_bearer = text(
+        &p.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+        "session_token",
+    );
+    let password_browser = reply_cookie(
+        &p.core
+            .portal_password(None, "alice".into(), PASSWORD.into(), None, false)
+            .unwrap(),
+        "riauth_sso",
+    );
+    let page = p.core.portal_source_links(Some(&password_browser)).unwrap();
+    let bound = riauth::portal::self_service::Binding {
+        expected_user_id: text(&page["user"], "id"),
+        expected_session_id: text(&page, "current_session_id"),
+    };
+    assert_eq!(page["can_change"], false);
+    assert_eq!(
+        p.core
+            .portal_source_start(Some(&password_browser), "upstream", Some(&bound))
+            .err()
+            .unwrap()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        p.core
+            .source_start("upstream", link_start(), Some(&password_bearer))
+            .unwrap_err()
+            .code,
+        "mfa_required"
+    );
+    let passkey = super::factors_tests::passkey_session(&p, "alice", &mut authenticator);
+    let linked = upstream.start(&p, Some(&passkey));
+    upstream.callback(&p, &linked, "passkey", json!({})).await;
+    assert_eq!(
+        upstream.finish(&p, &linked, true).unwrap()["user"]["username"],
+        "alice"
+    );
+    let link_id = text(&p.core.source_links(&passkey).unwrap()[0], "id");
+    assert_eq!(
+        p.core
+            .portal_source_unlink(Some(&password_browser), &bound, &link_id)
+            .unwrap_err()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        p.core
+            .source_unlink(&password_bearer, &link_id)
+            .unwrap_err()
+            .code,
+        "mfa_required"
+    );
+    assert_eq!(
+        p.core.source_unlink(&passkey, &link_id).unwrap()["unlinked"],
+        true
+    );
+}

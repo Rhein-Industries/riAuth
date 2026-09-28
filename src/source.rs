@@ -10,7 +10,10 @@ pub(crate) mod workflow;
 pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
-    core::{Core, audit, make_user, validate_display, validate_email, validate_name},
+    core::{
+        Core, audit, make_user, require_factor_session, validate_display, validate_email,
+        validate_name,
+    },
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::{ClientAuthMethod, PublicJwks},
@@ -580,6 +583,7 @@ impl Core {
             {
                 return Err(Error::forbidden());
             }
+            require_factor_session(&user, &session)?;
             Some(session.identity)
         } else {
             None
@@ -1472,6 +1476,7 @@ pub(crate) fn unlink(tx: &Tx<'_>, user: &User, session: &Session, link_id: &str)
     if session.identity.source.is_some() || now().saturating_sub(session.identity.auth_time) > 300 {
         return Err(Error::forbidden());
     }
+    require_factor_session(user, session)?;
     let link = tx
         .get::<Link>("source_links", link_id)?
         .filter(|l| l.user_id == user.id)
