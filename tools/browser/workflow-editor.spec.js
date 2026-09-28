@@ -108,30 +108,85 @@ test('save reports the submitted revision when the draft changes during apply', 
   expect(errors).toEqual([]);
 });
 
-test('unsupported configured categories open in a safe read-only view', async ({ page }) => {
+test('consent and sensitive-action definitions edit through the canonical plan and apply path', async ({ page }) => {
   const workflows = ['consent', 'sensitive_action'].map((category) => {
     const consent = category === 'consent';
     const second = consent ? 'consent' : 'password';
     return {
       format: 'riauth.workflow/v1', id: `platform-${category}`, revision: 3,
-      category, origin: 'configured', entry: 'session', limits: { max_duration_seconds: 600, max_executions: 2 },
+      category, origin: 'configured', entry: 'session', limits: { max_duration_seconds: 900, max_executions: 5 },
       steps: [
         { id: 'session', action: { type: 'resume_session' }, max_attempts: 1, timeout_seconds: 60, cancellable: true,
-          transitions: [{ on: 'verified', to: second }, { on: 'failed', to: 'denied' }] },
+          transitions: [{ on: 'verified', to: second }, { on: 'failed', to: 'reject' }] },
         { id: second, action: { type: consent ? 'request_consent' : 'verify_password' }, max_attempts: 1, timeout_seconds: 300, cancellable: true,
-          transitions: [{ on: consent ? 'granted' : 'verified', to: 'success' }, { on: consent ? 'denied' : 'failed', to: 'denied' }] },
+          transitions: [{ on: consent ? 'granted' : 'verified', to: 'allow' }, { on: consent ? 'denied' : 'failed', to: 'reject' }] },
       ],
-      terminals: [{ id: 'success', outcome: consent ? 'consent_granted' : 'action_authorized', requires: [],
-        ...(consent ? {} : { max_proof_age_seconds: 300 }) }, { id: 'denied', outcome: 'denied', requires: [] }],
+      terminals: [{ id: 'allow', outcome: consent ? 'consent_granted' : 'action_authorized', requires: [],
+        ...(consent ? {} : { max_proof_age_seconds: 300 }) }, { id: 'reject', outcome: 'denied', requires: [] }],
     };
   });
-  const errors = await mountAdmin(page, { workflows });
-  for (const definition of workflows) {
+  const applied = [];
+  const errors = await mountAdmin(page, { workflows,
+    plan: async (definition) => ({ plan_id: `plan-${definition.category}`, manifest: { workflows: [definition] }, changes: [{}] }),
+    apply: async (input) => {
+      const definition = input.plan.manifest.workflows[0];
+      applied.push(definition);
+      workflows[workflows.findIndex((row) => row.id === definition.id)] = definition;
+      return { applied: true };
+    },
+  });
+  for (const [index, definition] of workflows.entries()) {
     await page.goto(`${origin}/admin#/workflows/${definition.id}`);
-    await expect(page.getByRole('heading', { level: 1, name: definition.id })).toBeVisible();
-    await expect(page.getByText('This definition is read-only here.')).toBeVisible();
-    await expect(page.locator('.settings-json')).toContainText(`"category": "${definition.category}"`);
-    await expect(page.getByRole('button', { name: 'Save definition' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1, name: `Edit ${definition.id}` })).toBeVisible();
+    await expect(page.getByText('Runtime journeys still use server-owned definitions.', { exact: false })).toBeVisible();
+    await page.locator('.workflow-graph button').nth(1).click();
+    const action = page.locator('.workflow-controls select').first();
+    await action.selectOption(definition.category === 'consent' ? 'resume_session' : 'verify_passkey');
+    let draft = JSON.parse(await page.locator('.settings-json').textContent());
+    expect(draft.steps[1].transitions).toEqual([{ on: 'verified', to: 'allow' }, { on: 'failed', to: 'reject' }]);
+    await action.selectOption(definition.steps[1].action.type);
+    draft = JSON.parse(await page.locator('.settings-json').textContent());
+    expect(draft.steps[1].transitions).toEqual(definition.steps[1].transitions);
+    await page.locator('.workflow-controls input[type="number"]').first().fill('2');
+    await page.locator('.workflow-controls input[type="number"]').first().press('Tab');
+    await page.getByRole('button', { name: 'Validate and preview' }).click();
+    await expect(page.getByRole('button', { name: 'Save definition' })).toBeVisible();
+    await page.getByRole('button', { name: 'Save definition' }).click();
+    await expect.poll(() => applied.length).toBe(index + 1);
+    expect(applied[index]).toMatchObject({ category: definition.category, revision: 4,
+      steps: [{ action: { type: 'resume_session' } }, { action: definition.steps[1].action, max_attempts: 2,
+        transitions: definition.steps[1].transitions }], terminals: definition.terminals });
   }
+  expect(errors).toEqual([]);
+});
+
+test('consent and sensitive-action starters show canonical proof paths before save', async ({ page }) => {
+  const submitted = [];
+  const errors = await mountAdmin(page, { workflows: [],
+    plan: async (definition) => {
+      submitted.push(definition);
+      return { plan_id: `plan-${definition.category}`, manifest: { workflows: [definition] }, changes: [{}] };
+    },
+  });
+  for (const category of ['consent', 'sensitive_action']) {
+    await page.goto(`${origin}/admin#/workflows/new`);
+    await page.getByRole('button', { name: `Start ${category} workflow template` }).click();
+    await expect(page.getByText('The graph is a static preview and does not execute credentials.', { exact: false })).toBeVisible();
+    const definition = JSON.parse(await page.locator('.settings-json').textContent());
+    expect(definition).toMatchObject({ format: 'riauth.workflow/v1', category, origin: 'configured', revision: 1,
+      entry: 'session', terminals: [{ outcome: category === 'consent' ? 'consent_granted' : 'action_authorized' }, { outcome: 'denied' }] });
+    expect(definition.steps.map((step) => step.action.type)).toEqual(category === 'consent'
+      ? ['resume_session', 'request_consent'] : ['resume_session', 'verify_password', 'verify_totp']);
+    if (category === 'consent') {
+      expect(definition.steps[1].transitions).toEqual([{ on: 'granted', to: 'success' }, { on: 'denied', to: 'denied' }]);
+      expect(definition.terminals[0]).not.toHaveProperty('max_proof_age_seconds');
+    } else {
+      expect(definition.steps[1].transitions[0]).toEqual({ on: 'verified', when: { type: 'account_has', credential: 'totp' }, to: 'totp' });
+      expect(definition.terminals[0].max_proof_age_seconds).toBe(300);
+    }
+    await page.getByRole('button', { name: 'Validate and preview' }).click();
+    await expect(page.getByRole('button', { name: 'Save definition' })).toBeVisible();
+  }
+  expect(submitted.map((definition) => definition.category)).toEqual(['consent', 'sensitive_action']);
   expect(errors).toEqual([]);
 });

@@ -589,15 +589,19 @@ most 32 steps, 8 terminals, 12 transitions per step and 64 KiB per document.
 
 ## Essentials and Platform
 
-Platform administration now has a **Workflows** section with authentication,
-enrollment and recovery starters. It edits steps, actions, attempt and time limits,
-entry, and route destinations in a static graph, then validates the complete
-`riauth.workflow/v1` definition with the existing model before saving. The
-preview never executes a verifier or issues a session. Existing conditional
-routes retain their conditions, but the browser editor does not yet author new
-conditions, custom stages, source references, consent, or sensitive-action
-journeys. Existing consent and sensitive-action definitions open read-only, with
-their canonical JSON visible for review.
+Platform administration has a **Workflows** section with authentication,
+enrollment, recovery, consent, and sensitive-action starters. It edits existing
+configured definitions in all five categories, including steps, permitted built-in
+actions, attempt and time limits, entry, and route destinations. The consent
+starter requires a resumed session before a consent decision; the sensitive-action
+starter requires a session and password proof, with a TOTP route when enrolled.
+The editor shows the canonical `riauth.workflow/v1` JSON and uses the existing
+server model and manifest planner to validate the entire definition before saving.
+Its graph preview is static: it never executes credentials, verifiers, or sessions.
+Existing conditional routes and action fields remain in the canonical draft,
+but the browser editor does not yet author new conditions, custom stages, or
+source references. Changing an action rebuilds that step's signal routes, so
+authors should review its destinations before validating.
 
 The same definition can be supplied in a desired-state `riauth/v1` manifest's
 `workflows` array. `POST /api/state/plan`, apply, and export use the shared

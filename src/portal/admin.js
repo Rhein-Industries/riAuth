@@ -1916,6 +1916,8 @@
     authentication: ["identify", "verify_password", "verify_passkey", "verify_totp", "verify_recovery_code"],
     enrollment: ["resume_session", "verify_password", "verify_passkey", "verify_totp", "verify_email", "enroll_credential"],
     recovery: ["identify", "verify_email", "verify_totp", "verify_recovery_code", "reset_password"],
+    consent: ["resume_session", "request_consent"],
+    sensitive_action: ["resume_session", "verify_password", "verify_passkey", "verify_totp"],
   };
   // Stable local representation for binding a server plan to exactly the visible draft.
   const workflowFingerprint = (definition) => JSON.stringify(definition, (_key, value) =>
@@ -1928,11 +1930,11 @@
     context.draftGeneration === workflowDraftGeneration && context.routeGeneration === workflowRouteGeneration &&
     context.previewGeneration === workflowPreviewGeneration && context.account === data.me?.user?.id &&
     context.route === location.hash && context.fingerprint === workflowFingerprint(workflowDraft);
-  const workflowSignals = (type) => type === "identify" ? ["completed"] : type === "enroll_credential" || type === "reset_password" ? ["completed", "failed"] : ["verified", "failed"];
+  const workflowSignals = (type) => type === "identify" ? ["completed"] : type === "request_consent" ? ["granted", "denied"] : type === "enroll_credential" || type === "reset_password" ? ["completed", "failed"] : ["verified", "failed"];
   const workflowAction = (type, category) => type === "verify_email" ? { type, purpose: category === "recovery" ? "reset" : "invitation" } : type === "enroll_credential" ? { type, credential: "passkey" } : { type };
-  const workflowStep = (id, action, good, attempts = 3) => ({ id, action, max_attempts: attempts,
+  const workflowStep = (id, action, good, attempts = 3, bad = "denied") => ({ id, action, max_attempts: attempts,
     timeout_seconds: 300, cancellable: action.type !== "enroll_credential" && action.type !== "reset_password",
-    transitions: workflowSignals(action.type).map((on) => ({ on, to: on === "failed" ? "denied" : good })) });
+    transitions: workflowSignals(action.type).map((on) => ({ on, to: on === "failed" || on === "denied" ? bad : good })) });
   function workflowTemplate(category) {
     const steps = category === "authentication" ? [
       { ...workflowStep("password", workflowAction("verify_password", category), "success"), transitions: [
@@ -1946,20 +1948,33 @@
       workflowStep("session", workflowAction("resume_session", category), "passkey", 1),
       workflowStep("passkey", workflowAction("verify_passkey", category), "enroll"),
       workflowStep("enroll", workflowAction("enroll_credential", category), "success", 1),
-    ] : [
+    ] : category === "recovery" ? [
       workflowStep("email", workflowAction("verify_email", category), "reset", 1),
       workflowStep("reset", workflowAction("reset_password", category), "success", 1),
+    ] : category === "consent" ? [
+      workflowStep("session", workflowAction("resume_session", category), "consent", 1),
+      workflowStep("consent", workflowAction("request_consent", category), "success", 1),
+    ] : [
+      workflowStep("session", workflowAction("resume_session", category), "password", 1),
+      { ...workflowStep("password", workflowAction("verify_password", category), "success"), transitions: [
+        { on: "verified", when: { type: "account_has", credential: "totp" }, to: "totp" },
+        { on: "verified", to: "success" }, { on: "failed", to: "denied" }] },
+      workflowStep("totp", workflowAction("verify_totp", category), "success"),
     ];
-    const outcome = { authentication: "authenticated", enrollment: "enrolled", recovery: "recovered" }[category];
+    const outcome = { authentication: "authenticated", enrollment: "enrolled", recovery: "recovered",
+      consent: "consent_granted", sensitive_action: "action_authorized" }[category];
     return { format: "riauth.workflow/v1", id: `platform-${category}`, revision: 1, category,
       origin: "configured", entry: steps[0].id, limits: { max_duration_seconds: 900, max_executions: 12 }, steps,
-      terminals: [{ id: "success", outcome, requires: [], ...(category === "authentication" ? {} : { max_proof_age_seconds: 300 }) },
+      terminals: [{ id: "success", outcome, requires: [], ...(["enrollment", "recovery", "sensitive_action"].includes(category) ? { max_proof_age_seconds: 300 } : {}) },
         { id: "denied", outcome: "denied", requires: [] }] };
   }
+  const workflowRuntimeNotice = () => h("p", { class: "notice warn-notice" },
+    "Configured workflow execution is not supported yet. Runtime journeys still use server-owned definitions. The graph is a static preview and does not execute credentials.");
   function workflows() {
     const rows = [...data.workflows].sort((a, b) => byName(a.id, b.id));
     return { node: h("div", {}, heading("PLATFORM", "Workflows", "Author and validate configured definitions. Shipped Essentials journeys stay managed by the server.",
       link(hash("workflows", "new"), "New workflow", { class: "button primary" })),
+      workflowRuntimeNotice(),
       table("Configured workflows", [
         { label: "Workflow", cell: (row) => link(hash("workflows", row.id), row.id) },
         { label: "Journey", cell: (row) => row.category.replaceAll("_", " ") },
@@ -1969,13 +1984,15 @@
   }
   function workflowTemplates() {
     return { crumb: "New workflow", node: h("div", {}, heading("PLATFORM", "Choose a template", "Each template starts as a configured canonical definition. Validation runs before save."),
-      h("div", { class: "workflow-templates" }, ["authentication", "enrollment", "recovery"].map((category) =>
+      workflowRuntimeNotice(),
+      h("div", { class: "workflow-templates" }, ["authentication", "enrollment", "recovery", "consent", "sensitive_action"].map((category) =>
         h("button", { class: "admin-card workflow-template", type: "button", "aria-label": `Start ${category} workflow template`, onclick: () => {
           workflowDraft = workflowTemplate(category); workflowPlan = null; workflowSelection = 0;
           workflowDraftGeneration++;
           location.hash = hash("workflows", "draft"); render({ focus: true });
-        } }, h("strong", {}, category[0].toUpperCase() + category.slice(1)),
-        h("span", {}, ({ authentication: "Password, TOTP and recovery code", enrollment: "Session, passkey and new passkey", recovery: "Email proof and password reset" })[category]))))) };
+        } }, h("strong", {}, category[0].toUpperCase() + category.slice(1).replaceAll("_", " ")),
+        h("span", {}, ({ authentication: "Password, TOTP and recovery code", enrollment: "Session, passkey and new passkey", recovery: "Email proof and password reset",
+          consent: "Session and consent decision", sensitive_action: "Session, password and conditional TOTP" })[category]))))) };
   }
   function workflowEditor(id) {
     if (id !== "draft" && (!workflowDraft || workflowDraft.id !== id)) {
@@ -1991,6 +2008,8 @@
     const editingExisting = id !== "draft";
     const selected = definition.steps[workflowSelection] || definition.steps[0];
     const targetIds = [...definition.steps.map((step) => step.id), ...definition.terminals.map((terminal) => terminal.id)];
+    const successTerminal = definition.terminals.find((terminal) => terminal.outcome !== "denied");
+    const deniedTerminal = definition.terminals.find((terminal) => terminal.outcome === "denied");
     const options = (values, selectedValue) => values.map((value) => h("option", { value, selected: value === selectedValue }, value.replaceAll("_", " ")));
     const change = (update) => { update(); workflowDraftGeneration++; workflowPlan = null; render(); };
     const readyPlan = workflowPlan && workflowContextCurrent(workflowPlan.context) ? workflowPlan.value : null;
@@ -2008,10 +2027,13 @@
         if (definition.entry === old) definition.entry = next;
         for (const step of definition.steps) for (const transition of step.transitions) if (transition.to === old) transition.to = next;
       }) })),
-      field("Action", h("select", { onchange: (event) => change(() => {
-        selected.action = workflowAction(event.target.value, definition.category);
-        selected.transitions = workflowSignals(selected.action.type).map((on) => ({ on, to: on === "failed" ? "denied" : "success" }));
-      }) }, options(workflowActions[definition.category], selected.action.type))),
+      field("Action", h("select", { onchange: (event) => {
+        if (selected.action.type === event.target.value) return;
+        change(() => {
+          selected.action = workflowAction(event.target.value, definition.category);
+          selected.transitions = workflowSignals(selected.action.type).map((on) => ({ on, to: on === "failed" || on === "denied" ? deniedTerminal.id : successTerminal.id }));
+        });
+      } }, options([...new Set([selected.action.type, ...workflowActions[definition.category]])], selected.action.type))),
       h("div", { class: "field-row" },
         field("Max attempts", h("input", { type: "number", min: "1", max: "5", value: selected.max_attempts, onchange: (event) => change(() => { selected.max_attempts = Number(event.target.value); }) })),
         field("Timeout (seconds)", h("input", { type: "number", min: "1", max: "3600", value: selected.timeout_seconds, onchange: (event) => change(() => { selected.timeout_seconds = Number(event.target.value); }) }))),
@@ -2024,7 +2046,7 @@
       h("div", { class: "form-actions" },
         h("button", { class: "button secondary", type: "button", onclick: () => change(() => {
           const next = `step-${definition.steps.length + 1}`;
-          definition.steps.push(workflowStep(next, workflowAction(workflowActions[definition.category][0], definition.category), "success", 1));
+          definition.steps.push(workflowStep(next, workflowAction(workflowActions[definition.category][0], definition.category), successTerminal.id, 1, deniedTerminal.id));
           workflowSelection = definition.steps.length - 1;
         }) }, "Add step"),
         h("button", { class: "button secondary", type: "button", disabled: definition.steps.length === 1 || definition.entry === selected.id || definition.steps.some((step) => step.transitions.some((route) => route.to === selected.id)),
@@ -2039,7 +2061,7 @@
           onchange: (event) => change(() => { definition.limits.max_duration_seconds = Number(event.target.value); }) })),
         field("Execution limit", h("input", { type: "number", min: "1", max: "64", value: definition.limits.max_executions,
           onchange: (event) => change(() => { definition.limits.max_executions = Number(event.target.value); }) }))),
-      h("p", { class: "field-hint" }, `Revision ${definition.revision}. Entry: ${definition.entry}. Success: ${definition.terminals[0].outcome}.`),
+      h("p", { class: "field-hint" }, `Revision ${definition.revision}. Entry: ${definition.entry}. Success: ${successTerminal.outcome}.`),
       h("details", {}, h("summary", {}, "Canonical definition JSON"), h("pre", { class: "settings-json" }, JSON.stringify(definition, null, 2))),
       readyPlan ? h("p", { class: "notice" }, `Server validation passed. Plan ${readyPlan.plan_id} has ${readyPlan.changes.length} change(s) and expires in 15 minutes.`) : null,
       status, h("div", { class: "form-actions" },
@@ -2088,6 +2110,7 @@
         } }, "Save definition") : null));
     return { crumb: editingExisting ? definition.id : "New workflow", node: h("div", {},
       heading("PLATFORM WORKFLOW", editingExisting ? `Edit ${definition.id}` : "New workflow", "Select a step in the route map, edit it, then validate the entire definition before saving."),
+      workflowRuntimeNotice(),
       h("div", { class: "workflow-editor" }, h("div", {}, graph, preview), controls)) };
   }
 
@@ -2095,7 +2118,7 @@
     return { crumb: definition.id, node: h("div", {},
       heading("PLATFORM WORKFLOW", definition.id, "This category can be inspected here and managed through the canonical manifest API."),
       h("div", { class: "admin-card" }, h("h2", {}, `${definition.category.replaceAll("_", " ")} workflow`),
-        h("p", { class: "field-hint" }, "The browser editor currently supports authentication, enrollment, and recovery. This definition is read-only here."),
+        h("p", { class: "field-hint" }, "This workflow category is not supported by the browser editor. This definition is read-only here."),
         h("pre", { class: "settings-json" }, JSON.stringify(definition, null, 2)))) };
   }
 
