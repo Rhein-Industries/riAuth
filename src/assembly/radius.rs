@@ -5,12 +5,16 @@ use crate::{
     crypto::{digest, now},
     error::{Error, Result},
     model::{Client, Identity, Session, User},
-    radius::{Packet, RadiusClaim, Settings, WireAttributes, eap, fingerprint},
+    radius::{Listener, Packet, RadiusClaim, Settings, WireAttributes, eap, fingerprint},
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::net::IpAddr;
+use std::{collections::BTreeMap, net::IpAddr};
+
+pub async fn radius_start(core: Core) -> anyhow::Result<crate::radius::Servers> {
+    crate::radius::start_with_port(core).await
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Cached {
@@ -580,5 +584,86 @@ impl eap::EapPort for Core {
 
     fn close(&self, identity: Option<&Identity>) -> Result<()> {
         self.radius_close(identity)
+    }
+}
+
+impl crate::radius::RadiusPort for Core {
+    fn listeners(&self) -> &BTreeMap<String, Listener> {
+        &self.config.radius_listeners
+    }
+
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease {
+        self.runtime.bind_radius(id, listener)
+    }
+
+    fn rate_limited(&self, peer: IpAddr, listener_id: &str, nas_id: &str) -> Result<bool> {
+        Core::radius_rate_limited(self, peer, listener_id, nas_id)
+    }
+
+    fn claim(
+        &self,
+        client_id: &str,
+        key: &str,
+        packet: &Packet,
+        secret: &[u8],
+    ) -> Result<RadiusClaim> {
+        Core::radius_claim(self, client_id, key, packet, secret)
+    }
+
+    fn eap_client(&self, client_id: &str) -> Result<Option<Client>> {
+        Core::radius_eap_client(self, client_id)
+    }
+
+    fn user_requires_mfa(&self, username: &str) -> Result<bool> {
+        Core::radius_user_requires_mfa(self, username)
+    }
+
+    fn login(&self, username: String, password: String, otp: Option<String>) -> Result<Value> {
+        Core::login(self, username, password, otp)
+    }
+
+    fn pap_commit(
+        &self,
+        listener_id: &str,
+        nas_id: &str,
+        client_id: &str,
+        key: &str,
+        packet: &Packet,
+        secret: &[u8],
+        token: Option<&str>,
+    ) -> Result<(Option<Vec<u8>>, bool)> {
+        Core::radius_pap_commit(
+            self,
+            listener_id,
+            nas_id,
+            client_id,
+            key,
+            packet,
+            secret,
+            token,
+        )
+    }
+
+    fn logout(&self, token: &str) -> Result<Value> {
+        Core::logout(self, token)
+    }
+
+    fn eap_commit(
+        &self,
+        listener: &str,
+        nas_id: &str,
+        client_id: &str,
+        key: &str,
+        packet: &Packet,
+        secret: &[u8],
+        outcome: eap::Outcome,
+    ) -> Result<(Option<Vec<u8>>, bool)> {
+        Core::radius_eap_commit(
+            self, listener, nas_id, client_id, key, packet, secret, outcome,
+        )
+    }
+
+    fn close_identity(&self, identity: Option<&Identity>) -> Result<()> {
+        Core::radius_close(self, identity)
     }
 }

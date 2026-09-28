@@ -30,6 +30,8 @@ mod proxy_server;
 mod radius;
 #[cfg(feature = "platform")]
 pub use radius::cleanup as radius_cleanup;
+#[cfg(feature = "platform")]
+pub use radius::radius_start;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

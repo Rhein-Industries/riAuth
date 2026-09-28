@@ -1142,21 +1142,7 @@ pub(crate) fn user_by_name(tx: &Tx<'_>, username: &str) -> Result<User> {
 /// Changing a factor needs an MFA session once the user has TOTP or a passkey.
 #[doc(hidden)]
 pub use crate::identity::require_factor_session;
-pub fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || name == "."
-        || name == ".."
-        || name.len() > 64
-        || !name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"-_.@".contains(&c))
-    {
-        return Err(Error::bad(
-            "Names must be 1–64 ASCII letters, digits, dots, hyphens, underscores or @",
-        ));
-    }
-    Ok(())
-}
+pub use crate::validation::validate_name;
 pub(crate) fn validate_display(name: &str) -> Result<()> {
     if name.is_empty() || name.len() > 200 || name.chars().any(char::is_control) {
         return Err(Error::bad(

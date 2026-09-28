@@ -3,8 +3,8 @@
 compile_error!("Select --features essentials or --features platform for a server build");
 pub mod agent;
 pub mod api;
-mod assembly;
 pub mod application_setup;
+mod assembly;
 pub mod assurance;
 pub mod authenticator;
 pub mod authorization;
@@ -132,6 +132,7 @@ pub mod state;
 pub mod store;
 pub mod telemetry;
 pub mod upgrade;
+mod validation;
 #[cfg(feature = "platform")]
 pub mod windows_login;
 pub mod workflow;

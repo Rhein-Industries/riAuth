@@ -302,6 +302,8 @@ def main() -> None:
             errors.append("src/ldap_server.rs: LDAP protocol refers directly to storage")
         if path == SRC / "radius.rs":
             radius_source = masked_rust_source(path.read_text())
+            if "core" in refs or re.search(r"\bCore\b", radius_source):
+                errors.append("src/radius.rs: RADIUS protocol refers directly to Core")
             if re.search(r"\.\s*store\s*\.\s*read\s*\(", radius_source) or re.search(
                 r"\bfn\s+(?:client|radius_identity)\s*\(", radius_source
             ):
