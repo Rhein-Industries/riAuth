@@ -211,6 +211,7 @@ impl Core {
                 totp: None,
                 recovery_code: None,
                 enrollment: None,
+                totp_enrollment: None,
             };
             let mut request = RequestAuthority {
                 id: request_id.clone(),
@@ -271,6 +272,7 @@ impl Core {
                 || reservation.passkey.is_some()
                 || reservation.totp.is_some()
                 || reservation.recovery_code.is_some()
+                || reservation.totp_enrollment.is_some()
                 || reservation.attempt != *attempt
                 || reservation.step_started_at != run.step_started_at
                 || checked.step(step).map(|s| &s.action)

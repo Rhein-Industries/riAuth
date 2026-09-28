@@ -290,6 +290,33 @@ pub(crate) fn totp_confirm_in(
     Ok(body)
 }
 
+/// Commit a run-owned TOTP secret only after the configured executor has
+/// supplied its live, bound proof capability. Recheck the new code in the
+/// completion writer; the code and secret alone never authorize this call.
+#[cfg(feature = "platform")]
+pub(crate) fn commit_workflow_totp_in(
+    tx: &impl AuthenticatorTx,
+    mut user: User,
+    secret: &str,
+    code: &str,
+) -> Result<()> {
+    if user.totp_secret.is_some() || user.totp_pending.is_some() || !user.has_passkeys {
+        return Err(Error::forbidden());
+    }
+    let step = crypto::totp_step(secret, &user.username, code, now(), None)?
+        .ok_or_else(Error::forbidden)?;
+    user.totp_secret = Some(secret.to_owned());
+    user.totp_settings = TotpSettings::default();
+    user.totp_pending = None;
+    user.totp_last_step = Some(step);
+    user.recovery_codes.clear();
+    user.epoch = user.epoch.checked_add(1).ok_or_else(Error::forbidden)?;
+    tx.put_user(&user.id, &user)?;
+    tx.delete_enrollment(&user.id)?;
+    tx.queue_user_revocation(&user.id)?;
+    tx.audit_factor(&user.id, "mfa.enabled", &user.id)
+}
+
 /// Abandons this session's pending enrollment. An enabled app is untouched.
 pub(crate) fn totp_cancel_in(
     tx: &impl AuthenticatorTx,

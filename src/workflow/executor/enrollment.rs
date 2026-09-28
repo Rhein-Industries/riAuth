@@ -253,6 +253,7 @@ impl Core {
                 totp: None,
                 recovery_code: None,
                 enrollment: None,
+                totp_enrollment: None,
             };
             let started = self.workflow_register_start_in(
                 tx,
@@ -312,6 +313,7 @@ impl Core {
                 || reservation.passkey.is_some()
                 || reservation.totp.is_some()
                 || reservation.recovery_code.is_some()
+                || reservation.totp_enrollment.is_some()
             {
                 return Err(Error::forbidden());
             }

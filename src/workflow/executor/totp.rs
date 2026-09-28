@@ -34,7 +34,11 @@ impl Factor {
     }
 
     fn reserved(self, reservation: &InFlight) -> Option<&str> {
-        if reservation.source.is_some() || reservation.passkey.is_some() {
+        if reservation.source.is_some()
+            || reservation.passkey.is_some()
+            || reservation.enrollment.is_some()
+            || reservation.totp_enrollment.is_some()
+        {
             return None;
         }
         match self {
@@ -286,6 +290,7 @@ impl Core {
                     totp: None,
                     recovery_code: None,
                     enrollment: None,
+                    totp_enrollment: None,
                 };
                 let bound = Some(binding(&run, &reservation, &challenge, factor)?);
                 match factor {

@@ -50,6 +50,11 @@ pub(super) fn routes() -> Router<App> {
             post(enrollment_challenge),
         )
         .route("/api/workflows/{id}/passkey-enrollment", post(enroll))
+        .route(
+            "/api/workflows/{id}/totp-enrollment/start",
+            post(totp_enrollment_start),
+        )
+        .route("/api/workflows/{id}/totp-enrollment", post(totp_enroll))
         .route("/api/workflows/{id}/passkey-removal", post(passkey_remove))
         .route("/api/workflows/sources/{source}", post(source_start))
         .route("/api/workflows/{id}", get(resume))
@@ -303,6 +308,33 @@ async fn passkey_remove(
 ) -> Result<Json<View>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_passkey_remove(&token, &id).map(Json))
+        .await
+}
+
+async fn totp_enrollment_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_totp_enrollment_start(&token, &id).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TotpEnrollmentCode {
+    code: String,
+}
+
+async fn totp_enroll(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<TotpEnrollmentCode>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_totp_enroll(&token, &id, &input.code).map(Json))
         .await
 }
 
