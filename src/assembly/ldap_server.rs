@@ -161,22 +161,38 @@ impl Core {
                 return Ok((rows, revision));
             }
             let self_user = authorize(self, tx, cid, auth)?;
-            let all_groups = tx.list::<Group>("groups")?;
-            let selected: BTreeSet<String> = all_groups
-                .iter()
-                .filter(|(name, _)| settings.search_groups.contains(name))
-                .flat_map(|(_, g)| g.members.iter().cloned())
-                .collect();
-            let users: Vec<_> = tx
-                .list::<User>("users")?
-                .into_iter()
-                .map(|(_, u)| u)
-                .filter(|u| {
-                    u.enabled
-                        && selected.contains(&u.id)
-                        && self_user.as_ref().is_none_or(|me| me.id == u.id)
-                })
-                .collect();
+            // ldap_profile checked these names in this snapshot. Read only the
+            // configured visibility groups, not the entire Group bucket.
+            let mut selected = BTreeSet::new();
+            for name in &settings.search_groups {
+                let group = tx
+                    .get::<Group>("groups", name)?
+                    .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
+                selected.extend(group.members);
+            }
+            let mut users = Vec::new();
+            let mut after = None;
+            loop {
+                let page =
+                    tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = page.last().map(|(key, _)| key.clone());
+                for (_, user) in page {
+                    if user.enabled
+                        && selected.contains(&user.id)
+                        && self_user.as_ref().is_none_or(|me| me.id == user.id)
+                        && users.len() <= 2000
+                    {
+                        users.push(user);
+                    }
+                }
+                if !full {
+                    break;
+                }
+            }
             if users.len() > 2000 {
                 return Err(Error::bad(
                     "LDAP profile supports at most 2000 selected users",
@@ -188,7 +204,33 @@ impl Core {
                 .collect();
             let mut rows = Vec::new();
             let mut unique = BTreeSet::new();
-            rows.push(entry(
+            let base = query.base.to_ascii_lowercase();
+            let suffix = format!(",{base}");
+            let mut base_seen = false;
+            let mut result_bytes = 0usize;
+            let mut oversized = false;
+            // A filtered-out entry still participates in base discovery and
+            // DN collision checks, but does not occupy the result buffer.
+            let mut include = |row: LdapSearchResultEntry| {
+                let dn = row.dn.to_ascii_lowercase();
+                base_seen |= dn == base;
+                let child = dn.strip_suffix(&suffix);
+                let in_scope = match query.scope {
+                    LdapSearchScope::Base => dn == base,
+                    LdapSearchScope::OneLevel => child.is_some_and(|s| !s.contains(',')),
+                    LdapSearchScope::Subtree => dn == base || child.is_some(),
+                    LdapSearchScope::Children => child.is_some(),
+                };
+                if in_scope && matches_filter(&query.filter, &row) && !oversized {
+                    result_bytes = result_bytes.saturating_add(row.size());
+                    if result_bytes <= 4 * 1024 * 1024 {
+                        rows.push(row);
+                    } else {
+                        oversized = true;
+                    }
+                }
+            };
+            include(entry(
                 settings.base_dn.clone(),
                 vec![
                     ("objectClass", vec!["top".into(), "domain".into()]),
@@ -207,7 +249,7 @@ impl Core {
                 ],
             ));
             for ou in ["users", "groups"] {
-                rows.push(entry(
+                include(entry(
                     format!("ou={ou},{}", settings.base_dn),
                     vec![
                         (
@@ -254,51 +296,54 @@ impl Core {
                             .collect(),
                     ));
                 }
-                rows.push(entry(dn, attrs));
+                include(entry(dn, attrs));
             }
             if client.scopes.contains("groups") {
-                for (name, group) in all_groups {
-                    let members: Vec<_> = group
-                        .members
-                        .iter()
-                        .filter_map(|id| visible.get(id))
-                        .map(|name| settings.user_dn(name))
-                        .collect();
-                    if members.is_empty() {
-                        continue;
+                let mut after = None;
+                loop {
+                    let page = tx.scan::<Group>(
+                        "groups",
+                        after.as_deref(),
+                        crate::store::maintenance::PAGE,
+                    )?;
+                    if page.is_empty() {
+                        break;
                     }
-                    let dn = settings.group_dn(&name);
-                    if !unique.insert(dn.to_ascii_lowercase()) {
-                        return Err(Error::conflict("LDAP group DNs collide"));
+                    let full = page.len() == crate::store::maintenance::PAGE;
+                    after = page.last().map(|(key, _)| key.clone());
+                    for (name, group) in page {
+                        let members: Vec<_> = group
+                            .members
+                            .iter()
+                            .filter_map(|id| visible.get(id))
+                            .map(|name| settings.user_dn(name))
+                            .collect();
+                        if members.is_empty() {
+                            continue;
+                        }
+                        let dn = settings.group_dn(&name);
+                        if !unique.insert(dn.to_ascii_lowercase()) {
+                            return Err(Error::conflict("LDAP group DNs collide"));
+                        }
+                        include(entry(
+                            dn,
+                            vec![
+                                ("objectClass", vec!["top".into(), "groupOfNames".into()]),
+                                ("cn", vec![name]),
+                                ("member", members),
+                            ],
+                        ));
                     }
-                    rows.push(entry(
-                        dn,
-                        vec![
-                            ("objectClass", vec!["top".into(), "groupOfNames".into()]),
-                            ("cn", vec![name]),
-                            ("member", members),
-                        ],
-                    ));
+                    if !full {
+                        break;
+                    }
                 }
             }
-            let base = query.base.to_ascii_lowercase();
-            if !rows.iter().any(|r| r.dn.eq_ignore_ascii_case(&query.base)) {
+            if !base_seen {
                 return Err(Error::missing("LDAP base not found"));
             }
-            rows.retain(|row| {
-                let dn = row.dn.to_ascii_lowercase();
-                let suffix = format!(",{base}");
-                let child = dn.strip_suffix(&suffix);
-                let in_scope = match query.scope {
-                    LdapSearchScope::Base => dn == base,
-                    LdapSearchScope::OneLevel => child.is_some_and(|s| !s.contains(',')),
-                    LdapSearchScope::Subtree => dn == base || child.is_some(),
-                    LdapSearchScope::Children => child.is_some(),
-                };
-                in_scope && matches_filter(&query.filter, row)
-            });
             rows.sort_by(|a, b| a.dn.cmp(&b.dn));
-            if rows.iter().map(LdapSearchResultEntry::size).sum::<usize>() > 4 * 1024 * 1024 {
+            if oversized {
                 return Err(Error::bad("LDAP result exceeds provider limit"));
             }
             Ok((rows, revision))
@@ -310,10 +355,12 @@ impl Core {
 mod tests {
     use super::*;
     use crate::{
+        agent::{NewAgent, Permission},
         config::Config,
         model::{NewClient, NewUser, ProviderSettings},
         telemetry::ReadContext,
     };
+    use ldap3_proto::proto::{LdapDerefAliases, LdapFilter};
 
     #[test]
     fn ldap_bind_target_pages_past_128_users_and_rejects_case_collisions() {
@@ -438,5 +485,239 @@ mod tests {
         assert_eq!(after.0, before.0);
         assert_eq!(after.1 - before.1, 2);
         assert_eq!(after.2 - before.2, 133);
+    }
+
+    #[test]
+    fn ldap_search_pages_buckets_without_changing_scope_or_collisions() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        for username in ["selected", "other"] {
+            core.create_user(
+                &admin,
+                NewUser {
+                    username: username.into(),
+                    password: password.into(),
+                    email: Some(format!("{username}@example.test")),
+                    display_name: username.into(),
+                    admin: false,
+                },
+            )
+            .unwrap();
+        }
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "email", "groups"]
+                    .map(str::to_owned)
+                    .into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let credential = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "ldap-search-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            credential["credential"]["token"].as_str().unwrap().into(),
+        ));
+        let selected_session = core
+            .login("selected".into(), password.into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let user_auth = Auth::User(zeroize::Zeroizing::new(selected_session));
+        core.store
+            .write(|tx| {
+                let selected_id = tx.get::<String>("usernames", "selected")?.unwrap();
+                let other_id = tx.get::<String>("usernames", "other")?.unwrap();
+                let selected: User = tx.get("users", &selected_id)?.unwrap();
+                for index in 0..130 {
+                    let mut filler = selected.clone();
+                    filler.id = format!("filler-{index:03}");
+                    filler.username = format!("filler-{index:03}");
+                    tx.put("users", &filler.id, &filler)?;
+                    let name = format!("a{index:03}");
+                    tx.put(
+                        "groups",
+                        &name,
+                        &Group {
+                            name: name.clone(),
+                            members: BTreeSet::new(),
+                        },
+                    )?;
+                }
+                let mut disabled = selected.clone();
+                disabled.id = "disabled".into();
+                disabled.username = "disabled".into();
+                disabled.enabled = false;
+                tx.put("users", &disabled.id, &disabled)?;
+                let members = [selected_id, other_id, disabled.id].into_iter().collect();
+                let mut directory: Group = tx.get("groups", "directory")?.unwrap();
+                directory.members = members;
+                tx.put("groups", "directory", &directory)?;
+                tx.put(
+                    "groups",
+                    "z-related",
+                    &Group {
+                        name: "z-related".into(),
+                        members: directory.members.clone(),
+                    },
+                )
+            })
+            .unwrap();
+
+        let mut query = LdapSearchRequest {
+            base: "dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::Subtree,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("objectClass".into()),
+            attrs: vec![],
+        };
+        let scans = &core.store.telemetry().reads;
+        let counts = || {
+            (
+                scans.scans(ReadContext::Read, false).count(),
+                scans.scans(ReadContext::Read, true).count(),
+                scans.scans(ReadContext::Read, true).sum(),
+            )
+        };
+        let before = counts();
+        let (rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let after = counts();
+        assert_eq!(after.0, before.0, "search must not list either bucket");
+        assert_eq!(
+            after.1 - before.1,
+            6,
+            "two pages per bucket and two membership reads"
+        );
+        assert_eq!(after.2 - before.2, 270);
+        let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
+        assert_eq!(dns.len(), 7);
+        assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(dns.contains(&"uid=selected,ou=users,dc=riauth,dc=test"));
+        assert!(dns.contains(&"uid=other,ou=users,dc=riauth,dc=test"));
+        assert!(dns.contains(&"cn=z-related,ou=groups,dc=riauth,dc=test"));
+        assert!(!dns.contains(&"uid=disabled,ou=users,dc=riauth,dc=test"));
+
+        query.base = "ou=groups,dc=riauth,dc=test".into();
+        query.scope = LdapSearchScope::OneLevel;
+        query.filter = LdapFilter::Present("member".into());
+        query.sizelimit = 1; // The listener applies this after this full, sorted result.
+        let (groups, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        assert_eq!(groups.len(), 2);
+        assert!(groups[0].dn < groups[1].dn);
+        for group in &groups {
+            let members = &group
+                .attributes
+                .iter()
+                .find(|attribute| attribute.atype == "member")
+                .unwrap()
+                .vals;
+            assert_eq!(members.len(), 2, "disabled member must not be visible");
+        }
+        query.base = "dc=riauth,dc=test".into();
+        query.scope = LdapSearchScope::Subtree;
+        query.filter = LdapFilter::Present("uid".into());
+        let (self_rows, _) = core
+            .ldap_search_entries("ldap", Some(&user_auth), &query, false)
+            .unwrap();
+        assert_eq!(self_rows.len(), 1);
+        assert_eq!(self_rows[0].dn, "uid=selected,ou=users,dc=riauth,dc=test");
+
+        query.base = "cn=a000,ou=groups,dc=riauth,dc=test".into();
+        query.scope = LdapSearchScope::Base;
+        let missing = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap_err();
+        assert_eq!(missing.status, axum::http::StatusCode::NOT_FOUND);
+        core.store
+            .write(|tx| {
+                let id = tx.get::<String>("usernames", "selected")?.unwrap();
+                let mut user: User = tx.get("users", &id)?.unwrap();
+                // cn, sn and displayName make one projected entry exceed 4 MiB.
+                user.display_name = "x".repeat(1_500_000);
+                tx.put("users", &id, &user)
+            })
+            .unwrap();
+        query.base = "ou=users,dc=riauth,dc=test".into();
+        query.scope = LdapSearchScope::OneLevel;
+        let oversized = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap_err();
+        assert_eq!(oversized.status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(oversized.message, "LDAP result exceeds provider limit");
+        core.store
+            .write(|tx| {
+                let group: Group = tx.get("groups", "z-related")?.unwrap();
+                tx.put(
+                    "groups",
+                    "Z-RELATED",
+                    &Group {
+                        name: "Z-RELATED".into(),
+                        members: group.members,
+                    },
+                )
+            })
+            .unwrap();
+        let collision = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap_err();
+        assert_eq!(collision.status, axum::http::StatusCode::CONFLICT);
+        core.revoke_agent(&admin, "ldap-search-reader").unwrap();
+        assert!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .is_err()
+        );
     }
 }
