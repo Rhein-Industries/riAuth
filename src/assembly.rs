@@ -16,7 +16,11 @@ mod exchange;
 mod issuer;
 mod keyring;
 #[cfg(feature = "platform")]
+mod ldap_port;
+#[cfg(feature = "platform")]
 mod ldap_server;
+#[cfg(feature = "platform")]
+pub use ldap_port::ldap_start;
 mod logout;
 #[cfg(feature = "platform")]
 mod mtls;

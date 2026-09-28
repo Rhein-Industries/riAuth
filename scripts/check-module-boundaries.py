@@ -334,9 +334,10 @@ def main() -> None:
         ):
             errors.append("src/directory.rs: LDAP import adapter refers directly to Core or storage")
         if path == SRC / "ldap_server.rs" and (
-            refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
         ):
-            errors.append("src/ldap_server.rs: LDAP protocol refers directly to storage")
+            errors.append("src/ldap_server.rs: LDAP protocol refers directly to Core or storage")
         if path == SRC / "radius.rs":
             radius_source = masked_rust_source(path.read_text())
             if "core" in refs or re.search(r"\bCore\b", radius_source):

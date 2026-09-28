@@ -1,9 +1,9 @@
 //! A bounded, read-only LDAPv3 provider with TLS and scoped service credentials.
 use crate::{
-    core::{Core, validate_name},
     crypto::{digest, now},
     error::{Error, Result},
     model::Client,
+    validation::validate_name,
 };
 use futures_util::{SinkExt, StreamExt};
 use ldap3_proto::{LdapCodec, control::LdapControl, proto::*};
@@ -23,6 +23,7 @@ use tokio_util::codec::Framed;
 pub(crate) const STARTTLS: &str = "1.3.6.1.4.1.1466.20037";
 pub(crate) const WHOAMI: &str = "1.3.6.1.4.1.4203.1.11.3";
 pub(crate) const PAGED: &str = "1.2.840.113556.1.4.319";
+pub use crate::assembly::ldap_start as start;
 pub use crate::model::client_settings::ldap::Settings;
 
 // Reuse the listener's BER decoder and limits without creating a connection or
@@ -124,6 +125,34 @@ impl Settings {
 }
 pub use crate::ldap_listener::Listener;
 
+pub(crate) trait LdapPort: Clone + Send + Sync + 'static {
+    fn listeners(&self) -> &BTreeMap<String, Listener>;
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease;
+    fn ldap_rate_limit(&self, peer: IpAddr, category: &str) -> Result<bool>;
+    fn ldap_bind_target(
+        &self,
+        cid: &str,
+        dn: &str,
+        password: &str,
+    ) -> Result<(Settings, Option<(String, bool)>)>;
+    fn login(
+        &self,
+        username: String,
+        password: String,
+        otp: Option<String>,
+    ) -> Result<serde_json::Value>;
+    fn ldap_bind_authorized(&self, cid: &str, token: &str) -> Result<()>;
+    fn logout(&self, token: &str) -> Result<serde_json::Value>;
+    fn ldap_whoami(&self, cid: &str, auth: Option<&Auth>) -> Result<String>;
+    fn ldap_search_entries(
+        &self,
+        cid: &str,
+        auth: Option<&Auth>,
+        query: &LdapSearchRequest,
+        starttls: bool,
+    ) -> Result<(Vec<LdapSearchResultEntry>, u64)>;
+}
+
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
@@ -137,7 +166,7 @@ impl Drop for Servers {
     }
 }
 async fn tls(
-    _core: &Core,
+    _core: &impl LdapPort,
     listener: &Listener,
 ) -> anyhow::Result<Option<Arc<rustls::ServerConfig>>> {
     if listener.local_unencrypted {
@@ -150,9 +179,9 @@ async fn tls(
     .await?;
     Ok(Some(Arc::new(config)))
 }
-pub async fn start(core: Core) -> anyhow::Result<Servers> {
+pub(crate) async fn start_with_port(core: impl LdapPort) -> anyhow::Result<Servers> {
     let mut ready = Vec::new();
-    for (id, listener) in &core.config.ldap_listeners {
+    for (id, listener) in core.listeners() {
         listener.validate()?;
         let tls = tls(&core, listener).await?;
         let socket = TcpListener::bind(listener.listen).await?;
@@ -166,7 +195,7 @@ pub async fn start(core: Core) -> anyhow::Result<Servers> {
     for (id, socket, config, tls) in ready {
         servers.addresses.push(socket.local_addr()?);
         let core = core.clone();
-        let lease = core.runtime.bind_ldap(&id, &config);
+        let lease = core.bind_listener(&id, &config);
         let worker_lease = lease.clone();
         servers.leases.push(lease);
         servers.tasks.push(tokio::spawn(async move {
@@ -178,7 +207,7 @@ pub async fn start(core: Core) -> anyhow::Result<Servers> {
     Ok(servers)
 }
 async fn listen(
-    core: Core,
+    core: impl LdapPort,
     socket: TcpListener,
     config: Listener,
     mut tls_config: Option<Arc<rustls::ServerConfig>>,
@@ -247,14 +276,14 @@ fn mapped(error: Error) -> LdapResultCode {
         _ => LdapResultCode::Unavailable,
     }
 }
-async fn release(core: &Core, auth: Option<Auth>) {
+async fn release(core: &impl LdapPort, auth: Option<Auth>) {
     if let Some(Auth::User(token)) = auth {
         let core = core.clone();
         let _ = tokio::task::spawn_blocking(move || core.logout(&token)).await;
     }
 }
 async fn connection(
-    core: Core,
+    core: impl LdapPort,
     stream: tokio::net::TcpStream,
     peer: IpAddr,
     config: Listener,
@@ -667,7 +696,7 @@ async fn connection(
 fn crypto_token() -> Vec<u8> {
     crate::crypto::random_token("").into_bytes()
 }
-fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
+fn bind_user(core: &impl LdapPort, cid: &str, dn: &str, password: &str) -> Result<Auth> {
     let (settings, username) = core.ldap_bind_target(cid, dn, password)?;
     let Some((username, mfa)) = username else {
         return Ok(Auth::Agent(zeroize::Zeroizing::new(password.into())));
@@ -695,7 +724,7 @@ fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
     let _ = settings;
     Ok(Auth::User(token))
 }
-fn whoami(core: &Core, cid: &str, auth: Option<&Auth>) -> Result<String> {
+fn whoami(core: &impl LdapPort, cid: &str, auth: Option<&Auth>) -> Result<String> {
     core.ldap_whoami(cid, auth)
 }
 pub(crate) fn entry(dn: String, attrs: Vec<(&str, Vec<String>)>) -> LdapSearchResultEntry {
@@ -712,7 +741,7 @@ pub(crate) fn entry(dn: String, attrs: Vec<(&str, Vec<String>)>) -> LdapSearchRe
     }
 }
 fn search_entries(
-    core: &Core,
+    core: &impl LdapPort,
     cid: &str,
     auth: Option<&Auth>,
     query: &LdapSearchRequest,
