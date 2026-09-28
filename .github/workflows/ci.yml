@@ -97,6 +97,8 @@ jobs:
         run: PG_BIN="$(pg_config --bindir)" scripts/test-postgres.sh
       - name: Shared contracts on isolated PostgreSQL databases
         run: PG_BIN="$(pg_config --bindir)" bash scripts/test-contracts-postgres.sh
+      - name: PostgreSQL Q05 replay and lease schedules
+        run: PG_BIN="$(pg_config --bindir)" RIAUTH_PG_TEST_TARGET=q05_replay_concurrency scripts/test-postgres.sh
       - name: OpenLDAP synchronization and authentication
         run: scripts/test-ldap.sh
       - name: Real browser and relying party
