@@ -245,7 +245,11 @@ pub fn clear(tx: &impl PasskeyMaintenance, user_id: &str) -> Result<()> {
     Ok(())
 }
 pub fn cleanup(tx: &impl PasskeyMaintenance, at: u64) -> Result<()> {
-    for bucket in ["passkey_registration", "passkey_authentication"] {
+    for bucket in [
+        "passkey_registration",
+        "passkey_authentication",
+        "invitation_passkey_registration",
+    ] {
         for (id, value) in tx.pending_page(bucket)? {
             if value["expires_at"].as_u64().is_none_or(|exp| exp <= at) {
                 tx.delete_pending(bucket, &id)?;

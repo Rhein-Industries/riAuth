@@ -1,6 +1,6 @@
 # Passkeys
 
-riAuth supports FIDO2/WebAuthn passkeys with required user verification, in the browser and from the terminal. Enrollment, renaming, and credential deletion require a session authenticated within five minutes. A user can register up to sixteen credentials. Registering or deleting one advances the account's credential version and revokes existing sessions and grants. Renaming changes only the label and keeps the credential and sessions intact. The WebAuthn RP ID is the issuer's hostname, and the origin must be the issuer's exact origin.
+riAuth supports FIDO2/WebAuthn passkeys with required user verification, in the browser and from the terminal. For signed-in accounts, enrollment, renaming, and credential deletion require a session authenticated within five minutes. A pending invitation can instead authorize a first passkey through the API described below. A user can register up to sixteen credentials. Registering or deleting one advances the account's credential version and revokes existing sessions and grants. Renaming changes only the label and keeps the credential and sessions intact. The WebAuthn RP ID is the issuer's hostname, and the origin must be the issuer's exact origin.
 
 ## Changing factors needs an MFA session
 
@@ -35,6 +35,33 @@ The [portal](PORTAL.md#passkeys-and-security) and every sign-in page offer **Sig
 **Authentik passkeys are not migrated.** They are bound to Authentik's hostname and database. Users add new passkeys in the riAuth portal after migration. If riAuth takes over Authentik's hostname, browsers may still offer the old Authentik passkeys; they fail with the message above and keep working for Authentik during a rollback. Plan re-enrollment before requiring passkeys for application access.
 
 `POST /api/passkey/authentication/start` no longer returns `transports` hints, and an unknown username gets a decoy challenge with the same shape as a real one (it always lists one credential; real accounts may list several).
+
+## First passkey from an invitation
+
+Both editions expose an invitation enrollment API for an account that is still
+disabled and has no credentials. `POST /api/account/accept/passkey/start` takes
+the invitation `token` and a passkey `name`, and returns `ceremony`, `public_key`
+WebAuthn options and `expires_in`. Complete it with
+`POST /api/account/accept/passkey/finish`, supplying the same token, ceremony
+and authenticator `response`. `/api/account/accept/passkey/cancel` takes the
+token and ceremony. These endpoints do not accept an account or session ID.
+
+Each ceremony lasts at most two minutes and accepts one authenticator attempt.
+Starting again replaces the previous ceremony. A failed authenticator attempt
+or explicit cancellation leaves the invitation available for a new start.
+Revoking, reissuing or accepting the invitation invalidates pending enrollment.
+The server rechecks the intended account, credential epoch, invitation and
+inviter's live user/group authority before attaching the first credential.
+Activation, group membership, proof consumption, credential storage and old
+authority revocation commit together. Platform also consumes account/request
+bound invitation and enrollment receipts through its W03 completion boundary.
+
+Success returns `{"completed":true,"login_required":true}`. The recipient then
+signs in with the new passkey; enrollment creates no session. Agent-origin or
+help-desk credential exposure is retained, and invitation acceptance does not
+establish independent authority for human privilege elevation. The current
+browser invitation page still offers password acceptance; these split passkey
+endpoints are for authenticator clients.
 
 ## Passkeys from the terminal
 

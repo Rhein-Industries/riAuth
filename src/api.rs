@@ -6,6 +6,7 @@ pub(crate) use server::tls_files;
 pub use server::{Shutdown, into_rustls_server, serve, tls_configuration};
 
 mod interaction;
+mod invitation;
 mod observability;
 mod probes;
 mod rates;
@@ -259,6 +260,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/account/verify-request", post(account_verify_request))
         .route("/api/account/reset-request", post(account_reset_request))
         .route("/api/account/complete", post(account_complete))
+        .merge(invitation::routes())
         .route(
             "/api/account/invitations",
             get(account_invitations).post(account_invite),

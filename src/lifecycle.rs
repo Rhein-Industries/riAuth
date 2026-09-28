@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 
+pub(crate) mod invitation;
 #[cfg(feature = "platform")]
 pub(crate) mod workflow;
 
@@ -262,6 +263,9 @@ fn reset_exposed_factors(tx: &Tx<'_>, user: &mut User) -> Result<bool> {
 }
 fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
     if let Some(proof) = tx.get::<Proof>("account_proofs", hash)? {
+        if proof.purpose == Purpose::Invite {
+            tx.delete("invitation_passkey_registration", hash)?;
+        }
         tx.delete("account_proofs", hash)?;
         tx.put(
             "account_proof_outcomes",
@@ -862,27 +866,23 @@ impl Core {
                 Purpose::Invite
                     if !user.enabled && !user.admin && user.password_hash.is_empty() =>
                 {
+                    let verified = invitation::Verified::new(
+                        tx,
+                        hash,
+                        proof,
+                        password
+                            .as_deref()
+                            .ok_or_else(|| Error::bad("New password required"))?,
+                        password_hash
+                            .as_deref()
+                            .ok_or_else(|| Error::bad("New password required"))?,
+                    )?;
                     #[cfg(feature = "platform")]
-                    {
-                        let verified = workflow::invitation::Verified::new(
-                            tx,
-                            hash,
-                            proof,
-                            password
-                                .as_deref()
-                                .ok_or_else(|| Error::bad("New password required"))?,
-                            password_hash
-                                .as_deref()
-                                .ok_or_else(|| Error::bad("New password required"))?,
-                        )?;
-                        return self.complete_invitation_workflow(tx, verified);
-                    }
+                    return self.complete_invitation_workflow(tx, verified);
                     #[cfg(not(feature = "platform"))]
                     {
-                        let actor =
-                            creator(tx, proof.creator.as_deref().ok_or_else(Error::forbidden)?)?;
-                        crate::management::accept_invitation(tx, &actor, &mut user, &proof.groups)?;
-                        apply_password(&mut user)?;
+                        verified.commit(self, tx)?;
+                        return Ok(json!({"completed":true,"login_required":true}));
                     }
                 }
                 _ => return Err(Error::forbidden()),
