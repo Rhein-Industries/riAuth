@@ -704,3 +704,29 @@ Twenty-six protocol files still name storage, including authorization,
 browser, exchange, source, SAML and SSF. Management and API files still
 reference Core/storage directly, and independently compiled crate contracts
 remain A03 work.
+
+## Wave 17: authorization request transaction boundary
+
+[Authorization](../src/authorization.rs) now validates pushed requests and
+signed request objects, computes reference expiry, consumes one-use records,
+and cleans expired records through an `AuthorizationTx` port. The concrete
+[authorization assembly](../src/assembly/authorization.rs) maps those
+operations to the same `pushed_requests` and `signed_requests` collections in
+the caller's transaction. Cleanup retains the existing 128-record maintenance
+pages and processes pushed requests before signed requests. The `Core` request
+resolution and PAR method bodies moved intact into assembly, preserving JWT
+verification, replay and expiry checks, error mapping, and write ordering.
+
+The source scan covers 151 Rust files before and 152 after this cut. It now
+guards authorization against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 17 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 26 | 25 |
+| `protocol -> Core` | 29 | 28 |
+| `server_assembly -> protocol` | 9 | 10 |
+| `server_assembly -> storage` | 9 | 10 |
+
+Twenty-five protocol files still name storage, including browser, exchange,
+source, SAML and SSF. Management and API files still reference Core/storage,
+and independently compiled crate contracts remain A03 work.
