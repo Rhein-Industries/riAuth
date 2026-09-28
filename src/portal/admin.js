@@ -10,7 +10,7 @@
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
-  const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [] };
+  const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
   const platform = () => data.me && data.me.edition === "platform";
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
@@ -204,15 +204,17 @@
       // The revision is read before the data it guards: a change in between only causes a
       // conflict, never a silent overwrite.
       const me = await api("GET", "admin/session");
-      const [clients, users, groups, requests, grants, audit] = await Promise.all([
+      const [clients, users, groups, requests, grants, audit, invites] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
         me.edition === "platform" ? api("GET", "admin/access/requests") : Promise.resolve([]),
         me.edition === "platform" ? api("GET", "admin/access/grants") : Promise.resolve([]),
         api("GET", "admin/audit?limit=50"),
+        api("GET", "admin/invitations"),
       ]);
       if (run !== generation) return;
       if (draft && draft.owner !== me.user.id) forget();
       Object.assign(data, { me, revision: me.revision, clients, users, groups, requests, grants, audit });
+      Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
     } catch (error) {
@@ -353,6 +355,10 @@
   const checked = (form, id) => form.querySelector(`#${id}`).checked;
   const userById = (id) => data.users.find((user) => user.id === id);
   const personName = (user) => user ? user.display_name || user.username : "Unknown person";
+  const actorName = (id) => {
+    if (id.startsWith("agent:")) return `Agent ${id.slice(6)}`;
+    const user = userById(id); return user ? user.username : id;
+  };
 
   // Every save reloads the configuration and its revision.
   async function saved(message, target) {
@@ -1073,6 +1079,53 @@
   }
 
   // ---- People ------------------------------------------------------------------------------
+  // Invitations go through the account invitation API: an invited account stays disabled
+  // until its owner accepts the emailed link, which sets a password and adds the groups.
+  const invitationOf = (user) => data.invitations.find((entry) => entry.user.id === user.id);
+  const INVITATION_BADGES = { pending: ["Invited", "info"], expired: ["Invitation expired", "warn"], inactive: ["No working invitation", "muted"] };
+  const invitationBadge = (invitation) => badge(...INVITATION_BADGES[invitation.status]);
+  const days = (seconds) => seconds % 86400 ? duration(seconds) : `${seconds / 86400} ${seconds === 86400 ? "day" : "days"}`;
+  function linkState(invitation) {
+    if (invitation.status === "pending") return ["Link expires ", when(invitation.expires_at)];
+    if (invitation.status === "expired") return ["Link expired ", when(invitation.expires_at)];
+    return "The link was revoked, has expired, or the account changed after it was sent.";
+  }
+  // Queued and sent describe riAuth's outbox and the mail server, never the inbox.
+  function deliveryState(invitation) {
+    const delivery = invitation.delivery;
+    // Only the current link's message is tracked; an ended link has none to report.
+    if (!delivery) return invitation.status === "inactive" ? "—" : "No delivery record";
+    if (delivery.status === "sent") return ["Accepted by the mail server ", when(delivery.delivered_at)];
+    if (delivery.status === "stopped") return `Not delivered after ${delivery.attempts} ${delivery.attempts === 1 ? "attempt" : "attempts"}`;
+    return delivery.attempts ? `Queued, retrying after ${delivery.attempts} ${delivery.attempts === 1 ? "attempt" : "attempts"}` : "Queued for delivery";
+  }
+  function revokeInvitation(invitation) {
+    const { username } = invitation.user;
+    confirmAction({
+      title: `Revoke the invitation for ${username}?`, ok: "Revoke invitation", danger: true,
+      text: "The emailed link stops working now. The account stays disabled and keeps its username; invite the same username again to send a new link.",
+      run: async (_, key) => {
+        await api("DELETE", `admin/invitations/${seg(username)}`, undefined, { key });
+        await saved(`Revoked the invitation for ${username}. Its link no longer works.`);
+      },
+    });
+  }
+  function invitations() {
+    if (!data.invitations.length) return null;
+    const rows = [...data.invitations].sort((a, b) => byName(personName(a.user), personName(b.user)));
+    const grid = table("Invitations waiting for acceptance", [
+      { label: "Person", cell: (i) => h("span", { class: "cell-title" }, link(hash("people", i.user.username), personName(i.user)), h("small", {}, i.user.username)) },
+      { label: "Email", cell: (i) => i.user.email || "—" },
+      { label: "Status", cell: (i) => h("span", {}, invitationBadge(i), " ", linkState(i)) },
+      { label: "Delivery", cell: deliveryState },
+      { label: "Groups", cell: (i) => i.groups.length ? i.groups.join(", ") : "—" },
+      { label: "Actions", cell: (i) => i.status === "inactive" ? "—" : h("button", { class: "text-button", type: "button", "aria-label": `Revoke the invitation for ${i.user.username}`, onclick: () => revokeInvitation(i) }, "Revoke") },
+    ], rows, "No invitations are waiting.", (i) => i.user.username);
+    return h("section", { class: "admin-section", "aria-labelledby": "invitations-title" },
+      h("h2", { id: "invitations-title", tabindex: "-1" }, "Invitations"),
+      h("p", { class: "field-hint" }, "Accepting sets their password, verifies the address, enables the account and adds the listed groups. To send a new link, invite the same username again."),
+      grid.node);
+  }
   function people() {
     const rows = [...data.users].sort((a, b) => byName(personName(a), personName(b)));
     return {
@@ -1080,13 +1133,13 @@
         eyebrow: "PEOPLE", title: "People", description: "Accounts that can sign in to riAuth and the applications it protects.",
         action: link(hash("people", "new"), "New person", { class: "button primary" }),
         caption: "People", rows, filter: (u) => `${u.display_name} ${u.username} ${u.email || ""}`,
-        empty: "No people yet.",
+        empty: "No people yet.", before: invitations(),
         columns: [
           { label: "Person", cell: (u) => h("span", { class: "cell-title" }, link(hash("people", u.username), personName(u)), h("small", {}, u.username)) },
           { label: "Email", cell: (u) => u.email ? h("span", {}, u.email, u.email_verified ? null : [" ", badge("Unverified", "warn")]) : "—" },
           { label: "Role", cell: (u) => u.admin ? badge("Administrator", "info") : "Member" },
           { label: "MFA", cell: (u) => u.mfa_enabled ? badge("On", "ok") : badge("Not set up", u.admin ? "warn" : "muted") },
-          { label: "Status", cell: (u) => u.enabled ? badge("Active", "ok") : badge("Disabled", "muted") },
+          { label: "Status", cell: (u) => { const invitation = invitationOf(u); return invitation ? invitationBadge(invitation) : u.enabled ? badge("Active", "ok") : badge("Disabled", "muted"); } },
         ],
       }),
     };
@@ -1096,13 +1149,14 @@
     if (!user) return missing("people", "Person");
     const self = data.me.user.id === user.id;
     const selfNote = self ? " This includes your own sessions, so you'll need to sign in again." : "";
+    const invitation = invitationOf(user);
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Profile",
         field("Display name", h("input", { id: "person-name", maxlength: "200", value: user.display_name })),
         field("Email", h("input", { id: "person-email", type: "email", maxlength: "320", spellcheck: "false", value: user.email || "" })),
         check("person-verified", "Email address verified", user.email_verified, "A changed address is saved unverified; they confirm it themselves.")),
       card("Access",
-        check("person-enabled", "Account enabled", user.enabled, self ? "Disabling your own account signs you out of this page." : "Disabling signs them out everywhere."),
+        check("person-enabled", "Account enabled", user.enabled, self ? "Disabling your own account signs you out of this page." : invitation ? "Accepting the invitation enables the account. Enabling it here stops the invitation link from working." : "Disabling signs them out everywhere."),
         check("person-admin", "Administrator", user.admin, self ? "Removing your own administrator role ends your access to this page. riAuth keeps at least one enabled administrator." : "Administrators manage everything on these pages.")),
       actions(h("button", { class: "button primary", type: "submit" }, "Save changes"), link(hash("people"), "Cancel", { class: "button secondary" })));
     bindForm(form, async (key) => {
@@ -1149,12 +1203,21 @@
       text: `Ends their browser and terminal sessions and application grants.${selfNote}`,
       run: async (_, key) => { await api("PATCH", `admin/users/${seg(user.username)}`, { revoke_sessions: true }, { revision: data.revision, key }); await saved("Signed out everywhere."); },
     }) }, "Sign out everywhere");
+    const invitationCard = invitation ? card("Invitation",
+      h("dl", { class: "facts" },
+        h("dt", {}, "Status"), h("dd", {}, invitationBadge(invitation)),
+        h("dt", {}, "Link"), h("dd", {}, linkState(invitation)),
+        h("dt", {}, "Delivery"), h("dd", {}, deliveryState(invitation)),
+        h("dt", {}, "Adds groups"), h("dd", {}, invitation.groups.length ? invitation.groups.join(", ") : "None"),
+        h("dt", {}, "Invited by"), h("dd", {}, actorName(invitation.invited_by))),
+      h("p", { class: "field-hint" }, "Queued means the message is in riAuth's outbox; accepted by the mail server doesn't confirm it reached the inbox. Invite the same username again to send a new link, which replaces this one."),
+      invitation.status === "inactive" ? null : h("div", { class: "stack" }, h("button", { class: "button secondary", type: "button", onclick: () => revokeInvitation(invitation) }, "Revoke invitation"))) : null;
     const node = h("div", {},
       heading("PERSON", personName(user), null),
       h("p", { class: "badges" }, h("code", {}, user.username), self ? badge("You", "info") : null, user.admin ? badge("Administrator", "info") : null,
-        user.enabled ? badge("Active", "ok") : badge("Disabled", "muted"), user.mfa_enabled ? badge("MFA on", "ok") : badge("MFA not set up", user.admin ? "warn" : "muted")),
+        invitation ? invitationBadge(invitation) : user.enabled ? badge("Active", "ok") : badge("Disabled", "muted"), user.mfa_enabled ? badge("MFA on", "ok") : badge("MFA not set up", user.admin ? "warn" : "muted")),
       h("div", { class: "detail-grid" }, form,
-        h("div", { class: "detail-side" }, membership,
+        h("div", { class: "detail-side" }, invitationCard, membership,
           card("Sign-in and security",
             h("p", { class: "field-hint" }, user.password_available === false && user.admin ? "Passkey-only administrator. Keep two passkeys on separate devices or security keys. Password recovery requires the offline operator procedure." : user.mfa_enabled ? "Signs in with a passkey or an authenticator code." : "Has no passkey or authenticator app. Only they can add one, after signing in."),
             h("div", { class: "stack" }, passwordAction, mfaAction, signOutAction)),
@@ -1168,24 +1231,43 @@
       h("p", { class: "notice" }, "Enroll two different passkeys. Use a separate device or security key for the backup. riAuth can verify distinct credentials, but cannot prove that synced passkeys are stored independently."));
     const passwordField = field("Initial password", h("input", { id: "new-password", type: "password", maxlength: "1024", required: true, autocomplete: "new-password" }), "Share it through a secure channel. They can add a passkey after signing in.");
     const cancelEnrollment = h("button", { class: "button secondary", type: "button", hidden: true }, "Cancel passkey enrollment");
+    // Without configured email delivery the server refuses invitations, so only the
+    // initial-password and passkey paths are offered.
+    const setupOption = (value, label, hint, isChecked, disabled) => h("label", { class: "choice" },
+      h("input", { type: "radio", name: "new-setup", value, checked: isChecked, disabled }), h("span", {}, h("strong", {}, label), h("small", {}, hint)));
+    const roles = h("div", {},
+      check("new-admin", "Administrator", false, "Administrators manage everything on these pages."),
+      check("new-passkey-only", "Passkey-only administrator", false, "Requires your recent passkey or authenticator sign-in. Both passkeys must be enrolled before the account is created."));
+    const names = data.groups.map((g) => g.name).sort(byName);
+    const inviteGroups = card("Groups", h("fieldset", { class: "group-checks" }, h("legend", {}, "Add to groups"),
+      h("p", { class: "field-hint" }, "Optional. They join these groups when they accept the invitation."),
+      names.length ? names.map((name, index) => check(`invite-group-${index}`, name, false)) : h("p", { class: "field-hint" }, "There are no groups yet.")));
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Account",
+        h("fieldset", { class: "choices" }, h("legend", {}, "How they get access"),
+          setupOption("invite", "Email an invitation", data.mail ? `They set their own password from an emailed link that works for ${days(data.lifetime)}. Invitations create ordinary accounts, not administrators.` : "Email delivery isn't configured on this server, so invitations can't be sent.", data.mail, !data.mail),
+          setupOption("password", "Set an initial password", "Share it through a secure channel. Works without email delivery.", !data.mail, false)),
         field("Username", h("input", { id: "new-username", maxlength: "64", required: true, spellcheck: "false", autocomplete: "off", autocapitalize: "none" })),
         field("Display name", h("input", { id: "new-display", maxlength: "200", autocomplete: "off" })),
         field("Email", h("input", { id: "new-email", type: "email", maxlength: "320", spellcheck: "false", autocomplete: "off" })),
-        passwordField, passkeyFields,
-        check("new-admin", "Administrator", false, "Administrators manage everything on these pages."),
-        check("new-passkey-only", "Passkey-only administrator", false, "Requires your recent passkey or authenticator sign-in. Both passkeys must be enrolled before the account is created.")),
+        passwordField, passkeyFields, roles),
+      inviteGroups,
       actions(h("button", { class: "button primary", type: "submit" }, "Create person"), cancelEnrollment, link(hash("people"), "Cancel", { class: "button secondary" })));
     const mode = form.querySelector("#new-passkey-only"), admin = form.querySelector("#new-admin");
-    mode.addEventListener("change", () => {
-      if (mode.checked) admin.checked = true;
-      passwordField.hidden = mode.checked; passkeyFields.hidden = !mode.checked;
-      form.querySelector("#new-password").required = !mode.checked;
-      for (const id of ["new-primary-passkey", "new-backup-passkey"]) form.querySelector(`#${id}`).required = mode.checked;
-      form.dataset.submitLabel = mode.checked ? "Enroll primary passkey" : "Create person";
+    const inviting = () => form.querySelector("input[name=new-setup]:checked").value === "invite";
+    const sync = () => {
+      const invite = inviting();
+      passwordField.hidden = invite || mode.checked; passkeyFields.hidden = invite || !mode.checked;
+      roles.hidden = invite; inviteGroups.hidden = !invite;
+      form.querySelector("#new-password").required = !invite && !mode.checked;
+      form.querySelector("#new-email").required = invite;
+      for (const id of ["new-primary-passkey", "new-backup-passkey"]) form.querySelector(`#${id}`).required = !invite && mode.checked;
+      form.dataset.submitLabel = invite ? "Send invitation" : mode.checked ? "Enroll primary passkey" : "Create person";
       form.querySelector("[type=submit]").textContent = form.dataset.submitLabel;
-    });
+    };
+    mode.addEventListener("change", () => { if (mode.checked) admin.checked = true; sync(); });
+    for (const radio of form.querySelectorAll("input[name=new-setup]")) radio.addEventListener("change", sync);
+    sync();
     admin.addEventListener("change", () => { if (!admin.checked && mode.checked) { mode.checked = false; mode.dispatchEvent(new Event("change")); } });
     let firstFlow = null, backupFlow = null, backupStart = null, finishKey = null;
     cancelEnrollment.addEventListener("click", async () => {
@@ -1201,6 +1283,15 @@
     bindForm(form, async (key) => {
       const username = value(form, "new-username"), password = form.querySelector("#new-password").value;
       if (!username) throw invalid("Enter a username.");
+      if (inviting()) {
+        const email = value(form, "new-email");
+        if (!email) throw invalid("Enter the email address the invitation goes to.");
+        // Same default as an account created with a password: the username.
+        const body = { username, email, display_name: value(form, "new-display") || username, groups: selectedGroups(form, "invite") };
+        await api("POST", "admin/invitations", body, { key });
+        await saved(`Invitation queued for ${email}. The link works for ${days(data.lifetime)}.`, hash("people", username));
+        return;
+      }
       if (mode.checked) {
         if (!RiAuth.passkeysAvailable()) throw invalid("Use a browser that supports passkeys on a secure connection.");
         if (!backupStart && !firstFlow) {
@@ -1211,7 +1302,7 @@
             () => api("POST", "admin/users/passkey/start", input),
             (credential, started) => api("POST", "admin/users/passkey/first", { ceremony: started.ceremony, credential }),
             true, (started) => api("POST", "admin/users/passkey/cancel", { ceremony: started.ceremony }));
-          for (const input of form.querySelectorAll("input")) { if (input.type === "checkbox") input.disabled = true; else input.readOnly = true; }
+          for (const input of form.querySelectorAll("input")) { if (input.type === "checkbox" || input.type === "radio") input.disabled = true; else input.readOnly = true; }
           cancelEnrollment.hidden = false;
         }
         try {
@@ -1240,9 +1331,11 @@
     }, {
       403: (error) => error.code === "mfa_required" ? "Sign in with your passkey or authenticator code in this browser, then try again." :
         error.code === "reauthentication_required" ? "Sign in again in this browser, then start a new passkey enrollment." : undefined,
-      409: (error) => /already exists/i.test(error.message) ? "That username is already taken." : undefined,
+      404: (error) => inviting() && /group/i.test(error.message) ? "A selected group no longer exists. Reload to see the current groups." : undefined,
+      409: (error) => /already exists/i.test(error.message) ? (inviting() ? "That username belongs to an account that isn't waiting for an invitation, so it can't be invited." : "That username is already taken.") : undefined,
+      503: (error) => error.code === "delivery_unavailable" ? "Email delivery isn't configured on this server, so no invitation was sent. Set an initial password instead." : undefined,
     });
-    return { crumb: "New person", node: h("div", {}, heading("PEOPLE", "New person", "Create an account with a password or enroll a passkey-only administrator."), form) };
+    return { crumb: "New person", node: h("div", {}, heading("PEOPLE", "New person", "Invite someone by email, create an account with an initial password, or enroll a passkey-only administrator."), form) };
   }
 
   // ---- Groups ------------------------------------------------------------------------------

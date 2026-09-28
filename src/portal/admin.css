@@ -57,6 +57,7 @@ legend{font-size:12px;font-weight:600;margin-bottom:6px;padding:0}
 .choice input{margin-top:3px;accent-color:var(--accent)}
 .choice strong{display:block;font-size:13px;font-weight:600}
 .choice small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.choice:has(input:disabled){cursor:not-allowed;color:var(--muted);background:#fafbfd}
 .form-actions{display:flex;gap:10px;flex-wrap:wrap}
 .form-actions .button,.admin .button{min-height:44px}
 .button.danger{background:#b3261e;color:#fff}

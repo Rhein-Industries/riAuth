@@ -4,7 +4,7 @@ use crate::{
     core::{Core, audit, user_by_name, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Session, User},
+    model::{Session, User, UserView},
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -161,6 +161,8 @@ struct Delivery {
     delivered_at: Option<u64>,
     stopped: bool,
 }
+/// How long an invitation link stays valid.
+const INVITATION_SECONDS: u64 = 7 * 86400;
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Invitation {
@@ -276,7 +278,7 @@ pub(crate) fn enqueue(
         + match purpose {
             Purpose::Reset => 1800,
             Purpose::Verify => 86400,
-            Purpose::Invite => 7 * 86400,
+            Purpose::Invite => INVITATION_SECONDS,
         };
     tx.put(
         "account_proofs",
@@ -520,6 +522,92 @@ impl Core {
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             crate::management::revoke_invitation(tx, &actor, username)
+        })
+    }
+    /// Invited accounts that have not accepted yet, with the state of their current link.
+    /// Codes and message bodies are never returned, and delivery state needs the same
+    /// permission as `mail_deliveries`.
+    pub fn account_invitations(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let deliveries: std::collections::BTreeMap<String, Delivery> =
+                if actor.allows("operations.read", "operations/mail") {
+                    tx.list::<Delivery>("mail_deliveries")?
+                        .into_iter()
+                        .map(|(_, delivery)| (delivery.proof.clone(), delivery))
+                        .collect()
+                } else {
+                    Default::default()
+                };
+            let mut invitations = Vec::new();
+            for (_, user) in tx.list::<User>("users")? {
+                if !actor.allows("user.read", &format!("user/{}", user.username)) {
+                    continue;
+                }
+                let Some(reservation) = pending_invitation_reservation(tx, &user)? else {
+                    continue;
+                };
+                // The same conditions account_complete checks before accepting the code.
+                let key = proof_key(&user, Purpose::Invite);
+                let current = match tx.get::<String>("account_latest", &key)? {
+                    Some(hash) => tx
+                        .get::<Proof>("account_proofs", &hash)?
+                        .filter(|proof| {
+                            proof.purpose == Purpose::Invite
+                                && proof.user_id == user.id
+                                && proof.epoch == user.epoch
+                                && user.email.as_deref() == Some(proof.email.as_str())
+                        })
+                        .map(|proof| (hash, proof)),
+                    None => None,
+                };
+                // Without a current code the last link was revoked, or expired and was
+                // cleaned up; either way it no longer works.
+                let status = match &current {
+                    Some((_, proof)) if proof.expires_at > now() => "pending",
+                    Some(_) => "expired",
+                    None => "inactive",
+                };
+                let delivery = current
+                    .as_ref()
+                    .and_then(|(hash, _)| deliveries.get(hash))
+                    .map(|d| {
+                        let state = if d.delivered_at.is_some() {
+                            "sent"
+                        } else if d.stopped {
+                            "stopped"
+                        } else {
+                            "queued"
+                        };
+                        json!({
+                            "status": state,
+                            "queued_at": d.created_at,
+                            "attempts": d.attempts,
+                            "delivered_at": d.delivered_at,
+                        })
+                    });
+                let (invited_by, expires_at, groups) = match current {
+                    Some((_, proof)) => (
+                        proof.creator.unwrap_or(reservation.created_by),
+                        Some(proof.expires_at),
+                        proof.groups,
+                    ),
+                    None => (reservation.created_by, None, BTreeSet::new()),
+                };
+                invitations.push(json!({
+                    "user": UserView::from(&user),
+                    "status": status,
+                    "expires_at": expires_at,
+                    "groups": groups,
+                    "invited_by": invited_by,
+                    "delivery": delivery,
+                }));
+            }
+            Ok(json!({
+                "delivery_configured": self.config.mail.is_some(),
+                "lifetime": INVITATION_SECONDS,
+                "invitations": invitations,
+            }))
         })
     }
     pub fn account_complete(

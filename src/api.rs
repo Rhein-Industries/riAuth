@@ -220,7 +220,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/account/verify-request", post(account_verify_request))
         .route("/api/account/reset-request", post(account_reset_request))
         .route("/api/account/complete", post(account_complete))
-        .route("/api/account/invitations", post(account_invite))
+        .route(
+            "/api/account/invitations",
+            get(account_invitations).post(account_invite),
+        )
         .route(
             "/api/account/invitations/{username}",
             axum::routing::delete(account_invitation_revoke),
@@ -2696,6 +2699,7 @@ async fn account_invite(
     app.run(move |core| core.account_invite(&token, input).map(Json))
         .await
 }
+session_handler!(account_invitations, account_invitations);
 async fn account_invitation_revoke(
     State(app): State<App>,
     headers: HeaderMap,

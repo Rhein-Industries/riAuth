@@ -285,6 +285,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | DELETE | `/api/registration/{id}` | Revoke an initial registration credential |
 | GET, POST | `/api/sources` | List/upsert upstream identity-source configuration |
 | GET | `/api/saml/{id}/metadata`, `/api/saml/sources/{id}/metadata` | JSON wrappers for signed XML metadata |
+| GET | `/api/account/invitations` | Accounts waiting to accept an invitation: link status and expiry, groups, inviter and, with `operations.read`, delivery state. Never returns codes |
 | POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups |
 | DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation |
 | GET, POST | `/api/offboard/jobs` | List/schedule durable local offboarding jobs; `user.offboard` |

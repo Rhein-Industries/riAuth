@@ -61,6 +61,11 @@ pub fn routes() -> Router<App> {
             post(passkey_admin_cancel),
         )
         .route("/api/admin/users/{username}", patch(update_user))
+        .route("/api/admin/invitations", get(invitations).post(invite))
+        .route(
+            "/api/admin/invitations/{username}",
+            axum::routing::delete(revoke_invitation),
+        )
         .route("/api/admin/groups", get(groups).post(create_group))
         .route(
             "/api/admin/groups/{name}/members/{username}",
@@ -152,6 +157,7 @@ macro_rules! read {
 read!(users, list_users);
 read!(groups, list_groups);
 read!(clients, list_clients);
+read!(invitations, account_invitations);
 
 /// Access review is limited to administrators here; `pam` still decides who may approve.
 #[cfg(feature = "platform")]
@@ -317,6 +323,27 @@ async fn update_user(
         ));
     }
     app.run(move |core| core.update_user(&token, &username, input).map(Json))
+        .await
+}
+
+/// The account invitation API's own methods: the same permissions, mail requirement,
+/// receipts and audit as `/api/account/invitations`.
+async fn invite(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<crate::lifecycle::Invitation>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.account_invite(&token, input).map(Json))
+        .await
+}
+async fn revoke_invitation(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.account_invitation_revoke(&token, &username).map(Json))
         .await
 }
 
