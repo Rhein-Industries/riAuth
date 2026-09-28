@@ -147,14 +147,14 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
         (status, value)
     }
     for path in [
-        "/apps", "/admin", "/account/security", "/device", "/setup",
+        "/apps", "/admin", "/account/security", "/account/sources/continue", "/device", "/setup",
         "/portal/assets/app.js", "/portal/assets/admin.js",
         "/portal/assets/capabilities.js", "/portal/assets/signin.js",
     ] {
         let (status, _) = get(&app, path).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
     }
-    for path in ["/api/capabilities", "/.well-known/openid-configuration"] {
+    for path in ["/api/capabilities", "/api/portal/sources", "/.well-known/openid-configuration"] {
         let (status, _) = get(&app, path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
     }
