@@ -1,6 +1,6 @@
 //! Explicit-origin HTTP reverse proxy with live identity checks and bounded WebSocket sessions.
 use crate::{
-    api::App,
+    assembly::ProxyRequests,
     error::{Error, Result},
     outpost::Settings,
 };
@@ -24,7 +24,7 @@ use crate::proxy_listener::{authority, origin};
 
 pub(crate) trait ProxyPort: Send + Sync + 'static {
     fn listeners(&self) -> &BTreeMap<String, Listener>;
-    fn app(&self) -> App;
+    fn requests(&self) -> ProxyRequests;
     fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease;
 }
 
@@ -36,7 +36,7 @@ struct Route {
 }
 #[derive(Clone)]
 struct Runtime {
-    app: App,
+    requests: ProxyRequests,
     routes: BTreeMap<String, Route>,
     slots: Arc<Semaphore>,
     body_limit: usize,
@@ -167,10 +167,7 @@ fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
 }
 async fn profile(runtime: &Runtime, route: &Route) -> Result<Settings> {
     let (id, external) = (route.target.client_id.clone(), route.external.clone());
-    runtime
-        .app
-        .run(move |core| core.proxy_profile(&id, &external))
-        .await
+    runtime.requests.profile(id, external).await
 }
 fn redirect(location: &str) -> Result<Response> {
     let mut response = StatusCode::FOUND.into_response();
@@ -241,10 +238,7 @@ async fn handle(
         }
         let peers = peer.ip();
         let bucket = format!("proxy:{id}:{action}");
-        runtime
-            .app
-            .run(move |core| core.proxy_outpost_rate_limit(peers, &bucket))
-            .await?;
+        runtime.requests.outpost_rate_limit(peers, bucket).await?;
         let pairs = url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect::<Vec<_>>();
@@ -254,42 +248,15 @@ async fn handle(
                     return Err(Error::bad("Start requires exactly one rd parameter"));
                 }
                 let rd = pairs[0].1.clone();
-                runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_start(
-                            &id,
-                            internal_peer(),
-                            &rd,
-                        )?)
-                    })
-                    .await
+                runtime.requests.outpost_start(id, rd).await
             }
             (&Method::GET, "callback") => {
                 runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_callback(
-                            &id,
-                            internal_peer(),
-                            &auth_headers,
-                            pairs,
-                        )?)
-                    })
+                    .requests
+                    .outpost_callback(id, auth_headers, pairs)
                     .await
             }
-            (&Method::POST, "logout") => {
-                runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_logout(
-                            &id,
-                            internal_peer(),
-                            &auth_headers,
-                        )?)
-                    })
-                    .await
-            }
+            (&Method::POST, "logout") => runtime.requests.outpost_logout(id, auth_headers).await,
             _ => Err(Error::missing("Outpost endpoint not found")),
         };
     }
@@ -297,21 +264,14 @@ async fn handle(
     let websocket = single(request.headers(), "upgrade")?.is_some();
     let copied = auth_headers.clone();
     let cid = id.clone();
-    let (_, identity_headers) = match runtime
-        .app
-        .run(move |core| core.outpost_auth(&cid, internal_peer(), &copied))
-        .await
-    {
+    let (_, identity_headers) = match runtime.requests.authenticate(cid, copied).await {
         Ok(result) => result,
         Err(e)
             if e.status == StatusCode::UNAUTHORIZED
                 && [Method::GET, Method::HEAD].contains(request.method())
                 && !websocket =>
         {
-            let login = runtime
-                .app
-                .run(move |core| core.outpost_login_url(&id, internal_peer(), &auth_headers))
-                .await?;
+            let login = runtime.requests.login_url(id, auth_headers).await?;
             return redirect(&login);
         }
         Err(e) => return Err(e),
@@ -488,15 +448,7 @@ async fn handle(
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
                     let (id, headers) = (id.clone(), auth_headers.clone());
-                    if runtime
-                        .app
-                        .run(move |core| {
-                            core.outpost_auth(&id, internal_peer(), &headers)
-                                .map(|_| ())
-                        })
-                        .await
-                        .is_err()
-                    {
+                    if runtime.requests.recheck(id, headers).await.is_err() {
                         break;
                     }
                 }
@@ -590,7 +542,7 @@ pub(crate) async fn start_with_port<P: ProxyPort>(port: P) -> anyhow::Result<Ser
             );
         }
         let runtime = Runtime {
-            app: port.app(),
+            requests: port.requests(),
             routes,
             slots: Arc::new(Semaphore::new(256)),
             body_limit: config.max_body_bytes,

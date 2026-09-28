@@ -292,6 +292,10 @@ def main() -> None:
             "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/proxy_server.rs: proxy transport refers directly to Core")
+        if path == SRC / "proxy_server.rs" and re.search(
+            r"\bApp\b|\.\s*run\s*\(", masked_rust_source(path.read_text())
+        ):
+            errors.append("src/proxy_server.rs: proxy request Core dispatch belongs in assembly")
         if path == SRC / "windows_login.rs" and (
             "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
         ):

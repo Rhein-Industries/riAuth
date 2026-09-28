@@ -8,8 +8,98 @@ use crate::{
     outpost::Settings,
     proxy_server::{self, Listener},
 };
-use axum::http::StatusCode;
+use axum::{
+    http::{HeaderMap, StatusCode},
+    response::Response,
+};
+use serde_json::Value;
 use std::{collections::BTreeMap, net::IpAddr};
+
+#[derive(Clone)]
+pub(crate) struct ProxyRequests {
+    app: App,
+}
+
+impl ProxyRequests {
+    pub(crate) async fn profile(&self, id: String, external: String) -> Result<Settings> {
+        self.app
+            .run(move |core| core.proxy_profile(&id, &external))
+            .await
+    }
+
+    pub(crate) async fn outpost_rate_limit(&self, peer: IpAddr, bucket: String) -> Result<()> {
+        self.app
+            .run(move |core| core.proxy_outpost_rate_limit(peer, &bucket))
+            .await
+    }
+
+    pub(crate) async fn outpost_start(&self, id: String, return_to: String) -> Result<Response> {
+        self.app
+            .run(move |core| {
+                crate::api::browser_response(core.outpost_start(
+                    &id,
+                    proxy_server::internal_peer(),
+                    &return_to,
+                )?)
+            })
+            .await
+    }
+
+    pub(crate) async fn outpost_callback(
+        &self,
+        id: String,
+        headers: HeaderMap,
+        pairs: Vec<(String, String)>,
+    ) -> Result<Response> {
+        self.app
+            .run(move |core| {
+                crate::api::browser_response(core.outpost_callback(
+                    &id,
+                    proxy_server::internal_peer(),
+                    &headers,
+                    pairs,
+                )?)
+            })
+            .await
+    }
+
+    pub(crate) async fn outpost_logout(&self, id: String, headers: HeaderMap) -> Result<Response> {
+        self.app
+            .run(move |core| {
+                crate::api::browser_response(core.outpost_logout(
+                    &id,
+                    proxy_server::internal_peer(),
+                    &headers,
+                )?)
+            })
+            .await
+    }
+
+    pub(crate) async fn authenticate(
+        &self,
+        id: String,
+        headers: HeaderMap,
+    ) -> Result<(Value, HeaderMap)> {
+        self.app
+            .run(move |core| core.outpost_auth(&id, proxy_server::internal_peer(), &headers))
+            .await
+    }
+
+    pub(crate) async fn login_url(&self, id: String, headers: HeaderMap) -> Result<String> {
+        self.app
+            .run(move |core| core.outpost_login_url(&id, proxy_server::internal_peer(), &headers))
+            .await
+    }
+
+    pub(crate) async fn recheck(&self, id: String, headers: HeaderMap) -> Result<()> {
+        self.app
+            .run(move |core| {
+                core.outpost_auth(&id, proxy_server::internal_peer(), &headers)
+                    .map(|_| ())
+            })
+            .await
+    }
+}
 
 pub async fn proxy_start(mut core: Core) -> anyhow::Result<proxy_server::Servers> {
     // This Core is private to the embedded proxy. No management/API router uses its local trust marker.
@@ -25,8 +115,10 @@ impl proxy_server::ProxyPort for Core {
         &self.config.proxy_listeners
     }
 
-    fn app(&self) -> App {
-        App::new(self.clone())
+    fn requests(&self) -> ProxyRequests {
+        ProxyRequests {
+            app: App::new(self.clone()),
+        }
     }
 
     fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease {

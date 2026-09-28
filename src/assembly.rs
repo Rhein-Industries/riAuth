@@ -27,6 +27,8 @@ mod portal_sources;
 #[cfg(feature = "platform")]
 mod proxy_server;
 #[cfg(feature = "platform")]
+pub(crate) use proxy_server::ProxyRequests;
+#[cfg(feature = "platform")]
 pub use proxy_server::proxy_start;
 #[cfg(feature = "platform")]
 mod radius;
