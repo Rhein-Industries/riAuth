@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub client_id: String,
@@ -11,7 +11,7 @@ pub struct Target {
     #[serde(default)]
     pub allow_plain_http: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Listener {
     pub listen: SocketAddr,

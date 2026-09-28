@@ -29,6 +29,8 @@ pub(crate) struct RuntimeStatus {
     ldap: Mutex<BTreeMap<String, Vec<(crate::ldap_server::Listener, Weak<AtomicBool>)>>>,
     #[cfg(feature = "platform")]
     radius: Mutex<BTreeMap<String, Vec<(crate::radius::Listener, Weak<AtomicBool>)>>>,
+    #[cfg(feature = "platform")]
+    proxy: Mutex<BTreeMap<String, Vec<(crate::proxy_server::Listener, Weak<AtomicBool>)>>>,
 }
 
 #[cfg(feature = "platform")]
@@ -51,6 +53,34 @@ impl Drop for ListenerLease {
 
 #[cfg(feature = "platform")]
 impl RuntimeStatus {
+    pub(crate) fn bind_proxy(
+        &self,
+        id: &str,
+        listener: &crate::proxy_server::Listener,
+    ) -> ListenerLease {
+        let live = Arc::new(AtomicBool::new(false));
+        let mut listeners = self.proxy.lock().unwrap_or_else(|error| error.into_inner());
+        let entries = listeners.entry(id.to_owned()).or_default();
+        entries.retain(|(_, entry)| entry.strong_count() > 0);
+        entries.push((listener.clone(), Arc::downgrade(&live)));
+        ListenerLease(live)
+    }
+
+    fn proxy_running(&self, id: &str, listener: &crate::proxy_server::Listener) -> bool {
+        self.proxy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(id)
+            .is_some_and(|entries| {
+                entries.iter().any(|(bound, entry)| {
+                    bound == listener
+                        && entry
+                            .upgrade()
+                            .is_some_and(|live| live.load(Ordering::Acquire))
+                })
+            })
+    }
+
     pub(crate) fn bind_ldap(
         &self,
         id: &str,
@@ -670,6 +700,24 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
 /// Tracked listeners require a bound socket and a live task and owner.
 fn runtime_ready(name: &str, core: &Core, facts: &Facts) -> Option<bool> {
     match name {
+        "proxy.reverse_proxy" => {
+            #[cfg(feature = "platform")]
+            {
+                Some(
+                    !core.config.proxy_listeners.is_empty()
+                        && core
+                            .config
+                            .proxy_listeners
+                            .iter()
+                            .all(|(id, listener)| core.runtime.proxy_running(id, listener)),
+                )
+            }
+            #[cfg(not(feature = "platform"))]
+            {
+                let _ = (core, facts);
+                Some(false)
+            }
+        }
         "radius.pap" | "radius.radsec" | "radius.eap_tls" | "agents.certificate_bindings" => {
             #[cfg(feature = "platform")]
             {
@@ -1007,7 +1055,7 @@ mod tests {
         validate_store(&core.config, &core.store).unwrap();
         assert_eq!(
             runtime(&core).unwrap()["feature_states"]["proxy.reverse_proxy"]["usable"],
-            true
+            false
         );
 
         let error = core
