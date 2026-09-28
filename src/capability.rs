@@ -27,6 +27,8 @@ use std::sync::{
 pub(crate) struct RuntimeStatus {
     #[cfg(feature = "platform")]
     ldap: Mutex<BTreeMap<String, Vec<(crate::ldap_server::Listener, Weak<AtomicBool>)>>>,
+    #[cfg(feature = "platform")]
+    radius: Mutex<BTreeMap<String, Vec<(crate::radius::Listener, Weak<AtomicBool>)>>>,
 }
 
 #[cfg(feature = "platform")]
@@ -64,6 +66,34 @@ impl RuntimeStatus {
 
     fn ldap_running(&self, id: &str, listener: &crate::ldap_server::Listener) -> bool {
         self.ldap
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(id)
+            .is_some_and(|entries| {
+                entries.iter().any(|(bound, entry)| {
+                    bound == listener
+                        && entry
+                            .upgrade()
+                            .is_some_and(|live| live.load(Ordering::Acquire))
+                })
+            })
+    }
+
+    pub(crate) fn bind_radius(
+        &self,
+        id: &str,
+        listener: &crate::radius::Listener,
+    ) -> ListenerLease {
+        let live = Arc::new(AtomicBool::new(false));
+        let mut listeners = self.radius.lock().unwrap_or_else(|error| error.into_inner());
+        let entries = listeners.entry(id.to_owned()).or_default();
+        entries.retain(|(_, entry)| entry.strong_count() > 0);
+        entries.push((listener.clone(), Arc::downgrade(&live)));
+        ListenerLease(live)
+    }
+
+    fn radius_running(&self, id: &str, listener: &crate::radius::Listener) -> bool {
+        self.radius
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .get(id)
@@ -468,6 +498,8 @@ struct Facts {
     radius_radsec_ready: bool,
     radius_eap_ready: bool,
     #[cfg(feature = "platform")]
+    radius_ready_listeners: BTreeSet<String>,
+    #[cfg(feature = "platform")]
     ldap_clients: BTreeSet<String>,
     proxy_clients: BTreeMap<String, ProxyClient>,
     oidc_source: bool,
@@ -619,10 +651,25 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
 }
 
 /// `None` means this capability has no independently tracked runtime worker.
-/// A configured LDAP listener is usable only after its socket bound and while
-/// its task and owning server are both alive.
+/// Tracked listeners require a bound socket and a live task and owner.
 fn runtime_ready(name: &str, core: &Core, facts: &Facts) -> Option<bool> {
     match name {
+        "radius.pap" | "radius.radsec" => {
+            #[cfg(feature = "platform")]
+            {
+                Some(core.config.radius_listeners.iter().any(|(id, listener)| {
+                    facts.radius_ready_listeners.contains(id)
+                        && (name == "radius.pap"
+                            || listener.transport == crate::radius::Transport::Tls)
+                        && core.runtime.radius_running(id, listener)
+                }))
+            }
+            #[cfg(not(feature = "platform"))]
+            {
+                let _ = (core, facts);
+                Some(false)
+            }
+        }
         "directory.ldap_provider" => {
             #[cfg(feature = "platform")]
             {
@@ -652,6 +699,7 @@ pub fn runtime(core: &Core) -> Result<Value> {
             facts.radius_pap_ready,
             facts.radius_radsec_ready,
             facts.radius_eap_ready,
+            facts.radius_ready_listeners,
         ) = radius_configured(&core.config, &facts);
         facts
     };
@@ -695,12 +743,13 @@ pub fn runtime(core: &Core) -> Result<Value> {
 }
 
 #[cfg(feature = "platform")]
-fn radius_configured(config: &Config, facts: &Facts) -> (bool, bool, bool) {
+fn radius_configured(config: &Config, facts: &Facts) -> (bool, bool, bool, BTreeSet<String>) {
     let mut pap = false;
     let mut radsec = false;
     let mut eap_listeners = false;
     let mut eap_ready = true;
-    for listener in config.radius_listeners.values() {
+    let mut ready_listeners = BTreeSet::new();
+    for (id, listener) in &config.radius_listeners {
         let material_ready = if listener.eap_tls.is_some() {
             radius_eap_material_ready(listener).is_ok()
         } else {
@@ -721,11 +770,12 @@ fn radius_configured(config: &Config, facts: &Facts) -> (bool, bool, bool) {
             eap_ready &= ready;
         }
         if ready {
+            ready_listeners.insert(id.clone());
             pap = true;
             radsec |= listener.transport == crate::radius::Transport::Tls;
         }
     }
-    (pap, radsec, eap_listeners && eap_ready)
+    (pap, radsec, eap_listeners && eap_ready, ready_listeners)
 }
 
 #[cfg(all(test, feature = "platform"))]

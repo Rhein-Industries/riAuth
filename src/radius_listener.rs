@@ -19,7 +19,7 @@ pub enum Transport {
     Tls,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Nas {
     pub peer: IpAddr,
@@ -28,7 +28,7 @@ pub struct Nas {
     pub certificate_sha256: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Listener {
     #[serde(default)]

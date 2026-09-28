@@ -481,7 +481,9 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
     let states = riauth::capability::runtime(&core).unwrap();
     assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], true);
     assert_eq!(states["feature_states"]["agents.certificate_bindings"]["usable"], true);
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["runtime_ready"], false);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
 
     let secret_file = dir.path().join("radius.secret");
     std::fs::remove_file(&secret_file).unwrap();
@@ -541,7 +543,8 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
     pap_only.config.radius_listeners.get_mut("wifi").unwrap().eap_tls = None;
     riauth::capability::validate_store(&pap_only.config, &pap_only.store).unwrap();
     let states = riauth::capability::runtime(&pap_only).unwrap();
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
     assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
 
     let mut bad_verifier = core.clone();
@@ -572,8 +575,8 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
     assert!(error.message.contains("RADIUS EAP-TLS listener"));
 }
 
-#[test]
-fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() {
     let dir = tempfile::tempdir().unwrap();
     let mut core = Core::initialize(
         Config {
@@ -677,25 +680,69 @@ fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() 
     );
     riauth::capability::validate_store(&core.config, &core.store).unwrap();
     let states = riauth::capability::runtime(&core).unwrap();
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
-    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    for name in ["radius.pap", "radius.radsec"] {
+        assert_eq!(states["feature_states"][name]["configured"], true);
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
 
     let mut tls_only = core.clone();
     tls_only.config.radius_listeners.remove("udp");
     let states = riauth::capability::runtime(&tls_only).unwrap();
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
-    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
     let mut udp_only = core.clone();
     udp_only.config.radius_listeners.remove("tls");
     assert_eq!(
-        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.radsec"]["usable"],
+        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.radsec"]["configured"],
         false
     );
 
-    std::fs::remove_file(&secret_file).unwrap();
+    let udp_servers = riauth::radius::start(udp_only.clone()).await.unwrap();
+    assert_eq!(udp_servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.pap"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["runtime_ready"], false);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+
+    let tls_servers = riauth::radius::start(tls_only.clone()).await.unwrap();
+    assert_eq!(tls_servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.radsec"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     let states = riauth::capability::runtime(&core).unwrap();
     assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
     assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    drop(tls_servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+    drop(udp_servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["runtime_ready"], false);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
+
+    std::fs::remove_file(&secret_file).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["configured"], true);
     assert_eq!(
         riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.pap"]["usable"],
         false
@@ -723,8 +770,8 @@ fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() 
 
     std::fs::remove_file(&key_file).unwrap();
     let states = riauth::capability::runtime(&core).unwrap();
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
-    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["configured"], false);
     assert!(
         riauth::capability::validate_store(&core.config, &core.store)
             .unwrap_err()

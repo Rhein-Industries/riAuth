@@ -636,6 +636,7 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
+    leases: Vec<crate::capability::ListenerLease>,
 }
 impl Drop for Servers {
     fn drop(&mut self) {
@@ -701,6 +702,7 @@ pub async fn start(core: Core) -> anyhow::Result<Servers> {
     let mut servers = Servers {
         addresses: Vec::new(),
         tasks: Vec::new(),
+        leases: Vec::new(),
     };
     for (id, config, socket) in bound {
         let core = core.clone();
@@ -709,7 +711,12 @@ pub async fn start(core: Core) -> anyhow::Result<Servers> {
             Bound::Tls(s, _) => s.local_addr()?,
         };
         servers.addresses.push(address);
+        let lease = core.runtime.bind_radius(&id, &config);
+        let worker_lease = lease.clone();
+        servers.leases.push(lease);
         servers.tasks.push(tokio::spawn(async move {
+            let _lease = worker_lease;
+            _lease.running();
             match socket {
                 Bound::Udp(socket) => udp(core, id, config, socket).await,
                 Bound::Tls(socket, tls) => tcp(core, id, config, socket, tls).await,
