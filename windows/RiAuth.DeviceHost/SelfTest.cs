@@ -8,7 +8,8 @@ internal static class SelfTest
     internal static async Task RunAsync()
     {
         var issuer = Protocol.Issuer("https://id.example.test/tenant");
-        var state = new DeviceState(issuer, "laptop", "alice", "user-1", "ri_windev_" + new string('x', 40));
+        var state = new DeviceState(issuer, "laptop", "alice", "user-1",
+            "ri_windev_" + new string('x', 40), LocalSid: "S-1-5-21-1-2-3-1001");
         var denial = new FakeHandler(request =>
             request.RequestUri!.AbsolutePath.EndsWith("/login", StringComparison.Ordinal)
                 ? Reply(HttpStatusCode.Unauthorized, "{}")
@@ -52,6 +53,19 @@ internal static class SelfTest
             new DeviceApi(new HttpClient(staleEpoch)), epochStore)
             .LoginAsync(issuer, "password", null, CancellationToken.None));
         Check(epochStore.Load()!.LastEpoch == 3, "epoch rollback must be denied");
+
+        var approved = new FakeHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/login", StringComparison.Ordinal)
+                ? Reply(HttpStatusCode.OK,
+                    "{\"signin_ticket\":\"ri_winticket_test\",\"token_type\":\"windows-signin-ticket\",\"device_id\":\"laptop\",\"username\":\"alice\",\"expires_at\":4102444800}")
+                : Reply(HttpStatusCode.OK,
+                    "{\"token_type\":\"windows-logon-assertion\",\"device_id\":\"laptop\",\"username\":\"alice\",\"user_id\":\"user-1\",\"epoch\":2,\"expires_at\":4102444800}"));
+        var approvedStore = new MemoryStore(state);
+        var approvedSid = await new DeviceHostClient(new DeviceApi(new HttpClient(approved)),
+            approvedStore).LoginAsync(issuer, "password", null, CancellationToken.None);
+        Check(approvedSid == state.LocalSid && approved.Redeems == 1
+            && approvedStore.Load()!.LastEpoch == 2,
+            "only a redeemed, identity-bound assertion may release the pinned local SID");
     }
 
     private static HttpResponseMessage Reply(HttpStatusCode code, string body) =>

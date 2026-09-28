@@ -11,7 +11,8 @@ internal sealed record DeviceState(
     string Username,
     string UserId,
     string DeviceSecret,
-    ulong? LastEpoch = null);
+    ulong? LastEpoch = null,
+    string? LocalSid = null);
 
 internal interface IDeviceStateStore
 {
@@ -143,12 +144,14 @@ internal sealed class DeviceHostClient(DeviceApi api, IDeviceStateStore store)
     internal DeviceState? Status() => store.Load();
 
     internal async Task EnrollAsync(Uri issuer, string token, ulong revision, string key,
-        string id, string username, string displayName, bool replace, CancellationToken cancellation)
+        string id, string username, string displayName, string localSid, bool replace,
+        CancellationToken cancellation)
     {
         Protocol.Name(id, "device id");
         Protocol.Name(username, "username");
         if (displayName.Length is < 1 or > 200 || displayName.Any(char.IsControl))
             throw new ArgumentException("Invalid display name");
+        WindowsLocalAccount.RequirePinnedLocalUser(localSid);
         var previous = store.Load();
         if (previous is not null && !replace)
             throw new InvalidOperationException("Device state exists; use --replace for explicit rotation");
@@ -167,10 +170,11 @@ internal sealed class DeviceHostClient(DeviceApi api, IDeviceStateStore store)
         var secret = Protocol.RequiredString(root, "device_secret");
         if (!secret.StartsWith("ri_windev_", StringComparison.Ordinal) || secret.Length is < 32 or > 1024)
             throw new ProtocolException("Invalid device secret from riAuth");
-        store.Save(new DeviceState(issuer, id, username, userId, secret));
+        store.Save(new DeviceState(issuer, id, username, userId, secret, LocalSid: localSid));
     }
 
-    internal async Task LoginAsync(Uri issuer, string password, string? otp, CancellationToken cancellation)
+    internal async Task<string?> LoginAsync(Uri issuer, string password, string? otp,
+        CancellationToken cancellation)
     {
         if (password.Length is < 1 or > 1024 || otp?.Length > 128)
             throw new ArgumentException("Invalid login proof");
@@ -206,6 +210,7 @@ internal sealed class DeviceHostClient(DeviceApi api, IDeviceStateStore store)
             || expiresAt > ticketExpiresAt)
             throw new ProtocolException("Expired riAuth assertion");
         store.Save(state with { LastEpoch = epoch });
+        return state.LocalSid;
     }
 
     internal async Task RevokeAsync(Uri issuer, string token, ulong revision, string key, CancellationToken cancellation)

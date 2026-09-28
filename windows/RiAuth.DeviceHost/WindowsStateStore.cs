@@ -34,9 +34,14 @@ internal sealed class WindowsStateStore : IDeviceStateStore
         try { saved = JsonSerializer.Deserialize<StoredState>(bytes)
             ?? throw new InvalidDataException("Device state is empty"); }
         catch (JsonException exception) { throw new InvalidDataException("Invalid device state", exception); }
-        if (saved.Schema != 1 || saved.Issuer is null || saved.DeviceId is null
+        if (saved.Schema is not (1 or 2) || saved.Issuer is null || saved.DeviceId is null
             || saved.Username is null || saved.UserId is null || saved.ProtectedSecret is null)
             throw new InvalidDataException("Invalid device state schema");
+        if (saved.Schema == 1 && saved.LocalSid is not null
+            || saved.Schema == 2 && (saved.LocalSid is null
+                || saved.LocalSid.Length is < 8 or > 256
+                || !saved.LocalSid.StartsWith("S-", StringComparison.Ordinal)))
+            throw new InvalidDataException("Invalid local account binding");
         var issuer = Protocol.Issuer(saved.Issuer);
         Protocol.Name(saved.DeviceId, "device id");
         Protocol.Name(saved.Username, "username");
@@ -55,7 +60,7 @@ internal sealed class WindowsStateStore : IDeviceStateStore
                 || secret.Length is < 32 or > 1024)
                 throw new InvalidDataException("Invalid stored device secret");
             return new DeviceState(issuer, saved.DeviceId, saved.Username, saved.UserId,
-                secret, saved.LastEpoch);
+                secret, saved.LastEpoch, saved.LocalSid);
         }
         finally { Array.Clear(plaintext); }
     }
@@ -67,8 +72,9 @@ internal sealed class WindowsStateStore : IDeviceStateStore
         byte[] protectedSecret;
         try { protectedSecret = WinSecurity.Protect(plaintext); }
         finally { Array.Clear(plaintext); }
-        var saved = new StoredState(1, state.Issuer.AbsoluteUri, state.DeviceId,
-            state.Username, state.UserId, Convert.ToBase64String(protectedSecret), state.LastEpoch);
+        var saved = new StoredState(state.LocalSid is null ? 1 : 2, state.Issuer.AbsoluteUri,
+            state.DeviceId, state.Username, state.UserId,
+            Convert.ToBase64String(protectedSecret), state.LastEpoch, state.LocalSid);
         Array.Clear(protectedSecret);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(saved);
         var temporary = Path.Combine(directory, ".device-" + Guid.NewGuid().ToString("N") + ".tmp");
@@ -130,7 +136,8 @@ internal sealed class WindowsStateStore : IDeviceStateStore
         [property: JsonPropertyName("username")] string? Username,
         [property: JsonPropertyName("user_id")] string? UserId,
         [property: JsonPropertyName("protected_secret")] string? ProtectedSecret,
-        [property: JsonPropertyName("last_epoch")] ulong? LastEpoch);
+        [property: JsonPropertyName("last_epoch")] ulong? LastEpoch,
+        [property: JsonPropertyName("local_sid")] string? LocalSid = null);
 }
 
 internal static class WinSecurity

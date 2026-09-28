@@ -2,7 +2,11 @@
 
 [Implementation](../../src/windows_login.rs) and [tests](../../tests/windows_login.rs).
 
-riAuth implements the enrollment and authentication protocol a Windows credential provider would call. It does not install a provider, and no Windows interactive login was tested. See [Windows credential provider package is not built or tested](#windows-credential-provider-package-is-not-built-or-tested).
+riAuth implements the enrollment and authentication protocol used by the
+[optional Windows device host and credential provider](../../windows/README.md).
+The source installer can register that provider, but no Windows interactive
+login has been tested. See [Windows device host and remaining credential
+provider work](#windows-device-host-and-remaining-credential-provider-work).
 
 The protocol is a machine API. It is not a browser login and it does not issue an OAuth access token.
 
@@ -11,7 +15,7 @@ The protocol is a machine API. It is not a browser login and it does not issue a
 | Actor | What they do |
 | --- | --- |
 | Administrator, or an agent with `device.enroll` | Enroll, list, and revoke devices |
-| Credential provider | Holds the device secret, collects the user password or a fresh session, and calls login |
+| Windows device host and credential provider | The host protects the device secret and redeems tickets; the provider collects riAuth proof and a separate local Windows password |
 | riAuth | Stores only a hash of the device secret, checks the user, and returns a short-lived sign-in ticket |
 
 Permission `device.enroll` is scoped to `device/<id>` or `*`. An agent cannot enroll, replace, or revoke a device for an administrator, including a device that is already bound to an administrator. A non-administrator session cannot enroll devices. Human administrators can.
@@ -123,18 +127,20 @@ Break-glass is the existing local recovery, not this protocol. With the server s
 
 ## Windows device host and remaining credential provider work
 
-The [Windows device host](../../windows/README.md) source provides authenticated
-enrollment, machine-protected device-secret storage, online login and one-use
-ticket redemption, remote revoke with local purge, and a source installer that
-requires signed payloads and pins the signer for updates and uninstall. It
-requests no offline ticket and fails closed on network loss. The source can be
-built as a self-contained Windows x64 executable; no signed release artifact or
-Windows installation has been produced or validated here.
+The [Windows implementation](../../windows/README.md) includes the device host,
+a native credential provider source, and an installer that requires signed
+payloads. Enrollment pins an enabled local account SID. For each logon or unlock
+submission, the provider asks the host to redeem a fresh online ticket, checks
+that approval matches the pinned local SID, and only then serializes the
+separately entered local Windows password for LSA. It requests no offline ticket
+and fails closed on network loss or revocation. The installer pins one signer
+for host and provider updates and deregisters the provider on uninstall.
 
-The repository still has no credential provider DLL, account mapping, secure
-desktop sign-in or unlock integration, or Windows hardware validation. The host
-checks a riAuth assertion but does not turn it into Windows credential
-serialization. Disabled-user behavior at the Windows logon UI remains untested.
+No signed release artifact, Windows installation, secure-desktop interaction,
+or actual LSA logon has been validated here. Other Windows system credential
+providers remain available for recovery; this provider does not enforce riAuth
+approval across those routes. Disabled-user behavior at the Windows logon UI
+also remains untested.
 
 ## What the server test covers
 
