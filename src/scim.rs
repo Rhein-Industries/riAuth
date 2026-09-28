@@ -253,6 +253,25 @@ enum Filter {
     Active(bool),
     Present(&'static str),
     EmailPresent,
+    EmailPath(Box<FilterExpr>),
+    EmailText { field: &'static str, needle: String },
+    EmailPrimary(bool),
+}
+
+enum FilterExpr {
+    Predicate(Filter),
+    And(Box<Self>, Box<Self>),
+    Or(Box<Self>, Box<Self>),
+}
+
+impl FilterExpr {
+    fn matches(&self, value: &Value) -> bool {
+        match self {
+            Self::Predicate(predicate) => predicate.matches(value),
+            Self::And(left, right) => left.matches(value) && right.matches(value),
+            Self::Or(left, right) => left.matches(value) || right.matches(value),
+        }
+    }
 }
 
 impl Filter {
@@ -285,98 +304,219 @@ impl Filter {
                     email["value"].as_str().is_some_and(|actual| !actual.is_empty())
                 })
             }),
+            Self::EmailPath(expr) => value["emails"].as_array().is_some_and(|emails| {
+                emails.iter().any(|email| expr.matches(email))
+            }),
+            Self::EmailText { field, needle } => value[*field].as_str()
+                .is_some_and(|actual| actual.eq_ignore_ascii_case(needle)),
+            Self::EmailPrimary(expected) => value["primary"].as_bool() == Some(*expected),
         }
     }
 }
 
-const MAX_FILTER_EXPRESSIONS: usize = 4;
+const MAX_FILTER_EXPRESSIONS: usize = 8;
+const MAX_FILTER_DEPTH: usize = 3;
 
-fn filter_spaces(filter: &str, pos: &mut usize) -> bool {
-    let start = *pos;
-    while filter.as_bytes().get(*pos) == Some(&b' ') {
-        *pos += 1;
-    }
-    *pos != start
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FilterScope {
+    Users,
+    Groups,
+    Email,
 }
 
-fn filter_token<'a>(filter: &'a str, pos: &mut usize) -> &'a str {
-    let start = *pos;
-    while filter.as_bytes().get(*pos).is_some_and(|byte| *byte != b' ') {
-        *pos += 1;
-    }
-    &filter[start..*pos]
+fn invalid_filter(message: &'static str) -> Error {
+    Error::oauth("invalid_filter", message)
 }
 
-fn filter_literal<'a>(filter: &'a str, pos: &mut usize) -> Result<&'a str> {
-    if filter.as_bytes().get(*pos) != Some(&b'"') {
-        return Ok(filter_token(filter, pos));
-    }
-    let start = *pos;
-    *pos += 1;
-    let mut escaped = false;
-    while let Some(&byte) = filter.as_bytes().get(*pos) {
-        *pos += 1;
-        if escaped {
-            escaped = false;
-        } else if byte == b'\\' {
-            escaped = true;
-        } else if byte == b'"' {
-            return Ok(&filter[start..*pos]);
-        }
-    }
-    Err(Error::oauth("invalid_filter", "Unterminated filter string"))
-}
-
-fn parse_filter_predicate(kind: &str, field: &str, op: &str, literal: Option<&str>) -> Result<Filter> {
+fn parse_filter_predicate(scope: FilterScope, field: &str, op: &str, literal: Option<&str>) -> Result<Filter> {
     let field = field.to_ascii_lowercase();
     if op.eq_ignore_ascii_case("pr") {
-        return match field.as_str() {
-            "username" if kind == "Users" => Ok(Filter::Present("userName")),
-            "displayname" => Ok(Filter::Present("displayName")),
-            "externalid" => Ok(Filter::Present("externalId")),
-            "id" => Ok(Filter::Present("id")),
-            "active" if kind == "Users" => Ok(Filter::Present("active")),
-            "emails" if kind == "Users" => Ok(Filter::Present("emails")),
-            "emails.value" if kind == "Users" => Ok(Filter::EmailPresent),
-            _ => Err(Error::oauth("invalid_filter", "Unsupported presence attribute")),
+        return match (scope, field.as_str()) {
+            (FilterScope::Users, "username") => Ok(Filter::Present("userName")),
+            (FilterScope::Users | FilterScope::Groups, "displayname") => Ok(Filter::Present("displayName")),
+            (FilterScope::Users | FilterScope::Groups, "externalid") => Ok(Filter::Present("externalId")),
+            (FilterScope::Users | FilterScope::Groups, "id") => Ok(Filter::Present("id")),
+            (FilterScope::Users, "active") => Ok(Filter::Present("active")),
+            (FilterScope::Users, "emails") => Ok(Filter::Present("emails")),
+            (FilterScope::Users, "emails.value") => Ok(Filter::EmailPresent),
+            (FilterScope::Email, "value") => Ok(Filter::Present("value")),
+            (FilterScope::Email, "type") => Ok(Filter::Present("type")),
+            (FilterScope::Email, "primary") => Ok(Filter::Present("primary")),
+            _ => Err(invalid_filter("Unsupported presence attribute")),
         };
     }
     if !op.eq_ignore_ascii_case("eq") {
-        return Err(Error::oauth("invalid_filter", "Unsupported filter operator"));
+        return Err(invalid_filter("Unsupported filter operator"));
     }
-    let literal = literal.ok_or_else(|| Error::oauth("invalid_filter", "Expected filter value"))?;
-    if field == "active" {
-        if kind != "Users" {
-            return Err(Error::oauth("invalid_filter", "active is a User filter"));
-        }
+    let literal = literal.ok_or_else(|| invalid_filter("Expected filter value"))?;
+    if matches!((scope, field.as_str()), (FilterScope::Users, "active") | (FilterScope::Email, "primary")) {
         let active = serde_json::from_str::<bool>(literal)
-            .map_err(|_| Error::oauth("invalid_filter", "active requires true or false"))?;
-        return Ok(Filter::Active(active));
+            .map_err(|_| invalid_filter("Boolean filter requires true or false"))?;
+        return Ok(if scope == FilterScope::Email { Filter::EmailPrimary(active) } else { Filter::Active(active) });
     }
     let needle = serde_json::from_str::<String>(literal)
-        .map_err(|_| Error::oauth("invalid_filter", "Filter value must be one quoted JSON string"))?;
-    match field.as_str() {
-        "username" if kind == "Users" => Ok(Filter::Text {
+        .map_err(|_| invalid_filter("Filter value must be one quoted JSON string"))?;
+    match (scope, field.as_str()) {
+        (FilterScope::Users, "username") => Ok(Filter::Text {
             field: "userName", needle, exact: false,
         }),
-        "displayname" => Ok(Filter::Text {
+        (FilterScope::Users | FilterScope::Groups, "displayname") => Ok(Filter::Text {
             field: "displayName", needle, exact: false,
         }),
-        "externalid" => Ok(Filter::Text {
+        (FilterScope::Users | FilterScope::Groups, "externalid") => Ok(Filter::Text {
             field: "externalId", needle, exact: true,
         }),
-        "id" => Ok(Filter::Text {
+        (FilterScope::Users | FilterScope::Groups, "id") => Ok(Filter::Text {
             field: "id", needle, exact: true,
         }),
-        "emails.value" if kind == "Users" => Ok(Filter::Email(needle)),
-        _ => Err(Error::oauth(
-            "invalid_filter",
-            "Supported fields: displayName, externalId, id, and User userName, emails.value, active",
-        )),
+        (FilterScope::Users, "emails.value") => Ok(Filter::Email(needle)),
+        (FilterScope::Email, "value") => Ok(Filter::EmailText { field: "value", needle }),
+        (FilterScope::Email, "type") => Ok(Filter::EmailText { field: "type", needle }),
+        _ => Err(invalid_filter("Unsupported equality attribute")),
     }
 }
 
-fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Vec<Filter>>> {
+struct FilterParser<'a> {
+    input: &'a str,
+    pos: usize,
+    expressions: usize,
+}
+
+impl<'a> FilterParser<'a> {
+    fn peek(&self) -> Option<u8> {
+        self.input.as_bytes().get(self.pos).copied()
+    }
+
+    fn spaces(&mut self) -> bool {
+        let start = self.pos;
+        while self.peek() == Some(b' ') {
+            self.pos += 1;
+        }
+        self.pos != start
+    }
+
+    fn word(&mut self) -> &'a str {
+        let start = self.pos;
+        while self.peek().is_some_and(|byte| !matches!(byte, b' ' | b'(' | b')' | b'[' | b']' | b'"')) {
+            self.pos += 1;
+        }
+        &self.input[start..self.pos]
+    }
+
+    fn literal(&mut self) -> Result<&'a str> {
+        if self.peek() != Some(b'"') {
+            return Ok(self.word());
+        }
+        let start = self.pos;
+        self.pos += 1;
+        let mut escaped = false;
+        while let Some(byte) = self.peek() {
+            self.pos += 1;
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                return Ok(&self.input[start..self.pos]);
+            }
+        }
+        Err(invalid_filter("Unterminated filter string"))
+    }
+
+    // Recursive descent gives parentheses the highest precedence, then `and`,
+    // then `or`. The shared predicate counter also includes email valuePaths.
+    fn or(&mut self, scope: FilterScope, depth: usize) -> Result<FilterExpr> {
+        let mut left = self.and(scope, depth)?;
+        loop {
+            let before = self.pos;
+            if !self.spaces() || !self.word().eq_ignore_ascii_case("or") {
+                self.pos = before;
+                break;
+            }
+            if !self.spaces() {
+                return Err(invalid_filter("Expected expression after or"));
+            }
+            let right = self.and(scope, depth)?;
+            left = FilterExpr::Or(Box::new(left), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn and(&mut self, scope: FilterScope, depth: usize) -> Result<FilterExpr> {
+        let mut left = self.atom(scope, depth)?;
+        loop {
+            let before = self.pos;
+            if !self.spaces() || !self.word().eq_ignore_ascii_case("and") {
+                self.pos = before;
+                break;
+            }
+            if !self.spaces() {
+                return Err(invalid_filter("Expected expression after and"));
+            }
+            let right = self.atom(scope, depth)?;
+            left = FilterExpr::And(Box::new(left), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    fn atom(&mut self, scope: FilterScope, depth: usize) -> Result<FilterExpr> {
+        self.spaces();
+        if self.peek() == Some(b'(') {
+            if depth == MAX_FILTER_DEPTH {
+                return Err(invalid_filter("Filter nesting too deep"));
+            }
+            self.pos += 1;
+            self.spaces();
+            let expr = self.or(scope, depth + 1)?;
+            self.spaces();
+            if self.peek() != Some(b')') {
+                return Err(invalid_filter("Expected closing parenthesis"));
+            }
+            self.pos += 1;
+            return Ok(expr);
+        }
+        let field = self.word();
+        if field.is_empty() {
+            return Err(invalid_filter("Expected filter attribute"));
+        }
+        if self.peek() == Some(b'[') {
+            if scope != FilterScope::Users || !field.eq_ignore_ascii_case("emails") {
+                return Err(invalid_filter("Unsupported valuePath attribute"));
+            }
+            if depth == MAX_FILTER_DEPTH {
+                return Err(invalid_filter("Filter nesting too deep"));
+            }
+            self.pos += 1;
+            self.spaces();
+            let expr = self.or(FilterScope::Email, depth + 1)?;
+            self.spaces();
+            if self.peek() != Some(b']') {
+                return Err(invalid_filter("Expected closing valuePath bracket"));
+            }
+            self.pos += 1;
+            return Ok(FilterExpr::Predicate(Filter::EmailPath(Box::new(expr))));
+        }
+        if !self.spaces() {
+            return Err(invalid_filter("Expected filter operator"));
+        }
+        let op = self.word();
+        let literal = if op.eq_ignore_ascii_case("eq") {
+            if !self.spaces() {
+                return Err(invalid_filter("Expected filter value"));
+            }
+            Some(self.literal()?)
+        } else {
+            None
+        };
+        if self.expressions == MAX_FILTER_EXPRESSIONS {
+            return Err(invalid_filter("Too many filter expressions"));
+        }
+        self.expressions += 1;
+        Ok(FilterExpr::Predicate(parse_filter_predicate(scope, field, op, literal)?))
+    }
+}
+
+fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<FilterExpr>> {
     let Some(filter) = filter else {
         return Ok(None);
     };
@@ -386,41 +526,19 @@ fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Vec<Filter>>>
     if filter.bytes().any(|byte| byte.is_ascii_control()) {
         return Err(Error::oauth("invalid_filter", "Control characters are not allowed in filters"));
     }
-    // Flat conjunctions only: nesting depth is zero, and quoted JSON strings
-    // are scanned before looking for `and` so escaped quotes cannot split them.
-    let mut pos = 0;
-    let mut predicates = Vec::new();
-    filter_spaces(filter, &mut pos);
-    loop {
-        if predicates.len() == MAX_FILTER_EXPRESSIONS {
-            return Err(Error::oauth("invalid_filter", "Too many filter expressions"));
-        }
-        let field = filter_token(filter, &mut pos);
-        if field.is_empty() || !filter_spaces(filter, &mut pos) {
-            return Err(Error::oauth("invalid_filter", "Expected filter attribute and operator"));
-        }
-        let op = filter_token(filter, &mut pos);
-        let literal = if op.eq_ignore_ascii_case("eq") {
-            if !filter_spaces(filter, &mut pos) {
-                return Err(Error::oauth("invalid_filter", "Expected filter value"));
-            }
-            Some(filter_literal(filter, &mut pos)?)
-        } else {
-            None
-        };
-        predicates.push(parse_filter_predicate(kind, field, op, literal)?);
-        let separated = filter_spaces(filter, &mut pos);
-        if pos == filter.len() {
-            break;
-        }
-        if !separated || !filter_token(filter, &mut pos).eq_ignore_ascii_case("and") {
-            return Err(Error::oauth("invalid_filter", "Only flat and expressions are supported"));
-        }
-        if !filter_spaces(filter, &mut pos) || pos == filter.len() {
-            return Err(Error::oauth("invalid_filter", "Expected expression after and"));
-        }
+    let scope = match kind {
+        "Users" => FilterScope::Users,
+        "Groups" => FilterScope::Groups,
+        _ => return Err(invalid_filter("Unsupported resource type")),
+    };
+    let mut parser = FilterParser { input: filter, pos: 0, expressions: 0 };
+    parser.spaces();
+    let expr = parser.or(scope, 0)?;
+    parser.spaces();
+    if parser.pos != filter.len() {
+        return Err(invalid_filter("Unsupported filter syntax"));
     }
-    Ok(Some(predicates))
+    Ok(Some(expr))
 }
 
 impl Core {
@@ -532,7 +650,7 @@ impl Core {
         for (id,record) in tx.list::<Record>(bucket(kind)?)? {
             if record.deleted || record.owner!=actor.id || require(&actor,&record,"read").is_err(){continue;}
             let value=self.scim_view(tx,&id,&record)?;
-            if filter.as_ref().is_none_or(|filter| filter.iter().all(|predicate| predicate.matches(&value))){values.push(value);}
+            if filter.as_ref().is_none_or(|filter| filter.matches(&value)){values.push(value);}
         }
         let total=values.len();let page:Vec<_>=values.into_iter().skip(start-1).take(count).collect();
         Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
@@ -983,7 +1101,7 @@ pub(crate) fn fuzz_resource(input: Value) {
 #[cfg(feature = "fuzzing")]
 pub(crate) fn fuzz_filter(filter: &str) {
     let _ = parse_filter("Users", Some(filter)).map(|parsed| {
-        parsed.is_none_or(|parsed| parsed.iter().all(|predicate| predicate.matches(&json!({"userName":"fuzz-user","id":"fuzz-id"}))))
+        parsed.is_none_or(|parsed| parsed.matches(&json!({"userName":"fuzz-user","id":"fuzz-id"})))
     });
 }
 

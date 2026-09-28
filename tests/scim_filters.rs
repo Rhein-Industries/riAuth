@@ -61,8 +61,8 @@ async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantic
     let owner = text(&owner["credential"], "token");
     let other = text(&other["credential"], "token");
     let users = [
-        ("filter-one", "A \"Quoted\" and Name", true, json!([{"value":"first@example.test","primary":true},{"value":"alias@example.test"}])),
-        ("filter-two", "Second", false, json!([{"value":"ALIAS@example.test","primary":true}])),
+        ("filter-one", "A \"Quoted\" and Name", true, json!([{"value":"first@example.test","type":"work","primary":true},{"value":"alias@example.test","type":"home","primary":false}])),
+        ("filter-two", "Second", false, json!([{"value":"ALIAS@example.test","type":"work","primary":true}])),
         ("filter-three", "Third", true, json!([])),
     ];
     for (username, display, active, emails) in users {
@@ -121,16 +121,43 @@ async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantic
         let (status, groups) = filtered(&app, &owner, "Groups", r#"displayName eq "Filter-Group" and id pr"#, 1, 100, post).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(groups["totalResults"], 1);
+        let same_email = r#"EMAILS[VALUE EQ "ALIAS\u0040EXAMPLE.TEST" and TYPE eq "WORK"]"#;
+        let (status, selected) = filtered(&app, &owner, "Users", same_email, 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(selected["totalResults"], 1);
+        assert_eq!(selected["Resources"][0]["userName"], "filter-two");
+        let grouped = r#"(active eq false or emails[value eq "first@example.test"]) and emails pr"#;
+        let (status, grouped_result) = filtered(&app, &owner, "Users", grouped, 1, 1, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(grouped_result["totalResults"], 2);
+        assert_eq!(grouped_result["itemsPerPage"], 1);
+        let precedence = r#"active eq true or active eq false and emails[type eq "work"]"#;
+        let (status, precedence_result) = filtered(&app, &owner, "Users", precedence, 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(precedence_result["totalResults"], 3); // and binds before or.
+        let (status, primary_false) = filtered(&app, &owner, "Users", "emails[primary eq false and type pr]", 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(primary_false["totalResults"], 1);
+        assert_eq!(primary_false["Resources"][0]["userName"], "filter-one");
+        let inner_group = r#"emails[(value eq "alias@example.test" and type eq "home") or (primary eq true and type eq "work")]"#;
+        let (status, inner_result) = filtered(&app, &owner, "Users", inner_group, 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(inner_result["totalResults"], 2);
         for bad in [
             "active eq \"false\"",
             "active eq FALSE",
             r#"emails.value eq "bad\q""#,
-            r#"emails.value eq "alias@example.test" or active eq true"#,
             "active eq true\n",
             "active pr true",
             "active eq true and",
-            "(active eq true)",
-            "active eq true and active pr and emails pr and userName pr and id pr",
+            "((((active eq true))))",
+            "active pr or active pr or active pr or active pr or active pr or active pr or active pr or active pr or active pr",
+            r#"emails[type co "work"]"#,
+            r#"emails[value eq "alias@example.test"].value"#,
+            r#"emails[value eq "alias@example.test""#,
+            r#"emails[not (value eq "alias@example.test")]"#,
+            r#"emails[emails.value eq "alias@example.test"]"#,
+            "emails[primary eq \"true\"]",
             r#"displayName eq "A \"Quoted\" and Name" and emails.value eq "bad\q""#,
         ] {
             let (status, error) = filtered(&app, &owner, "Users", bad, 1, 100, post).await;
