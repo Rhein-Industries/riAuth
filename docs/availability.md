@@ -1,6 +1,6 @@
 # PostgreSQL and multiple service instances
 
-The default redb backend is a single-process deployment. The PostgreSQL backend supports independently running riAuth nodes behind one issuer URL. It shares identities, signing domains, consent, browser and CLI sessions, staged browser logins, replay records, rate limits, agent plans/receipts and delivery leases. The `forward_auth` rate limit is the exception: it is counted in memory on each node, so its effective limit grows with the number of nodes. Sticky routing is not required.
+The default redb backend is a single-process deployment. It refuses a second owning process and storage it cannot keep exclusive, including network filesystems on Linux ([operations](operations.md)); remote gateways and workers use the authorized API, never the redb file. The PostgreSQL backend supports independently running riAuth nodes behind one issuer URL. It shares identities, signing domains, consent, browser and CLI sessions, staged browser logins, replay records, rate limits, agent plans/receipts and delivery leases. The `forward_auth` rate limit is the exception: it is counted in memory on each node, so its effective limit grows with the number of nodes. Sticky routing is not required.
 
 For a bounded two-host image configuration and the operator-owned database
 and load-balancer steps, see [Linux deployment examples](deployment-examples.md).

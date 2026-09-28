@@ -35,6 +35,22 @@
   unverified PATCH stays `ambiguous` until one read of the remote account
   records `remote_inactive` or `remote_active`; nothing is written.
 
+# Unreleased single-owner embedded storage (O02)
+
+- Opening a redb store that another process holds now fails with
+  `storage_owned` (status 409, CLI exit status 5) instead of an internal error.
+  The message names the store and the supported routes: stop the holder, use
+  the running server's authorized API, or configure PostgreSQL. Offline
+  inspection such as `riauth recovery status` reports the same error while a
+  server runs.
+- redb stores must be on local storage that enforces file locks. A store whose
+  filesystem does not enforce them, or on Linux one on NFS, SMB/CIFS, CephFS,
+  GlusterFS, Lustre or another network or cluster filesystem, is refused with
+  `storage_not_exclusive` (status 400, CLI exit status 2) before any record is
+  read or written. A deployment with such a data directory must stop every
+  process using it and move the directory to local storage, or migrate to
+  PostgreSQL from a local copy.
+
 # Unreleased durable offboarding delivery (P04)
 
 - Every transaction that disables or deletes an account now also records one

@@ -5,7 +5,7 @@ build commands and the downgrade preflight. The Dockerfile defaults to Essential
 use `--build-arg RIAUTH_EDITION=platform` when the deployment needs Platform
 adapters.
 
-This is the v0.1 operator runbook. The default redb backend has one owning process, snapshot reads and serialized commits. PostgreSQL supports multiple service processes with shared sessions, replay state, rate limits and delivery leases; see [availability](availability.md). Database election, replication policy and fencing belong to the deployment. Do not start two servers against the same redb file.
+This is the v0.1 operator runbook. The default redb backend has one owning process, snapshot reads and serialized commits. PostgreSQL supports multiple service processes with shared sessions, replay state, rate limits and delivery leases; see [availability](availability.md). Database election, replication policy and fencing belong to the deployment. Do not start two servers against the same redb file. riAuth refuses it: while one process holds a redb store, another server, maintenance command or offline inspection of that store fails with `storage_owned` (exit status 5). The store must also be on local storage that enforces file locks. A filesystem that does not enforce them, or on Linux a network or cluster filesystem such as NFS, SMB/CIFS, CephFS, GlusterFS or Lustre, fails with `storage_not_exclusive` (exit status 2) before any record is read or written. Gateways, workers and administration on other hosts use the authorized API, and several service processes need PostgreSQL.
 
 The [released-image deployment examples](deployment-examples.md) give concrete
 Linux Compose steps for one redb instance and for two PostgreSQL-backed hosts,
@@ -15,7 +15,7 @@ including mounts, readiness, TLS proxying and recovery ownership.
 
 ## Before exposing an instance
 
-1. Choose redb for one service process or PostgreSQL for multiple processes. Keep the redb state directory private to one host and one running server.
+1. Choose redb for one service process or PostgreSQL for multiple processes. Keep the redb state directory on local storage, private to one host and one running server.
 2. Choose a stable HTTPS issuer and decide whether riAuth or a reverse proxy terminates TLS. The default `http://localhost:9000` issuer is for loopback evaluation. Test DNS, certificates and the actual proxy path before directing users to it.
 3. Run the server as a dedicated user with private configuration, storage and signing material. Generate a live database key if encrypting the store, and a **different** backup key held in a recovery secret store. Keep copies of external TLS, SMTP, source, certificate and Vault dependencies needed for restore.
 4. Set `trusted_proxies` to the exact addresses of the proxy hops whose forwarded client IPs riAuth should trust. Ensure the immediate proxy overwrites forwarded client-IP and, if used, certificate headers. Check that an untrusted peer cannot reach the backend listener.
