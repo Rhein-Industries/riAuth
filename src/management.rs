@@ -17,6 +17,7 @@
 //! authority, not a management principal.
 
 pub(crate) mod grants;
+mod client_creation;
 mod client_policy;
 mod memberships;
 mod sessions;
@@ -74,6 +75,14 @@ pub(crate) enum Record<'a> {
 enum Authority<'a> {
     Management(&'a Principal, Record<'a>),
     Registration(&'a RegistrationAuthority),
+}
+
+/// Only the matching exact-content executor may cross its client review fence.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ClientReview {
+    Immediate,
+    AccessPolicy,
+    Creation,
 }
 
 pub(crate) struct ClientWrite {
@@ -2103,7 +2112,7 @@ pub(crate) fn write_client(
         existing,
         next,
         secret,
-        false,
+        ClientReview::Immediate,
     )
 }
 
@@ -2119,7 +2128,9 @@ pub(crate) fn check_client(
     secret: Secret<'_>,
 ) -> Result<Client> {
     let authority = Authority::Management(actor, Record::Direct("client.check"));
-    Ok(check_client_as(tx, config, &authority, existing, next, secret, false)?.client)
+    Ok(check_client_as(
+        tx, config, &authority, existing, next, secret, ClientReview::Immediate,
+    )?.client)
 }
 
 /// An authorized, validated record that `write_client_as` persists.
@@ -2137,14 +2148,14 @@ fn write_client_as(
     existing: Option<&Client>,
     next: Client,
     secret: Secret<'_>,
-    reviewed_policy: bool,
+    review: ClientReview,
 ) -> Result<ClientWrite> {
     let Checked {
         client: next,
         issued,
         credential_change,
         other_change,
-    } = check_client_as(tx, config, &authority, existing, next, secret, reviewed_policy)?;
+    } = check_client_as(tx, config, &authority, existing, next, secret, review)?;
     if existing.is_some() && !other_change && !credential_change {
         return Ok(ClientWrite {
             client: existing.unwrap().clone(),
@@ -2197,7 +2208,7 @@ fn check_client_as(
     existing: Option<&Client>,
     mut next: Client,
     secret: Secret<'_>,
-    reviewed_policy: bool,
+    review: ClientReview,
 ) -> Result<Checked> {
     let resource = format!("client/{}", next.id);
     let requested = !matches!(secret, Secret::Keep);
@@ -2249,9 +2260,14 @@ fn check_client_as(
             require_registration_bounds(grant, &next, &secret)?;
         }
     }
+    if existing.is_none() && config.reviewed_client_creation && review != ClientReview::Creation {
+        return Err(Error::conflict(
+            "Client creation requires a reviewed client creation change",
+        ));
+    }
     // Every adapter, including state preview/apply, reaches this guard. Only
     // the exact-content review executor may authorize a changed existing policy.
-    if !reviewed_policy
+    if review != ClientReview::AccessPolicy
         && existing.is_some_and(|c| {
             c.allowed_groups != next.allowed_groups || c.require_mfa != next.require_mfa
         })
@@ -2793,7 +2809,7 @@ pub(crate) fn register_client(
         None,
         client,
         secret,
-        false,
+        ClientReview::Immediate,
     )?;
     let mut response = json!({
         "client_id": client.id,

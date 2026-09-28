@@ -89,6 +89,10 @@ pub struct Config {
     /// both editions. Platform PAM groups are also protected automatically.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub reviewed_membership_groups: BTreeSet<String>,
+    /// Require exact human review for every new application client. Existing
+    /// client edits and credential rotation retain their separate contracts.
+    #[serde(default)]
+    pub reviewed_client_creation: bool,
     /// HTTPS client-certificate login. Absent means the listener keeps `with_no_client_auth`.
     #[serde(default)]
     pub client_certificates: Option<crate::mtls::ClientCertAuth>,
@@ -402,6 +406,7 @@ impl Default for Config {
             trusted_proxies: Vec::new(),
             pam_approvers: BTreeMap::new(),
             reviewed_membership_groups: BTreeSet::new(),
+            reviewed_client_creation: false,
             client_certificates: None,
             device_trust: None,
             alert_webhook: None,

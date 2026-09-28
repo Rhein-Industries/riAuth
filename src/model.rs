@@ -100,6 +100,7 @@ pub struct ClientPolicyInput {
 }
 
 pub type ClientPolicyBinding = crate::delegation::GrantChangeBinding;
+pub type ClientCreationBinding = crate::delegation::GrantChangeBinding;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
@@ -363,7 +364,7 @@ pub struct UserPatch {
     pub subjects: Option<BTreeMap<String, String>>,
 }
 
-#[derive(schemars::JsonSchema, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewClient {
     pub client_id: String,

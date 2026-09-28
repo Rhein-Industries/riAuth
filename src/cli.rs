@@ -1,4 +1,5 @@
 mod backup;
+mod client_creation;
 mod client_policy;
 mod grants;
 pub mod local;
@@ -967,6 +968,11 @@ pub enum AccessCommand {
 #[derive(Subcommand)]
 pub enum ClientCommand {
     List,
+    /// Review new application clients when instance policy requires it
+    CreationReview {
+        #[command(subcommand)]
+        command: client_creation::ReviewCommand,
+    },
     /// Review exact allowed_groups / require_mfa changes on an existing client
     Review {
         #[command(subcommand)]
@@ -2565,6 +2571,7 @@ async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
     let (id, patch) = match command {
         ClientCommand::List => return remote.call(Method::GET, "/api/clients", None, true).await,
         ClientCommand::Review { command } => return client_policy::run(remote, command).await,
+        ClientCommand::CreationReview { command } => return client_creation::run(remote, command).await,
         ClientCommand::Create {
             client_id,
             name,

@@ -96,15 +96,18 @@ unfinished expiry; unexpired records are never evicted for capacity.
 
 ## Scope and remaining classes
 
-Creation keeps its existing authorization and initial-policy contract, including
-dynamic registration and desired-state creation. Creating an existing client ID
+Creation keeps its existing authorization and initial-policy contract by default.
+With `reviewed_client_creation = true`, the separate
+[client-creation review](reviewed-client-creation.md) gates every creation adapter,
+including dynamic registration and desired state. Creating an existing client ID
 still fails. Non-policy edits, explicit identical policy values and credential
 rotation keep their existing permission/validation behavior. Delegated owners
 retain their narrower field restrictions. A manifest needing a policy change
 fails atomically: execute the separate exact review, then replan the manifest
 with the resulting policy. A state plan is not an M05 approval.
 
-Remaining client classes are creation/initial policy, other provider settings
+Remaining client classes are advanced/initially-disabled creation beyond the
+bounded creation review, other existing-client provider settings
 (including conditional access/claims, scopes, redirects, grants, issuer and
 sector), enable/disable, credentials, registration templates and registration
 tokens. The complete remaining M05 resource inventory is in

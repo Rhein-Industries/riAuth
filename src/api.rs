@@ -385,6 +385,11 @@ pub fn router(core: Core) -> Router {
             axum::routing::put(add_member).delete(remove_member),
         )
         .route("/api/clients", get(clients).post(create_client))
+        .route("/api/client-creation-changes", post(stage_client_creation))
+        .route("/api/client-creation-changes/{id}", get(client_creation_change))
+        .route("/api/client-creation-changes/{id}/approve", post(approve_client_creation_change))
+        .route("/api/client-creation-changes/{id}/execute", post(execute_client_creation_change))
+        .route("/api/client-creation-changes/{id}/cancel", post(cancel_client_creation_change))
         .route("/api/clients/{id}/policy-changes", post(stage_client_policy))
         .route("/api/client-policy-changes/{id}", get(client_policy_change))
         .route("/api/client-policy-changes/{id}/approve", post(approve_client_policy_change))
@@ -1985,6 +1990,26 @@ async fn client_policy_change(
 grant_change_handler!(approve_client_policy_change);
 grant_change_handler!(execute_client_policy_change);
 grant_change_handler!(cancel_client_policy_change);
+
+async fn stage_client_creation(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<NewClient>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_client_creation(&token, input).map(Json)).await
+}
+async fn client_creation_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.client_creation_change(&token, &id).map(Json)).await
+}
+grant_change_handler!(approve_client_creation_change);
+grant_change_handler!(execute_client_creation_change);
+grant_change_handler!(cancel_client_creation_change);
 
 #[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);

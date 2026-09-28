@@ -1,10 +1,10 @@
-//! Exact-content review of allowed_groups and require_mfa on existing clients.
+//! Exact-content review of configured application client creation.
 //! The shared client writer gates every direct/plan adapter; this executor
 //! consumes one approved proposal and calls that writer in the same transaction.
 use super::{
     Authority as WriteAuthority, ClientReview, Record, Secret, check_client_as,
     grants::{Authority, full_administrator, revalidate_authority},
-    write_client_as,
+    new_client, write_client_as,
 };
 use crate::{
     agent::Principal,
@@ -12,15 +12,15 @@ use crate::{
     core::{Core, audit_with_details, validate_name},
     crypto::{digest, id, now},
     error::{Error, Result},
-    model::{Client, ClientPolicyBinding, ClientPolicyInput, Group},
+    model::{ClientCreationBinding, Group, NewClient, ProviderSettings},
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-const CHANGES: &str = "reviewed_client_policies";
-const VERSION: &str = "riauth/reviewed-client-policy/v1";
+const CHANGES: &str = "reviewed_client_creations";
+const VERSION: &str = "riauth/reviewed-client-creation/v1";
 const LIFETIME: u64 = 900;
 const MAX_GROUPS: usize = 64;
 const MAX_DEPENDENCY_MEMBERS: usize = 4096;
@@ -34,8 +34,10 @@ struct Proposal {
     resource: String,
     client_id: String,
     author: Authority,
-    before: ClientPolicyInput,
-    after: ClientPolicyInput,
+    before: Option<Value>,
+    after: NewClient,
+    enabled: bool,
+    generate_client_secret: bool,
     base_revision: u64,
     resource_revision: String,
     policy_revision: String,
@@ -79,131 +81,156 @@ fn canonical(value: &impl Serialize) -> Result<String> {
 
 fn policy_revision(config: &Config) -> Result<String> {
     canonical(&json!({"version": VERSION, "edition": crate::edition::NAME,
+        "reviewed_client_creation": config.reviewed_client_creation,
         "issuer": config.issuer, "capabilities": config.capabilities,
         "workflows": config.workflows, "device_trust": config.device_trust,
-        "client_certificates": config.client_certificates,
+        "client_certificates": config.client_certificates, "signers": config.signers,
         "proxy_listeners": config.proxy_listeners, "ldap_listeners": config.ldap_listeners,
         "radius_listeners": config.radius_listeners, "pam_approvers": config.pam_approvers,
         "reviewed_membership_groups": config.reviewed_membership_groups,
+        "access_token_ttl": config.access_token_ttl, "refresh_token_ttl": config.refresh_token_ttl,
         "required_reviews": 1, "lifetime": LIFETIME, "max_groups": MAX_GROUPS,
-        "max_dependency_members": MAX_DEPENDENCY_MEMBERS}))
+        "max_dependency_members": MAX_DEPENDENCY_MEMBERS, "max_document_bytes": 65536,
+        "max_reviewers": MAX_REVIEWERS, "max_changes": MAX_CHANGES}))
 }
 
-fn policy(client: &Client) -> ClientPolicyInput {
-    ClientPolicyInput {
-        allowed_groups: client.allowed_groups.clone(),
-        require_mfa: client.require_mfa,
+/// Explicit allowlist: new settings fields and protocol/trust/reference settings
+/// stay outside this bounded slice, including source stages and implicit consent.
+fn supported(settings: &ProviderSettings) -> bool {
+    use crate::jose::ClientAuthMethod;
+    if settings.token_endpoint_auth_method == Some(ClientAuthMethod::PrivateKeyJwt)
+        || settings
+            .default_acr_values
+            .iter()
+            .any(|value| !crate::assurance::SUPPORTED.contains(&value.as_str()))
+    {
+        return false;
     }
+    let permitted = ProviderSettings {
+        app: settings.app.clone(),
+        native: settings.native,
+        token_endpoint_auth_method: settings.token_endpoint_auth_method.clone(),
+        allowed_grants: settings.allowed_grants.clone(),
+        access_token_ttl: settings.access_token_ttl,
+        refresh_token_ttl: settings.refresh_token_ttl,
+        code_ttl: settings.code_ttl,
+        device_ttl: settings.device_ttl,
+        origins: settings.origins.clone(),
+        post_logout_redirect_uris: settings.post_logout_redirect_uris.clone(),
+        backchannel_logout_uri: settings.backchannel_logout_uri.clone(),
+        frontchannel_logout_uri: settings.frontchannel_logout_uri.clone(),
+        resources: settings.resources.clone(),
+        default_acr_values: settings.default_acr_values.clone(),
+        require_pushed_authorization_requests: settings.require_pushed_authorization_requests,
+        dpop_bound_access_tokens: settings.dpop_bound_access_tokens,
+        userinfo_signed_response: settings.userinfo_signed_response,
+        groups_in_profile: settings.groups_in_profile,
+        claims_in_access_token: settings.claims_in_access_token,
+        userinfo_only: settings.userinfo_only,
+        ..Default::default()
+    };
+    *settings == permitted
 }
 
 fn prepare(
     core: &Core,
     tx: &Tx<'_>,
     actor: &Principal,
-    client_id: &str,
-    after: ClientPolicyInput,
-) -> Result<(Client, ClientPolicyInput, ClientPolicyInput)> {
-    validate_name(client_id)?;
-    let resource = format!("client/{client_id}");
+    mut input: NewClient,
+) -> Result<(NewClient, bool)> {
+    if !core.config.reviewed_client_creation {
+        return Err(Error::bad("Client creation review is not configured"));
+    }
+    validate_name(&input.client_id)?;
+    let resource = format!("client/{}", input.client_id);
     actor.require("client.read", &resource)?;
     actor.require("client.write", &resource)?;
-    let client = tx
-        .get::<Client>("clients", client_id)?
-        .filter(|c| c.id == client_id)
-        .ok_or_else(|| Error::missing("Client not found"))?;
-    let before = policy(&client);
-    if before.allowed_groups.len() > MAX_GROUPS || after.allowed_groups.len() > MAX_GROUPS {
+    if serde_json::to_vec(&input).map_err(Error::internal)?.len() > 65_536
+        || input.allowed_groups.len() > MAX_GROUPS
+    {
         return Err(Error::bad(
-            "Reviewed client policies support at most 64 current and proposed groups",
+            "Reviewed client creation supports at most 64 groups and 64 KiB of content",
         ));
     }
-    for name in &after.allowed_groups {
-        validate_name(name)?;
+    if !supported(&input.settings) {
+        return Err(Error::bad(
+            "Reviewed client creation currently supports basic OIDC and service settings only",
+        ));
     }
-    if before == after {
-        return Err(Error::bad("Client access policy is unchanged"));
-    }
-    let mut next = client.clone();
-    next.allowed_groups = after.allowed_groups.clone();
-    next.require_mfa = after.require_mfa;
-    // Validate with the ordinary writer's permissions and client policy rules,
-    // without changing credentials, persistence, grants or audit during staging.
+    let (client, secret) = new_client(input.clone());
+    let generate_client_secret = matches!(secret, Secret::Issue);
+    // Validate credential shape without generating, persisting, or exposing a
+    // credential. The fixed validation value is discarded with this checked record.
+    let validation_secret = if generate_client_secret {
+        Secret::Supplied("reviewed-client-creation-validation-only")
+    } else {
+        Secret::Keep
+    };
     let checked = check_client_as(
         tx,
         &core.config,
-        &WriteAuthority::Management(actor, Record::Direct("client.policy.check")),
-        Some(&client),
-        next,
-        Secret::Keep,
-        ClientReview::AccessPolicy,
+        &WriteAuthority::Management(actor, Record::Direct("client.creation.check")),
+        None,
+        client,
+        validation_secret,
+        ClientReview::Creation,
     )?;
-    // Legacy authentication normalization (for example a private-key client
-    // still carrying a shared secret) must not become an unreviewed side effect.
-    if checked.credential_change {
-        return Err(Error::conflict(
-            "Reconcile client authentication before reviewing its access policy",
-        ));
-    }
-    Ok((client, before, after))
+    input.confidential = checked.client.confidential();
+    Ok((input, generate_client_secret))
 }
 
-fn resource_revision(
-    tx: &Tx<'_>,
-    client: &Client,
-    before: &ClientPolicyInput,
-    after: &ClientPolicyInput,
-) -> Result<String> {
+fn resource_revision(tx: &Tx<'_>, input: &NewClient) -> Result<String> {
     let mut groups = BTreeMap::new();
     let mut members = 0;
-    for name in before.allowed_groups.union(&after.allowed_groups) {
-        let group = tx.get::<Group>("groups", name)?;
-        if let Some(group) = &group {
-            if group.name != *name {
-                return Err(Error::conflict("Group identity binding changed"));
-            }
-            members += group.members.len();
+    for name in &input.allowed_groups {
+        let group = tx
+            .get::<Group>("groups", name)?
+            .ok_or_else(|| Error::conflict("Reviewed creation group dependency disappeared"))?;
+        if group.name != *name {
+            return Err(Error::conflict("Group identity binding changed"));
         }
+        members += group.members.len();
         if members > MAX_DEPENDENCY_MEMBERS {
             return Err(Error::bad(
-                "Reviewed client policy group dependencies exceed 4096 memberships",
+                "Reviewed client creation dependencies exceed 4096 memberships",
             ));
         }
         groups.insert(name, group);
     }
-    // Hash the full client (including the credential hash) and live groups.
-    // Only this fingerprint is exposed; proposals/audits carry the two policy fields.
-    canonical(&json!({"client": client, "groups": groups,
-        "credential_version": tx.get::<Value>("credential_versions", &format!("client/{}", client.id))?}))
+    canonical(&json!({"client_id": input.client_id,
+        "client": tx.get::<crate::model::Client>("clients", &input.client_id)?,
+        "credential_version": tx.get::<Value>("credential_versions", &format!("client/{}", input.client_id))?,
+        "groups": groups, "signing_keys": tx.get::<Value>("meta", "keys")?}))
 }
 
 fn load(tx: &Tx<'_>, id: &str) -> Result<Change> {
     let change = tx
         .get::<Change>(CHANGES, id)?
-        .ok_or_else(|| Error::missing("Reviewed client policy change not found"))?;
+        .ok_or_else(|| Error::missing("Reviewed client creation change not found"))?;
     if change.proposal.id != id || canonical(&change.proposal)? != change.digest {
-        return Err(Error::conflict("Reviewed client policy content changed"));
+        return Err(Error::conflict("Reviewed client creation content changed"));
     }
     Ok(change)
 }
 
-fn require_open(change: &Change, binding: &ClientPolicyBinding) -> Result<()> {
+fn require_open(change: &Change, binding: &ClientCreationBinding) -> Result<()> {
     if binding.digest != change.digest {
         return Err(Error::conflict(
-            "Reviewed client policy digest does not match",
+            "Reviewed client creation digest does not match",
         ));
     }
     if change.proposal.expires_at <= now() {
-        return Err(Error::conflict("Reviewed client policy expired"));
+        return Err(Error::conflict("Reviewed client creation expired"));
     }
     if !matches!(change.status, Status::Pending | Status::Approved) {
         return Err(Error::conflict(
-            "Reviewed client policy already consumed or cancelled",
+            "Reviewed client creation already consumed or cancelled",
         ));
     }
     Ok(())
 }
 
-fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> Result<Client> {
+fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> Result<NewClient> {
     let p = &change.proposal;
     revalidate_authority(tx, &p.author)?;
     let mut participants = BTreeSet::from([p.author.id.as_str()]);
@@ -217,19 +244,22 @@ fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> R
         || p.policy_revision != policy_revision(&core.config)?
     {
         return Err(Error::conflict(
-            "Reviewed client policy resource or policy revision changed",
+            "Reviewed client creation resource or policy revision changed",
         ));
     }
-    let (client, before, after) = prepare(core, tx, actor, &p.client_id, p.after.clone())?;
-    if before != p.before
-        || after != p.after
-        || p.resource_revision != resource_revision(tx, &client, &before, &after)?
+    let (after, generate_client_secret) = prepare(core, tx, actor, p.after.clone())?;
+    if p.before.is_some()
+        || !p.enabled
+        || p.client_id != after.client_id
+        || generate_client_secret != p.generate_client_secret
+        || canonical(&after)? != canonical(&p.after)?
+        || p.resource_revision != resource_revision(tx, &after)?
     {
         return Err(Error::conflict(
-            "Reviewed client policy dependencies changed",
+            "Reviewed client creation dependencies changed",
         ));
     }
-    Ok(client)
+    Ok(after)
 }
 
 fn audit_change(tx: &Tx<'_>, actor: &str, action: &str, change: &Change) -> Result<()> {
@@ -245,32 +275,31 @@ fn audit_change(tx: &Tx<'_>, actor: &str, action: &str, change: &Change) -> Resu
             "executor": change.executor.as_ref().map(|a| &a.id),
             "expires_at": p.expires_at, "base_revision": p.base_revision,
             "resource_revision": p.resource_revision, "policy_revision": p.policy_revision,
-            "before": p.before, "after": p.after,
+            "before": p.before, "after": p.after, "enabled": p.enabled,
+            "generate_client_secret": p.generate_client_secret,
         }),
     )
 }
 
 impl Core {
-    pub fn stage_client_policy(
-        &self,
-        token: &str,
-        client_id: &str,
-        input: ClientPolicyInput,
-    ) -> Result<Value> {
+    pub fn stage_client_creation(&self, token: &str, input: NewClient) -> Result<Value> {
         self.mutation(token, |tx| {
             let (actor, author) = full_administrator(self, tx, token)?;
-            let (client, before, after) = prepare(self, tx, &actor, client_id, input)?;
+            let (after, generate_client_secret) = prepare(self, tx, &actor, input)?;
+            let client_id = after.client_id.clone();
             let at = now();
             let proposal = Proposal {
                 id: id(),
-                resource: format!("client/{client_id}/access-policy"),
-                client_id: client_id.into(),
+                resource: format!("client/{client_id}"),
+                client_id,
                 author,
                 base_revision: tx.get::<u64>("meta", "revision")?.unwrap_or(0),
-                resource_revision: resource_revision(tx, &client, &before, &after)?,
+                resource_revision: resource_revision(tx, &after)?,
                 policy_revision: policy_revision(&self.config)?,
-                before,
+                before: None,
                 after,
+                enabled: true,
+                generate_client_secret,
                 created_at: at,
                 expires_at: at + LIFETIME,
             };
@@ -278,7 +307,7 @@ impl Core {
             for (key, old) in tx.scan::<Change>(CHANGES, None, MAX_CHANGES + 1)? {
                 if old.proposal.expires_at <= at {
                     if matches!(old.status, Status::Pending | Status::Approved) {
-                        audit_change(tx, &actor.id, "reviewed_client_policies.expire", &old)?;
+                        audit_change(tx, &actor.id, "reviewed_client_creations.expire", &old)?;
                     }
                     tx.delete(CHANGES, &key)?;
                 } else {
@@ -286,7 +315,7 @@ impl Core {
                 }
             }
             if retained >= MAX_CHANGES {
-                return Err(Error::conflict("Reviewed client policy capacity reached"));
+                return Err(Error::conflict("Reviewed client creation capacity reached"));
             }
             let change = Change {
                 digest: canonical(&proposal)?,
@@ -297,23 +326,23 @@ impl Core {
                 executed_at: None,
             };
             tx.put(CHANGES, &change.proposal.id, &change)?;
-            audit_change(tx, &actor.id, "reviewed_client_policies.stage", &change)?;
+            audit_change(tx, &actor.id, "reviewed_client_creations.stage", &change)?;
             Ok(json!(change))
         })
     }
 
-    pub fn client_policy_change(&self, token: &str, id: &str) -> Result<Value> {
+    pub fn client_creation_change(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
             full_administrator(self, tx, token)?;
             Ok(json!(load(tx, id)?))
         })
     }
 
-    pub fn approve_client_policy_change(
+    pub fn approve_client_creation_change(
         &self,
         token: &str,
         id: &str,
-        binding: ClientPolicyBinding,
+        binding: ClientCreationBinding,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
             let (actor, reviewer) = full_administrator(self, tx, token)?;
@@ -336,16 +365,16 @@ impl Core {
             });
             change.status = Status::Approved;
             tx.put(CHANGES, id, &change)?;
-            audit_change(tx, &actor.id, "reviewed_client_policies.approve", &change)?;
+            audit_change(tx, &actor.id, "reviewed_client_creations.approve", &change)?;
             Ok(json!(change))
         })
     }
 
-    pub fn execute_client_policy_change(
+    pub fn execute_client_creation_change(
         &self,
         token: &str,
         id: &str,
-        binding: ClientPolicyBinding,
+        binding: ClientCreationBinding,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
             let (actor, executor) = full_administrator(self, tx, token)?;
@@ -361,33 +390,29 @@ impl Core {
             {
                 return Err(Error::forbidden());
             }
-            let client = revalidate(self, tx, &actor, &change)?;
-            let mut next = client.clone();
-            next.allowed_groups = change.proposal.after.allowed_groups.clone();
-            next.require_mfa = change.proposal.after.require_mfa;
-            write_client_as(
-                tx,
-                &self.config,
-                WriteAuthority::Management(&actor, Record::Direct("client.policy.reviewed")),
-                Some(&client),
-                next,
-                Secret::Keep,
-                ClientReview::AccessPolicy,
+            let input = revalidate(self, tx, &actor, &change)?;
+            let (client, secret) = new_client(input);
+            let written = write_client_as(
+                tx, &self.config,
+                WriteAuthority::Management(&actor, Record::Direct("client.create.reviewed")),
+                None, client, secret, ClientReview::Creation,
             )?;
             change.status = Status::Executed;
             change.executor = Some(executor);
             change.executed_at = Some(now());
             tx.put(CHANGES, id, &change)?;
-            audit_change(tx, &actor.id, "reviewed_client_policies.execute", &change)?;
-            Ok(json!(change))
+            audit_change(tx, &actor.id, "reviewed_client_creations.execute", &change)?;
+            // The proposal bucket and audit never hold the generated secret.
+            // Only this execution response and the existing actor-scoped receipt do.
+            Ok(json!({"change": change, "client": written.client.view(), "client_secret": written.secret}))
         })
     }
 
-    pub fn cancel_client_policy_change(
+    pub fn cancel_client_creation_change(
         &self,
         token: &str,
         id: &str,
-        binding: ClientPolicyBinding,
+        binding: ClientCreationBinding,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
             let (actor, _) = full_administrator(self, tx, token)?;
@@ -395,7 +420,7 @@ impl Core {
             require_open(&change, &binding)?;
             change.status = Status::Cancelled;
             tx.put(CHANGES, id, &change)?;
-            audit_change(tx, &actor.id, "reviewed_client_policies.cancel", &change)?;
+            audit_change(tx, &actor.id, "reviewed_client_creations.cancel", &change)?;
             Ok(json!(change))
         })
     }
