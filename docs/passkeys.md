@@ -12,7 +12,7 @@ First setup offers **Passkeys only** after the operator supplies the ownership p
 
 An administrator can use **People → New person → Passkey-only administrator** after signing in with a passkey or authenticator code in that browser. The page verifies a primary and a backup credential before creating the enabled account. The new administrator signs in with either credential and can administer normally without a password. A passwordless administrator must retain two passkeys; ordinary management cannot set a password or clear its MFA. The server verifies separate credential IDs but cannot prove that two synced passkeys live on independent devices. Use a separate device or security key for the backup, and rehearse sign-in with it. Lost credentials use the [offline administrator recovery procedure](operations.md#diagnostics-and-recovery).
 
-Initial `/setup` still creates a password-backed first administrator. To run with only passkey-only administrators, create a successor with this flow, verify that both of its passkeys can sign in, and then disable the first administrator. The last-administrator check prevents disabling it before another enabled administrator exists.
+Initial `/setup` offers a password-backed or passkey-only first administrator. Passkey-only setup verifies both a primary and a backup credential before creating the account. For an existing password-backed installation, create a passkey-only successor with the People flow, verify that both passkeys can sign in, and then disable the first administrator. The last-administrator check prevents disabling it before another enabled administrator exists.
 
 CLI consequences:
 
