@@ -1574,13 +1574,18 @@ fn authentik_application_bindings_convert_exactly_or_block() {
 }
 
 #[test]
-fn authentik_membership_expression_chains_convert_exactly_or_block() {
+fn authentik_membership_expression_chains_factor_exactly_or_block() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();
     let issuer = f.core.config.issuer.clone();
     let check = |group: &str| format!("ak_is_group_member(request.user, name=\"{group}\")");
     let (staff, ops, lab) = (check("staff"), check("ops"), check("lab"));
-    let long = vec![check("staff"); 33].join(" or ");
+    let chain = |groups: std::ops::RangeInclusive<u32>| {
+        groups
+            .map(|i| check(&format!("t{i}")))
+            .collect::<Vec<_>>()
+            .join(" or ")
+    };
     let expressions = [
         ("both", format!("return {staff} and not {ops}")),
         ("either", format!("return {staff} or {lab}")),
@@ -1595,11 +1600,33 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             "spaced",
             "\n\t return\tak_is_group_member( request.user ,\tname = \"ops\" )\n".to_owned(),
         ),
-        // `and` binds tighter than `or`, so these mix a conjunction into a disjunction.
+        // `and` binds tighter than `or`; these factor into one any-of list plus unit groups.
+        (
+            "factored",
+            format!("return {staff} and {lab} or {staff} and {ops}"),
+        ),
+        (
+            "factoredneg",
+            format!("return {lab} and not {ops} or {staff} and not {ops}"),
+        ),
+        (
+            "notstaffchain",
+            format!("return not {staff} or not {lab} and not {ops}"),
+        ),
+        ("redundant", format!("return {staff} or {staff} and {ops}")),
+        (
+            "absorbneg",
+            format!("return {staff} and not {ops} or {staff} and not {ops} and {lab}"),
+        ),
+        ("twelve", format!("return {}", chain(1..=12))),
+        // These do not factor.
         ("mixed", format!("return {staff} and {ops} or {lab}")),
         ("mixed2", format!("return {staff} or {ops} and {lab}")),
         ("negor", format!("return {staff} or not {ops}")),
+        ("tautology", format!("return {staff} or not {staff}")),
+        ("toomany", format!("return {}", chain(1..=13))),
         ("contradiction", format!("return {staff} and not {staff}")),
+        // Outside the grammar.
         ("paren", format!("return ({staff} or {ops})")),
         ("nbsp", format!("return\u{a0}{staff}")),
         ("formfeed", format!("return {staff}\u{c} or {ops}")),
@@ -1609,20 +1636,22 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             format!("return {staff} or request.user.is_superuser"),
         ),
         ("comment", format!("return {staff}  # or {ops}")),
+        // Python would decode this escape to "staff"; riAuth never evaluates escapes.
         (
             "escape",
-            // Python would decode this escape to "staff"; riAuth never evaluates escapes.
             "return ak_is_group_member(request.user, name=\"st\\u0061ff\")".to_owned(),
         ),
         ("doubleeq", format!("return {staff} == True")),
-        ("long", format!("return {long}")),
+        (
+            "long",
+            format!("return {}", vec![staff.clone(); 33].join(" or ")),
+        ),
         ("ghost", format!("return {staff} or {}", check("ghosts"))),
         (
             "admins",
             format!("return {staff} and not {}", check("authentik Admins")),
         ),
         ("twin", format!("return {} or {staff}", check("research"))),
-        ("list-a", format!("return {staff} or {lab}")),
         ("list-b", format!("return {ops} or {lab}")),
         (
             "secret",
@@ -1644,54 +1673,31 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
     };
     let policy =
         |slug: &str, pk: &str| binding(slug, "policy", json!({"policy":format!("p-{pk}")}));
-    let single = |slug: &str| {
-        (
-            slug.to_owned(),
-            "any",
-            vec![policy(slug, slug)],
-            Vec::<&str>::new(),
+    let negated = |slug: &str, pk: &str| {
+        binding(
+            slug,
+            "policy",
+            json!({"policy":format!("p-{pk}"),"negate":true}),
         )
     };
+    let app =
+        |slug: &str, mode: &'static str, bindings: Vec<Value>, acknowledged: Vec<&'static str>| {
+            (slug.to_owned(), mode, bindings, acknowledged)
+        };
+    let single = |slug: &str| app(slug, "any", vec![policy(slug, slug)], vec![]);
     // (slug, policy_engine_mode, bindings, acknowledged binding IDs)
     let mut apps = vec![
         single("both"),
         single("either"),
         // A negated binding of a disjunction refuses every named group, and the reverse.
-        (
-            "neither".to_owned(),
-            "any",
-            vec![binding(
-                "neither",
-                "policy",
-                json!({"policy":"p-either","negate":true}),
-            )],
-            vec![],
-        ),
-        (
-            "anyof".to_owned(),
-            "any",
-            vec![binding(
-                "anyof",
-                "policy",
-                json!({"policy":"p-notboth","negate":true}),
-            )],
-            vec![],
-        ),
+        app("neither", "any", vec![negated("neither", "either")], vec![]),
+        app("anyof", "any", vec![negated("anyof", "notboth")], vec![]),
         single("precedence"),
-        (
-            "opsonly".to_owned(),
-            "any",
-            vec![binding(
-                "opsonly",
-                "policy",
-                json!({"policy":"p-notops","negate":true}),
-            )],
-            vec![],
-        ),
+        app("opsonly", "any", vec![negated("opsonly", "notops")], vec![]),
         single("spaced"),
         // Any mode: a disjunction joins the other alternatives' allowed groups.
-        (
-            "anymix".to_owned(),
+        app(
+            "anymix",
             "any",
             vec![
                 binding("anymix", "lab", json!({"group":"g-lab"})),
@@ -1700,14 +1706,36 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             vec![],
         ),
         // All mode: the one any-of list sits beside the other required conditions.
-        (
-            "allpair".to_owned(),
+        app(
+            "allpair",
             "all",
             vec![
                 policy("allpair", "either"),
                 binding("allpair", "ops", json!({"group":"g-ops","negate":true})),
             ],
             vec![],
+        ),
+        single("factored"),
+        single("factoredneg"),
+        // `not staff or (not lab and not ops)`, negated, is `staff and (lab or ops)`.
+        app(
+            "negfactored",
+            "any",
+            vec![negated("negfactored", "notstaffchain")],
+            vec![],
+        ),
+        single("redundant"),
+        single("absorbneg"),
+        single("twelve"),
+        // Acknowledging an any-mode alternative that does not factor accepts narrower access.
+        app(
+            "narrowacked",
+            "any",
+            vec![
+                binding("narrowacked", "lab", json!({"group":"g-lab"})),
+                policy("narrowacked", "mixed"),
+            ],
+            vec!["narrowacked-policy"],
         ),
     ];
     let ready = apps
@@ -1718,6 +1746,8 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         "mixed",
         "mixed2",
         "negor",
+        "tautology",
+        "toomany",
         "contradiction",
         "paren",
         "nbsp",
@@ -1736,36 +1766,37 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         apps.push(single(slug));
     }
     apps.extend([
-        // A negated conjunction admits users outside the named groups.
-        (
-            "negand".to_owned(),
-            "any",
-            vec![binding(
-                "negand",
-                "policy",
-                json!({"policy":"p-both","negate":true}),
-            )],
-            vec![],
-        ),
+        // `staff and not ops`, negated, admits users outside every named group.
+        app("negand", "any", vec![negated("negand", "both")], vec![]),
         // Acknowledgement never clears a required condition riAuth cannot keep.
-        (
-            "acked".to_owned(),
+        app(
+            "acked",
             "any",
             vec![policy("acked", "mixed")],
             vec!["acked-policy"],
         ),
-        (
-            "twolists".to_owned(),
+        // riAuth keeps one any-of list per client.
+        app(
+            "twolists",
             "all",
             vec![
-                policy("twolists", "list-a"),
+                policy("twolists", "either"),
                 binding("twolists", "second", json!({"policy":"p-list-b"})),
             ],
             vec![],
         ),
+        app(
+            "twomixed",
+            "all",
+            vec![
+                policy("twomixed", "factored"),
+                binding("twomixed", "second", json!({"policy":"p-list-b"})),
+            ],
+            vec![],
+        ),
         // In any mode an unconverted alternative only narrows access, after review.
-        (
-            "narrow".to_owned(),
+        app(
+            "narrow",
             "any",
             vec![
                 binding("narrow", "lab", json!({"group":"g-lab"})),
@@ -1798,6 +1829,9 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             json!({"pk":"g-admins","name":"authentik Admins","parents":[]}),
             json!({"pk":"g-research","name":"research","parents":[]}),
         ];
+        groups.extend(
+            (1..=13).map(|i| json!({"pk":format!("g-t{i}"),"name":format!("t{i}"),"parents":[]})),
+        );
         let mut excluded = vec!["g-admins"];
         // Authentik's check also matches an excluded group of the same name.
         if twin {
@@ -1830,13 +1864,18 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         .collect::<Vec<_>>();
     let report = convert(bundle(&all, true, vec![])).unwrap();
     assert_eq!(report["ready_for_plan"], false);
+    let policy_id = |slug: &str| format!("{slug}-policy");
     let mut expected = vec![
-        ("anymix-lab", (Convertible, false)),
-        ("allpair-ops", (Convertible, false)),
-        ("narrow-lab", (Convertible, false)),
-        ("narrow-policy", (Manual, true)),
-        ("twolists-policy", (Unsupported, true)),
-        ("twolists-second", (Unsupported, true)),
+        ("anymix-lab".to_owned(), (Convertible, false)),
+        ("allpair-ops".to_owned(), (Convertible, false)),
+        ("narrowacked-lab".to_owned(), (Convertible, false)),
+        ("narrowacked-policy".to_owned(), (Manual, false)),
+        ("narrow-lab".to_owned(), (Convertible, false)),
+        ("narrow-policy".to_owned(), (Manual, true)),
+        ("twolists-policy".to_owned(), (Unsupported, true)),
+        ("twolists-second".to_owned(), (Unsupported, true)),
+        ("twomixed-policy".to_owned(), (Unsupported, true)),
+        ("twomixed-second".to_owned(), (Unsupported, true)),
     ];
     for slug in [
         "both",
@@ -1848,16 +1887,16 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         "spaced",
         "anymix",
         "allpair",
+        "factored",
+        "factoredneg",
+        "negfactored",
+        "redundant",
+        "absorbneg",
+        "twelve",
     ] {
-        expected.push((
-            Box::leak(format!("{slug}-policy").into_boxed_str()),
-            (Convertible, false),
-        ));
+        expected.push((policy_id(slug), (Convertible, false)));
     }
     for slug in [
-        "mixed",
-        "mixed2",
-        "negor",
         "contradiction",
         "paren",
         "nbsp",
@@ -1872,21 +1911,31 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         "admins",
         "twin",
         "secret",
+    ] {
+        expected.push((policy_id(slug), (Unsupported, true)));
+    }
+    // Formulas that do not factor are manual rewrites that no acknowledgement clears.
+    for slug in [
+        "mixed",
+        "mixed2",
+        "negor",
         "negand",
         "acked",
+        "tautology",
+        "toomany",
     ] {
-        expected.push((
-            Box::leak(format!("{slug}-policy").into_boxed_str()),
-            (Unsupported, true),
-        ));
+        expected.push((policy_id(slug), (Manual, true)));
     }
     for (id, classification) in expected {
         assert_eq!(
-            findings(&report, PolicyBinding, id),
+            findings(&report, PolicyBinding, &id),
             [classification],
             "{id}"
         );
     }
+    assert!(report["blockers"].as_array().unwrap().contains(&json!(
+        "acked: application binding acked-policy needs its expression rewritten in Authentik"
+    )));
     // Expressions are never quoted in the report.
     let rendered = report.to_string();
     for fragment in ["s3cr3t-token", "is_superuser", "st\\u0061ff"] {
@@ -1907,6 +1956,9 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             rule["denied_groups"].clone(),
         ]
     };
+    let twelve = (1..=12)
+        .map(|i| format!("t{i}"))
+        .collect::<std::collections::BTreeSet<_>>();
     for (cid, expected) in [
         ("both", [json!([]), json!(["staff"]), json!(["ops"])]),
         ("either", [json!(["lab", "staff"]), json!([]), json!([])]),
@@ -1920,6 +1972,22 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
             "allpair",
             [json!(["lab", "staff"]), json!([]), json!(["ops"])],
         ),
+        (
+            "factored",
+            [json!(["lab", "ops"]), json!(["staff"]), json!([])],
+        ),
+        (
+            "factoredneg",
+            [json!(["lab", "staff"]), json!([]), json!(["ops"])],
+        ),
+        (
+            "negfactored",
+            [json!(["lab", "ops"]), json!(["staff"]), json!([])],
+        ),
+        ("redundant", [json!(["staff"]), json!([]), json!([])]),
+        ("absorbneg", [json!([]), json!(["staff"]), json!(["ops"])]),
+        ("twelve", [json!(twelve), json!([]), json!([])]),
+        ("narrowacked", [json!(["lab"]), json!([]), json!([])]),
     ] {
         assert_eq!(access(&report, cid), expected, "{cid}");
     }
@@ -1937,7 +2005,7 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         );
     }
 
-    // Converted chains admit exactly whom Authentik admitted, through the group hierarchy.
+    // Converted formulas admit exactly whom Authentik admitted, through the group hierarchy.
     let report = convert(bundle(&ready, false, vec![])).unwrap();
     assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
     let plan = f
@@ -1980,6 +2048,14 @@ fn authentik_membership_expression_chains_convert_exactly_or_block() {
         ("spaced", &["bob"]),
         ("anymix", &["alice", "bob", "carol"]),
         ("allpair", &["alice", "carol"]),
+        ("factored", &["bob"]),
+        ("factoredneg", &["alice", "carol"]),
+        ("negfactored", &["bob"]),
+        ("redundant", &["alice", "bob"]),
+        ("absorbneg", &["alice"]),
+        ("twelve", &[]),
+        // Authentik also admitted Alice and Bob through the acknowledged alternative.
+        ("narrowacked", &["carol"]),
     ] {
         for (username, session) in &sessions {
             let mut request = f.request(cid, &crypto::random_token(""));

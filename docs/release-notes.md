@@ -155,6 +155,14 @@
   parentheses, non-ASCII characters and whitespace other than spaces and tabs
   do not convert. A binding field `enabled`, `negate` or `expiring` that is not
   a boolean now fails the conversion.
+- Mixed `and`/`or` membership chains now convert when they factor exactly into
+  one any-of allowed-group list plus required and denied groups. The preflight
+  checks this against every assignment of up to 12 distinct groups, after
+  applying the binding's negation. For example, `a and b or a and c` becomes
+  allowed groups `b, c` with required group `a`. A formula that does not
+  factor, always passes, or checks more than 12 groups is a manual finding that
+  needs a rewrite in Authentik. It always blocks where its condition is
+  required, and `translated_binding_ids` cannot clear it.
 
 # Unreleased migration identity continuity (G02)
 

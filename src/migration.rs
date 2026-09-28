@@ -782,61 +782,90 @@ fn membership_expression(expression: &str) -> Option<Vec<Vec<Literal<'_>>>> {
     }
 }
 
-/// The riAuth condition equal to a membership expression, negated when its binding is. riAuth ANDs
-/// its conditions, so it holds a conjunction of literals as required and denied groups, and a
-/// disjunction only when every literal is positive, as one any-of group list. Mixing `and` with
-/// `or`, a disjunction with a negated literal, and a conjunction that requires and refuses one
-/// group are not represented.
-fn membership_condition(
-    terms: &[Vec<Literal<'_>>],
-    negate: bool,
-) -> std::result::Result<Condition, String> {
-    let (conjunction, literals) = match terms {
-        [term] => (true, term.clone()),
-        terms if terms.iter().all(|term| term.len() == 1) => {
-            (false, terms.iter().map(|term| term[0]).collect::<Vec<_>>())
-        }
-        _ => {
-            return Err(
-                "mixes and with or, which riAuth cannot represent as one condition".to_owned(),
-            );
-        }
-    };
-    // De Morgan: a negated binding turns a conjunction into a disjunction of the opposite
-    // literals, and the reverse.
-    let conjunction = conjunction != negate;
-    let literals = literals
+/// What a membership expression becomes in riAuth.
+enum Membership {
+    Exact(Condition),
+    /// The formula does not factor into riAuth's shape; rewriting it in Authentik is a manual step.
+    Nonfactorable(String),
+    /// The formula never passes, so Authentik admits no one through it.
+    Never(String),
+}
+
+/// Factor a membership expression, negated when its binding is, into the one shape riAuth ANDs
+/// together: one any-of group list, required groups and denied groups. Each checked group is an
+/// independent variable, and the factored shape must agree with the expression on every
+/// assignment, so a result is exact for any group hierarchy. At most 12 distinct groups are
+/// checked this way.
+fn membership_condition(terms: &[Vec<Literal<'_>>], negate: bool) -> Membership {
+    const MAX_GROUPS: usize = 12;
+    let atoms = terms
+        .iter()
+        .flatten()
+        .map(|(_, name)| *name)
+        .collect::<BTreeSet<_>>()
         .into_iter()
-        .map(|(negated, name)| (negated != negate, name.to_owned()))
         .collect::<Vec<_>>();
-    let required = literals
-        .iter()
-        .filter(|(negated, _)| !negated)
-        .map(|(_, name)| name.clone())
-        .collect::<BTreeSet<_>>();
-    let refused = literals
-        .iter()
-        .filter(|(negated, _)| *negated)
-        .map(|(_, name)| name.clone())
-        .collect::<BTreeSet<_>>();
-    if conjunction {
-        if !required.is_disjoint(&refused) {
-            return Err("requires and refuses the same group, so it never passes".to_owned());
-        }
-        Ok(match (required.len(), refused.len()) {
-            (1, 0) => Condition::Group(required.into_iter().next().unwrap_or_default()),
-            (0, 1) => Condition::NotGroup(refused.into_iter().next().unwrap_or_default()),
-            _ => Condition::Groups(required, refused),
-        })
-    } else if !refused.is_empty() {
-        Err("admits users outside the named groups through a negated alternative, which riAuth cannot represent".to_owned())
-    } else if required.len() == 1 {
-        Ok(Condition::Group(
-            required.into_iter().next().unwrap_or_default(),
-        ))
-    } else {
-        Ok(Condition::AnyGroups(required))
+    if atoms.len() > MAX_GROUPS {
+        return Membership::Nonfactorable(format!(
+            "checks more than {MAX_GROUPS} distinct groups, too many to factor exactly"
+        ));
     }
+    let bit = |name: &str| 1u32 << atoms.iter().position(|atom| *atom == name).unwrap_or(0);
+    // Python's reading: alternatives of conjunctions, then the binding's negation.
+    let passes = |x: u32| {
+        terms.iter().any(|term| {
+            term.iter()
+                .all(|(negated, name)| (x & bit(name) != 0) != *negated)
+        }) != negate
+    };
+    let rows = 1u32 << atoms.len();
+    let passing = (0..rows).filter(|x| passes(*x)).collect::<Vec<_>>();
+    if passing.is_empty() {
+        return Membership::Never("never passes, so Authentik admits no one through it".to_owned());
+    }
+    if passing.len() == rows as usize {
+        return Membership::Nonfactorable(
+            "always passes, so it restricts nothing and should be removed".to_owned(),
+        );
+    }
+    // Groups every passing assignment is in, or out of.
+    let required = passing.iter().fold(rows - 1, |mask, x| mask & x);
+    let refused = passing.iter().fold(rows - 1, |mask, x| mask & !x);
+    // With those fixed, the rest must be one any-of list, or nothing.
+    let rest = (rows - 1) & !required & !refused;
+    let any = if passes(required) {
+        0
+    } else {
+        (0..atoms.len())
+            .map(|i| 1u32 << i)
+            .filter(|b| rest & b != 0 && passes(required | b))
+            .fold(0, |mask, b| mask | b)
+    };
+    let factored =
+        |x: u32| x & required == required && x & refused == 0 && (any == 0 || x & any != 0);
+    if (0..rows).any(|x| passes(x) != factored(x)) {
+        return Membership::Nonfactorable(
+            "is not factorable into one any-of group list plus required and denied groups"
+                .to_owned(),
+        );
+    }
+    let names = |mask: u32| {
+        atoms
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| mask & (1 << i) != 0)
+            .map(|(_, name)| (*name).to_owned())
+            .collect::<BTreeSet<_>>()
+    };
+    let (any, required, refused) = (names(any), names(required), names(refused));
+    let only = |set: BTreeSet<String>| set.into_iter().next().unwrap_or_default();
+    Membership::Exact(match (any.is_empty(), required.len(), refused.len()) {
+        (true, 1, 0) => Condition::Group(only(required)),
+        (true, 0, 1) => Condition::NotGroup(only(refused)),
+        (true, ..) => Condition::Groups(required, refused),
+        (false, 0, 0) => Condition::AnyGroups(any),
+        (false, ..) => Condition::Mixed(any, required, refused),
+    })
 }
 /// One binding as the condition it places on a user.
 enum Condition {
@@ -848,6 +877,8 @@ enum Condition {
     Groups(BTreeSet<String>, BTreeSet<String>),
     /// At least one of the groups.
     AnyGroups(BTreeSet<String>),
+    /// At least one group of the first set, every group of the second, and none of the third.
+    Mixed(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>),
 }
 
 /// Access an application's enabled Authentik bindings impose, kept only where riAuth expresses it
@@ -891,6 +922,8 @@ fn application_access(
     let mut conditions = Vec::new();
     // Bindings whose condition comes from an expression policy, by that policy's name.
     let mut origins = BTreeMap::new();
+    // Bindings whose expression does not factor; only rewriting it in Authentik resolves them.
+    let mut rewrite = BTreeSet::new();
     for (id, binding) in &enabled {
         let negate = flag(binding, "negate", false)?;
         let condition = if flag(binding, "expiring", false)? {
@@ -918,11 +951,19 @@ fn application_access(
                         });
                         match unresolved {
                             Some(reason) => Err(reason),
-                            None => membership_condition(&terms, negate)
-                                .map_err(|reason| format!("Expression policy {policy} {reason}"))
-                                .inspect(|_| {
+                            None => match membership_condition(&terms, negate) {
+                                Membership::Exact(condition) => {
                                     origins.insert(id.as_str(), *policy);
-                                }),
+                                    Ok(condition)
+                                }
+                                Membership::Nonfactorable(reason) => {
+                                    rewrite.insert(id.as_str());
+                                    Err(format!("Expression policy {policy} {reason}"))
+                                }
+                                Membership::Never(reason) => {
+                                    Err(format!("Expression policy {policy} {reason}"))
+                                }
+                            },
                         }
                     }
                 },
@@ -992,9 +1033,21 @@ fn application_access(
         .count();
     let any_lists = conditions
         .iter()
-        .filter(|(_, c)| matches!(c, Ok(Condition::AnyGroups(_))))
+        .filter(|(_, c)| matches!(c, Ok(Condition::AnyGroups(_) | Condition::Mixed(..))))
         .count();
     let names = |set: &BTreeSet<String>| set.iter().cloned().collect::<Vec<_>>().join(", ");
+    // "requires every group of a and refuses every group of b", leaving out an empty half.
+    let units = |required: &BTreeSet<String>, refused: &BTreeSet<String>| {
+        [
+            ("requires every group of", required),
+            ("refuses every group of", refused),
+        ]
+        .iter()
+        .filter(|(_, set)| !set.is_empty())
+        .map(|(verb, set)| format!("{verb} {}", names(set)))
+        .collect::<Vec<_>>()
+        .join(" and ")
+    };
     // Only an `any`-mode alternative may be left out on acknowledgement, and only while a
     // converted alternative still restricts access, so riAuth admits a subset of Authentik's
     // users. A required, impossible or unknown condition is never left out.
@@ -1002,11 +1055,16 @@ fn application_access(
         Converted(String, Condition, bool),
         Narrows(String),
         Impossible(String),
+        /// A formula that does not factor, which only rewriting it in Authentik resolves.
+        Rewrite(String),
     }
     let mut outcomes = Vec::new();
     for (id, condition) in conditions {
         let outcome = match (condition, &required) {
             (_, Err(reason)) => Outcome::Impossible(reason.clone()),
+            (Err(reason), Ok(true)) if rewrite.contains(id) => Outcome::Rewrite(format!(
+                "{reason}; it is a required condition, so it cannot be left out"
+            )),
             (Err(reason), Ok(true)) => Outcome::Impossible(format!(
                 "{reason}; it is a required condition, so leaving it out would admit users Authentik refused"
             )),
@@ -1055,21 +1113,27 @@ fn application_access(
             (Ok(Condition::Groups(required, refused)), Ok(true)) => Outcome::Converted(
                 format!(
                     "The binding {} through settings.policy.access; members of each group and of every group below it count, as in Authentik",
-                    [("requires every group of", &required), ("refuses every group of", &refused)]
-                        .iter()
-                        .filter(|(_, set)| !set.is_empty())
-                        .map(|(verb, set)| format!("{verb} {}", names(set)))
-                        .collect::<Vec<_>>()
-                        .join(" and ")
+                    units(&required, &refused)
                 ),
                 Condition::Groups(required, refused),
                 true,
             ),
             // riAuth ANDs one any-of list per client with its other conditions.
-            (Ok(Condition::AnyGroups(_)), Ok(true)) if any_lists > 1 => Outcome::Impossible(
+            (Ok(Condition::AnyGroups(_) | Condition::Mixed(..)), Ok(true)) if any_lists > 1 => Outcome::Impossible(
                 "riAuth keeps one any-of group list per client, and this application requires several"
                     .to_owned(),
             ),
+            (Ok(Condition::Mixed(any, required, refused)), Ok(true)) => {
+                Outcome::Converted(
+                    format!(
+                        "The binding's groups {} become allowed groups, and it {} through settings.policy.access; members of each group and of every group below it count, as in Authentik",
+                        names(&any),
+                        units(&required, &refused)
+                    ),
+                    Condition::Mixed(any, required, refused),
+                    true,
+                )
+            }
             (Ok(Condition::AnyGroups(groups)), Ok(_)) => Outcome::Converted(
                 format!(
                     "The binding's groups {} become allowed groups; members of any of them and of every group below them pass, as in Authentik",
@@ -1115,6 +1179,11 @@ fn application_access(
                     ))
                 }
             }
+            Outcome::Narrows(reason) if !alternative_kept && rewrite.contains(id) => {
+                Outcome::Rewrite(format!(
+                    "{reason}; no alternative of this application converts, so leaving it out cannot narrow access"
+                ))
+            }
             Outcome::Narrows(reason) if !alternative_kept => Outcome::Impossible(format!(
                 "{reason}; no alternative of this application converts, so leaving it out cannot narrow access"
             )),
@@ -1141,6 +1210,11 @@ fn application_access(
                         rule.denied_groups.extend(refused);
                     }
                     Condition::AnyGroups(groups) => allowed.extend(groups),
+                    Condition::Mixed(any, required, refused) => {
+                        allowed.extend(any);
+                        rule.all_groups.extend(required);
+                        rule.denied_groups.extend(refused);
+                    }
                 }
                 let reason = match origins.get(id) {
                     Some(policy) => format!(
@@ -1164,6 +1238,13 @@ fn application_access(
                         "{cid}: application binding {id} cannot be converted exactly and needs a reviewed translation"
                     ));
                 }
+            }
+            Outcome::Rewrite(reason) => {
+                p.add(ItemKind::PolicyBinding, id, Classification::Manual, reason,
+                    "Rewrite the expression in Authentik so it factors into one any-of group list plus required and denied groups, for example by splitting it into separate bindings, and export again; translated_binding_ids cannot clear it")
+                    .block(format!(
+                        "{cid}: application binding {id} needs its expression rewritten in Authentik"
+                    ));
             }
             Outcome::Impossible(reason) => {
                 p.add(ItemKind::PolicyBinding, id, Classification::Unsupported, reason,

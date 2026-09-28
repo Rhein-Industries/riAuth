@@ -62,7 +62,7 @@ The importer carries over exact redirects, supported grant permissions, token li
 
 - **exact**: carried over unchanged. Examples: strict redirect URIs, grant lists, `hashed_user_id`, `user_id` and `user_uuid` subjects, issuers that match the exported issuer mode, source links backed by an exported connection, logout URIs, group names without parents, and disabled application bindings, which admit and refuse no one.
 - **convertible**: carried over through a documented transformation. Examples: flattened parent groups, `user_username`, `user_email` and `user_upn` subjects, which stay fixed after import, `authentik-<pk>` local IDs, duration strings, logout redirects, application portal metadata, enabled group and user bindings of a converted application that riAuth expresses exactly, and single `ak_is_group_member` expressions bound to it, which become its access conditions, the built-in source, referenced password hashes and TOTP secrets.
-- **manual**: depends on reviewed operator input or an explicit decision. A manual item is non-blocking once that input is present. Examples: client resolutions, authentication flows, property mappings, policy bindings, federation, client secrets, source resolutions and newly established passwords. Group attributes and Authentik superuser status or roles granted through groups are non-blocking manual findings. They are not copied or promoted, so grant any riAuth permissions explicitly. Identity continuity adds the target issuer binding (non-blocking), reviewed issuers that do not match the export or lack `issuer_mode`, source links the export does not establish, exported connections that are not carried over, excluded groups (non-blocking) and stale `passwords`, `totp` or `excluded_groups` entries.
+- **manual**: depends on reviewed operator input or an explicit decision. A manual item is non-blocking once that input is present. Examples: client resolutions, authentication flows, property mappings, policy bindings, federation, client secrets, source resolutions and newly established passwords. Group attributes and Authentik superuser status or roles granted through groups are non-blocking manual findings. They are not copied or promoted, so grant any riAuth permissions explicitly. Identity continuity adds the target issuer binding (non-blocking), reviewed issuers that do not match the export or lack `issuer_mode`, source links the export does not establish, exported connections that are not carried over, excluded groups (non-blocking) and stale `passwords`, `totp` or `excluded_groups` entries. A group-membership expression that does not factor is manual too, but where its condition is required it stays blocking until it is rewritten in Authentik.
 - **unsupported**: cannot be represented or transferred. Examples: regex redirects, unknown subject modes or logout methods, non-OAuth2 providers, provisioning providers, sources without an adapter, subjects outside the OIDC format and duplicate subjects. Usernames, names, emails, group names and client IDs that riAuth cannot store unchanged, several groups with one name, one upstream identity linked to several accounts, issuers that several providers share or that collide with riAuth's own, and application bindings riAuth cannot keep exactly are unsupported and blocking. Authentik's internal service accounts are unsupported and non-blocking, and are never converted. Passkeys, live sessions and tokens, static recovery tokens, other authenticator devices, app passwords and API tokens always appear as non-blocking unsupported items, because they cannot move and users must sign in and enroll again.
 
 A provider without a `clients` entry is still classified item by item, as if its review were empty. Its provider finding, authentication flow, and any exported mappings, federation, encryption key or confidential client secret block, while intrinsic items such as strict redirects, grants and the subject mode keep their normal classification. Its application is classified from the export but blocks until the provider is reviewed. Every application that shares a provider also gets its own blocking finding. Duplicate subjects are checked for every exported provider. No client, and no per-client subject, is converted from an unreviewed provider. A `clients` or `source_resolutions` entry that names nothing in the export blocks and is not applied, including any binding IDs it translates.
@@ -160,18 +160,31 @@ chain     := literal { ("and" | "or") literal }       (at most 32 literals)
 literal   := ["not"] "ak_is_group_member(request.user, name=" quoted-name ")"
 ```
 
-Tokens are separated only by spaces and tabs, and the name is a plain single- or double-quoted string. Authentik's `ak_is_group_member` checks `user.all_groups()`, so each literal passes for members of the group and of every group below it, exactly like a group binding and like riAuth's flattened memberships. Python evaluates `not` before `and` and `and` before `or`. So the chain is read as alternatives of conjunctions, and it converts only when it is one of these (after a negated binding applies De Morgan's laws):
+Tokens are separated only by spaces and tabs, and the name is a plain single- or double-quoted string. Authentik's `ak_is_group_member` checks `user.all_groups()`, so each literal passes for members of the group and of every group below it, exactly like a group binding and like riAuth's flattened memberships. Python evaluates `not` before `and` and `and` before `or`, so the chain is a disjunction of conjunctions, negated as a whole when its binding negates it.
 
-| Chain | Converts to |
+riAuth ANDs one any-of group list with required and denied groups, so the preflight factors the formula into exactly that shape:
+
+- **Required groups:** the groups every passing assignment includes.
+- **Denied groups:** the groups every passing assignment excludes.
+- **Any-of list:** the remaining groups, which must form one list of plain groups, or none.
+- **Verification:** each checked group is treated as an independent yes/no variable, and the factored shape must agree with the formula on every assignment of up to 12 distinct groups. The result is therefore exact whatever the group hierarchy.
+
+For example, `a and b or a and c` becomes allowed groups `b, c` with required group `a`. `a and not d or b and not d` becomes allowed groups `a, b` with denied group `d`. `a or a and b` becomes allowed group `a`.
+
+| Factored shape | Converts to |
 | --- | --- |
-| Literals joined only by `and` | Required groups (`all_groups`) for the plain literals and denied groups for the negated ones, like the static bindings of `all` mode |
-| Plain literals joined only by `or` | One any-of list, which becomes `allowed_groups`; in `any` mode it joins the other alternatives' allowed groups |
+| Required and denied groups only | Required groups (`all_groups`) and denied groups, like the static bindings of `all` mode |
+| One any-of list only | `allowed_groups`; in `any` mode it joins the other alternatives' allowed groups |
+| One any-of list with required or denied groups | `allowed_groups` plus required and denied groups, where every condition is required (`all` mode or a single binding); in `any` mode it is an alternative riAuth cannot combine |
 
-The chain is then handled like any other converted binding. It is unsupported, and blocks as the rules above require, when:
+The converted formula is then handled like any other converted binding. A formula that does not factor, such as `a and b or c`, `a or not b`, a formula that always passes, or one with more than 12 distinct groups, is a **manual** finding. Rewrite it in Authentik, for example by splitting it into separate bindings, and export again:
 
-- it mixes `and` with `or`, such as `a and b or c`, which Python reads as `(a and b) or c`;
-- an `or` chain contains a negated literal, which would admit users outside every named group;
-- an `and` chain requires and refuses the same group, so it never passes;
+- Where every condition is required, or no other alternative converts, it always blocks. `translated_binding_ids` cannot clear it, because leaving it out would admit users Authentik refused.
+- In `any` mode beside a converted alternative, acknowledging it accepts narrower access, as for other alternatives.
+
+It is unsupported and blocks when:
+
+- the formula never passes (for example `a and not a`), since Authentik admits no one;
 - an `all`-mode application needs more than one any-of list, because riAuth keeps one per client;
 - a literal names a group that is missing from the export, excluded, not converted, or not the only exported group with that name (Authentik's check also matches an excluded group of the same name).
 
