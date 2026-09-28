@@ -2624,6 +2624,110 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
 }
 
 #[test]
+fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absent_scopes() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let issuer = "https://identity.example.test";
+    let profile =
+        "return {\"name\": request.user.name, \"preferred_username\": request.user.username}";
+    let profile_with_groups = "return {\"name\": request.user.name, \"preferred_username\": request.user.username, \"groups\": [group.name for group in request.user.ak_groups.all()]}";
+    // (client, scope, Python expression, reviewed scopes, groups_in_profile, expected finding)
+    let cases = [
+        (
+            "escaped-sub",
+            "legacy",
+            r#"return {"\u0073ub": True}"#,
+            &["openid", "legacy"][..],
+            false,
+            Manual,
+            true,
+        ),
+        (
+            "extra-groups",
+            "profile",
+            profile,
+            &["openid", "profile"],
+            true,
+            Manual,
+            true,
+        ),
+        (
+            "matched-groups",
+            "profile",
+            profile_with_groups,
+            &["openid", "profile"],
+            true,
+            Exact,
+            false,
+        ),
+        (
+            "absent-empty",
+            "offline_access",
+            "return {}",
+            &["openid"],
+            false,
+            Manual,
+            true,
+        ),
+        (
+            "absent-builtin",
+            "profile",
+            profile,
+            &["openid"],
+            false,
+            Manual,
+            true,
+        ),
+        (
+            "present-empty",
+            "openid",
+            "return {}",
+            &["openid"],
+            false,
+            Exact,
+            false,
+        ),
+    ];
+    let input = json!({
+        "api_version":"riauth.authentik-import/v1",
+        "issuer":issuer,
+        "users":[{"pk":1,"uid":"uid-alice","username":"alice","name":"Alice",
+            "email":"alice@example.test","groups":[],"attributes":{},"type":"internal",
+            "is_active":true,"roles":[]}],
+        "groups":[],
+        "passwords":{"alice":{"reference":"env:PASSWORD","version":"v1"}},
+        "scope_mappings":cases.iter().map(|(cid, scope, expression, ..)| json!({
+            "pk":format!("m-{cid}"),"managed":null,"name":format!("mapping {cid}"),
+            "scope_name":scope,"expression":expression
+        })).collect::<Vec<_>>(),
+        "applications":[],"policy_bindings":[],"sources":[],
+        "providers":cases.iter().enumerate().map(|(i, (cid, ..))| json!({
+            "pk":i + 1,"name":cid,"client_id":cid,"client_type":"public",
+            "grant_types":["authorization_code"],
+            "redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback"}],
+            "property_mappings":[format!("m-{cid}")],"sub_mode":"hashed_user_id",
+            "issuer_mode":"per_provider","include_claims_in_id_token":true
+        })).collect::<Vec<_>>(),
+        "clients":cases.iter().map(|(cid, _, _, scopes, groups_in_profile, ..)| (
+            (*cid).to_owned(), json!({
+                "issuer":format!("{issuer}/application/o/{cid}/"),"scopes":scopes,
+                "settings":{"groups_in_profile":groups_in_profile},
+                "translated_mapping_ids":[],"translated_binding_ids":[],
+                "authentication_flow_reviewed":true,"require_mfa":false
+            })
+        )).collect::<serde_json::Map<_, _>>()
+    });
+    let report = riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
+    for (cid, _, _, _, _, classification, blocking) in cases {
+        let id = format!("{cid}/m-{cid}");
+        assert_eq!(
+            findings(&report, PropertyMapping, &id),
+            [(classification, blocking)],
+            "{id}"
+        );
+    }
+}
+
+#[test]
 fn authentik_reimport_keeps_verified_accounts_and_never_moves_identities() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();

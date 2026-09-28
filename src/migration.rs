@@ -741,6 +741,11 @@ fn claim_dictionary(expression: &str) -> Option<Vec<(&str, ClaimValue)>> {
                 if bytes[at + 1 + end] != quote {
                     return None;
                 }
+                // Python interprets escapes in string keys; comparing their raw spelling could
+                // miss a reserved claim such as "\\u0073ub".
+                if bytes[at + 1..at + 1 + end].contains(&b'\\') {
+                    return None;
+                }
                 at += end + 2;
             }
             b if b.is_ascii_alphabetic() || b == b'_' => {
@@ -831,12 +836,14 @@ struct ClaimFacts {
 
 /// What one exported scope mapping becomes: the claim mappings that reproduce its claims, or the
 /// classification and reason it does not convert. riAuth returns `name` and `preferred_username`
-/// for `profile`, `groups` for `groups`, and derives the `email` scope's claims itself; every other
-/// claim is a claim mapping on the mapping's scope, which the reviewed client must register.
+/// for `profile`, `groups` for `groups` (also for `profile` when configured), and derives the
+/// `email` scope's claims itself; every other claim is a claim mapping on the mapping's scope,
+/// which the reviewed client must register.
 fn scope_claims(
     (name, scope, expression): (&str, &str, &str),
     facts: &ClaimFacts,
     scopes: &BTreeSet<String>,
+    groups_in_profile: bool,
     claimed: &BTreeSet<String>,
 ) -> std::result::Result<Vec<crate::model::claims::ClaimMapping>, (Classification, String)> {
     use crate::model::claims::{ClaimMapping, ClaimSource};
@@ -864,14 +871,22 @@ fn scope_claims(
             "Scope mapping {name} sets the email scope, whose email and email_verified claims riAuth derives from its own verified addresses"
         ));
     }
-    let builtin: &[(&str, ClaimValue)] = match scope {
-        "profile" => &[
+    if !scopes.contains(scope) {
+        return manual(format!(
+            "Scope {scope} is not in the reviewed scopes, so the claims of scope mapping {name} could not be issued"
+        ));
+    }
+    let mut builtin = match scope {
+        "profile" => vec![
             ("name", ClaimValue::Name),
             ("preferred_username", ClaimValue::Username),
         ],
-        "groups" => &[("groups", ClaimValue::DirectGroups)],
-        _ => &[],
+        "groups" => vec![("groups", ClaimValue::DirectGroups)],
+        _ => Vec::new(),
     };
+    if scope == "profile" && groups_in_profile {
+        builtin.push(("groups", ClaimValue::DirectGroups));
+    }
     if let Some((key, _)) = builtin
         .iter()
         .find(|(key, _)| !claims.iter().any(|(k, _)| k == key))
@@ -934,11 +949,6 @@ fn scope_claims(
         {
             return manual(format!(
                 "Scope mapping {name} returns {key}, which riAuth reserves"
-            ));
-        }
-        if !scopes.contains(scope) {
-            return manual(format!(
-                "Scope {scope} is not in the reviewed scopes, so the claims of scope mapping {name} could not be issued"
             ));
         }
         if claimed.contains(key) || mappings.iter().any(|m: &ClaimMapping| m.claim == key) {
@@ -2179,7 +2189,13 @@ pub fn convert(input: Import) -> Result<Value> {
                         .chain(&claim_mappings)
                         .map(|m| m.claim.clone())
                         .collect::<BTreeSet<_>>();
-                    scope_claims(*definition, &facts, &resolution.scopes, &claimed)
+                    scope_claims(
+                        *definition,
+                        &facts,
+                        &resolution.scopes,
+                        resolution.settings.groups_in_profile,
+                        &claimed,
+                    )
                 }
             };
             match outcome {
