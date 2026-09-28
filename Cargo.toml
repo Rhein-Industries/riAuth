@@ -1,5 +1,6 @@
 [package]
 name = "riauth"
+default-run = "riauth"
 version = "0.1.1"
 edition = "2024"
 rust-version = "1.98"

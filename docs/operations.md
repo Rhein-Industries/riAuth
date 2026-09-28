@@ -2,6 +2,8 @@
 
 This is the v0.1 operator runbook. The default redb backend has one owning process, snapshot reads and serialized commits. PostgreSQL supports multiple service processes with shared sessions, replay state, rate limits and delivery leases; see [availability](availability.md). Database election, replication policy and fencing belong to the deployment. Do not start two servers against the same redb file.
 
+`riauth-maintenance` provides the offline `init`, `prepare-setup`, `restore`, `recover-admin`, `migrate-postgres`, `keygen`, and `import-authentik` commands. Build it with `cargo build --locked --bin riauth-maintenance`; `cargo build --locked --no-default-features --bin riauth-maintenance` also works without terminal USB support. It accepts local configuration and output flags, but has no server URL, session, or HTTP administration commands. Stop the server before operations that need exclusive local database access. The existing `riauth` executable still accepts these local commands during this transition; `riauth serve` and authenticated commands such as `login`, `backup`, `plan`, `apply`, and `status` keep their current paths. This does not yet provide a lightweight remote-only CLI.
+
 ## Before exposing an instance
 
 1. Choose redb for one service process or PostgreSQL for multiple processes. Keep the redb state directory private to one host and one running server.
@@ -23,9 +25,10 @@ This example keeps the database key outside the state directory; a secret-manage
 
 ```sh
 sudo install -o root -g root -m 0755 /path/to/verified/riauth /usr/local/bin/riauth
+sudo install -o root -g root -m 0755 /path/to/verified/riauth-maintenance /usr/local/bin/riauth-maintenance
 sudo install -d -o riauth -g riauth -m 0700 /var/lib/riauth /etc/riauth
-sudo -u riauth /usr/local/bin/riauth keygen --out /etc/riauth/database.key
-sudo -u riauth sh -c 'cd /var/lib/riauth && /usr/local/bin/riauth init --issuer https://id.example.com --listen 127.0.0.1:9000 --database-key-file /etc/riauth/database.key'
+sudo -u riauth /usr/local/bin/riauth-maintenance keygen --out /etc/riauth/database.key
+sudo -u riauth sh -c 'cd /var/lib/riauth && /usr/local/bin/riauth-maintenance init --issuer https://id.example.com --listen 127.0.0.1:9000 --database-key-file /etc/riauth/database.key'
 ```
 
 `init` prompts for the first administrator password and writes `/var/lib/riauth/riauth.toml`. Review the generated configuration before starting the service. If Caddy connects over loopback, set the top-level `trusted_proxies = ["127.0.0.1"]`; use the actual socket peer if it differs. Replace the hostname in the [Caddy example](../deploy/Caddyfile), and arrange for Caddy to serve the public HTTPS issuer. The example overwrites `X-Forwarded-For` with the socket client's address.
@@ -76,8 +79,8 @@ For a local instance, run this example from the repository root so `deployment-p
 ```sh
 mkdir -p deployment-private/backup-lab
 cd deployment-private/backup-lab
-riauth keygen --out database.key
-riauth init --database-key-file database.key
+riauth-maintenance keygen --out database.key
+riauth-maintenance init --database-key-file database.key
 riauth serve
 ```
 
@@ -85,9 +88,9 @@ While the service runs, use the same working directory in another terminal to si
 
 ```sh
 riauth login admin
-riauth keygen --out backup.key
+riauth-maintenance keygen --out backup.key
 riauth --request-timeout 300 backup --key-file backup.key --out backup.json
-riauth restore --backup backup.json --key-file backup.key \
+riauth-maintenance restore --backup backup.json --key-file backup.key \
   --out restored --database-key-file database.key
 ```
 
@@ -126,7 +129,7 @@ Logout delivery uses signed, audience-bound events, bounded concurrent requests,
 For break-glass administrator recovery, stop the server and use trusted local filesystem/key access:
 
 ```sh
-riauth --config /path/to/riauth.toml recover-admin admin --reset-mfa
+riauth-maintenance --config /path/to/riauth.toml recover-admin admin --reset-mfa
 riauth --config /path/to/riauth.toml serve
 ```
 

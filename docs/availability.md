@@ -16,14 +16,14 @@ The connection file must be an owner-only regular UTF-8 file (at most 16 KiB); i
 
 ```sh
 mkdir -p deployment-private
-riauth keygen --out deployment-private/database.key
-riauth init --postgres-config deployment-private/postgres.json --issuer https://identity.example.com --listen 0.0.0.0:9000 --database-key-file deployment-private/database.key --password-stdin
+riauth-maintenance keygen --out deployment-private/database.key
+riauth-maintenance init --postgres-config deployment-private/postgres.json --issuer https://identity.example.com --listen 0.0.0.0:9000 --database-key-file deployment-private/database.key --password-stdin
 ```
 
 To move an existing instance, stop its redb service first and keep a verified backup:
 
 ```sh
-riauth --config riauth.toml migrate-postgres --postgres-config deployment-private/postgres.json --out deployment-private/riauth-postgres.toml
+riauth-maintenance --config riauth.toml migrate-postgres --postgres-config deployment-private/postgres.json --out deployment-private/riauth-postgres.toml
 ```
 
 Migration requires an empty target, copies and compares every record, preserves keys/subjects/sessions/grants, and retains the source database. Opening the source runs the normal schema-upgrade path if needed, so preserve a pre-migration backup rather than assuming its bytes never change. A retry can finish writing the configuration if the target still exactly matches the source. This offline migration still materializes and compares complete record maps; the paged v2 backup writer does not reduce migration memory. The redb file lock prevents copying a concurrently running redb service. Backup uses a consistent snapshot on either backend. Restore creates a new redb instance; a subsequent offline migration can populate a fresh PostgreSQL database.

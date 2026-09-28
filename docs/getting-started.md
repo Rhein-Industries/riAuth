@@ -17,6 +17,8 @@ riauth init
 
 `riauth init` prompts for the first administrator password and creates `riauth.toml` plus the `data/` directory in the current directory. The default username is `admin`, the issuer is `http://localhost:9000`, and the listener is `127.0.0.1:9000`. The generated files are ignored by Git. Run the remaining commands from this directory so the CLI finds `riauth.toml`.
 
+The separate `riauth-maintenance init` command performs the same local initialization. It is available from `cargo build --locked --bin riauth-maintenance`; the older `riauth init` remains available during the CLI split. Continue to use `riauth serve` to start the service.
+
 To let the first administrator choose their credentials in the browser, use
 [browser first-administrator setup](browser-bootstrap.md) instead of `riauth init`.
 The operator provisions a private expiring ownership proof before starting the

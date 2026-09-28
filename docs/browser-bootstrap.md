@@ -21,7 +21,7 @@ access_token_ttl = 300
 refresh_token_ttl = 2592000
 session_ttl = 28800
 CONFIG
-riauth prepare-setup --proof-file deployment-private/setup-proof
+riauth-maintenance prepare-setup --proof-file deployment-private/setup-proof
 riauth serve
 ```
 

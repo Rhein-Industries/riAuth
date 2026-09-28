@@ -41,7 +41,7 @@ The importer carries over exact redirects, supported grant permissions, token li
 
 ## Preflight report
 
-`riauth import-authentik --file <bundle> --preflight` converts the bundle in memory and prints the classified findings without writing any file. `--out <new directory>` writes the same findings to the private `report.json`, plus `manifest.json` when ready. Both outputs contain `ready_for_plan`, `blockers` and `summary`, a count per classification plus the number of blocking items. `report.json` and `--preflight` also list every finding in `items`. `riauth --json schema migration-finding` describes one item:
+`riauth-maintenance import-authentik --file <bundle> --preflight` converts the bundle in memory and prints the classified findings without writing any file. The legacy `riauth import-authentik` command remains available. `--out <new directory>` writes the same findings to the private `report.json`, plus `manifest.json` when ready. Both outputs contain `ready_for_plan`, `blockers` and `summary`, a count per classification plus the number of blocking items. `report.json` and `--preflight` also list every finding in `items`. `riauth --json schema migration-finding` describes one item:
 
 | Field | Meaning |
 | --- | --- |
@@ -121,7 +121,7 @@ Run the converter from the repository root, where `deployment-private/` is ignor
 
 ```sh
 mkdir -p deployment-private
-riauth import-authentik --file deployment-private/authentik-import.json --out deployment-private/migration
+riauth-maintenance import-authentik --file deployment-private/authentik-import.json --out deployment-private/migration
 riauth validate --file deployment-private/migration/manifest.json --json
 riauth plan --file deployment-private/migration/manifest.json --out deployment-private/migration/plan.json --json
 riauth apply --plan deployment-private/migration/plan.json --non-interactive --run-id migration-rehearsal --json

@@ -1,10 +1,10 @@
+pub mod local;
 mod transport;
 mod usb;
 use transport::{Remote, SavedSession};
 
 use crate::{
     config::{Config, private_dir, validate_server_url, write_private},
-    core::Core,
     crypto,
     model::*,
     oidc::DEVICE_GRANT,
@@ -147,12 +147,7 @@ pub enum Command {
         command: ProvisionCommand,
     },
     /// Copy an offline redb instance into an empty PostgreSQL database and write its new configuration
-    MigratePostgres {
-        #[arg(long)]
-        postgres_config: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-    },
+    MigratePostgres(local::MigratePostgresArgs),
     /// Invite accounts, verify email and recover a forgotten password
     Account {
         #[command(subcommand)]
@@ -239,16 +234,7 @@ pub enum Command {
         revoke: Option<String>,
     },
     /// Convert complete Authentik API exports into a reviewed manifest and classified preflight report
-    ImportAuthentik {
-        #[arg(long)]
-        file: PathBuf,
-        /// New private directory for report.json and, when ready, manifest.json
-        #[arg(long, required_unless_present = "preflight")]
-        out: Option<PathBuf>,
-        /// Print the classified findings and blockers without writing a report or manifest
-        #[arg(long, conflicts_with = "out")]
-        preflight: bool,
-    },
+    ImportAuthentik(local::ImportAuthentikArgs),
     /// Classify an Authentik export bundle or a declared inventory of another source system; writes nothing
     MigrationPreflight {
         /// riauth.authentik-import/v1 bundle or riauth.migration-inventory/v1 inventory
@@ -270,10 +256,7 @@ pub enum Command {
     /// Inspect queued and completed back-channel logout deliveries
     Deliveries,
     /// Generate a private encryption key file
-    Keygen {
-        #[arg(long)]
-        out: PathBuf,
-    },
+    Keygen(local::KeygenArgs),
     /// Take a consistent encrypted backup of the running instance
     Backup {
         #[arg(long)]
@@ -282,16 +265,7 @@ pub enum Command {
         out: PathBuf,
     },
     /// Restore and verify a backup in a new directory, without starting a server
-    Restore {
-        #[arg(long)]
-        backup: PathBuf,
-        #[arg(long)]
-        key_file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        #[arg(long)]
-        database_key_file: Option<PathBuf>,
-    },
+    Restore(local::RestoreArgs),
     /// Enumerate visible resources with pagination
     Inventory {
         #[arg(value_parser = ["users", "groups", "clients", "audit"])]
@@ -356,31 +330,11 @@ pub enum Command {
         command: AgentCommand,
     },
     /// Create an instance, signing key and first administrator
-    Init {
-        #[arg(long, default_value = "http://localhost:9000")]
-        issuer: String,
-        #[arg(long, default_value = "127.0.0.1:9000")]
-        listen: std::net::SocketAddr,
-        #[arg(long, default_value = "data")]
-        data_dir: PathBuf,
-        #[arg(long, default_value = "admin")]
-        admin: String,
-        #[arg(long)]
-        password_stdin: bool,
-        #[arg(long)]
-        database_key_file: Option<PathBuf>,
-        #[arg(long)]
-        postgres_config: Option<PathBuf>,
-    },
+    Init(local::InitArgs),
     /// Run the identity service with native TLS or a configured TLS reverse proxy
     Serve,
     /// Provision a single-use browser setup proof in a private operator file (local, offline)
-    PrepareSetup {
-        #[arg(long)]
-        proof_file: PathBuf,
-        #[arg(long, default_value_t = 900)]
-        expires_in: u64,
-    },
+    PrepareSetup(local::PrepareSetupArgs),
     /// Check the connected instance
     Status,
     /// Authenticate and save a private CLI session
@@ -485,13 +439,7 @@ pub enum Command {
         command: SsfCommand,
     },
     /// Recover an administrator offline; requires local database access and a stopped server
-    RecoverAdmin {
-        username: String,
-        #[arg(long)]
-        password_stdin: bool,
-        #[arg(long)]
-        reset_mfa: bool,
-    },
+    RecoverAdmin(local::RecoverAdminArgs),
 }
 
 #[derive(Subcommand)]
@@ -1225,6 +1173,9 @@ pub async fn run(cli: Cli) -> Result<()> {
     if cli.output_file.as_ref().is_some_and(|p| p.exists()) {
         bail!("Output file already exists; refusing the operation before mutation");
     }
+    if let Some(command) = local::from_legacy(&cli.command) {
+        return local::dispatch(local::LocalOptions::from(&cli), command).await;
+    }
     match &cli.command {
         Command::Saml {
             command:
@@ -1252,58 +1203,12 @@ pub async fn run(cli: Cli) -> Result<()> {
             )?;
             return Ok(());
         }
-        Command::ImportAuthentik { file, out, .. } => {
-            let input = serde_json::from_slice(&fs::read(file)?)?;
-            let report = crate::migration::convert(input)?;
-            let Some(out) = out else {
-                emit_local(
-                    &cli,
-                    &json!({"ready_for_plan": report["ready_for_plan"], "summary": report["summary"], "blockers": report["blockers"], "items": report["items"]}),
-                )?;
-                return Ok(());
-            };
-            fs::create_dir(out).context("Migration output must be a new directory")?;
-            private_dir(out)?;
-            write_private(
-                &out.join("report.json"),
-                &serde_json::to_vec_pretty(&report)?,
-                false,
-            )?;
-            if report["ready_for_plan"] == true {
-                write_private(
-                    &out.join("manifest.json"),
-                    &serde_json::to_vec_pretty(&report["manifest"])?,
-                    false,
-                )?;
-            }
-            emit_local(
-                &cli,
-                &json!({"report_file": out.join("report.json"), "ready_for_plan": report["ready_for_plan"], "summary": report["summary"], "blockers": report["blockers"], "manifest_file": if report["ready_for_plan"] == true { json!(out.join("manifest.json")) } else { Value::Null }}),
-            )?;
-            return Ok(());
-        }
         Command::MigrationPreflight { file } => {
             emit_local(&cli, &crate::migration::preflight(&fs::read(file)?)?)?;
             return Ok(());
         }
         Command::Schema { name } => {
             emit_local(&cli, &crate::schema::schema(name)?)?;
-            return Ok(());
-        }
-        Command::Keygen { out } => {
-            write_private(out, crypto::random_token("").as_bytes(), false)?;
-            emit_local(&cli, &json!({"key_file": out, "created": true}))?;
-            return Ok(());
-        }
-        Command::Restore {
-            backup,
-            key_file,
-            out,
-            database_key_file,
-        } => {
-            let value =
-                crate::operations::restore(backup, key_file, out, database_key_file.clone())?;
-            emit_local(&cli, &value)?;
             return Ok(());
         }
         Command::Validate { file } => {
@@ -1319,109 +1224,9 @@ pub async fn run(cli: Cli) -> Result<()> {
             emit_local(&cli, &crate::agent::capabilities())?;
             return Ok(());
         }
-        Command::MigratePostgres {
-            postgres_config,
-            out,
-        } => {
-            let config = Config::load(&cli.config)?;
-            let target = crate::postgres_store::PostgresConfig::load(postgres_config)?;
-            let output = out.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                crate::operations::migrate_postgres(config, target, &output)
-            })
-            .await??;
-            emit_local(&cli, &result)?;
-            return Ok(());
-        }
-        Command::Init {
-            postgres_config,
-            issuer,
-            listen,
-            data_dir,
-            admin,
-            password_stdin,
-            database_key_file,
-        } => {
-            if cli.config.exists() {
-                bail!("{} already exists", cli.config.display());
-            }
-            let config = Config {
-                postgres: postgres_config
-                    .as_ref()
-                    .map(|p| crate::postgres_store::PostgresConfig::load(p))
-                    .transpose()?,
-                issuer: issuer.clone(),
-                listen: *listen,
-                data_dir: data_dir.clone(),
-                database_key_file: database_key_file
-                    .as_ref()
-                    .map(|p| p.canonicalize())
-                    .transpose()?,
-                ..Default::default()
-            };
-            config.validate()?;
-            let base = cli.config.parent().unwrap_or(Path::new("."));
-            let mut runtime = config.clone();
-            if runtime.data_dir.is_relative() {
-                runtime.data_dir = base.join(&runtime.data_dir);
-            }
-            if runtime.data_dir.join("riauth.redb").exists() {
-                bail!("Database already exists; refusing to replace it");
-            }
-            let password = read_password(*password_stdin, true)?;
-            let input = NewUser {
-                username: admin.clone(),
-                password: password.to_string(),
-                email: None,
-                display_name: admin.clone(),
-                admin: true,
-            };
-            eprintln!("Creating instance and signing key…");
-            tokio::task::spawn_blocking(move || Core::initialize(runtime, input)).await??;
-            write_private(
-                &cli.config,
-                toml::to_string_pretty(&config)?.as_bytes(),
-                false,
-            )?;
-            emit_local(
-                &cli,
-                &json!({"initialized": true, "config": cli.config, "issuer": config.issuer}),
-            )?;
-            return Ok(());
-        }
         Command::Serve => {
             let config = Config::load(&cli.config)?;
             return crate::bootstrap::serve(config).await;
-        }
-        Command::PrepareSetup {
-            proof_file,
-            expires_in,
-        } => {
-            let config = Config::load(&cli.config)?;
-            let path = proof_file.clone();
-            let ttl = *expires_in;
-            let result = tokio::task::spawn_blocking(move || {
-                crate::bootstrap::Bootstrap::prepare(config, &path, ttl)
-            })
-            .await??;
-            emit_local(&cli, &result)?;
-            return Ok(());
-        }
-        Command::RecoverAdmin {
-            username,
-            password_stdin,
-            reset_mfa,
-        } => {
-            let config = Config::load(&cli.config)?;
-            let password = read_password(*password_stdin, true)?;
-            let username = username.clone();
-            let reset = *reset_mfa;
-            tokio::task::spawn_blocking(move || {
-                Core::open(config)?.recover_admin(&username, &password, reset)
-            })
-            .await??;
-            emit_local(&cli, &json!({"recovered": true, "sessions_revoked": true}))?;
-            return Ok(());
         }
         Command::Pkce => {
             let verifier = crypto::random_token("");
@@ -2116,7 +1921,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?
         }
-        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::PrepareSetup { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
+        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init(..) | Command::PrepareSetup(..) | Command::MigratePostgres(..) | Command::Serve | Command::Pkce | Command::RecoverAdmin(..) | Command::ImportAuthentik(..) | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen(..) | Command::Restore(..) => {
             unreachable!()
         }
     };
