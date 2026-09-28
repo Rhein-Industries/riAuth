@@ -108,6 +108,7 @@ pub const INVALIDATED: &[&str] = &[
     "cloud_directory_apply_snapshots",
     // A restored diagnostic can describe a credential revoked after the snapshot.
     "cloud_connection_checks",
+    "cloud_controller_checks",
     // Queued mail bodies carry the plaintext proofs deleted above.
     "mail_deliveries",
     // Consent withdrawn after the snapshot must not return; users are asked again.

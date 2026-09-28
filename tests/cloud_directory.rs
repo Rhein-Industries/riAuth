@@ -3405,6 +3405,139 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cloud_controller_verification_binds_private_token_to_live_scoped_agent() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use riauth::reconciliation::ControllerConfig;
+    use tower::ServiceExt;
+
+    async fn call(
+        app: &axum::Router,
+        path: &str,
+        token: &str,
+        revision: u64,
+        key: &str,
+    ) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("if-match", format!("\"{revision}\""))
+                    .header("idempotency-key", key)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        (status, value)
+    }
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let controller_token = agent_token(
+        &fixture,
+        "workspace_controller",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let another_token = agent_token(
+        &fixture,
+        "another_controller",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let wrong_scope = agent_token(
+        &fixture,
+        "other_scope",
+        vec![permission("directory.sync", "entra/other")],
+    );
+    let credential_file = fixture._dir.path().join("controller-token");
+    write_private(&credential_file, controller_token.as_bytes(), false).unwrap();
+    fixture.core.config.reconciliation_controllers.insert(
+        "workspace/corp".into(),
+        ControllerConfig {
+            agent_id: "workspace_controller".into(),
+            credential_file: credential_file.clone(),
+            interval_seconds: 3600,
+        },
+    );
+    let revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let app = riauth::api::router(fixture.core.clone());
+    let path = "/api/cloud-directories/workspace/corp/verify-controller";
+    let (status, denied) = call(&app, path, &wrong_scope, revision, "wrong-scope-controller").await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    let (status, first) = call(&app, path, &fixture.admin, revision, "verify-controller").await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["ready"], true);
+    assert!(first["checked_at"].is_u64());
+    let (status, replay) = call(&app, path, &fixture.admin, revision, "verify-controller").await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    assert_eq!(replay, first);
+    let operations = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(operations["controller"]["last_check"], first);
+    assert_eq!(
+        operations["controller"]["credential"]["state"],
+        "file_readable"
+    );
+    assert!(!operations.to_string().contains(&controller_token));
+    assert!(
+        !operations
+            .to_string()
+            .contains(&credential_file.display().to_string())
+    );
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+
+    write_private(&credential_file, another_token.as_bytes(), true).unwrap();
+    let (status, mismatch) = call(
+        &app,
+        path,
+        &fixture.admin,
+        revision,
+        "verify-controller-after-rotation",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{mismatch}");
+    assert_eq!(mismatch["ready"], false);
+    assert!(mismatch.get("error").is_none());
+    let after = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(after["controller"]["last_check"], mismatch);
+    assert!(!after.to_string().contains(&another_token));
+    let audit = fixture.core.audit_events(&fixture.admin, 100).unwrap();
+    assert_eq!(
+        audit
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "cloud_directory.controller_verify")
+            .count(),
+        2
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cloud_schedule_controls_share_browser_api_authority_and_receipts() {
     use axum::{
         body::{Body, to_bytes},

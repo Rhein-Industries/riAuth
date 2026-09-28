@@ -160,6 +160,15 @@ pub struct CloudScheduleUpdate {
     pub interval_seconds: Option<u64>,
 }
 
+#[cfg(feature = "platform")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CloudControllerCheck {
+    pub config_fingerprint: String,
+    pub checked_at: u64,
+    pub ready: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventTrigger {
@@ -490,6 +499,47 @@ fn ensure_capacity(tx: &Tx<'_>) -> Result<()> {
 }
 
 impl Core {
+    /// Check the configured controller's private agent credential and current
+    /// scoped authority without returning either credential or file path.
+    #[cfg(feature = "platform")]
+    pub fn cloud_verify_controller(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        validate_name(id)?;
+        if !matches!(kind, "workspace" | "entra") {
+            return Err(Error::bad("Unknown cloud directory provider"));
+        }
+        let scope = format!("{kind}/{id}");
+        let (action, resource) = action_resource(&scope)?;
+        self.store
+            .read(|tx| self.management(tx, token, action, &resource).map(drop))?;
+        self.mutation(token, |tx| {
+            let actor = self.management(tx, token, action, &resource)?;
+            let controller = self
+                .config
+                .reconciliation_controllers
+                .get(&scope)
+                .ok_or_else(|| Error::missing("Reconciliation controller not configured"))?;
+            let config_fingerprint = fingerprint(&self.config, &scope, controller)?;
+            let ready = scoped_agent(tx, &self.config, &scope, &controller.agent_id)
+                .and_then(|expected| {
+                    let bearer = credential(controller)?;
+                    let actual = self.management(tx, &bearer, action, &resource)?;
+                    if actual.id != expected.id {
+                        return Err(Error::forbidden());
+                    }
+                    Ok(())
+                })
+                .is_ok();
+            let check = CloudControllerCheck {
+                config_fingerprint: config_fingerprint.clone(),
+                checked_at: now(),
+                ready,
+            };
+            tx.put("cloud_controller_checks", &scope, &check)?;
+            audit(tx, &actor.id, "cloud_directory.controller_verify", &scope)?;
+            Ok(json!({"ready": check.ready, "checked_at": check.checked_at}))
+        })
+    }
+
     /// Change only the periodic schedule for one configured cloud controller.
     /// Event jobs and already running work retain their own authority and lease.
     #[cfg(feature = "platform")]

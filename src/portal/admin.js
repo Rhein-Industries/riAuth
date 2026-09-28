@@ -1803,6 +1803,7 @@
     }
     if (report.error) return { crumb: title, node: h("div", {}, heading("CONNECTOR", title), card("Operations unavailable", h("p", { class: "notice warn-notice" }, report.error), h("button", { class: "button secondary", type: "button", onclick: () => { delete data.operations[key]; render(); } }, "Try again"))) };
     const config = report.configuration, validation = report.validation, credential = report.credential;
+    const controller = report.controller, controllerKey = `${key}:controller`;
     const verification = report.last_connection_check;
     const verifyError = data.probes[key];
     const changedSinceCheck = credential.modified_at && verification && credential.modified_at > verification.checked_at;
@@ -1836,6 +1837,22 @@
         else { if (error.status === 403 || error.status === 409 || error.status === 428) delete data.verifyKeys[key]; data.probes[key] = explain(error); if (route().id === key) render(); }
       } finally { button.disabled = false; button.textContent = "Verify current credential"; }
     } }, "Verify current credential");
+    const verifyController = controller ? h("button", { class: "button secondary", type: "button", onclick: async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true; button.textContent = "Checking…";
+      try {
+        data.verifyKeys[controllerKey] = data.verifyKeys[controllerKey] || requestKey();
+        const result = await api("POST", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/verify-controller`, undefined,
+          { revision: data.revision, key: data.verifyKeys[controllerKey] });
+        report.controller.last_check = result;
+        delete data.verifyKeys[controllerKey]; delete data.probes[controllerKey];
+        try { data.operations[key] = await api("GET", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/operations`); } catch { /* Keep the recorded result if refresh fails. */ }
+        if (route().id === key) render();
+      } catch (error) {
+        if (error.status === 401) gate("signin");
+        else { if (error.status === 403 || error.status === 409 || error.status === 428) delete data.verifyKeys[controllerKey]; data.probes[controllerKey] = explain(error); if (route().id === key) render(); }
+      } finally { button.disabled = false; button.textContent = "Verify controller"; }
+    } }, "Verify controller") : null;
     const attributes = config.attributes || {};
     const node = h("div", {}, heading("CONNECTOR", title, "Configuration is read from the server. Verification does not apply a reconciliation plan."),
       h("div", { class: "detail-grid" },
@@ -1870,6 +1887,17 @@
           card("Schedule", report.schedule ? [
             badge(report.schedule.enabled ? "Enabled" : "Disabled", report.schedule.enabled ? "ok" : "muted"),
             report.schedule.state === "not_started" ? h("p", { class: "field-hint" }, "The controller is configured. Its first scheduler pass may queue a periodic job.") : null,
+            controller ? [
+              h("p", {}, badge(controller.credential.state === "file_readable" ? "Controller file readable" : "Controller file unavailable", controller.credential.state === "file_readable" ? "ok" : "warn")),
+              h("p", { class: "field-hint" }, "Check the configured private agent token and its live authority after server-side setup or rotation. This does not run a job."),
+              controller.credential.modified_at ? h("p", { class: "field-hint" }, "File last modified: ", when(controller.credential.modified_at)) : null,
+              verifyController,
+              data.probes[controllerKey] ? h("p", { class: "notice warn-notice" }, data.probes[controllerKey]) : null,
+              controller.last_check ? [
+                h("p", {}, badge(controller.last_check.ready ? "Controller ready" : "Controller needs attention", controller.last_check.ready ? "ok" : "warn"), " Checked ", when(controller.last_check.checked_at)),
+                controller.credential.modified_at > controller.last_check.checked_at ? h("p", { class: "notice warn-notice" }, "The controller file changed after this check. Verify again.") : null,
+              ] : h("p", { class: "field-hint" }, "No controller authority check is recorded yet."),
+            ] : null,
             h("dl", { class: "facts" },
               h("dt", {}, "Cadence"), h("dd", {}, duration(report.schedule.interval_seconds)),
               h("dt", {}, "Next run"), h("dd", {}, report.schedule.next_run ? when(report.schedule.next_run) : "Not scheduled"),

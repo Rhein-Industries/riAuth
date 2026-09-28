@@ -4,6 +4,7 @@ use crate::{
     crypto::{digest, now},
     error::{Error, Result},
     model::Group,
+    reconciliation::{CloudControllerCheck, controller_fingerprint},
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
@@ -170,6 +171,27 @@ impl Core {
                 }))
             })
             .filter(|_| self.config.reconciliation_controllers.contains_key(&scope));
+        let controller = if can_sync {
+            self.config
+                .reconciliation_controllers
+                .get(&scope)
+                .map(|configured| {
+                    let fingerprint = controller_fingerprint(&self.config, &scope)?;
+                    let last_check = self.store.read(|tx| {
+                        self.management(tx, token, "directory.sync", &scope)?;
+                        tx.get::<CloudControllerCheck>("cloud_controller_checks", &scope)
+                    })?;
+                    Ok::<_, Error>(json!({
+                        "credential": credential_status(&configured.credential_file, 4096),
+                        "last_check": last_check
+                            .filter(|check| check.config_fingerprint == fingerprint)
+                            .map(|check| json!({"checked_at": check.checked_at, "ready": check.ready})),
+                    }))
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let jobs = self
             .reconciliation_jobs(token)?
             .as_array()
@@ -222,6 +244,7 @@ impl Core {
                 Err(error) => json!({"valid": false, "message": error.message, "missing_local_groups": missing_local_groups}),
             },
             "schedule": schedule,
+            "controller": controller,
             "jobs": jobs,
             "last_connection_check": last_connection_check,
         }))
