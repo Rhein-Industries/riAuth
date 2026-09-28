@@ -654,13 +654,19 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
 /// Tracked listeners require a bound socket and a live task and owner.
 fn runtime_ready(name: &str, core: &Core, facts: &Facts) -> Option<bool> {
     match name {
-        "radius.pap" | "radius.radsec" => {
+        "radius.pap" | "radius.radsec" | "radius.eap_tls" | "agents.certificate_bindings" => {
             #[cfg(feature = "platform")]
             {
                 Some(core.config.radius_listeners.iter().any(|(id, listener)| {
                     facts.radius_ready_listeners.contains(id)
-                        && (name == "radius.pap"
-                            || listener.transport == crate::radius::Transport::Tls)
+                        && (match name {
+                            "radius.pap" => true,
+                            "radius.radsec" => listener.transport == crate::radius::Transport::Tls,
+                            "radius.eap_tls" | "agents.certificate_bindings" => {
+                                listener.eap_tls.is_some()
+                            }
+                            _ => false,
+                        })
                         && core.runtime.radius_running(id, listener)
                 }))
             }

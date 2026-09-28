@@ -390,8 +390,8 @@ fn crl(dir: &Path, ca: &X509, ca_key: &PKey<Private>, revoked: Option<&X509>) {
     ]);
 }
 
-#[test]
-fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
     let dir = tempfile::tempdir().unwrap();
     let mut core = Core::initialize(
         Config {
@@ -479,11 +479,33 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
     core.config.validate().unwrap();
     riauth::capability::validate_store(&core.config, &core.store).unwrap();
     let states = riauth::capability::runtime(&core).unwrap();
-    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], true);
-    assert_eq!(states["feature_states"]["agents.certificate_bindings"]["usable"], true);
-    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
-    assert_eq!(states["feature_states"]["radius.pap"]["runtime_ready"], false);
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
+    for name in ["radius.eap_tls", "agents.certificate_bindings", "radius.pap"] {
+        assert_eq!(states["feature_states"][name]["configured"], true);
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
+    let servers = riauth::radius::start(core.clone()).await.unwrap();
+    assert_eq!(servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.eap_tls"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in ["radius.eap_tls", "agents.certificate_bindings", "radius.pap"] {
+        assert_eq!(states["feature_states"][name]["runtime_ready"], true);
+        assert_eq!(states["feature_states"][name]["usable"], true);
+    }
+    drop(servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in ["radius.eap_tls", "agents.certificate_bindings", "radius.pap"] {
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
 
     let secret_file = dir.path().join("radius.secret");
     std::fs::remove_file(&secret_file).unwrap();
