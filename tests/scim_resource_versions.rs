@@ -8,7 +8,7 @@ use axum::{
     http::{Method, Request, StatusCode},
 };
 use common::{Fixture, PASSWORD, text};
-use riauth::{agent::{NewAgent, Permission}, identity::downstream, model::{User, UserPatch}, scim};
+use riauth::{agent::{NewAgent, Permission}, identity::downstream, model::{Group, User, UserPatch}, scim};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -282,4 +282,71 @@ async fn scim_user_update_fails_closed_on_broken_management_identity_index() {
     assert_eq!(updated["displayName"], "Changed");
     assert_eq!(f.core.audit_events(&f.admin, 1000).unwrap().as_array().unwrap().iter()
         .filter(|event| event["action"] == "user.scim" && event["target"] == "index-bound").count(), 2);
+}
+
+#[tokio::test]
+async fn scim_group_metadata_update_fails_closed_on_broken_management_identity() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-group-index-agent".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["group.read", "group.write", "group.members"]
+            .map(|action| Permission { action: action.into(), resource: "group/index-bound-group".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::GROUP],"displayName":"index-bound-group","members":[]});
+    let (status, Some(_version), created) = request(&app, Method::POST, "/scim/v2/Groups", &token, None, None, Some(&input)).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("/scim/v2/Groups/{}", text(&created, "id"));
+    let patch = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"tag"}]});
+
+    f.core.store.write(|tx| {
+        let mut group: Group = tx.get("groups", "index-bound-group")?.unwrap();
+        group.name = "wrong-name".into();
+        tx.put("groups", "index-bound-group", &group)
+    }).unwrap();
+    let version = text(&f.core.scim_get(&token, "Groups", &text(&created, "id")).unwrap()["meta"], "version");
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, Some(&version), None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(f.core.audit_events(&f.admin, 1000).unwrap().as_array().unwrap().iter()
+        .filter(|event| event["action"] == "group.scim" && event["target"] == "index-bound-group").count(), 1);
+
+    f.core.store.write(|tx| {
+        let mut group: Group = tx.get("groups", "index-bound-group")?.unwrap();
+        group.name = "index-bound-group".into();
+        tx.put("groups", "index-bound-group", &group)
+    }).unwrap();
+    let version = text(&f.core.scim_get(&token, "Groups", &text(&created, "id")).unwrap()["meta"], "version");
+    let (status, _, changed) = request(&app, Method::PATCH, &path, &token, Some(&version), None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(changed["externalId"], "tag");
+    assert_eq!(f.core.audit_events(&f.admin, 1000).unwrap().as_array().unwrap().iter()
+        .filter(|event| event["action"] == "group.scim" && event["target"] == "index-bound-group").count(), 2);
+}
+
+#[tokio::test]
+async fn scim_group_create_keeps_the_scim_membership_authority_requirement() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-group-write-only".into(),
+        ttl: 600,
+        parent: None,
+        permissions: vec![Permission {
+            action: "group.write".into(),
+            resource: "group/write-only-group".into(),
+        }],
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::GROUP],"displayName":"write-only-group","members":[]});
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::POST, "/scim/v2/Groups", &token, None, None, Some(&input)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(f.core.create_group(&token, "write-only-group").unwrap()["name"], "write-only-group");
 }

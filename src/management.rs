@@ -9,7 +9,7 @@
 //! record are decided here, inside the caller's transaction.
 //!
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
-//! this seam. Inbound SCIM User writes reach the shared user writer.
+//! this seam. Inbound SCIM User and Group writes reach their shared writers.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -114,6 +114,16 @@ pub(crate) enum GroupAudit<'a> {
 pub(crate) struct GroupWrite {
     pub(crate) group: Group,
     pub(crate) changed: bool,
+}
+
+#[cfg(feature = "platform")]
+pub(crate) enum ScimGroupIntent<'a> {
+    Create(&'a BTreeSet<String>),
+    Update {
+        members: Option<&'a BTreeSet<String>>,
+        metadata_changed: bool,
+    },
+    Delete(&'a BTreeSet<String>),
 }
 
 /// Create or change group membership. Every call rechecks the relevant right
@@ -223,6 +233,66 @@ pub(crate) fn write_group(
             Ok(GroupWrite { group, changed })
         }
     }
+}
+
+/// Commit an inbound SCIM Group operation through the group writer. SCIM
+/// requires both rights even for an empty create or metadata-only update; its
+/// resource record, ETag and receipt stay in the caller's transaction.
+#[cfg(feature = "platform")]
+pub(crate) fn write_scim_group(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    name: &str,
+    intent: ScimGroupIntent<'_>,
+) -> Result<()> {
+    let resource = format!("group/{name}");
+    actor.require("group.write", &resource)?;
+    actor.require("group.members", &resource)?;
+    let action = match intent {
+        ScimGroupIntent::Create(members) => {
+            write_group(
+                tx,
+                actor,
+                name,
+                GroupIntent::Create(members),
+                GroupAudit::Deferred,
+            )?;
+            Some("group.scim")
+        }
+        ScimGroupIntent::Update {
+            members,
+            metadata_changed,
+        } => {
+            let changed = if let Some(members) = members {
+                write_group(
+                    tx,
+                    actor,
+                    name,
+                    GroupIntent::ReplaceMembers(members),
+                    GroupAudit::Deferred,
+                )?
+                .changed
+            } else {
+                existing_group(tx, name)?;
+                false
+            };
+            (metadata_changed || changed).then_some("group.scim")
+        }
+        ScimGroupIntent::Delete(members) => {
+            write_group(
+                tx,
+                actor,
+                name,
+                GroupIntent::ReplaceMembers(members),
+                GroupAudit::Deferred,
+            )?;
+            Some("group.scim_delete")
+        }
+    };
+    if let Some(action) = action {
+        crate::delegation::audit_scoped(tx, actor, action, name, &resource)?;
+    }
+    Ok(())
 }
 
 fn existing_group(tx: &Tx<'_>, name: &str) -> Result<Group> {

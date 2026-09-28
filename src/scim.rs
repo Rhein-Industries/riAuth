@@ -1,7 +1,7 @@
 //! SCIM 2.0 user/group provisioning. Each authenticated operator owns its provisioned records.
 use crate::{
     agent::Principal,
-    core::{Core, audit, make_user, validate_display, validate_email, validate_name},
+    core::{Core, make_user, validate_display, validate_email, validate_name},
     crypto,
     error::{Error, Result},
     model::{Group, NewUser, User},
@@ -1282,7 +1282,7 @@ impl Core {
                 ));
             }
             let id = id.map(String::from).unwrap_or_else(crypto::id);
-            let mut group_changed = false;
+            let mut group_members = None;
             let local_id = if kind == "Users" {
                 if data.get("members").is_some() {
                     return Err(Error::bad("Users cannot supply group members"));
@@ -1431,19 +1431,7 @@ impl Core {
                         return Err(Error::bad("Too many group members"));
                     }
                     data["members"] = json!(public);
-                    let intent = if existing.is_none() {
-                        crate::management::GroupIntent::Create(&members)
-                    } else {
-                        crate::management::GroupIntent::ReplaceMembers(&members)
-                    };
-                    group_changed = crate::management::write_group(
-                        tx,
-                        &actor,
-                        &label,
-                        intent,
-                        crate::management::GroupAudit::Deferred,
-                    )?
-                    .changed;
+                    group_members = Some(members);
                 }
                 label.clone()
             };
@@ -1461,6 +1449,17 @@ impl Core {
                         .map_or_else(crypto::id, |record| record.version.clone()),
             };
             let record_changed = existing.as_ref() != Some(&record);
+            if kind == "Groups" {
+                let intent = if existing.is_none() {
+                    crate::management::ScimGroupIntent::Create(group_members.as_ref().unwrap())
+                } else {
+                    crate::management::ScimGroupIntent::Update {
+                        members: group_members.as_ref(),
+                        metadata_changed: record_changed,
+                    }
+                };
+                crate::management::write_scim_group(tx, &actor, &label, intent)?;
+            }
             if kind == "Users" || record_changed {
                 tx.put(bucket(kind)?, &id, &record)?;
             }
@@ -1469,9 +1468,6 @@ impl Core {
                 record.version = crypto::id();
                 tx.put(bucket(kind)?, &id, &record)?;
                 view = self.scim_view(tx, &id, &record)?;
-            }
-            if kind != "Users" && (record_changed || group_changed) {
-                audit(tx, &actor.id, &format!("{}.scim", scope(kind)), &label)?;
             }
             Ok(view)
             },
@@ -1518,24 +1514,15 @@ impl Core {
                 require(&actor, &record, "members")?;
                 let members =
                     owner_scoped_group_members(tx, &actor, &record.local_id, BTreeSet::new())?;
-                crate::management::write_group(
+                crate::management::write_scim_group(
                     tx,
                     &actor,
                     &record.local_id,
-                    crate::management::GroupIntent::ReplaceMembers(&members),
-                    crate::management::GroupAudit::Deferred,
+                    crate::management::ScimGroupIntent::Delete(&members),
                 )?;
             }
             record.deleted = true;
             tx.put(bucket(kind)?, id, &record)?;
-            if kind != "Users" {
-                audit(
-                    tx,
-                    &actor.id,
-                    &format!("{}.scim_delete", scope(kind)),
-                    name(&record),
-                )?;
-            }
             Ok(json!({}))
             },
         )

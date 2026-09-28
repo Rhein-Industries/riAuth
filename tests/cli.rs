@@ -1189,3 +1189,138 @@ fn cli_api_and_scim_user_writes_share_management_seam() {
         2,
     );
 }
+
+#[test]
+fn cli_api_and_scim_group_writes_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent_file = dir.path().join("scim-group-manager.json");
+    success(invoke(
+        dir.path(), &config, &session,
+        &[
+            "agent", "create", "scim-group-manager",
+            "--permission", "user.write=user/parity-member",
+            "--permission", "user.read=user/parity-member",
+            "--permission", "group.write=group/parity-group",
+            "--permission", "group.members=group/parity-group",
+            "--permission", "group.read=group/parity-group",
+            "--permission", "state.read=state/revision",
+            "--out", agent_file.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let credential: Value = serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+
+    let user: Value = http
+        .post(format!("{issuer}/scim/v2/Users"))
+        .bearer_auth(token)
+        .json(&json!({"schemas":[riauth::scim::USER],"userName":"parity-member"}))
+        .send().unwrap().json().unwrap();
+    let user_id = user["id"].as_str().unwrap();
+    let local_user = success(cli(&["get", "user", "parity-member"]));
+    let local_id = local_user["id"].as_str().unwrap();
+    let group_input = json!({"schemas":[riauth::scim::GROUP],"displayName":"parity-group","members":[]});
+    let collection = format!("{issuer}/scim/v2/Groups");
+    let created_response = http.post(&collection).bearer_auth(token)
+        .header("idempotency-key", "parity-group-create")
+        .json(&group_input).send().unwrap();
+    assert_eq!(created_response.status(), reqwest::StatusCode::CREATED);
+    let created: Value = created_response.json().unwrap();
+    let original_etag = created["meta"]["version"].as_str().unwrap();
+    let group_id = created["id"].as_str().unwrap();
+    let resource = format!("{collection}/{group_id}");
+    let replay: Value = http.post(&collection).bearer_auth(token)
+        .header("idempotency-key", "parity-group-create")
+        .json(&group_input).send().unwrap().json().unwrap();
+    assert_eq!(replay, created);
+    assert_eq!(success(cli(&["get", "group", "parity-group"]))["members"], json!([]));
+
+    let added = http.put(format!("{issuer}/api/groups/parity-group/members/parity-member"))
+        .bearer_auth(token)
+        .header("if-match", format!("\"{}\"", revision()))
+        .send().unwrap();
+    assert_eq!(added.status(), reqwest::StatusCode::OK);
+    let after_api: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
+    assert_eq!(after_api["members"][0]["value"], user_id);
+    assert_ne!(after_api["meta"]["version"], original_etag);
+    let stale = http.patch(&resource).bearer_auth(token)
+        .header("if-match", original_etag)
+        .json(&json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"stale"}]}))
+        .send().unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::PRECONDITION_FAILED);
+
+    let at = revision();
+    success(cli(&["--if-revision", &at, "group", "remove-member", "parity-group", "parity-member"]));
+    assert_eq!(success(cli(&["get", "group", "parity-group"]))["members"], json!([]));
+    let after_cli: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
+    assert_eq!(after_cli["members"], json!([]));
+    assert_ne!(after_cli["meta"]["version"], after_api["meta"]["version"]);
+
+    let add_member = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"add","path":"members","value":[{"value":user_id}]}]});
+    let changed_response = http.patch(&resource).bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-update")
+        .json(&add_member).send().unwrap();
+    assert_eq!(changed_response.status(), reqwest::StatusCode::OK);
+    let changed: Value = changed_response.json().unwrap();
+    assert_eq!(changed["members"][0]["value"], user_id);
+    let replay: Value = http.patch(&resource).bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-update")
+        .json(&add_member).send().unwrap().json().unwrap();
+    assert_eq!(replay, changed);
+    assert!(success(cli(&["get", "group", "parity-group"]))["members"]
+        .as_array().unwrap().contains(&json!(local_id)));
+
+    let metadata = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"tag"}]});
+    let tagged_response = http.patch(&resource).bearer_auth(token)
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
+        .json(&metadata).send().unwrap();
+    assert_eq!(tagged_response.status(), reqwest::StatusCode::OK);
+    let tagged: Value = tagged_response.json().unwrap();
+    assert_eq!(tagged["externalId"], "tag");
+    let unchanged: Value = http.patch(&resource).bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .json(&metadata).send().unwrap().json().unwrap();
+    assert_eq!(unchanged["meta"]["version"], tagged["meta"]["version"]);
+
+    let deleted = http.delete(&resource).bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-delete")
+        .send().unwrap();
+    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
+    let replay = http.delete(&resource).bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-delete")
+        .send().unwrap();
+    assert_eq!(replay.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(http.get(&resource).bearer_auth(token).send().unwrap().status(), reqwest::StatusCode::NOT_FOUND);
+    assert_eq!(success(cli(&["get", "group", "parity-group"]))["members"], json!([]));
+    assert_eq!(http.post(&collection).bearer_auth(token).json(&group_input).send().unwrap().status(), reqwest::StatusCode::CONFLICT);
+
+    let events = success(invoke(dir.path(), &config, &session, &["audit", "--limit", "1000"], None));
+    let count = |action: &str| events.as_array().unwrap().iter().filter(|event| {
+        event["action"] == action && event["target"] == "parity-group"
+    }).count();
+    assert_eq!(count("group.scim"), 3);
+    assert_eq!(count("group.scim_delete"), 1);
+    for action in ["group.member.add", "group.member.remove"] {
+        assert_eq!(events.as_array().unwrap().iter().filter(|event| {
+            event["action"] == action && event["target"].as_str().unwrap_or("").starts_with("parity-group/")
+        }).count(), 1);
+    }
+}
