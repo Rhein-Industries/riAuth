@@ -251,6 +251,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: event_map refers directly to storage or Core")
         if source_module == "device_trust" and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: device_trust refers directly to storage or Core")
+        if source_module == "session_protocol" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: session_protocol refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -350,6 +352,14 @@ def main() -> None:
             "device_trust_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "device_trust"
+            ),
+            "session_protocol_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "session_protocol"
+            ),
+            "session_protocol_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "session_protocol"
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

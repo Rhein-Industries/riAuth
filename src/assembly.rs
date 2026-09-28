@@ -7,6 +7,7 @@ mod event_map;
 mod issuer;
 mod keyring;
 mod response;
+mod session_protocol;
 
 use crate::{
     config::Config,

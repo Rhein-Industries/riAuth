@@ -644,3 +644,34 @@ guards device trust against direct storage and Core references.
 Twenty-eight protocol files still name storage directly. Session, source,
 OIDC, SAML and SSF adapters remain large cuts; management and API still
 depend on Core/storage, and separate crate contracts remain A03 work.
+
+## Wave 15: session protocol transaction port
+
+[Session protocol](../src/session_protocol.rs) now owns logout redirect
+validation, front-channel URL selection, session-state hashing, confirmation
+lookup and binding, decision settlement, and expiry cleanup through a
+`SessionProtocolTx` port. The concrete [session assembly](../src/assembly/session_protocol.rs)
+maps those operations to the same `rp_sessions`, `clients`, `meta`,
+`logout_codes`, `logout_confirmations` and audit records in the caller's
+transaction. The existing `Core` logout and session-check methods moved there
+without changing their signatures or their order of session validation,
+revocation, queued RP logout, security signal, SAML propagation and audit.
+
+The confirmation record's serialized fields and defaults, digest inputs,
+expiry comparisons, browser binding and response shape remain the same. The
+protocol module no longer imports `Core` or storage; its public helper calls
+continue to accept the concrete transaction through the port.
+
+The source scan covers 133 Rust files before and 134 after this cut. It now
+guards session protocol against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 15 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 28 | 27 |
+| `protocol -> Core` | 31 | 30 |
+| `server_assembly -> protocol` | 7 | 8 |
+| `server_assembly -> storage` | 7 | 8 |
+
+Twenty-seven protocol files still name storage directly. Source, OIDC, SAML
+and SSF remain large adapter cuts. Management and API contracts still depend
+on Core/storage, and independently compiled crate contracts remain A03 work.
