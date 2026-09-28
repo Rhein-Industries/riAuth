@@ -1,5 +1,6 @@
 //! Durable, server-owned local credential and upstream source reauthentication.
 
+pub(crate) mod authorization;
 mod passkey;
 mod password;
 mod recovery;
@@ -50,6 +51,8 @@ pub struct View {
     pub attempts_used: u8,
     pub max_attempts: u8,
     pub executions: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_response: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -65,6 +68,8 @@ struct RequestAuthority {
     requires_mfa: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<upstream::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authorization: Option<authorization::Pin>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -113,6 +118,8 @@ struct RuntimeRun {
     attempts: Vec<Attempt>,
     #[serde(default)]
     in_flight: Option<InFlight>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authorization_response: Option<String>,
 }
 
 impl RuntimeRun {
@@ -175,6 +182,7 @@ impl RuntimeRun {
             .min(usize::from(u8::MAX)) as u8;
         debug_assert!(attempt <= max_attempts);
         Ok(View {
+            authorization_response: self.authorization_response.clone(),
             id: self.record.id.clone(),
             binding: self.record.binding.clone(),
             state: self.record.state.clone(),
@@ -276,6 +284,7 @@ fn authority(
     if let Some(pin) = &request.source {
         upstream::authority(tx, pin, &user)?;
     }
+    authorization::check(tx, run, &request, at)?;
     Ok((user, request))
 }
 
@@ -554,6 +563,7 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
 /// Expire unattended runs and retire their request/evidence rows after a short
 /// inspection window. The maintenance cursor bounds each pass on both backends.
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    authorization::cleanup(tx, at)?;
     for (id, mut run) in tx.maintenance_page::<RuntimeRun>(RUNS)? {
         let expires_at = run
             .record
@@ -738,6 +748,11 @@ impl CompletionStore for TxCompletion<'_, '_> {
                 .put(EVIDENCE, &receipt.id, &receipt)
                 .map_err(storage_invalid)?;
         }
+        if terminal.outcome == super::Outcome::Authenticated {
+            current.authorization_response =
+                authorization::complete(self.core, self.tx, run, evidence, at)
+                    .map_err(storage_invalid)?;
+        }
         current.record.state = RunState::Finished {
             terminal: terminal.id.clone(),
             outcome: terminal.outcome,
@@ -758,6 +773,15 @@ impl Core {
     }
 
     fn start_local_workflow(&self, token: &str, checked: &Validated) -> Result<View> {
+        self.start_authorization_workflow(token, checked, None)
+    }
+
+    fn start_authorization_workflow(
+        &self,
+        token: &str,
+        checked: &Validated,
+        authorization: Option<crate::oidc::Authorization>,
+    ) -> Result<View> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let mfa_definition = (checked.definition().id.as_str() == PASSWORD_WORKFLOW
@@ -791,6 +815,14 @@ impl Core {
                     owned(self, tx, token, &active.record)?;
                     settle_time(self, tx, &pinned, &mut active, at)?;
                     if !active.record.state.is_final() {
+                        let request: RequestAuthority = tx
+                            .get(REQUESTS, &active.record.request)?
+                            .ok_or_else(Error::forbidden)?;
+                        if authorization.is_some() || request.authorization.is_some() {
+                            return Err(Error::conflict(
+                                "An authorization workflow is already active",
+                            ));
+                        }
                         return active.view(&pinned);
                     }
                 }
@@ -825,8 +857,9 @@ impl Core {
                 executions: 0,
                 attempts: vec![],
                 in_flight: None,
+                authorization_response: None,
             };
-            let request = RequestAuthority {
+            let mut request = RequestAuthority {
                 id: request_id.clone(),
                 run: run_id.clone(),
                 account: user.id,
@@ -836,7 +869,11 @@ impl Core {
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW,
                 source: None,
+                authorization: None,
             };
+            if let Some(authorization) = authorization.as_ref() {
+                authorization::bind(tx, &run.record, &mut request, authorization, at)?;
+            }
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;

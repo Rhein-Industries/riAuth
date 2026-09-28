@@ -258,6 +258,29 @@ impl Core {
         remembered: bool,
         proof_key: Option<&str>,
     ) -> Result<String> {
+        #[cfg(feature = "platform")]
+        crate::workflow::executor::authorization::reject_reserved(tx, &request)?;
+        self.authorize_session_proof_inner(tx, session, request, remembered, proof_key)
+    }
+
+    #[cfg(feature = "platform")]
+    pub(crate) fn authorize_workflow(
+        &self,
+        tx: &Tx<'_>,
+        accepted: crate::workflow::executor::authorization::Accepted,
+    ) -> Result<String> {
+        let (session, request, proof_key) = accepted.into_parts();
+        self.authorize_session_proof_inner(tx, session, request, false, Some(&proof_key))
+    }
+
+    fn authorize_session_proof_inner(
+        &self,
+        tx: &Tx<'_>,
+        session: Session,
+        request: Authorization,
+        remembered: bool,
+        proof_key: Option<&str>,
+    ) -> Result<String> {
         if session.expires_at <= now() || session.revoked {
             return Err(Error::unauthorized());
         }

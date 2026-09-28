@@ -178,6 +178,7 @@ impl Core {
                 executions: 1,
                 attempts: vec![],
                 in_flight: None,
+                authorization_response: None,
             };
             let mut reservation = InFlight {
                 nonce: crypto::id(),
@@ -203,6 +204,7 @@ impl Core {
                 expires_at,
                 requires_mfa,
                 source: Some(pin),
+                authorization: None,
             };
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
