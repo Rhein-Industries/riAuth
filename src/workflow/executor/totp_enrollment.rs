@@ -1,6 +1,6 @@
 //! Exact configured TOTP enrollment and replacement: a run-owned secret
-//! follows a live session and fresh, signed passkey proof. The old factor is
-//! preserved until W03's final writer commits the new secret.
+//! follows a live session and fresh, request-bound password or signed passkey
+//! proof. The old factor is preserved until W03's final writer commits.
 use super::*;
 use crate::{authenticator::TotpSettings, core::audit, model::Identity};
 use serde_json::{Value, json};
@@ -16,20 +16,42 @@ pub(super) struct PendingSecret {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Enroll,
+    PasswordEnroll,
     Replace,
 }
 
 impl Mode {
+    fn enrollment(definition: &Definition) -> Self {
+        if supported_configured_password_totp_enrollment(definition) {
+            Self::PasswordEnroll
+        } else {
+            Self::Enroll
+        }
+    }
+
     fn supported(self, definition: &Definition) -> bool {
         match self {
             Self::Enroll => supported_configured_totp_enrollment(definition),
+            Self::PasswordEnroll => supported_configured_password_totp_enrollment(definition),
             Self::Replace => supported_configured_totp_replacement(definition),
+        }
+    }
+
+    fn requires_passkey(self) -> bool {
+        self != Self::PasswordEnroll
+    }
+
+    fn factor(self) -> Proof {
+        if self == Self::PasswordEnroll {
+            Proof::Password
+        } else {
+            Proof::Passkey
         }
     }
 
     fn action(self) -> Action {
         match self {
-            Self::Enroll => Action::EnrollCredential {
+            Self::Enroll | Self::PasswordEnroll => Action::EnrollCredential {
                 credential: Credential::Totp,
             },
             Self::Replace => Action::ReplaceTotp {},
@@ -38,7 +60,7 @@ impl Mode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Enroll => "enrollment",
+            Self::Enroll | Self::PasswordEnroll => "enrollment",
             Self::Replace => "replacement",
         }
     }
@@ -48,6 +70,7 @@ fn binding(run: &RuntimeRun, reservation: &InFlight, mode: Mode) -> Result<Strin
     serde_json::to_string(&(
         match mode {
             Mode::Enroll => "workflow-totp-enrollment/v1",
+            Mode::PasswordEnroll => "workflow-password-totp-enrollment/v1",
             Mode::Replace => "workflow-totp-replacement/v1",
         },
         &run.record.id,
@@ -65,8 +88,8 @@ fn binding(run: &RuntimeRun, reservation: &InFlight, mode: Mode) -> Result<Strin
     .map_err(Error::internal)
 }
 
-/// The bearer retains its original assurance. Only this in-memory copy is
-/// upgraded from the exact live UV receipt for the factor mutation.
+/// The bearer retains its original assurance. This in-memory copy is only
+/// freshened by the exact factor receipt; password proof never asserts MFA.
 fn verified_session(
     core: &Core,
     tx: &Tx<'_>,
@@ -82,9 +105,10 @@ fn verified_session(
     let RunState::Active { step, .. } = &run.record.state else {
         return Err(Error::forbidden());
     };
-    if !user.has_passkeys
+    if user.has_passkeys != mode.requires_passkey()
         || user.totp_secret.is_some() != (mode == Mode::Replace)
         || user.totp_pending.is_some()
+        || request.requires_mfa
         || request.source.is_some()
         || request.authorization.is_some()
         || request.consent.is_some()
@@ -97,13 +121,14 @@ fn verified_session(
     {
         return Err(Error::forbidden());
     }
+    if mode == Mode::PasswordEnroll {
+        crate::password::require_local(tx, &user)?;
+        if let Err(error) = crate::password::unlocked(tx, &user)? {
+            return Err(error);
+        }
+    }
     let mut factor_at = None;
-    for (recorded, proof) in run
-        .record
-        .steps
-        .iter()
-        .zip([Proof::Session, Proof::Passkey])
-    {
+    for (recorded, proof) in run.record.steps.iter().zip([Proof::Session, mode.factor()]) {
         let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
         let evidence: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
         super::super::evidence::check_evidence(
@@ -118,7 +143,7 @@ fn verified_session(
         )
         .map_err(invalid_error)?;
         evidence_authority(core, tx, &run.record, &evidence, at)?;
-        if proof == Proof::Passkey {
+        if proof == mode.factor() {
             factor_at = Some(evidence.verified_at);
         }
     }
@@ -130,8 +155,12 @@ fn verified_session(
         epoch: user.epoch,
         session_id: session.id.clone(),
         auth_time: factor_at.ok_or_else(Error::forbidden)?,
-        mfa: true,
-        amr: vec!["webauthn".into(), "mfa".into()],
+        mfa: mode.requires_passkey(),
+        amr: if mode.requires_passkey() {
+            vec!["webauthn".into(), "mfa".into()]
+        } else {
+            vec!["pwd".into()]
+        },
         source: None,
     };
     crate::passkey::require_fresh_factor(&user, &session)?;
@@ -208,15 +237,36 @@ impl Verified {
             return Err(Error::forbidden());
         }
         let (user, request) = authority(core, tx, run, now())?;
-        if user.totp_secret.is_some() != (self.mode == Mode::Replace) || user.totp_pending.is_some()
+        if user.has_passkeys != self.mode.requires_passkey()
+            || user.totp_secret.is_some() != (self.mode == Mode::Replace)
+            || user.totp_pending.is_some()
+            || request.requires_mfa
+            || request.source.is_some()
+            || request.authorization.is_some()
+            || request.consent.is_some()
+            || request.recovery.is_some()
+            || request.invitation.is_some()
+            || request.removal.is_some()
         {
             return Err(Error::forbidden());
+        }
+        if self.mode == Mode::PasswordEnroll {
+            crate::password::require_local(tx, &user)?;
+            if let Err(error) = crate::password::unlocked(tx, &user)? {
+                return Err(error);
+            }
         }
         let before = user.epoch;
         match self.mode {
             Mode::Enroll => {
                 crate::authenticator::commit_workflow_totp_in(tx, user, &self.secret, &self.code)?
             }
+            Mode::PasswordEnroll => crate::authenticator::commit_workflow_password_totp_in(
+                tx,
+                user,
+                &self.secret,
+                &self.code,
+            )?,
             Mode::Replace => crate::authenticator::commit_workflow_totp_replacement_in(
                 tx,
                 user,
@@ -242,7 +292,7 @@ impl Verified {
             from_epoch: before,
             to_epoch: after.epoch,
             credential: match self.mode {
-                Mode::Enroll => "totp",
+                Mode::Enroll | Mode::PasswordEnroll => "totp",
                 Mode::Replace => "totp_replaced",
             }
             .into(),
@@ -254,7 +304,7 @@ impl Verified {
 }
 
 impl Core {
-    /// Generate one run-owned TOTP secret after a fresh signed passkey proof.
+    /// Generate one run-owned TOTP secret after a fresh factor proof.
     /// The secret is returned only by this call and never by resume.
     pub fn workflow_totp_enrollment_start(&self, token: &str, id: &str) -> Result<Value> {
         self.workflow_totp_change_start(token, id, Mode::Enroll)
@@ -265,10 +315,15 @@ impl Core {
         self.workflow_totp_change_start(token, id, Mode::Replace)
     }
 
-    fn workflow_totp_change_start(&self, token: &str, id: &str, mode: Mode) -> Result<Value> {
+    fn workflow_totp_change_start(&self, token: &str, id: &str, requested: Mode) -> Result<Value> {
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            let mode = if requested == Mode::Enroll {
+                Mode::enrollment(checked.definition())
+            } else {
+                requested
+            };
             if !mode.supported(checked.definition()) {
                 return Err(Error::forbidden());
             }
@@ -365,7 +420,7 @@ impl Core {
         token: &str,
         id: &str,
         code: &str,
-        mode: Mode,
+        requested: Mode,
     ) -> Result<View> {
         if code.len() > 8 {
             return Err(Error::bad("Invalid TOTP code"));
@@ -373,6 +428,11 @@ impl Core {
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            let mode = if requested == Mode::Enroll {
+                Mode::enrollment(checked.definition())
+            } else {
+                requested
+            };
             if !mode.supported(checked.definition()) {
                 return Err(Error::forbidden());
             }

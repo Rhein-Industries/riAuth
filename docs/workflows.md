@@ -7,13 +7,14 @@ configured OIDC consent, for a live bearer session.
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
-issues a new session. Connected credential mutations cover passkey enrollment,
-passkey removal, TOTP enrollment and TOTP replacement authorized by a fresh
-existing-passkey proof, mail-proven password recovery, and first-password or
-first-passkey invitation acceptance. Their real verifiers finalize the credential,
-proof consumption and epoch change atomically. Ordinary sign-in, other enrollment,
-browser consent and source-stage paths are unchanged; browser recovery and
-invitation acceptance
+issues a new session. Connected credential mutations cover passkey enrollment
+and removal, TOTP enrollment authorized by a fresh existing-passkey proof or
+fresh local-password proof for a password-only account, TOTP replacement
+authorized by an existing-passkey proof, mail-proven password recovery, and
+first-password or first-passkey invitation acceptance. Their real verifiers
+finalize the credential, proof consumption and epoch change atomically.
+Ordinary sign-in, other enrollment, browser consent and source-stage paths are
+unchanged; browser recovery and invitation acceptance
 keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -24,9 +25,10 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
-It supports three configured enrollment shapes: a live session and fresh verified
+It supports four configured enrollment shapes: a live session and fresh verified
 existing passkey followed by passkey registration, a new TOTP secret or TOTP
-replacement.
+replacement; or a password-only account's live session and fresh local-password
+proof followed by its first TOTP secret.
 It also supports one configured recovery shape: explicit reset-mail verification
 and password reset in the same transaction, plus one configured sensitive action:
 removal of an exact passkey after a live session and fresh verified passkey proof.
@@ -493,7 +495,8 @@ already has a passkey and has no TOTP enrollment in progress. It uses
 denial, and a terminal requiring session, passkey and enrolled proofs. The run
 lasts at most 600 seconds with eight executions; the enrollment step has one
 attempt and a 120-second deadline. All steps are cancellable. Config, start
-and resume reject other configured TOTP shapes and Essentials excludes them.
+and resume reject other passkey-authorized TOTP shapes; Essentials excludes
+configured enrollment.
 
 Start with `POST /api/workflows/configured/{workflow}` and a live bearer, then
 complete `/api/workflows/{id}/passkey/start` and `/api/workflows/{id}/passkey`
@@ -510,6 +513,31 @@ time step, advances the account epoch, queues revocation, audits and consumes
 the workflow receipts in the same transaction that finalizes the run. No new
 session or recovery codes are issued. This shape does not replace an existing
 TOTP app or enroll the first authenticator for an account without a passkey.
+
+### Password-only TOTP enrollment
+
+Platform also accepts the exact configured `session → password → enroll` shape
+for a local account with no passkey, TOTP factor or ordinary TOTP enrollment
+pending. Its actions are `resume_session`, `verify_password` and
+`enroll_credential: totp`. Success requires session, password and enrolled
+proofs; verified/completed transitions are unconditional and failures lead to
+denial. The same 600-second run, eight-execution, one-attempt enrollment,
+120-second enrollment deadline and proof-age limits apply. The password step
+allows at most three attempts within 300 seconds, and all steps are
+cancellable. Config, start and resume reject other shapes and Essentials
+excludes configured enrollment.
+
+Start with `POST /api/workflows/configured/{workflow}` using a live bearer,
+verify the local password at `POST /api/workflows/{id}/password`, then use the
+same `/totp-enrollment/start` and `/totp-enrollment` endpoints above. The
+password attempt uses the ordinary account lockout and yields a receipt bound
+to that account, session, request and run. It does not raise the bearer's MFA
+assurance or authorize an application request. The final writer rechecks the
+live local account and unspent password receipt with the new code, then
+installs the factor, spends the confirming time step, advances the epoch,
+queues revocation, audits, consumes receipts and finalizes in one transaction.
+It issues no session or recovery codes. Cancellation, denial or expiry clears
+the run-owned secret without changing the account's factors.
 
 ## Configured TOTP replacement
 
@@ -835,11 +863,11 @@ These are not implemented or established by this slice:
   association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey and TOTP enrollment, TOTP replacement, passkey removal,
-  mail-proven password reset and invitation first-password/first-passkey
-  enrollment: session-authorized first-passkey enrollment through password/TOTP,
-  TOTP enrollment without an existing passkey and other initial credential paths
-  remain blocked pending their real adapters.
+  authorized passkey enrollment and removal, existing-passkey or password-only
+  TOTP enrollment, existing-passkey TOTP replacement, mail-proven password reset
+  and invitation first-password/first-passkey enrollment: session-authorized
+  first-passkey enrollment through password/TOTP, TOTP-only replacement and
+  other initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,

@@ -300,7 +300,19 @@ pub(crate) fn commit_workflow_totp_in(
     secret: &str,
     code: &str,
 ) -> Result<()> {
-    commit_workflow_totp_change_in(tx, user, secret, code, false)
+    commit_workflow_totp_change_in(tx, user, secret, code, WorkflowTotpChange::PasskeyEnroll)
+}
+
+/// A password-only local account may add its first TOTP factor after the
+/// configured run's fresh password proof; no passkey or MFA assurance is forged.
+#[cfg(feature = "platform")]
+pub(crate) fn commit_workflow_password_totp_in(
+    tx: &impl AuthenticatorTx,
+    user: User,
+    secret: &str,
+    code: &str,
+) -> Result<()> {
+    commit_workflow_totp_change_in(tx, user, secret, code, WorkflowTotpChange::PasswordEnroll)
 }
 
 /// Replaces the old factor only in the final workflow writer, after bound UV
@@ -312,7 +324,14 @@ pub(crate) fn commit_workflow_totp_replacement_in(
     secret: &str,
     code: &str,
 ) -> Result<()> {
-    commit_workflow_totp_change_in(tx, user, secret, code, true)
+    commit_workflow_totp_change_in(tx, user, secret, code, WorkflowTotpChange::PasskeyReplace)
+}
+
+#[cfg(feature = "platform")]
+enum WorkflowTotpChange {
+    PasskeyEnroll,
+    PasswordEnroll,
+    PasskeyReplace,
 }
 
 #[cfg(feature = "platform")]
@@ -321,9 +340,14 @@ fn commit_workflow_totp_change_in(
     mut user: User,
     secret: &str,
     code: &str,
-    replace: bool,
+    change: WorkflowTotpChange,
 ) -> Result<()> {
-    if user.totp_secret.is_some() != replace || user.totp_pending.is_some() || !user.has_passkeys {
+    let replace = matches!(change, WorkflowTotpChange::PasskeyReplace);
+    let passkey = !matches!(change, WorkflowTotpChange::PasswordEnroll);
+    if user.totp_secret.is_some() != replace
+        || user.totp_pending.is_some()
+        || user.has_passkeys != passkey
+    {
         return Err(Error::forbidden());
     }
     let step = crypto::totp_step(secret, &user.username, code, now(), None)?

@@ -24,8 +24,8 @@ use super::{
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
     supported_configured_passkey_enrollment, supported_configured_passkey_removal,
-    supported_configured_password_reset, supported_configured_totp_enrollment,
-    supported_configured_totp_replacement, validate,
+    supported_configured_password_reset, supported_configured_password_totp_enrollment,
+    supported_configured_totp_enrollment, supported_configured_totp_replacement, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -176,6 +176,7 @@ impl RuntimeRun {
             || supported_configured_passkey(&self.definition)
             || supported_configured_passkey_enrollment(&self.definition)
             || supported_configured_totp_enrollment(&self.definition)
+            || supported_configured_password_totp_enrollment(&self.definition)
             || supported_configured_totp_replacement(&self.definition)
             || supported_configured_passkey_removal(&self.definition)
             || supported_configured_password_reset(&self.definition)
@@ -916,6 +917,7 @@ impl Core {
             && !supported_configured_passkey(checked.definition())
             && !supported_configured_passkey_enrollment(checked.definition())
             && !supported_configured_totp_enrollment(checked.definition())
+            && !supported_configured_password_totp_enrollment(checked.definition())
             && !supported_configured_totp_replacement(checked.definition()))
             || checked.definition().id.as_str() != workflow
         {
@@ -1014,12 +1016,15 @@ impl Core {
                 supported_configured_passkey_enrollment(checked.definition());
             let configured_totp_enrollment =
                 supported_configured_totp_enrollment(checked.definition());
+            let configured_password_totp_enrollment =
+                supported_configured_password_totp_enrollment(checked.definition());
             let configured_totp_replacement =
                 supported_configured_totp_replacement(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
             ) || configured_password.is_some()
+                || configured_password_totp_enrollment
             {
                 crate::password::require_local(tx, &user)?;
             }
@@ -1048,6 +1053,13 @@ impl Core {
                 && (user.totp_secret.is_some() || user.totp_pending.is_some())
             {
                 return Err(Error::conflict("TOTP enrollment is unavailable for this account"));
+            }
+            if configured_password_totp_enrollment
+                && (user.has_passkeys || user.totp_secret.is_some() || user.totp_pending.is_some())
+            {
+                return Err(Error::conflict(
+                    "Password-only TOTP enrollment is unavailable for this account",
+                ));
             }
             if configured_totp_replacement
                 && (user.totp_secret.is_none() || user.totp_pending.is_some())
@@ -1154,6 +1166,7 @@ impl Core {
             if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
                 || configured_enrollment
                 || configured_totp_enrollment
+                || configured_password_totp_enrollment
                 || configured_totp_replacement
                 || configured_removal
                 || configured_consent
