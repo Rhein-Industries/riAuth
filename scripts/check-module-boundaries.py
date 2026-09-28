@@ -269,6 +269,8 @@ def main() -> None:
             errors.append("src/passkey.rs: passkey protocol refers directly to storage, Core or assembly")
         if path == SRC / "authenticator.rs" and refs & (STORAGE | {"core", "assembly"}):
             errors.append("src/authenticator.rs: authenticator protocol refers directly to storage, Core or assembly")
+        if path == SRC / "password.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/password.rs: password protocol refers directly to storage, Core or assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -432,6 +434,12 @@ def main() -> None:
             ),
             "authenticator_core_reference_files": int(
                 "core" in references(SRC / "authenticator.rs")
+            ),
+            "password_storage_reference_files": int(
+                bool(references(SRC / "password.rs") & STORAGE)
+            ),
+            "password_core_reference_files": int(
+                "core" in references(SRC / "password.rs")
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

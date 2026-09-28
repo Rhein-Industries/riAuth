@@ -12,6 +12,7 @@ mod issuer;
 mod keyring;
 mod oidc;
 pub(crate) mod passkey;
+mod password;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

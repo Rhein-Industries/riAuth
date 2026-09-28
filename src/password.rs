@@ -5,18 +5,37 @@
 //! directory accounts never gain a local password this way. A replacement keeps every
 //! enrolled factor and ends every session and grant by advancing the account epoch.
 use crate::{
-    core::{audit, require_factor_session},
     crypto::now,
     error::{Error, Result},
+    identity::require_factor_session,
     model::{Attempts, Session, User},
     signin::{FRESH_SECONDS, reauthentication_required},
-    store::Tx,
 };
 use axum::http::StatusCode;
 
 /// Sign-in's lockout: five failures within this window pause password checks for as long.
 const LOCKOUT_SECONDS: u64 = 900;
 const LOCKOUT_FAILURES: u32 = 5;
+
+/// Credential policy uses the caller's transaction for ownership, lockout,
+/// history, revocation and audit. Assembly maps this to concrete collections.
+pub(crate) trait PasswordTx {
+    fn directory_manages(&self, user_id: &str) -> Result<bool>;
+    fn attempts(&self, username: &str) -> Result<Option<Attempts>>;
+    fn put_attempts(&self, username: &str, attempts: &Attempts) -> Result<()>;
+    fn accept_history(
+        &self,
+        limit: u32,
+        user_id: &str,
+        current_hash: &str,
+        plaintext: &str,
+        new_hash: &str,
+    ) -> Result<()>;
+    fn put_user(&self, id: &str, user: &User) -> Result<()>;
+    fn clear_attempts(&self, username: &str) -> Result<()>;
+    fn queue_user_revocation(&self, user_id: &str) -> Result<()>;
+    fn audit_password(&self, actor: &str, action: &str, target: &str) -> Result<()>;
+}
 
 /// How self-service sees an account's password.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -30,8 +49,8 @@ pub(crate) enum Kind {
 }
 
 impl Kind {
-    pub(crate) fn of(tx: &Tx<'_>, user: &User) -> Result<Self> {
-        Ok(if crate::directory::manages(tx, &user.id)? {
+    pub(crate) fn of(tx: &impl PasswordTx, user: &User) -> Result<Self> {
+        Ok(if tx.directory_manages(&user.id)? {
             Self::Directory
         } else if user.password_hash.is_empty() {
             Self::None
@@ -49,7 +68,7 @@ impl Kind {
 }
 
 /// Self-service may change only a local password.
-pub(crate) fn require_local(tx: &Tx<'_>, user: &User) -> Result<()> {
+pub(crate) fn require_local(tx: &impl PasswordTx, user: &User) -> Result<()> {
     let message = match Kind::of(tx, user)? {
         Kind::Local => return Ok(()),
         Kind::Directory => "Your organization's directory manages this password. Change it there.",
@@ -78,9 +97,9 @@ pub(crate) fn require_fresh_mfa(user: &User, session: &Session, code_verified: b
 
 /// A signed-in password check shares sign-in's lockout, so a session cannot guess the
 /// password faster than the sign-in form allows. Ok(Err) when the account is locked.
-pub(crate) fn unlocked(tx: &Tx<'_>, user: &User) -> Result<Result<()>> {
+pub(crate) fn unlocked(tx: &impl PasswordTx, user: &User) -> Result<Result<()>> {
     let locked = tx
-        .get::<Attempts>("attempts", &user.username)?
+        .attempts(&user.username)?
         .is_some_and(|attempts| attempts.locked_until > now());
     Ok(if locked {
         Err(Error::new(
@@ -94,11 +113,9 @@ pub(crate) fn unlocked(tx: &Tx<'_>, user: &User) -> Result<Result<()>> {
 }
 
 /// Counts a wrong current password toward sign-in's lockout. The caller commits it.
-pub(crate) fn record_failure(tx: &Tx<'_>, user: &User) -> Result<Error> {
+pub(crate) fn record_failure(tx: &impl PasswordTx, user: &User) -> Result<Error> {
     let at = now();
-    let mut attempts = tx
-        .get::<Attempts>("attempts", &user.username)?
-        .unwrap_or_default();
+    let mut attempts = tx.attempts(&user.username)?.unwrap_or_default();
     if at.saturating_sub(attempts.window_start) >= LOCKOUT_SECONDS {
         attempts = Attempts {
             window_start: at,
@@ -109,8 +126,8 @@ pub(crate) fn record_failure(tx: &Tx<'_>, user: &User) -> Result<Error> {
     if attempts.failures >= LOCKOUT_FAILURES {
         attempts.locked_until = at + LOCKOUT_SECONDS;
     }
-    tx.put("attempts", &user.username, &attempts)?;
-    audit(tx, &user.id, "password.change_failed", &user.id)?;
+    tx.put_attempts(&user.username, &attempts)?;
+    tx.audit_password(&user.id, "password.change_failed", &user.id)?;
     Ok(Error::new(
         StatusCode::FORBIDDEN,
         "invalid_current_password",
@@ -121,24 +138,17 @@ pub(crate) fn record_failure(tx: &Tx<'_>, user: &User) -> Result<Error> {
 /// Stores a verified replacement with history, a new epoch (every session and grant
 /// ends), a cleared lockout, queued RP logout and audit. Factors are untouched.
 pub(crate) fn replace(
-    tx: &Tx<'_>,
+    tx: &impl PasswordTx,
     history: u32,
     user: &mut User,
     plaintext: &str,
     hash: String,
 ) -> Result<()> {
-    crate::identity::password_history::accept(
-        tx,
-        history,
-        &user.id,
-        &user.password_hash,
-        plaintext,
-        &hash,
-    )?;
+    tx.accept_history(history, &user.id, &user.password_hash, plaintext, &hash)?;
     user.password_hash = hash;
     user.epoch += 1;
-    tx.put("users", &user.id, user)?;
-    tx.delete("attempts", &user.username)?;
-    crate::logout::queue_user(tx, &user.id)?;
-    audit(tx, &user.id, "user.password.change", &user.id)
+    tx.put_user(&user.id, user)?;
+    tx.clear_attempts(&user.username)?;
+    tx.queue_user_revocation(&user.id)?;
+    tx.audit_password(&user.id, "user.password.change", &user.id)
 }
