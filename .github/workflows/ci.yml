@@ -40,6 +40,10 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
       - run: cargo test --all-targets --features test-support,fuzzing --locked
+      - name: Check build without terminal USB
+        run: |
+          cargo build --no-default-features --locked --bin riauth
+          cargo test --no-default-features --locked --test cli usb_commands_fail_locally_without_feature -- --exact
       - name: Check documentation, notices, and delivery scripts
         run: |
           python3 scripts/check-docs.py
