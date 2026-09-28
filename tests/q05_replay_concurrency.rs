@@ -1336,11 +1336,11 @@ fn stale_factor_after_prepared_verification(h: &Harness) {
     let rotated = h.user("q05-carol");
     assert_eq!(rotated.epoch, epoch + 1);
     assert!(rotated.recovery_codes.contains(&digest(&recovery)));
-    // Only change_password's own reauthentication session was minted, under the old epoch.
+    // Password rotation verifies inside its writer and mints no extra session.
     let minted = carol_sessions();
-    assert_eq!(minted.len(), sessions + 1);
+    assert_eq!(minted.len(), sessions);
     assert!(minted.iter().all(|session| session.identity.epoch <= epoch));
-    assert_eq!(h.audits("login.succeeded", None), successes + 1);
+    assert_eq!(h.audits("login.succeeded", None), successes);
     assert_eq!(h.audits("login.failed", Some("q05-carol")), failures + 1);
     assert_eq!(
         h.audits("user.password.change", Some(&carol_id)),
