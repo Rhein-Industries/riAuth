@@ -3,6 +3,11 @@
 set -euo pipefail
 riauth_pg_bin="${PG_BIN:-$(dirname "$(command -v initdb)")}"
 riauth_cargo="${CARGO:-cargo}"
+riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
+case "$riauth_pg_target" in
+  postgres|q05_replay_concurrency) ;;
+  *) printf 'Unsupported PostgreSQL test target: %s\n' "$riauth_pg_target" >&2; exit 2 ;;
+esac
 riauth_pg_test="$(mktemp -d "${TMPDIR:-/tmp}/riauth-pg-test.XXXXXXXX")"
 cleanup() {
   "$riauth_pg_bin/pg_ctl" -D "$riauth_pg_test/standby" stop -m immediate -w >/dev/null 2>&1 || true
@@ -37,4 +42,8 @@ printf "\nsynchronous_standby_names = 'FIRST 1 (riauth_test_standby)'\n" >>"$ria
 printf 'host=127.0.0.1,127.0.0.1 port=%s,%s dbname=postgres user=riauth_test sslmode=disable\n' "$riauth_pg_port" "$riauth_pg_standby_port" >"$riauth_pg_test/connection"
 chmod 600 "$riauth_pg_test/connection"
 printf 'riauth disposable integration cluster\n' >"$riauth_pg_test/marker"
-RIAUTH_TEST_PG_CONNECTION="$riauth_pg_test/connection" RIAUTH_TEST_PG_ROOT="$riauth_pg_test" RIAUTH_TEST_PG_CTL="$riauth_pg_bin/pg_ctl" "$riauth_cargo" test --locked --test postgres -- --ignored --nocapture
+riauth_features=()
+if [[ "$riauth_pg_target" = q05_replay_concurrency ]]; then
+  riauth_features=(--features test-support)
+fi
+RIAUTH_TEST_PG_CONNECTION="$riauth_pg_test/connection" RIAUTH_TEST_PG_ROOT="$riauth_pg_test" RIAUTH_TEST_PG_CTL="$riauth_pg_bin/pg_ctl" "$riauth_cargo" test --locked "${riauth_features[@]}" --test "$riauth_pg_target" -- --ignored --nocapture --test-threads=1
