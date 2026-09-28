@@ -162,34 +162,5 @@ cargo check --locked --offline --no-default-features --features essentials --lib
 cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_creation --test reviewed_client_policy --test application_management
 ```
 
-All commands use the accepted worktree's shared Cargo target with
-`CARGO_INCREMENTAL=0`, two build jobs and dev/test debug info disabled. Both builds
-and all four focused tests passed in each edition. Essentials retains three
-existing dead-code warnings in passkey assembly/Core; Platform's linker warned
-about the size of `__eh_frame`. New Rust files pass `rustfmt --check` and
-`git diff --check` passes. No broad suite, browser engine or PostgreSQL run was made.
-
-A repeat Platform run caught another shared-target build replacing the remote
-CLI binary during the regression (`creation-review` was missing). The test now
-pins its starting executable inode with a temporary hard link in that same
-target, removed on completion, so later target replacement cannot change its CLI
-mid-test. The focused creation regression was rerun in both editions with this
-protection; it requires no second target or executable copy.
-
-The source was clean at `ce0ea72`, whose stable patch ID matched accepted
-`6d74a77`. Recovery ref
-`refs/riwork-recovery/m05-before-client-creation-ce0ea72` preserves it. Only this
-source branch was aligned to clean accepted `614dcf2` before editing. Accepted
-later advanced to clean `1ccbbe8` (including W02 `90ba06c`). Two changed files overlap:
-
-- `src/management.rs`: accepted adds source-unlink imports and a separate
-  self-service writer. This slice changes the client checker/writer and adds its
-  review child module.
-- `src/recovery.rs`: accepted adds `authorization_prepared_actor_decisions` to
-  invalidation; this slice adds `reviewed_client_creations` in another section.
-
-Integration must preserve both sets of additions and rerun the focused checks
-on the combined tree; no merge was attempted.
-
 The complete remaining M05 inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).
