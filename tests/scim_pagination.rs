@@ -93,6 +93,15 @@ fn paged_scim_lists_count_without_building_every_resource(backend: Backend) {
             false,
         )
         .unwrap();
+    for (group, user) in [
+        ("paged-group-00", "paged-user-00"),
+        ("paged-group-01", "paged-user-00"),
+        ("paged-group-00", "paged-user-01"),
+        ("paged-group-00", "other-paged-user"),
+        ("other-paged-group", "paged-user-00"),
+    ] {
+        f.core.group_member(&f.admin, group, user, true).unwrap();
+    }
 
     for kind in ["Users", "Groups"] {
         let scanned = || {
@@ -112,6 +121,34 @@ fn paged_scim_lists_count_without_building_every_resource(backend: Backend) {
         assert_eq!(first["totalResults"], 16);
         assert_eq!(first["itemsPerPage"], 1);
 
+        let before_page = scanned();
+        let middle = list(&f, &owner, kind, 1, 8);
+        let page_reads = scanned() - before_page;
+        assert!(
+            page_reads <= 60,
+            "{kind} eight-item page scanned {page_reads} records"
+        );
+        let before_sort = scanned();
+        let sorted_page = f
+            .core
+            .scim_list(
+                &owner,
+                kind,
+                Query {
+                    start_index: Some(1),
+                    count: Some(8),
+                    sort_by: Some("id".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let sorted_reads = scanned() - before_sort;
+        assert!(
+            sorted_reads <= 60,
+            "{kind} sorted eight-item page scanned {sorted_reads} records"
+        );
+        assert_eq!(sorted_page, middle);
+
         let full = list(&f, &owner, kind, 1, 100);
         let ids: Vec<_> = full["Resources"]
             .as_array()
@@ -126,8 +163,31 @@ fn paged_scim_lists_count_without_building_every_resource(backend: Backend) {
             assert_eq!(page["totalResults"], 16);
             assert_eq!(&page["Resources"][0], expected);
             let resource = f.core.scim_get(&owner, kind, &ids[index]).unwrap();
-            assert_eq!(resource["meta"]["version"], expected["meta"]["version"]);
+            assert_eq!(&resource, expected);
         }
+        let linked = full["Resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|resource| {
+                resource[if kind == "Users" {
+                    "userName"
+                } else {
+                    "displayName"
+                }] == if kind == "Users" {
+                    "paged-user-00"
+                } else {
+                    "paged-group-00"
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            linked[if kind == "Users" { "groups" } else { "members" }]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
         assert_eq!(list(&f, &owner, kind, 17, 1)["itemsPerPage"], 0);
         assert_eq!(list(&f, &owner, kind, 1, 0)["totalResults"], 16);
 
@@ -184,7 +244,8 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
     created.sort_by(|left, right| left.0.cmp(&right.0));
     let expected: Vec<_> = created.iter().map(|(id, _)| id.clone()).collect();
     // One group makes a full User view scan a measurable opposite-bucket read.
-    f.core
+    let group = f
+        .core
         .scim_write(
             &owner,
             "Groups",
@@ -192,6 +253,10 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
             json!({"schemas":[scim::GROUP],"displayName":"boundary-group"}),
             false,
         )
+        .unwrap();
+    let group_id = text(&group, "id");
+    f.core
+        .group_member(&f.admin, "boundary-group", &created[128].1, true)
         .unwrap();
 
     // The store scan reads 128 rows at a time. These pages cover both sides
@@ -281,6 +346,18 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
     }
     assert_eq!(no_more["totalResults"], 2);
     assert_eq!(no_more["itemsPerPage"], 0);
+
+    // Group.members resolves a user in the second opposite-bucket scan batch.
+    let group_page = list(&f, &owner, "Groups", 1, 1);
+    assert_eq!(group_page["totalResults"], 1);
+    assert_eq!(
+        group_page["Resources"][0]["members"][0]["value"],
+        expected[128]
+    );
+    assert_eq!(
+        group_page["Resources"][0],
+        f.core.scim_get(&owner, "Groups", &group_id).unwrap()
+    );
 }
 
 #[test]

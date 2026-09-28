@@ -1002,10 +1002,10 @@ impl Projection {
     }
 }
 
-// List filters only reference id, userName, displayName, externalId, active,
+// List filters and sort keys use stored fields plus live active, displayName,
 // and emails. Build those effective fields without assembling memberships or
-// resource ETags for every candidate in a default-order scan. Keep this in
-// step with parse_filter_predicate when adding supported filter attributes.
+// resource ETags for every candidate. Keep this in step with the supported
+// attributes in parse_filter_predicate and parse_sort.
 fn scim_filter_view(tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
     let mut value = record.data.clone();
     value["id"] = json!(id);
@@ -1031,8 +1031,83 @@ fn scim_filter_view(tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
     Ok(value)
 }
 
+// Resolve only the memberships needed by this list page. The opposite bucket
+// is read once, in key order, so each array matches the ordering used by GET
+// and its resource ETag. The map retains only edges for selected resources.
+fn scim_page_relations(
+    tx: &Tx<'_>,
+    kind: &str,
+    owner: &str,
+    page: &[(String, Record)],
+) -> Result<Vec<Vec<Value>>> {
+    let mut targets: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (index, (_, record)) in page.iter().enumerate() {
+        if kind == "Users" {
+            let user = tx
+                .get::<User>("users", &record.local_id)?
+                .ok_or_else(|| Error::missing("User missing"))?;
+            for group in crate::core::durable_groups_for(tx, &user.id)? {
+                targets.entry(group).or_default().push(index);
+            }
+        } else {
+            let group = tx
+                .get::<Group>("groups", &record.local_id)?
+                .ok_or_else(|| Error::missing("Group missing"))?;
+            for member in group.members {
+                targets.entry(member).or_default().push(index);
+            }
+        }
+    }
+    let mut relations = vec![Vec::new(); page.len()];
+    if targets.is_empty() {
+        return Ok(relations);
+    }
+    let opposite = if kind == "Users" {
+        "scim_groups"
+    } else {
+        "scim_users"
+    };
+    let mut after = None;
+    loop {
+        let records = tx.scan::<Record>(opposite, after.as_deref(), 128)?;
+        if records.is_empty() {
+            break;
+        }
+        let last_page = records.len() < 128;
+        after = Some(records.last().unwrap().0.clone());
+        for (id, record) in records {
+            if record.deleted || record.owner != owner {
+                continue;
+            }
+            if let Some(indices) = targets.get(&record.local_id) {
+                if kind == "Users" {
+                    record_binding("Groups", &record)?;
+                }
+                let relation = json!({"value":id,"display":name(&record)});
+                for &index in indices {
+                    relations[index].push(relation.clone());
+                }
+            }
+        }
+        if last_page {
+            break;
+        }
+    }
+    Ok(relations)
+}
+
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
+        self.scim_view_with_relations(tx, id, record, None)
+    }
+
+    fn scim_view_with_relations(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        record: &Record,
+        relations: Option<Vec<Value>>,
+    ) -> Result<Value> {
         record_binding(&record.kind, record)?;
         let mut value = record.data.clone();
         value["id"] = json!(id);
@@ -1052,31 +1127,39 @@ impl Core {
                         .collect::<Vec<_>>()
                 );
             }
-            let groups = crate::core::durable_groups_for(tx, &user.id)?;
-            let mut visible_groups = Vec::new();
-            for (id, group) in tx.list::<Record>("scim_groups")? {
-                if !group.deleted
-                    && group.owner == record.owner
-                    && groups.contains(&group.local_id)
-                {
-                    record_binding("Groups", &group)?;
-                    visible_groups.push(json!({"value":id,"display":name(&group)}));
+            value["groups"] = if let Some(relations) = relations {
+                Value::Array(relations)
+            } else {
+                let groups = crate::core::durable_groups_for(tx, &user.id)?;
+                let mut visible_groups = Vec::new();
+                for (id, group) in tx.list::<Record>("scim_groups")? {
+                    if !group.deleted
+                        && group.owner == record.owner
+                        && groups.contains(&group.local_id)
+                    {
+                        record_binding("Groups", &group)?;
+                        visible_groups.push(json!({"value":id,"display":name(&group)}));
+                    }
                 }
-            }
-            value["groups"] = json!(visible_groups);
+                json!(visible_groups)
+            };
         } else {
             let group = tx
                 .get::<Group>("groups", &record.local_id)?
                 .ok_or_else(|| Error::missing("Group missing"))?;
-            value["members"] = json!(
-                tx.list::<Record>("scim_users")?
-                    .into_iter()
-                    .filter(|(_, u)| !u.deleted
-                        && u.owner == record.owner
-                        && group.members.contains(&u.local_id))
-                    .map(|(id, u)| json!({"value":id,"display":name(&u)}))
-                    .collect::<Vec<_>>()
-            );
+            value["members"] = if let Some(relations) = relations {
+                Value::Array(relations)
+            } else {
+                json!(
+                    tx.list::<Record>("scim_users")?
+                        .into_iter()
+                        .filter(|(_, u)| !u.deleted
+                            && u.owner == record.owner
+                            && group.members.contains(&u.local_id))
+                        .map(|(id, u)| json!({"value":id,"display":name(&u)}))
+                        .collect::<Vec<_>>()
+                )
+            };
         }
         // Include the effective projection so direct management and directory
         // changes to this resource also invalidate its ETag. Hidden password
@@ -1181,8 +1264,8 @@ impl Core {
             let start = query.start_index.unwrap_or(1).max(1);
             let count = query.count.unwrap_or(100).min(1000);
             let mut total = 0;
-            let mut values = Vec::new();
             let mut page_records = Vec::new();
+            let mut sorted_records = Vec::new();
             let mut after = None;
             loop {
                 // The read transaction holds one snapshot across all pages on
@@ -1212,12 +1295,12 @@ impl Core {
                             }
                         }
                     } else {
-                        let value = self.scim_view(tx, &id, &record)?;
+                        // Every supported sort key is available before member
+                        // projection, so defer full views until after paging.
+                        let value = scim_filter_view(tx, &id, &record)?;
                         if filter.as_ref().is_none_or(|filter| filter.matches(&value)) {
                             total += 1;
-                            if sort.is_some() || (total >= start && values.len() < count) {
-                                values.push(value);
-                            }
+                            sorted_records.push((id, record, value));
                         }
                     }
                 }
@@ -1225,20 +1308,23 @@ impl Core {
                     break;
                 }
             }
-            // A key-order page needs full views only for its returned
-            // resources. Those views retain the resource-level ETags and live
-            // memberships used by GET, filters, and sorted list requests.
-            if sort.is_none() {
-                for (id, record) in page_records {
-                    values.push(self.scim_view(tx, &id, &record)?);
-                }
+            if let Some(spec) = sort {
+                sorted_records.sort_by(|left, right| compare_sort(&left.2, &right.2, spec));
+                page_records = sorted_records
+                    .into_iter()
+                    .skip(start - 1)
+                    .take(count)
+                    .map(|(id, record, _)| (id, record))
+                    .collect();
             }
-            let page: Vec<_> = if let Some(spec) = sort {
-                values.sort_by(|left, right| compare_sort(left, right, spec));
-                values.into_iter().skip(start - 1).take(count).collect()
-            } else {
-                values
-            };
+            let relations = scim_page_relations(tx, kind, &actor.id, &page_records)?;
+            let page: Vec<_> = page_records
+                .into_iter()
+                .zip(relations)
+                .map(|((id, record), relations)| {
+                    self.scim_view_with_relations(tx, &id, &record, Some(relations))
+                })
+                .collect::<Result<_>>()?;
             let page: Vec<_> = page
                 .into_iter()
                 .map(|value| projection.apply(kind, value))
