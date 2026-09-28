@@ -375,6 +375,12 @@ impl Core {
                 return Err(Error::conflict("Stop every riAuth process connected to this database before administrator recovery"));
             }
             let mut user = user_by_name(tx, username)?;
+            let support_exposed = crate::delegation::support_exposure(tx, &user.id)?.is_some();
+            if support_exposed && !reset_mfa {
+                return Err(Error::conflict(
+                    "Help-desk-exposed credentials require offline recovery with factor reset",
+                ));
+            }
             if user.password_hash.is_empty() && user.totp_secret.is_none() && !reset_mfa {
                 return Err(Error::conflict("Passkey-only recovery requires explicit --reset-mfa; enrolled factors will be removed"));
             }
@@ -398,6 +404,13 @@ impl Core {
                 user.totp_secret = None;
                 user.totp_pending = None;
                 user.totp_last_step = None;
+            }
+            if support_exposed {
+                // An address changed by support may be a recovery channel under
+                // the helper's control. The offline operator must re-establish it.
+                user.email = None;
+                user.email_verified = false;
+                tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
             }
             tx.put("users", &user.id, &user)?;
             crate::logout::queue_user(tx, &user.id)?;

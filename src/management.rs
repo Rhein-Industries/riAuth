@@ -1044,6 +1044,16 @@ pub(crate) fn update_user(
     if actor.agent && (user.admin || patch.admin == Some(true)) {
         return Err(Error::forbidden());
     }
+    if actor.delegated
+        && (patch.password.is_some()
+            || patch.reset_mfa
+            || patch
+                .email
+                .as_ref()
+                .is_some_and(|email| previous.email.as_ref() != Some(email)))
+    {
+        crate::delegation::mark_support_exposure(tx, actor, &previous)?;
+    }
     if let Some(password) = patch.password {
         if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
             return Err(Error::conflict(

@@ -179,6 +179,8 @@ const RETAINED: &[&str] = &[
     "password_history",
     "credential_versions",
     "human_grant_generations",
+    // A restored support exposure must keep blocking later privilege elevation.
+    "support_credential_exposure",
     "scim_oauth_cache",
     "agent_tokens",
     "registration_tokens",

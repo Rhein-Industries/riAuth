@@ -307,7 +307,7 @@ pub(crate) fn enqueue(
         token.as_str()
     );
     let body = format!(
-        "{subject}\n\nServer: {}\nAccount: {}\n\n{browser_link}Run: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. A password reset keeps your enrolled MFA factors. If you did not request this message, ignore it.\n",
+        "{subject}\n\nServer: {}\nAccount: {}\n\n{browser_link}Run: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. Assisted recovery removes enrolled MFA factors; ordinary password reset keeps them. If you did not request this message, ignore it.\n",
         core.config.issuer,
         user.username,
         core.config.issuer,
@@ -734,12 +734,30 @@ impl Core {
                 Ok(())
             };
             let local = crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local;
+            let mut factors_reset = false;
             match purpose {
                 Purpose::Verify if user.enabled => user.email_verified = true,
-                // Recovery replaces only the password: enrolled factors stay and are still
-                // required at the next sign-in, which this proof never performs.
+                // Ordinary reset keeps factors. A target exposed to help desk
+                // loses factors and must enroll fresh ones after this proof.
                 Purpose::Reset if user.enabled && user.email_verified && local => {
+                    let exposure = crate::delegation::support_exposure(tx, &user.id)?;
+                    if exposure.as_ref().is_some_and(|exposure| {
+                        exposure.verified_email.as_deref() != Some(proof.email.as_str())
+                    }) {
+                        return Err(Error::forbidden());
+                    }
                     apply_password(&mut user)?;
+                    if exposure.is_some() {
+                        crate::passkey::clear(tx, &user.id)?;
+                        user.has_passkeys = false;
+                        user.recovery_codes.clear();
+                        user.totp_secret = None;
+                        user.totp_pending = None;
+                        user.totp_last_step = None;
+                        user.totp_settings = Default::default();
+                        tx.delete(crate::delegation::SUPPORT_EXPOSURE, &user.id)?;
+                        factors_reset = true;
+                    }
                     user.epoch += 1;
                 }
                 Purpose::Invite
@@ -768,7 +786,11 @@ impl Core {
                 &format!("user.account.{}", purpose.name()),
                 &user.id,
             )?;
-            Ok(json!({"completed":true,"login_required":purpose!=Purpose::Verify}))
+            let mut result = json!({"completed":true,"login_required":purpose!=Purpose::Verify});
+            if factors_reset {
+                result["factors_reset"] = Value::Bool(true);
+            }
+            Ok(result)
         })
     }
     pub fn mail_deliveries(&self, token: &str) -> Result<Value> {

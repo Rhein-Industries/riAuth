@@ -105,9 +105,19 @@ fn user_security_transition(
     after: Option<&Value>,
 ) -> Result<()> {
     let disabled = after.is_none_or(|user| user["enabled"] == false);
+    let promoted = after.is_some_and(|user| before["admin"] == false && user["admin"] == true);
+    if promoted
+        && tx
+            .get::<Value>(crate::delegation::SUPPORT_EXPOSURE, user_id)?
+            .is_some()
+    {
+        return Err(Error::conflict(
+            "This account needs independent credential recovery before privilege elevation",
+        ));
+    }
     // A disabled or promoted account must not regain old delegated authority
     // if it is later enabled or demoted. This covers every user writer.
-    if disabled || after.is_some_and(|user| before["admin"] == false && user["admin"] == true) {
+    if disabled || promoted {
         tx.delete("human_grants", user_id)?;
     }
     // Old snapshots may contain disabled parents whose children were never

@@ -4,7 +4,7 @@ use crate::{
     agent::Principal,
     config::Config,
     core::{Core, audit_with_details, user_by_name, validate_name},
-    crypto::{Keys, digest},
+    crypto::{Keys, digest, now},
     error::{Error, Result},
     model::{Client, User},
     store::Tx,
@@ -14,6 +14,52 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 const BUCKET: &str = "human_grants";
+pub(crate) const SUPPORT_EXPOSURE: &str = "support_credential_exposure";
+
+/// A help-desk actor may know a password, control a changed recovery address,
+/// or have removed the target's factors. Only recovery through the address
+/// verified before that first support change can clear this boundary remotely.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct SupportExposure {
+    pub(crate) verified_email: Option<String>,
+    pub(crate) actor_id: String,
+    pub(crate) at: u64,
+}
+
+pub(crate) fn support_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<SupportExposure>> {
+    tx.get(SUPPORT_EXPOSURE, user_id)
+}
+
+pub(crate) fn mark_support_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
+    if support_exposure(tx, &user.id)?.is_none() {
+        tx.put(
+            SUPPORT_EXPOSURE,
+            &user.id,
+            &SupportExposure {
+                verified_email: user.email_verified.then(|| user.email.clone()).flatten(),
+                actor_id: actor.id.clone(),
+                at: now(),
+            },
+        )?;
+    }
+    audit_for(
+        tx,
+        actor,
+        "delegation.support_exposure",
+        &user.id,
+        &format!("user/{}", user.username),
+    )
+}
+
+pub(crate) fn require_unexposed(tx: &Tx<'_>, user_id: &str) -> Result<()> {
+    if support_exposure(tx, user_id)?.is_some() {
+        Err(Error::conflict(
+            "This account needs independent credential recovery before privilege elevation",
+        ))
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -224,6 +270,9 @@ impl Core {
                 || !grants.is_empty() && (!holder.enabled || holder.admin)
             {
                 return Err(Error::forbidden());
+            }
+            if !grants.is_empty() {
+                require_unexposed(tx, &holder.id)?;
             }
             let mut seen = BTreeSet::new();
             let mut bound = Vec::new();

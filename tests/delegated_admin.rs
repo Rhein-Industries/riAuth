@@ -11,7 +11,8 @@ use common::{Fixture, PASSWORD};
 use http_body_util::BodyExt;
 use riauth::{
     delegation::{GrantInput, HumanRole},
-    model::{ClientPatch, UserPatch},
+    lifecycle::{MailConfig, MailSecurity, Purpose},
+    model::{ClientPatch, User, UserPatch},
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -688,4 +689,243 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn help_desk_credentials_cannot_survive_admin_promotion_or_delegated_grants() {
+    let mut f = Fixture::new();
+    let helper = f.user("helper");
+    f.user("alice");
+    f.user("bob");
+    f.core.config.mail = Some(MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: MailSecurity::Loopback,
+        username: None,
+        password_file: None,
+    });
+    for name in ["alice", "bob"] {
+        f.core
+            .update_user(
+                &f.admin,
+                name,
+                UserPatch {
+                    email_verified: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "helper",
+            vec![
+                grant(HumanRole::HelpDesk, "user/alice"),
+                grant(HumanRole::HelpDesk, "user/bob"),
+            ],
+        )
+        .unwrap();
+    let app = riauth::api::router(f.core.clone());
+    let planted = "helper-planted-password";
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&helper),
+        None,
+        Some(revision(&f)),
+        Some(json!({"password":planted,"reset_mfa":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let planted_session =
+        f.core.login("alice".into(), planted.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    assert_eq!(f.core.me(&planted_session).unwrap()["user"]["admin"], false);
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&f.admin),
+        None,
+        Some(revision(&f)),
+        Some(json!({"admin":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "alice",
+                vec![grant(HumanRole::SecurityAdministrator, "key/signing")]
+            )
+            .is_err()
+    );
+
+    let bob_id: String = f.core.store.get("usernames", "bob").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut bob = tx.get::<User>("users", &bob_id)?.unwrap();
+            bob.totp_secret = Some("JBSWY3DPEHPK3PXP".into());
+            bob.epoch += 1;
+            tx.put("users", &bob_id, &bob)
+        })
+        .unwrap();
+    let helper_cookie = sso_cookie(&f, &helper);
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/admin/users/bob",
+        None,
+        Some(&helper_cookie),
+        Some(revision(&f)),
+        Some(json!({"reset_mfa":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        f.core
+            .store
+            .get::<User>("users", &bob_id)
+            .unwrap()
+            .unwrap()
+            .totp_secret
+            .is_none()
+    );
+    assert!(
+        f.core
+            .update_user(
+                &f.admin,
+                "bob",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+    );
+    assert!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "bob",
+                vec![grant(HumanRole::Auditor, "audit/events")]
+            )
+            .is_err()
+    );
+
+    // A factor enrolled with the planted password must also be removed by
+    // recovery; only the original verified mailbox can clear the exposure.
+    let alice_id: String = f.core.store.get("usernames", "alice").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut alice = tx.get::<User>("users", &alice_id)?.unwrap();
+            alice.totp_secret = Some("JBSWY3DPEHPK3PXP".into());
+            alice.epoch += 1;
+            tx.put("users", &alice_id, &alice)
+        })
+        .unwrap();
+    assert_eq!(
+        f.core.account_reset_request("alice").unwrap()["accepted"],
+        true
+    );
+    let mail = f
+        .core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "alice@example.test")
+        .unwrap();
+    let code = mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap()
+        .to_owned();
+    let fresh = "alice-independent-recovery-password";
+    let recovered = f
+        .core
+        .account_complete(code, Purpose::Reset, Some(fresh.into()))
+        .unwrap();
+    assert_eq!(recovered["factors_reset"], true);
+    assert!(
+        f.core
+            .store
+            .get::<User>("users", &alice_id)
+            .unwrap()
+            .unwrap()
+            .totp_secret
+            .is_none()
+    );
+    assert!(f.core.me(&planted_session).is_err());
+    let (status, _) = call(
+        &app,
+        "PATCH",
+        "/api/users/alice",
+        Some(&f.admin),
+        None,
+        Some(revision(&f)),
+        Some(json!({"admin":true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(f.core.login("alice".into(), planted.into(), None).is_err());
+    let recovered_session =
+        f.core.login("alice".into(), fresh.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    assert_eq!(
+        f.core.me(&recovered_session).unwrap()["user"]["admin"],
+        true
+    );
+    f.core.account_reset_request("bob").unwrap();
+    let bob_mail = f
+        .core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "bob@example.test")
+        .unwrap();
+    let bob_code = bob_mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap()
+        .to_owned();
+    let bob_password = "bob-independent-recovery-password";
+    assert_eq!(
+        f.core
+            .account_complete(bob_code, Purpose::Reset, Some(bob_password.into()))
+            .unwrap()["factors_reset"],
+        true
+    );
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "bob",
+            vec![grant(HumanRole::Auditor, "audit/events")],
+        )
+        .unwrap();
+    let bob_session = f
+        .core
+        .login("bob".into(), bob_password.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(f.core.audit_events(&bob_session, 10).is_ok());
 }

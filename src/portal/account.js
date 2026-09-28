@@ -180,10 +180,12 @@
       clearSecrets();
       try {
         // A one-time proof POST is never retried automatically.
-        await RiAuth.post(`api/portal/account/${mode}`, input);
+        const result = await RiAuth.post(`api/portal/account/${mode}`, input);
         token = null;
         if (mode === "accept") complete("Invitation accepted", "Your account is ready", "Sign in with your new password to open your applications. An application may also require a passkey or authenticator code.", "Continue to sign in");
-        else if (mode === "reset") complete("Password reset", "Sign in with your new password", "Every session on your account was signed out. Your passkeys and authenticator app are unchanged; if you use an authenticator app, signing in still asks for its code.", "Continue to sign in");
+        else if (mode === "reset") complete("Password reset", "Sign in with your new password", result?.factors_reset
+          ? "Every session on your account was signed out. Your previous passkeys and authenticator app were removed. Enroll new factors after signing in."
+          : "Every session on your account was signed out. Your passkeys and authenticator app are unchanged; if you use an authenticator app, signing in still asks for its code.", "Continue to sign in");
         else complete("Email verified", "You're all set", "Your email address has been verified.", "Open applications");
       } catch (failure) {
         const [message, terminal] = proofIssue(failure);
