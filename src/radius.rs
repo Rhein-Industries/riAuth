@@ -156,7 +156,7 @@ fn validate_type(code: u8, value: &ReplyValue) -> Result<()> {
     }
     Ok(())
 }
-fn secret(nas: &Nas, tls: bool) -> Result<zeroize::Zeroizing<String>> {
+pub(crate) fn secret(nas: &Nas, tls: bool) -> Result<zeroize::Zeroizing<String>> {
     if tls {
         return Ok(zeroize::Zeroizing::new("radsec".into()));
     }

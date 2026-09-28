@@ -1561,7 +1561,8 @@ fn check_client_as(
         return Err(Error::bad("Existing client type is immutable"));
     }
     crate::edition::validate_client_settings(&next.settings).map_err(registration_error)?;
-    crate::capability::validate_client_policy(config, &next).map_err(registration_error)?;
+    crate::capability::validate_client_policy(config, existing, &next)
+        .map_err(registration_error)?;
     // Authentication-setting changes are record changes and are validated.
     if other_change {
         validate_client(tx, &next).map_err(registration_error)?;

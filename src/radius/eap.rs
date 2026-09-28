@@ -104,6 +104,10 @@ impl Config {
         .build()
         .map_err(Error::internal)
     }
+    pub(crate) fn verifier_ready(&self) -> Result<()> {
+        self.load().map(|_| ())
+    }
+
     pub(super) fn load(&self) -> Result<(Arc<rustls::ServerConfig>, String)> {
         let Material {
             certs,

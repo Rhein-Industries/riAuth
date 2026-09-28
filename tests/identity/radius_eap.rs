@@ -390,6 +390,188 @@ fn crl(dir: &Path, ca: &X509, ca_key: &PKey<Private>, revoked: Option<&X509>) {
     ]);
 }
 
+#[test]
+fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut core = Core::initialize(
+        Config {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: "radius-capability-password".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core
+        .login("admin".into(), "radius-capability-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (ca, ca_key) = cert("EAP private CA", 1, None);
+    let (server, server_key) = cert("localhost", 2, Some((&ca, &ca_key)));
+    crl(dir.path(), &ca, &ca_key, None);
+    std::fs::write(dir.path().join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.path().join("server.key"),
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    riauth::config::write_private(&dir.path().join("radius.secret"), SECRET, false).unwrap();
+    for (id, eap_tls) in [("eap-client", true), ("pap-client", false)] {
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: id.into(),
+                name: id.into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["openid", "radius"]),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    radius: Some(Settings {
+                        eap_tls,
+                        reply: vec![],
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    }
+    core.config.radius_listeners.insert(
+        "wifi".into(),
+        Listener {
+            eap_tls: Some(EapConfig {
+                certificate_file: dir.path().join("server.pem"),
+                key_file: dir.path().join("server.key"),
+                client_ca_file: dir.path().join("ca.pem"),
+                client_crl_file: dir.path().join("clients.crl.pem"),
+                ocsp_response_file: None,
+                tls12: false,
+                fragment_size: 1024,
+            }),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer: "127.0.0.1".parse().unwrap(),
+                    client_id: "eap-client".into(),
+                    shared_secret_file: Some(dir.path().join("radius.secret")),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    core.config.validate().unwrap();
+    riauth::capability::validate_store(&core.config, &core.store).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], true);
+    assert_eq!(states["feature_states"]["agents.certificate_bindings"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+
+    let secret_file = dir.path().join("radius.secret");
+    std::fs::remove_file(&secret_file).unwrap();
+    assert_eq!(
+        riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.eap_tls"]["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("NAS material")
+    );
+    assert!(
+        core.update_client(&admin, "eap-client", ClientPatch {
+            name: Some("Renamed Wi-Fi".into()),
+            ..Default::default()
+        })
+        .unwrap_err()
+        .message
+        .contains("NAS material")
+    );
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+
+    let error = core
+        .update_client(&admin, "eap-client", ClientPatch {
+            enabled: Some(false),
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+    let mut settings = core.store.read(|tx| tx.get::<Client>("clients", "eap-client"))
+        .unwrap().unwrap().settings;
+    settings.radius.as_mut().unwrap().eap_tls = false;
+    let error = core
+        .update_client(&admin, "eap-client", ClientPatch {
+            settings: Some(settings),
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+    let stored = core.store.read(|tx| tx.get::<Client>("clients", "eap-client"))
+        .unwrap().unwrap();
+    assert!(stored.enabled);
+    assert!(stored.settings.radius.unwrap().eap_tls);
+
+    let mut wrong_nas = core.clone();
+    wrong_nas.config.radius_listeners.get_mut("wifi").unwrap()
+        .nas.get_mut("nas").unwrap().client_id = "pap-client".into();
+    let states = riauth::capability::runtime(&wrong_nas).unwrap();
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert!(riauth::capability::validate_store(&wrong_nas.config, &wrong_nas.store)
+        .unwrap_err().message.contains("no NAS"));
+
+    let mut pap_only = wrong_nas.clone();
+    pap_only.config.radius_listeners.get_mut("wifi").unwrap().eap_tls = None;
+    riauth::capability::validate_store(&pap_only.config, &pap_only.store).unwrap();
+    let states = riauth::capability::runtime(&pap_only).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+
+    let mut bad_verifier = core.clone();
+    bad_verifier.config.radius_listeners.get_mut("wifi").unwrap()
+        .eap_tls.as_mut().unwrap().client_crl_file = dir.path().join("missing.crl");
+    let states = riauth::capability::runtime(&bad_verifier).unwrap();
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+    assert!(riauth::capability::validate_store(&bad_verifier.config, &bad_verifier.store)
+        .unwrap_err().message.contains("unusable verifier"));
+    assert!(
+        bad_verifier.update_client(&admin, "eap-client", ClientPatch {
+            name: Some("Renamed Wi-Fi".into()),
+            ..Default::default()
+        })
+        .unwrap_err()
+        .message
+        .contains("unusable verifier")
+    );
+    let config = bad_verifier.config.clone();
+    drop(bad_verifier);
+    drop(pap_only);
+    drop(wrong_nas);
+    drop(core);
+    let error = match Core::open(config) {
+        Ok(_) => panic!("missing EAP verifier material must block startup"),
+        Err(error) => error,
+    };
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocation() {
     let mut f = Fixture::new();
