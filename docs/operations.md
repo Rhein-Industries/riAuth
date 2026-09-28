@@ -284,7 +284,8 @@ it. An archive that would exceed the quota stops before the frame that crosses i
 authenticates every frame, the record order, the trailer's counts and transcript,
 EOF, schema and issuer with the backup key, as `restore` does before it creates
 output. Only a verified archive is linked under `--out`, which is never
-overwritten. Interrupted, oversized, cancelled (Ctrl-C) or unverifiable
+overwritten; the destination directory must support hard links, which
+`riauth backup` checks before it transfers anything. Interrupted, oversized, cancelled (Ctrl-C) or unverifiable
 transfers leave nothing under `--out`. The result reports `verified`,
 `stream_id`, `frames`, `records`, `bytes`, `transcript` and `issuer`; the stream
 ID matches the server's completion log. On an interactive terminal without

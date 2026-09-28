@@ -219,11 +219,10 @@ struct Partial {
 }
 
 impl Partial {
+    /// Also proves that the directory supports hard links, which publication
+    /// needs, before anything is transferred.
     fn create(out: &Path) -> Result<Self> {
-        let directory = out
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
+        let directory = parent(out);
         let path = directory.join(format!(".riauth-backup-{}.partial", uuid::Uuid::new_v4()));
         let mut options = fs::OpenOptions::new();
         options.write(true).create_new(true);
@@ -235,34 +234,48 @@ impl Partial {
         let file = options
             .open(&path)
             .with_context(|| format!("Cannot create a private file in {}", directory.display()))?;
-        Ok(Self { path, file })
+        let partial = Self { path, file };
+        let probe = partial.path.with_extension("probe");
+        fs::hard_link(&partial.path, &probe).with_context(|| {
+            format!(
+                "{} does not support hard links, which riauth backup needs to publish --out without replacing a file",
+                directory.display()
+            )
+        })?;
+        fs::remove_file(&probe)
+            .with_context(|| format!("Cannot remove the link probe {}", probe.display()))?;
+        Ok(partial)
     }
 
-    /// Never replaces an existing entry. A link keeps the name atomic; a
-    /// filesystem without hard links falls back to a checked rename.
+    /// `link(2)` creates `out` only if nothing, not even a dangling symbolic
+    /// link, has that name. There is deliberately no fallback to `rename`,
+    /// which would replace an entry created after any earlier check.
     fn publish(self, out: &Path) -> Result<()> {
         if let Err(error) = fs::hard_link(&self.path, out) {
-            if error.kind() == io::ErrorKind::AlreadyExists || fs::symlink_metadata(out).is_ok() {
+            if error.kind() == io::ErrorKind::AlreadyExists {
                 bail!(
                     "Backup output already exists; refusing to overwrite {}",
                     out.display()
                 );
             }
-            fs::rename(&self.path, out).with_context(|| {
-                format!("Cannot publish the verified backup as {}", out.display())
-            })?;
+            return Err(anyhow::Error::new(error).context(format!(
+                "Cannot publish the verified backup as {}",
+                out.display()
+            )));
         }
         #[cfg(unix)]
         {
             // Best effort: make the new name as durable as the synced contents.
-            let directory = out
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-                .unwrap_or(Path::new("."));
-            let _ = fs::File::open(directory).and_then(|directory| directory.sync_all());
+            let _ = fs::File::open(parent(out)).and_then(|directory| directory.sync_all());
         }
         Ok(())
     }
+}
+
+fn parent(out: &Path) -> &Path {
+    out.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
 }
 
 impl Drop for Partial {
@@ -328,4 +341,58 @@ fn size(bytes: u64) -> String {
         unit += 1;
     }
     format!("{value:.1} {}", UNITS[unit])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Partial;
+    use std::{fs, io::Write};
+
+    /// Another process may create `--out` while the archive transfers. The
+    /// verified archive never replaces that entry or follows a planted link.
+    #[test]
+    fn publish_never_replaces_an_entry_created_during_the_transfer() {
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("backup.riauth");
+        let mut partial = Partial::create(&out).unwrap();
+        partial.file.write_all(b"verified archive").unwrap();
+        fs::write(&out, b"another process").unwrap();
+        let error = partial.publish(&out).unwrap_err();
+        assert!(error.to_string().contains("already exists"), "{error:#}");
+        assert_eq!(fs::read(&out).unwrap(), b"another process");
+
+        #[cfg(unix)]
+        {
+            let planted = directory.path().join("planted");
+            let target = directory.path().join("target");
+            std::os::unix::fs::symlink(&target, &planted).unwrap();
+            let mut partial = Partial::create(&planted).unwrap();
+            partial.file.write_all(b"verified archive").unwrap();
+            assert!(partial.publish(&planted).is_err());
+            assert!(!target.exists(), "publication followed a planted link");
+        }
+
+        // A free name receives the private archive; no temporary names remain.
+        let fresh = directory.path().join("fresh.riauth");
+        let mut partial = Partial::create(&fresh).unwrap();
+        partial.file.write_all(b"verified archive").unwrap();
+        partial.publish(&fresh).unwrap();
+        assert_eq!(fs::read(&fresh).unwrap(), b"verified archive");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&fresh).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let mut names: Vec<_> = fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        let mut expected = vec!["backup.riauth", "fresh.riauth"];
+        if cfg!(unix) {
+            expected.push("planted");
+        }
+        assert_eq!(names, expected);
+    }
 }
