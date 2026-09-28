@@ -41,6 +41,9 @@ const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.
 const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
 const GOOGLE_MEMBER_READ: &str =
     "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
+const WORKSPACE_PAGES_PER_PLAN_CALL: usize = 5;
+const WORKSPACE_SNAPSHOT_SECONDS: u64 = 300;
+const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
 
 pub use crate::cloud_directory_types::{
     Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory,
@@ -375,6 +378,7 @@ fn fingerprint_of(kind: &str, value: &impl Serialize) -> Result<String> {
     )))
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 struct RemoteUser {
     external_id: String,
     email: Option<String>,
@@ -664,6 +668,15 @@ fn get_json(
     url: &Url,
     graph_count: bool,
 ) -> Result<Value> {
+    Ok(get_json_sized(http, token, url, graph_count)?.0)
+}
+
+fn get_json_sized(
+    http: &reqwest::blocking::Client,
+    token: &str,
+    url: &Url,
+    graph_count: bool,
+) -> Result<(Value, usize)> {
     let mut request = http
         .get(url.clone())
         .bearer_auth(token)
@@ -683,8 +696,9 @@ fn get_json(
         return Err(unavailable("Cloud directory request failed"));
     }
     let bytes = read_body(response)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|_| unavailable("Cloud directory returned an unreadable page"))
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|_| unavailable("Cloud directory returned an unreadable page"))?;
+    Ok((value, bytes.len()))
 }
 
 fn same_origin(base: &Url, next: &Url) -> bool {
@@ -948,8 +962,344 @@ fn select_fields(attributes: &Attributes) -> String {
     fields.into_iter().collect::<Vec<_>>().join(",")
 }
 
+/// One Workspace crawl. Only parsed users, selected group IDs, and the current
+/// collection's object IDs are retained; raw pages never accumulate.
+#[derive(Clone, Serialize, Deserialize)]
+struct WorkspaceSnapshot {
+    phase: usize,
+    cursor: Option<String>,
+    pagination: Pagination,
+    phase_ids: BTreeSet<String>,
+    users: BTreeMap<String, RemoteUser>,
+    selected: BTreeMap<String, String>,
+    chosen: BTreeMap<String, String>,
+    source_bytes: usize,
+    pages: usize,
+}
+
+impl WorkspaceSnapshot {
+    fn new() -> Self {
+        Self {
+            phase: 0,
+            cursor: None,
+            pagination: Pagination::new(MAX_PAGES, MAX_OBJECTS),
+            phase_ids: BTreeSet::new(),
+            users: BTreeMap::new(),
+            selected: BTreeMap::new(),
+            chosen: BTreeMap::new(),
+            source_bytes: 0,
+            pages: 0,
+        }
+    }
+
+    fn complete(&self, settings: &Settings) -> bool {
+        if settings.groups.is_empty() {
+            self.phase == 1
+        } else {
+            self.phase == 2 + self.chosen.len()
+        }
+    }
+
+    fn next_phase(&mut self) {
+        self.phase += 1;
+        self.cursor = None;
+        self.pagination = Pagination::new(MAX_PAGES, MAX_OBJECTS);
+        self.phase_ids.clear();
+    }
+
+    fn endpoint(&self, settings: &Settings) -> Result<(Url, &'static str)> {
+        match self.phase {
+            0 => Ok((
+                endpoint(
+                    &settings.base_url,
+                    &["admin", "directory", "v1", "users"],
+                    &[
+                        ("customer", &settings.tenant),
+                        ("domain", &settings.domain),
+                        ("maxResults", "200"),
+                    ],
+                )?,
+                "users",
+            )),
+            1 => Ok((
+                endpoint(
+                    &settings.base_url,
+                    &["admin", "directory", "v1", "groups"],
+                    &[
+                        ("customer", &settings.tenant),
+                        ("domain", &settings.domain),
+                        ("maxResults", "200"),
+                    ],
+                )?,
+                "groups",
+            )),
+            phase => {
+                let upstream = self
+                    .chosen
+                    .keys()
+                    .nth(phase - 2)
+                    .ok_or_else(|| Error::internal("Invalid Workspace snapshot phase"))?;
+                Ok((
+                    endpoint(
+                        &settings.base_url,
+                        &["admin", "directory", "v1", "groups", upstream, "members"],
+                        &[("maxResults", "200")],
+                    )?,
+                    "members",
+                ))
+            }
+        }
+    }
+
+    fn bounded(&self) -> Result<()> {
+        if self.source_bytes > MAX_TOTAL_BYTES
+            || self.users.len() > MAX_OBJECTS
+            || self.selected.len() > 32
+            || self.chosen.len() > 32
+            || serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES
+        {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    fn advance(&mut self, settings: &Settings, limit: usize) -> Result<()> {
+        let started = Instant::now();
+        let http = http_client(settings.direct_auth.is_some())?;
+        let token = access_token(settings, &http)?;
+        for _ in 0..limit {
+            if self.complete(settings) {
+                break;
+            }
+            if started.elapsed() > SYNC_BUDGET {
+                return Err(unavailable("Cloud directory sync exceeded its time limit"));
+            }
+            let (first, collection) = self.endpoint(settings)?;
+            let mut url = first.clone();
+            if let Some(cursor) = &self.cursor {
+                if !valid_secret_id(cursor, 2048) {
+                    return Err(unavailable("Cloud directory pagination did not finish"));
+                }
+                url.query_pairs_mut().append_pair("pageToken", cursor);
+            }
+            let (body, page_bytes) = get_json_sized(&http, &token, &url, false)?;
+            if started.elapsed() > SYNC_BUDGET {
+                return Err(unavailable("Cloud directory sync exceeded its time limit"));
+            }
+            self.source_bytes = self.source_bytes.saturating_add(page_bytes);
+            if self.source_bytes > MAX_TOTAL_BYTES {
+                return Err(unavailable(
+                    "Cloud directory snapshot staging quota exceeded",
+                ));
+            }
+            let object = body
+                .as_object()
+                .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
+            if object.contains_key("error") {
+                return Err(unavailable("Cloud directory returned an unreadable page"));
+            }
+            let expected = format!("directory#{collection}");
+            let valid_kind = object
+                .get("kind")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind == expected || kind == format!("admin#{expected}"));
+            if object.contains_key("kind") && !valid_kind {
+                return Err(unavailable("Cloud directory returned an unreadable page"));
+            }
+            let rows: &[Value] = match object.get(collection) {
+                Some(Value::Array(rows)) => rows,
+                None if self.cursor.is_none()
+                    && valid_kind
+                    && !object.contains_key("nextPageToken") =>
+                {
+                    // The Admin SDK omits an empty collection with a typed kind.
+                    &[]
+                }
+                _ => return Err(unavailable("Cloud directory returned an unreadable page")),
+            };
+            if rows.len() > 200 {
+                return Err(unavailable(
+                    "Cloud directory result exceeds the supported size",
+                ));
+            }
+            let next = workspace_next(&body, &first)?;
+            let next_cursor = next.as_ref().and_then(|url| {
+                url.query_pairs()
+                    .find(|(key, _)| key == "pageToken")
+                    .map(|(_, value)| value.into_owned())
+            });
+            let mut reported_total = None;
+            for key in ["@odata.count", "totalResults"] {
+                if let Some(value) = object.get(key) {
+                    let count = value
+                        .as_u64()
+                        .and_then(|n| usize::try_from(n).ok())
+                        .ok_or_else(|| unavailable("Cloud directory returned an invalid total"))?;
+                    if reported_total.is_some_and(|old| old != count) {
+                        return Err(unavailable("Cloud directory returned inconsistent totals"));
+                    }
+                    reported_total = Some(count);
+                }
+            }
+            self.pagination.page(
+                url.as_str(),
+                rows.len(),
+                reported_total,
+                next_cursor.is_some(),
+            )?;
+            for row in rows {
+                let id = row
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| valid_upstream_id(id))
+                    .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
+                if !self.phase_ids.insert(id.to_owned()) {
+                    return Err(unavailable(
+                        "Cloud directory repeated an object in its snapshot",
+                    ));
+                }
+                match self.phase {
+                    0 => {
+                        let user = parse_user("workspace", row, &settings.attributes)?;
+                        if self.users.insert(user.external_id.clone(), user).is_some() {
+                            return Err(unavailable(
+                                "Cloud directory repeated an object in its snapshot",
+                            ));
+                        }
+                    }
+                    1 => {
+                        let group = parse_group("workspace", row)?;
+                        for (local, selector) in &settings.groups {
+                            if group.matches(selector)
+                                && self
+                                    .selected
+                                    .insert(local.clone(), group.id.clone())
+                                    .is_some()
+                            {
+                                return Err(Error::conflict(
+                                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                                ));
+                            }
+                        }
+                    }
+                    _ => {
+                        if !row
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
+                        {
+                            let local = self
+                                .chosen
+                                .keys()
+                                .nth(self.phase - 2)
+                                .and_then(|upstream| self.chosen.get(upstream))
+                                .ok_or_else(|| {
+                                    Error::internal("Invalid Workspace snapshot group")
+                                })?;
+                            if let Some(user) = self.users.get_mut(id) {
+                                user.groups.insert(local.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            self.pages += 1;
+            if let Some(next_cursor) = next_cursor {
+                self.cursor = Some(next_cursor);
+            } else {
+                if self.phase == 1 {
+                    if self.selected.len() != settings.groups.len() {
+                        return Err(Error::conflict(
+                            "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                        ));
+                    }
+                    for (local, upstream) in &self.selected {
+                        if self
+                            .chosen
+                            .insert(upstream.clone(), local.clone())
+                            .is_some()
+                        {
+                            return Err(Error::conflict(
+                                "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                            ));
+                        }
+                    }
+                }
+                self.next_phase();
+            }
+            self.bounded()?;
+        }
+        Ok(())
+    }
+
+    fn into_users(self) -> Vec<RemoteUser> {
+        self.users.into_values().collect()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct WorkspaceSnapshotDraft {
+    id: String,
+    directory: String,
+    actor: String,
+    revision: u64,
+    fingerprint: String,
+    authority_digest: String,
+    expires_at: u64,
+    sequence: u64,
+    snapshot: WorkspaceSnapshot,
+}
+
+impl WorkspaceSnapshotDraft {
+    fn new(
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: String,
+    ) -> Self {
+        Self {
+            id: crypto::id(),
+            directory: settings.id.clone(),
+            actor: actor.id.clone(),
+            revision,
+            fingerprint: settings.fingerprint.clone(),
+            authority_digest,
+            expires_at: now().saturating_add(WORKSPACE_SNAPSHOT_SECONDS),
+            sequence: 0,
+            snapshot: WorkspaceSnapshot::new(),
+        }
+    }
+
+    fn bounded(&self) -> Result<()> {
+        self.snapshot.bounded()?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    fn progress(&self, restarted: bool) -> Value {
+        json!({"decision":"snapshot_in_progress", "snapshot_id":self.id,
+            "phase":if self.snapshot.phase == 0 {"users"} else if self.snapshot.phase == 1 {"groups"} else {"members"},
+            "users":self.snapshot.users.len(), "pages":self.snapshot.pages,
+            "expires_at":self.expires_at, "restart":restarted})
+    }
+}
+
 impl Settings {
     fn fetch(&self) -> Result<Vec<RemoteUser>> {
+        if self.kind == "workspace" {
+            let mut snapshot = WorkspaceSnapshot::new();
+            snapshot.advance(self, MAX_PAGES * (self.groups.len() + 2))?;
+            if !snapshot.complete(self) {
+                return Err(unavailable("Cloud directory pagination did not finish"));
+            }
+            return Ok(snapshot.into_users());
+        }
         let started = Instant::now();
         let http = http_client(self.direct_auth.is_some())?;
         let token = access_token(self, &http)?;
@@ -1881,6 +2231,12 @@ impl Core {
             Ok(None)
         })?;
         let plan = match pending {
+            Some(_) if settings.kind == "workspace" => {
+                // Validate a pending plan with the same durable page budget as
+                // a new plan. The final transaction reuses its ID only if the
+                // complete source and local impact still match.
+                self.cloud_plan_internal(token, kind, id, true)?
+            }
             Some(plan) if self.fetch_entries(&settings)? == plan.entries => {
                 // A remote fetch can outlive the caller's authority or plan
                 // revision. Recheck both before returning its saved entries.
@@ -1907,6 +2263,9 @@ impl Core {
             }
             _ => self.cloud_plan_internal(token, kind, id, true)?,
         };
+        if plan["decision"] == "snapshot_in_progress" {
+            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
+        }
         let impact: RemovalImpact =
             serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
         reconcile_plan(mode, &impact, plan, |plan_id| {
@@ -1916,6 +2275,37 @@ impl Core {
 
     pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         self.cloud_plan_internal(token, kind, id, false)
+    }
+
+    fn workspace_snapshot_actor(
+        &self,
+        tx: &Tx<'_>,
+        token: &str,
+        settings: &Settings,
+        actor_id: &str,
+        revision: u64,
+        authority_digest: &str,
+    ) -> Result<Principal> {
+        let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+        if actor.id != actor_id
+            || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
+            || self
+                .cloud_settings(settings.kind, &settings.id)?
+                .fingerprint
+                != settings.fingerprint
+            || ReviewBinding::new(
+                tx,
+                &actor,
+                &json!([settings.resource(), revision, settings.fingerprint]),
+            )?
+            .authority_digest
+                != authority_digest
+        {
+            return Err(Error::conflict(
+                "Workspace source, authority or local revision changed during snapshot",
+            ));
+        }
+        Ok(actor)
     }
 
     fn cloud_plan_internal(
@@ -1930,21 +2320,170 @@ impl Core {
             let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
             Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
         })?;
-        let entries = self.fetch_entries(&settings)?;
+        let mut snapshot_prior: Option<(String, Option<(String, u64)>, String)> = None;
+        let entries = if settings.kind == "workspace" {
+            let key = digest(&settings.resource());
+            let (prior, mut draft, restarted, authority_digest) = self.store.read(|tx| {
+                let current = self.management(tx, token, "directory.sync", &settings.resource())?;
+                if current.id != actor.id
+                    || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
+                {
+                    return Err(Error::conflict(
+                        "Local configuration changed during cloud directory search",
+                    ));
+                }
+                let authority_digest = ReviewBinding::new(
+                    tx,
+                    &current,
+                    &json!([settings.resource(), revision, settings.fingerprint]),
+                )?
+                .authority_digest;
+                let previous = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, &key)?;
+                let prior = previous
+                    .as_ref()
+                    .map(|draft| (draft.id.clone(), draft.sequence));
+                let valid = previous.as_ref().is_some_and(|draft| {
+                    draft.directory == settings.id
+                        && draft.actor == actor.id
+                        && draft.revision == revision
+                        && draft.fingerprint == settings.fingerprint
+                        && draft.authority_digest == authority_digest
+                        && draft.expires_at > now()
+                        && !draft.snapshot.complete(&settings)
+                        && draft.snapshot.phase <= settings.groups.len() + 2
+                });
+                let restarted = previous.is_some() && !valid;
+                let draft = previous.filter(|_| valid).unwrap_or_else(|| {
+                    WorkspaceSnapshotDraft::new(
+                        &settings,
+                        &actor,
+                        revision,
+                        authority_digest.clone(),
+                    )
+                });
+                draft.bounded()?;
+                Ok((prior, draft, restarted, authority_digest))
+            })?;
+            self.ensure_budget(&settings)?;
+            if let Err(error) = draft
+                .snapshot
+                .advance(&settings, WORKSPACE_PAGES_PER_PLAN_CALL)
+            {
+                if error.status == StatusCode::SERVICE_UNAVAILABLE {
+                    self.record_failure(&settings)?;
+                }
+                return Err(error);
+            }
+            self.reset_budget(&settings)?;
+            draft.sequence = draft.sequence.saturating_add(1);
+            draft.expires_at = now().saturating_add(WORKSPACE_SNAPSHOT_SECONDS);
+            draft.bounded()?;
+            if !draft.snapshot.complete(&settings) {
+                return self.store.write(|tx| {
+                    self.workspace_snapshot_actor(
+                        tx,
+                        token,
+                        &settings,
+                        &actor.id,
+                        revision,
+                        &authority_digest,
+                    )?;
+                    let current = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, &key)?;
+                    if current.as_ref().map(|draft| (&draft.id, draft.sequence))
+                        != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+                    {
+                        return Err(Error::conflict(
+                            "Workspace snapshot advanced concurrently; resume the latest cursor",
+                        ));
+                    }
+                    tx.put(WORKSPACE_SNAPSHOTS, &key, &draft)?;
+                    Ok(draft.progress(restarted))
+                });
+            }
+            let entries = self.store.read(|tx| {
+                self.workspace_snapshot_actor(
+                    tx,
+                    token,
+                    &settings,
+                    &actor.id,
+                    revision,
+                    &authority_digest,
+                )?;
+                materialize(tx, &settings, draft.snapshot.clone().into_users())
+            })?;
+            snapshot_prior = Some((key, prior, authority_digest));
+            entries
+        } else {
+            self.fetch_entries(&settings)?
+        };
         let (changes, impact) = self.store.preview(|tx| {
+            if let Some((_, _, authority_digest)) = &snapshot_prior {
+                self.workspace_snapshot_actor(
+                    tx,
+                    token,
+                    &settings,
+                    &actor.id,
+                    revision,
+                    authority_digest,
+                )?;
+            }
             let impact = removal_impact(tx, &settings, &entries)?;
             let changes = reconcile(tx, &actor, &settings, &entries)?;
             Ok((changes, impact))
         })?;
         self.store.write(|tx| {
-            let current_actor =
-                self.management(tx, token, "directory.sync", &settings.resource())?;
+            let current_actor = if let Some((_, _, authority_digest)) = &snapshot_prior {
+                self.workspace_snapshot_actor(
+                    tx,
+                    token,
+                    &settings,
+                    &actor.id,
+                    revision,
+                    authority_digest,
+                )?
+            } else {
+                self.management(tx, token, "directory.sync", &settings.resource())?
+            };
             if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
                 return Err(Error::conflict(
                     "Local configuration changed during cloud directory search",
                 ));
             }
+            if let Some((key, prior, _)) = &snapshot_prior {
+                let current = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, key)?;
+                if current.as_ref().map(|draft| (&draft.id, draft.sequence))
+                    != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+                {
+                    return Err(Error::conflict(
+                        "Workspace snapshot advanced concurrently; resume the latest cursor",
+                    ));
+                }
+            }
             let plans = tx.list::<Plan>("cloud_directory_plans")?;
+            if supersede && settings.kind == "workspace" {
+                if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
+                    existing.actor == actor.id
+                        && existing.kind == settings.kind
+                        && existing.directory == id
+                        && !existing.applied
+                        && existing.expires_at > now()
+                        && existing.revision == revision
+                        && existing.fingerprint == settings.fingerprint
+                        && existing.entries == entries
+                        && existing.changes == changes
+                        && existing.removal_impact == impact
+                        && plan_content(existing)
+                            .and_then(|content| {
+                                existing.review.validate(tx, &current_actor, &content)
+                            })
+                            .is_ok()
+                }) {
+                    if let Some((key, Some(_), _)) = &snapshot_prior {
+                        tx.delete(WORKSPACE_SNAPSHOTS, key)?;
+                    }
+                    return Ok(json!(existing));
+                }
+            }
             if plans
                 .iter()
                 .filter(|(_, plan)| {
@@ -1989,6 +2528,9 @@ impl Core {
                 }
             }
             tx.put("cloud_directory_plans", &plan.id, &plan)?;
+            if let Some((key, Some(_), _)) = &snapshot_prior {
+                tx.delete(WORKSPACE_SNAPSHOTS, key)?;
+            }
             crate::delegation::audit_scoped(
                 tx,
                 &actor,
@@ -2090,6 +2632,11 @@ impl Core {
 }
 
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (id, draft) in tx.maintenance_page::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS)? {
+        if draft.expires_at < at {
+            tx.delete(WORKSPACE_SNAPSHOTS, &id)?;
+        }
+    }
     for (id, plan) in tx.maintenance_page::<Plan>("cloud_directory_plans")? {
         if plan.expires_at.saturating_add(86_400) < at {
             tx.delete("cloud_directory_plans", &id)?;

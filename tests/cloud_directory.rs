@@ -70,6 +70,7 @@ enum Mode {
     EntraNested,
     FailSecondMember,
     EntraCountedMissingUser,
+    WorkspacePaged,
 }
 
 struct State {
@@ -314,15 +315,11 @@ fn parsed(target: &str) -> Url {
 }
 
 fn page_index(url: &Url) -> usize {
-    if url
-        .query_pairs()
+    url.query_pairs()
         .find(|(key, _)| key == "pageToken" || key == "$skiptoken")
-        .is_some_and(|(_, value)| value == "users-2" || value == "members-2")
-    {
-        1
-    } else {
-        0
-    }
+        .and_then(|(_, value)| value.rsplit_once('-')?.1.parse::<usize>().ok())
+        .and_then(|number| number.checked_sub(1))
+        .unwrap_or(0)
 }
 
 fn dispatch(state: &State, request: &Incoming) -> (u16, String) {
@@ -549,11 +546,18 @@ fn users(state: &State, page: usize) -> (u16, String) {
         }
         return (200, body.to_string());
     }
-    let (shown, more) = split_page(&people, page);
+    let (shown, more) = if mode == Mode::WorkspacePaged && state.kind == "workspace" {
+        (
+            people.get(page).cloned().into_iter().collect(),
+            page + 1 < people.len(),
+        )
+    } else {
+        split_page(&people, page)
+    };
     let next = if !more {
         None
     } else if state.kind == "workspace" {
-        Some("users-2".to_owned())
+        Some(format!("users-{}", page + 2))
     } else {
         Some(format!("{base}/v1.0/users?$skiptoken=users-2"))
     };
@@ -2387,6 +2391,103 @@ fn partial_pagination_does_not_deprovision_completed_removal_does() {
         );
         assert!(user_named(&users_of(&fixture), "bob").is_some());
     }
+}
+
+#[test]
+fn workspace_controller_resumes_interrupted_pages_without_planning_removal() {
+    let (directory, mut fixture) = linked_pair("workspace");
+    *directory.state.people.lock().unwrap() = vec![
+        person("ext-alice", "alice@example.test", "Alice Cloud", true),
+        person("ext-carol", "carol@example.test", "Carol Cloud", false),
+        person("ext-dan", "dan@example.test", "Dan Cloud", false),
+        person("ext-eve", "eve@example.test", "Eve Cloud", false),
+        person("ext-fay", "fay@example.test", "Fay Cloud", false),
+        person("ext-gus", "gus@example.test", "Gus Cloud", false),
+    ];
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+
+    let progress = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(progress["decision"], "snapshot_in_progress");
+    assert_eq!(progress["snapshot"]["phase"], "users");
+    assert_eq!(progress["snapshot"]["pages"], 5);
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+    let staged = fixture.snapshot().unwrap();
+    let draft = staged
+        .iter()
+        .find(|(key, _)| key.starts_with("workspace_directory_snapshots/"))
+        .map(|(_, value)| value)
+        .unwrap();
+    assert_eq!(draft["snapshot"]["cursor"], "users-6");
+    assert_eq!(draft["snapshot"]["users"].as_object().unwrap().len(), 5);
+
+    *directory.state.mode.lock().unwrap() = Mode::FailSecond;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_reconcile(&fixture.admin, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert_eq!(
+        fixture
+            .snapshot()
+            .unwrap()
+            .iter()
+            .find(|(key, _)| key.starts_with("workspace_directory_snapshots/"))
+            .unwrap()
+            .1["snapshot"]["cursor"],
+        "users-6"
+    );
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+
+    fixture = fixture.reopen_with(|_| {});
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+    let result = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(result["decision"], "awaiting_review");
+    let plan = &result["plan"];
+    assert_eq!(plan["removal_impact"]["missing_users"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    let plan_id = plan["id"].as_str().unwrap();
+    let pending_progress = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(pending_progress["decision"], "snapshot_in_progress");
+    let repeated = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(repeated["decision"], "awaiting_review");
+    assert_eq!(repeated["plan"]["id"], plan_id);
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "workspace", plan_id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    fixture
+        .core
+        .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
+        .unwrap();
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        false
+    );
 }
 
 #[test]
