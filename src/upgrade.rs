@@ -23,7 +23,7 @@ pub fn migrate(store: &Store) -> Result<()> {
             return Err(Error::bad("Stored index revision requires a newer release; use a compatible binary or restore its pre-upgrade backup"));
         }
         let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-        let previous = activation::preflight(tx, from, index, revision)?;
+        let previous = activation::preflight_for(tx, from, index, revision, crate::edition::CURRENT)?;
         let rebuild = from != SCHEMA || index != Some(crate::store::maintenance::INDEX_VERSION);
         let stamp = activation::needs_stamp(previous.as_ref());
         if !rebuild && !stamp {
@@ -49,4 +49,19 @@ pub fn migrate(store: &Store) -> Result<()> {
         }
         Ok(())
     })
+}
+
+/// Apply the same stored activation compatibility check to the candidate
+/// edition during read-only transition inspection. Missing activation evidence
+/// is accepted here exactly as it is on first Core open.
+pub(crate) fn preflight_activation_for(
+    tx: &crate::store::Tx<'_>,
+    target: crate::edition::Target,
+) -> Result<()> {
+    let schema = tx
+        .get::<u32>("meta", "schema")?
+        .ok_or_else(|| Error::bad("Missing database schema"))?;
+    let index = tx.get::<u32>("meta", "index_version")?;
+    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+    activation::preflight_for(tx, schema, index, revision, target).map(|_| ())
 }

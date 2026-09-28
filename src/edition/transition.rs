@@ -41,6 +41,18 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
                 )),
                 None => issues.push(blocker("meta/schema", "Store is not initialized")),
             }
+            if schema.is_some() {
+                let index = tx.get::<u32>("meta", "index_version")?;
+                if index != Some(crate::store::maintenance::INDEX_VERSION) {
+                    issues.push(blocker(
+                        "meta/index_version",
+                        format!(
+                            "Stored index revision {index:?} differs from this artifact's revision {}; migrate with a reviewed backup before switching",
+                            crate::store::maintenance::INDEX_VERSION
+                        ),
+                    ));
+                }
+            }
             let issuer = tx.get::<String>("meta", "issuer")?;
             if issuer.as_deref() != Some(config.issuer.as_str()) {
                 issues.push(blocker(
@@ -48,6 +60,13 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
                     "Configured issuer does not match the initialized instance",
                 ));
             }
+            if schema.is_some()
+                && let Err(error) = crate::upgrade::preflight_activation_for(tx, target)
+            {
+                issues.push(blocker("meta/version_activation", error.message));
+            }
+            // Edition provenance and version activation are independent gates;
+            // report both when the target cannot safely open this store.
             issues.extend(store_blockers(tx, target, usize::MAX)?);
             if let Err(error) = crate::capability::validate_store_tx_for(config, target, tx) {
                 issues.push(blocker("capability/identity.device_trust", error.message));

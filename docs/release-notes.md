@@ -7,6 +7,9 @@
 - Readiness checks that the running process still matches the store's active
   release/capability record. A process left running after another build activates
   the store fails `/readyz`; operators must still stop all writers during upgrades.
+- Read-only edition transition preflight now reports activation and index-revision
+  blockers for the requested target build, including clean Platform stores that
+  an Essentials binary would refuse at startup.
 
 # Unreleased reliable delivery outcomes (P08)
 

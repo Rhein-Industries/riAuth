@@ -11,6 +11,42 @@ use std::{fs, process::Command};
 use tempfile::TempDir;
 
 #[test]
+fn clean_platform_activation_blocks_essentials_preflight_without_mutation() {
+    let dir = TempDir::new().unwrap();
+    let config = Config {
+        data_dir: dir.path().join("instance"),
+        ..Default::default()
+    };
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: "fixture-password-only".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let before = core.store.read(|tx| tx.snapshot()).unwrap();
+    drop(core);
+
+    let blocked = riauth::edition::preflight(&config, riauth::edition::Target::Essentials).unwrap();
+    assert_eq!(blocked["ready"], false);
+    let blockers = blocked["blockers"].as_array().unwrap();
+    assert!(blockers.iter().any(|issue| {
+        issue["resource"] == "meta/version_activation"
+            && issue["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("compiled capability"))
+    }));
+    let allowed = riauth::edition::preflight(&config, riauth::edition::Target::Platform).unwrap();
+    assert_eq!(allowed["ready"], true, "{}", allowed["blockers"]);
+    let after = Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap();
+    assert!(before == after, "read-only preflight mutated stored records");
+}
+
+#[test]
 fn maintenance_preflight_reports_all_edition_blockers_without_changing_the_store() {
     let dir = TempDir::new().unwrap();
     let config = Config {

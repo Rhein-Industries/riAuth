@@ -25,20 +25,26 @@ pub(super) struct Activation {
     at_revision: u64,
 }
 
-fn current(revision: u64) -> Activation {
+fn current_for(target: edition::Target, revision: u64) -> Activation {
     Activation {
         format: FORMAT,
         version: env!("CARGO_PKG_VERSION").into(),
-        edition: edition::NAME.into(),
+        edition: target.name().into(),
         compiled_capabilities: agent::FEATURES
             .iter()
-            .filter(|name| cfg!(feature = "platform") || !agent::PLATFORM_FEATURES.contains(name))
+            .filter(|name| {
+                target == edition::Target::Platform || !agent::PLATFORM_FEATURES.contains(name)
+            })
             .map(|name| (*name).into())
             .collect(),
         schema: SCHEMA,
         index_version: INDEX_VERSION,
         at_revision: revision,
     }
+}
+
+fn current(revision: u64) -> Activation {
+    current_for(edition::CURRENT, revision)
 }
 
 fn read(tx: &Tx<'_>) -> Result<Option<Activation>> {
@@ -61,11 +67,12 @@ fn read(tx: &Tx<'_>) -> Result<Option<Activation>> {
 /// Read-only check, called before the upgrade transaction can rebuild indexes.
 /// A lower revision or storage format than the prior activation is inconsistent
 /// with this timeline. A removed compiled capability needs explicit conversion.
-pub(super) fn preflight(
+pub(super) fn preflight_for(
     tx: &Tx<'_>,
     schema: u32,
     index: Option<u32>,
     revision: u64,
+    target: edition::Target,
 ) -> Result<Option<Activation>> {
     let Some(previous) = read(tx)? else {
         return Ok(None);
@@ -90,7 +97,7 @@ pub(super) fn preflight(
     }
     if let Some(missing) = previous
         .compiled_capabilities
-        .difference(&current(revision).compiled_capabilities)
+        .difference(&current_for(target, revision).compiled_capabilities)
         .next()
     {
         return Err(Error::bad(format!(

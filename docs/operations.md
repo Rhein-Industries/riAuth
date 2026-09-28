@@ -140,6 +140,8 @@ Startup also refuses an index revision newer than this binary before rebuilding 
 
 This is a store-local fence for binaries that implement the record, not proof that every writer has stopped. An older binary that ignores the record can still write, and separate source builds with the same package version, edition and compiled capability set are indistinguishable. Keep the stop-all-writers and backup steps below. A physical same-cluster restore can also remove the record; use the restored-state recovery procedure before serving.
 
+The read-only `transition-preflight` report checks `meta/version_activation` against the requested target edition using the same startup compatibility rule and reports index-revision differences. A clean store last activated by Platform still needs an explicit migration before an Essentials build can serve if its activation requires Platform compiled capabilities; current resource inventory alone does not clear the fence. Version activation and edition provenance are independent blockers, and the report retains both when applicable.
+
 For an upgrade, use this order:
 
 1. Record `riauth --version` and the deployed binary hash. While the old service is still running, take an encrypted backup with that version and run `restore` into a new directory to verify the archive. Preserve the old binary, backup key, database key and referenced external files.
