@@ -1,3 +1,4 @@
+pub use crate::model::credential::TotpSettings;
 use crate::{
     crypto,
     error::{Error, Result},
@@ -5,22 +6,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, deny_unknown_fields)]
-pub struct TotpSettings {
-    pub algorithm: String,
-    pub digits: usize,
-    pub period: u64,
-}
-impl Default for TotpSettings {
-    fn default() -> Self {
-        Self {
-            algorithm: "SHA1".into(),
-            digits: 6,
-            period: 30,
-        }
-    }
-}
 impl TotpSettings {
     pub fn validate(&self) -> Result<()> {
         if !["SHA1", "SHA256", "SHA512"].contains(&self.algorithm.as_str())

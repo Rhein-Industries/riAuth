@@ -239,6 +239,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: storage refers to protocol {sorted(refs & PROTOCOL)}")
         if source_module == "dpop" and refs & STORAGE:
             errors.append(f"{path.relative_to(ROOT)}: DPoP refers directly to storage")
+        if source_group == "model" and refs & PROTOCOL:
+            errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
             errors.append(f"{path.relative_to(ROOT)}: model refers to {sorted(refs & MODEL_FORBIDDEN)}")
         if source_group == "model":
@@ -284,6 +286,10 @@ def main() -> None:
             "dpop_storage_reference_files": sum(
                 bool(references(path) & STORAGE)
                 for path in paths if root_module(path) == "dpop"
+            ),
+            "model_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
+                for path in paths if group(root_module(path)) == "model"
             ),
             "model_adapter_reference_files": sum(
                 bool(references(path) & MODEL_FORBIDDEN)

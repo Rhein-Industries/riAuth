@@ -1,4 +1,4 @@
-"""Regression checks for the A03 source-level client configuration guard."""
+"""Regression checks for the A03 source-level model boundary guards."""
 
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ import unittest
 CHECKER = Path(__file__).resolve().parents[1] / "scripts/check-module-boundaries.py"
 
 
-class ClientConfigurationBoundaryTests(unittest.TestCase):
+class ModelBoundaryTests(unittest.TestCase):
     def setUp(self) -> None:
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -82,13 +82,15 @@ class ClientConfigurationBoundaryTests(unittest.TestCase):
                 self.assertIn(expected, result.stderr)
                 self.assertEqual(count, 1)
 
-    def test_exchange_grant_and_shared_model_paths_pass(self) -> None:
+    def test_embedded_record_adapter_paths_fail(self) -> None:
         cases = [
             "type Alias = crate::exchange::ExchangeGrant;",
+            "type Alias = crate::authenticator::TotpSettings;",
+            "type Alias = crate::claims::Policy;",
+            "type Alias = crate::assurance::ClaimsRequest;",
+            "type Alias = crate::source::SourceIdentity;",
             "use crate::exchange::{ExchangeGrant};",
             "use crate::{exchange::{ExchangeGrant}};",
-            "use crate::model::client_config::{ClientAuthMethod, MachineTrust, ExchangePolicy, EncryptionKey};",
-            "use crate::{model::{client_config::{ClientAuthMethod, MachineTrust, ExchangePolicy, EncryptionKey}}};",
             "use crate::{exchange::{ExchangeGrant}, model::client_config::ExchangePolicy};",
             "use crate::exchange::{ExchangeGrant, // crate::exchange::ExchangePolicy\n};",
             "use crate::{exchange::ExchangeGrant, // crate::exchange::ExchangePolicy\n};",
@@ -96,6 +98,20 @@ class ClientConfigurationBoundaryTests(unittest.TestCase):
             'use crate::exchange::ExchangeGrant;',
             'const SAMPLE: &str = r#"crate::exchange::ExchangePolicy // literal"#;\n'
             'use crate::exchange::ExchangeGrant;',
+        ]
+        for source in cases:
+            with self.subTest(source=source):
+                result, count = self.check_source(source)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("model refers to protocol", result.stderr)
+                self.assertEqual(count, 0)
+
+    def test_shared_model_paths_pass(self) -> None:
+        cases = [
+            "use crate::model::client_config::{ClientAuthMethod, MachineTrust, ExchangePolicy, EncryptionKey};",
+            "use crate::{model::{client_config::{ClientAuthMethod, MachineTrust, ExchangePolicy, EncryptionKey}}};",
+            "use crate::model::exchange::ExchangeGrant;",
+            "use crate::model::claims::{ClaimMapping, Policy};",
         ]
         for source in cases:
             with self.subTest(source=source):

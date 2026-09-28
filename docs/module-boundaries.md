@@ -473,3 +473,33 @@ The single-crate graph still has other cycles, including model/protocol/storage
 references. Protocol adapters and management still reach storage directly;
 API/server and client still reach Core. Independent crates and distribution
 assembly contracts remain A03 work.
+
+## Wave 10: embedded records owned by the shared model
+
+The seven model fields that still named protocol modules now use data-only
+definitions under [model](../src/model.rs): TOTP settings in
+[credential.rs](../src/model/credential.rs), claim mappings and policy in
+[claims.rs](../src/model/claims.rs), OIDC claims requests in
+[assurance.rs](../src/model/assurance.rs), source identity in
+[federation.rs](../src/model/federation.rs), and exchange grant lineage in
+[exchange.rs](../src/model/exchange.rs). Their field order, derives, Serde
+attributes and defaults moved intact. The former public paths in
+`authenticator`, `claims`, `assurance`, `source` and `exchange` re-export those
+same types. TOTP validation, claims enforcement, assurance checks, source
+linking and token exchange stay in their adapters.
+
+The source scan covers 103 Rust files before and 108 after this cut. The
+checker now requires zero direct references from any model file to a protocol
+module; the old configuration-specific guard remains as well.
+
+| Explicit source edge | Before | Wave 10 |
+| --- | ---: | ---: |
+| `model -> protocol` | 1 | 0 |
+| `protocol -> model` | 38 | 38 |
+| `storage -> identity` | 0 | 0 |
+| `protocol -> storage` | 32 | 32 |
+
+The shared model no longer imports protocol code directly. Protocol and
+management modules still use concrete storage and Core operations, and the
+server/API/client contracts remain intra-crate. A03 acceptance still needs
+those boundaries and reviewed distribution assembly parity.

@@ -1,4 +1,5 @@
 pub use crate::model::client_config::ExchangePolicy;
+pub use crate::model::exchange::ExchangeGrant;
 use crate::{
     core::{Core, audit},
     crypto::{digest, now},
@@ -7,21 +8,11 @@ use crate::{
     oidc::{TokenRequest, authenticate_client, get_client, scope_request},
     store::Tx,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 pub const ACCESS_TOKEN: &str = "urn:ietf:params:oauth:token-type:access_token";
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ExchangeGrant {
-    pub requester_id: String,
-    pub subject_hash: String,
-    pub actor_hash: Option<String>,
-    pub act: Option<Value>,
-    pub service_subject: Option<String>,
-}
 
 fn invalid() -> Error {
     Error::oauth(

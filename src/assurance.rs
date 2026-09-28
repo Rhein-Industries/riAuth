@@ -1,33 +1,16 @@
+pub use crate::model::assurance::{ClaimsRequest, Requirement};
 use crate::{
     error::{Error, Result},
     model::{Client, Identity},
     oidc::Authorization,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub const PASSWORD: &str = "urn:riauth:acr:password";
 pub const MFA: &str = "urn:riauth:acr:mfa";
 pub const FEDERATED: &str = "urn:riauth:acr:federated";
 pub const SUPPORTED: &[&str] = &[PASSWORD, MFA, FEDERATED];
-
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClaimsRequest {
-    #[serde(default)]
-    pub id_token: BTreeMap<String, Option<Requirement>>,
-    #[serde(default)]
-    pub userinfo: BTreeMap<String, Option<Requirement>>,
-}
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Requirement {
-    #[serde(default)]
-    pub essential: bool,
-    pub value: Option<Value>,
-    pub values: Option<Vec<Value>>,
-}
 
 pub fn claims_request(value: Option<&str>) -> Result<ClaimsRequest> {
     let Some(value) = value else {

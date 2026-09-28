@@ -1,5 +1,6 @@
 //! Upstream federation with explicit account linking and terminal completion.
 pub mod saml;
+pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
     core::{Core, audit, make_user, validate_display, validate_email, validate_name},
@@ -76,13 +77,6 @@ pub struct SourceSpec {
     pub source: Source,
     pub secret_ref: Option<String>,
     pub secret_version: Option<String>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SourceIdentity {
-    pub id: String,
-    pub fingerprint: String,
-    pub link: String,
 }
 
 #[derive(Serialize, Deserialize)]

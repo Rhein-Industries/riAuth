@@ -1,5 +1,10 @@
+pub mod assurance;
 pub mod client_config;
 pub mod client_settings;
+pub mod claims;
+pub mod credential;
+pub mod exchange;
+pub mod federation;
 pub mod jwk;
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +15,7 @@ pub struct User {
     #[serde(default)]
     pub has_passkeys: bool,
     #[serde(default)]
-    pub totp_settings: crate::authenticator::TotpSettings,
+    pub totp_settings: credential::TotpSettings,
     #[serde(default)]
     pub pairwise_seed: String,
     pub id: String,
@@ -131,11 +136,11 @@ pub struct ProviderSettings {
     pub post_logout_redirect_uris: Vec<String>,
     pub backchannel_logout_uri: Option<String>,
     pub frontchannel_logout_uri: Option<String>,
-    pub claim_mappings: Vec<crate::claims::ClaimMapping>,
+    pub claim_mappings: Vec<claims::ClaimMapping>,
     pub groups_in_profile: bool,
     pub claims_in_access_token: bool,
     pub userinfo_only: bool,
-    pub policy: crate::claims::Policy,
+    pub policy: claims::Policy,
     /// Upstream source embedded in interactive authorization. One source id.
     /// Authentication is suspended until that source returns; it is not a new login stack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -173,7 +178,7 @@ pub struct Identity {
     #[serde(default)]
     pub amr: Vec<String>,
     #[serde(default)]
-    pub source: Option<crate::source::SourceIdentity>,
+    pub source: Option<federation::SourceIdentity>,
     pub user_id: String,
     pub epoch: u64,
     pub mfa: bool,
@@ -209,7 +214,7 @@ pub struct Code {
     #[serde(default)]
     pub dpop_jkt: Option<String>,
     #[serde(default)]
-    pub claims_request: crate::assurance::ClaimsRequest,
+    pub claims_request: assurance::ClaimsRequest,
     #[serde(default)]
     pub acr_values: Option<String>,
     pub client_id: String,
@@ -263,13 +268,13 @@ pub struct Grant {
     #[serde(default)]
     pub id_token_jkt: Option<String>,
     #[serde(default)]
-    pub claims_request: crate::assurance::ClaimsRequest,
+    pub claims_request: assurance::ClaimsRequest,
     #[serde(default)]
     pub acr_values: Option<String>,
     #[serde(default)]
     pub machine_trust_hash: Option<String>,
     #[serde(default)]
-    pub exchange: Option<crate::exchange::ExchangeGrant>,
+    pub exchange: Option<exchange::ExchangeGrant>,
     pub client_id: String,
     pub identity: Option<Identity>,
     pub scopes: BTreeSet<String>,
