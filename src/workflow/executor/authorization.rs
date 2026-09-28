@@ -46,6 +46,14 @@ impl Accepted {
     pub(crate) fn into_parts(self) -> (Session, Authorization, String) {
         (self.session, self.request, self.proof_key)
     }
+
+    pub(super) fn for_consent(session: Session, request: Authorization, proof_key: String) -> Self {
+        Self {
+            session,
+            request,
+            proof_key,
+        }
+    }
 }
 
 fn fingerprint(client: &Client) -> Result<String> {
@@ -57,6 +65,7 @@ fn fingerprint(client: &Client) -> Result<String> {
 /// Ordinary authorization cannot consume or bypass a workflow reservation,
 /// including by omitting the transaction id or using a fresh bearer session.
 pub(crate) fn reject_reserved(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
+    super::consent::reject_reserved(tx, request)?;
     if tx
         .get::<Bound>(AUTHORIZATIONS, &request.request_hash()?)?
         .is_some()

@@ -3,7 +3,8 @@
 //! The W01 definition model and W03 completion seam describe authentication,
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
-//! reauthentication for live bearer sessions, plus configured local verifier paths;
+//! reauthentication for live bearer sessions, plus configured local verifier and
+//! request-bound consent paths;
 //! see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
@@ -206,6 +207,60 @@ pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
             .transitions
             .iter()
             .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
+}
+
+/// A configured consent decision has one live-session proof and one explicit
+/// user decision. Its success terminal cannot be reached by a static signal.
+pub(crate) fn supported_configured_consent(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Consent
+        || definition.steps.len() != 2
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 120
+    {
+        return false;
+    }
+    let session = &definition.steps[0];
+    let consent = &definition.steps[1];
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::ConsentGranted);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes =
+        |step: &Step, granted: &'static str, target: &Id, refused: &'static str, rejected: &Id| {
+            step.transitions.len() == 2
+                && step
+                    .transitions
+                    .iter()
+                    .all(|transition| transition.when.is_none())
+                && step.transitions.iter().any(|transition| {
+                    transition.on == Label::fixed(granted) && &transition.to == target
+                })
+                && step.transitions.iter().any(|transition| {
+                    transition.on == Label::fixed(refused) && &transition.to == rejected
+                })
+        };
+    session.id.as_str() == "session"
+        && consent.id.as_str() == "consent"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(consent.action, Action::RequestConsent {})
+        && session.max_attempts == 1
+        && consent.max_attempts == 1
+        && consent.timeout_seconds <= 120
+        && success.requires.len() == 1
+        && success.requires[0].len() == 2
+        && success.requires[0].contains(&Proof::Session)
+        && success.requires[0].contains(&Proof::Consent)
+        && routes(session, "verified", &consent.id, "failed", &denied.id)
+        && routes(consent, "granted", &success.id, "denied", &denied.id)
 }
 
 #[derive(JsonSchema, Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

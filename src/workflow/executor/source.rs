@@ -223,6 +223,7 @@ impl Core {
                 requires_mfa,
                 source: Some(pin.clone()),
                 authorization: None,
+                consent: None,
                 recovery: None,
                 invitation: None,
             };

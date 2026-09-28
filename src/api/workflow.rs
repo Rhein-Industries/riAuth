@@ -1,4 +1,4 @@
-//! Bearer-session endpoints for durable verifier-backed workflow runs.
+//! Bearer-session endpoints for durable verifier and consent workflow runs.
 
 use super::{App, bearer, credential_floor};
 use crate::{
@@ -21,6 +21,10 @@ pub(super) fn routes() -> Router<App> {
         .route(
             "/api/workflows/configured/{workflow}",
             post(configured_start),
+        )
+        .route(
+            "/api/workflows/configured/{workflow}/consent",
+            post(configured_consent_start),
         )
         .route("/api/workflows/authorization", post(authorization_start))
         .route(
@@ -51,6 +55,7 @@ pub(super) fn routes() -> Router<App> {
             post(recovery_challenge),
         )
         .route("/api/workflows/{id}/recovery-code", post(recovery_code))
+        .route("/api/workflows/{id}/consent", post(consent_decide))
         .route("/api/workflows/{id}/cancel", post(cancel))
 }
 
@@ -237,6 +242,40 @@ async fn configured_start(
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_configured_start(&token, &workflow).map(Json))
         .await
+}
+
+async fn configured_consent_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(workflow): Path<String>,
+    Json(request): Json<crate::oidc::Authorization>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_configured_consent_start(&token, &workflow, request)
+            .map(Json)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConsentDecision {
+    approve: bool,
+}
+
+async fn consent_decide(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(decision): Json<ConsentDecision>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_consent_decide(&token, &id, decision.approve)
+            .map(Json)
+    })
+    .await
 }
 
 async fn authorization_start(

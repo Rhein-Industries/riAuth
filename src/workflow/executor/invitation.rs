@@ -185,6 +185,7 @@ impl Core {
             requires_mfa: false,
             source: None,
             authorization: None,
+            consent: None,
             recovery: None,
             invitation: Some(pin),
         };

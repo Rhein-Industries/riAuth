@@ -534,7 +534,8 @@ impl Config {
             )
             .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
             if (crate::workflow::configured_password_path(checked.definition()).is_none()
-                && !crate::workflow::supported_configured_passkey(checked.definition()))
+                && !crate::workflow::supported_configured_passkey(checked.definition())
+                && !crate::workflow::supported_configured_consent(checked.definition()))
                 || matches!(
                     name.as_str(),
                     "platform-password-totp-reauthentication"

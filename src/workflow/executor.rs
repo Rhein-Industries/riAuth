@@ -1,6 +1,7 @@
-//! Durable, server-owned local credential and upstream source reauthentication.
+//! Durable local and upstream reauthentication, with request-bound consent.
 
 pub(crate) mod authorization;
+mod consent;
 mod enrollment;
 mod invitation;
 mod mutation;
@@ -19,7 +20,7 @@ use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
     RunBinding, RunState, Target, Validated, builtin, configured_password_path,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
-    supported_configured_passkey, validate,
+    supported_configured_consent, supported_configured_passkey, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -78,6 +79,8 @@ struct RequestAuthority {
     source: Option<upstream::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     authorization: Option<authorization::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consent: Option<consent::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recovery: Option<crate::lifecycle::workflow::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -162,6 +165,7 @@ impl RuntimeRun {
             checked
         } else if configured_password_path(&self.definition).is_some()
             || supported_configured_passkey(&self.definition)
+            || supported_configured_consent(&self.definition)
         {
             validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
         } else {
@@ -320,6 +324,7 @@ fn authority(
         upstream::authority(tx, pin, &user)?;
     }
     authorization::check(tx, run, &request, at)?;
+    consent::check(tx, run, &request, at)?;
     Ok((user, request))
 }
 
@@ -608,6 +613,7 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     source::discard(tx, run)?;
     passkey::discard(tx, run)?;
     enrollment::discard(tx, run)?;
+    consent::abandon(tx, &run.record)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence {
             if let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)? {
@@ -628,6 +634,7 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
 /// inspection window. The maintenance cursor bounds each pass on both backends.
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     authorization::cleanup(tx, at)?;
+    consent::cleanup(tx, at)?;
     for (id, mut run) in tx.maintenance_page::<RuntimeRun>(RUNS)? {
         let expires_at = run
             .record
@@ -675,7 +682,14 @@ fn settle_time(
         .ok_or_else(|| Error::internal("Unknown workflow step"))?
         .timeout_seconds;
     if at >= run.step_started_at.saturating_add(u64::from(timeout)) {
-        fail_attempt(core, tx, checked, run, AttemptResult::TimedOut, at)?;
+        if matches!(
+            checked.step(step).map(|s| &s.action),
+            Some(Action::RequestConsent {})
+        ) {
+            close(tx, run, RunState::Expired {})?;
+        } else {
+            fail_attempt(core, tx, checked, run, AttemptResult::TimedOut, at)?;
+        }
     }
     Ok(())
 }
@@ -828,6 +842,14 @@ impl CompletionStore for TxCompletion<'_, '_> {
         }
         if matches!(
             terminal.outcome,
+            super::Outcome::ConsentGranted | super::Outcome::Denied
+        ) {
+            current.authorization_response =
+                consent::complete(self.core, self.tx, run, terminal.outcome, evidence, at)
+                    .map_err(storage_invalid)?;
+        }
+        if matches!(
+            terminal.outcome,
             super::Outcome::Enrolled | super::Outcome::Recovered
         ) {
             current.credential_mutation = Some(
@@ -878,6 +900,30 @@ impl Core {
         self.start_local_workflow(token, &checked)
     }
 
+    /// Bind one active configured consent definition to an existing prepared
+    /// OIDC request. The request still needs a separate explicit user decision.
+    pub fn workflow_configured_consent_start(
+        &self,
+        token: &str,
+        workflow: &str,
+        authorization: crate::oidc::Authorization,
+    ) -> Result<View> {
+        let configured = self
+            .config
+            .workflows
+            .get(workflow)
+            .filter(|entry| entry.active)
+            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+        let checked = validate(configured.definition.clone(), &Environment::platform())
+            .map_err(invalid_error)?;
+        if !supported_configured_consent(checked.definition())
+            || checked.definition().id.as_str() != workflow
+        {
+            return Err(Error::conflict("Configured workflow is unavailable"));
+        }
+        self.start_authorization_workflow(token, &checked, Some(authorization))
+    }
+
     /// Begin local-password reauthentication, adding TOTP when enrolled, for a live
     /// bearer session. The session pins the account and is rechecked at every
     /// operation; this entry point does not replace the existing sign-in path.
@@ -895,6 +941,10 @@ impl Core {
         checked: &Validated,
         authorization: Option<crate::oidc::Authorization>,
     ) -> Result<View> {
+        let configured_consent = supported_configured_consent(checked.definition());
+        if configured_consent && authorization.is_none() {
+            return Err(Error::forbidden());
+        }
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let mfa_definition = (checked.definition().id.as_str() == PASSWORD_WORKFLOW
@@ -946,7 +996,10 @@ impl Core {
                         let request: RequestAuthority = tx
                             .get(REQUESTS, &active.record.request)?
                             .ok_or_else(Error::forbidden)?;
-                        if authorization.is_some() || request.authorization.is_some() {
+                        if authorization.is_some()
+                            || request.authorization.is_some()
+                            || request.consent.is_some()
+                        {
                             return Err(Error::conflict(
                                 "An authorization workflow is already active",
                             ));
@@ -1000,16 +1053,21 @@ impl Core {
                     || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa),
                 source: None,
                 authorization: None,
+                consent: None,
                 recovery: None,
                 invitation: None,
             };
             if let Some(authorization) = authorization.as_ref() {
-                authorization::bind(tx, &run.record, &mut request, authorization, at)?;
+                if configured_consent {
+                    consent::bind(tx, &run.record, &mut request, &session, authorization, at)?;
+                } else {
+                    authorization::bind(tx, &run.record, &mut request, authorization, at)?;
+                }
             }
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
-            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT {
+            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT || configured_consent {
                 enrollment::resume_session(self, tx, checked, &mut run, at)?;
             }
             run.view(checked)
