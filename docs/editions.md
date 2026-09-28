@@ -138,8 +138,10 @@ edition setting check.
 
 The release workflow builds separate x86-64 and ARM64 Essentials and Platform
 native archives and container image archives from the checked tag, plus the
-standalone `riauthctl` and a Platform-capable offline `riauth-maintenance`
-archive per architecture. The
+standalone `riauthctl` and distinct Essentials and Platform offline
+`riauth-maintenance` archives per architecture. Each maintenance archive contains
+an executable named `riauth-maintenance`; select the archive for the server
+edition when initializing or restoring its store. The
 Dockerfile defaults to Essentials; pass `--build-arg RIAUTH_EDITION=platform` for
 the additive image. Release provenance records both feature sets and image IDs.
 The server and base client release builds omit terminal USB support.

@@ -373,8 +373,9 @@ restore and startup with the exact binary intended for recovery.
 
 ## Distribution
 
-The release workflow builds native Essentials, Platform, riauthctl and maintenance
-archives for Linux x86-64 and ARM64 on native Ubuntu 24.04 runners. It also
+The release workflow builds native Essentials and Platform server archives, an
+edition-matched maintenance archive for each, and riauthctl for Linux x86-64 and
+ARM64 on native Ubuntu 24.04 runners. It also
 packages an Essentials and a Platform container image for each architecture.
 The standalone client is built without terminal USB support. Each architecture
 has its own SHA-256 checksums and build provenance recording the commit, target,

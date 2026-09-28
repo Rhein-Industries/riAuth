@@ -54,7 +54,7 @@ change.
 | **Backup key** (`riauth keygen` output, 32 random bytes as base64url) | Decrypts every archive made with it. Restore requires it as `--key-file`. | Every archive made with that key is unreadable. There is no passphrase, escrow or recovery path. See [Unrecoverable cases](#unrecoverable-cases). |
 | **Database key** (`database_key_file`), when storage is encrypted | Opens the live store, a copied redb file and any PostgreSQL backup, dump or PITR of an encrypted store. **Not** needed to restore an archive: restore re-encrypts records under the key given as `--database-key-file`. | The live store and every database-native copy of it are unreadable. Only an archive and its backup key can rebuild the instance. |
 | **A copy of `riauth.toml`** | Lists the referenced paths and settings you must provision *before* restoring. The archive's copy can be read only by restoring it. It omits `database_key_file` and comments. | Recoverable from the archive after restore, but some Platform files must exist before restore can finish. See [Restore order](#restore-order). |
-| **The exact server artifact**: edition, release version and checksum, plus the `riauth-maintenance` of the same release for Platform | Restore and recovery commands must run with the deployment's edition, at the same release that made the archive. See [Choose the binary](#choose-the-binary). | Rebuild the same edition and revision from source, or download the release again. |
+| **The exact server and maintenance artifacts**: edition, release version and checksums | Restore and recovery commands must run with the deployment's edition, at the same release that made the archive. See [Choose the binary](#choose-the-binary). | Rebuild the same edition and revision from source, or download the release again. |
 
 Make the backup key and the database key **different** keys. riAuth does not enforce
 this. Both key files must be owner-only (mode 0600 or 0400), at most 128 bytes,
@@ -136,14 +136,15 @@ Opening a store records the opening binary's edition and compiled capabilities i
 that `restore` performs before it publishes `riauth.toml`. Run every command that
 opens the store with the **deployment's own edition and release**.
 
-- **Essentials.** Use the Essentials `riauth` binary for `restore`, `recovery`,
-  `recover-admin` and `init`. The released `riauth-maintenance` archive is built as
-  Platform. If it opens or restores an Essentials store, the store is recorded as
-  Platform, and the Essentials server then refuses it. If this happens during a
-  restore, discard that output and restore again: restore always writes a new target.
-  `keygen` does not open a store and is safe with either binary.
-- **Platform.** Use the Platform `riauth`. `riauth-maintenance restore` from the same
-  release is equivalent. The `recovery` subcommands exist only in `riauth`.
+- **Essentials.** Use the Essentials `riauth` binary or the released Essentials
+  `riauth-maintenance` archive for `restore`, `recover-admin` and `init`. The
+  `recovery` subcommands exist only in `riauth`. A Platform binary records the
+  store as Platform, and the Essentials server then refuses it. If this happens
+  during a restore, discard that output and restore again: restore always writes
+  a new target. `keygen` does not open a store and is safe with either edition.
+- **Platform.** Use the Platform `riauth` binary or the released Platform
+  `riauth-maintenance` archive from the same release. The `recovery` subcommands
+  exist only in `riauth`.
 - **Crossing editions.** An Essentials binary cannot restore a Platform archive. Its
   configuration check rejects Platform settings, and the reopen refuses Platform
   provenance or retained Platform records. To move a Platform deployment to

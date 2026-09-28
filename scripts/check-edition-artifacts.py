@@ -136,8 +136,8 @@ def archive_binary(archive, edition, directory):
     return binary
 
 
-def check_tool_archive(archive, name, directory):
-    destination = directory / name
+def check_tool_archive(archive, name, directory, label=None):
+    destination = directory / (label or name)
     destination.mkdir()
     with tarfile.open(archive, "r:gz") as source:
         member = source.getmember(name)
@@ -148,6 +148,7 @@ def check_tool_archive(archive, name, directory):
     binary = destination / name
     binary.chmod(0o700)
     assert name in run(str(binary), "--version")
+    return binary
 
 
 def stop(process):
@@ -165,10 +166,14 @@ def archive_server(binary, config, log):
     return process
 
 
-def check_archives(essentials, platform, directory):
+def check_archives(essentials, platform, maintenance, directory):
     binaries = {
         edition: archive_binary(archive, edition, directory)
         for edition, archive in (("essentials", essentials), ("platform", platform))
+    }
+    maintenance_binaries = {
+        edition: check_tool_archive(archive, "riauth-maintenance", directory, f"{edition}-maintenance")
+        for edition, archive in maintenance.items()
     }
     for edition, binary in binaries.items():
         root = directory / f"{edition}-instance"
@@ -176,7 +181,7 @@ def check_archives(essentials, platform, directory):
         config = root / "riauth.toml"
         listen = port()
         base = f"http://127.0.0.1:{listen}"
-        run(str(binary), "--config", str(config), "--json", "--non-interactive", "init",
+        run(str(maintenance_binaries[edition]), "--config", str(config), "--json", "--non-interactive", "init",
             "--issuer", base, "--listen", f"127.0.0.1:{listen}",
             "--data-dir", str(root / "data"), "--password-stdin", input=PASSWORD + "\n")
         log = root / "server.log"
@@ -256,15 +261,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--essentials-archive", type=pathlib.Path, required=True)
     parser.add_argument("--platform-archive", type=pathlib.Path, required=True)
-    parser.add_argument("--maintenance-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--essentials-maintenance-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--platform-maintenance-archive", type=pathlib.Path, required=True)
     parser.add_argument("--riauthctl-archive", type=pathlib.Path, required=True)
     parser.add_argument("--essentials-image")
     parser.add_argument("--platform-image")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="riauth-a05-") as temporary:
         directory = pathlib.Path(temporary)
-        check_archives(args.essentials_archive, args.platform_archive, directory)
-        check_tool_archive(args.maintenance_archive, "riauth-maintenance", directory)
+        check_archives(args.essentials_archive, args.platform_archive,
+                       {"essentials": args.essentials_maintenance_archive,
+                        "platform": args.platform_maintenance_archive}, directory)
         check_tool_archive(args.riauthctl_archive, "riauthctl", directory)
     if args.essentials_image or args.platform_image:
         if not (args.essentials_image and args.platform_image):

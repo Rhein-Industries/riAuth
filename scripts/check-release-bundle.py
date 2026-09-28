@@ -6,6 +6,7 @@ import json
 import pathlib
 import re
 import sys
+import tarfile
 
 
 ARCHITECTURES = {"x86_64": "amd64", "aarch64": "arm64"}
@@ -29,7 +30,9 @@ def check(root, commit, repository, run_id, run_attempt):
     common = None
     for arch, oci_arch in ARCHITECTURES.items():
         assets = {
-            f"riauth-{edition}-linux-{arch}.tar.gz" for edition in ("essentials", "platform", "maintenance")
+            f"riauth-{edition}-linux-{arch}.tar.gz" for edition in ("essentials", "platform")
+        } | {
+            f"riauth-maintenance-{edition}-linux-{arch}.tar.gz" for edition in ("essentials", "platform")
         } | {
             f"riauth-{edition}-linux-{arch}.docker.tar.gz" for edition in ("essentials", "platform")
         } | {f"riauthctl-linux-{arch}.tar.gz", f"build-provenance-linux-{arch}.json"}
@@ -49,7 +52,7 @@ def check(root, commit, repository, run_id, run_attempt):
 
         provenance = json.loads((root / f"build-provenance-linux-{arch}.json").read_text())
         for field, value in {
-            "schema": "riauth.build/v3", "commit": commit, "repository": repository,
+            "schema": "riauth.build/v4", "commit": commit, "repository": repository,
             "run_id": run_id, "run_attempt": run_attempt,
             "target_triple": f"{arch}-unknown-linux-gnu", "oci_platform": f"linux/{oci_arch}",
         }.items():
@@ -62,8 +65,29 @@ def check(root, commit, repository, run_id, run_attempt):
                     f"{arch} {edition} feature mismatch")
             require(str(build.get("docker_image_id", "")).startswith("sha256:"),
                     f"{arch} {edition} image ID missing")
-        require(provenance.get("maintenance_features") == ["essentials", "platform"],
-                f"{arch} maintenance feature mismatch")
+        maintenance_builds = provenance.get("maintenance_builds", {})
+        require(isinstance(maintenance_builds, dict) and set(maintenance_builds) == {"essentials", "platform"},
+                f"{arch} maintenance builds missing or unexpected")
+        for edition, features in (("essentials", ["essentials"]), ("platform", ["essentials", "platform"])):
+            build = maintenance_builds[edition]
+            require(isinstance(build, dict), f"{arch} {edition} maintenance build is invalid")
+            require(build.get("features") == features and build.get("no_default_features") is True,
+                    f"{arch} {edition} maintenance feature mismatch")
+            binary_digest = build.get("binary_sha256")
+            require(isinstance(binary_digest, str) and re.fullmatch(r"[0-9a-f]{64}", binary_digest) is not None,
+                    f"{arch} {edition} maintenance binary digest missing")
+            archive_name = f"riauth-maintenance-{edition}-linux-{arch}.tar.gz"
+            with tarfile.open(root / archive_name, "r:gz") as archive:
+                member = archive.getmember("riauth-maintenance")
+                require(member.isfile(), f"{archive_name} has no maintenance binary")
+                binary = archive.extractfile(member)
+                require(binary is not None, f"{archive_name} cannot read maintenance binary")
+                with binary:
+                    checksum = hashlib.sha256()
+                    for chunk in iter(lambda: binary.read(1024 * 1024), b""):
+                        checksum.update(chunk)
+                require(checksum.hexdigest() == binary_digest,
+                        f"{arch} {edition} maintenance binary digest mismatch")
         require(provenance.get("riauthctl_features") == "no-default-features",
                 f"{arch} riauthctl feature mismatch")
         shared = tuple(provenance.get(key) for key in
@@ -83,6 +107,6 @@ if __name__ == "__main__":
         raise SystemExit("usage: check-release-bundle.py DIST COMMIT REPOSITORY RUN_ID RUN_ATTEMPT")
     try:
         check(pathlib.Path(sys.argv[1]), *sys.argv[2:])
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, KeyError, tarfile.TarError, json.JSONDecodeError) as error:
         raise SystemExit(f"incomplete release bundle: {error}") from error
     print("Complete x86_64 and aarch64 release bundle verified")

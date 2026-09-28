@@ -99,13 +99,17 @@ jobs:
           python3 scripts/check-edition-artifacts.py \
             --essentials-archive "target/dist/riauth-essentials-linux-$RIAUTH_ARCH.tar.gz" \
             --platform-archive "target/dist/riauth-platform-linux-$RIAUTH_ARCH.tar.gz" \
-            --maintenance-archive "target/dist/riauth-maintenance-linux-$RIAUTH_ARCH.tar.gz" \
+            --essentials-maintenance-archive "target/dist/riauth-maintenance-essentials-linux-$RIAUTH_ARCH.tar.gz" \
+            --platform-maintenance-archive "target/dist/riauth-maintenance-platform-linux-$RIAUTH_ARCH.tar.gz" \
             --riauthctl-archive "target/dist/riauthctl-linux-$RIAUTH_ARCH.tar.gz" \
             --essentials-image "$RIAUTH_ESSENTIALS_IMAGE" \
             --platform-image "$RIAUTH_PLATFORM_IMAGE"
+          for edition in essentials platform; do
+            tar -xOzf "target/dist/riauth-maintenance-$edition-linux-$RIAUTH_ARCH.tar.gz" riauth-maintenance | cmp - "target/$edition/${{ matrix.target }}/release/riauth-maintenance"
+          done
           cd target/dist
           sha256sum --check "SHA256SUMS-linux-$RIAUTH_ARCH"
-          for archive in "riauth-essentials-linux-$RIAUTH_ARCH.tar.gz" "riauth-platform-linux-$RIAUTH_ARCH.tar.gz" "riauth-maintenance-linux-$RIAUTH_ARCH.tar.gz" "riauthctl-linux-$RIAUTH_ARCH.tar.gz"; do
+          for archive in "riauth-essentials-linux-$RIAUTH_ARCH.tar.gz" "riauth-platform-linux-$RIAUTH_ARCH.tar.gz" "riauth-maintenance-essentials-linux-$RIAUTH_ARCH.tar.gz" "riauth-maintenance-platform-linux-$RIAUTH_ARCH.tar.gz" "riauthctl-linux-$RIAUTH_ARCH.tar.gz"; do
             tar -xOzf "$archive" LICENSE | cmp - ../../LICENSE
             tar -xOzf "$archive" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
           done

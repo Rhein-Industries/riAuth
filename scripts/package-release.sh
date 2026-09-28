@@ -24,10 +24,10 @@ for edition in essentials platform; do
   binary="target/$edition/$target/release/riauth"
   test -x "$binary"
   tar -czf "$riauth_dist/riauth-$edition-linux-$RIAUTH_ARCH.tar.gz" -C "$(dirname "$binary")" riauth -C "$PWD" LICENSE THIRD_PARTY_NOTICES.md
+  maintenance_binary="target/$edition/$target/release/riauth-maintenance"
+  test -x "$maintenance_binary"
+  tar -czf "$riauth_dist/riauth-maintenance-$edition-linux-$RIAUTH_ARCH.tar.gz" -C "$(dirname "$maintenance_binary")" riauth-maintenance -C "$PWD" LICENSE THIRD_PARTY_NOTICES.md
 done
-maintenance_binary="target/platform/$target/release/riauth-maintenance"
-test -x "$maintenance_binary"
-tar -czf "$riauth_dist/riauth-maintenance-linux-$RIAUTH_ARCH.tar.gz" -C "$(dirname "$maintenance_binary")" riauth-maintenance -C "$PWD" LICENSE THIRD_PARTY_NOTICES.md
 riauthctl_binary="crates/riauthctl/target/$target/release/riauthctl"
 test -x "$riauthctl_binary"
 tar -czf "$riauth_dist/riauthctl-linux-$RIAUTH_ARCH.tar.gz" -C "$(dirname "$riauthctl_binary")" riauthctl -C "$PWD" LICENSE THIRD_PARTY_NOTICES.md
@@ -46,7 +46,10 @@ arch = os.environ['RIAUTH_ARCH']
 target = f'{arch}-unknown-linux-gnu'
 oci_arch = {'x86_64': 'amd64', 'aarch64': 'arm64'}[arch]
 os_release = platform.freedesktop_os_release()
-provenance = {'schema': 'riauth.build/v3', 'commit': os.environ['RIAUTH_COMMIT'],
+def sha256_file(path):
+    with path.open('rb') as source:
+        return hashlib.file_digest(source, 'sha256').hexdigest()
+provenance = {'schema': 'riauth.build/v4', 'commit': os.environ['RIAUTH_COMMIT'],
               'repository': os.environ['GITHUB_REPOSITORY'], 'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'target_triple': target, 'oci_platform': f'linux/{oci_arch}',
@@ -57,7 +60,11 @@ provenance = {'schema': 'riauth.build/v3', 'commit': os.environ['RIAUTH_COMMIT']
                             'no_default_features': True,
                             'docker_image_id': subprocess.check_output(['docker','image','inspect','--format','{{.Id}}',os.environ[f'RIAUTH_{edition.upper()}_IMAGE']],text=True).strip()}
                   for edition in ('essentials', 'platform')},
-              'maintenance_features': ['essentials', 'platform'],
+              'maintenance_builds': {
+                  edition: {'features': ['essentials'] if edition == 'essentials' else ['essentials', 'platform'],
+                            'no_default_features': True,
+                            'binary_sha256': sha256_file(pathlib.Path(f'target/{edition}/{target}/release/riauth-maintenance'))}
+                  for edition in ('essentials', 'platform')},
               'rustc': subprocess.check_output(['rustc','--version'], text=True).strip(),
               'cargo_lock_sha256': hashlib.sha256(pathlib.Path('Cargo.lock').read_bytes()).hexdigest(),
               'riauthctl_cargo_lock_sha256': hashlib.sha256(pathlib.Path('crates/riauthctl/Cargo.lock').read_bytes()).hexdigest(),
