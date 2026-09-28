@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     ] {
         config.rate_limits.insert(category.into(), limit);
     }
-    let core = Core::initialize(
+    let mut core = Core::initialize(
         config,
         NewUser {
             username: "admin".into(),
@@ -204,6 +204,9 @@ async fn main() -> anyhow::Result<()> {
         }
         users.insert(key.into(), account);
     }
+    // Review-specific suites opt in after ordinary fixture clients are populated.
+    core.config.reviewed_client_creation =
+        std::env::var("RIAUTH_FIXTURE_REVIEWED_CLIENT_CREATION").as_deref() == Ok("1");
     println!(
         "{}",
         json!({

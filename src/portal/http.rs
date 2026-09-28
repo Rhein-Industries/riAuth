@@ -113,6 +113,15 @@ pub fn browser_routes() -> Router<App> {
             }),
         )
         .route(
+            "/portal/assets/client-creation-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("client-creation-review.js"),
+                )
+            }),
+        )
+        .route(
             "/portal/assets/auth.js",
             get(|| async {
                 (

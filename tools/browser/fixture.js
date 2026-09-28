@@ -20,8 +20,9 @@ export const fixtureExecutable = resolve(repository, process.env.CARGO_TARGET_DI
 
 // Resolves to {fixture, stop}. `relyingParty` is the origin (http://localhost:PORT) the
 // fixture registers its redirect URIs under. `stop()` sends SIGTERM and waits for the exit.
-export async function startFixture({ relyingParty } = {}) {
-  const env = relyingParty ? { ...process.env, RIAUTH_FIXTURE_RP_ORIGIN: relyingParty } : process.env;
+export async function startFixture({ relyingParty, reviewedClientCreation = false } = {}) {
+  const env = { ...process.env, ...(relyingParty ? { RIAUTH_FIXTURE_RP_ORIGIN: relyingParty } : {}),
+    ...(reviewedClientCreation ? { RIAUTH_FIXTURE_REVIEWED_CLIENT_CREATION: '1' } : {}) };
   const service = spawn(fixtureExecutable, [], { env, stdio: ['ignore', 'pipe', 'inherit'] });
   const stop = async () => {
     if (service.exitCode !== null || service.signalCode !== null) return;

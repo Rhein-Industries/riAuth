@@ -60,7 +60,11 @@ and reviewed advanced creation remain follow-up work.
 
 Browser JSON uses the same paths with `/api/admin` and the existing session,
 origin and write guards. These are thin adapters to the same service, not a
-second writer. A dedicated client-creation review page remains follow-up work.
+second writer. The admin **Reviewed applications** page
+(`/admin#/client-creation-review`) stages and reviews creation proposals. When
+review is enabled, **Applications → New application** opens this flow; otherwise
+it keeps the ordinary setup wizard. The guarded admin session response exposes
+only the review-enabled boolean needed for this choice.
 
 Example stage content:
 
@@ -98,6 +102,47 @@ requires `--output-file <private-file>` or explicit `--show-secrets` before maki
 an execute request, including for public clients. A normal output-file response
 does not print the secret. Keep the same request key and content when recovering
 an uncertain execution response; a new request cannot execute the proposal again.
+
+## Browser review and one-time secret delivery
+
+The browser form supports web, public browser, native and service clients with
+names/IDs, callbacks, scopes, group restrictions, MFA, browser origins and
+post-logout URLs. It shows the exact content before staging. Other settings within
+the service's supported allowlist can be staged through API/CLI and inspected in
+the browser's complete immutable client content. The form does not add an
+advanced-settings writer or relax the service's supported creation classes.
+
+New drafts load a fresh management revision. In-page refresh preserves unsent
+content and its original revision, clears the acknowledgement, and never silently
+rebases it. **Use current revision** explicitly reloads that binding and requires
+another acknowledgement. A full document reload drops the in-memory draft. A
+lost staging response locks the exact body, revision and request key for an
+explicit same-request retry. Staged review links contain only the proposal ID.
+
+The review page shows before/after, client type and access rules, full client
+settings, canonical digest, dependency fingerprints, author/reviewers/executor
+with stable IDs, timestamps and expiry. Each action checks the browser identity
+again and posts only the exact digest. Authors and reviewers cannot execute;
+authors cannot approve. The page displays pending/approved, executed, cancelled,
+expired, stale and unknown-outcome states. Browser expiry/revision checks are
+advisory; the unchanged service revalidates all authority and dependencies in the
+transaction. Stale unfinished work can be cancelled under the service's rules.
+
+An unknown execution keeps its original request key and revision in memory.
+**Recover execution result** replays that receipt under the same administrator;
+it never creates a fresh execution request. Refreshing an executed proposal alone
+cannot recover a secret. A confirmed response clears the recovery request, and
+the secret is displayed once in a focused tab only after a second identity check.
+Public clients show no secret. Explicit erasure, refresh, navigation, page hide,
+tab switching or loss of focus removes every displayed copy. A response arriving
+after loss of focus cannot reveal a secret. A discarded secret requires rotation
+through the existing application controls.
+
+Drafts, request keys and secrets are not written to browser storage. Account or
+session changes discard drafts and pending decisions. Server error bodies are
+not echoed; the page gives fixed authorization, freshness and unknown-outcome
+feedback. All proposal fields render as text. Malformed responses cannot enable
+actions. The UI adds no management writer or authorization exception.
 
 ## Binding and atomic execution
 
@@ -161,6 +206,29 @@ cargo test --locked --offline --features test-support --test reviewed_client_cre
 cargo check --locked --offline --no-default-features --features essentials --lib --bin riauth
 cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_creation --test reviewed_client_policy --test application_management
 ```
+
+Browser continuation checks:
+
+```text
+cargo build --locked --offline --example portal_fixture
+cargo test --locked --offline --features test-support --test reviewed_client_creation
+cargo test --locked --offline --no-default-features --features essentials,test-support --test reviewed_client_creation
+node node_modules/@playwright/test/cli.js test client-creation-review.spec.js --project=chromium --workers=1 --reporter=line --output=/tmp/riauth-m05-creation-ui-results
+```
+
+The browser command runs from `tools/browser` using existing dependencies and
+writes artifacts under `/tmp`. The fixture enables review after creating seed
+clients, leaving the other browser suites' default policy unchanged. The focused
+browser checks cover exact content, participant separation, retry and receipt
+recovery, secret erasure, stale revisions, cancellation, account changes, and
+public/service creation. Chromium accessibility and narrow-screen checks cover
+WCAG 2 A/AA and 2.1 AA and 320-pixel reflow. Firefox, WebKit and PostgreSQL
+peer checks remain separate.
+
+Remaining browser gaps are editing the rest of the service's allowed creation
+settings, existing-client access-policy review UI, and a shared review inbox.
+Advanced/initially-disabled creation, supplied initial credentials, configurable
+quorums and delegated review roles retain the boundaries described above.
 
 The complete remaining M05 inventory is in
 [reviewed grants](reviewed-grants.md#remaining-resource-classes-and-integration-boundaries).

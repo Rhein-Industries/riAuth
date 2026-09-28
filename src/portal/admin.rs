@@ -362,6 +362,7 @@ async fn session(State(app): State<App>, headers: HeaderMap) -> Result<Json<Valu
                 "user": UserView::from(&user),
                 "mfa": session.identity.mfa,
                 "edition": crate::edition::NAME,
+                "reviewed_client_creation": core.config.reviewed_client_creation,
                 "expires_at": session.expires_at,
                 "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
             })))

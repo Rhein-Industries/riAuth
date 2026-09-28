@@ -151,7 +151,7 @@ async fn call(
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     (
         status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| json!(String::from_utf8_lossy(&bytes))),
     )
 }
 
@@ -303,6 +303,56 @@ async fn configured_creation_review_binds_content_authority_dependencies_and_iss
     let reviewer_cookie = cookie(&f.core, &reviewer);
     let app = riauth::api::router(f.core.clone());
     let browser = Auth::Browser(&author_cookie, Some("http://localhost:9000"));
+    let session = call(
+        &app,
+        "GET",
+        "/api/admin/session",
+        browser,
+        Value::Null,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(session.0, StatusCode::OK);
+    assert_eq!(session.1["reviewed_client_creation"], true);
+    let asset = "/portal/assets/client-creation-review.js";
+    let script = call(&app, "GET", asset, browser, Value::Null, None, None).await;
+    assert_eq!(script.0, StatusCode::OK);
+    assert!(
+        script
+            .1
+            .as_str()
+            .unwrap()
+            .contains("RiAuthClientCreationReview")
+    );
+    let page = call(&app, "GET", "/admin", browser, Value::Null, None, None).await;
+    assert!(page.1.as_str().unwrap().contains(asset));
+    let mut headless = f.core.clone();
+    headless.config.browser_ui = false;
+    let headless = riauth::api::router(headless);
+    assert_eq!(
+        call(&headless, "GET", asset, browser, Value::Null, None, None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let mut ordinary = f.core.clone();
+    ordinary.config.reviewed_client_creation = false;
+    let ordinary = riauth::api::router(ordinary);
+    assert_eq!(
+        call(
+            &ordinary,
+            "GET",
+            "/api/admin/session",
+            browser,
+            Value::Null,
+            None,
+            None
+        )
+        .await
+        .1["reviewed_client_creation"],
+        false
+    );
     for (path, auth) in [
         ("/api/clients", Auth::Bearer(&f.admin)),
         ("/api/clients", Auth::Bearer(&scoped)),
