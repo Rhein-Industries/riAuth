@@ -3,7 +3,7 @@
 mod common;
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -68,6 +68,10 @@ struct ScimState {
     groups: Arc<Mutex<Vec<Value>>>,
     // Replaces the members-related fields of a single-resource GET for a group.
     group_read_override: Arc<Mutex<Option<Value>>>,
+    // Same replacement, but only for responses about a group after it was
+    // patched: the PATCH response body and later GETs (the read-back).
+    group_readback_override: Arc<Mutex<Option<Value>>>,
+    patched_groups: Arc<Mutex<HashSet<String>>>,
 }
 impl ScimState {
     fn collection(&self, kind: &str) -> Option<&Arc<Mutex<Vec<Value>>>> {
@@ -1221,6 +1225,8 @@ fn scim_state() -> ScimState {
         lookup_override: Arc::new(Mutex::new(None)),
         groups: Arc::new(Mutex::new(Vec::new())),
         group_read_override: Arc::new(Mutex::new(None)),
+        group_readback_override: Arc::new(Mutex::new(None)),
+        patched_groups: Arc::new(Mutex::new(HashSet::new())),
     }
 }
 
@@ -1407,12 +1413,24 @@ async fn get_user(
     let Some(mut user) = users.iter().find(|user| user["id"] == id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if kind == "Groups"
-        && let Some(fields) = state.group_read_override.lock().unwrap().clone()
-    {
-        let user = user.as_object_mut().unwrap();
-        user.remove("members");
-        user.extend(fields.as_object().unwrap().clone());
+    if kind == "Groups" {
+        let fields = state
+            .group_read_override
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| {
+                state
+                    .patched_groups
+                    .lock()
+                    .unwrap()
+                    .contains(&id)
+                    .then(|| state.group_readback_override.lock().unwrap().clone())
+                    .flatten()
+            });
+        if let Some(fields) = fields {
+            replace_members(&mut user, &fields);
+        }
     }
     (StatusCode::OK, etag(), Json(user)).into_response()
 }
@@ -1443,7 +1461,13 @@ async fn patch_user(
             user[key] = value.clone();
         }
     }
-    let body = user.clone();
+    let mut body = user.clone();
+    if kind == "Groups" {
+        state.patched_groups.lock().unwrap().insert(id);
+        if let Some(fields) = state.group_readback_override.lock().unwrap().clone() {
+            replace_members(&mut body, &fields);
+        }
+    }
     if state
         .patch_error_after_apply_once
         .swap(false, Ordering::SeqCst)
@@ -1455,6 +1479,12 @@ async fn patch_user(
     } else {
         (StatusCode::OK, etag(), Json(body)).into_response()
     }
+}
+
+fn replace_members(resource: &mut Value, fields: &Value) {
+    let resource = resource.as_object_mut().unwrap();
+    resource.remove("members");
+    resource.extend(fields.as_object().unwrap().clone());
 }
 
 fn etag() -> [(header::HeaderName, &'static str); 1] {
@@ -1708,12 +1738,15 @@ async fn reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patc
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn reviewed_last_group_member_removal_requires_complete_remote_membership() {
+/// Seeds a delivered target whose linked "staff" group has one managed member,
+/// then applies a reviewed, confirmed plan removing that last member. The user
+/// stays provisioned through "everyone". Returns with the job cursor at the
+/// "staff" item and nothing removed remotely yet.
+async fn staff_removal_at_group_step(
+    scim: &ScimState,
+    scim_url: String,
+) -> (Fixture, tempfile::TempDir, String, String, String) {
     let mut f = Fixture::new();
-    let tokens = token_state();
-    let scim = scim_state();
-    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
     let dir = tempfile::tempdir().unwrap();
     let name = unique("guarded-group");
     f.core.config.scim_targets.insert(
@@ -1727,8 +1760,6 @@ async fn reviewed_last_group_member_removal_requires_complete_remote_membership(
             export_groups: true,
         },
     );
-    // The user stays provisioned through "everyone", so the reviewed plan only
-    // removes the last managed member of the linked "staff" group.
     f.core.create_group(&f.admin, "everyone").unwrap();
     f.core.create_group(&f.admin, "staff").unwrap();
     f.user("member");
@@ -1748,15 +1779,10 @@ async fn reviewed_last_group_member_removal_requires_complete_remote_membership(
         f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
         true
     );
-    let staff = scim
-        .groups
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|g| g["displayName"] == "staff")
-        .cloned()
-        .unwrap();
-    assert_eq!(staff["members"], json!([{"value":"remote-user-1"}]));
+    assert_eq!(
+        remote_staff(scim)["members"],
+        json!([{"value":"remote-user-1"}])
+    );
 
     f.core
         .group_member(&f.admin, "staff", "member", false)
@@ -1774,14 +1800,45 @@ async fn reviewed_last_group_member_removal_requires_complete_remote_membership(
     // The unchanged user and the unchanged "everyone" group advance normally.
     step(&f.core).await;
     step(&f.core).await;
-    let job = |f: &Fixture| {
-        f.core
-            .store
-            .get::<Value>("provisioning_jobs", &id)
-            .unwrap()
-            .unwrap()
-    };
-    assert_eq!(job(&f)["cursor"], 2);
+    assert_eq!(job_record(&f, &id)["cursor"], 2);
+    (f, dir, agent, name, id)
+}
+
+fn remote_staff(scim: &ScimState) -> Value {
+    scim.groups
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|g| g["displayName"] == "staff")
+        .cloned()
+        .unwrap()
+}
+
+fn job_record(f: &Fixture, id: &str) -> Value {
+    f.core
+        .store
+        .get::<Value>("provisioning_jobs", id)
+        .unwrap()
+        .unwrap()
+}
+
+fn make_due(f: &Fixture, id: &str) {
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", id)?.unwrap();
+            job["next_attempt"] = json!(crypto::now());
+            tx.put("provisioning_jobs", id, &job)
+        })
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_last_group_member_removal_requires_complete_remote_membership() {
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
+    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let job = |f: &Fixture| job_record(f, &id);
     let links = f.core.store.list::<Value>("provisioning_links").unwrap();
     let patches = scim.patch_hits.load(Ordering::SeqCst);
     for fields in [
@@ -1809,37 +1866,117 @@ async fn reviewed_last_group_member_removal_requires_complete_remote_membership(
             "{fields}: {}",
             current["error"]
         );
-        f.core
-            .store
-            .write(|tx| {
-                let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
-                job["next_attempt"] = json!(crypto::now());
-                tx.put("provisioning_jobs", &id, &job)
-            })
-            .unwrap();
+        make_due(&f, &id);
     }
     assert_eq!(
-        scim.groups
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|g| g["displayName"] == "staff")
-            .unwrap()["members"],
+        remote_staff(&scim)["members"],
         json!([{"value":"remote-user-1"}])
     );
     // A complete, explicit remote membership lets the reviewed removal proceed.
     *scim.group_read_override.lock().unwrap() = None;
     step(&f.core).await;
     assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches + 1);
+    assert_eq!(remote_staff(&scim)["members"], json!([]));
     assert_eq!(
-        scim.groups
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|g| g["displayName"] == "staff")
-            .unwrap()["members"],
-        json!([])
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
     );
+    let key = digest(&format!("{name}\0Groups\0staff"));
+    let link = f
+        .core
+        .store
+        .get::<Value>("provisioning_links", &key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(link["body"]["members"], json!([]));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback() {
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
+    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let assert_unadvanced = |context: &str| {
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links,
+            "{context}"
+        );
+        let job = job_record(&f, &id);
+        assert_eq!(job["cursor"], 2, "{context}");
+        assert_eq!(job["completed"], false, "{context}");
+        assert_eq!(job["stale"], false, "{context}");
+        assert!(job["lease"].is_null(), "{context}");
+        assert!(job["attempts"].as_u64().unwrap() >= 1, "{context}");
+        job["error"].as_str().unwrap_or_default().to_owned()
+    };
+    // (204 read-back via GET?, members-related fields reported after the PATCH)
+    for (no_content, fields) in [
+        (false, json!({})),
+        (
+            false,
+            json!({"members":[],"membersNextLink":"/scim/v2/Groups/next"}),
+        ),
+        (true, json!({"members":null})),
+        (
+            true,
+            json!({"members":[],"@odata.nextLink":"/scim/v2/Groups/next"}),
+        ),
+    ] {
+        let context = format!("no_content={no_content} {fields}");
+        // Each case starts from a remote group that still holds the member.
+        {
+            let mut groups = scim.groups.lock().unwrap();
+            let staff = groups
+                .iter_mut()
+                .find(|g| g["displayName"] == "staff")
+                .unwrap();
+            staff["members"] = json!([{"value":"remote-user-1"}]);
+        }
+        scim.patched_groups.lock().unwrap().clear();
+        scim.patch_no_content.store(no_content, Ordering::SeqCst);
+        *scim.group_readback_override.lock().unwrap() = Some(fields.clone());
+        let patches = scim.patch_hits.load(Ordering::SeqCst);
+
+        step(&f.core).await;
+        // The PATCH was dispatched and applied remotely, but its read-back is
+        // incomplete: the item must not advance or overwrite the managed link,
+        // and the error must not claim that nothing was dispatched.
+        assert_eq!(
+            scim.patch_hits.load(Ordering::SeqCst),
+            patches + 1,
+            "{context}"
+        );
+        assert_eq!(remote_staff(&scim)["members"], json!([]), "{context}");
+        let error = assert_unadvanced(&context);
+        assert!(
+            error.contains("may have been applied") && !error.contains("no replacement"),
+            "{context}: {error}"
+        );
+
+        // The retry re-reads the remote group, which still reports incomplete
+        // membership: it is rejected before dispatch, without a second PATCH.
+        make_due(&f, &id);
+        step(&f.core).await;
+        assert_eq!(
+            scim.patch_hits.load(Ordering::SeqCst),
+            patches + 1,
+            "{context}"
+        );
+        let error = assert_unadvanced(&context);
+        assert!(error.contains("members"), "{context}: {error}");
+        make_due(&f, &id);
+    }
+
+    // Once the remote reports explicit complete membership, the retry verifies
+    // the already-applied removal and advances without another PATCH.
+    *scim.group_readback_override.lock().unwrap() = None;
+    scim.patch_no_content.store(false, Ordering::SeqCst);
+    let patches = scim.patch_hits.load(Ordering::SeqCst);
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches);
+    assert_eq!(remote_staff(&scim)["members"], json!([]));
     assert_eq!(
         f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
         true

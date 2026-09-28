@@ -646,9 +646,18 @@ impl Core {
                     if updated["id"] != id
                         || updated["externalId"] != external_id
                         || !managed_equal(&body, &updated)
-                        || membership_at_stake && member_values(&updated)? != member_values(&body)?
                     {
                         return Err(remote_error());
+                    }
+                    // The PATCH was dispatched: pre-dispatch wording ("no replacement
+                    // was dispatched") would be false here. Keep the item unadvanced
+                    // and let the retry re-verify the complete remote membership.
+                    if membership_at_stake
+                        && member_values(&updated).ok() != Some(member_values(&body)?)
+                    {
+                        return Err(Error::conflict(
+                            "SCIM group membership read-back after PATCH is missing, incomplete or different; the remote change may have been applied; the item was not advanced and will be re-verified on retry",
+                        ));
                     }
                 }
                 id.to_owned()
