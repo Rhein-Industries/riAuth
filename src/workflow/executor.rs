@@ -8,6 +8,7 @@ mod mutation;
 mod passkey;
 mod password;
 mod recovery;
+mod removal;
 mod reset;
 mod source;
 mod totp;
@@ -21,7 +22,8 @@ use super::{
     RunBinding, RunState, Target, Validated, builtin, configured_password_path,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
-    supported_configured_passkey_enrollment, supported_configured_password_reset, validate,
+    supported_configured_passkey_enrollment, supported_configured_passkey_removal,
+    supported_configured_password_reset, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -86,6 +88,8 @@ struct RequestAuthority {
     recovery: Option<crate::lifecycle::workflow::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     invitation: Option<crate::lifecycle::workflow::invitation::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    removal: Option<removal::Pin>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -167,6 +171,7 @@ impl RuntimeRun {
         } else if configured_password_path(&self.definition).is_some()
             || supported_configured_passkey(&self.definition)
             || supported_configured_passkey_enrollment(&self.definition)
+            || supported_configured_passkey_removal(&self.definition)
             || supported_configured_password_reset(&self.definition)
             || supported_configured_consent(&self.definition)
         {
@@ -328,6 +333,7 @@ fn authority(
     }
     authorization::check(tx, run, &request, at)?;
     consent::check(tx, run, &request, at)?;
+    removal::check(tx, run, &request, at)?;
     Ok((user, request))
 }
 
@@ -858,7 +864,9 @@ impl CompletionStore for TxCompletion<'_, '_> {
         if matches!(
             terminal.outcome,
             super::Outcome::Enrolled | super::Outcome::Recovered
-        ) {
+        ) || (terminal.outcome == super::Outcome::ActionAuthorized
+            && supported_configured_passkey_removal(checked.definition()))
+        {
             current.credential_mutation = Some(
                 self.mutation
                     .take()
@@ -908,6 +916,31 @@ impl Core {
         self.start_local_workflow(token, &checked)
     }
 
+    /// The target ID is pinned to a live account/session/request before any
+    /// verifier challenge. The configured definition may only select the exact
+    /// session, UV passkey, remove-passkey path.
+    pub fn workflow_configured_passkey_removal_start(
+        &self,
+        token: &str,
+        workflow: &str,
+        credential_id: &str,
+    ) -> Result<View> {
+        let configured = self
+            .config
+            .workflows
+            .get(workflow)
+            .filter(|entry| entry.active)
+            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+        let checked = validate(configured.definition.clone(), &Environment::platform())
+            .map_err(invalid_error)?;
+        if checked.definition().id.as_str() != workflow
+            || !supported_configured_passkey_removal(checked.definition())
+        {
+            return Err(Error::conflict("Configured workflow is unavailable"));
+        }
+        self.start_authorization_workflow(token, &checked, None, Some(credential_id))
+    }
+
     /// Bind one active configured consent definition to an existing prepared
     /// OIDC request. The request still needs a separate explicit user decision.
     pub fn workflow_configured_consent_start(
@@ -929,7 +962,7 @@ impl Core {
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
-        self.start_authorization_workflow(token, &checked, Some(authorization))
+        self.start_authorization_workflow(token, &checked, Some(authorization), None)
     }
 
     /// Begin local-password reauthentication, adding TOTP when enrolled, for a live
@@ -940,7 +973,7 @@ impl Core {
     }
 
     fn start_local_workflow(&self, token: &str, checked: &Validated) -> Result<View> {
-        self.start_authorization_workflow(token, checked, None)
+        self.start_authorization_workflow(token, checked, None, None)
     }
 
     fn start_authorization_workflow(
@@ -948,9 +981,16 @@ impl Core {
         token: &str,
         checked: &Validated,
         authorization: Option<crate::oidc::Authorization>,
+        removal_target: Option<&str>,
     ) -> Result<View> {
         let configured_consent = supported_configured_consent(checked.definition());
+        let configured_removal = supported_configured_passkey_removal(checked.definition());
         if configured_consent && authorization.is_none() {
+            return Err(Error::forbidden());
+        }
+        if configured_removal != removal_target.is_some()
+            || (configured_removal && authorization.is_some())
+        {
             return Err(Error::forbidden());
         }
         self.store.write(|tx| {
@@ -982,7 +1022,8 @@ impl Core {
                 checked.definition().id.as_str(),
                 PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
             ) || configured_passkey
-                || configured_enrollment)
+                || configured_enrollment
+                || configured_removal)
                 && !user.has_passkeys
             {
                 return Err(Error::conflict(
@@ -1008,8 +1049,10 @@ impl Core {
                             .get(REQUESTS, &active.record.request)?
                             .ok_or_else(Error::forbidden)?;
                         if authorization.is_some()
+                            || removal_target.is_some()
                             || request.authorization.is_some()
                             || request.consent.is_some()
+                            || request.removal.is_some()
                         {
                             return Err(Error::conflict(
                                 "An authorization workflow is already active",
@@ -1055,7 +1098,7 @@ impl Core {
             let mut request = RequestAuthority {
                 id: request_id.clone(),
                 run: run_id.clone(),
-                account: user.id,
+                account: user.id.clone(),
                 account_epoch: user.epoch,
                 session: session.id.clone(),
                 token_hash: digest(token),
@@ -1067,6 +1110,7 @@ impl Core {
                 consent: None,
                 recovery: None,
                 invitation: None,
+                removal: None,
             };
             if let Some(authorization) = authorization.as_ref() {
                 if configured_consent {
@@ -1075,11 +1119,15 @@ impl Core {
                     authorization::bind(tx, &run.record, &mut request, authorization, at)?;
                 }
             }
+            if let Some(target) = removal_target {
+                removal::bind(tx, &run.record, &mut request, &user, target, at)?;
+            }
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
             if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
                 || configured_enrollment
+                || configured_removal
                 || configured_consent
             {
                 enrollment::resume_session(self, tx, checked, &mut run, at)?;

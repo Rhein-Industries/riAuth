@@ -26,7 +26,8 @@ Platform also supports the exact configured consent shape described below.
 It supports one configured enrollment shape: a live session, fresh verified
 existing passkey, and passkey registration in that order.
 It also supports one configured recovery shape: explicit reset-mail verification
-and password reset in the same transaction.
+and password reset in the same transaction, plus one configured sensitive action:
+removal of an exact passkey after a live session and fresh verified passkey proof.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
@@ -76,7 +77,8 @@ selects active definitions from `config.toml`, not this persisted authoring stor
 * **Steps** run one built-in action. The action set is closed: `identify`,
   `resume_session`, `verify_password`, `verify_passkey`, `verify_totp`,
   `verify_recovery_code`, `verify_email` (`reset` or `invitation` purpose),
-  `verify_source`, `request_consent`, `enroll_credential`, `reset_password` and,
+  `verify_source`, `request_consent`, `enroll_credential`, `remove_passkey`,
+  `reset_password` and,
   for Platform only, `custom`. Each category permits a fixed subset.
 * **Transitions** route a step's signals (`verified`/`failed`,
   `completed`/`failed`, `granted`/`denied`, or a custom stage's declared outputs
@@ -102,14 +104,15 @@ the input.
 Only proof-producing built-in actions yield proof kinds, and only on their
 success signal:
 `session`, `password`, `passkey`, `totp`, `recovery_code`, `reset_email`,
-`invitation`, `source`, `consent`, `enrolled` and `password_reset`. A proof's
+`invitation`, `source`, `consent`, `enrolled`, `password_reset` and
+`passkey_removed`. A proof's
 required account, request and run bindings are declared by its type
 (`Proof::binding`), not a definition field. W03 makes completion use stored,
 typed evidence rather than a caller-supplied list of proof kinds. Each evidence
 record names the built-in action and step attempt that produced it, its
 verification and expiry times, consumption state, and the account, account
 epoch, request and run to which it belongs. Its optional session must match
-the run's exactly; `session` and `consent` proofs require one. A custom stage
+the run's exactly; `session`, `consent` and `passkey_removed` proofs require one. A custom stage
 can route by its outputs but never
 produces a proof, cannot reuse built-in signal names and only receives
 permissions that its registration grants.
@@ -153,13 +156,14 @@ account and request facts then apply the floor and `requires` again. They also r
 passkey, TOTP or recovery code for authentication when the account has TOTP or
 the request requires MFA, and for sensitive actions and session-based enrollment
 when the account has TOTP. Definitions cannot relax these rules. Stored receipts
-alone cannot authorize `enrolled` or `recovered` completion. Supported adapters
-also supply a private in-memory capability from the real verifier: existing-passkey
-authorized passkey enrollment, mail-proven password recovery, and invitation
-first-password or first-passkey enrollment. The completion writer binds evidence
-at epoch E to the actual credential mutation at E+1, rechecks live authority, and
-commits revocation, receipt consumption and the final run state together.
-Credential mutations without such an adapter remain blocked.
+alone cannot authorize enrollment, recovery or passkey-removal completion.
+Supported adapters supply a private in-memory capability from the real verifier:
+existing-passkey authorized enrollment, fresh UV passkey removal, mail-proven
+password recovery, and invitation first-password or first-passkey enrollment.
+The completion writer binds evidence at epoch E to the actual credential
+mutation at E+1, rechecks live authority, and commits revocation, receipt
+consumption and the final run state together. A definition's static completed
+transition cannot supply that capability.
 
 A `denied` terminal still needs an active run and a valid recorded path with
 matching historical evidence provenance, bindings and step attempts. An earlier
@@ -477,6 +481,35 @@ cancellation or expiry discards a pending ceremony, and completion uses the
 same atomic epoch change and session revocation described above. Config,
 start and resume reject other configured enrollment shapes.
 
+## Configured passkey removal
+
+Platform accepts one exact `sensitive_action` definition with the steps
+`session → passkey → remove`: `resume_session`, `verify_passkey`, then
+`remove_passkey`. Each successful step routes unconditionally to the next,
+every failed step routes to denial, and the success terminal requires the
+session, passkey and passkey-removed proofs with a 120-second maximum proof
+age. The run is limited to 600 seconds and eight executions. The session and
+remove steps get one attempt each, the passkey step at most three; all are
+cancellable. Config, start and resume reject other configured removal shapes.
+
+`POST /api/workflows/configured/{workflow}/passkey-removal` takes a bearer
+token and `{"credential_id":"..."}`. The server pins that existing credential
+to the account, session, request, run and definition before any challenge.
+Use `POST /api/workflows/{id}/passkey/start` and
+`POST /api/workflows/{id}/passkey` for a fresh signed user-verified WebAuthn
+assertion, then `POST /api/workflows/{id}/passkey-removal` with the same bearer
+to commit the pinned target. The final endpoint accepts no target ID or caller
+signal. Ordinary configured start cannot enter this path.
+
+The final writer rechecks the live session, exact target owner, unspent proofs,
+expiry and an independent local password or enough other passkeys to avoid
+removing the last usable authenticator. It deletes the credential, advances the
+account epoch, queues session revocation, audits removal, consumes proofs and
+finalizes the run atomically. Cancellation and expiry cannot commit removal;
+replay cannot repeat it. No new session is issued. Essentials does not accept
+this configured definition. Directory-managed passwords are not treated as an
+independent local recovery route for this guard.
+
 ## Password recovery finalization
 
 On Platform, the existing explicit browser/CLI reset submission executes the
@@ -748,10 +781,10 @@ These are not implemented or established by this slice:
   association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey enrollment, mail-proven password reset and invitation
-  first-password/first-passkey enrollment: session-authorized first-passkey
-  enrollment through password/TOTP, TOTP enrollment and other initial credential
-  paths remain blocked pending their real adapters.
+  authorized passkey enrollment and removal, mail-proven password reset and
+  invitation first-password/first-passkey enrollment: session-authorized
+  first-passkey enrollment through password/TOTP, TOTP enrollment and other
+  initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,

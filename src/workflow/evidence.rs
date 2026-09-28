@@ -154,8 +154,8 @@ impl Validated {
     /// Finish only a persisted, active run whose recorded path actually reaches
     /// `terminal`. Every proof must come from the matching built-in step and a
     /// trusted store record; mere proof kinds are never accepted. Enrollment
-    /// and recovery success require an in-transaction E-to-E+1 mutation
-    /// capability. `finish` is the atomic
+    /// recovery and passkey-removal success require an in-transaction E-to-E+1
+    /// mutation capability. `finish` is the atomic
     /// consumption and final-state boundary for supported outcomes.
     pub(crate) fn complete(
         &self,
@@ -209,7 +209,13 @@ impl Validated {
             .iter()
             .find(|t| &t.id == terminal_id)
             .ok_or_else(|| fail(Code::UnknownNode, terminal_id.as_str(), "Unknown terminal"))?;
-        if matches!(target.outcome, Outcome::Enrolled | Outcome::Recovered)
+        if (matches!(target.outcome, Outcome::Enrolled | Outcome::Recovered)
+            || (target.outcome == Outcome::ActionAuthorized
+                && self
+                    .definition()
+                    .steps
+                    .iter()
+                    .any(|step| matches!(step.action, Action::RemovePasskey {}))))
             && !store.authorizes_mutation(&run, target)
         {
             return Err(fail(

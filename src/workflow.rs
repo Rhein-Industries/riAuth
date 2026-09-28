@@ -283,6 +283,71 @@ pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -
         && routes(enroll, "completed", &success.id, &denied.id)
 }
 
+/// One configured sensitive action may remove a request-pinned passkey after
+/// a live session and fresh UV proof. The target is never a definition field.
+pub(crate) fn supported_configured_passkey_removal(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::SensitiveAction
+        || definition.steps.len() != 3
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 600
+        || definition.limits.max_executions > 8
+    {
+        return false;
+    }
+    let [session, passkey, remove] = definition.steps.as_slice() else {
+        return false;
+    };
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::ActionAuthorized);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes = |step: &Step, verified: &'static str, target: &Id| {
+        step.transitions.len() == 2
+            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(verified) && &transition.to == target
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && transition.to == denied.id
+            })
+    };
+    session.id.as_str() == "session"
+        && passkey.id.as_str() == "passkey"
+        && remove.id.as_str() == "remove"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(passkey.action, Action::VerifyPasskey {})
+        && matches!(remove.action, Action::RemovePasskey {})
+        && session.max_attempts == 1
+        && passkey.max_attempts <= 3
+        && remove.max_attempts == 1
+        && session.timeout_seconds <= 60
+        && passkey.timeout_seconds <= 300
+        && remove.timeout_seconds <= 120
+        && session.cancellable
+        && passkey.cancellable
+        && remove.cancellable
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 3
+        && [Proof::Session, Proof::Passkey, Proof::PasskeyRemoved]
+            .into_iter()
+            .all(|proof| success.requires[0].contains(&proof))
+        && routes(session, "verified", &passkey.id)
+        && routes(passkey, "verified", &remove.id)
+        && routes(remove, "completed", &success.id)
+}
+
 /// A reset-mail submission can execute this exact recovery path in one writer.
 /// The mail verifier alone supplies the reset proof and password mutation.
 pub(crate) fn supported_configured_password_reset(definition: &Definition) -> bool {
@@ -492,6 +557,8 @@ pub enum Action {
     EnrollCredential {
         credential: Credential,
     },
+    /// Delete only the passkey pinned to this run's server-owned request.
+    RemovePasskey {},
     /// Replace only the local password; other factors are preserved.
     ResetPassword {},
     /// Platform-only reference to a registered stage. It may route by its
@@ -597,10 +664,11 @@ pub enum Proof {
     Consent,
     Enrolled,
     PasswordReset,
+    PasskeyRemoved,
 }
 
 impl Proof {
-    pub const ALL: [Proof; 11] = [
+    pub const ALL: [Proof; 12] = [
         Proof::Session,
         Proof::Password,
         Proof::Passkey,
@@ -612,6 +680,7 @@ impl Proof {
         Proof::Consent,
         Proof::Enrolled,
         Proof::PasswordReset,
+        Proof::PasskeyRemoved,
     ];
     pub(crate) fn bit(self) -> u16 {
         1 << self as u16
@@ -624,7 +693,7 @@ impl Proof {
             account: true,
             request: true,
             run: true,
-            session: matches!(self, Proof::Session | Proof::Consent),
+            session: matches!(self, Proof::Session | Proof::Consent | Proof::PasskeyRemoved),
         }
     }
 }

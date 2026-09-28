@@ -105,6 +105,7 @@ impl Core {
             token,
             &local_definition(PASSWORD_WORKFLOW)?,
             Some(request),
+            None,
         )
     }
 
@@ -118,6 +119,7 @@ impl Core {
             token,
             &local_definition(PASSKEY_WORKFLOW)?,
             Some(request),
+            None,
         )
     }
 }

@@ -30,6 +30,10 @@ pub(super) fn routes() -> Router<App> {
             "/api/workflows/configured/{workflow}/password-reset",
             post(configured_password_reset),
         )
+        .route(
+            "/api/workflows/configured/{workflow}/passkey-removal",
+            post(configured_passkey_removal_start),
+        )
         .route("/api/workflows/authorization", post(authorization_start))
         .route(
             "/api/workflows/authorization/passkey",
@@ -46,6 +50,7 @@ pub(super) fn routes() -> Router<App> {
             post(enrollment_challenge),
         )
         .route("/api/workflows/{id}/passkey-enrollment", post(enroll))
+        .route("/api/workflows/{id}/passkey-removal", post(passkey_remove))
         .route("/api/workflows/sources/{source}", post(source_start))
         .route("/api/workflows/{id}", get(resume))
         .route("/api/workflows/{id}/password", post(password))
@@ -269,6 +274,36 @@ async fn configured_password_reset(
         .await;
     credential_floor(started, true).await;
     result
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyRemovalStart {
+    credential_id: String,
+}
+
+async fn configured_passkey_removal_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(workflow): Path<String>,
+    Json(input): Json<PasskeyRemovalStart>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_configured_passkey_removal_start(&token, &workflow, &input.credential_id)
+            .map(Json)
+    })
+    .await
+}
+
+async fn passkey_remove(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_passkey_remove(&token, &id).map(Json))
+        .await
 }
 
 async fn configured_consent_start(

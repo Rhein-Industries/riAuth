@@ -49,6 +49,7 @@ pub(super) fn authority(
         || request.authorization.is_some()
         || request.consent.is_some()
         || request.invitation.is_some()
+        || request.removal.is_some()
         || request.requires_mfa
         || request.expires_at <= at
         || request.expires_at > pin.expires_at()
@@ -202,6 +203,7 @@ impl Core {
             consent: None,
             recovery: Some(pin),
             invitation: None,
+            removal: None,
         };
         let mut run = RuntimeRun {
             record: StoredRun {

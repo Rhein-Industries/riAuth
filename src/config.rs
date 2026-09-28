@@ -541,6 +541,7 @@ impl Config {
             if (crate::workflow::configured_password_path(checked.definition()).is_none()
                 && !crate::workflow::supported_configured_passkey(checked.definition())
                 && !crate::workflow::supported_configured_passkey_enrollment(checked.definition())
+                && !crate::workflow::supported_configured_passkey_removal(checked.definition())
                 && !crate::workflow::supported_configured_password_reset(checked.definition())
                 && !crate::workflow::supported_configured_consent(checked.definition()))
                 || matches!(

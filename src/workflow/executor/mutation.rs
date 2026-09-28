@@ -19,6 +19,7 @@ pub(super) struct Completed {
 
 pub(super) enum Pending {
     Enrollment(enrollment::Verified),
+    PasskeyRemoval(removal::Verified),
     PasswordReset(reset::Verified),
     Invitation(invitation::Verified),
 }
@@ -27,6 +28,7 @@ impl Pending {
     pub(super) fn matches(&self, run: &StoredRun, terminal: &super::super::Terminal) -> bool {
         match self {
             Self::Enrollment(verified) => verified.matches(run, terminal),
+            Self::PasskeyRemoval(verified) => verified.matches(run, terminal),
             Self::PasswordReset(verified) => verified.matches(run, terminal),
             Self::Invitation(verified) => verified.matches(run, terminal),
         }
@@ -53,6 +55,7 @@ impl Pending {
                     factors_reset: false,
                 })
             }
+            Self::PasskeyRemoval(verified) => verified.commit(core, tx, run, terminal, evidence),
             Self::PasswordReset(verified) => verified.commit(core, tx, run, terminal, evidence),
             Self::Invitation(verified) => verified.commit(core, tx, run, terminal, evidence),
         }

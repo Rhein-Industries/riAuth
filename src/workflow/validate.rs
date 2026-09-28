@@ -260,7 +260,9 @@ impl Action {
         match self {
             Action::Identify {} => fixed(&[COMPLETED]),
             Action::RequestConsent {} => fixed(&[GRANTED, DENIED]),
-            Action::EnrollCredential { .. } | Action::ResetPassword {} => {
+            Action::EnrollCredential { .. }
+            | Action::RemovePasskey {}
+            | Action::ResetPassword {} => {
                 fixed(&[COMPLETED, FAILED])
             }
             Action::Custom { outputs, .. } => {
@@ -287,6 +289,7 @@ impl Action {
             Action::VerifySource { .. } if signal == VERIFIED => Some(Proof::Source),
             Action::RequestConsent {} if signal == GRANTED => Some(Proof::Consent),
             Action::EnrollCredential { .. } if signal == COMPLETED => Some(Proof::Enrolled),
+            Action::RemovePasskey {} if signal == COMPLETED => Some(Proof::PasskeyRemoved),
             Action::ResetPassword {} if signal == COMPLETED => Some(Proof::PasswordReset),
             _ => None,
         }
@@ -303,6 +306,7 @@ impl Action {
             Action::VerifySource { .. } => "verify_source",
             Action::RequestConsent {} => "request_consent",
             Action::EnrollCredential { .. } => "enroll_credential",
+            Action::RemovePasskey {} => "remove_passkey",
             Action::ResetPassword {} => "reset_password",
             Action::Custom { .. } => "custom",
         }
@@ -358,7 +362,11 @@ impl Category {
                 | (Consent, ResumeSession {} | RequestConsent {})
                 | (
                     SensitiveAction,
-                    ResumeSession {} | VerifyPassword {} | VerifyPasskey {} | VerifyTotp {}
+                    ResumeSession {}
+                        | VerifyPassword {}
+                        | VerifyPasskey {}
+                        | VerifyTotp {}
+                        | RemovePasskey {}
                 )
         )
     }
@@ -402,6 +410,12 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
             (!reverified && !invited).then_some(
                 "a session with fresh password or passkey verification, or an invitation for a first passkey or password",
             )
+        }
+        Action::RemovePasskey {}
+            if held & mask(&[Proof::Session, Proof::Passkey])
+                != mask(&[Proof::Session, Proof::Passkey]) =>
+        {
+            Some("a live session and fresh verified passkey")
         }
         Action::ResetPassword {} if !any(&[Proof::ResetEmail]) => Some("a reset mail proof"),
         _ => None,
