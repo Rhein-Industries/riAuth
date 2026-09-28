@@ -17,15 +17,36 @@ async fn filtered(
     count: usize,
     post: bool,
 ) -> (StatusCode, Value) {
+    listed(app, token, kind, Some(filter), None, None, start, count, post).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn listed(
+    app: &Router,
+    token: &str,
+    kind: &str,
+    filter: Option<&str>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+    start: usize,
+    count: usize,
+    post: bool,
+) -> (StatusCode, Value) {
     let (method, path, body) = if post {
+        let mut query = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:SearchRequest"],"startIndex":start,"count":count});
+        if let Some(filter) = filter { query["filter"] = json!(filter); }
+        if let Some(sort_by) = sort_by { query["sortBy"] = json!(sort_by); }
+        if let Some(sort_order) = sort_order { query["sortOrder"] = json!(sort_order); }
         (
             Method::POST,
             format!("/scim/v2/{kind}/.search"),
-            Body::from(json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:SearchRequest"],"filter":filter,"startIndex":start,"count":count}).to_string()),
+            Body::from(query.to_string()),
         )
     } else {
         let mut query = url::form_urlencoded::Serializer::new(String::new());
-        query.append_pair("filter", filter);
+        if let Some(filter) = filter { query.append_pair("filter", filter); }
+        if let Some(sort_by) = sort_by { query.append_pair("sortBy", sort_by); }
+        if let Some(sort_order) = sort_order { query.append_pair("sortOrder", sort_order); }
         query.append_pair("startIndex", &start.to_string());
         query.append_pair("count", &count.to_string());
         (Method::GET, format!("/scim/v2/{kind}?{}", query.finish()), Body::empty())
@@ -175,4 +196,100 @@ async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantic
     assert_eq!(status, StatusCode::OK);
     assert_eq!(outside["totalResults"], 1);
     assert_eq!(outside["Resources"][0]["userName"], "filter-outside");
+}
+
+#[tokio::test]
+async fn scim_sort_is_scoped_stable_and_shared_by_list_and_search() {
+    let f = Fixture::new();
+    let permissions: Vec<Permission> = ["user.read", "user.write", "group.read", "group.write", "group.members"]
+        .map(|action| Permission { action: action.into(), resource: "*".into() })
+        .into();
+    let owner = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-sort-owner".into(), ttl: 600, parent: None, permissions: permissions.clone(),
+    }).unwrap();
+    let other = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-sort-other".into(), ttl: 600, parent: None, permissions,
+    }).unwrap();
+    let owner = text(&owner["credential"], "token");
+    let other = text(&other["credential"], "token");
+    let users = [
+        ("sort-a", "alpha", Some("z"), true, json!([{"value":"zzz@example.test"},{"value":"aaa@example.test","primary":true}])),
+        ("sort-b", "ALPHA", None, true, json!([{"value":"bbb@example.test","primary":true}])),
+        ("sort-c", "Beta", Some("A"), false, json!([{"value":"ccc@example.test","primary":true}])),
+        ("sort-d", "Éclair", None, true, json!([])),
+    ];
+    let mut alpha_ids = Vec::new();
+    for (username, display, external, active, emails) in users {
+        let mut input = json!({"schemas":[scim::USER],"userName":username,"displayName":display,"active":active,"emails":emails});
+        if let Some(external) = external { input["externalId"] = json!(external); }
+        let created = f.core.scim_write(&owner, "Users", None, input, false).unwrap();
+        if username == "sort-a" || username == "sort-b" {
+            alpha_ids.push(text(&created, "id"));
+        }
+    }
+    alpha_ids.sort();
+    f.core.scim_write(&other, "Users", None, json!({"schemas":[scim::USER],"userName":"sort-outside","displayName":"000","active":false}), false).unwrap();
+    for group in ["Sort-z", "Sort-a"] {
+        f.core.scim_write(&owner, "Groups", None, json!({"schemas":[scim::GROUP],"displayName":group}), false).unwrap();
+    }
+    let app = riauth::api::router(f.core.clone());
+    assert_eq!(scim::metadata("ServiceProviderConfig").unwrap()["sort"]["supported"], true);
+
+    for start in 1..=4 {
+        let (status, get) = listed(&app, &owner, "Users", None, Some("displayName"), None, start, 1, false).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, search) = listed(&app, &owner, "Users", None, Some("displayName"), Some("ascending"), start, 1, true).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(get, search);
+        assert_eq!(get["totalResults"], 4);
+        assert_eq!(get["itemsPerPage"], 1);
+        if start <= 2 { assert_eq!(get["Resources"][0]["id"], alpha_ids[start - 1]); }
+        if start == 1 {
+            let id = get["Resources"][0]["id"].as_str().unwrap();
+            let resource = f.core.scim_get(&owner, "Users", id).unwrap();
+            assert_eq!(get["Resources"][0]["meta"]["version"], resource["meta"]["version"]);
+        }
+    }
+    for post in [false, true] {
+        let (status, descending) = listed(&app, &owner, "Users", None, Some("DISPLAYNAME"), Some("descending"), 1, 4, post).await;
+        assert_eq!(status, StatusCode::OK);
+        let names: Vec<_> = descending["Resources"].as_array().unwrap().iter()
+            .map(|value| value["userName"].as_str().unwrap()).collect();
+        assert_eq!(names[0..2], ["sort-d", "sort-c"]);
+        assert_eq!(descending["Resources"][2]["id"], alpha_ids[0]); // tie-breaker stays ascending.
+        let (status, missing_first) = listed(&app, &owner, "Users", None, Some("externalId"), Some("descending"), 1, 4, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(missing_first["Resources"][0]["externalId"].is_null());
+        assert!(missing_first["Resources"][1]["externalId"].is_null());
+        assert_eq!(missing_first["Resources"][2]["userName"], "sort-a");
+        assert_eq!(missing_first["Resources"][3]["userName"], "sort-c");
+        let (status, email) = listed(&app, &owner, "Users", None, Some("emails.value"), None, 1, 4, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(email["Resources"][0]["userName"], "sort-a"); // Primary email beats the first element.
+        assert_eq!(email["Resources"][3]["userName"], "sort-d"); // Missing sorts last ascending.
+        let (status, active) = listed(&app, &owner, "Users", None, Some("active"), None, 1, 1, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(active["Resources"][0]["userName"], "sort-c");
+        let (status, filtered_page) = listed(&app, &owner, "Users", Some("active eq true"), Some("displayName"), None, 3, 1, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(filtered_page["totalResults"], 3);
+        assert_eq!(filtered_page["Resources"][0]["userName"], "sort-d");
+        let (status, groups) = listed(&app, &owner, "Groups", None, Some("displayName"), None, 1, 2, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(groups["Resources"][0]["displayName"], "Sort-a");
+        assert_eq!(groups["Resources"][1]["displayName"], "Sort-z");
+        for (sort_by, sort_order) in [
+            (Some("emails"), None),
+            (Some("members.value"), None),
+            (Some("displayName"), Some("reverse")),
+            (None, Some("descending")),
+        ] {
+            let (status, error) = listed(&app, &owner, "Users", None, sort_by, sort_order, 1, 1, post).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(error["scimType"], "invalidValue");
+        }
+        let (status, error) = listed(&app, &owner, "Groups", None, Some("userName"), None, 1, 1, post).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error["scimType"], "invalidValue");
+    }
 }

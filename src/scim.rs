@@ -10,7 +10,7 @@ use crate::{
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::{cmp::Ordering, collections::BTreeSet};
 
 pub use crate::scim_shared::{GROUP, USER, response};
 const LIST: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
@@ -35,12 +35,14 @@ pub struct Query {
     pub start_index: Option<usize>,
     pub count: Option<usize>,
     pub filter: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
 }
 
 pub fn metadata(kind: &str) -> Result<Value> {
     Ok(match kind {
         "ServiceProviderConfig" => {
-            json!({"schemas":["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],"patch":{"supported":true},"bulk":{"supported":false,"maxOperations":0,"maxPayloadSize":0},"filter":{"supported":true,"maxResults":1000},"changePassword":{"supported":true},"sort":{"supported":false},"etag":{"supported":true},"authenticationSchemes":[{"type":"oauthbearertoken","name":"Scoped operator credential","description":"Use a dedicated agent credential and resource If-Match for updates and deletes","primary":true}]})
+            json!({"schemas":["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],"patch":{"supported":true},"bulk":{"supported":false,"maxOperations":0,"maxPayloadSize":0},"filter":{"supported":true,"maxResults":1000},"changePassword":{"supported":true},"sort":{"supported":true},"etag":{"supported":true},"authenticationSchemes":[{"type":"oauthbearertoken","name":"Scoped operator credential","description":"Use a dedicated agent credential and resource If-Match for updates and deletes","primary":true}]})
         }
         "ResourceTypes" => {
             json!({"schemas":[LIST],"totalResults":2,"startIndex":1,"itemsPerPage":2,"Resources":[{"schemas":["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],"id":"User","name":"User","endpoint":"/Users","schema":USER},{"schemas":["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],"id":"Group","name":"Group","endpoint":"/Groups","schema":GROUP}]})
@@ -541,6 +543,105 @@ fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<FilterExpr>> 
     Ok(Some(expr))
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortField {
+    Id,
+    ExternalId,
+    UserName,
+    DisplayName,
+    Active,
+    EmailValue,
+    NameFormatted,
+    NameGiven,
+    NameFamily,
+}
+
+#[derive(Clone, Copy)]
+struct SortSpec {
+    field: SortField,
+    descending: bool,
+}
+
+fn parse_sort(kind: &str, by: Option<&str>, order: Option<&str>) -> Result<Option<SortSpec>> {
+    let Some(by) = by else {
+        if order.is_some() {
+            return Err(Error::bad("sortOrder requires sortBy"));
+        }
+        return Ok(None);
+    };
+    if by.len() > 64 || order.is_some_and(|order| order.len() > 16) {
+        return Err(Error::bad("Unsupported SCIM sort parameters"));
+    }
+    let field = match (kind, by.to_ascii_lowercase().as_str()) {
+        ("Users" | "Groups", "id") => SortField::Id,
+        ("Users" | "Groups", "externalid") => SortField::ExternalId,
+        ("Users" | "Groups", "displayname") => SortField::DisplayName,
+        ("Users", "username") => SortField::UserName,
+        ("Users", "active") => SortField::Active,
+        ("Users", "emails.value") => SortField::EmailValue,
+        ("Users", "name.formatted") => SortField::NameFormatted,
+        ("Users", "name.givenname") => SortField::NameGiven,
+        ("Users", "name.familyname") => SortField::NameFamily,
+        _ => return Err(Error::bad("Unsupported SCIM sortBy attribute")),
+    };
+    let descending = match order {
+        None => false,
+        Some(order) if order.eq_ignore_ascii_case("ascending") => false,
+        Some(order) if order.eq_ignore_ascii_case("descending") => true,
+        _ => return Err(Error::bad("Unsupported SCIM sortOrder")),
+    };
+    Ok(Some(SortSpec { field, descending }))
+}
+
+enum SortKey<'a> {
+    Text(&'a str),
+    Bool(bool),
+}
+
+fn sort_key(value: &Value, field: SortField) -> Option<SortKey<'_>> {
+    if field == SortField::Active {
+        return value["active"].as_bool().map(SortKey::Bool);
+    }
+    let text = match field {
+        SortField::Id => value["id"].as_str(),
+        SortField::ExternalId => value["externalId"].as_str(),
+        SortField::UserName => value["userName"].as_str(),
+        SortField::DisplayName => value["displayName"].as_str(),
+        SortField::EmailValue => value["emails"].as_array().and_then(|emails| {
+            emails.iter().find(|email| email["primary"] == true)
+                .or_else(|| emails.first())
+                .and_then(|email| email["value"].as_str())
+        }),
+        SortField::NameFormatted => value["name"]["formatted"].as_str(),
+        SortField::NameGiven => value["name"]["givenName"].as_str(),
+        SortField::NameFamily => value["name"]["familyName"].as_str(),
+        SortField::Active => unreachable!(),
+    };
+    text.filter(|text| !text.is_empty()).map(SortKey::Text)
+}
+
+fn compare_sort(left: &Value, right: &Value, spec: SortSpec) -> Ordering {
+    let primary = match (sort_key(left, spec.field), sort_key(right, spec.field)) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => if spec.descending { Ordering::Less } else { Ordering::Greater },
+        (Some(_), None) => if spec.descending { Ordering::Greater } else { Ordering::Less },
+        (Some(SortKey::Bool(a)), Some(SortKey::Bool(b))) => {
+            if spec.descending { b.cmp(&a) } else { a.cmp(&b) }
+        }
+        (Some(SortKey::Text(a)), Some(SortKey::Text(b))) => {
+            let order = if matches!(spec.field, SortField::Id | SortField::ExternalId) {
+                a.cmp(b)
+            } else {
+                a.to_lowercase().cmp(&b.to_lowercase())
+            };
+            if spec.descending { order.reverse() } else { order }
+        }
+        _ => Ordering::Equal,
+    };
+    // IDs break case-folded and missing-value ties in either direction.
+    primary.then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
+}
+
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
         let mut value = record.data.clone();
@@ -643,16 +744,26 @@ impl Core {
         self.store.read(|tx|{
         let actor=self.principal(tx,token)?;
         bucket(kind)?;
-        // Parse once, including when the collection is empty.
+        // Validate once, including when the collection is empty.
         let filter=parse_filter(kind,query.filter.as_deref())?;
+        let sort=parse_sort(kind,query.sort_by.as_deref(),query.sort_order.as_deref())?;
         let start=query.start_index.unwrap_or(1).max(1);let count=query.count.unwrap_or(100).min(1000);
         let mut values=Vec::new();
+        let mut total=0;
         for (id,record) in tx.list::<Record>(bucket(kind)?)? {
             if record.deleted || record.owner!=actor.id || require(&actor,&record,"read").is_err(){continue;}
             let value=self.scim_view(tx,&id,&record)?;
-            if filter.as_ref().is_none_or(|filter| filter.matches(&value)){values.push(value);}
+            if filter.as_ref().is_none_or(|filter| filter.matches(&value)) {
+                total+=1;
+                // Unsorted queries only retain the requested page. Sorted
+                // queries reuse this one scoped result vector in place.
+                if sort.is_some() || (total>=start && values.len()<count) { values.push(value); }
+            }
         }
-        let total=values.len();let page:Vec<_>=values.into_iter().skip(start-1).take(count).collect();
+        let page:Vec<_>=if let Some(spec)=sort {
+            values.sort_by(|left,right| compare_sort(left,right,spec));
+            values.into_iter().skip(start-1).take(count).collect()
+        } else { values };
         Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
     })
     }
