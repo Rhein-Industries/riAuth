@@ -35,8 +35,8 @@ boundary to trusted verification and durable storage.
 
 The JSON Schema is published as `workflow` through `riauth schema workflow` and
 `GET /api/schema/workflow`, alongside the existing schemas. Platform management
-accepts configured definitions in desired-state manifests; verifier execution
-does not yet select them.
+accepts configured definitions in desired-state manifests. The W02 executor
+selects active definitions from `config.toml`, not this persisted authoring store.
 
 ## Shape
 
@@ -550,7 +550,8 @@ that path for one definition at a time. Definitions require Platform and
 `workflow.write` for the exact `workflow/<id>` target; export and browser list
 require `workflow.read`. A changed definition must increase its revision.
 Omitting a workflow leaves it unchanged. Persisted configured definitions are
-authoring data; current W02 execution still uses shipped server-owned journeys.
+authoring data; the W02 configured executor uses active definitions from
+`config.toml` for its supported password and Password→TOTP paths.
 Essentials does not show workflow authoring and rejects configured definitions.
 
 `workflow::defaults()` returns seven `builtin` definitions: passkey sign-in,

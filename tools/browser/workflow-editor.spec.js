@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../../src/portal/admin.html', import.meta.url), 'utf8').replaceAll('__BASE__', '/');
 const script = readFileSync(new URL('../../src/portal/admin.js', import.meta.url), 'utf8');
+const grantScript = readFileSync(new URL('../../src/portal/grant-review.js', import.meta.url), 'utf8');
 const origin = 'http://127.0.0.1:9876';
 
 async function mountAdmin(page, { workflows = [], plan, apply } = {}) {
@@ -13,6 +14,7 @@ async function mountAdmin(page, { workflows = [], plan, apply } = {}) {
     const json = (value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
     if (path === '/admin') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
     if (path === '/portal/assets/admin.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body: script });
+    if (path === '/portal/assets/grant-review.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body: grantScript });
     if (path === '/portal/assets/capabilities.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body:
       'window.RiAuthCapabilities={refresh:async()=>{},compiled:()=>false,usable:()=>false,apply:()=>{}};' });
     if (path.startsWith('/portal/assets/')) return route.fulfill({ status: 200, body: '' });
@@ -21,6 +23,7 @@ async function mountAdmin(page, { workflows = [], plan, apply } = {}) {
     if (path === '/api/admin/workflows/apply') return json(await apply(route.request().postDataJSON()));
     if (path === '/api/admin/workflows') return json(workflows);
     if (path === '/api/admin/invitations') return json({ invitations: [], delivery_configured: false, lifetime: 0 });
+    if (path === '/api/admin/provisioning/deactivations') return json([]);
     if (['/api/admin/clients', '/api/admin/users', '/api/admin/groups', '/api/admin/audit'].includes(path)) return json([]);
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   });
