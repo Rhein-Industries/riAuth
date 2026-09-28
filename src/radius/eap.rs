@@ -1,7 +1,6 @@
 //! EAP-TLS 1.2/1.3: pinned certificate identities, bounded fragmentation and MPPE delivery.
 use super::{Nas, Packet, WireAttributes};
 use crate::{
-    core::{Core, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{Client, Identity},
@@ -12,7 +11,6 @@ use rustls::pki_types::{
     CertificateDer, CertificateRevocationListDer, PrivateKeyDer, UnixTime, pem::PemObject,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{Read, Write},
@@ -22,6 +20,19 @@ use std::{
 
 pub const CERTIFICATE_ACR: &str = "urn:riauth:acr:certificate";
 pub use crate::radius_eap_types::Config;
+
+pub(crate) trait EapPort {
+    fn profile(&self, listener: &str) -> Result<&Config>;
+    fn create_identity(
+        &self,
+        client: &Client,
+        listener: &str,
+        profile_fp: &str,
+        der: &[u8],
+    ) -> Result<Identity>;
+    fn close(&self, identity: Option<&Identity>) -> Result<()>;
+}
+
 impl Config {
     fn material(&self) -> Result<Material> {
         self.validate()?;
@@ -168,67 +179,58 @@ pub struct CertificateInput {
     pub listener: String,
     pub certificate_chain_pem: String,
 }
-fn certificate_key(listener: &str, fingerprint: &str) -> String {
+pub(crate) fn certificate_key(listener: &str, fingerprint: &str) -> String {
     digest(&format!("{listener}\0{fingerprint}"))
 }
-fn profile<'a>(core: &'a Core, listener: &str) -> Result<&'a Config> {
-    core.config
-        .radius_listeners
-        .get(listener)
-        .and_then(|c| c.eap_tls.as_ref())
-        .ok_or_else(|| Error::bad("RADIUS listener has no EAP-TLS trust profile"))
+pub(crate) fn profile_fingerprint(profile: &Config) -> Result<String> {
+    Ok(profile.material()?.fp)
 }
-pub(crate) fn profile_fingerprint(core: &Core, listener: &str) -> Result<String> {
-    Ok(profile(core, listener)?.material()?.fp)
-}
-fn certificate_fingerprint(der: &[u8]) -> String {
+pub(crate) fn certificate_fingerprint(der: &[u8]) -> String {
     use sha2::Digest as ShaDigest;
     URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(der))
 }
-impl Core {
-    pub fn radius_certificate_bind(&self, token: &str, input: CertificateInput) -> Result<Value> {
-        validate_name(&input.username)?;
-        validate_name(&input.listener)?;
-        self.radius_eap_authorize_bind(token, &input.username, &input.listener)?;
-        if input.certificate_chain_pem.len() > 32768 {
-            return Err(Error::bad("EAP certificate chain exceeds 32 KiB"));
-        }
-        let chain = CertificateDer::pem_slice_iter(input.certificate_chain_pem.as_bytes())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|_| Error::bad("Invalid EAP certificate chain"))?;
-        let cert = chain
-            .first()
-            .ok_or_else(|| Error::bad("Missing EAP client certificate"))?;
-        if chain.len() > 8 {
-            return Err(Error::bad("EAP client chain exceeds eight certificates"));
-        }
-        let config = profile(self, &input.listener)?;
-        let Material { roots, crls, .. } = config.material()?;
-        config
-            .verifier(roots, crls)?
-            .verify_client_cert(cert, &chain[1..], UnixTime::now())
-            .map_err(|_| {
-                Error::bad("EAP client certificate is not valid under this listener's private CA")
-            })?;
-        let (_, parsed) = x509_parser::parse_x509_certificate(cert.as_ref())
-            .map_err(|_| Error::bad("Invalid EAP X.509 certificate"))?;
-        let expires_at = u64::try_from(parsed.validity().not_after.timestamp())
-            .map_err(|_| Error::bad("Invalid certificate expiry"))?;
-        let fingerprint = certificate_fingerprint(cert.as_ref());
-        let key = certificate_key(&input.listener, &fingerprint);
-        self.radius_eap_bind_commit(token, input, key, fingerprint, expires_at)
+
+pub(crate) struct PreparedCertificate {
+    pub key: String,
+    pub fingerprint: String,
+    pub expires_at: u64,
+}
+
+pub(crate) fn prepare_certificate_binding<'a>(
+    input: &CertificateInput,
+    profile: impl FnOnce() -> Result<&'a Config>,
+) -> Result<PreparedCertificate> {
+    if input.certificate_chain_pem.len() > 32768 {
+        return Err(Error::bad("EAP certificate chain exceeds 32 KiB"));
     }
-    fn eap_identity(
-        &self,
-        client: &Client,
-        listener: &str,
-        profile_fp: &str,
-        der: &[u8],
-    ) -> Result<Identity> {
-        let fingerprint = certificate_fingerprint(der);
-        let key = certificate_key(listener, &fingerprint);
-        self.radius_eap_create_identity(client, listener, profile_fp, key)
+    let chain = CertificateDer::pem_slice_iter(input.certificate_chain_pem.as_bytes())
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|_| Error::bad("Invalid EAP certificate chain"))?;
+    let cert = chain
+        .first()
+        .ok_or_else(|| Error::bad("Missing EAP client certificate"))?;
+    if chain.len() > 8 {
+        return Err(Error::bad("EAP client chain exceeds eight certificates"));
     }
+    let config = profile()?;
+    let Material { roots, crls, .. } = config.material()?;
+    config
+        .verifier(roots, crls)?
+        .verify_client_cert(cert, &chain[1..], UnixTime::now())
+        .map_err(|_| {
+            Error::bad("EAP client certificate is not valid under this listener's private CA")
+        })?;
+    let (_, parsed) = x509_parser::parse_x509_certificate(cert.as_ref())
+        .map_err(|_| Error::bad("Invalid EAP X.509 certificate"))?;
+    let expires_at = u64::try_from(parsed.validity().not_after.timestamp())
+        .map_err(|_| Error::bad("Invalid certificate expiry"))?;
+    let fingerprint = certificate_fingerprint(cert.as_ref());
+    let key = certificate_key(&input.listener, &fingerprint);
+    Ok(PreparedCertificate {
+        key,
+        fingerprint,
+        expires_at,
+    })
 }
 
 struct Conversation {
@@ -330,7 +332,13 @@ impl Conversation {
         let next = self.outbound.pop_front().unwrap();
         Ok(self.request(&next))
     }
-    fn step(&mut self, core: &Core, client: &Client, listener: &str, input: &[u8]) -> Result<Step> {
+    fn step(
+        &mut self,
+        port: &dyn EapPort,
+        client: &Client,
+        listener: &str,
+        input: &[u8],
+    ) -> Result<Step> {
         self.rounds += 1;
         if self.rounds > 256 || input[1] != self.expected || input[4] != 13 || input.len() < 6 {
             return Err(Error::bad("Unexpected EAP-TLS response or sequence"));
@@ -421,7 +429,7 @@ impl Conversation {
                 .peer_certificates()
                 .and_then(|c| c.first())
                 .ok_or_else(Error::forbidden)?;
-            self.identity = Some(core.eap_identity(
+            self.identity = Some(port.create_identity(
                 client,
                 listener,
                 &self.profile_fingerprint,
@@ -453,7 +461,7 @@ impl Engine {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn process(
         &self,
-        core: &Core,
+        port: &dyn EapPort,
         listener: &str,
         nas_id: &str,
         nas: &Nas,
@@ -479,7 +487,7 @@ impl Engine {
         if request.attr(2).is_some() || request.attr(3).is_some() {
             return Ok(Outcome::Reject(failure(request)));
         }
-        let config = profile(core, listener)?;
+        let config = port.profile(listener)?;
         let context = digest(&format!(
             "{listener}\0{nas_id}\0{}\0{}\0{}",
             nas.peer,
@@ -535,7 +543,7 @@ impl Engine {
         if c.profile_fingerprint != config.material()?.fp {
             return Ok(Outcome::Reject(failure(request)));
         }
-        let step = c.step(core, client, listener, &input);
+        let step = c.step(port, client, listener, &input);
         match step {
             Ok(Step::Challenge(reply)) => {
                 conversations.insert(state.into(), c);
@@ -562,7 +570,7 @@ impl Engine {
             }
             Err(error) => {
                 if let Some(identity) = &c.identity {
-                    let _ = core.radius_close(Some(identity));
+                    let _ = port.close(Some(identity));
                 }
                 if error.status.is_server_error() {
                     Err(error)

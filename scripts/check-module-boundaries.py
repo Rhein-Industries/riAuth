@@ -312,13 +312,16 @@ def main() -> None:
                 errors.append("src/radius.rs: RADIUS protocol refers directly to storage")
         if path == SRC / "radius/eap.rs":
             eap_source = masked_rust_source(path.read_text())
-            if refs & STORAGE or re.search(r"\bfn\s+validate_identity\s*\(", eap_source) or re.search(
-                r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source
-            ) or re.search(
-                r"\.\s*mutation\s*\(|\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\s*(?:<|\()",
-                eap_source,
+            if (
+                refs & (STORAGE | {"core"})
+                or re.search(r"\bfn\s+validate_identity\s*\(", eap_source)
+                or re.search(r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source)
+                or re.search(
+                    r"\.\s*mutation\s*\(|\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\s*(?:<|\()",
+                    eap_source,
+                )
             ):
-                errors.append("src/radius/eap.rs: EAP certificate or identity storage belongs in assembly")
+                errors.append("src/radius/eap.rs: EAP Core or storage access belongs in assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

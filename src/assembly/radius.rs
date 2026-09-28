@@ -1,7 +1,7 @@
 //! RADIUS client, identity, certificate, replay and close storage operations.
 
 use crate::{
-    core::{Core, audit},
+    core::{Core, audit, validate_name},
     crypto::{digest, now},
     error::{Error, Result},
     model::{Client, Identity, Session, User},
@@ -63,6 +63,14 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
 }
 
 impl Core {
+    fn radius_eap_profile(&self, listener: &str) -> Result<&eap::Config> {
+        self.config
+            .radius_listeners
+            .get(listener)
+            .and_then(|config| config.eap_tls.as_ref())
+            .ok_or_else(|| Error::bad("RADIUS listener has no EAP-TLS trust profile"))
+    }
+
     pub(crate) fn radius_rate_limited(
         &self,
         peer: IpAddr,
@@ -322,6 +330,25 @@ impl Core {
         Ok(())
     }
 
+    pub fn radius_certificate_bind(
+        &self,
+        token: &str,
+        input: eap::CertificateInput,
+    ) -> Result<Value> {
+        validate_name(&input.username)?;
+        validate_name(&input.listener)?;
+        self.radius_eap_authorize_bind(token, &input.username, &input.listener)?;
+        let prepared =
+            eap::prepare_certificate_binding(&input, || self.radius_eap_profile(&input.listener))?;
+        self.radius_eap_bind_commit(
+            token,
+            input,
+            prepared.key,
+            prepared.fingerprint,
+            prepared.expires_at,
+        )
+    }
+
     pub(crate) fn radius_eap_authorize_bind(
         &self,
         token: &str,
@@ -515,7 +542,8 @@ impl Core {
                 })
                 .ok_or_else(Error::unauthorized)?;
             if cert.listener != binding.listener
-                || eap::profile_fingerprint(self, &binding.listener)? != binding.profile_fingerprint
+                || eap::profile_fingerprint(self.radius_eap_profile(&binding.listener)?)?
+                    != binding.profile_fingerprint
             {
                 return Err(Error::unauthorized());
             }
@@ -530,5 +558,27 @@ impl Core {
             }
         }
         Ok(())
+    }
+}
+
+impl eap::EapPort for Core {
+    fn profile(&self, listener: &str) -> Result<&eap::Config> {
+        self.radius_eap_profile(listener)
+    }
+
+    fn create_identity(
+        &self,
+        client: &Client,
+        listener: &str,
+        profile_fp: &str,
+        der: &[u8],
+    ) -> Result<Identity> {
+        let fingerprint = eap::certificate_fingerprint(der);
+        let key = eap::certificate_key(listener, &fingerprint);
+        self.radius_eap_create_identity(client, listener, profile_fp, key)
+    }
+
+    fn close(&self, identity: Option<&Identity>) -> Result<()> {
+        self.radius_close(identity)
     }
 }
