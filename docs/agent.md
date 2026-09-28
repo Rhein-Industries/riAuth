@@ -94,7 +94,7 @@ Failure is:
 
 Remote requests have a 30-second deadline by default, configurable with `--request-timeout SECONDS` or `RIAUTH_REQUEST_TIMEOUT` (1..=86,400), including body receipt. CSV reports write one bounded page at a time and atomically publish the complete private file; `rows` counts logical records, including quoted newlines.
 
-Prompts/progress go to stderr. `--non-interactive` and non-TTY input never prompt. Missing required secrets fail. `schema` exposes JSON Schemas for manifests, plans, apply requests, users, clients, provider settings, agents, migration input and the CLI envelope. Help/version output remains ordinary CLI text.
+Prompts/progress go to stderr. `--non-interactive` and non-TTY input never prompt. Missing required secrets fail. `schema` exposes JSON Schemas for manifests, plans, apply requests, users, clients, provider settings, agents, migration input, migration report findings and the CLI envelope. Help/version output remains ordinary CLI text.
 
 | Exit | Meaning |
 | --- | --- |

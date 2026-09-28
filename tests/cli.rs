@@ -532,3 +532,78 @@ fn usb_commands_fail_locally_without_feature() {
         );
     }
 }
+
+#[test]
+fn import_authentik_preflight_classifies_without_writing_files() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let input = dir.path().join("authentik-import.json");
+    std::fs::write(
+        &input,
+        json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+            "users":[{"pk":1,"uid":"a","username":"alice","name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],
+            "sources":[{"pk":"inbuilt-uuid","managed":"goauthentik.io/sources/inbuilt","meta_model_name":"authentik_core.source","component":""}],
+            "passwords":{},"clients":{}})
+        .to_string(),
+    )
+    .unwrap();
+    let file = input.to_str().unwrap();
+    let blocker = "alice: supply a password/password-hash reference or complete password reset before migration";
+    let data = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["import-authentik", "--file", file, "--preflight"],
+        None,
+    ));
+    assert_eq!(data["ready_for_plan"], false);
+    assert_eq!(data["blockers"], json!([blocker]));
+    assert_eq!(data["summary"]["blocking"], 1);
+    assert!(
+        data["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["kind"] == "source"
+                && i["id"] == "inbuilt-uuid"
+                && i["classification"] == "convertible"
+                && i["blocking"] == false)
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        1,
+        "preflight wrote files"
+    );
+    let written = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["import-authentik", "--file", file, "--out", "migration"],
+        None,
+    ));
+    assert_eq!(written["summary"], data["summary"]);
+    assert_eq!(written["manifest_file"], Value::Null);
+    let report: Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join("migration/report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["items"], data["items"]);
+    assert!(!dir.path().join("migration/manifest.json").exists());
+    let both = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "import-authentik",
+            "--file",
+            file,
+            "--out",
+            "again",
+            "--preflight",
+        ],
+        None,
+    );
+    assert!(!both.status.success());
+    assert!(!dir.path().join("again").exists());
+}

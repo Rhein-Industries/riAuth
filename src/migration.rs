@@ -41,7 +41,7 @@ pub struct PasswordReference {
     #[serde(default)]
     pub hashed: bool,
 }
-#[derive(schemars::JsonSchema, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ClientResolution {
     #[serde(default)]
@@ -57,6 +57,96 @@ pub struct ClientResolution {
     pub require_mfa: bool,
     pub secret_ref: Option<String>,
     pub secret_version: Option<String>,
+}
+/// How much of an exported behavior survives conversion.
+#[derive(
+    schemars::JsonSchema, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Classification {
+    /// Carried over unchanged.
+    Exact,
+    /// Carried over through a deterministic, documented transformation.
+    Convertible,
+    /// Needs reviewed operator input or an operator decision; `blocking` says whether it is still missing.
+    Manual,
+    /// Cannot be represented or transferred; rebuild, re-enroll or retire it.
+    Unsupported,
+}
+#[derive(
+    schemars::JsonSchema, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemKind {
+    User,
+    Password,
+    Totp,
+    Passkey,
+    Session,
+    Subject,
+    Group,
+    Source,
+    Provider,
+    AuthenticationFlow,
+    PropertyMapping,
+    PolicyBinding,
+    Federation,
+    SigningKey,
+    EncryptionKey,
+    ClientSecret,
+    Grant,
+    TokenLifetime,
+    RedirectUri,
+    Logout,
+    Application,
+    Manifest,
+}
+/// One preflight finding. It never contains credential values.
+#[derive(
+    schemars::JsonSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub struct Finding {
+    pub kind: ItemKind,
+    /// Exported identifier, scoped as `client/item` where needed.
+    pub id: String,
+    pub classification: Classification,
+    /// True while this finding keeps `ready_for_plan` false.
+    pub blocking: bool,
+    pub reason: String,
+    pub action: String,
+    /// The matching entry in the report's `blockers`.
+    pub blocker: Option<String>,
+}
+#[derive(Default)]
+struct Preflight {
+    items: Vec<Finding>,
+}
+impl Preflight {
+    fn add(
+        &mut self,
+        kind: ItemKind,
+        id: impl Into<String>,
+        classification: Classification,
+        reason: impl Into<String>,
+        action: impl Into<String>,
+    ) -> &mut Finding {
+        self.items.push(Finding {
+            kind,
+            id: id.into(),
+            classification,
+            blocking: false,
+            reason: reason.into(),
+            action: action.into(),
+            blocker: None,
+        });
+        self.items.last_mut().unwrap()
+    }
+}
+impl Finding {
+    fn block(&mut self, blocker: impl Into<String>) {
+        self.blocking = true;
+        self.blocker = Some(blocker.into());
+    }
 }
 fn rows(value: &Value) -> Result<&[Value]> {
     if let Some(rows) = value.as_array() {
@@ -149,6 +239,43 @@ fn group_ancestors(
     Ok(seen)
 }
 
+/// Authentik source family from `/sources/all/` metadata; anything unrecognized stays unsupported.
+fn source_family(source: &Value) -> &'static str {
+    if source["managed"] == "goauthentik.io/sources/inbuilt" {
+        return "inbuilt";
+    }
+    let model = source["meta_model_name"]
+        .as_str()
+        .or(source["component"].as_str())
+        .unwrap_or("");
+    [
+        "oauth", "saml", "ldap", "plex", "kerberos", "scim", "telegram",
+    ]
+    .into_iter()
+    .find(|family| model.contains(family))
+    .unwrap_or("unrecognized")
+}
+fn source_adapter(source: &crate::source::Source) -> &'static str {
+    if source.saml.is_some() {
+        "SAML"
+    } else if source.oauth_profile.is_some() {
+        "OAuth-profile"
+    } else {
+        "OIDC"
+    }
+}
+fn subject_source(mode: &str) -> Option<&'static str> {
+    Some(match mode {
+        "hashed_user_id" => "uid",
+        "user_id" => "numeric user ID",
+        "user_uuid" => "user UUID",
+        "user_username" => "username",
+        "user_email" => "email",
+        "user_upn" => "upn attribute (uid when absent)",
+        _ => return None,
+    })
+}
+
 pub fn convert(input: Import) -> Result<Value> {
     if input.api_version != "riauth.authentik-import/v1" {
         return Err(Error::bad("Unsupported Authentik import format"));
@@ -159,17 +286,99 @@ pub fn convert(input: Import) -> Result<Value> {
     let providers = rows(&input.providers)?;
     let applications = rows(&input.applications)?;
     let bindings = rows(&input.policy_bindings)?;
-    let mut blockers = Vec::<String>::new();
+    let mut p = Preflight::default();
     let mut manifest = Manifest {
         api_version: "riauth/v1".into(),
         source_links: input.source_links.clone(),
         ..Default::default()
     };
+    let mut exported_sources = BTreeSet::new();
     for source in rows(&input.sources)? {
         let id = identifier(&source["pk"])?;
-        match input.source_resolutions.get(&id) {
-            Some(spec) => { spec.source.validate()?; manifest.sources.push(spec.clone()); }
-            None => blockers.push(format!("Source {id}: provide an explicitly reviewed OIDC source resolution; non-OIDC sources need their own adapter")),
+        exported_sources.insert(id.clone());
+        let family = source_family(source);
+        let resolution = input.source_resolutions.get(&id);
+        match family {
+            "inbuilt" => {
+                p.add(ItemKind::Source, &id, Classification::Convertible,
+                    "The built-in source is Authentik's local login; exported local users become riAuth local users",
+                    "Review each user's password entry; the built-in source itself needs no resolution");
+                if resolution.is_some() {
+                    p.add(ItemKind::Source, &id, Classification::Manual,
+                        "The built-in source cannot be replaced by a source resolution; the resolution was not applied",
+                        "Remove this source_resolutions entry")
+                        .block(format!("Source {id}: the built-in source cannot take a source resolution"));
+                }
+            }
+            "oauth" | "saml" => {
+                let adapter = if family == "oauth" {
+                    "OIDC or OAuth-profile"
+                } else {
+                    "SAML"
+                };
+                let Some(spec) = resolution else {
+                    p.add(ItemKind::Source, &id, Classification::Manual,
+                        format!("Authentik {family} sources are not translated automatically"),
+                        format!("Supply a reviewed {adapter} SourceSpec in source_resolutions and explicit source_links"))
+                        .block(format!("Source {id}: provide an explicitly reviewed {adapter} source resolution"));
+                    continue;
+                };
+                let supplied = source_adapter(&spec.source);
+                if (family == "saml") != (supplied == "SAML") {
+                    p.add(ItemKind::Source, &id, Classification::Manual,
+                        format!("The resolution uses the {supplied} adapter, which cannot replace an Authentik {family} source; it was not applied"),
+                        format!("Supply a reviewed {adapter} SourceSpec instead"))
+                        .block(format!("Source {id}: the source resolution must use the {adapter} adapter"));
+                    continue;
+                }
+                spec.source.validate()?;
+                manifest.sources.push(spec.clone());
+                let matching = source["user_matching_mode"]
+                    .as_str()
+                    .unwrap_or("unspecified");
+                p.add(ItemKind::Source, &id, Classification::Manual,
+                    format!("Exported {family} source is replaced by reviewed riAuth {supplied} source {}; its Authentik flows, policies and user matching mode ({matching}) are not translated", spec.source.id),
+                    "Link upstream subjects explicitly in source_links and rehearse sign-in; riAuth never links accounts by email or username");
+            }
+            _ => {
+                if family == "ldap" {
+                    p.add(ItemKind::Source, &id, Classification::Unsupported,
+                        "Authentik LDAP sources are not accepted by this importer; riAuth reads LDAP through its own directory configuration",
+                        "Configure a riAuth LDAP directory (docs/ldap.md) and retire this source before the final export")
+                        .block(format!("Source {id}: LDAP sources are not imported; configure a riAuth LDAP directory instead"));
+                } else {
+                    p.add(
+                        ItemKind::Source,
+                        &id,
+                        Classification::Unsupported,
+                        format!("riAuth has no adapter for Authentik {family} sources"),
+                        "Replace this sign-in method or retire the source before the final export",
+                    )
+                    .block(format!(
+                        "Source {id}: {family} sources have no riAuth adapter"
+                    ));
+                }
+                if resolution.is_some() {
+                    p.add(ItemKind::Source, &id, Classification::Unsupported,
+                        format!("A source resolution cannot replace an unsupported {family} source; it was not applied"),
+                        "Remove this source_resolutions entry and retire the source before the final export")
+                        .block(format!("Source {id}: a source resolution cannot replace an unsupported {family} source"));
+                }
+            }
+        }
+    }
+    for id in input.source_resolutions.keys() {
+        if !exported_sources.contains(id) {
+            p.add(
+                ItemKind::Source,
+                id,
+                Classification::Manual,
+                "The resolution names a source that is not in the export; it was not applied",
+                "Remove the stale entry or export the sources again",
+            )
+            .block(format!(
+                "Source {id}: source resolution does not match an exported source"
+            ));
         }
     }
     let mut group_names = BTreeMap::new();
@@ -188,8 +397,37 @@ pub fn convert(input: Import) -> Result<Value> {
         if !group["parent"].is_null() {
             direct.insert(identifier(&group["parent"])?);
         }
-        if !direct.is_empty() {
+        if direct.is_empty() {
+            p.add(
+                ItemKind::Group,
+                &name,
+                Classification::Exact,
+                "Group name and direct memberships are copied",
+                "None",
+            );
+        } else {
+            p.add(ItemKind::Group, &name, Classification::Convertible,
+                "Parent groups are flattened into explicit memberships; later hierarchy changes do not propagate",
+                "Review flattened memberships and group claims");
             parents.insert(id, direct);
+        }
+        if group["attributes"]
+            .as_object()
+            .is_some_and(|a| !a.is_empty())
+        {
+            p.add(
+                ItemKind::Group,
+                &name,
+                Classification::Manual,
+                "riAuth groups have no attributes; exported group attributes are not copied",
+                "Move required values into user attributes or reviewed claim settings",
+            );
+        }
+        if group["is_superuser"] == true || group["roles"].as_array().is_some_and(|r| !r.is_empty())
+        {
+            p.add(ItemKind::Group, &name, Classification::Manual,
+                "Authentik superuser status and roles granted through this group are not promoted",
+                "Grant riAuth administration or agent permissions explicitly if members still need them");
         }
         manifest.groups.push(GroupSpec {
             name,
@@ -202,40 +440,103 @@ pub fn convert(input: Import) -> Result<Value> {
         .map(|id| Ok((id.as_str(), group_ancestors(&parents, id)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
     let mut subject_modes = BTreeMap::new();
+    let mut exported_subjects = BTreeMap::<String, Vec<String>>::new();
     let mut resolved_bindings = BTreeSet::new();
     for provider in providers {
         let cid = field(provider, "client_id")?.to_owned();
-        let Some(resolution) = input.clients.get(&cid) else {
-            blockers.push(format!("{cid}: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients"));
-            continue;
-        };
-        validate_server_url(&resolution.issuer)
-            .map_err(|_| Error::bad("Invalid reviewed provider issuer"))?;
+        // Without a reviewed resolution the export is still classified item by item against an
+        // empty review, so every review-dependent item blocks; no client is converted from it.
+        let reviewed = input.clients.get(&cid);
+        let unreviewed = ClientResolution::default();
+        let resolution = reviewed.unwrap_or(&unreviewed);
+        if reviewed.is_some() {
+            validate_server_url(&resolution.issuer)
+                .map_err(|_| Error::bad("Invalid reviewed provider issuer"))?;
+            p.add(ItemKind::Provider, &cid, Classification::Manual,
+                if resolution.issuer == input.issuer {
+                    "Client uses the target issuer named in the reviewed resolution".to_owned()
+                } else {
+                    format!("Client keeps the reviewed per-provider issuer {}", resolution.issuer)
+                },
+                "Verify every relying party's discovery and token validation against this issuer before cutover");
+        } else {
+            p.add(ItemKind::Provider, &cid, Classification::Manual,
+                "Exported OAuth2/OIDC provider has no reviewed client resolution",
+                "Add a clients entry with the discovery issuer, scopes, translated mappings, policies and authentication review")
+                .block(format!("{cid}: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients"));
+        }
+        let flow = p.add(ItemKind::AuthenticationFlow, &cid, Classification::Manual,
+            "Authentik authentication, authorization and consent flows are not executed or converted",
+            "Review browser and terminal login, consent and MFA; set require_mfa and scope rules, then authentication_flow_reviewed");
         if !resolution.authentication_flow_reviewed {
-            blockers.push(format!(
+            flow.block(format!(
                 "{cid}: authentication flow has not been reviewed for browser/terminal login and MFA"
             ));
         }
         let exported_mappings = ids(&provider["property_mappings"])?;
-        if exported_mappings != resolution.translated_mapping_ids {
-            blockers.push(format!("{cid}: every exported property mapping must have a reviewed declarative translation"));
+        let mapping_blocker = format!(
+            "{cid}: every exported property mapping must have a reviewed declarative translation"
+        );
+        for mapping in exported_mappings.union(&resolution.translated_mapping_ids) {
+            let id = format!("{cid}/{mapping}");
+            if !exported_mappings.contains(mapping) {
+                p.add(
+                    ItemKind::PropertyMapping,
+                    id,
+                    Classification::Manual,
+                    "The resolution lists a translated mapping that is not in the export",
+                    "Remove the stale ID or export the provider again",
+                )
+                .block(&mapping_blocker);
+                continue;
+            }
+            let item = p.add(ItemKind::PropertyMapping, id, Classification::Manual,
+                "Mapping expressions are never executed or assumed equivalent",
+                "Translate the mapping into reviewed declarative claim settings and list its ID in translated_mapping_ids");
+            if !resolution.translated_mapping_ids.contains(mapping) {
+                item.block(&mapping_blocker);
+            }
         }
         resolved_bindings.extend(resolution.translated_binding_ids.clone());
         for name in ["jwt_federation_sources", "jwt_federation_providers"] {
-            if provider[name].as_array().is_some_and(|v| !v.is_empty())
-                && !resolution.federation_reviewed
-            {
-                blockers.push(format!("{cid}: review {name} and translate its trust into pinned machine_trust, exchange and token_managers settings"));
+            if provider[name].as_array().is_some_and(|v| !v.is_empty()) {
+                let item = p.add(ItemKind::Federation, format!("{cid}/{name}"), Classification::Manual,
+                    "Exported JWT federation trust is not converted automatically",
+                    "Translate it into pinned machine_trust, exchange and token_managers settings, then set federation_reviewed");
+                if !resolution.federation_reviewed {
+                    item.block(format!("{cid}: review {name} and translate its trust into pinned machine_trust, exchange and token_managers settings"));
+                }
             }
         }
-        if !provider["encryption_key"].is_null()
-            && (resolution.settings.id_token_encryption.is_none()
-                || resolution.settings.access_token_encryption.is_none())
-        {
-            blockers.push(format!(
-                "{cid}: configure the reviewed public encryption key for both ID and access tokens"
-            ));
+        if !provider["encryption_key"].is_null() {
+            let item = p.add(
+                ItemKind::EncryptionKey,
+                &cid,
+                Classification::Manual,
+                "Authentik encryption keys are not part of the API export",
+                "Configure the reviewed recipient public key for both ID and access tokens",
+            );
+            if resolution.settings.id_token_encryption.is_none()
+                || resolution.settings.access_token_encryption.is_none()
+            {
+                item.block(format!(
+                    "{cid}: configure the reviewed public encryption key for both ID and access tokens"
+                ));
+            }
         }
+        p.add(ItemKind::SigningKey, &cid, Classification::Manual,
+            if provider["signing_key"].is_null() {
+                "Authentik signs this provider's tokens with the client secret when no signing key is set; riAuth signs with asymmetric keys"
+            } else {
+                "Authentik private signing keys are not part of the API export"
+            },
+            if provider["signing_key"].is_null() {
+                "Confirm the relying party validates asymmetric ID tokens through riAuth's JWKS instead of the client secret"
+            } else if resolution.settings.signing_key.is_some() {
+                "Confirm the configured signing domain was imported with riauth keys import and keeps the expected kid"
+            } else {
+                "Import the key with riauth keys import and set settings.signing_key to keep its kid, or have the relying party accept riAuth's JWKS"
+            });
         let mut settings = resolution.settings.clone();
         let provider_id = identifier(&provider["pk"])?;
         let associated = applications
@@ -243,9 +544,15 @@ pub fn convert(input: Import) -> Result<Value> {
             .filter(|a| identifier(&a["provider"]).ok().as_ref() == Some(&provider_id))
             .collect::<Vec<_>>();
         if associated.len() > 1 {
-            blockers.push(format!("{cid}: multiple applications share this provider; resolve their separate launch metadata and policies explicitly"));
+            for shared in &associated {
+                p.add(ItemKind::Application, shared["slug"].as_str().unwrap_or(&cid), Classification::Manual,
+                    format!("{} applications share provider {cid}", associated.len()),
+                    "Split the applications or choose one application's launch metadata and policies explicitly")
+                    .block(format!("{cid}: multiple applications share this provider; resolve their separate launch metadata and policies explicitly"));
+            }
         }
         let application = associated.first().copied();
+        let slug = application.and_then(|a| a["slug"].as_str()).unwrap_or(&cid);
         if settings.app.is_none()
             && let Some(application) = application
         {
@@ -260,6 +567,7 @@ pub fn convert(input: Import) -> Result<Value> {
                     .into(),
                 category: application["group"].as_str().unwrap_or("").into(),
                 hidden: application["meta_launch_url"] == "blank://blank"
+                    || application["meta_hide"] == true
                     || application["hide_from_application_dashboard"]
                         .as_bool()
                         .unwrap_or(false),
@@ -270,31 +578,91 @@ pub fn convert(input: Import) -> Result<Value> {
             {
                 app.launch_url = None;
             }
+            let app = p.add(ItemKind::Application, slug, Classification::Convertible,
+                "Name, launch URL, description, category and dashboard visibility become portal settings; other application settings are not copied",
+                if reviewed.is_some() {
+                    "Review the portal entry".to_owned()
+                } else {
+                    format!("Add a reviewed clients entry for provider {cid}, then review the portal entry")
+                });
+            // Nothing is converted for an unreviewed provider, so its application waits on that review.
+            if reviewed.is_none() {
+                app.block(format!("{cid}: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients"));
+            }
+        } else if application.is_some() {
+            p.add(ItemKind::Application, slug, Classification::Manual,
+                "Portal settings come from the reviewed resolution instead of the exported application metadata",
+                "Review the portal entry");
         }
         settings.issuer = (resolution.issuer != input.issuer).then(|| resolution.issuer.clone());
-        let exported_grants = ids(&provider["grant_types"])?;
+        // Authentik exports `grant_types` from 2026.5; older exports have no grant inventory.
+        let legacy_grants = provider["grant_types"].is_null();
+        let exported_grants = if legacy_grants {
+            BTreeSet::new()
+        } else {
+            ids(&provider["grant_types"])?
+        };
         if settings.allowed_grants.is_empty() {
             settings.allowed_grants = exported_grants.clone();
         }
+        let grant = if exported_grants.is_empty() {
+            p.add(
+                ItemKind::Grant,
+                &cid,
+                Classification::Manual,
+                if legacy_grants {
+                    "The export has no grant_types field (Authentik before 2026.5)"
+                } else {
+                    "The export lists no grant types"
+                },
+                "Inventory the grants this relying party uses and set settings.allowed_grants",
+            )
+        } else if settings.allowed_grants == exported_grants {
+            p.add(
+                ItemKind::Grant,
+                &cid,
+                Classification::Exact,
+                "Exported grant types are carried over",
+                "None",
+            )
+        } else {
+            p.add(
+                ItemKind::Grant,
+                &cid,
+                Classification::Manual,
+                "The reviewed resolution selects the allowed grants",
+                "Confirm the relying party needs only the selected grants",
+            )
+        };
         if !exported_grants.is_empty() && !settings.allowed_grants.is_subset(&exported_grants) {
-            blockers.push(format!(
+            grant.block(format!(
                 "{cid}: selected grants were not present in the export"
             ));
         }
         if settings.allowed_grants.is_empty() {
-            blockers.push(format!("{cid}: explicitly inventory allowed grants; an empty legacy grant list is ambiguous"));
+            grant.block(format!("{cid}: explicitly inventory allowed grants; an empty legacy grant list is ambiguous"));
         }
         settings.code_ttl = duration(&provider["access_code_validity"])?;
         settings.access_token_ttl = duration(&provider["access_token_validity"])?;
         settings.refresh_token_ttl = duration(&provider["refresh_token_validity"])?;
         settings.userinfo_only = provider["include_claims_in_id_token"] == false;
+        p.add(ItemKind::TokenLifetime, &cid, Classification::Convertible,
+            "Code, access and refresh token lifetimes are converted to seconds; absent values use riAuth defaults, and ID-token claim placement is copied",
+            "None");
         let mut redirects = Vec::new();
         for redirect in provider["redirect_uris"]
             .as_array()
             .ok_or_else(|| Error::bad("Missing redirect_uris"))?
         {
             if redirect["matching_mode"] != "strict" {
-                blockers.push(format!(
+                p.add(
+                    ItemKind::RedirectUri,
+                    format!("{cid}/{}", redirect["url"].as_str().unwrap_or("")),
+                    Classification::Unsupported,
+                    "Regex redirect matching is not supported",
+                    "Register each exact redirect URI in Authentik and export again",
+                )
+                .block(format!(
                     "{cid}: regex redirect needs explicit exact registrations"
                 ));
                 continue;
@@ -304,22 +672,64 @@ pub fn convert(input: Import) -> Result<Value> {
                 .as_str()
                 .unwrap_or("authorization")
             {
-                "authorization" => redirects.push(url),
+                "authorization" => {
+                    p.add(
+                        ItemKind::RedirectUri,
+                        format!("{cid}/{url}"),
+                        Classification::Exact,
+                        "Strict redirect URI is registered unchanged",
+                        "None",
+                    );
+                    redirects.push(url);
+                }
                 "logout" => {
+                    p.add(
+                        ItemKind::RedirectUri,
+                        format!("{cid}/{url}"),
+                        Classification::Convertible,
+                        "Strict logout redirect becomes a post-logout redirect URI",
+                        "None",
+                    );
                     if !settings.post_logout_redirect_uris.contains(&url) {
                         settings.post_logout_redirect_uris.push(url);
                     }
                 }
-                _ => blockers.push(format!("{cid}: unsupported redirect type")),
+                other => {
+                    p.add(
+                        ItemKind::RedirectUri,
+                        format!("{cid}/{url}"),
+                        Classification::Unsupported,
+                        format!("Redirect type {other} is not supported"),
+                        "Remove it or replace it with an exact authorization or logout redirect",
+                    )
+                    .block(format!("{cid}: unsupported redirect type"));
+                }
             }
         }
         if let Some(uri) = provider["logout_uri"].as_str().filter(|s| !s.is_empty()) {
-            if provider["logout_method"] == "backchannel" {
-                settings.backchannel_logout_uri = Some(uri.to_owned());
-            } else if provider["logout_method"] == "frontchannel" {
-                settings.frontchannel_logout_uri = Some(uri.to_owned());
+            let method = provider["logout_method"].as_str().unwrap_or("");
+            if method == "backchannel" || method == "frontchannel" {
+                if method == "backchannel" {
+                    settings.backchannel_logout_uri = Some(uri.to_owned());
+                } else {
+                    settings.frontchannel_logout_uri = Some(uri.to_owned());
+                }
+                p.add(
+                    ItemKind::Logout,
+                    &cid,
+                    Classification::Exact,
+                    format!("The {method} logout URI is carried over"),
+                    "Rehearse logout with the relying party",
+                );
             } else {
-                blockers.push(format!("{cid}: unknown logout method"));
+                p.add(
+                    ItemKind::Logout,
+                    &cid,
+                    Classification::Unsupported,
+                    "The logout method is unknown",
+                    "Choose back-channel or front-channel logout for this client",
+                )
+                .block(format!("{cid}: unknown logout method"));
             }
         }
         let confidential = match field(provider, "client_type")? {
@@ -327,9 +737,13 @@ pub fn convert(input: Import) -> Result<Value> {
             "public" => false,
             _ => return Err(Error::bad("Unknown client type")),
         };
-        if confidential && (resolution.secret_ref.is_none() || resolution.secret_version.is_none())
-        {
-            blockers.push(format!("{cid}: confidential client requires a secret reference/version; exported secrets are never copied into plans"));
+        if confidential {
+            let item = p.add(ItemKind::ClientSecret, &cid, Classification::Manual,
+                "Exported client secrets are never copied into plans; a reviewed reference is resolved at apply",
+                "Reference the existing secret or coordinate a new secret with the relying party");
+            if resolution.secret_ref.is_none() || resolution.secret_version.is_none() {
+                item.block(format!("{cid}: confidential client requires a secret reference/version; exported secrets are never copied into plans"));
+            }
         }
         let client = crate::model::Client {
             id: cid.clone(),
@@ -346,12 +760,38 @@ pub fn convert(input: Import) -> Result<Value> {
             service: false,
             settings: settings.clone(),
         };
-        if let Err(error) = crate::provider::validate_settings(&client)
-            .and_then(|_| claims::validate_mappings(&client))
+        if reviewed.is_some()
+            && let Err(error) = crate::provider::validate_settings(&client)
+                .and_then(|_| claims::validate_mappings(&client))
         {
-            blockers.push(format!("{cid}: {}", error.message));
+            p.add(
+                ItemKind::Provider,
+                &cid,
+                Classification::Manual,
+                "The reviewed client settings fail riAuth validation",
+                "Correct the settings in this clients entry",
+            )
+            .block(format!("{cid}: {}", error.message));
         }
-        subject_modes.insert(cid.clone(), field(provider, "sub_mode")?.to_owned());
+        let mode = field(provider, "sub_mode")?.to_owned();
+        if let Some(source) = subject_source(&mode) {
+            p.add(
+                ItemKind::Subject,
+                &cid,
+                Classification::Exact,
+                format!("Subjects are copied from the exported {source}"),
+                "Compare sample subjects with the relying party's stored account IDs",
+            );
+        } else {
+            p.add(ItemKind::Subject, &cid, Classification::Unsupported,
+                format!("Subject mode {mode} is not supported"),
+                "Choose a supported subject mode and export again, or plan an explicit relying-party account migration")
+                .block(format!("{cid}: unsupported subject mode {mode}"));
+        }
+        subject_modes.insert(cid.clone(), (mode, reviewed.is_some()));
+        if reviewed.is_none() {
+            continue;
+        }
         manifest.clients.push(ClientSpec {
             client_id: cid,
             name: client.name,
@@ -367,34 +807,73 @@ pub fn convert(input: Import) -> Result<Value> {
             secret_version: resolution.secret_version.clone(),
         });
     }
+    for cid in input.clients.keys() {
+        if !subject_modes.contains_key(cid) {
+            p.add(
+                ItemKind::Provider,
+                cid,
+                Classification::Manual,
+                "The clients entry names a provider that is not in the export; it was not applied",
+                "Remove the stale entry or export the providers again",
+            )
+            .block(format!(
+                "{cid}: clients entry does not match an exported provider"
+            ));
+        }
+    }
     let exported_bindings = bindings
         .iter()
         .map(|b| identifier(&b["pk"]))
         .collect::<Result<BTreeSet<_>>>()?;
-    if exported_bindings != resolved_bindings {
-        blockers.push("Every exported policy binding must be inventoried and translated; unresolved or extra binding IDs remain".into());
+    let binding_blocker = "Every exported policy binding must be inventoried and translated; unresolved or extra binding IDs remain";
+    for binding in exported_bindings.union(&resolved_bindings) {
+        if !exported_bindings.contains(binding) {
+            p.add(
+                ItemKind::PolicyBinding,
+                binding,
+                Classification::Manual,
+                "A resolution lists a translated binding that is not in the export",
+                "Remove the stale ID or export the bindings again",
+            )
+            .block(binding_blocker);
+            continue;
+        }
+        let item = p.add(ItemKind::PolicyBinding, binding, Classification::Manual,
+            "Policies and their bindings are never executed or assumed equivalent",
+            "Translate the binding into reviewed client policy settings and list its ID in translated_binding_ids");
+        if !resolved_bindings.contains(binding) {
+            item.block(binding_blocker);
+        }
     }
     let provider_ids = providers
         .iter()
         .map(|p| identifier(&p["pk"]))
         .collect::<Result<BTreeSet<_>>>()?;
     for application in applications {
-        if !application["provider"].is_null()
-            && !provider_ids.contains(&identifier(&application["provider"])?)
-        {
-            blockers.push(format!(
-                "Application {} uses an unexported or unsupported provider",
-                field(application, "slug")?
-            ));
+        if application["provider"].is_null() {
+            p.add(
+                ItemKind::Application,
+                application["slug"].as_str().unwrap_or_default(),
+                Classification::Unsupported,
+                "The application has no provider, so there is no sign-in to convert",
+                "Recreate its launch link manually if users still need it",
+            );
+        } else if !provider_ids.contains(&identifier(&application["provider"])?) {
+            let slug = field(application, "slug")?;
+            p.add(ItemKind::Application, slug, Classification::Unsupported,
+                "The application's provider is not an exported OAuth2/OIDC provider, so it cannot be converted",
+                "Recreate it with the matching riAuth integration, such as a proxy client (docs/proxy.md), and rehearse it separately")
+                .block(format!("Application {slug} uses an unexported or unsupported provider"));
         }
         if application["backchannel_providers"]
             .as_array()
             .is_some_and(|v| !v.is_empty())
         {
-            blockers.push(format!(
-                "Application {} has provisioning providers requiring separate migration",
-                field(application, "slug")?
-            ));
+            let slug = field(application, "slug")?;
+            p.add(ItemKind::Application, slug, Classification::Unsupported,
+                "Backchannel provisioning providers are not converted",
+                "Configure riAuth provisioning (for example outbound SCIM) separately and rehearse it")
+                .block(format!("Application {slug} has provisioning providers requiring separate migration"));
         }
     }
     for user in users {
@@ -402,14 +881,55 @@ pub fn convert(input: Import) -> Result<Value> {
         let password = input.passwords.get(&username);
         let external =
             user["type"] == "external" && input.source_links.iter().any(|l| l.username == username);
-        if password.is_none() && !external {
-            blockers.push(format!("{username}: supply a password/password-hash reference or complete password reset before migration"));
+        p.add(ItemKind::User, &username, Classification::Convertible,
+            "The local ID becomes authentik-<pk>; name, email, attributes, active state and flattened memberships are copied; email_verified starts false",
+            "Review profile data and email verification");
+        match password {
+            Some(reference) if reference.hashed => {
+                p.add(ItemKind::Password, &username, Classification::Convertible,
+                    "The referenced hash is checked at apply: supported Django pbkdf2_sha256 and Argon2 hashes are kept and rehashed after sign-in where needed; other or invalid hashes fail the apply",
+                    "Rehearse this user's sign-in; the converter never reads the hash");
+            }
+            Some(_) => {
+                p.add(ItemKind::Password, &username, Classification::Manual,
+                    "A newly established password is referenced; the Authentik password is not carried over",
+                    "Deliver the new password through the managed reset process");
+            }
+            None if external => {
+                p.add(ItemKind::Password, &username, Classification::Manual,
+                    "The local password is disabled; the user signs in through the explicitly linked source",
+                    "Rehearse sign-in through the linked source");
+            }
+            None => {
+                p.add(ItemKind::Password, &username, Classification::Manual,
+                    "No password or password-hash reference was supplied",
+                    "Supply a hash reference from an authorized offline export, or complete a managed password reset")
+                    .block(format!("{username}: supply a password/password-hash reference or complete password reset before migration"));
+            }
         }
-        if user["type"].as_str().is_some_and(|v| v != "internal") && !external {
-            blockers.push(format!("{username}: external/service identity requires explicit source or service-account migration"));
+        if let Some(kind) = user["type"].as_str().filter(|v| *v != "internal")
+            && !external
+        {
+            p.add(ItemKind::User, &username, Classification::Manual,
+                format!("Authentik {kind} accounts are not converted as ordinary local users"),
+                "Link the user to a reviewed source in source_links, or recreate it as a riAuth service client or agent")
+                .block(format!("{username}: external/service identity requires explicit source or service-account migration"));
         }
         if user["roles"].as_array().is_some_and(|v| !v.is_empty()) {
-            blockers.push(format!("{username}: Authentik administrative roles require explicit agent permission migration"));
+            p.add(ItemKind::User, &username, Classification::Manual,
+                "Authentik roles are not converted into riAuth permissions",
+                "Grant equivalent riAuth administration or agent permissions explicitly, then remove the roles from the export")
+                .block(format!("{username}: Authentik administrative roles require explicit agent permission migration"));
+        }
+        if user["is_superuser"] == true {
+            p.add(ItemKind::User, &username, Classification::Manual,
+                "Authentik superuser status is not promoted; the riAuth bootstrap administrator remains",
+                "Grant riAuth administration explicitly if this user still needs it");
+        }
+        if input.totp.contains_key(&username) {
+            p.add(ItemKind::Totp, &username, Classification::Convertible,
+                "The referenced TOTP secret is imported at apply and the current time step is marked spent",
+                "Tell the user to wait for a fresh code; the converter never reads the secret");
         }
         let mut memberships = ids(&user["groups"])?;
         for id in memberships.clone() {
@@ -428,7 +948,7 @@ pub fn convert(input: Import) -> Result<Value> {
                 .insert(username.clone());
         }
         let mut subjects = BTreeMap::new();
-        for (cid, mode) in &subject_modes {
+        for (cid, (mode, reviewed)) in &subject_modes {
             let subject = match mode.as_str() {
                 "hashed_user_id" => field(user, "uid")?.to_owned(),
                 "user_id" => identifier(&user["pk"])?,
@@ -439,21 +959,28 @@ pub fn convert(input: Import) -> Result<Value> {
                     .as_str()
                     .unwrap_or(field(user, "uid")?)
                     .to_owned(),
-                _ => {
-                    blockers.push(format!("{cid}: unsupported subject mode {mode}"));
-                    continue;
-                }
+                // Reported once per client by the provider loop.
+                _ => continue,
             };
             if subject.is_empty()
                 || subject.len() > 255
                 || !subject.is_ascii()
                 || subject.chars().any(char::is_control)
             {
-                blockers.push(format!(
-                    "{username}/{cid}: subject is outside the supported OIDC format"
-                ));
+                p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
+                    "The exported subject is empty, longer than 255 bytes, non-ASCII or contains control characters",
+                    "Choose a subject mode with a supported value, or plan an explicit relying-party account migration")
+                    .block(format!(
+                        "{username}/{cid}: subject is outside the supported OIDC format"
+                    ));
             }
-            subjects.insert(cid.clone(), subject);
+            exported_subjects
+                .entry(cid.clone())
+                .or_default()
+                .push(subject.clone());
+            if *reviewed {
+                subjects.insert(cid.clone(), subject);
+            }
         }
         let email = user["email"]
             .as_str()
@@ -482,26 +1009,76 @@ pub fn convert(input: Import) -> Result<Value> {
             password_version: password.map(|p| p.version.clone()),
         });
     }
-    for client in &manifest.clients {
+    // Checked for every exported provider, reviewed or not.
+    for (cid, subjects) in &exported_subjects {
         let mut seen = BTreeSet::new();
-        for user in &manifest.users {
-            if let Some(subject) = user.subjects.get(&client.client_id)
-                && !seen.insert(subject)
-            {
-                blockers.push(format!(
-                    "{}: duplicate subjects would merge identities",
-                    client.client_id
-                ));
-            }
+        if subjects.iter().any(|subject| !seen.insert(subject)) {
+            p.add(
+                ItemKind::Subject,
+                cid,
+                Classification::Unsupported,
+                "Two exported users would receive the same subject",
+                "Resolve the duplicate in Authentik; riAuth never merges identities",
+            )
+            .block(format!("{cid}: duplicate subjects would merge identities"));
         }
     }
+    p.add(ItemKind::Passkey, "*", Classification::Unsupported,
+        "WebAuthn credentials are bound to Authentik's hostname and are not exported",
+        "Users add passkeys in the riAuth portal after sign-in; plan this before moving require_mfa applications");
+    p.add(
+        ItemKind::Session,
+        "*",
+        Classification::Unsupported,
+        "Live sessions, cookies and opaque access or refresh tokens are not imported",
+        "Users sign in again; plan relying-party sessions and offline token validators",
+    );
+    p.add(
+        ItemKind::Totp,
+        "*",
+        Classification::Manual,
+        "TOTP devices are not in the API export; only users listed in totp keep their factor",
+        "Supply TOTP references from an authorized offline export, or have users enroll again",
+    );
     if let Err(error) = manifest.validate() {
-        blockers.push(error.message);
+        p.add(
+            ItemKind::Manifest,
+            "manifest",
+            Classification::Manual,
+            "The converted manifest fails riAuth validation",
+            "Correct the input that produced this error",
+        )
+        .block(error.message);
     }
+    let mut items = p.items;
+    items.sort();
+    items.dedup();
+    let mut blockers = items
+        .iter()
+        .filter_map(|i| i.blocker.clone())
+        .collect::<Vec<_>>();
     blockers.sort();
     blockers.dedup();
+    let mut summary = BTreeMap::from([
+        ("exact", 0),
+        ("convertible", 0),
+        ("manual", 0),
+        ("unsupported", 0),
+    ]);
+    for item in &items {
+        *summary
+            .entry(match item.classification {
+                Classification::Exact => "exact",
+                Classification::Convertible => "convertible",
+                Classification::Manual => "manual",
+                Classification::Unsupported => "unsupported",
+            })
+            .or_default() += 1;
+    }
+    summary.insert("blocking", items.iter().filter(|i| i.blocking).count());
     Ok(
         json!({"api_version": "riauth.migration-report/v1", "ready_for_plan": blockers.is_empty(), "issuer": input.issuer, "blockers": blockers,
+        "summary": summary, "items": items,
         "manifest": if blockers.is_empty() { json!(manifest) } else { Value::Null }, "draft": manifest,
         "reauthentication_required": true, "old_tokens_and_sessions_imported": false, "signing_keys_imported": false, "administrators_imported": false,
         "source_fingerprint": crypto::digest(&serde_json::to_string(&input).map_err(Error::internal)?)}),

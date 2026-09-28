@@ -7,7 +7,7 @@ For a new instance without Authentik data, follow [getting started](getting-star
 | Stage | Review before continuing |
 | --- | --- |
 | Export | Confirm every Authentik collection is complete and record the current application, issuer and subject contracts. |
-| Convert | Run `import-authentik`; resolve every blocker in its private report. A draft is not an applicable manifest. |
+| Convert | Run `import-authentik --preflight`, then `import-authentik --out`; review every classified item and resolve every blocker in the private report. A draft is not an applicable manifest. |
 | Plan and apply | Review the manifest and redacted plan against a disposable riAuth instance before applying to the intended instance. |
 | Rehearse | Test each application, factor, logout and rollback path with its real peer. Record the result and rollback owner in your deployment inventory. |
 
@@ -37,7 +37,28 @@ Add `clients`, keyed by client ID. Each entry requires:
 - `federation_reviewed: true` only after translating exported JWT federation trust into pinned `machine_trust`, `exchange` and `token_managers` settings. Exported encryption keys require reviewed recipient keys for both ID and access tokens.
 - For confidential clients, `secret_ref` and `secret_version` pointing to the existing secret, or a deliberate new secret coordinated with the RP.
 
-The importer carries over exact redirects, supported grant permissions, token lifetimes, ID-token claim placement and back-channel logout URLs. An explicitly narrower `settings.allowed_grants` can select the supported subset needed by your RP; it cannot add grants absent from a nonempty source list. Confirm that restriction before cutover. Regex redirects and unsupported provider/source behavior produce blockers. Configuration containing SAML/provisioning providers or upstream identity sources cannot be treated as OIDC-only parity. Authentik proxy (forward-auth) providers are not converted: an application that uses one produces the blocker "uses an unexported or unsupported provider", and it is recreated as a riAuth [proxy client](proxy.md). Regex redirects must become exact registrations before export; a client can register up to 32.
+The importer carries over exact redirects, supported grant permissions, token lifetimes, ID-token claim placement and back-channel logout URLs. An explicitly narrower `settings.allowed_grants` can select the supported subset needed by your RP; it cannot add grants absent from a nonempty source list. Confirm that restriction before cutover. Authentik exports `grant_types` from 2026.5; for an older export without it, or with an empty list, the report blocks until `settings.allowed_grants` inventories the grants the RP uses. Regex redirects and unsupported provider/source behavior produce blockers. Configuration containing SAML/provisioning providers or upstream identity sources cannot be treated as OIDC-only parity. Authentik proxy (forward-auth) providers are not converted: an application that uses one produces the blocker "uses an unexported or unsupported provider", and it is recreated as a riAuth [proxy client](proxy.md). Regex redirects must become exact registrations before export; a client can register up to 32.
+
+## Preflight report
+
+`riauth import-authentik --file <bundle> --preflight` converts the bundle in memory and prints the classified findings without writing any file. `--out <new directory>` writes the same findings to the private `report.json`, plus `manifest.json` when ready. Both outputs contain `ready_for_plan`, `blockers` and `summary`, a count per classification plus the number of blocking items. `report.json` and `--preflight` also list every finding in `items`. `riauth --json schema migration-finding` describes one item:
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | `user`, `password`, `totp`, `passkey`, `session`, `subject`, `group`, `source`, `provider`, `authentication_flow`, `property_mapping`, `policy_binding`, `federation`, `signing_key`, `encryption_key`, `client_secret`, `grant`, `token_lifetime`, `redirect_uri`, `logout`, `application` or `manifest` |
+| `id` | Exported identifier (username, group name, source/binding pk, client ID or application slug), scoped as `client/item` for mappings, redirects and federation, and `username/client` for subjects. `*` covers every user. |
+| `classification` | `exact`, `convertible`, `manual` or `unsupported` (below) |
+| `blocking`, `blocker` | Whether this item keeps `ready_for_plan` false, and its entry in `blockers` |
+| `reason`, `action` | Why it has this classification, and what to do next |
+
+- **exact**: carried over unchanged. Examples: strict redirect URIs, grant lists, supported subject modes, logout URIs, and group names without parents.
+- **convertible**: carried over through a documented transformation. Examples: flattened parent groups, `authentik-<pk>` local IDs, duration strings, logout redirects, application portal metadata, the built-in source, referenced password hashes and TOTP secrets.
+- **manual**: depends on reviewed operator input or an explicit decision. A manual item is non-blocking once that input is present. Examples: client resolutions, authentication flows, property mappings, policy bindings, federation, client secrets, source resolutions and newly established passwords. Group attributes and Authentik superuser status or roles granted through groups are non-blocking manual findings. They are not copied or promoted, so grant any riAuth permissions explicitly.
+- **unsupported**: cannot be represented or transferred. Examples: regex redirects, unknown subject modes or logout methods, non-OAuth2 providers, provisioning providers, sources without an adapter, subjects outside the OIDC format and duplicate subjects. Passkeys, and live sessions and tokens, always appear as non-blocking unsupported items, because they cannot move and users must sign in and enroll again.
+
+A provider without a `clients` entry is still classified item by item, as if its review were empty. Its provider finding, authentication flow, and any exported mappings, federation, encryption key or confidential client secret block, while intrinsic items such as strict redirects, grants and the subject mode keep their normal classification. Its application is classified from the export but blocks until the provider is reviewed. Every application that shares a provider also gets its own blocking finding. Duplicate subjects are checked for every exported provider. No client, and no per-client subject, is converted from an unreviewed provider. A `clients` or `source_resolutions` entry that names nothing in the export blocks and is not applied, including any binding IDs it translates.
+
+Classifications describe what the converter does with the export. They are not evidence that an application, factor or credential works after cutover. Password hashes and TOTP secrets are referenced but never read during conversion. Their formats are checked only when the plan is applied. Items never contain credential values. Findings are sorted by kind and identifier. `blockers` keeps its earlier messages, with three changes: source blockers name the source family and the adapter it needs; rejected or stale resolutions add their own blockers; and an unreviewed provider also reports its review-dependent blockers. Treat the report as private: it contains usernames, email addresses and redirect URIs.
 
 ## Identity continuity
 
@@ -79,7 +100,19 @@ TOTP migration accepts `totp` entries mapping usernames to private `TotpImport` 
 
 ## Sources and newer settings
 
-Reviewed upstream source translations go in `source_resolutions`, keyed by exported source ID. Each is a `SourceSpec` (`riauth --json schema source`) using an implemented OIDC, OAuth-profile or SAML source; the converter validates the supplied configuration rather than translating the Authentik source automatically. `source_links` explicitly maps a source and stable upstream subject to a local username. External users with these mappings can disable local passwords. Never infer links from email equality. Sources outside those implemented adapters remain blockers. A missing resolution can still report the older OIDC-specific blocker wording; it does not establish support for an arbitrary upstream source. Live Authentik cookies and opaque refresh tokens are not imported by these mappings.
+Reviewed upstream source translations go in `source_resolutions`, keyed by exported source ID. Each is a `SourceSpec` (`riauth --json schema source`); the converter validates the supplied configuration rather than translating the Authentik source automatically. `source_links` explicitly maps a source and stable upstream subject to a local username. External users with these mappings can disable local passwords. Never infer links from email equality.
+
+A resolution is applied only where riAuth has a matching adapter:
+
+| Exported source | Without a resolution | With a resolution |
+| --- | --- | --- |
+| OAuth (`authentik_sources_oauth.oauthsource`) | manual, blocking | An OIDC or OAuth-profile `SourceSpec` is validated and applied (manual, non-blocking). A SAML spec blocks and is not applied. |
+| SAML (`authentik_sources_saml.samlsource`) | manual, blocking | A SAML `SourceSpec` is validated and applied (manual, non-blocking). An OIDC or OAuth-profile spec blocks and is not applied. |
+| Built-in (`managed` is `goauthentik.io/sources/inbuilt`) | convertible, non-blocking: Authentik's local login, with each local user's password classified separately | Blocks and is not applied; remove the entry. |
+| LDAP | unsupported, blocking: configure a riAuth [LDAP directory](ldap.md) and retire the Authentik source before the final export | Still blocks; the resolution is not applied. |
+| Plex, Kerberos, SCIM, Telegram and unrecognized sources | unsupported, blocking | Still blocks; the resolution is not applied. |
+
+A resolution for a source that is not in the export also blocks. An applied resolution is validated as riAuth configuration; the report does not establish that it behaves like the Authentik source, and Authentik user matching modes such as `email_link` are not translated. Live Authentik cookies and opaque refresh tokens are not imported by these mappings.
 
 The importer does not provision the newer enterprise settings from Authentik
 exports: parent-owned agents, Google Workspace/Entra sync configuration, HTTPS

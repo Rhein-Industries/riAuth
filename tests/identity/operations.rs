@@ -520,6 +520,22 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     let report =
         riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap();
     assert_eq!(report["ready_for_plan"], true, "{report}");
+    assert_eq!(report["summary"]["blocking"], 0);
+    let classified = |kind: &str, id: &str| {
+        report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|i| i["kind"] == kind && i["id"] == id)
+            .map(|i| i["classification"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(classified("group", "employees"), ["exact"]);
+    assert_eq!(classified("group", "engineering"), ["convertible"]);
+    assert_eq!(classified("subject", "app"), ["exact"]);
+    assert_eq!(classified("grant", "app"), ["exact"]);
+    assert_eq!(classified("password", "alice"), ["manual"]);
+    assert_eq!(classified("passkey", "*"), ["unsupported"]);
     assert_eq!(report["manifest"]["clients"][0]["name"], "Team workspace");
     assert_eq!(
         report["manifest"]["clients"][0]["settings"]["app"]["launch_url"],
@@ -716,6 +732,353 @@ fn authentik_import_rejects_group_cycles_in_parents_arrays() {
     assert_eq!(
         convert(chain(1025)).unwrap_err().message,
         "Exported group has more than 1024 ancestors"
+    );
+}
+
+#[test]
+fn authentik_preflight_classifies_every_exported_item() {
+    let secret = "exported-client-secret-must-not-appear";
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+        "users":[
+            {"pk":1,"uid":"a","username":"alice","name":"Alice","groups":["child"],"attributes":{},"type":"internal","is_active":true,"roles":[],"is_superuser":true},
+            {"pk":2,"uid":"b","username":"bob","name":"Bob","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":["role-uuid"]},
+            {"pk":3,"uid":"c","username":"robot","name":"Robot","groups":[],"attributes":{},"type":"service_account","is_active":true,"roles":[]}],
+        "groups":[
+            {"pk":"child","name":"engineering","parents":["parent"]},
+            {"pk":"parent","name":"admins","parents":[],"is_superuser":true,"attributes":{"cost_center":"42"}}],
+        "providers":[
+            {"pk":1,"name":"legacy","client_id":"legacy","client_type":"confidential","client_secret":secret,"signing_key":null,
+             "redirect_uris":[{"matching_mode":"strict","url":"https://legacy.example.test/cb"},{"matching_mode":"regex","url":"https://.*\\.example\\.test/cb"},
+                {"matching_mode":"strict","url":"https://legacy.example.test/bye","redirect_uri_type":"logout"}],
+             "property_mappings":["mapped","unmapped"],"sub_mode":"user_upn","include_claims_in_id_token":true,
+             "logout_uri":"https://legacy.example.test/logout","logout_method":"backchannel"}],
+        "applications":[
+            {"slug":"legacy","provider":1,"name":"Legacy","meta_launch_url":"https://legacy.example.test/","meta_hide":true},
+            {"slug":"wiki","provider":7,"name":"Wiki"},
+            {"slug":"bookmark","provider":null,"name":"Bookmark"}],
+        "policy_bindings":[{"pk":"bound"},{"pk":"loose"}],
+        "sources":[
+            {"pk":"inbuilt-uuid","slug":"authentik-built-in","managed":"goauthentik.io/sources/inbuilt","meta_model_name":"authentik_core.source","component":""},
+            {"pk":"saml-uuid","slug":"corp","meta_model_name":"authentik_sources_saml.samlsource","user_matching_mode":"email_link"},
+            {"pk":"ldap-uuid","slug":"dir","meta_model_name":"authentik_sources_ldap.ldapsource"},
+            {"pk":"plex-uuid","slug":"plex","meta_model_name":"authentik_sources_plex.plexsource"}],
+        "passwords":{"alice":{"reference":"file:alice-hash","version":"v1","hashed":true}},
+        "totp":{"alice":{"reference":"file:alice-totp","version":"v1"}},
+        "clients":{"legacy":{"issuer":"https://id.example.test/application/o/legacy/","scopes":["openid"],"settings":{"allowed_grants":["authorization_code"]},
+            "translated_mapping_ids":["mapped"],"translated_binding_ids":["bound"],"authentication_flow_reviewed":true,"require_mfa":false}}});
+    let report = riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    assert!(!report.to_string().contains(secret));
+    let items: Vec<riauth::migration::Finding> =
+        serde_json::from_value(report["items"].clone()).unwrap();
+    // Every blocker is traceable to a blocking finding and vice versa.
+    let mut from_items = items
+        .iter()
+        .filter_map(|i| {
+            assert_eq!(i.blocking, i.blocker.is_some(), "{i:?}");
+            assert!(!i.reason.is_empty() && !i.action.is_empty(), "{i:?}");
+            i.blocker.clone()
+        })
+        .collect::<Vec<_>>();
+    from_items.sort();
+    from_items.dedup();
+    assert_eq!(json!(from_items), report["blockers"]);
+    for (class, name) in [
+        (Classification::Exact, "exact"),
+        (Classification::Convertible, "convertible"),
+        (Classification::Manual, "manual"),
+        (Classification::Unsupported, "unsupported"),
+    ] {
+        let count = items.iter().filter(|i| i.classification == class).count();
+        assert_eq!(report["summary"][name], count, "{name}");
+    }
+    assert_eq!(
+        report["summary"]["blocking"],
+        items.iter().filter(|i| i.blocking).count()
+    );
+    let find = |kind: ItemKind, id: &str| {
+        let found = items
+            .iter()
+            .filter(|i| i.kind == kind && i.id == id)
+            .map(|i| (i.classification, i.blocking))
+            .collect::<Vec<_>>();
+        assert!(!found.is_empty(), "{kind:?} {id} missing");
+        found
+    };
+    use Classification::*;
+    use riauth::migration::{Classification, ItemKind, ItemKind::*};
+    for (kind, id, expected) in [
+        (Source, "inbuilt-uuid", vec![(Convertible, false)]),
+        (Source, "saml-uuid", vec![(Manual, true)]),
+        (Source, "ldap-uuid", vec![(Unsupported, true)]),
+        (Source, "plex-uuid", vec![(Unsupported, true)]),
+        (Group, "engineering", vec![(Convertible, false)]),
+        (
+            Group,
+            "admins",
+            vec![(Exact, false), (Manual, false), (Manual, false)],
+        ),
+        (User, "alice", vec![(Convertible, false), (Manual, false)]),
+        (User, "bob", vec![(Convertible, false), (Manual, true)]),
+        (User, "robot", vec![(Convertible, false), (Manual, true)]),
+        (Password, "alice", vec![(Convertible, false)]),
+        (Password, "bob", vec![(Manual, true)]),
+        (Totp, "alice", vec![(Convertible, false)]),
+        (Totp, "*", vec![(Manual, false)]),
+        (Passkey, "*", vec![(Unsupported, false)]),
+        (Session, "*", vec![(Unsupported, false)]),
+        (Provider, "legacy", vec![(Manual, false)]),
+        (AuthenticationFlow, "legacy", vec![(Manual, false)]),
+        (PropertyMapping, "legacy/mapped", vec![(Manual, false)]),
+        (PropertyMapping, "legacy/unmapped", vec![(Manual, true)]),
+        (PolicyBinding, "bound", vec![(Manual, false)]),
+        (PolicyBinding, "loose", vec![(Manual, true)]),
+        (SigningKey, "legacy", vec![(Manual, false)]),
+        (ClientSecret, "legacy", vec![(Manual, true)]),
+        (Grant, "legacy", vec![(Manual, false)]),
+        (TokenLifetime, "legacy", vec![(Convertible, false)]),
+        (
+            RedirectUri,
+            "legacy/https://legacy.example.test/cb",
+            vec![(Exact, false)],
+        ),
+        (
+            RedirectUri,
+            "legacy/https://legacy.example.test/bye",
+            vec![(Convertible, false)],
+        ),
+        (
+            RedirectUri,
+            "legacy/https://.*\\.example\\.test/cb",
+            vec![(Unsupported, true)],
+        ),
+        (Logout, "legacy", vec![(Exact, false)]),
+        (Subject, "legacy", vec![(Exact, false)]),
+        (Application, "legacy", vec![(Convertible, false)]),
+        (Application, "wiki", vec![(Unsupported, true)]),
+        (Application, "bookmark", vec![(Unsupported, false)]),
+    ] {
+        let mut found = find(kind, id);
+        found.sort();
+        assert_eq!(found, expected, "{kind:?} {id}");
+    }
+    // A pre-2026.5 export without grant_types asks for an inventory instead of failing.
+    assert!(
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| !b.as_str().unwrap().contains("grants"))
+    );
+    assert_eq!(
+        report["draft"]["clients"][0]["settings"]["app"]["hidden"],
+        true
+    );
+}
+
+#[test]
+fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
+    use riauth::migration::{Classification::*, Finding, ItemKind::*};
+    let secret = "unresolved-client-secret-must-not-appear";
+    // A valid reviewed OAuth-profile SourceSpec; only the OAuth source may accept it.
+    let oauth_spec = |id: &str| {
+        json!({"source":{"id":id,"name":"Replacement","issuer":"https://idp.example.test","authorization_endpoint":"https://idp.example.test/authorize",
+            "token_endpoint":"https://idp.example.test/token","client_id":"riauth","token_endpoint_auth_method":"client_secret_post","scopes":["read:user"],
+            "oauth_profile":{"userinfo_endpoint":"https://idp.example.test/me","subject_pointer":"/id"}},
+            "secret_ref":"env:SOURCE_SECRET","secret_version":"v1"})
+    };
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+        "users":[
+            {"pk":1,"uid":"a","username":"alice","name":"Alice","email":"shared@example.test","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]},
+            {"pk":2,"uid":"b","username":"bob","name":"Bob","email":"shared@example.test","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+        "groups":[],
+        "providers":[{"pk":1,"name":"orphan","client_id":"orphan","client_type":"confidential","client_secret":secret,
+            "signing_key":"key-uuid","encryption_key":"enc-uuid","jwt_federation_sources":["fed-uuid"],"grant_types":["authorization_code"],
+            "redirect_uris":[{"matching_mode":"strict","url":"https://orphan.example.test/cb"},{"matching_mode":"regex","url":"https://.*\\.orphan\\.test/cb"}],
+            "property_mappings":["m1"],"sub_mode":"user_email","include_claims_in_id_token":true,
+            "logout_uri":"https://orphan.example.test/logout","logout_method":"backchannel"}],
+        "applications":[
+            {"slug":"orphan-app","provider":1,"name":"Orphan","meta_launch_url":"https://orphan.example.test/"},
+            {"slug":"orphan-twin","provider":1,"name":"Twin"}],
+        "policy_bindings":[{"pk":"b1"}],
+        "sources":[
+            {"pk":"inbuilt-uuid","managed":"goauthentik.io/sources/inbuilt","meta_model_name":"authentik_core.source","component":""},
+            {"pk":"oauth-uuid","meta_model_name":"authentik_sources_oauth.oauthsource","user_matching_mode":"email_link"},
+            {"pk":"saml-uuid","meta_model_name":"authentik_sources_saml.samlsource"},
+            {"pk":"ldap-uuid","meta_model_name":"authentik_sources_ldap.ldapsource"},
+            {"pk":"plex-uuid","meta_model_name":"authentik_sources_plex.plexsource"}],
+        "source_resolutions":{"inbuilt-uuid":oauth_spec("as-inbuilt"),"oauth-uuid":oauth_spec("corp-oauth"),"saml-uuid":oauth_spec("as-saml"),
+            "ldap-uuid":oauth_spec("as-ldap"),"plex-uuid":oauth_spec("as-plex"),"gone-uuid":oauth_spec("as-gone")},
+        "passwords":{"alice":{"reference":"env:ALICE","version":"v1"},"bob":{"reference":"env:BOB","version":"v1"}},
+        "clients":{"ghost":{"issuer":"https://id.example.test","scopes":["openid"],"settings":{},"translated_mapping_ids":[],
+            "translated_binding_ids":["b1"],"authentication_flow_reviewed":true,"require_mfa":false}}});
+    let report =
+        riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    assert!(report["manifest"].is_null());
+    assert!(!report.to_string().contains(secret));
+    // Nothing unreviewed or rejected is converted: no client, no unreviewed subjects, and
+    // only the matching OAuth resolution becomes a source.
+    assert_eq!(report["draft"]["clients"], json!([]));
+    assert!(
+        report["draft"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|u| u["subjects"] == json!({}))
+    );
+    let sources = report["draft"]["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0]["source"]["id"], "corp-oauth");
+    let items: Vec<Finding> = serde_json::from_value(report["items"].clone()).unwrap();
+    let mut from_items = items
+        .iter()
+        .filter_map(|i| {
+            assert_eq!(i.blocking, i.blocker.is_some(), "{i:?}");
+            assert!(!i.reason.is_empty() && !i.action.is_empty(), "{i:?}");
+            i.blocker.clone()
+        })
+        .collect::<Vec<_>>();
+    from_items.sort();
+    from_items.dedup();
+    assert_eq!(json!(from_items), report["blockers"]);
+    for (class, name) in [
+        (Exact, "exact"),
+        (Convertible, "convertible"),
+        (Manual, "manual"),
+        (Unsupported, "unsupported"),
+    ] {
+        assert_eq!(
+            report["summary"][name],
+            items.iter().filter(|i| i.classification == class).count(),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        report["summary"]["blocking"],
+        items.iter().filter(|i| i.blocking).count()
+    );
+    let found = |kind, id: &str| {
+        let mut found = items
+            .iter()
+            .filter(|i| i.kind == kind && i.id == id)
+            .map(|i| (i.classification, i.blocking))
+            .collect::<Vec<_>>();
+        found.sort();
+        found
+    };
+    // Every exported item has at least one finding.
+    let exported = |collection: &str, key: &str| {
+        input[collection]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v[key].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    for (kind, ids) in [
+        (User, exported("users", "username")),
+        (Password, exported("users", "username")),
+        (Application, exported("applications", "slug")),
+        (Source, exported("sources", "pk")),
+        (PolicyBinding, exported("policy_bindings", "pk")),
+        (PropertyMapping, vec!["orphan/m1".into()]),
+        (
+            RedirectUri,
+            input["providers"][0]["redirect_uris"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| format!("orphan/{}", r["url"].as_str().unwrap()))
+                .collect(),
+        ),
+    ] {
+        for id in ids {
+            assert!(!found(kind, &id).is_empty(), "{kind:?} {id} has no finding");
+        }
+    }
+    for (kind, id, expected) in [
+        (Provider, "orphan", vec![(Manual, true)]),
+        (AuthenticationFlow, "orphan", vec![(Manual, true)]),
+        (PropertyMapping, "orphan/m1", vec![(Manual, true)]),
+        (
+            Federation,
+            "orphan/jwt_federation_sources",
+            vec![(Manual, true)],
+        ),
+        (EncryptionKey, "orphan", vec![(Manual, true)]),
+        (SigningKey, "orphan", vec![(Manual, false)]),
+        (ClientSecret, "orphan", vec![(Manual, true)]),
+        (Grant, "orphan", vec![(Exact, false)]),
+        (TokenLifetime, "orphan", vec![(Convertible, false)]),
+        (
+            RedirectUri,
+            "orphan/https://orphan.example.test/cb",
+            vec![(Exact, false)],
+        ),
+        (
+            RedirectUri,
+            "orphan/https://.*\\.orphan\\.test/cb",
+            vec![(Unsupported, true)],
+        ),
+        (Logout, "orphan", vec![(Exact, false)]),
+        // Duplicate subjects are detected even though the client is not reviewed yet.
+        (Subject, "orphan", vec![(Exact, false), (Unsupported, true)]),
+        (
+            Application,
+            "orphan-app",
+            vec![(Convertible, true), (Manual, true)],
+        ),
+        (Application, "orphan-twin", vec![(Manual, true)]),
+        // Only the stale `ghost` entry translates b1, and stale entries are never applied.
+        (PolicyBinding, "b1", vec![(Manual, true)]),
+        (Provider, "ghost", vec![(Manual, true)]),
+        (
+            Source,
+            "inbuilt-uuid",
+            vec![(Convertible, false), (Manual, true)],
+        ),
+        (Source, "oauth-uuid", vec![(Manual, false)]),
+        (Source, "saml-uuid", vec![(Manual, true)]),
+        (
+            Source,
+            "ldap-uuid",
+            vec![(Unsupported, true), (Unsupported, true)],
+        ),
+        (
+            Source,
+            "plex-uuid",
+            vec![(Unsupported, true), (Unsupported, true)],
+        ),
+        (Source, "gone-uuid", vec![(Manual, true)]),
+    ] {
+        assert_eq!(found(kind, id), expected, "{kind:?} {id}");
+    }
+    for blocker in [
+        "orphan: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients",
+        "orphan: duplicate subjects would merge identities",
+        "ghost: clients entry does not match an exported provider",
+        "Source plex-uuid: a source resolution cannot replace an unsupported plex source",
+        "Source ldap-uuid: a source resolution cannot replace an unsupported ldap source",
+        "Source inbuilt-uuid: the built-in source cannot take a source resolution",
+        "Source saml-uuid: the source resolution must use the SAML adapter",
+        "Source gone-uuid: source resolution does not match an exported source",
+    ] {
+        assert!(
+            report["blockers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(blocker)),
+            "{blocker}"
+        );
+    }
+    let oauth = items
+        .iter()
+        .find(|i| i.kind == Source && i.id == "oauth-uuid")
+        .unwrap();
+    assert!(
+        oauth.reason.contains("email_link")
+            && oauth.action.contains("never links accounts by email")
     );
 }
 

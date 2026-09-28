@@ -238,12 +238,16 @@ pub enum Command {
         #[arg(long)]
         revoke: Option<String>,
     },
-    /// Convert complete Authentik API exports into a reviewed manifest and blocker report
+    /// Convert complete Authentik API exports into a reviewed manifest and classified preflight report
     ImportAuthentik {
         #[arg(long)]
         file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
+        /// New private directory for report.json and, when ready, manifest.json
+        #[arg(long, required_unless_present = "preflight")]
+        out: Option<PathBuf>,
+        /// Print the classified findings and blockers without writing a report or manifest
+        #[arg(long, conflicts_with = "out")]
+        preflight: bool,
     },
     /// Change your own password with current-password and MFA verification
     Passwd {
@@ -1229,9 +1233,16 @@ pub async fn run(cli: Cli) -> Result<()> {
             )?;
             return Ok(());
         }
-        Command::ImportAuthentik { file, out } => {
+        Command::ImportAuthentik { file, out, .. } => {
             let input = serde_json::from_slice(&fs::read(file)?)?;
             let report = crate::migration::convert(input)?;
+            let Some(out) = out else {
+                emit_local(
+                    &cli,
+                    &json!({"ready_for_plan": report["ready_for_plan"], "summary": report["summary"], "blockers": report["blockers"], "items": report["items"]}),
+                )?;
+                return Ok(());
+            };
             fs::create_dir(out).context("Migration output must be a new directory")?;
             private_dir(out)?;
             write_private(
@@ -1248,7 +1259,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             emit_local(
                 &cli,
-                &json!({"report_file": out.join("report.json"), "ready_for_plan": report["ready_for_plan"], "blockers": report["blockers"], "manifest_file": if report["ready_for_plan"] == true { json!(out.join("manifest.json")) } else { Value::Null }}),
+                &json!({"report_file": out.join("report.json"), "ready_for_plan": report["ready_for_plan"], "summary": report["summary"], "blockers": report["blockers"], "manifest_file": if report["ready_for_plan"] == true { json!(out.join("manifest.json")) } else { Value::Null }}),
             )?;
             return Ok(());
         }
