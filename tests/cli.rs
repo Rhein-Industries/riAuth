@@ -501,3 +501,34 @@ fn cli_help_and_http_rejection_are_actionable() {
     assert_eq!(pkce["code_challenge_method"], "S256");
     assert_eq!(pkce["code_verifier"].as_str().unwrap().len(), 43);
 }
+
+#[cfg(not(feature = "terminal-usb"))]
+#[test]
+fn usb_commands_fail_locally_without_feature() {
+    let dir = TempDir::new().unwrap();
+    let config = PathBuf::from("missing.toml");
+    let session = dir.path().join("session.json");
+    for args in [
+        vec!["passkey", "enroll", "--name", "key"],
+        vec!["passkey", "login", "alice"],
+        vec!["request", "approve", "ABCDE-FGHIJ", "--passkey"],
+        vec!["portal", "approve", "ABCDE-FGHIJ", "--passkey"],
+        vec![
+            "authorize",
+            "http://localhost:8080/oauth/authorize?client_id=app",
+            "--passkey",
+        ],
+    ] {
+        let output = invoke(dir.path(), &config, &session, &args, None);
+        assert!(!output.status.success(), "{args:?}");
+        let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(envelope["error"]["code"], "operation_failed", "{args:?}");
+        assert!(
+            envelope["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("--features terminal-usb"),
+            "{args:?}: {envelope}"
+        );
+    }
+}

@@ -28,6 +28,7 @@ impl Remote {
         password_stdin: bool,
     ) -> Result<Value> {
         let authenticated = if passkey {
+            usb::require_support()?;
             if NON_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
                 bail!(
                     "USB login needs touch/PIN input; use passkey start/finish with an authenticator client in noninteractive mode"
@@ -41,8 +42,7 @@ impl Remote {
                     false,
                 )
                 .await?;
-            let response =
-                crate::passkey::usb(&self.issuer, start["public_key"].clone(), false).await?;
+            let response = usb::perform(&self.issuer, start["public_key"].clone(), false).await?;
             self.call(
                 Method::POST,
                 "/api/passkey/authentication/finish",

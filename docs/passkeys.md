@@ -41,7 +41,7 @@ riauth passkey list
 riauth passkey remove CREDENTIAL_ID
 ```
 
-The USB client requests the authenticator's PIN and touch through the terminal. It uses the issuer's hostname as the WebAuthn RP ID and its exact origin. It requires a CTAP2 USB authenticator supported by `webauthn-authenticator-rs`. Platform keychains, Bluetooth and hybrid/phone transports are not implemented by this CLI.
+The USB client requests the authenticator's PIN and touch through the terminal. It uses the issuer's hostname as the WebAuthn RP ID and its exact origin. It requires a CTAP2 USB authenticator supported by `webauthn-authenticator-rs`. Platform keychains, Bluetooth and hybrid/phone transports are not implemented by this CLI. The current `riauth` binary includes USB support by default; `cargo build --no-default-features` omits its USB/HID client dependency. In that build, terminal `passkey enroll`, `passkey login`, and approval or authorization `--passkey` commands fail locally before starting a ceremony. Build with `--features terminal-usb` to enable them. Split `passkey start` and `passkey finish` commands remain available to external authenticator clients without USB support compiled in.
 
 An external authenticator client can use split commands, including a supplied OIDC authentication transaction. From the repository root, keep the short-lived ceremony files under the ignored `deployment-private/` directory:
 
@@ -58,4 +58,4 @@ The bearer HTTP counterpart is `POST /api/passkey/registration/start` with `name
 
 Success saves the ordinary private CLI session file. The resulting AMR is `webauthn mfa`; riAuth does not assert hardware attestation. Soft authenticator tests cover signatures, user verification, origin, challenge, counters, replay, revocation and transaction binding. Physical hardware and platform compatibility still need testing on the intended devices.
 
-The implementation uses the [webauthn-rs](https://github.com/kanidm/webauthn-rs) protocol library. The client is not represented as FIDO certified. Its current dependency graph includes OpenSSL and native USB bindings, although riAuth application code is Rust.
+The implementation uses the [webauthn-rs](https://github.com/kanidm/webauthn-rs) protocol library. The client is not represented as FIDO certified. The `terminal-usb` dependency graph includes OpenSSL and native USB bindings, although riAuth application code is Rust.

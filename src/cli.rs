@@ -1,4 +1,5 @@
 mod transport;
+mod usb;
 use transport::{Remote, SavedSession};
 
 use crate::{
@@ -1385,6 +1386,20 @@ pub async fn run(cli: Cli) -> Result<()> {
         }
         _ => {}
     }
+    if matches!(
+        &cli.command,
+        Command::Passkey {
+            command: PasskeyCommand::Enroll { .. } | PasskeyCommand::Login { .. },
+        } | Command::Authorize { passkey: true, .. }
+            | Command::Portal {
+                command: PortalCommand::Approve { passkey: true, .. },
+            }
+            | Command::Request {
+                command: RequestCommand::Approve { passkey: true, .. },
+            }
+    ) {
+        usb::require_support()?;
+    }
     let remote = Remote::new(&cli)?;
     let output = match cli.command {
         Command::Radius { command } => match command {
@@ -1629,7 +1644,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             PasskeyCommand::Enroll { name } => {
                 if NON_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed){bail!("USB enrollment needs touch/PIN input; use passkey start/finish with an authenticator client in noninteractive mode");}
                 let start=remote.call(Method::POST,"/api/passkey/registration/start",Some(json!({"name":name})),true).await?;
-                let response=crate::passkey::usb(&remote.issuer,start["public_key"].clone(),true).await?;
+                let response=usb::perform(&remote.issuer,start["public_key"].clone(),true).await?;
                 remote.call(Method::POST,"/api/passkey/registration/finish",Some(json!({"ceremony":start["ceremony"],"response":response})),true).await?
             }
             PasskeyCommand::Login { username,transaction_id } => {

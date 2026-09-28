@@ -11,6 +11,8 @@ readme = "README.md"
 keywords = ["identity", "oidc", "saml", "sso"]
 
 [features]
+default = ["terminal-usb"]
+terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []
 
@@ -43,7 +45,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
-webauthn-authenticator-rs = { version = "=0.5.5", features = ["usb", "ui-cli"] }
+webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["usb", "ui-cli"] }
 futures-util = { version = "0.3", features = ["sink"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-rustls = "0.26"
