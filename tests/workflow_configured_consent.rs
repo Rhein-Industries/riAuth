@@ -255,7 +255,7 @@ fn configured_consent_requires_prepared_explicit_one_use_decision() {
 }
 
 #[test]
-fn ordinary_prepared_decision_spends_consent_authority_even_without_transaction_id() {
+fn identical_oidc_requests_have_independent_preparations_and_token_scoped_replay() {
     let mut f = Fixture::new();
     f.core.config.workflows.insert(
         "local-consent".into(),
@@ -277,21 +277,55 @@ fn ordinary_prepared_decision_spends_consent_authority_even_without_transaction_
         request.transaction_id = Some(text(&prepared, "transaction_id"));
     };
 
-    let mut request = f.request("app", &crypto::random_token(""));
-    prepare(&mut request);
-    let authentication = digest(request.transaction_id.as_deref().unwrap());
-    let mut invalid = request.clone();
+    let static_request = f.request("app", &crypto::random_token(""));
+    for _ in 0..2 {
+        assert!(
+            f.core
+                .authorize(&alice, static_request.clone())
+                .unwrap()
+                .contains("code=")
+        );
+    }
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
+
+    let mut first = static_request.clone();
+    prepare(&mut first);
+    let first_key = digest(first.transaction_id.as_deref().unwrap());
+    let mut second = static_request.clone();
+    prepare(&mut second);
+    let second_key = digest(second.transaction_id.as_deref().unwrap());
+    assert_ne!(first_key, second_key);
+    assert_eq!(
+        f.core
+            .authorize(&alice, static_request.clone())
+            .unwrap_err()
+            .code,
+        "conflict",
+        "a no-ID decision cannot bypass live preparations"
+    );
+    assert_eq!(
+        f.core
+            .store
+            .write(|tx| f
+                .core
+                .authorization_denied(tx, &static_request, "anonymous"))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+
+    let mut invalid = first.clone();
     invalid.decision = Some("invalid".into());
     assert!(f.core.authorize(&alice, invalid).is_err());
     assert!(
         f.core
             .store
-            .get::<AuthenticationTransaction>("authentication", &authentication)
+            .get::<AuthenticationTransaction>("authentication", &first_key)
             .unwrap()
             .is_some(),
         "a rejected decision leaves the prepared request retryable"
     );
-    let mut approve = request.clone();
+    let mut approve = first.clone();
     approve.decision = Some("approve".into());
     assert!(
         f.core
@@ -302,67 +336,33 @@ fn ordinary_prepared_decision_spends_consent_authority_even_without_transaction_
     assert!(
         f.core
             .store
-            .get::<AuthenticationTransaction>("authentication", &authentication)
+            .get::<AuthenticationTransaction>("authentication", &first_key)
             .unwrap()
             .is_none()
     );
     assert!(
         f.core
-            .workflow_configured_consent_start(&alice, "local-consent", request.clone())
+            .workflow_configured_consent_start(&alice, "local-consent", first.clone())
             .is_err()
     );
     assert_eq!(
-        f.core
-            .authorization_prepare(Some(&alice), request.clone())
-            .unwrap_err()
-            .code,
-        "conflict"
-    );
-    assert_eq!(
         f.core.authorize(&alice, approve.clone()).unwrap_err().code,
-        "conflict"
+        "login_required"
     );
     approve.transaction_id = None;
     assert_eq!(
         f.core.authorize(&alice, approve).unwrap_err().code,
         "conflict"
     );
-    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
-
-    let mut omitted = f.request("app", &crypto::random_token(""));
-    prepare(&mut omitted);
-    let omitted_key = digest(omitted.transaction_id.as_deref().unwrap());
-    let mut ordinary = omitted.clone();
-    ordinary.decision = Some("approve".into());
-    ordinary.transaction_id = None;
-    assert!(
-        f.core
-            .authorize(&alice, ordinary)
-            .unwrap()
-            .contains("code=")
-    );
     assert!(
         f.core
             .store
-            .get::<AuthenticationTransaction>("authentication", &omitted_key)
+            .get::<AuthenticationTransaction>("authentication", &second_key)
             .unwrap()
             .is_some(),
-        "omitting the ID leaves the row, so the decision tombstone must block it"
+        "spending one ID leaves the other preparation usable"
     );
-    assert_eq!(
-        f.core
-            .workflow_configured_consent_start(&alice, "local-consent", omitted)
-            .unwrap_err()
-            .code,
-        "conflict",
-        "omitting the transaction ID cannot leave a prepared consent grant"
-    );
-    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
-
-    let mut denied = f.request("app", &crypto::random_token(""));
-    prepare(&mut denied);
-    let denied_key = digest(denied.transaction_id.as_deref().unwrap());
-    let mut ordinary_denial = denied.clone();
+    let mut ordinary_denial = second.clone();
     ordinary_denial.decision = Some("deny".into());
     assert!(
         f.core
@@ -373,18 +373,186 @@ fn ordinary_prepared_decision_spends_consent_authority_even_without_transaction_
     assert!(
         f.core
             .store
-            .get::<AuthenticationTransaction>("authentication", &denied_key)
+            .get::<AuthenticationTransaction>("authentication", &second_key)
             .unwrap()
             .is_none()
     );
     assert!(
         f.core
-            .workflow_configured_consent_start(&alice, "local-consent", denied)
+            .workflow_configured_consent_start(&alice, "local-consent", second.clone())
             .is_err()
     );
-    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
-
-    let direct = f.request("app", &crypto::random_token(""));
-    assert!(f.core.authorize(&alice, direct).unwrap().contains("code="));
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 3);
+
+    let mut signed_out_denial = static_request.clone();
+    prepare(&mut signed_out_denial);
+    let denial_key = digest(signed_out_denial.transaction_id.as_deref().unwrap());
+    assert!(
+        f.core
+            .store
+            .write(|tx| f
+                .core
+                .authorization_denied(tx, &signed_out_denial, "anonymous"))
+            .unwrap()
+            .contains("access_denied")
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &denial_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", signed_out_denial)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .authorize(&alice, static_request.clone())
+            .unwrap()
+            .contains("code=")
+    );
+
+    let mut cancelled_request = static_request.clone();
+    prepare(&mut cancelled_request);
+    let cancelled = f
+        .core
+        .workflow_configured_consent_start(&alice, "local-consent", cancelled_request.clone())
+        .unwrap();
+    assert!(matches!(
+        f.core.workflow_cancel(&alice, &cancelled.id).unwrap().state,
+        RunState::Cancelled {}
+    ));
+    assert!(
+        f.core
+            .authorize(&alice, {
+                let mut old = cancelled_request.clone();
+                old.decision = Some("approve".into());
+                old
+            })
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", cancelled_request)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .authorize(&alice, static_request.clone())
+            .unwrap()
+            .contains("code=")
+    );
+
+    let mut expired_request = static_request.clone();
+    prepare(&mut expired_request);
+    let expired = f
+        .core
+        .workflow_configured_consent_start(&alice, "local-consent", expired_request.clone())
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get("workflow_runs", &expired.id)?.unwrap();
+            row["record"]["started_at"] = json!(now() - 121);
+            tx.put("workflow_runs", &expired.id, &row)
+        })
+        .unwrap();
+    assert!(matches!(
+        f.core.workflow_resume(&alice, &expired.id).unwrap().state,
+        RunState::Expired {}
+    ));
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", expired_request)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .authorize(&alice, static_request.clone())
+            .unwrap()
+            .contains("code=")
+    );
+
+    let mut fresh = static_request.clone();
+    prepare(&mut fresh);
+    let fresh_run = f
+        .core
+        .workflow_configured_consent_start(&alice, "local-consent", fresh)
+        .unwrap();
+    let finished = f
+        .core
+        .workflow_consent_decide(&alice, &fresh_run.id, true)
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::ConsentGranted,
+            ..
+        }
+    ));
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 7);
+}
+
+#[test]
+fn reopening_backfills_live_preparations_from_before_the_index() {
+    let mut f = Fixture::new();
+    f.core.config.workflows.insert(
+        "local-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: consent_definition(),
+        },
+    );
+    f.core.config.validate().unwrap();
+    f.client("app", false);
+    let alice = f.user("legacy-preparation");
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.decision = None;
+    request.transaction_id = Some(text(
+        &f.core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap(),
+        "transaction_id",
+    ));
+    let request_hash = request.request_hash().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("authorization_prepared", &request_hash)?;
+            tx.delete("meta", "authorization_prepared_index_v1")
+        })
+        .unwrap();
+    let f = f.reopen_with(|_| {});
+    let mut decision = request.clone();
+    decision.decision = Some("approve".into());
+    let mut without_id = decision.clone();
+    without_id.transaction_id = None;
+    assert_eq!(
+        f.core
+            .authorize(&alice, without_id.clone())
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert!(
+        f.core
+            .authorize(&alice, decision)
+            .unwrap()
+            .contains("code=")
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", request)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .authorize(&alice, without_id)
+            .unwrap()
+            .contains("code=")
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
 }

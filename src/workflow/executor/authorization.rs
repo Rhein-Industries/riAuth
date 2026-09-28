@@ -63,16 +63,34 @@ fn fingerprint(client: &Client) -> Result<String> {
 }
 
 /// Ordinary authorization cannot consume or bypass a workflow reservation,
-/// including by omitting the transaction id or using a fresh bearer session.
+/// even with a fresh bearer session. An omitted transaction ID is rejected by
+/// the live-preparation index before ordinary completion.
 pub(crate) fn reject_reserved(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
     super::consent::reject_reserved(tx, request)?;
-    if tx
-        .get::<Bound>(AUTHORIZATIONS, &request.request_hash()?)?
-        .is_some()
+    let Some(transaction) = request.transaction_id.as_deref() else {
+        return Ok(());
+    };
+    let key = digest(transaction);
+    let legacy = tx.get::<Bound>(AUTHORIZATIONS, &request.request_hash()?)?;
+    if tx.get::<Bound>(AUTHORIZATIONS, &key)?.is_some()
+        || legacy.is_some_and(|bound| bound.pin.authentication == key)
     {
         return Err(Error::conflict("This authorization belongs to a workflow"));
     }
     Ok(())
+}
+
+fn bound_key(tx: &Tx<'_>, pin: &Pin) -> Result<String> {
+    if tx.get::<Bound>(AUTHORIZATIONS, &pin.authentication)?.is_some() {
+        return Ok(pin.authentication.clone());
+    }
+    if tx
+        .get::<Bound>(AUTHORIZATIONS, &pin.request_hash)?
+        .is_some_and(|bound| bound.pin.authentication == pin.authentication)
+    {
+        return Ok(pin.request_hash.clone());
+    }
+    Err(Error::forbidden())
 }
 
 impl Core {
@@ -153,10 +171,10 @@ pub(super) fn bind(
         || pending.authenticated_session.is_some()
         || pending.source_stage.is_some()
         || pending.expires_at <= at
-        || tx.get::<Bound>(AUTHORIZATIONS, &request_hash)?.is_some()
     {
         return Err(Error::forbidden());
     }
+    reject_reserved(tx, request)?;
     let expires_at = authority
         .expires_at
         .min(pending.expires_at)
@@ -186,7 +204,7 @@ pub(super) fn bind(
         completed: false,
         expires_at,
     };
-    tx.put(AUTHORIZATIONS, &pin.request_hash, &bound)?;
+    tx.put(AUTHORIZATIONS, &pin.authentication, &bound)?;
     authority.expires_at = expires_at;
     authority.authorization = Some(pin);
     Ok(())
@@ -198,7 +216,7 @@ fn pending(tx: &Tx<'_>, run: &StoredRun, authority: &RequestAuthority, at: u64) 
         .as_ref()
         .ok_or_else(Error::forbidden)?;
     let bound: Bound = tx
-        .get(AUTHORIZATIONS, &pin.request_hash)?
+        .get(AUTHORIZATIONS, &bound_key(tx, pin)?)?
         .ok_or_else(Error::forbidden)?;
     if bound.pin != *pin
         || bound.completed
@@ -368,8 +386,25 @@ pub(super) fn complete(
     // Requests needing no reauthentication must also spend their transaction.
     tx.delete("authentication", &bound.pin.authentication)?;
     bound.completed = true;
-    tx.put(AUTHORIZATIONS, &bound.pin.request_hash, &bound)?;
+    tx.put(AUTHORIZATIONS, &bound_key(tx, &bound.pin)?, &bound)?;
     Ok(Some(response))
+}
+
+pub(super) fn abandon(tx: &Tx<'_>, run: &StoredRun) -> Result<()> {
+    let Some(authority) = tx.get::<RequestAuthority>(REQUESTS, &run.request)? else {
+        return Ok(());
+    };
+    let Some(pin) = authority.authorization else {
+        return Ok(());
+    };
+    let key = bound_key(tx, &pin)?;
+    let mut bound: Bound = tx.get(AUTHORIZATIONS, &key)?.ok_or_else(Error::forbidden)?;
+    if bound.pin != pin || bound.run != run.id || bound.workflow_request != run.request {
+        return Err(Error::forbidden());
+    }
+    bound.completed = true;
+    tx.put(AUTHORIZATIONS, &key, &bound)?;
+    tx.delete("authentication", &pin.authentication)
 }
 
 pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {

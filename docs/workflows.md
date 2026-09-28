@@ -328,10 +328,13 @@ client, prepared transaction, workflow request, run and definition. It emits
 session proof from the live session; only the explicit approval emits consent
 proof. Completion consumes the one-use transaction and bound receipts in the
 same write as the existing issuer's response. Ordinary authorization cannot use
-a reserved request, even without its transaction ID; an ordinary decision made
-first also prevents that preparation's later consent reservation. Expiry and
-cancellation discard the pending transaction; completed and closed runs retain
-replay protection. No new session or remembered consent grant is created. Browser and
+that reserved transaction. An ordinary decision with its transaction ID spends
+that exact preparation and prevents its later consent reservation. While any
+matching preparation is live, an ordinary decision without an ID requires an ID;
+after those preparations finish, an identical static OIDC URL can be authorized
+again. Expiry and cancellation discard only the pending transaction; completed
+and closed runs retain replay protection for that transaction. No new session or
+remembered consent grant is created. Browser and
 remembered-consent adapters are not connected.
 
 ## Downstream OIDC completion
@@ -347,14 +350,17 @@ Requiring request-bound freshness also prevents ordinary approval from leaving a
 reusable transaction before the workflow reserves it. It does not attach an older
 reauthentication result or infer consent from verification.
 
-The reservation covers the full OIDC request hash (client, redirect, PKCE, nonce,
-scopes, resource, claims and request references), current client configuration,
-prepared transaction, exact account/epoch/session, workflow request, run and
+The reservation is keyed by the cryptorandom prepared transaction digest and
+checks the full OIDC request hash (client, redirect, PKCE, nonce, scopes,
+resource, claims and request references), current client configuration,
+exact account/epoch/session, workflow request, run and
 definition revision/fingerprint. Live checks reject request substitution,
 consumed or expired references, client changes, revocation and stale receipts.
-Ordinary OIDC completion rejects a reserved request even with a fresh session
-or without its transaction id. Cancelled and completed reservations retain a
-replay tombstone for the existing seven-day workflow retention window.
+Ordinary OIDC completion rejects a reserved transaction even with a fresh
+session. While a matching preparation is live, ordinary completion without a
+transaction ID requires its ID. Cancelled and completed transactions retain
+token-specific replay state for the existing seven-day workflow retention
+window; a fresh preparation of identical request content remains usable.
 
 Successful verification uses the existing OIDC policy, assurance, claims and code
 issuer. Factor consumption, all proof receipts, the prepared transaction,

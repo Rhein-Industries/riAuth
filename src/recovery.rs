@@ -72,6 +72,7 @@ pub const INVALIDATED: &[&str] = &[
     "logout_codes",
     // Pending interactions, ceremonies and proofs.
     "authentication",
+    "authorization_prepared",
     "pushed_requests",
     "saml_requests",
     "saml_logout_flows",
@@ -120,7 +121,6 @@ pub const REPLAY_CACHES: &[&str] = &[
     // Used/revoked account-proof tombstones preserve useful replay outcomes.
     "account_proof_outcomes",
     "assertion_replays",
-    "authorization_decisions",
     "dpop_replays",
     "saml_replays",
     "saml_source_replays",

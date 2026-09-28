@@ -148,7 +148,6 @@ fn workflow_oidc_completion_is_bound_atomic_and_cannot_bypass_policy() {
         .unwrap();
     let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
     let receipt = text(&run["record"]["steps"][0], "evidence");
-    let request_hash = request.request_hash().unwrap();
     let unspent = || {
         assert!(
             f.core
@@ -180,43 +179,43 @@ fn workflow_oidc_completion_is_bound_atomic_and_cannot_bypass_policy() {
     for (bucket, key, pointer, value) in [
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/account",
             json!("other-account"),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/session",
             json!("other-session"),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/run",
             json!("other-run"),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/version/revision",
             json!(99),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/request/client_id",
             json!("other"),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/request/nonce",
             json!("other-nonce"),
         ),
         (
             "workflow_authorizations",
-            request_hash.as_str(),
+            authentication.as_str(),
             "/completed",
             json!(true),
         ),
@@ -324,7 +323,7 @@ fn workflow_oidc_completion_is_bound_atomic_and_cannot_bypass_policy() {
     assert_eq!(
         f.core
             .store
-            .get::<Value>("workflow_authorizations", &request_hash)
+            .get::<Value>("workflow_authorizations", &authentication)
             .unwrap()
             .unwrap()["completed"],
         true
@@ -401,8 +400,8 @@ fn workflow_oidc_completion_is_bound_atomic_and_cannot_bypass_policy() {
     assert!(f.core.token(redemption.clone()).is_ok());
     assert!(f.core.token(redemption).is_err());
 
-    // Cancellation keeps a tombstone: ordinary approval cannot finish the
-    // abandoned request, and starting a new run cannot reuse that reservation.
+    // Cancellation spends only the abandoned prepared transaction. The same
+    // OIDC URL can be prepared again for a separate workflow attempt.
     request.nonce = Some("cancelled-request".into());
     request.transaction_id = None;
     request.transaction_id = Some(text(
@@ -419,7 +418,19 @@ fn workflow_oidc_completion_is_bound_atomic_and_cannot_bypass_policy() {
     assert!(f.core.authorize(&second, request.clone()).is_err());
     assert!(
         f.core
-            .workflow_authorization_start(&alice, request)
+            .workflow_authorization_start(&alice, request.clone())
             .is_err()
     );
+    request.transaction_id = None;
+    request.transaction_id = Some(text(
+        &f.core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap(),
+        "transaction_id",
+    ));
+    let fresh = f
+        .core
+        .workflow_authorization_start(&alice, request)
+        .unwrap();
+    f.core.workflow_cancel(&alice, &fresh.id).unwrap();
 }

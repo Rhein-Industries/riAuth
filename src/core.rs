@@ -166,6 +166,7 @@ impl Core {
                 },
             )?;
             tx.put("meta", "dummy_hash", &dummy)?;
+            crate::assembly::stamp_prepared_index(tx)?;
             crate::identity::password_history::record_imported_hash(
                 tx,
                 config.password_history,
@@ -215,6 +216,7 @@ impl Core {
         crate::capability::validate_store(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
+        store.write(crate::assembly::backfill_prepared_index)?;
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
             .ok_or_else(|| Error::internal("dummy hash missing"))?;
@@ -852,7 +854,7 @@ impl Core {
         self.store.write(|tx| crate::state::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::authorization::cleanup(tx, at))?;
-        self.store.write(|tx| crate::assembly::cleanup_decided(tx, at))?;
+        self.store.write(|tx| crate::assembly::cleanup_prepared(tx, at))?;
         self.store
             .write(|tx| crate::session_protocol::cleanup(tx, at))?;
         self.store.write(|tx| crate::source::cleanup(tx, at))?;

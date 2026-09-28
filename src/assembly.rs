@@ -18,9 +18,7 @@ mod mtls;
 #[cfg(feature = "platform")]
 pub(crate) use mtls::clear_user_binding;
 mod oidc;
-pub(crate) use oidc::cleanup_decided;
-#[cfg(feature = "platform")]
-pub(crate) use oidc::reject_decided;
+pub(crate) use oidc::{backfill_prepared_index, cleanup_prepared, stamp_prepared_index};
 pub(crate) mod passkey;
 mod password;
 mod portal_mfa;

@@ -41,13 +41,30 @@ fn fingerprint(client: &Client) -> Result<String> {
 }
 
 pub(super) fn reject_reserved(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
-    if tx
-        .get::<Bound>(CONSENTS, &request.request_hash()?)?
-        .is_some()
+    let Some(transaction) = request.transaction_id.as_deref() else {
+        return Ok(());
+    };
+    let key = digest(transaction);
+    let legacy = tx.get::<Bound>(CONSENTS, &request.request_hash()?)?;
+    if tx.get::<Bound>(CONSENTS, &key)?.is_some()
+        || legacy.is_some_and(|bound| bound.pin.authentication == key)
     {
         return Err(Error::conflict("This authorization belongs to a workflow"));
     }
     Ok(())
+}
+
+fn bound_key(tx: &Tx<'_>, pin: &Pin) -> Result<String> {
+    if tx.get::<Bound>(CONSENTS, &pin.authentication)?.is_some() {
+        return Ok(pin.authentication.clone());
+    }
+    if tx
+        .get::<Bound>(CONSENTS, &pin.request_hash)?
+        .is_some_and(|bound| bound.pin.authentication == pin.authentication)
+    {
+        return Ok(pin.request_hash.clone());
+    }
+    Err(Error::forbidden())
 }
 
 pub(super) fn bind(
@@ -90,11 +107,9 @@ pub(super) fn bind(
         || prepared.authenticated_session.is_some()
         || prepared.source_stage.is_some()
         || prepared.expires_at <= at
-        || tx.get::<Bound>(CONSENTS, &request_hash)?.is_some()
     {
         return Err(Error::forbidden());
     }
-    crate::assembly::reject_decided(tx, request)?;
     authorization::reject_reserved(tx, request)?;
     let expires_at = authority
         .expires_at
@@ -124,7 +139,7 @@ pub(super) fn bind(
         completed: false,
         expires_at,
     };
-    tx.put(CONSENTS, &pin.request_hash, &bound)?;
+    tx.put(CONSENTS, &pin.authentication, &bound)?;
     authority.expires_at = expires_at;
     authority.consent = Some(pin);
     Ok(())
@@ -133,7 +148,7 @@ pub(super) fn bind(
 fn pending(tx: &Tx<'_>, run: &StoredRun, authority: &RequestAuthority, at: u64) -> Result<Bound> {
     let pin = authority.consent.as_ref().ok_or_else(Error::forbidden)?;
     let bound: Bound = tx
-        .get(CONSENTS, &pin.request_hash)?
+        .get(CONSENTS, &bound_key(tx, pin)?)?
         .ok_or_else(Error::forbidden)?;
     if bound.pin != *pin
         || bound.completed
@@ -229,7 +244,7 @@ pub(super) fn complete(
     }
     tx.delete("authentication", &bound.pin.authentication)?;
     bound.completed = true;
-    tx.put(CONSENTS, &bound.pin.request_hash, &bound)?;
+    tx.put(CONSENTS, &bound_key(tx, &bound.pin)?, &bound)?;
     Ok(Some(response))
 }
 
@@ -240,14 +255,13 @@ pub(super) fn abandon(tx: &Tx<'_>, run: &StoredRun) -> Result<()> {
     let Some(pin) = authority.consent else {
         return Ok(());
     };
-    let mut bound: Bound = tx
-        .get(CONSENTS, &pin.request_hash)?
-        .ok_or_else(Error::forbidden)?;
+    let key = bound_key(tx, &pin)?;
+    let mut bound: Bound = tx.get(CONSENTS, &key)?.ok_or_else(Error::forbidden)?;
     if bound.pin != pin || bound.run != run.id || bound.workflow_request != run.request {
         return Err(Error::forbidden());
     }
     bound.completed = true;
-    tx.put(CONSENTS, &pin.request_hash, &bound)?;
+    tx.put(CONSENTS, &key, &bound)?;
     tx.delete("authentication", &pin.authentication)
 }
 

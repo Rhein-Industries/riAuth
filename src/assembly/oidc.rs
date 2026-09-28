@@ -18,45 +18,155 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-const AUTHORIZATION_DECISIONS: &str = "authorization_decisions";
-// Prepared terminal transactions live 600 seconds. Keep each decision at least
-// that long so an omitted transaction ID cannot revive an earlier preparation.
-const DECISION_RETAIN_SECONDS: u64 = 600;
+const PREPARED_REQUESTS: &str = "authorization_prepared";
+const PREPARED_INDEX_VERSION: &str = "authorization_prepared_index_v1";
+const MAX_PREPARED_PER_REQUEST: usize = 64;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct DecidedRequest {
+struct PreparedRequests {
+    attempts: BTreeMap<String, u64>,
+    #[serde(default)]
+    overflow_until: u64,
     expires_at: u64,
 }
 
-/// A prepared request must not be completed through one path and then bound to
-/// another, including when ordinary authorization omits its transaction ID.
-pub(crate) fn reject_decided(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
-    if tx
-        .get::<DecidedRequest>(AUTHORIZATION_DECISIONS, &request.request_hash()?)?
-        .is_some_and(|record| record.expires_at > now())
-    {
-        return Err(Error::conflict("Authorization request already decided"));
+fn matching_preparation(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool> {
+    let Some(mut index) = tx.get::<PreparedRequests>(PREPARED_REQUESTS, request_hash)? else {
+        return Ok(false);
+    };
+    if index.attempts.len() > MAX_PREPARED_PER_REQUEST {
+        return Err(Error::forbidden());
     }
-    Ok(())
+    for (key, expires_at) in &index.attempts {
+        if *expires_at > at
+            && tx
+                .get::<AuthenticationTransaction>("authentication", key)?
+                .is_some_and(|attempt| {
+                    attempt.expires_at > at && attempt.request_hash == request_hash
+                })
+        {
+            return Ok(true);
+        }
+    }
+    if index.overflow_until > at {
+        if legacy_overflow_live(tx, request_hash, at)? {
+            return Ok(true);
+        }
+        index.overflow_until = 0;
+        tx.put(PREPARED_REQUESTS, request_hash, &index)?;
+    }
+    Ok(false)
 }
 
-fn record_decision(tx: &Tx<'_>, request_hash: &str) -> Result<()> {
+fn legacy_overflow_live(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool> {
+    let mut browser_proofs = BTreeSet::new();
+    for (_, pending) in tx.list::<Value>("browser_authorizations")? {
+        if let Some(key) = pending.get("authentication").and_then(Value::as_str) {
+            browser_proofs.insert(key.to_owned());
+        }
+    }
+    Ok(tx
+        .list::<AuthenticationTransaction>("authentication")?
+        .into_iter()
+        .any(|(key, attempt)| {
+            attempt.expires_at > at
+                && attempt.request_hash == request_hash
+                && !browser_proofs.contains(&key)
+        }))
+}
+
+fn register_preparation(tx: &Tx<'_>, request_hash: &str, key: &str, expires_at: u64) -> Result<()> {
+    let at = now();
+    let previous = tx.get::<PreparedRequests>(PREPARED_REQUESTS, request_hash)?;
+    let mut attempts = BTreeMap::new();
+    let mut overflow_until = 0;
+    if let Some(previous) = previous {
+        if previous.attempts.len() > MAX_PREPARED_PER_REQUEST {
+            return Err(Error::forbidden());
+        }
+        overflow_until = previous.overflow_until;
+        for (key, expiry) in previous.attempts {
+            if expiry > at
+                && tx
+                    .get::<AuthenticationTransaction>("authentication", &key)?
+                    .is_some_and(|attempt| {
+                        attempt.expires_at > at && attempt.request_hash == request_hash
+                    })
+            {
+                attempts.insert(key, expiry);
+            }
+        }
+    }
+    if attempts.len() >= MAX_PREPARED_PER_REQUEST {
+        return Err(Error::conflict(
+            "Too many pending preparations for this request",
+        ));
+    }
+    attempts.insert(key.to_owned(), expires_at);
     tx.put(
-        AUTHORIZATION_DECISIONS,
+        PREPARED_REQUESTS,
         request_hash,
-        &DecidedRequest {
-            expires_at: now().saturating_add(DECISION_RETAIN_SECONDS),
+        &PreparedRequests {
+            expires_at: attempts
+                .values()
+                .copied()
+                .max()
+                .unwrap_or(expires_at)
+                .max(overflow_until),
+            attempts,
+            overflow_until,
         },
     )
 }
 
-pub(crate) fn cleanup_decided(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (key, record) in tx.maintenance_page::<DecidedRequest>(AUTHORIZATION_DECISIONS)? {
+pub(crate) fn stamp_prepared_index(tx: &Tx<'_>) -> Result<()> {
+    tx.put("meta", PREPARED_INDEX_VERSION, &1u8)
+}
+
+/// Existing prepared transactions must participate in no-ID ambiguity checks
+/// after an upgrade. Browser reauthentication proofs are not preparations.
+pub(crate) fn backfill_prepared_index(tx: &Tx<'_>) -> Result<()> {
+    if tx.get::<u8>("meta", PREPARED_INDEX_VERSION)? == Some(1) {
+        return Ok(());
+    }
+    let at = now();
+    let mut browser_proofs = BTreeSet::new();
+    for (_, pending) in tx.list::<Value>("browser_authorizations")? {
+        if let Some(key) = pending.get("authentication").and_then(Value::as_str) {
+            browser_proofs.insert(key.to_owned());
+        }
+    }
+    for (key, attempt) in tx.list::<AuthenticationTransaction>("authentication")? {
+        if attempt.expires_at <= at || browser_proofs.contains(&key) {
+            continue;
+        }
+        let mut index = tx
+            .get::<PreparedRequests>(PREPARED_REQUESTS, &attempt.request_hash)?
+            .unwrap_or(PreparedRequests {
+                attempts: BTreeMap::new(),
+                overflow_until: 0,
+                expires_at: 0,
+            });
+        if index.attempts.contains_key(&key) || index.attempts.len() < MAX_PREPARED_PER_REQUEST {
+            index.attempts.insert(key, attempt.expires_at);
+        } else {
+            // Keep the index bounded. No-ID decisions check these unusual
+            // overflow cases against the exact live rows before proceeding.
+            index.overflow_until = index.overflow_until.max(attempt.expires_at);
+        }
+        index.expires_at = index.expires_at.max(attempt.expires_at);
+        tx.put(PREPARED_REQUESTS, &attempt.request_hash, &index)?;
+    }
+    stamp_prepared_index(tx)
+}
+
+pub(crate) fn cleanup_prepared(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (key, record) in tx.maintenance_page::<PreparedRequests>(PREPARED_REQUESTS)? {
         if record.expires_at <= at {
-            tx.delete(AUTHORIZATION_DECISIONS, &key)?;
+            tx.delete(PREPARED_REQUESTS, &key)?;
         }
     }
     Ok(())
@@ -272,7 +382,6 @@ impl Core {
     ) -> Result<Value> {
         self.store.write(|tx| {
             let (client, scopes) = validate_authorization(tx, &request)?;
-            reject_decided(tx, &request)?;
             if request.has_prompt("none") {
                 return Err(Error::oauth("login_required", "Terminal authentication and consent are required"));
             }
@@ -314,13 +423,17 @@ impl Core {
                 }));
             }
             let transaction = crypto::random_token("ri_auth_");
-            tx.put("authentication", &digest(&transaction), &AuthenticationTransaction {
-                request_hash: request.request_hash()?,
+            let request_hash = request.request_hash()?;
+            let key = digest(&transaction);
+            let expires_at = now() + 600;
+            tx.put("authentication", &key, &AuthenticationTransaction {
+                request_hash: request_hash.clone(),
                 user_id: session.as_ref().filter(|_| !request.has_prompt("select_account")).map(|(u, _)| u.id.clone()),
                 authenticated_session: None,
-                expires_at: now() + 600,
+                expires_at,
                 source_stage: None,
             })?;
+            register_preparation(tx, &request_hash, &key, expires_at)?;
             Ok(json!({"client_id": client.id, "application": client.name, "scopes": scopes, "resource":request.resource,"redirect_uri": request.redirect_uri, "response_mode": request.response_mode, "require_mfa": client.require_mfa, "transaction_id": transaction, "reauthentication_required": fresh, "select_account": request.has_prompt("select_account"), "username": session.map(|(u, _)| u.username), "instruction": "Run `riauthctl authorize` with this complete authorization URL to review and approve in your terminal."}))
         })
     }
@@ -422,7 +535,7 @@ impl Core {
     ) -> Result<String> {
         #[cfg(feature = "platform")]
         crate::workflow::executor::authorization::reject_reserved(tx, &request)?;
-        self.authorize_session_proof_inner(tx, session, request, remembered, proof_key)
+        self.authorize_session_proof_inner(tx, session, request, remembered, proof_key, false)
     }
 
     #[cfg(feature = "platform")]
@@ -432,7 +545,7 @@ impl Core {
         accepted: crate::workflow::executor::authorization::Accepted,
     ) -> Result<String> {
         let (session, request, proof_key) = accepted.into_parts();
-        self.authorize_session_proof_inner(tx, session, request, false, Some(&proof_key))
+        self.authorize_session_proof_inner(tx, session, request, false, Some(&proof_key), true)
     }
 
     fn authorize_session_proof_inner(
@@ -442,13 +555,25 @@ impl Core {
         request: Authorization,
         remembered: bool,
         proof_key: Option<&str>,
+        trusted_prepared: bool,
     ) -> Result<String> {
         if session.expires_at <= now() || session.revoked {
             return Err(Error::unauthorized());
         }
         let (client, scopes) = validate_authorization(tx, &request)?;
-        reject_decided(tx, &request)?;
         let request_hash = request.request_hash()?;
+        if !trusted_prepared {
+            if let Some(transaction) = request.transaction_id.as_deref() {
+                let exact = digest(transaction);
+                if proof_key != Some(exact.as_str()) {
+                    return Err(Error::forbidden());
+                }
+            } else if matching_preparation(tx, &request_hash, now())? {
+                return Err(Error::conflict(
+                    "Specify the prepared authorization transaction ID",
+                ));
+            }
+        }
         crate::source::enforce_pending_stage(tx, &request, &session)?;
         if request.has_prompt("none") && !remembered {
             return Err(Error::oauth(
@@ -458,9 +583,9 @@ impl Core {
         }
         let needs_proof = request.decision.as_deref() != Some("deny")
             && needs_reauthentication(&client, &request, &session.identity);
-        // A supplied terminal transaction is one-use even without a freshness
+        // The exact prepared transaction is one-use even without a freshness
         // requirement. Browser proofs remain optional when freshness is not needed.
-        if needs_proof || request.transaction_id.is_some() {
+        if needs_proof || request.transaction_id.is_some() || trusted_prepared {
             let key = proof_key.ok_or_else(|| {
                 Error::oauth("login_required", "Complete request-bound reauthentication")
             })?;
@@ -563,7 +688,6 @@ impl Core {
                 }
             }
         }
-        record_decision(tx, &request_hash)?;
         self.secure_authorization_response(
             tx,
             &client,
@@ -606,7 +730,24 @@ impl Core {
         #[cfg(feature = "platform")]
         crate::workflow::executor::authorization::reject_reserved(tx, request)?;
         let (client, _) = validate_authorization(tx, request)?;
-        reject_decided(tx, request)?;
+        let request_hash = request.request_hash()?;
+        if let Some(transaction) = request.transaction_id.as_deref() {
+            let key = digest(transaction);
+            let prepared: AuthenticationTransaction = tx
+                .get::<AuthenticationTransaction>("authentication", &key)?
+                .filter(|attempt| attempt.expires_at > now())
+                .ok_or_else(|| Error::bad("Authentication transaction expired or used"))?;
+            if prepared.request_hash != request_hash {
+                return Err(Error::bad(
+                    "Authentication transaction belongs to another request",
+                ));
+            }
+            tx.delete("authentication", &key)?;
+        } else if matching_preparation(tx, &request_hash, now())? {
+            return Err(Error::conflict(
+                "Specify the prepared authorization transaction ID",
+            ));
+        }
         let mut redirect = url::Url::parse(&request.redirect_uri)
             .map_err(|_| Error::bad("Invalid redirect URI"))?;
         {
@@ -622,7 +763,6 @@ impl Core {
         }
         crate::authorization::consume(tx, request)?;
         audit(tx, actor, "authorization.denied", &client.id)?;
-        record_decision(tx, &request.request_hash()?)?;
         self.secure_authorization_response(
             tx,
             &client,

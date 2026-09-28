@@ -233,7 +233,7 @@ async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
                 assert!(f.core.authorize(token, bypass).is_err());
             }
         }
-        let request_hash = request.request_hash().unwrap();
+        let authentication = digest(request.transaction_id.as_deref().unwrap());
         let epoch = f
             .core
             .store
@@ -244,43 +244,43 @@ async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
         for (bucket, key, pointer, value) in [
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/account",
                 json!("other-account"),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/session",
                 json!("other-session"),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/run",
                 json!("other-run"),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/version/revision",
                 json!(99),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/workflow_request",
                 json!("other-request"),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/request/client_id",
                 json!("other"),
             ),
             (
                 "workflow_authorizations",
-                request_hash.as_str(),
+                authentication.as_str(),
                 "/pin/expires_at",
                 json!(now()),
             ),
@@ -465,7 +465,7 @@ async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
         assert_eq!(
             f.core
                 .store
-                .get::<Value>("workflow_authorizations", &request_hash)
+                .get::<Value>("workflow_authorizations", &authentication)
                 .unwrap()
                 .unwrap()["completed"],
             true

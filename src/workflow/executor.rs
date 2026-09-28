@@ -613,6 +613,7 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     source::discard(tx, run)?;
     passkey::discard(tx, run)?;
     enrollment::discard(tx, run)?;
+    authorization::abandon(tx, &run.record)?;
     consent::abandon(tx, &run.record)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence {
@@ -847,6 +848,9 @@ impl CompletionStore for TxCompletion<'_, '_> {
             current.authorization_response =
                 consent::complete(self.core, self.tx, run, terminal.outcome, evidence, at)
                     .map_err(storage_invalid)?;
+        }
+        if terminal.outcome == super::Outcome::Denied {
+            authorization::abandon(self.tx, run).map_err(storage_invalid)?;
         }
         if matches!(
             terminal.outcome,
