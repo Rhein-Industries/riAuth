@@ -5,7 +5,6 @@ use crate::{
     crypto::digest,
     error::{Error, Result},
     model::{Client, User},
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
@@ -18,6 +17,7 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 
+pub use crate::assembly::radius_cleanup as cleanup;
 pub use crate::model::client_settings::radius::{Attribute, ReplyValue, Settings};
 pub use crate::radius_listener::{Listener, Nas, Transport};
 
@@ -427,10 +427,6 @@ impl Core {
         result.map(|(response, _)| response)
     }
 }
-pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    Core::radius_eap_cleanup(tx, at)?;
-    Core::radius_cleanup_cache(tx, at)
-}
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
@@ -533,11 +529,7 @@ async fn process(
     engine: Arc<eap::Engine>,
 ) -> Option<Vec<u8>> {
     tokio::task::spawn_blocking(move || {
-        if core
-            .store
-            .shared_rate_limit(nas.peer, &format!("radius:{id}/{nas_id}"), 600)
-            .ok()?
-        {
+        if core.radius_rate_limited(nas.peer, &id, &nas_id).ok()? {
             return None;
         }
         core.radius_packet(&id, &nas_id, &nas, &bytes, tls, &engine)

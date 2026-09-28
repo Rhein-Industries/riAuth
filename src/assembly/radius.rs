@@ -10,6 +10,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::net::IpAddr;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Cached {
@@ -56,7 +57,22 @@ fn close(tx: &Tx<'_>, identity: Option<&Identity>) -> Result<()> {
     Ok(())
 }
 
+pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    Core::radius_eap_cleanup(tx, at)?;
+    Core::radius_cleanup_cache(tx, at)
+}
+
 impl Core {
+    pub(crate) fn radius_rate_limited(
+        &self,
+        peer: IpAddr,
+        listener_id: &str,
+        nas_id: &str,
+    ) -> Result<bool> {
+        self.store
+            .shared_rate_limit(peer, &format!("radius:{listener_id}/{nas_id}"), 600)
+    }
+
     pub(crate) fn radius_client_profile(
         &self,
         tx: &Tx<'_>,

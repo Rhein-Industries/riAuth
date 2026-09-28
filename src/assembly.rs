@@ -28,6 +28,8 @@ mod portal_sources;
 mod proxy_server;
 #[cfg(feature = "platform")]
 mod radius;
+#[cfg(feature = "platform")]
+pub use radius::cleanup as radius_cleanup;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

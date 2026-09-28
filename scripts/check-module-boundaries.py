@@ -308,6 +308,8 @@ def main() -> None:
                 errors.append("src/radius.rs: RADIUS client or identity read belongs in assembly")
             if re.search(r"\.\s*store\s*\.\s*write\s*\(", radius_source):
                 errors.append("src/radius.rs: RADIUS replay or close write belongs in assembly")
+            if refs & STORAGE or re.search(r"\.\s*store\b", radius_source):
+                errors.append("src/radius.rs: RADIUS protocol refers directly to storage")
         if path == SRC / "radius/eap.rs":
             eap_source = masked_rust_source(path.read_text())
             if re.search(r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source) or re.search(
