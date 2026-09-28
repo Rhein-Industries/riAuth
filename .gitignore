@@ -3,6 +3,8 @@ target/
 /target-*/
 build/
 dist/
+/windows/**/bin/
+/windows/**/obj/
 node_modules/
 .next/
 .svelte-kit/

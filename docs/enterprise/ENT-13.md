@@ -114,26 +114,27 @@ Server `POST /api/windows-devices/offline/verify` repeats those checks and also 
 
 Limits, which a provider cannot paper over:
 
-- The MAC is symmetric. Whoever can read the device secret can forge a ticket that a provider will accept offline. Protect that secret. On Windows that storage is the provider's job (DPAPI, DPAPI-NG, or an equivalent hardware-backed secret). riAuth does not store it and does not implement DPAPI.
+- The MAC is symmetric. Whoever can read the device secret can forge a ticket that a provider will accept offline. Protect that secret. The server stores only its digest; the Windows device host uses machine DPAPI and restricted file ACLs. Any future credential provider must protect its own copy as well.
 - While the machine is offline, the provider cannot learn that an administrator revoked the device or changed the password. The stolen ticket remains usable on that provider until its expiry, at most 72 hours, unless the provider already knows a newer epoch or a revocation from an earlier online check. Do not use a long `offline_ttl` if that window is unacceptable. Online login and server verify fail closed immediately.
 - Offline tickets do not survive password epoch changes. `recover-admin`, a password update, self-service password change, and any other epoch bump make server verification fail. A provider that cached the previous epoch must discard the ticket once it sees the new epoch, and must not treat the ticket as valid across that change.
 - Audit records the device id and the actor. They do not include the device secret, the offline ticket, or the sign-in ticket.
 
 Break-glass is the existing local recovery, not this protocol. With the server stopped, `riauth recover-admin <username> --password-stdin` sets a new administrator password, optionally `--reset-mfa`, enables the account, and bumps the epoch. The user's riAuth password remains the online proof a provider must send. Neither recovery path requires the device secret. Neither one logs a person into Windows by itself.
 
-## Windows credential provider package is not built or tested
+## Windows device host and remaining credential provider work
 
-This repository does not contain a credential provider, a CP DLL, C++ sources, or a WiX/MSI package. Nothing here was compiled as a Windows binary, installed on Windows, or exercised at the secure attention sequence.
+The [Windows device host](../../windows/README.md) source provides authenticated
+enrollment, machine-protected device-secret storage, online login and one-use
+ticket redemption, remote revoke with local purge, and a source installer that
+requires signed payloads and pins the signer for updates and uninstall. It
+requests no offline ticket and fails closed on network loss. The source can be
+built as a self-contained Windows x64 executable; no signed release artifact or
+Windows installation has been produced or validated here.
 
-This release does not include:
-
-- Install, upgrade, and uninstall of a credential provider on any Windows version
-- Interactive sign-in, unlock, or User Account Control integration
-- Disabled-user behavior at the Windows logon UI (the server rejects a disabled user; Windows itself was not tested)
-- Storing the device secret or offline ticket with DPAPI or Credential Manager
-- Packaging, code signing, or a supported Windows build
-
-A Windows credential provider requires separate implementation and validation. The Rust tests cover only the server protocol above.
+The repository still has no credential provider DLL, account mapping, secure
+desktop sign-in or unlock integration, or Windows hardware validation. The host
+checks a riAuth assertion but does not turn it into Windows credential
+serialization. Disabled-user behavior at the Windows logon UI remains untested.
 
 ## What the server test covers
 
