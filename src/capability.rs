@@ -12,7 +12,7 @@ use crate::{
     store::{Store, Tx},
 };
 use serde_json::{Map, Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Activation switches with a complete pre-serving dependency check. Other
 /// names are rejected until their stored references and runtime gates are wired.
@@ -38,18 +38,24 @@ pub fn validate_config(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A retained policy is an active downgrade/activation dependency even when
-/// its client is disabled. Run this before migrations or network workers.
+/// Retained policies and configured proxy routes are active dependencies even
+/// when their clients are disabled. Run this before migrations or workers.
 pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
-    if device_trust_usable(config) {
-        return Ok(());
-    }
     store.read(|tx| {
-        for (id, client) in tx.list::<Value>("clients")? {
-            if settings_require_device_trust(&client["settings"]) {
-                return Err(Error::bad(format!(
-                    "Stored client {id:?} requires identity.device_trust; enable and configure its verifier before serving"
-                )));
+        if !device_trust_usable(config) {
+            for (id, client) in tx.list::<Value>("clients")? {
+                if settings_require_device_trust(&client["settings"]) {
+                    return Err(Error::bad(format!(
+                        "Stored client {id:?} requires identity.device_trust; enable and configure its verifier before serving"
+                    )));
+                }
+            }
+        }
+        #[cfg(feature = "platform")]
+        for (listener_id, listener) in &config.proxy_listeners {
+            for (origin, target) in &listener.routes {
+                let client = tx.get::<Client>("clients", &target.client_id)?;
+                validate_proxy_route(listener_id, origin, &target.client_id, client.as_ref())?;
             }
         }
         Ok(())
@@ -69,17 +75,47 @@ fn device_trust_usable(config: &Config) -> bool {
 /// client write commits. Only this record is inspected; the full collection is
 /// checked once at startup for retained records and edition downgrades.
 pub(crate) fn validate_client_policy(config: &Config, client: &Client) -> Result<()> {
-    if device_trust_usable(config) {
-        return Ok(());
+    if !device_trust_usable(config) {
+        let settings = serde_json::to_value(&client.settings).map_err(Error::internal)?;
+        if settings_require_device_trust(&settings) {
+            return Err(Error::bad(format!(
+                "Client {:?} requires identity.device_trust; enable and configure its verifier before writing",
+                client.id
+            )));
+        }
     }
-    let settings = serde_json::to_value(&client.settings).map_err(Error::internal)?;
-    if settings_require_device_trust(&settings) {
-        return Err(Error::bad(format!(
-            "Client {:?} requires identity.device_trust; enable and configure its verifier before writing",
-            client.id
-        )));
+    #[cfg(feature = "platform")]
+    for (listener_id, listener) in &config.proxy_listeners {
+        for (origin, target) in &listener.routes {
+            if target.client_id == client.id {
+                validate_proxy_route(listener_id, origin, &client.id, Some(client))?;
+            }
+        }
     }
     Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn proxy_origin_ready(client: &Client, origin: &str) -> bool {
+    client.enabled
+        && client.settings.proxy.as_ref().is_some_and(|profile| {
+            profile.validate(client).is_ok() && profile.allows_origin(origin)
+        })
+}
+
+#[cfg(feature = "platform")]
+fn validate_proxy_route(
+    listener_id: &str,
+    origin: &str,
+    client_id: &str,
+    client: Option<&Client>,
+) -> Result<()> {
+    if client.is_some_and(|client| proxy_origin_ready(client, origin)) {
+        return Ok(());
+    }
+    Err(Error::bad(format!(
+        "Proxy listener {listener_id:?} route {origin:?} requires enabled client {client_id:?} with a matching proxy origin and valid policy"
+    )))
 }
 
 fn settings_require_device_trust(settings: &Value) -> bool {
@@ -171,13 +207,18 @@ struct Facts {
     saml_encryption: bool,
     radius_clients: BTreeSet<String>,
     ldap_clients: BTreeSet<String>,
-    proxy_clients: BTreeSet<String>,
+    proxy_clients: BTreeMap<String, ProxyClient>,
     oidc_source: bool,
     oauth_source: bool,
     saml_source: bool,
     saml_source_logout: bool,
     any_source: bool,
     ssf_stream: bool,
+}
+
+struct ProxyClient {
+    origins: BTreeSet<String>,
+    shared_domain: bool,
 }
 
 impl Facts {
@@ -199,8 +240,24 @@ impl Facts {
             if client.settings.ldap.is_some() {
                 facts.ldap_clients.insert(client.id.clone());
             }
-            if client.settings.proxy.is_some() {
-                facts.proxy_clients.insert(client.id.clone());
+            #[cfg(feature = "platform")]
+            if let Some(profile) = &client.settings.proxy
+                && profile.validate(&client).is_ok()
+            {
+                let mut origins = BTreeSet::from([profile.external_origin.clone()]);
+                let shared_domain = if let Some(domain) = &profile.domain {
+                    origins.extend(domain.application_origins.iter().cloned());
+                    true
+                } else {
+                    false
+                };
+                facts.proxy_clients.insert(
+                    client.id.clone(),
+                    ProxyClient {
+                        origins,
+                        shared_domain,
+                    },
+                );
             }
         }
         for (_, source) in tx.list::<Source>("sources")? {
@@ -241,13 +298,23 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
             .ldap_listeners
             .values()
             .any(|listener| facts.ldap_clients.contains(&listener.client_id)),
-        "proxy.forward_auth_sso" | "proxy.shared_domain_sso" => !facts.proxy_clients.is_empty(),
-        "proxy.reverse_proxy" => config.proxy_listeners.values().any(|listener| {
-            listener
-                .routes
-                .values()
-                .any(|route| facts.proxy_clients.contains(&route.client_id))
-        }),
+        "proxy.forward_auth_sso" => !facts.proxy_clients.is_empty(),
+        "proxy.shared_domain_sso" => facts
+            .proxy_clients
+            .values()
+            .any(|client| client.shared_domain),
+        "proxy.reverse_proxy" => {
+            !config.proxy_listeners.is_empty()
+                && config.proxy_listeners.values().all(|listener| {
+                    !listener.routes.is_empty()
+                        && listener.routes.iter().all(|(origin, route)| {
+                            facts
+                                .proxy_clients
+                                .get(&route.client_id)
+                                .is_some_and(|client| client.origins.contains(origin))
+                        })
+                })
+        }
         "radius.pap" => config.radius_listeners.values().any(|listener| {
             listener
                 .nas
@@ -355,8 +422,202 @@ mod tests {
                 ClaimMapping, ClaimSource, ConditionalClaimMapping, ConditionalPolicy, Predicate,
             },
         },
+        outpost::{Domain as ProxyDomain, Settings as ProxySettings},
+        proxy_server::{Listener as ProxyListener, Target as ProxyTarget},
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    fn proxy_fixture() -> (tempfile::TempDir, Core, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = core
+            .login("admin".into(), "capability-test-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let proxy = ProxySettings {
+            domain: None,
+            external_origin: "https://app.example.com".into(),
+            session_ttl: 3600,
+        };
+        core.create_client(
+            &token,
+            NewClient {
+                client_id: "proxy-app".into(),
+                name: "Proxy app".into(),
+                confidential: false,
+                redirect_uris: vec![proxy.callback("proxy-app")],
+                scopes: BTreeSet::from(["openid".into(), "profile".into()]),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    proxy: Some(proxy),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        (dir, core, token)
+    }
+
+    #[test]
+    fn proxy_route_requires_a_matching_live_client_at_startup_and_write() {
+        let (_dir, mut core, token) = proxy_fixture();
+        let origin = "https://app.example.com";
+        let listener = ProxyListener {
+            listen: "127.0.0.1:0".parse().unwrap(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            routes: BTreeMap::from([(
+                origin.into(),
+                ProxyTarget {
+                    client_id: "proxy-app".into(),
+                    upstream: "http://127.0.0.1:9001".into(),
+                    ca_file: None,
+                    allow_plain_http: false,
+                },
+            )]),
+            max_body_bytes: 1024,
+            upstream_timeout_seconds: 30,
+        };
+        core.config.proxy_listeners.insert("edge".into(), listener);
+        core.config.validate().unwrap();
+        validate_store(&core.config, &core.store).unwrap();
+        assert_eq!(
+            runtime(&core).unwrap()["feature_states"]["proxy.reverse_proxy"]["usable"],
+            true
+        );
+
+        let error = core
+            .update_client(
+                &token,
+                "proxy-app",
+                ClientPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(error.message.contains("Proxy listener"));
+        let stored = core
+            .store
+            .read(|tx| tx.get::<Client>("clients", "proxy-app"))
+            .unwrap()
+            .unwrap();
+        assert!(stored.enabled);
+
+        let mut changed = stored.settings.clone();
+        changed.proxy.as_mut().unwrap().external_origin = "https://other.example.com".into();
+        let error = core
+            .update_client(
+                &token,
+                "proxy-app",
+                ClientPatch {
+                    redirect_uris: Some(vec![
+                        changed.proxy.as_ref().unwrap().callback("proxy-app"),
+                    ]),
+                    settings: Some(changed),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(error.message.contains("matching proxy origin"));
+
+        let mut wrong_origin = core.clone();
+        let route = wrong_origin.config.proxy_listeners["edge"]
+            .routes
+            .get(origin)
+            .unwrap()
+            .clone();
+        wrong_origin
+            .config
+            .proxy_listeners
+            .get_mut("edge")
+            .unwrap()
+            .routes
+            .insert("https://other.example.com".into(), route);
+        assert_eq!(
+            runtime(&wrong_origin).unwrap()["feature_states"]["proxy.reverse_proxy"]["usable"],
+            false
+        );
+        assert!(
+            validate_store(&wrong_origin.config, &wrong_origin.store)
+                .unwrap_err()
+                .message
+                .contains("matching proxy origin")
+        );
+
+        let mut missing_client = core.config.clone();
+        missing_client
+            .proxy_listeners
+            .get_mut("edge")
+            .unwrap()
+            .routes
+            .get_mut(origin)
+            .unwrap()
+            .client_id = "missing".into();
+        drop(wrong_origin);
+        drop(core);
+        let error = match Core::open(missing_client) {
+            Ok(_) => panic!("a route without its client must block startup"),
+            Err(error) => error,
+        };
+        assert!(error.message.contains("Proxy listener"));
+        assert!(error.message.contains("missing"));
+    }
+
+    #[test]
+    fn shared_domain_proxy_capability_requires_a_shared_domain_profile() {
+        let (_dir, core, token) = proxy_fixture();
+        let states = runtime(&core).unwrap();
+        assert_eq!(
+            states["feature_states"]["proxy.forward_auth_sso"]["usable"],
+            true
+        );
+        assert_eq!(
+            states["feature_states"]["proxy.shared_domain_sso"]["usable"],
+            false
+        );
+
+        let mut settings = core
+            .store
+            .read(|tx| tx.get::<Client>("clients", "proxy-app"))
+            .unwrap()
+            .unwrap()
+            .settings;
+        settings.proxy.as_mut().unwrap().domain = Some(ProxyDomain {
+            cookie_domain: "example.com".into(),
+            application_origins: BTreeSet::from(["https://other.example.com".into()]),
+        });
+        core.update_client(
+            &token,
+            "proxy-app",
+            ClientPatch {
+                settings: Some(settings),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            runtime(&core).unwrap()["feature_states"]["proxy.shared_domain_sso"]["usable"],
+            true
+        );
+    }
 
     #[test]
     fn device_trust_policy_is_not_advertised_or_served_without_a_verifier() {
@@ -500,7 +761,9 @@ mod tests {
         };
         let nested = || Predicate::Not {
             condition: Box::new(Predicate::Any {
-                of: vec![Predicate::All { of: vec![approved()] }],
+                of: vec![Predicate::All {
+                    of: vec![approved()],
+                }],
             }),
         };
         let policies = [
