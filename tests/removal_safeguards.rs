@@ -29,6 +29,7 @@ enum Mode {
     BadControl,
     Repeat,
     EmptyMore,
+    PagedRemoval,
 }
 struct Peer {
     url: String,
@@ -70,16 +71,20 @@ async fn peer() -> Peer {
                             vec![],
                         ),
                         LdapOp::SearchRequest(search) => {
-                            let second=request.ctrl.iter().any(|c|matches!(c,LdapControl::SimplePagedResults{cookie,..} if !cookie.is_empty()));
+                            let cookie=request.ctrl.iter().find_map(|c|match c {
+                                LdapControl::SimplePagedResults{cookie,..}=>Some(cookie.as_slice()),
+                                _=>None,
+                            }).unwrap_or(&[]);
+                            let second=!cookie.is_empty();
+                            let page_index=if matches!(mode,Mode::PagedRemoval) {
+                                std::str::from_utf8(cookie).ok().and_then(|s|s.parse::<usize>().ok()).unwrap_or(0)
+                            } else {usize::from(second)};
                             let members = matches!(search.filter, LdapFilter::And(_));
                             let empty = matches!(mode, Mode::Empty | Mode::Error | Mode::EmptyMore)
-                                || members && matches!(mode, Mode::EmptyMembers);
+                                || members && matches!(mode, Mode::EmptyMembers | Mode::PagedRemoval);
                             if !empty && !(second && matches!(mode, Mode::PartialError)) {
-                                let n = if second && !matches!(mode, Mode::Repeat) {
-                                    1
-                                } else {
-                                    0
-                                };
+                                let n = if matches!(mode, Mode::PagedRemoval) {page_index}
+                                    else if second && !matches!(mode, Mode::Repeat) {1} else {0};
                                 let username = if n == 0 && matches!(mode, Mode::Renamed) {
                                     "renamed0".to_owned()
                                 } else {
@@ -118,8 +123,11 @@ async fn peer() -> Peer {
                             } else {
                                 LdapResultCode::Success
                             };
-                            let more =
-                                !second && !empty || matches!(mode, Mode::Repeat | Mode::EmptyMore);
+                            let more = if matches!(mode,Mode::PagedRemoval) {
+                                !members && page_index < 4
+                            } else {
+                                !second && !empty || matches!(mode, Mode::Repeat | Mode::EmptyMore)
+                            };
                             let controls = match mode {
                                 Mode::MissingControl => vec![],
                                 Mode::BadControl => vec![LdapControl::Unknown {
@@ -129,7 +137,9 @@ async fn peer() -> Peer {
                                 }],
                                 _ => vec![LdapControl::SimplePagedResults {
                                     size: 0,
-                                    cookie: if more { b"next".to_vec() } else { vec![] },
+                                    cookie: if more && matches!(mode,Mode::PagedRemoval) {
+                                        (page_index+1).to_string().into_bytes()
+                                    } else if more { b"next".to_vec() } else { vec![] },
                                 }],
                             };
                             (LdapOp::SearchResultDone(result(code)), controls)
@@ -184,6 +194,70 @@ fn canonical(f: &Fixture) -> Value {
         "sessions":tx.list::<Value>("sessions")?,"revision":tx.get::<u64>("meta","revision")?,
         "audit":tx.list::<Value>("audit")?,"plans":tx.list::<Value>("directory_plans")?
     }))).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ldap_membership_removal_waits_for_durable_paged_snapshot() {
+    let peer = peer().await;
+    let url = peer.url.clone();
+    let mode = peer.mode.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut f = Fixture::new();
+        configure(&mut f, url);
+        for group in ["blue", "green"] {
+            f.core.create_group(&f.admin, group).unwrap();
+            f.core.config.directories.get_mut("staff").unwrap()
+                .group_user_filters.insert(group.into(), "(cn=*)".into());
+        }
+        // Two user pages and two pages for each of three group filters.
+        let first = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(first["decision"], "snapshot_in_progress");
+        let imported = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(imported["entries"].as_array().unwrap().len(), 2);
+        f.core.directory_apply(&f.admin, &text(&imported, "id")).unwrap();
+        let ids: BTreeMap<_, _> = ["person0", "person1"].into_iter().map(|name| {
+            (name.to_owned(), f.core.store.get::<String>("usernames", name).unwrap().unwrap())
+        }).collect();
+        for group in ["blue", "green", "staff"] {
+            assert_eq!(f.core.store.get::<Group>("groups", group).unwrap().unwrap().members.len(), 2);
+        }
+
+        // Five user pages resume from an opaque cookie after the process is
+        // reopened; the three group searches then finish the removal view.
+        *mode.lock().unwrap() = Mode::PagedRemoval;
+        let before = canonical(&f);
+        let progress = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(progress["decision"], "snapshot_in_progress");
+        assert_eq!(progress["phase"], "users");
+        assert_eq!(progress["users"], 4);
+        assert!(progress["id"].is_null());
+        assert_eq!(canonical(&f), before);
+        let drafts = f.core.store.list::<Value>("directory_snapshots").unwrap();
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].1["cookie"], json!([b'4']));
+        let progress_id = text(&progress, "snapshot_id");
+
+        let f = f.reopen_with(|_| {});
+        let plan = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(plan["entries"].as_array().unwrap().len(), 5);
+        assert_eq!(plan["removal_impact"]["removed_memberships"], 6);
+        assert_eq!(plan["removal_impact"]["review_required"], true);
+        assert!(f.core.store.list::<Value>("directory_snapshots").unwrap().is_empty());
+        assert!(!progress_id.is_empty());
+        let id = text(&plan, "id");
+        let pending = f.core.directory_reconcile(&f.admin, "staff").unwrap();
+        assert_eq!(pending["decision"], "awaiting_review");
+        assert_eq!(pending["plan"]["id"], id);
+        assert!(f.core.directory_apply(&f.admin, &id).is_err());
+        f.core.directory_apply_confirmed(&f.admin, &id, Some(&id)).unwrap();
+        for (name, user_id) in ids {
+            assert_eq!(f.core.store.get::<String>("usernames", &name).unwrap(), Some(user_id.clone()));
+            assert!(f.core.store.get::<User>("users", &user_id).unwrap().unwrap().enabled);
+        }
+        for group in ["blue", "green", "staff"] {
+            assert!(f.core.store.get::<Group>("groups", group).unwrap().unwrap().members.is_empty());
+        }
+    }).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

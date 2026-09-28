@@ -31,6 +31,14 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(5);
 /// makes directory-bound usernames stand out by response time nor holds a credential
 /// permit for long. A directory that needs longer counts as unavailable.
 const LOGIN_BUDGET: Duration = Duration::from_millis(800);
+const LDAP_PAGE_SIZE: usize = 200;
+const LDAP_PAGES_PER_PLAN_CALL: usize = 4;
+const LDAP_MAX_PAGES_PER_SEARCH: usize = 20;
+const LDAP_MAX_USERS: usize = 2_000;
+const LDAP_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
+const LDAP_PLAN_BYTES: usize = 8 * 1024 * 1024;
+const LDAP_SNAPSHOT_SECONDS: u64 = 300;
+const LDAP_SNAPSHOTS: &str = "directory_snapshots";
 
 /// What each directory step may take: `STEP_TIMEOUT`, or what is left until a deadline.
 #[derive(Clone, Copy)]
@@ -214,84 +222,75 @@ impl Directory {
         Ok(conn)
     }
     fn snapshot(&self) -> Result<Snapshot> {
+        let mut draft = SnapshotDraft::new(String::new(), String::new(), 0, String::new(), String::new());
+        self.advance_snapshot(
+            &mut draft,
+            LDAP_MAX_PAGES_PER_SEARCH * (self.group_user_filters.len() + 1),
+        )?;
+        if !draft.complete(self) {
+            return Err(unavailable());
+        }
+        Ok(draft.into_snapshot())
+    }
+
+    /// Advance a bounded number of LDAP pages on one service connection. The
+    /// opaque cookie and converted rows can be persisted between calls.
+    fn advance_snapshot(&self, draft: &mut SnapshotDraft, max_pages: usize) -> Result<()> {
         let started = Instant::now();
         let mut conn = self.service(Budget::Step)?;
-        let attrs: Vec<_> = [
-            &self.id_attribute,
-            &self.username_attribute,
-            &self.display_attribute,
-        ]
-        .into_iter()
-        .chain(self.email_attribute.iter())
-        .cloned()
-        .collect();
-        let entries = search(
-            &mut conn,
-            &self.user_base,
-            &self.user_filter,
-            attrs,
-            started,
-        )?;
-        let mut users = BTreeMap::new();
-        let mut names = BTreeSet::new();
-        let mut dns = BTreeSet::new();
-        for entry in entries {
-            let external_id = stable_id(&entry, &self.id_attribute)?;
-            let username = format!(
-                "{}{}",
-                self.username_prefix,
-                required_text(&entry, &self.username_attribute)?
-            );
-            let display_name = required_text(&entry, &self.display_attribute)?;
-            let email = self
-                .email_attribute
-                .as_ref()
-                .map(|a| optional_text(&entry, a))
-                .transpose()?
-                .flatten();
-            validate_name(&username)?;
-            validate_display(&display_name)?;
-            if let Some(email) = &email {
-                validate_email(email)?;
+        for _ in 0..max_pages {
+            if draft.complete(self) {
+                break;
             }
-            if !names.insert(username.clone()) || !dns.insert(entry.dn.clone()) {
-                return Err(Error::conflict(
-                    "LDAP snapshot contains duplicate usernames or DNs",
-                ));
-            }
-            let row = Entry {
-                external_id: external_id.clone(),
-                dn: entry.dn,
-                username,
-                display_name,
-                email,
-                groups: BTreeSet::new(),
+            let phase = draft.phase;
+            let (filter, attrs) = if phase == 0 {
+                (
+                    self.user_filter.clone(),
+                    [
+                        &self.id_attribute,
+                        &self.username_attribute,
+                        &self.display_attribute,
+                    ]
+                    .into_iter()
+                    .chain(self.email_attribute.iter())
+                    .cloned()
+                    .collect(),
+                )
+            } else {
+                let (_, group_filter) = self.group_user_filters.iter().nth(phase - 1)
+                    .ok_or_else(unavailable)?;
+                (
+                    format!("(&{}{group_filter})", self.user_filter),
+                    vec![self.id_attribute.clone()],
+                )
             };
-            if users.insert(external_id, row).is_some() {
-                return Err(Error::conflict(
-                    "LDAP stable identity attribute is not unique",
-                ));
-            }
-        }
-        for (group, filter) in &self.group_user_filters {
-            for entry in search(
+            let (rows, next) = search_page(
                 &mut conn,
                 &self.user_base,
-                &format!("(&{}{filter})", self.user_filter),
-                vec![self.id_attribute.clone()],
+                &filter,
+                attrs,
+                &draft.cookie,
                 started,
-            )? {
-                let external_id = stable_id(&entry, &self.id_attribute)?;
-                let row = users.get_mut(&external_id).ok_or_else(|| {
-                    Error::conflict("LDAP membership changed during snapshot; retry the plan")
-                })?;
-                row.groups.insert(group.clone());
+            )?;
+            draft.pagination.page(
+                &URL_SAFE_NO_PAD.encode(&draft.cookie),
+                rows.len(),
+                None,
+                !next.is_empty(),
+            )?;
+            for row in rows {
+                draft.record(self, phase, row)?;
             }
+            draft.cookie = next;
+            draft.sequence = draft.sequence.checked_add(1)
+                .ok_or_else(|| Error::internal("LDAP snapshot cursor exhausted"))?;
+            if draft.cookie.is_empty() {
+                draft.next_phase();
+            }
+            draft.bounded()?;
         }
         let _ = conn.unbind();
-        Ok(Snapshot {
-            users: users.into_values().collect(),
-        })
+        Ok(())
     }
 }
 fn unavailable() -> Error {
@@ -301,91 +300,52 @@ fn unavailable() -> Error {
         "LDAP operation failed or did not return a complete result; verify bind credentials and paged-results support, then retry the complete snapshot",
     )
 }
-fn search(
+fn search_page(
     conn: &mut LdapConn,
     base: &str,
     filter: &str,
     attrs: Vec<String>,
+    cookie: &[u8],
     started: Instant,
-) -> Result<Vec<SearchEntry>> {
+) -> Result<(Vec<SearchEntry>, Vec<u8>)> {
     if started.elapsed() > Duration::from_secs(30) {
         return Err(unavailable());
     }
     let mut rows = Vec::new();
-    let mut bytes = 0usize;
-    let mut cookie = Vec::new();
-    let mut pages = Pagination::new(20, 2000);
-    let mut dns = BTreeSet::new();
-    loop {
-        if started.elapsed() > Duration::from_secs(30) {
-            return Err(unavailable());
-        }
-        conn.with_timeout(STEP_TIMEOUT)
-            .with_search_options(SearchOptions::new().timelimit(5).sizelimit(2001))
-            .with_controls(
-                PagedResults {
-                    size: 200,
-                    cookie: cookie.clone(),
-                }
-                .critical(),
-            );
-        let mut stream = conn
-            .streaming_search(base, Scope::Subtree, filter, attrs.clone())
-            .map_err(|_| unavailable())?;
-        let before = rows.len();
-        while let Some(entry) = stream.next().map_err(|_| unavailable())? {
-            if entry.is_ref() || started.elapsed() > Duration::from_secs(30) || rows.len() >= 2000 {
-                return Err(unavailable());
+    conn.with_timeout(STEP_TIMEOUT)
+        .with_search_options(SearchOptions::new().timelimit(5).sizelimit(2001))
+        .with_controls(
+            PagedResults {
+                size: LDAP_PAGE_SIZE as i32,
+                cookie: cookie.to_vec(),
             }
-            let entry = SearchEntry::construct(entry);
-            bytes = bytes.saturating_add(
-                entry.dn.len()
-                    + entry
-                        .attrs
-                        .iter()
-                        .map(|(k, v)| k.len() + v.iter().map(String::len).sum::<usize>())
-                        .sum::<usize>()
-                    + entry
-                        .bin_attrs
-                        .iter()
-                        .map(|(k, v)| k.len() + v.iter().map(Vec::len).sum::<usize>())
-                        .sum::<usize>(),
-            );
-            if bytes > 4 * 1024 * 1024
-                || entry.dn.is_empty()
-                || entry.dn.len() > 2048
-                || !dns.insert(entry.dn.clone())
-            {
-                return Err(unavailable());
-            }
-            rows.push(entry);
-        }
-        let result = stream.result().success().map_err(|_| unavailable())?;
-        if !result.refs.is_empty() || started.elapsed() > Duration::from_secs(30) {
+            .critical(),
+        );
+    let mut stream = conn
+        .streaming_search(base, Scope::Subtree, filter, attrs)
+        .map_err(|_| unavailable())?;
+    while let Some(entry) = stream.next().map_err(|_| unavailable())? {
+        if entry.is_ref() || started.elapsed() > Duration::from_secs(30) || rows.len() >= LDAP_PAGE_SIZE {
             return Err(unavailable());
         }
-        let controls: Vec<_> = result
-            .ctrls
-            .iter()
-            .filter(|c| c.1.ctype == "1.2.840.113556.1.4.319")
-            .collect();
-        if controls.len() != 1 {
-            return Err(unavailable());
-        }
-        // ldap3's control parser panics on malformed BER; parse this small,
-        // untrusted control fallibly. Its count is an estimate, not an exact total.
-        let next = page_cookie(controls[0].1.val.as_deref().ok_or_else(unavailable)?)?;
-        pages.page(
-            &URL_SAFE_NO_PAD.encode(&cookie),
-            rows.len() - before,
-            None,
-            !next.is_empty(),
-        )?;
-        if next.is_empty() {
-            return Ok(rows);
-        }
-        cookie = next;
+        rows.push(SearchEntry::construct(entry));
     }
+    let result = stream.result().success().map_err(|_| unavailable())?;
+    if !result.refs.is_empty() || started.elapsed() > Duration::from_secs(30) {
+        return Err(unavailable());
+    }
+    let controls: Vec<_> = result
+        .ctrls
+        .iter()
+        .filter(|c| c.1.ctype == "1.2.840.113556.1.4.319")
+        .collect();
+    if controls.len() != 1 {
+        return Err(unavailable());
+    }
+    // ldap3's control parser panics on malformed BER; parse this small,
+    // untrusted control fallibly. Its count is an estimate, not an exact total.
+    let next = page_cookie(controls[0].1.val.as_deref().ok_or_else(unavailable)?)?;
+    Ok((rows, next))
 }
 fn page_cookie(bytes: &[u8]) -> Result<Vec<u8>> {
     fn tlv<'a>(input: &mut &'a [u8], tag: u8) -> Result<&'a [u8]> {
@@ -484,6 +444,109 @@ pub struct Entry {
 struct Snapshot {
     users: Vec<Entry>,
 }
+#[derive(Clone, Serialize, Deserialize)]
+struct SnapshotDraft {
+    id: String,
+    directory: String,
+    actor: String,
+    revision: u64,
+    fingerprint: String,
+    authority_digest: String,
+    expires_at: u64,
+    sequence: u64,
+    /// Zero is the user search; subsequent phases follow configured group order.
+    phase: usize,
+    cookie: Vec<u8>,
+    pagination: Pagination,
+    phase_dns: BTreeSet<String>,
+    names: BTreeSet<String>,
+    users: BTreeMap<String, Entry>,
+    attributes_bytes: usize,
+}
+impl SnapshotDraft {
+    fn new(directory: String, actor: String, revision: u64, fingerprint: String, authority_digest: String) -> Self {
+        Self {
+            id: crypto::id(), directory, actor, revision, fingerprint, authority_digest,
+            expires_at: now().saturating_add(LDAP_SNAPSHOT_SECONDS), sequence: 0, phase: 0,
+            cookie: Vec::new(), pagination: Pagination::new(LDAP_MAX_PAGES_PER_SEARCH, LDAP_MAX_USERS),
+            phase_dns: BTreeSet::new(), names: BTreeSet::new(), users: BTreeMap::new(),
+            attributes_bytes: 0,
+        }
+    }
+    fn complete(&self, directory: &Directory) -> bool {
+        self.phase == directory.group_user_filters.len() + 1
+    }
+    fn next_phase(&mut self) {
+        self.phase += 1;
+        self.cookie.clear();
+        self.pagination = Pagination::new(LDAP_MAX_PAGES_PER_SEARCH, LDAP_MAX_USERS);
+        self.phase_dns.clear();
+    }
+    fn bounded(&self) -> Result<()> {
+        if self.attributes_bytes > LDAP_SNAPSHOT_BYTES
+            || self.users.len() > LDAP_MAX_USERS
+            || serde_json::to_vec(self).map_err(Error::internal)?.len() > LDAP_SNAPSHOT_BYTES
+        {
+            return Err(Error::bad("LDAP snapshot staging quota exceeded"));
+        }
+        Ok(())
+    }
+    fn progress(&self, directory: &Directory, restarted: bool) -> Value {
+        let phase = if self.phase == 0 {
+            "users".to_owned()
+        } else {
+            directory.group_user_filters.keys().nth(self.phase - 1)
+                .map(|name| format!("group:{name}"))
+                .unwrap_or_else(|| "complete".into())
+        };
+        json!({"decision":"snapshot_in_progress","snapshot_id":self.id,"phase":phase,
+            "users":self.users.len(),"pages":self.sequence,"expires_at":self.expires_at,"restart":restarted})
+    }
+    fn into_snapshot(self) -> Snapshot {
+        Snapshot { users: self.users.into_values().collect() }
+    }
+    fn record(&mut self, directory: &Directory, phase: usize, entry: SearchEntry) -> Result<()> {
+        let bytes = entry.dn.len()
+            .saturating_add(entry.attrs.iter().map(|(key, values)|
+                key.len().saturating_add(values.iter().map(String::len).sum::<usize>())).sum::<usize>())
+            .saturating_add(entry.bin_attrs.iter().map(|(key, values)|
+                key.len().saturating_add(values.iter().map(Vec::len).sum::<usize>())).sum::<usize>());
+        self.attributes_bytes = self.attributes_bytes.saturating_add(bytes);
+        if self.attributes_bytes > LDAP_SNAPSHOT_BYTES
+            || entry.dn.is_empty() || entry.dn.len() > 2048
+            || !self.phase_dns.insert(entry.dn.clone())
+        {
+            return Err(unavailable());
+        }
+        let external_id = stable_id(&entry, &directory.id_attribute)?;
+        if phase == 0 {
+            let username = format!("{}{}", directory.username_prefix,
+                required_text(&entry, &directory.username_attribute)?);
+            let display_name = required_text(&entry, &directory.display_attribute)?;
+            let email = directory.email_attribute.as_ref()
+                .map(|name| optional_text(&entry, name)).transpose()?.flatten();
+            validate_name(&username)?;
+            validate_display(&display_name)?;
+            if let Some(email) = &email { validate_email(email)?; }
+            if !self.names.insert(username.clone()) {
+                return Err(Error::conflict("LDAP snapshot contains duplicate usernames or DNs"));
+            }
+            let row = Entry { external_id: external_id.clone(), dn: entry.dn,
+                username, display_name, email, groups: BTreeSet::new() };
+            if self.users.insert(external_id, row).is_some() {
+                return Err(Error::conflict("LDAP stable identity attribute is not unique"));
+            }
+        } else {
+            let (group, _) = directory.group_user_filters.iter().nth(phase - 1)
+                .ok_or_else(unavailable)?;
+            let row = self.users.get_mut(&external_id).ok_or_else(|| {
+                Error::conflict("LDAP membership changed during snapshot; retry the plan")
+            })?;
+            row.groups.insert(group.clone());
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub(crate) directory: String,
@@ -558,9 +621,9 @@ impl Core {
             Ok(json!(plan))
         })
     }
-    /// Controller trigger for one LDAP directory. A pending reviewed plan keeps
-    /// its exact ID while the source, local revision and authority remain bound.
-    /// The existing apply path re-fetches the source before any local mutation.
+    /// A pending reviewed plan keeps its exact ID while the complete streamed
+    /// source, local revision and authority remain bound. Apply re-fetches the
+    /// source before any local mutation.
     pub fn directory_reconcile(&self, token: &str, id: &str) -> Result<Value> {
         let directory = self
             .config
@@ -592,30 +655,24 @@ impl Core {
         let plan = match pending {
             Some(plan) if directory.snapshot()?.users == plan.entries => {
                 // The remote read can take seconds. Recheck authority and the
-                // local revision before returning its saved entries to caller.
+                // local revision before returning saved entries to the caller.
                 let bound = self.store.read(|tx| {
-                    let actor =
-                        self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
+                    let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
                     Ok(plan.actor == actor.id
                         && plan.expires_at > now()
                         && plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
                         && plan.fingerprint == self.directory_fingerprint(id, directory)?
-                        && tx
-                            .get::<Plan>("directory_plans", &plan.id)?
+                        && tx.get::<Plan>("directory_plans", &plan.id)?
                             .is_some_and(|stored| !stored.applied && stored.review == plan.review)
-                        && plan
-                            .review
-                            .validate(tx, &actor, &plan_content(&plan)?)
-                            .is_ok())
+                        && plan.review.validate(tx, &actor, &plan_content(&plan)?).is_ok())
                 })?;
-                if bound {
-                    json!(plan)
-                } else {
-                    self.directory_plan_internal(token, id, true)?
-                }
+                if bound { json!(plan) } else { self.directory_plan_internal(token, id, true)? }
             }
             _ => self.directory_plan_internal(token, id, true)?,
         };
+        if plan["decision"] == "snapshot_in_progress" {
+            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
+        }
         let impact: RemovalImpact =
             serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
         reconcile_plan(mode, &impact, plan, |plan_id| {
@@ -627,28 +684,79 @@ impl Core {
         self.directory_plan_internal(token, id, false)
     }
 
+    fn directory_snapshot_actor(
+        &self,
+        tx: &Tx<'_>, token: &str, id: &str, directory: &Directory,
+        expected_actor: &str, revision: u64, fingerprint: &str, authority_digest: &str,
+    ) -> Result<Principal> {
+        let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
+        if actor.id != expected_actor
+            || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
+            || self.directory_fingerprint(id, directory)? != fingerprint
+            || ReviewBinding::new(tx, &actor, &json!([id, revision, fingerprint]))?.authority_digest != authority_digest
+        {
+            return Err(Error::conflict("LDAP source, authority or local revision changed during snapshot"));
+        }
+        Ok(actor)
+    }
+
     fn directory_plan_internal(&self, token: &str, id: &str, supersede: bool) -> Result<Value> {
         let directory = self
             .config
             .directories
             .get(id)
             .ok_or_else(|| Error::missing("LDAP directory not configured"))?;
-        let (actor, revision) = self.store.read(|tx| {
+        let key = digest(id);
+        let (actor, revision, fingerprint, authority_digest, prior, mut draft, restarted) = self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
-            Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let fingerprint = self.directory_fingerprint(id, directory)?;
+            let authority_digest = ReviewBinding::new(tx, &actor, &json!([id, revision, fingerprint]))?.authority_digest;
+            let previous = tx.get::<SnapshotDraft>(LDAP_SNAPSHOTS, &key)?;
+            let prior = previous.as_ref().map(|draft| (draft.id.clone(), draft.sequence));
+            let valid = previous.as_ref().is_some_and(|draft| {
+                draft.directory == id && draft.actor == actor.id
+                    && draft.revision == revision && draft.fingerprint == fingerprint
+                    && draft.authority_digest == authority_digest && draft.expires_at > now()
+                    && draft.phase <= directory.group_user_filters.len()
+            });
+            let restarted = previous.is_some() && !valid;
+            let draft = previous.filter(|_| valid).unwrap_or_else(|| SnapshotDraft::new(
+                id.into(), actor.id.clone(), revision, fingerprint.clone(), authority_digest.clone()
+            ));
+            Ok((actor, revision, fingerprint, authority_digest, prior, draft, restarted))
         })?;
-        let snapshot = directory.snapshot()?;
+        directory.advance_snapshot(&mut draft, LDAP_PAGES_PER_PLAN_CALL)?;
+        draft.expires_at = now().saturating_add(LDAP_SNAPSHOT_SECONDS);
+        draft.bounded()?;
+        let same_prior = |tx: &Tx<'_>| -> Result<bool> {
+            let current = tx.get::<SnapshotDraft>(LDAP_SNAPSHOTS, &key)?;
+            Ok(current.as_ref().map(|draft| (&draft.id, draft.sequence))
+                == prior.as_ref().map(|(id, sequence)| (id, *sequence)))
+        };
+        if !draft.complete(directory) {
+            return self.store.write(|tx| {
+                self.directory_snapshot_actor(tx, token, id, directory, &actor.id, revision,
+                    &fingerprint, &authority_digest)?;
+                if !same_prior(tx)? {
+                    return Err(Error::conflict("LDAP snapshot advanced concurrently; resume the latest cursor"));
+                }
+                tx.put(LDAP_SNAPSHOTS, &key, &draft)?;
+                Ok(draft.progress(directory, restarted))
+            });
+        }
+        let snapshot = draft.into_snapshot();
         let (changes, impact) = self.store.preview(|tx| {
+            self.directory_snapshot_actor(tx, token, id, directory, &actor.id, revision,
+                &fingerprint, &authority_digest)?;
             let impact = removal_impact(tx, id, &snapshot.users)?;
             Ok((reconcile(tx, &actor, id, directory, &snapshot)?, impact))
         })?;
         self.store.write(|tx| {
-            let current_actor =
-                self.management(tx, token, "directory.sync", &format!("directory/{id}"))?;
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
-                return Err(Error::conflict(
-                    "Local configuration changed during LDAP search",
-                ));
+            let current_actor = self.directory_snapshot_actor(tx, token, id, directory,
+                &actor.id, revision, &fingerprint, &authority_digest)?;
+            if !same_prior(tx)? {
+                return Err(Error::conflict("LDAP snapshot advanced concurrently; resume the latest cursor"));
             }
             let plans = tx.list::<Plan>("directory_plans")?;
             if plans
@@ -680,6 +788,9 @@ impl Core {
             plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
             plan.review
                 .validate(tx, &current_actor, &plan_content(&plan)?)?;
+            if serde_json::to_vec(&plan).map_err(Error::internal)?.len() > LDAP_PLAN_BYTES {
+                return Err(Error::bad("LDAP plan exceeds the serialized size limit"));
+            }
             if supersede {
                 for (old_id, old) in plans {
                     if old.actor == actor.id && old.directory == id && !old.applied {
@@ -688,6 +799,9 @@ impl Core {
                 }
             }
             tx.put("directory_plans", &plan.id, &plan)?;
+            if prior.is_some() {
+                tx.delete(LDAP_SNAPSHOTS, &key)?;
+            }
             crate::delegation::audit_scoped(
                 tx,
                 &actor,

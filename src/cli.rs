@@ -1525,7 +1525,15 @@ pub async fn run(cli: Cli) -> Result<()> {
             DirectoryCommand::List=>remote.call(Method::GET,"/api/directories",None,true).await?,
             DirectoryCommand::Plan{id,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
-                let plan=remote.call(Method::POST,&format!("/api/directories/{}/plan",segment(&id)?),None,true).await?;
+                let path=format!("/api/directories/{}/plan",segment(&id)?);
+                let mut plan=Value::Null;
+                for _ in 0..1024 {
+                    plan=remote.call(Method::POST,&path,None,true).await?;
+                    if plan["decision"]!="snapshot_in_progress" {break;}
+                }
+                if plan["id"].as_str().is_none() {
+                    bail!("LDAP snapshot did not complete within the request quota; retry directory plan to resume");
+                }
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"changes":plan["changes"]})
             },

@@ -268,6 +268,7 @@ impl ApplyGate<'_> {
 
 /// Tracks a complete crawl, independently of the peer's transport/parser. Totals
 /// are exact only when the protocol promises that (LDAP's estimate is not exact).
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Pagination {
     pages: usize,
     items: usize,
