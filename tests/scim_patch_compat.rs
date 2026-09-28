@@ -35,6 +35,46 @@ fn patch(operations: Value) -> Value {
 fn version(value: &Value) -> &str { value["meta"]["version"].as_str().unwrap() }
 
 #[tokio::test]
+async fn full_user_writes_reject_invalid_email_entries_atomically() {
+    let f = Fixture::new();
+    let token = agent(&f, "email-write-agent");
+    let app = riauth::api::router(f.core.clone());
+    let path = "/scim/v2/Users";
+    let valid = json!({"schemas":[scim::USER],"userName":"email-write-user",
+        "emails":[{"value":"first@example.test","type":"work","primary":true,
+                   "extra":"preserve"}]});
+    let invalid_emails = [
+        json!([{"value":"first@example.test"},{"value":"FIRST@example.test"}]),
+        json!([{"value":"first@example.test","type":7}]),
+        json!([{"value":"first@example.test","primary":"true"}]),
+    ];
+    let before_create = f.snapshot().unwrap();
+    for emails in &invalid_emails {
+        let mut input = valid.clone();
+        input["emails"] = emails.clone();
+        let (status, _) = request(&app, Method::POST, path, &token, None, Some(&input)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{emails}");
+        f.assert_http_mutation_snapshot(&before_create);
+    }
+
+    let (status, created) = request(&app, Method::POST, path, &token, None, Some(&valid)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["emails"][0]["extra"], "preserve");
+    let resource_path = format!("{path}/{}", text(&created, "id"));
+    let before_replace = f.snapshot().unwrap();
+    for emails in &invalid_emails {
+        let mut input = valid.clone();
+        input["emails"] = emails.clone();
+        let (status, _) = request(&app, Method::PUT, &resource_path, &token,
+            Some(version(&created)), Some(&input)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{emails}");
+        f.assert_http_mutation_snapshot(&before_replace);
+    }
+    let current = f.core.scim_get(&token, "Users", created["id"].as_str().unwrap()).unwrap();
+    assert_eq!(current, created);
+}
+
+#[tokio::test]
 async fn stored_extra_user_subattributes_survive_roundtrip_and_typed_patch() {
     let f = Fixture::new();
     let token = agent(&f, "compat-user-agent");

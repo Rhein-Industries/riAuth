@@ -1466,6 +1466,11 @@ impl Core {
                     .unwrap_or(&label)
                     .to_owned();
                 validate_display(&display)?;
+                // PATCH validates changed email entries in patch_resource. Full
+                // creates and replacements must enforce the same typed schema.
+                if !patch {
+                    validate_email_entries(&data)?;
+                }
                 let email = read_email(&data)?;
                 let email_changed = user.email != email;
                 if email_changed {
@@ -1704,6 +1709,15 @@ fn validate_email_entries(data: &Value) -> Result<()> {
         let value = email["value"].as_str().ok_or_else(|| Error::bad("Email value missing"))?;
         validate_email(value)?;
         if !seen.insert(value.to_ascii_lowercase()) { return Err(Error::bad("Duplicate email value")); }
+        if let Some(kind) = email.get("type") {
+            let kind = kind.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
+            if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
+                return Err(Error::bad("Invalid email type"));
+            }
+        }
+        if email.get("primary").is_some_and(|primary| !primary.is_boolean()) {
+            return Err(Error::bad("Email primary must be a boolean"));
+        }
     }
     read_email(data)?;
     Ok(())
