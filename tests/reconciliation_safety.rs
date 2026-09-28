@@ -60,6 +60,7 @@ fn schedule(scope: &str) -> Schedule {
         config_fingerprint: "fixture-fingerprint".into(),
         agent_id: "fixture-agent".into(),
         interval_seconds: 3600,
+        enabled: true,
         next_run: now() + 3600,
         last_job: None,
         last_error: None,

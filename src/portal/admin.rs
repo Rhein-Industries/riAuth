@@ -92,6 +92,10 @@ fn cloud_routes() -> Router<App> {
             "/api/admin/cloud-directories/{kind}/{id}/test-connection",
             post(cloud_test_connection),
         )
+        .route(
+            "/api/admin/cloud-directories/{kind}/{id}/schedule",
+            patch(cloud_schedule_update),
+        )
 }
 
 #[cfg(feature = "platform")]
@@ -134,6 +138,21 @@ async fn cloud_test_connection(
     let token = writer(&app, &headers)?;
     app.run_connector(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
         .await
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_schedule_update(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+    Json(input): Json<crate::reconciliation::CloudScheduleUpdate>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.cloud_schedule_update(&token, &kind, &id, input)
+            .map(Json)
+    })
+    .await
 }
 
 #[cfg(feature = "platform")]

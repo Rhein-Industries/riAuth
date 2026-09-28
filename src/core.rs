@@ -1009,6 +1009,7 @@ pub(crate) fn audit_with_details(
         "signing_key.",
         "admin.recover",
         "directory.apply",
+        "reconciliation.schedule.",
         "cloud_directory.apply",
         "certificate.",
         "offboard.",

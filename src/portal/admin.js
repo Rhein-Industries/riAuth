@@ -1541,6 +1541,36 @@
     ], rows, "No Google Workspace or Entra connectors are configured.", (row) => `${row.kind} ${row.id}`);
     return { node: h("div", {}, heading("OPERATIONS", "Connectors", "Review mappings, schedules, local job history and credential file status for each configured directory."), grid.node) };
   }
+  function cloudScheduleForm(row, schedule) {
+    const form = h("form", { class: "admin-form", novalidate: true },
+      check("schedule-enabled", "Enable periodic reconciliation", schedule.enabled,
+        "Disabling cancels queued periodic jobs. A running job may finish, and event jobs remain separate."),
+      field("Interval in seconds", h("input", { id: "schedule-interval", type: "number", min: "60", max: "86400", step: "1", value: schedule.interval_seconds, required: true }),
+        "60–86,400 seconds. A changed interval starts counting from the save time."),
+      actions(h("button", { class: "button primary", type: "submit" }, "Save schedule")));
+    bindForm(form, async (key) => {
+      const interval = Number(value(form, "schedule-interval"));
+      if (!Number.isSafeInteger(interval) || interval < 60 || interval > 86400) throw invalid("Enter an interval from 60 to 86,400 seconds.");
+      await api("PATCH", `admin/cloud-directories/${seg(row.kind)}/${seg(row.id)}/schedule`,
+        { enabled: checked(form, "schedule-enabled"), interval_seconds: interval }, { revision: data.revision, key });
+      await saved("Schedule updated.");
+    }, {}, "Saving schedule…");
+    return form;
+  }
+  function cloudJobOutcome(job) {
+    const outcome = job.outcome || {};
+    if (outcome.state === "pending") return "Pending local run";
+    if (outcome.state === "running") return "Local run in progress";
+    if (outcome.state === "failed") return "Failed; inspect and replan";
+    if (outcome.state === "schedule_disabled") return "Cancelled before dispatch";
+    if (outcome.state === "stale") return "Stale; refresh authority and replan";
+    if (outcome.decision === "awaiting_review") return "Awaiting plan review";
+    if (outcome.delivery === "downstream_queued") return "Downstream delivery queued";
+    if (outcome.delivery === "pending_prior_delivery") return "Awaiting prior delivery";
+    if (outcome.delivery === "local_applied") return "Local changes applied";
+    if (outcome.delivery === "none") return "Local run completed; no delivery";
+    return "Local run completed; inspect plan";
+  }
   function connector(key) {
     const row = data.directories.find((item) => `${item.kind}/${item.id}` === key);
     if (!row) return missing("operations", "Connector");
@@ -1570,9 +1600,10 @@
       { label: "Created", cell: (job) => when(job.created_at) },
       { label: "Origin", cell: (job) => job.origin },
       { label: "State", cell: (job) => badge(job.status, job.status === "completed" ? "ok" : job.status === "failed" || job.status === "stale" ? "warn" : "info") },
+      { label: "Outcome", cell: cloudJobOutcome },
       { label: "Attempts", cell: (job) => job.attempts },
       { label: "Next attempt", cell: (job) => job.next_attempt ? when(job.next_attempt) : "—" },
-      { label: "Next action", cell: (job) => ({ wait_for_attempt: "Wait for retry", wait_for_worker: "Wait for worker", check_downstream_delivery: "Check downstream delivery", inspect_connector_and_replan: "Inspect and replan", refresh_authority_and_replan: "Refresh authority and replan" })[job.next_action] || "Inspect job" },
+      { label: "Next action", cell: (job) => ({ none: "None", wait_for_attempt: "Wait for retry", wait_for_worker: "Wait for worker", review_plan: "Review plan", wait_for_delivery: "Wait for prior delivery", review_local_result: "Review local result", check_downstream_delivery: "Check downstream delivery", inspect_connector_and_replan: "Inspect and replan", refresh_authority_and_replan: "Refresh authority and replan" })[job.next_action] || "Inspect job" },
     ], report.jobs || [], "No local jobs are recorded for this connector.", (job) => `${job.id} ${job.status} ${job.origin}`);
     const test = h("button", { class: "button secondary", type: "button", onclick: async (event) => {
       const button = event.currentTarget;
@@ -1609,11 +1640,16 @@
             h("p", { class: "field-hint" }, credential.state === "file_readable" ? "The configured private file was readable with owner-only permissions. The next token request reads it again." : "Check that the configured private file exists, is bounded and has owner-only permissions."),
             credential.modified_at ? h("p", { class: "field-hint" }, "File last modified: ", when(credential.modified_at)) : null,
             h("p", { class: "field-hint" }, "File status does not verify the credential with the provider. Run Test connection after rotation.")),
-          card("Schedule", report.schedule ? h("dl", { class: "facts" },
-            h("dt", {}, "Cadence"), h("dd", {}, duration(report.schedule.interval_seconds)),
-            h("dt", {}, "Next run"), h("dd", {}, when(report.schedule.next_run)),
-            h("dt", {}, "Last job"), h("dd", {}, report.schedule.last_job || "None"),
-            h("dt", {}, "Last error"), h("dd", {}, report.schedule.has_error ? "Yes; inspect controller and job state" : "None recorded")) : h("p", { class: "field-hint" }, "No schedule is configured for this connector. Configure its reconciliation controller on the server to enable scheduled jobs.")),
+          card("Schedule", report.schedule ? [
+            badge(report.schedule.enabled ? "Enabled" : "Disabled", report.schedule.enabled ? "ok" : "muted"),
+            report.schedule.state === "not_started" ? h("p", { class: "field-hint" }, "The controller is configured. Its first scheduler pass may queue a periodic job.") : null,
+            h("dl", { class: "facts" },
+              h("dt", {}, "Cadence"), h("dd", {}, duration(report.schedule.interval_seconds)),
+              h("dt", {}, "Next run"), h("dd", {}, report.schedule.next_run ? when(report.schedule.next_run) : "Not scheduled"),
+              h("dt", {}, "Last job"), h("dd", {}, report.schedule.last_job || "None"),
+              h("dt", {}, "Last error"), h("dd", {}, report.schedule.has_error ? "Yes; inspect controller and job state" : "None recorded")),
+            cloudScheduleForm(row, report.schedule),
+          ] : h("p", { class: "field-hint" }, "No controller is configured for this connector. Configure its reconciliation controller on the server before setting a schedule.")),
           probe ? card("Connection test", badge(probe.connected ? "Connected" : "Failed", probe.connected ? "ok" : "warn"),
             h("p", { class: "field-hint" }, probe.connected ? "Token acquisition and the first users page succeeded. Group pages, full crawl and apply were not tested." : probe.message || "The connection test failed."),
             probe.checked_at ? h("p", { class: "field-hint" }, "Checked ", when(probe.checked_at)) : null) : null)));

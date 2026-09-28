@@ -151,6 +151,14 @@ pub struct ControllerConfig {
     pub interval_seconds: u64,
 }
 
+#[cfg(feature = "platform")]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloudScheduleUpdate {
+    pub enabled: Option<bool>,
+    pub interval_seconds: Option<u64>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventTrigger {
@@ -175,16 +183,22 @@ pub enum Status {
     Stale,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Schedule {
     pub scope: String,
     pub config_fingerprint: String,
     pub agent_id: String,
     pub interval_seconds: u64,
+    #[serde(default = "schedule_enabled")]
+    pub enabled: bool,
     pub next_run: u64,
     pub last_job: Option<String>,
     pub last_error: Option<String>,
     pub last_outcome: Option<Value>,
+}
+
+fn schedule_enabled() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -407,6 +421,7 @@ fn schedule_for(scope: &str, config: &ControllerConfig, fingerprint: &str, at: u
         config_fingerprint: fingerprint.into(),
         agent_id: config.agent_id.clone(),
         interval_seconds: config.interval_seconds,
+        enabled: true,
         next_run: at,
         last_job: None,
         last_error: None,
@@ -474,6 +489,91 @@ fn ensure_capacity(tx: &Tx<'_>) -> Result<()> {
 }
 
 impl Core {
+    /// Change only the periodic schedule for one configured cloud controller.
+    /// Event jobs and already running work retain their own authority and lease.
+    #[cfg(feature = "platform")]
+    pub fn cloud_schedule_update(
+        &self,
+        token: &str,
+        kind: &str,
+        id: &str,
+        input: CloudScheduleUpdate,
+    ) -> Result<Value> {
+        validate_name(id)?;
+        if !matches!(kind, "workspace" | "entra") {
+            return Err(Error::bad("Unknown cloud directory provider"));
+        }
+        if input.enabled.is_none() && input.interval_seconds.is_none() {
+            return Err(Error::bad("Specify enabled or interval_seconds"));
+        }
+        if input
+            .interval_seconds
+            .is_some_and(|seconds| !(60..=86_400).contains(&seconds))
+        {
+            return Err(Error::bad("Schedule interval_seconds must be 60..86400"));
+        }
+        let scope = format!("{kind}/{id}");
+        let (action, resource) = action_resource(&scope)?;
+        self.store
+            .read(|tx| self.management(tx, token, action, &resource).map(drop))?;
+        self.mutation(token, |tx| {
+            let actor = self.management(tx, token, action, &resource)?;
+            let controller = self
+                .config
+                .reconciliation_controllers
+                .get(&scope)
+                .ok_or_else(|| Error::missing("Reconciliation controller not configured"))?;
+            let current_fingerprint = fingerprint(&self.config, &scope, controller)?;
+            let existing = tx.get::<Schedule>(SCHEDULES, &scope)?;
+            let mut schedule = match existing.as_ref() {
+                Some(saved) if saved.config_fingerprint == current_fingerprint => saved.clone(),
+                Some(saved) => {
+                    let mut refreshed =
+                        schedule_for(&scope, controller, &current_fingerprint, now());
+                    refreshed.enabled = saved.enabled;
+                    refreshed
+                }
+                _ => schedule_for(&scope, controller, &current_fingerprint, now()),
+            };
+            let was_enabled = schedule.enabled;
+            if let Some(seconds) = input.interval_seconds {
+                schedule.interval_seconds = seconds;
+            }
+            if let Some(enabled) = input.enabled {
+                schedule.enabled = enabled;
+            }
+            if !(60..=86_400).contains(&schedule.interval_seconds) {
+                return Err(Error::bad("Schedule interval_seconds must be 60..86400"));
+            }
+            let changed = existing.as_ref() != Some(&schedule);
+            if changed {
+                if !schedule.enabled {
+                    for (_, mut job) in tx.list::<Job>(JOBS)? {
+                        if job.scope == scope
+                            && matches!(job.origin, Origin::Schedule)
+                            && job.status == Status::Queued
+                        {
+                            job.status = Status::Stale;
+                            job.last_error = Some("Schedule disabled before dispatch".into());
+                            tx.put(JOBS, &job.id, &job)?;
+                        }
+                    }
+                }
+                if schedule.enabled && (!was_enabled || input.interval_seconds.is_some()) {
+                    schedule.next_run = now().saturating_add(schedule.interval_seconds);
+                }
+                tx.put(SCHEDULES, &scope, &schedule)?;
+                audit(tx, &actor.id, "reconciliation.schedule.update", &scope)?;
+            }
+            Ok(json!({
+                "scope": scope,
+                "enabled": schedule.enabled,
+                "interval_seconds": schedule.interval_seconds,
+                "next_run": if schedule.enabled { json!(schedule.next_run) } else { Value::Null },
+            }))
+        })
+    }
+
     /// A source event queues one scoped controller job. Only the controller's
     /// configured agent may trigger it; that same live authority is checked at run time.
     pub fn reconciliation_event(
@@ -636,15 +736,20 @@ impl Core {
             for (scope, (config, fingerprint)) in &configurations {
                 let mut schedule = match tx.get::<Schedule>(SCHEDULES, scope)? {
                     Some(existing) if existing.config_fingerprint == *fingerprint => existing,
+                    Some(existing) => {
+                        let mut refreshed = schedule_for(scope, config, fingerprint, at);
+                        refreshed.enabled = existing.enabled;
+                        refreshed
+                    }
                     _ => schedule_for(scope, config, fingerprint, at),
                 };
-                if schedule.next_run <= at {
+                if schedule.enabled && schedule.next_run <= at {
                     let active = tx.list::<Job>(JOBS)?.into_iter().any(|(_, job)| {
                         job.scope == *scope
                             && job.config_fingerprint == *fingerprint
                             && matches!(job.status, Status::Queued | Status::Running)
                     });
-                    schedule.next_run = at.saturating_add(config.interval_seconds);
+                    schedule.next_run = at.saturating_add(schedule.interval_seconds);
                     if !active {
                         match scoped_agent(tx, &self.config, scope, &config.agent_id) {
                             Ok(actor) => {
@@ -682,6 +787,8 @@ impl Core {
                 }
                 if tx.get::<Schedule>(SCHEDULES, scope)?.is_none_or(|stored| {
                     stored.config_fingerprint != schedule.config_fingerprint
+                        || stored.enabled != schedule.enabled
+                        || stored.interval_seconds != schedule.interval_seconds
                         || stored.next_run != schedule.next_run
                         || stored.last_job != schedule.last_job
                         || stored.last_error != schedule.last_error

@@ -558,6 +558,10 @@ fn platform_routes() -> Router<App> {
             post(cloud_test_connection),
         )
         .route(
+            "/api/cloud-directories/{kind}/{id}/schedule",
+            axum::routing::patch(cloud_schedule_update),
+        )
+        .route(
             "/oauth/source-stages/{id}/resume",
             get(source_stage_resume).post(source_stage_resume_post),
         )
@@ -2958,6 +2962,21 @@ async fn cloud_test_connection(
     let token = bearer(&headers)?;
     app.run_connector(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
         .await
+}
+
+#[cfg(feature = "platform")]
+async fn cloud_schedule_update(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+    Json(input): Json<crate::reconciliation::CloudScheduleUpdate>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.cloud_schedule_update(&token, &kind, &id, input)
+            .map(Json)
+    })
+    .await
 }
 #[cfg(feature = "platform")]
 async fn workspace_plan(

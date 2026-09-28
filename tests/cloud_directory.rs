@@ -2822,6 +2822,7 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
                     config_fingerprint: "fingerprint".into(),
                     agent_id: "syncer".into(),
                     interval_seconds: 300,
+                    enabled: true,
                     next_run: 123,
                     last_job: Some("job-1".into()),
                     last_error: Some(SECRET.into()),
@@ -3064,6 +3065,366 @@ async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() 
     assert_eq!(probe["connected"], true);
     assert_redacted(&probe);
     assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cloud_schedule_controls_share_browser_api_authority_and_receipts() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use riauth::reconciliation::{ControllerConfig, Job, Origin, Status};
+    use tower::ServiceExt;
+
+    async fn call(
+        app: &axum::Router,
+        method: &str,
+        path: &str,
+        cookie: Option<&str>,
+        bearer: Option<&str>,
+        origin: Option<&str>,
+        revision: Option<u64>,
+        key: Option<&str>,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder().method(method).uri(path);
+        if let Some(cookie) = cookie {
+            request = request
+                .header("cookie", format!("riauth_sso={cookie}"))
+                .header("x-riauth-portal", "1");
+        }
+        if let Some(bearer) = bearer {
+            request = request.header("authorization", format!("Bearer {bearer}"));
+        }
+        if let Some(origin) = origin {
+            request = request.header("origin", origin);
+        }
+        if let Some(revision) = revision {
+            request = request.header("if-match", format!("\"{revision}\""));
+        }
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        let body = if let Some(body) = body {
+            request = request.header("content-type", "application/json");
+            Body::from(body.to_string())
+        } else {
+            Body::empty()
+        };
+        let response = app
+            .clone()
+            .oneshot(request.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        (status, value)
+    }
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    let controller = agent_token(
+        &fixture,
+        "workspace_controller",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let other = agent_token(
+        &fixture,
+        "other_controller",
+        vec![permission("directory.sync", "entra/other")],
+    );
+    let credential_file = fixture._dir.path().join("controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    fixture.core.config.reconciliation_controllers.insert(
+        "workspace/corp".into(),
+        ControllerConfig {
+            agent_id: "workspace_controller".into(),
+            credential_file,
+            interval_seconds: 3600,
+        },
+    );
+    let sign_in = fixture.core.portal_sign_in().unwrap();
+    fixture
+        .core
+        .portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = sign_in.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let poll = fixture
+        .core
+        .portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    let cookie = poll
+        .cookies
+        .iter()
+        .find(|value| value.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_owned();
+    let origin = Url::parse(&fixture.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let app = riauth::api::router(fixture.core.clone());
+    let browser_path = "/api/admin/cloud-directories/workspace/corp/schedule";
+    let api_path = "/api/cloud-directories/workspace/corp/schedule";
+    let operations_path = "/api/cloud-directories/workspace/corp/operations";
+    let revision = call(
+        &app,
+        "GET",
+        "/api/admin/session",
+        Some(&cookie),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .1["revision"]
+        .as_u64()
+        .unwrap();
+
+    let (status, invalid) = call(
+        &app,
+        "PATCH",
+        browser_path,
+        Some(&cookie),
+        None,
+        Some(&origin),
+        Some(revision),
+        Some("bad-interval"),
+        Some(json!({"interval_seconds":59})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{invalid}");
+    let (status, denied) = call(
+        &app,
+        "PATCH",
+        api_path,
+        None,
+        Some(&other),
+        None,
+        Some(revision),
+        Some("wrong-scope"),
+        Some(json!({"enabled":false})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    let (_, before) = call(
+        &app,
+        "GET",
+        operations_path,
+        None,
+        Some(&fixture.admin),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(before["schedule"]["state"], "not_started");
+
+    let scheduled = Job {
+        id: "pending-scheduled".into(),
+        scope: "workspace/corp".into(),
+        origin: Origin::Schedule,
+        actor: "agent:workspace_controller".into(),
+        config_fingerprint: "fixture".into(),
+        authority: Default::default(),
+        status: Status::Queued,
+        attempts: 0,
+        next_attempt: riauth::crypto::now(),
+        lease_owner: None,
+        lease_until: 0,
+        last_error: None,
+        outcome: None,
+        created_at: riauth::crypto::now(),
+    };
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("reconciliation_jobs", &scheduled.id, &scheduled))
+        .unwrap();
+    let disable = Some(json!({"enabled":false}));
+    let (status, disabled) = call(
+        &app,
+        "PATCH",
+        browser_path,
+        Some(&cookie),
+        None,
+        Some(&origin),
+        Some(revision),
+        Some("disable-schedule"),
+        disable.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{disabled}");
+    assert_eq!(disabled["enabled"], false);
+    let (status, replay) = call(
+        &app,
+        "PATCH",
+        browser_path,
+        Some(&cookie),
+        None,
+        Some(&origin),
+        Some(revision),
+        Some("disable-schedule"),
+        disable,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    assert_eq!(replay, disabled);
+    fixture
+        .core
+        .config
+        .reconciliation_controllers
+        .get_mut("workspace/corp")
+        .unwrap()
+        .interval_seconds = 1800;
+    assert!(!fixture.core.reconciliation_process().unwrap());
+    let app = riauth::api::router(fixture.core.clone());
+    let (_, after_disable) = call(
+        &app,
+        "GET",
+        operations_path,
+        None,
+        Some(&fixture.admin),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(after_disable["schedule"]["state"], "disabled");
+    assert_eq!(after_disable["schedule"]["interval_seconds"], 1800);
+    assert!(after_disable["schedule"]["next_run"].is_null());
+    assert_eq!(
+        after_disable["jobs"][0]["outcome"]["state"],
+        "schedule_disabled"
+    );
+
+    let next_revision = call(
+        &app,
+        "GET",
+        "/api/admin/session",
+        Some(&cookie),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .1["revision"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(next_revision, revision + 1);
+    let (status, enabled) = call(
+        &app,
+        "PATCH",
+        api_path,
+        None,
+        Some(&controller),
+        None,
+        Some(next_revision),
+        Some("enable-schedule"),
+        Some(json!({"enabled":true,"interval_seconds":120})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{enabled}");
+    assert_eq!(enabled["interval_seconds"], 120);
+    assert_eq!(enabled["enabled"], true);
+    assert!(enabled["next_run"].as_u64().unwrap() > riauth::crypto::now());
+
+    let now = riauth::crypto::now();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            for (id, status, error) in [
+                ("pending-event", Status::Queued, None),
+                ("running-event", Status::Running, None),
+                ("failed-event", Status::Failed, Some(SECRET)),
+            ] {
+                let job = Job {
+                    id: id.into(),
+                    scope: "workspace/corp".into(),
+                    origin: Origin::Event,
+                    actor: "agent:workspace_controller".into(),
+                    config_fingerprint: "fixture".into(),
+                    authority: Default::default(),
+                    status,
+                    attempts: 1,
+                    next_attempt: now + 60,
+                    lease_owner: None,
+                    lease_until: 0,
+                    last_error: error.map(str::to_owned),
+                    outcome: Some(json!({"secret":SECRET})),
+                    created_at: now,
+                };
+                tx.put("reconciliation_jobs", id, &job)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let (_, summary) = call(
+        &app,
+        "GET",
+        operations_path,
+        None,
+        Some(&fixture.admin),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(summary["schedule"]["interval_seconds"], 120);
+    for (id, expected) in [
+        ("pending-event", "pending"),
+        ("running-event", "running"),
+        ("failed-event", "failed"),
+    ] {
+        let job = summary["jobs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|job| job["id"] == id)
+            .unwrap();
+        assert_eq!(job["outcome"]["state"], expected);
+        assert_eq!(job["remote_completion_verified"], false);
+    }
+    assert_redacted(&summary);
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+    let audit = fixture.core.audit_events(&fixture.admin, 100).unwrap();
+    assert_eq!(
+        audit
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "reconciliation.schedule.update")
+            .count(),
+        2
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
