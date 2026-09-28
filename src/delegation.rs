@@ -108,6 +108,15 @@ pub(crate) fn mark_credential_exposure(tx: &Tx<'_>, actor: &Principal, user: &Us
     }
 }
 
+/// An invitation's recipient was selected by its inviter. Its verification
+/// flag cannot establish an independent recovery address, including on old
+/// pending rows that predate the exposure marker.
+pub(crate) fn mark_invitation_exposure(tx: &Tx<'_>, actor: &Principal, user: &User) -> Result<()> {
+    let mut unverified = user.clone();
+    unverified.email_verified = false;
+    mark_credential_exposure(tx, actor, &unverified)
+}
+
 pub(crate) fn require_unexposed(tx: &Tx<'_>, user_id: &str) -> Result<()> {
     if credential_exposure(tx, user_id)?.is_some() {
         Err(Error::conflict(

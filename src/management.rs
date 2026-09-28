@@ -1410,6 +1410,11 @@ pub(crate) fn invite_user(
             .ok_or_else(|| Error::conflict("User already exists"))?;
         let reservation = crate::lifecycle::pending_invitation_reservation(tx, &user)?
             .ok_or_else(|| Error::conflict("User already exists"))?;
+        if actor.agent {
+            // The inviter selects the mailbox, so completing its proof does
+            // not independently establish the account owner's identity.
+            crate::delegation::mark_invitation_exposure(tx, actor, &user)?;
+        }
         user.email = Some(input.email);
         user.display_name = input.display_name;
         tx.put("users", &user.id, &user)?;
@@ -1436,6 +1441,9 @@ pub(crate) fn invite_user(
     user.enabled = false;
     tx.put("users", &user.id, &user)?;
     tx.put("usernames", &user.username, &user.id)?;
+    if actor.agent {
+        crate::delegation::mark_invitation_exposure(tx, actor, &user)?;
+    }
     tx.put(
         "invitation_reservations",
         &user.id,
@@ -1480,6 +1488,10 @@ pub(crate) fn accept_invitation(
     groups: &BTreeSet<String>,
 ) -> Result<()> {
     actor.require("user.write", &format!("user/{}", user.username))?;
+    // Also fence invitations issued before agent provenance was recorded.
+    if actor.agent {
+        crate::delegation::mark_invitation_exposure(tx, actor, user)?;
+    }
     for name in groups {
         write_group(
             tx,

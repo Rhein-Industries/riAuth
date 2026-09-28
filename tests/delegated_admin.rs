@@ -12,7 +12,7 @@ use http_body_util::BodyExt;
 use riauth::{
     agent::{NewAgent, Permission},
     delegation::{GrantInput, HumanRole},
-    lifecycle::{MailConfig, MailSecurity, Purpose},
+    lifecycle::{Invitation, MailConfig, MailSecurity, Purpose},
     model::{ClientPatch, NewUser, User, UserPatch},
 };
 use serde_json::{Value, json};
@@ -1196,4 +1196,257 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
         .unwrap()
         .unwrap();
     assert!(exposure["verified_email"].is_null());
+}
+
+#[tokio::test]
+async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary() {
+    let mut f = Fixture::new();
+    f.core.config.mail = Some(MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: MailSecurity::Loopback,
+        username: None,
+        password_file: None,
+    });
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "invite-writer".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: ["invited", "reissued"]
+                    .map(|name| Permission {
+                        action: "user.write".into(),
+                        resource: format!("user/{name}"),
+                    })
+                    .into(),
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(f.core.clone());
+    let (status, invited) = call(
+        &app,
+        "POST",
+        "/api/account/invitations",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({
+            "username": "invited",
+            "email": "agent-invite@example.test",
+            "display_name": "Invited Person",
+            "groups": []
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let invited_id = invited["user"]["id"].as_str().unwrap();
+    let exposure: Value = f
+        .core
+        .store
+        .get("support_credential_exposure", invited_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(exposure["actor_id"], "agent:invite-writer");
+    assert!(exposure["verified_email"].is_null());
+    assert!(f
+        .core
+        .store
+        .list::<Value>("audit")
+        .unwrap()
+        .into_iter()
+        .any(|(_, event)| {
+            event["action"] == "agent.credential_exposure"
+                && event["actor"] == "agent:invite-writer"
+                && event["target"] == invited_id
+                && event["details"]["scope"] == "user/invited"
+        }));
+    let mail = f
+        .core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "agent-invite@example.test")
+        .unwrap();
+    let code = mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap()
+        .to_owned();
+    // The accepted invitation workflow refuses a pending account with a
+    // stale verification flag. A valid older pending account without the
+    // exposure row is marked when its agent creator completes the proof.
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("support_credential_exposure", invited_id)?;
+            let mut pending = tx.get::<User>("users", invited_id)?.unwrap();
+            pending.email_verified = true;
+            tx.put("users", invited_id, &pending)
+        })
+        .unwrap();
+    assert!(f
+        .core
+        .account_complete(
+            code.clone(),
+            Purpose::Invite,
+            Some("agent-known-invite-password".into()),
+        )
+        .is_err());
+    f.core
+        .store
+        .write(|tx| {
+            let mut pending = tx.get::<User>("users", invited_id)?.unwrap();
+            pending.email_verified = false;
+            tx.put("users", invited_id, &pending)
+        })
+        .unwrap();
+    f.core
+        .account_complete(code, Purpose::Invite, Some("agent-known-invite-password".into()))
+        .unwrap();
+    let exposure: Value = f
+        .core
+        .store
+        .get("support_credential_exposure", invited_id)
+        .unwrap()
+        .unwrap();
+    assert!(exposure["verified_email"].is_null());
+    let ordinary = f
+        .core
+        .login("invited".into(), "agent-known-invite-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(f.core.me(&ordinary).unwrap()["user"]["admin"], false);
+    assert_eq!(
+        f.core
+            .update_user(
+                &f.admin,
+                "invited",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "invited",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    let before_reset = f.core.store.list::<Value>("mail_deliveries").unwrap().len();
+    f.core.account_reset_request("invited").unwrap();
+    assert_eq!(
+        f.core.store.list::<Value>("mail_deliveries").unwrap().len(),
+        before_reset,
+        "the agent-selected mailbox must not clear exposure"
+    );
+
+    // Reissuing an administrator's pending invitation to a new mailbox must
+    // also fence the account before the replacement proof is accepted.
+    f.core
+        .account_invite(
+            &f.admin,
+            Invitation {
+                username: "reissued".into(),
+                email: "owner@example.test".into(),
+                display_name: "Pending Person".into(),
+                groups: Default::default(),
+            },
+        )
+        .unwrap();
+    let reissued_id: String = f.core.store.get("usernames", "reissued").unwrap().unwrap();
+    assert!(f
+        .core
+        .store
+        .get::<Value>("support_credential_exposure", &reissued_id)
+        .unwrap()
+        .is_none());
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/account/invitations",
+        Some(&agent),
+        None,
+        Some(revision(&f)),
+        Some(json!({
+            "username": "reissued",
+            "email": "agent-reissue@example.test",
+            "display_name": "Pending Person",
+            "groups": []
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let exposure: Value = f
+        .core
+        .store
+        .get("support_credential_exposure", &reissued_id)
+        .unwrap()
+        .unwrap();
+    assert!(exposure["verified_email"].is_null());
+    let mail = f
+        .core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .map(|(_, delivery)| delivery)
+        .find(|delivery| delivery["recipient"] == "agent-reissue@example.test")
+        .unwrap();
+    let code = mail["body"]
+        .as_str()
+        .unwrap()
+        .lines()
+        .find(|line| line.starts_with("ri_mail_"))
+        .unwrap()
+        .to_owned();
+    f.core
+        .account_complete(code, Purpose::Invite, Some("agent-known-reissue-password".into()))
+        .unwrap();
+    assert_eq!(
+        f.core
+            .update_user(
+                &f.admin,
+                "reissued",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "reissued",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
 }
