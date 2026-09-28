@@ -669,7 +669,15 @@ fn identity(
             .ok_or_else(|| Error::bad("Missing AuthnInstant"))?,
     )?;
     // Every SP request sets ForceAuthn. Source completion cannot turn an old login into a fresh proof.
-    if auth_time + 5 < pending.started_at || auth_time > now() + 30 {
+    // Workflow proofs require authentication at or after their reserved attempt.
+    // Apply that bound at the verifier too, so the ACS cannot report a receipt
+    // as verified only for workflow consumption to reject its AuthnInstant.
+    let earliest = if pending.workflow.is_some() {
+        pending.started_at
+    } else {
+        pending.started_at.saturating_sub(5)
+    };
+    if auth_time < earliest || auth_time > now() + 30 {
         return Err(Error::forbidden());
     }
     let index = auth

@@ -151,6 +151,7 @@ impl Core {
                 attempt: 1,
                 step_started_at: at,
                 source: None,
+                passkey: None,
             };
             let (attempt, authorization_url) =
                 self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
@@ -196,6 +197,7 @@ impl Core {
             let (user, request) = authority(self, tx, &run.record, now())?;
             let pin = request.source.as_ref().ok_or_else(Error::forbidden)?;
             if reservation.step != *step
+                || reservation.passkey.is_some()
                 || reservation.attempt != *attempt
                 || reservation.step_started_at != run.step_started_at
                 || checked.step(step).map(|s| &s.action)

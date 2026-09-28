@@ -1,6 +1,8 @@
-//! Durable, server-owned password and upstream source reauthentication.
+//! Durable, server-owned local credential and upstream source reauthentication.
 
+mod passkey;
 mod source;
+pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
 
 use super::{
@@ -27,6 +29,7 @@ const REQUESTS: &str = "workflow_requests";
 const EVIDENCE: &str = "workflow_evidence";
 const ACTIVE_SESSIONS: &str = "workflow_active_sessions";
 const PASSWORD_WORKFLOW: &str = "essentials-password-sign-in";
+const PASSKEY_WORKFLOW: &str = "essentials-passkey-sign-in";
 const RECEIPT_SECONDS: u64 = 120;
 const RETAIN_FINAL_SECONDS: u64 = 7 * 86_400;
 
@@ -86,6 +89,8 @@ struct InFlight {
     step_started_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<upstream::Attempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    passkey: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -102,10 +107,13 @@ struct RuntimeRun {
 
 impl RuntimeRun {
     fn validated(&self) -> Result<Validated> {
-        // Public entry points accept only the shipped password definition or
+        // Public entry points accept only the shipped password/passkey definitions or
         // the server-defined source path. Revalidate the pinned snapshot
         // on every resume so a changed or corrupt row cannot alter routing.
-        let checked = if self.definition.id.as_str() == PASSWORD_WORKFLOW {
+        let checked = if matches!(
+            self.definition.id.as_str(),
+            PASSWORD_WORKFLOW | PASSKEY_WORKFLOW
+        ) {
             validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
         } else {
             let Some(Action::VerifySource { source }) =
@@ -173,8 +181,8 @@ fn invalid_error(invalid: Invalid) -> Error {
     }
 }
 
-fn password_definition() -> Result<Validated> {
-    let id = Id::new(PASSWORD_WORKFLOW).map_err(Error::internal)?;
+fn local_definition(workflow: &str) -> Result<Validated> {
+    let id = Id::new(workflow).map_err(Error::internal)?;
     let definition = builtin(&id).ok_or_else(|| Error::internal("Missing built-in workflow"))?;
     validate(definition, &Environment::essentials()).map_err(invalid_error)
 }
@@ -448,6 +456,7 @@ fn fail_attempt(
         .step(&step)
         .ok_or_else(|| Error::internal("Unknown workflow step"))?;
     source::discard(tx, run)?;
+    passkey::discard(tx, run)?;
     if run.in_flight.take().is_none() {
         run.executions = run.executions.saturating_add(1);
     }
@@ -474,6 +483,7 @@ fn fail_attempt(
 
 fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     source::discard(tx, run)?;
+    passkey::discard(tx, run)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence {
             if let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)? {
@@ -693,14 +703,19 @@ impl Core {
     /// bearer session. The session pins the account and is rechecked at every
     /// operation; this entry point does not replace the existing sign-in path.
     pub fn workflow_start(&self, token: &str) -> Result<View> {
-        let checked = password_definition()?;
+        self.start_local_workflow(token, &local_definition(PASSWORD_WORKFLOW)?)
+    }
+
+    fn start_local_workflow(&self, token: &str, checked: &Validated) -> Result<View> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
-            if user.password_hash.is_empty()
-                || user.totp_secret.is_some()
-                || tx
-                    .get::<serde_json::Value>("directory_users", &user.id)?
-                    .is_some()
+            if checked.definition().id.as_str() == PASSWORD_WORKFLOW
+                && (user.password_hash.is_empty()
+                    || user.totp_secret.is_some()
+                    || tx
+                        .get::<serde_json::Value>("directory_users", &user.id)?
+                        .is_some())
+                || checked.definition().id.as_str() == PASSKEY_WORKFLOW && !user.has_passkeys
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
@@ -769,7 +784,7 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
-            run.view(&checked)
+            run.view(checked)
         })
     }
 
@@ -842,6 +857,7 @@ impl Core {
                     attempt: *attempt,
                     step_started_at: run.step_started_at,
                     source: None,
+                    passkey: None,
                 };
                 run.in_flight = Some(reservation.clone());
                 run.executions += 1;
@@ -1049,6 +1065,7 @@ mod tests {
                     attempt: 1,
                     step_started_at: run.step_started_at,
                     source: None,
+                    passkey: None,
                 });
                 run.executions = 1;
                 tx.put(RUNS, &id, &run)

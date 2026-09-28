@@ -151,6 +151,252 @@ fn cookie(cookies: &[String], name: &str) -> String {
         .into()
 }
 
+/// Real WebAuthn signatures must remain scoped to one live workflow attempt,
+/// with credential use and W03 completion committed by only one writer.
+#[cfg(feature = "platform")]
+#[test]
+fn workflow_passkey_is_bound_and_consumed_once() {
+    use riauth::workflow::{Outcome, RunState};
+
+    let f = Fixture::new();
+    let (mut authenticator, _) = f.enroll();
+    let login = |username: &str| {
+        text(
+            &f.core
+                .login(username.into(), PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        )
+        .to_owned()
+    };
+    let alice = login("alice");
+    let second = login("alice");
+    f.core
+        .create_user(
+            &alice,
+            NewUser {
+                username: "bob".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Bob".into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+    let bob = login("bob");
+    let sessions = f.core.store.list::<Value>("sessions").unwrap();
+    let mut sign = |options: Value| {
+        authenticator
+            .do_authentication(
+                ORIGIN.parse().unwrap(),
+                serde_json::from_value(options).unwrap(),
+            )
+            .unwrap()
+    };
+
+    let cancelled = f.core.workflow_passkey_start(&alice).unwrap();
+    let challenge = f
+        .core
+        .workflow_passkey_challenge(&alice, &cancelled.id)
+        .unwrap();
+    assert!(
+        serde_json::to_value(&challenge)
+            .unwrap()
+            .get("ceremony")
+            .is_none()
+    );
+    let old_response = sign(challenge.public_key);
+    assert!(
+        f.core
+            .workflow_passkey_challenge(&alice, &cancelled.id)
+            .is_err()
+    );
+    for token in [&bob, &second] {
+        assert!(
+            f.core
+                .workflow_passkey(token, &cancelled.id, old_response.clone())
+                .is_err()
+        );
+    }
+    f.core.workflow_cancel(&alice, &cancelled.id).unwrap();
+    assert!(
+        f.core
+            .store
+            .list::<Value>("passkey_authentication")
+            .unwrap()
+            .is_empty()
+    );
+
+    let run_id = f.core.workflow_passkey_start(&alice).unwrap().id;
+    f.core.workflow_passkey_challenge(&alice, &run_id).unwrap();
+    let retry = f
+        .core
+        .workflow_passkey(&alice, &run_id, old_response)
+        .unwrap();
+    assert!(matches!(retry.state, RunState::Active { attempt: 2, .. }));
+    assert!(
+        f.core
+            .store
+            .list::<Value>("passkey_authentication")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .is_empty()
+    );
+    let challenge = f.core.workflow_passkey_challenge(&alice, &run_id).unwrap();
+    let response = sign(challenge.public_key);
+    let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    let request_id = text(&run["record"], "request");
+    let ceremony_key = digest(text(&run["in_flight"], "passkey"));
+    let credentials = f.core.store.list::<Value>("passkeys").unwrap();
+
+    // Changing authority must not spend the challenge, advance the credential
+    // counter or manufacture evidence. Restoring these fixture rows then lets
+    // the original, still-unconsumed response exercise the success transaction.
+    for (bucket, key, pointer, value) in [
+        (
+            "workflow_requests",
+            request_id,
+            "/id",
+            json!("another-request"),
+        ),
+        (
+            "workflow_requests",
+            request_id,
+            "/expires_at",
+            json!(now() - 1),
+        ),
+        (
+            "workflow_runs",
+            run_id.as_str(),
+            "/record/state/attempt",
+            json!(3),
+        ),
+    ] {
+        let original: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+        let mut changed = original.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &changed))
+            .unwrap();
+        assert!(
+            f.core
+                .workflow_passkey(&alice, &run_id, response.clone())
+                .is_err(),
+            "{bucket}{pointer}"
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>("passkey_authentication", &ceremony_key)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(f.core.store.list::<Value>("passkeys").unwrap(), credentials);
+        assert!(
+            f.core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+        f.core
+            .store
+            .write(|tx| tx.put(bucket, key, &original))
+            .unwrap();
+    }
+    // A passkey proof must satisfy the existing request MFA floor itself.
+    f.core
+        .store
+        .write(|tx| {
+            let mut request: Value = tx.get("workflow_requests", request_id)?.unwrap();
+            request["requires_mfa"] = json!(true);
+            tx.put("workflow_requests", request_id, &request)
+        })
+        .unwrap();
+    let outcomes = std::thread::scope(|scope| {
+        let first = scope.spawn(|| f.core.workflow_passkey(&alice, &run_id, response.clone()));
+        let second = scope.spawn(|| f.core.workflow_passkey(&alice, &run_id, response.clone()));
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+    let finished = outcomes
+        .into_iter()
+        .find_map(std::result::Result::ok)
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    let evidence = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(evidence.len(), 1);
+    let receipt = &evidence[0].1;
+    for field in ["account", "account_epoch", "session", "request", "binding"] {
+        assert_eq!(receipt[field], run["record"][field], "{field}");
+    }
+    assert_eq!(receipt["run"], run_id);
+    assert_eq!(receipt["step"], "passkey");
+    assert_eq!(receipt["attempt"], 2);
+    assert_eq!(receipt["proof"], "passkey");
+    assert_eq!(receipt["consumed"], true);
+    let used_credentials = f.core.store.list::<Value>("passkeys").unwrap();
+    assert!(
+        used_credentials[0].1["counter"].as_u64().unwrap()
+            > credentials[0].1["counter"].as_u64().unwrap()
+    );
+    assert!(f.core.workflow_passkey(&alice, &run_id, response).is_err());
+    assert_eq!(f.core.store.list::<Value>("sessions").unwrap(), sessions);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("browser_logins")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("passkey_authentication")
+            .unwrap()
+            .is_empty()
+    );
+
+    // A signature obtained before account-epoch revocation cannot finish a run.
+    let revoked = f.core.workflow_passkey_start(&alice).unwrap();
+    let challenge = f
+        .core
+        .workflow_passkey_challenge(&alice, &revoked.id)
+        .unwrap();
+    let response = sign(challenge.public_key);
+    let user_id = f.user().id;
+    f.core
+        .store
+        .write(|tx| {
+            let mut user: User = tx.get("users", &user_id)?.unwrap();
+            user.epoch += 1;
+            tx.put("users", &user.id, &user)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_passkey(&alice, &revoked.id, response)
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("workflow_evidence").unwrap(),
+        evidence
+    );
+}
+
 #[test]
 fn enrollment_finish_rechecks_freshness_and_factor_then_spends_ceremony() {
     let f = Fixture::new();

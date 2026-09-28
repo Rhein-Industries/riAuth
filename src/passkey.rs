@@ -73,13 +73,14 @@ struct Authentication {
     expires_at: u64,
     state: Option<PasskeyAuthentication>,
     transaction: Option<String>,
-    /// Browser ceremonies only: `portal`, `oidc:{id}` or `saml:{id}`. The API finish refuses them.
+    /// Bound ceremonies: `portal`, `oidc:{id}`, `saml:{id}` or `workflow:{id}`.
+    /// The standalone API finish refuses them.
     #[serde(default)]
     interaction: Option<String>,
-    /// Digest of the browser binding that started the ceremony.
+    /// Digest of the browser binding or server-owned workflow reservation.
     #[serde(default)]
     binding_hash: Option<String>,
-    /// Portal re-authentication must finish in the session that requested it.
+    /// Reauthentication must finish in the session that requested it.
     #[serde(default)]
     session_id: Option<String>,
     /// Usernameless state; the credential names its user.
@@ -811,49 +812,69 @@ impl Core {
         session_id: Option<String>,
     ) -> Result<Value> {
         self.store.write(|tx| {
-            let webauthn = webauthn(self)?;
-            let mut record = Authentication {
-                user_id: None,
-                epoch: 0,
-                expires_at: now() + 300,
-                state: None,
-                transaction: None,
-                interaction: Some(interaction.into()),
-                binding_hash: Some(binding_hash.into()),
+            self.browser_passkey_start_in(
+                tx,
+                pinned_user,
+                interaction,
+                binding_hash,
                 session_id,
-                discoverable: None,
-            };
-            let challenge = if let Some(uid) = pinned_user {
-                let user = tx
-                    .get::<User>("users", uid)?
-                    .filter(|u| u.enabled)
-                    .ok_or_else(Error::unauthorized)?;
-                let keys = user_keys(tx, &user.id)?;
-                if keys.is_empty() {
-                    return Err(Error::new(
-                        StatusCode::CONFLICT,
-                        "no_passkey",
-                        "This account has no passkey. Sign in with your password.",
-                    ));
-                }
-                let (challenge, state) = webauthn
-                    .start_passkey_authentication(
-                        &keys.iter().map(|c| c.key.clone()).collect::<Vec<_>>(),
-                    )
-                    .map_err(Error::internal)?;
-                (record.user_id, record.epoch, record.state) = (Some(user.id), user.epoch, Some(state));
-                challenge
-            } else {
-                let (challenge, state) = webauthn
-                    .start_discoverable_authentication()
-                    .map_err(Error::internal)?;
-                record.discoverable = Some(state);
-                challenge
-            };
-            let ceremony = crypto::random_token("ri_passkey_auth_");
-            tx.put("passkey_authentication", &digest(&ceremony), &record)?;
-            Ok(json!({"ceremony":ceremony,"public_key":public_request(&challenge),"expires_in":300}))
+                now() + 300,
+            )
         })
+    }
+    /// The workflow executor reserves this existing verifier in its run writer.
+    /// A caller may shorten the ceremony lifetime, never extend it.
+    pub(crate) fn browser_passkey_start_in(
+        &self,
+        tx: &Tx<'_>,
+        pinned_user: Option<&str>,
+        interaction: &str,
+        binding_hash: &str,
+        session_id: Option<String>,
+        expires_at: u64,
+    ) -> Result<Value> {
+        let webauthn = webauthn(self)?;
+        let mut record = Authentication {
+            user_id: None,
+            epoch: 0,
+            expires_at: expires_at.min(now() + 300),
+            state: None,
+            transaction: None,
+            interaction: Some(interaction.into()),
+            binding_hash: Some(binding_hash.into()),
+            session_id,
+            discoverable: None,
+        };
+        let challenge = if let Some(uid) = pinned_user {
+            let user = tx
+                .get::<User>("users", uid)?
+                .filter(|u| u.enabled)
+                .ok_or_else(Error::unauthorized)?;
+            let keys = user_keys(tx, &user.id)?;
+            if keys.is_empty() {
+                return Err(Error::new(
+                    StatusCode::CONFLICT,
+                    "no_passkey",
+                    "This account has no passkey. Sign in with your password.",
+                ));
+            }
+            let (challenge, state) = webauthn
+                .start_passkey_authentication(
+                    &keys.iter().map(|c| c.key.clone()).collect::<Vec<_>>(),
+                )
+                .map_err(Error::internal)?;
+            (record.user_id, record.epoch, record.state) = (Some(user.id), user.epoch, Some(state));
+            challenge
+        } else {
+            let (challenge, state) = webauthn
+                .start_discoverable_authentication()
+                .map_err(Error::internal)?;
+            record.discoverable = Some(state);
+            challenge
+        };
+        let ceremony = crypto::random_token("ri_passkey_auth_");
+        tx.put("passkey_authentication", &digest(&ceremony), &record)?;
+        Ok(json!({"ceremony":ceremony,"public_key":public_request(&challenge),"expires_in":300}))
     }
     /// Verifies a browser passkey ceremony and returns the staged login id. The ceremony is
     /// single use: any failure after it is found still consumes it.
@@ -1014,6 +1035,31 @@ impl Core {
             Ok(json!({"cancelled":true}))
         })
     }
+}
+
+/// Idempotent cleanup for a server-owned workflow reservation. The ordinary
+/// browser cancellation API keeps its existing strict missing-ceremony behavior.
+#[cfg(feature = "platform")]
+pub(crate) fn discard_workflow_ceremony(
+    tx: &Tx<'_>,
+    ceremony: &str,
+    context: BrowserPasskeyContext<'_>,
+) -> Result<()> {
+    let key = digest(ceremony);
+    if let Some(pending) = tx.get::<Authentication>("passkey_authentication", &key)? {
+        if pending.interaction.as_deref() != Some(context.interaction)
+            || pending.user_id.as_deref() != context.pinned_user
+            || pending.session_id.as_deref() != context.session_id
+            || !context
+                .binding
+                .zip(pending.binding_hash.as_deref())
+                .is_some_and(|(binding, hash)| crypto::constant_eq(&digest(binding), hash))
+        {
+            return Err(Error::forbidden());
+        }
+        tx.delete("passkey_authentication", &key)?;
+    }
+    Ok(())
 }
 pub(crate) fn passkey_list_in(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
     Ok(user_keys(tx, user_id)?.iter().map(view).collect())

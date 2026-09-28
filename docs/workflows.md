@@ -2,8 +2,8 @@
 
 Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
-the built-in password reauthentication workflow and an OIDC/SAML source
-reauthentication workflow for a live bearer session. Both use the existing
+the built-in password and passkey reauthentication workflows and an OIDC/SAML source
+reauthentication workflow for a live bearer session. All use the existing
 verifiers and finalize through the W03 store boundary. They do not complete a
 downstream OIDC sign-in transaction or issue a new session. Other built-in
 verifier actions remain unconnected. The existing
@@ -147,12 +147,33 @@ matching historical evidence provenance, bindings and step attempts. An earlier
 receipt may have expired by denial time; its expiry does not make denial into
 authentication success. A spent receipt, expired run, changed account epoch or
 wrong path still fails. Supported completion finalizes the run and consumes
-receipts together through the store boundary. The password and source adapters
+receipts together through the store boundary. The password, passkey and source adapters
 make this operation atomic and recheck live account/session authority, run
 expiry and success-proof freshness inside the writer transaction. This seam does not yet
 model a trusted upstream MFA assertion, so an upstream-authenticated account
 with local TOTP still needs the local factor. W02 must reconcile that rule with
 today's [source stage](../src/source.rs) behavior.
+
+## Local passkey reauthentication
+
+On Platform, `POST /api/workflows/passkey` starts the shipped passkey workflow
+for the exact live bearer session. `POST /api/workflows/{id}/passkey/start`
+reserves the current attempt and returns its `workflow` view and `public_key`
+WebAuthn options. `POST /api/workflows/{id}/passkey` accepts only a `response`
+containing the signed WebAuthn credential. Ceremony references and the binding
+nonce remain server-side. The verifier binding covers the account, epoch,
+session, request, run, definition, step, attempt and step start time.
+
+The existing local passkey verifier checks the challenge, origin, RP ID,
+signature, user verification, current account, live credential and counter.
+Challenge consumption, counter update, removal of its temporary staged login,
+W03 receipt creation and consumption, and W02 finalization share one writer
+transaction. No session is issued or upgraded. Passkey evidence satisfies the
+existing MFA floor, including a request requiring MFA or an account with TOTP.
+Invalid credentials spend the reserved challenge and attempt; cancellation and
+expiry discard that attempt's ceremony. A response from a cancelled run or
+earlier attempt cannot verify a new challenge. The workflow permits three
+attempts of at most five minutes within its ten-minute run limit.
 
 ## Source reauthentication
 
@@ -180,8 +201,10 @@ cannot use workflow-bound logins, and this path issues no session or OAuth code.
 
 This bounded workflow has one source attempt and lasts at most ten minutes.
 Authentication must occur at or after that attempt starts; its proof must be
-at most 120 seconds old at completion. Protocol clock-skew allowances do not extend
-workflow proof freshness or signed assertion expiry. Accounts with local TOTP
+at most 120 seconds old at completion. Workflow SAML validation uses this same
+strict lower bound for `AuthnInstant`; ordinary source logins retain their
+five-second tolerance. Protocol clock-skew allowances do not extend workflow
+proof freshness or signed assertion expiry. Accounts with local TOTP
 and OAuth-only sources remain unavailable on this path. Upstream
 MFA assertions are not converted into local-factor proofs.
 
@@ -216,10 +239,10 @@ not require a revision increase.
 These are not implemented or established by this slice:
 
 * Connecting the remaining verifier actions and existing OIDC/browser sign-in,
-  passkey, lifecycle, consent and embedded source-stage paths. Current W02 endpoints
-  cover password and OIDC/SAML source reauthentication for a live bearer session; each
-  neither consumes an OIDC request nor issues a session. Endpoint parity has not
-  been checked.
+  lifecycle, consent and embedded source-stage paths. Current W02 endpoints
+  cover password, passkey and OIDC/SAML source reauthentication for a live bearer
+  session. They do not consume an OIDC request or issue a session. Endpoint parity
+  has not been checked.
 * An atomic credential-mutation receipt/finalization protocol for enrollment and
   password reset across account epoch E to E+1, including passkey enrollment's
   session revocation. Until then these success outcomes remain blocked. A
@@ -239,7 +262,9 @@ These are not implemented or established by this slice:
 * End-to-end invariant and race tests for the remaining verifier integrations
   and both durable backends. The focused source regression exercises the signed
   OIDC callback, binding and authority changes, rollback on stale evidence, and
-  competing completion writers on the local store. PostgreSQL has not been
-  exercised for this executor slice.
+  competing completion writers on the local store. The focused passkey regression
+  uses signed WebAuthn credentials to exercise session/request/run/attempt
+  isolation, revoked authority, retries and competing completion writers.
+  PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.
