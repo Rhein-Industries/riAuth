@@ -230,6 +230,179 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
     }
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn agent_rotation_replays_one_credential_and_revokes_the_old_one() {
+    use axum::http::StatusCode;
+    use riauth::crypto::digest;
+    use serde_json::json;
+
+    let f = Fixture::new();
+    let owner_session = f.user("owner");
+    let owner_id: String = f.core.store.get("usernames", "owner").unwrap().unwrap();
+    let created = f
+        .core
+        .create_agent(&f.admin, new_agent("rotating-owned", Some("owner")))
+        .unwrap();
+    let old_token = text(&created["credential"], "token");
+    let before: Agent = f
+        .core
+        .store
+        .get("agents", "rotating-owned")
+        .unwrap()
+        .unwrap();
+    let app = riauth::api::router(f.core.clone());
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let at = revision();
+    let path = "/api/agents/rotating-owned/rotate";
+    let invalid = json!({"ttl": 59});
+    let input = json!({"ttl": 7200});
+
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &f.admin,
+        at,
+        "rotate-invalid-ttl",
+        Some(&invalid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &owner_session,
+        at,
+        "owner-cannot-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &old_token,
+        at,
+        "agent-cannot-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(revision(), at);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Agent>("agents", "rotating-owned")
+            .unwrap()
+            .unwrap()
+            .token_hash,
+        before.token_hash
+    );
+
+    let rotate = || {
+        agent_request(
+            &app,
+            "POST",
+            path,
+            &f.admin,
+            at,
+            "rotate-owned-once",
+            Some(&input),
+        )
+    };
+    let (status, rotated) = rotate().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rotated["agent"]["parent_user"], owner_id);
+    assert_eq!(
+        rotated["agent"]["permissions"],
+        created["agent"]["permissions"]
+    );
+    let new_token = text(&rotated["credential"], "token");
+    assert_ne!(new_token, old_token);
+    assert_eq!(revision(), at + 1);
+    assert_eq!(rotate().await, (StatusCode::OK, rotated.clone()));
+    assert_eq!(revision(), at + 1);
+
+    let after: Agent = f
+        .core
+        .store
+        .get("agents", "rotating-owned")
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.parent_user, before.parent_user);
+    assert_eq!(after.permissions, before.permissions);
+    assert_eq!(after.created_at, before.created_at);
+    assert_eq!(after.token_hash, digest(&new_token));
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&old_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&new_token))
+            .unwrap()
+            .as_deref(),
+        Some("rotating-owned")
+    );
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
+
+    let agents = f.core.list_agents(&f.admin).unwrap().to_string();
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert!(!agents.contains(&new_token));
+    assert!(!events.to_string().contains(&new_token));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.rotate"
+                && event["target"] == "rotating-owned"
+                && event["details"]["parent_user"] == owner_id)
+            .count(),
+        1
+    );
+
+    f.core
+        .update_user(
+            &f.admin,
+            "owner",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let disabled_at = revision();
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &f.admin,
+        disabled_at,
+        "disabled-parent-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(revision(), disabled_at);
+    assert_eq!(f.core.me(&new_token).unwrap_err().code, "invalid_token");
+}
+
 #[test]
 fn parent_user_ownership_constrains_agents() {
     let f = Fixture::new();

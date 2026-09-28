@@ -8,9 +8,9 @@
 //! credential handling, dependent revocation, persistence and the direct audit
 //! record are decided here, inside the caller's transaction.
 //!
-//! Applications (OAuth/OIDC/SAML/proxy client records), users, groups and agent
-//! lifecycle writes use this seam. Inbound SCIM User and Group writes reach
-//! their shared writers.
+//! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
+//! this seam. Agent create, rotate and revoke use the writers below. Inbound
+//! SCIM User and Group writes reach their shared writers.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -24,7 +24,7 @@ use crate::identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKET
 #[cfg(feature = "platform")]
 use crate::windows_login::{EnrollDevice, issue_offline, offline_ttl};
 use crate::{
-    agent::{ACTIONS, Agent, NewAgent, Principal},
+    agent::{ACTIONS, Agent, NewAgent, Principal, parent_active},
     config::Config,
     core::{
         Core, audit, ensure_remaining_admin, make_user, revoke_client_grants, user_by_name,
@@ -120,7 +120,7 @@ pub(crate) struct GroupWrite {
 }
 
 /// Validate the permission scope before a receipt can replay, and again at the
-/// write boundary. Agent lifecycle mutations remain human-admin-only.
+/// write boundary. Agent creation remains human-admin-only.
 pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
     validate_name(&input.id)?;
     if let Some(parent) = &input.parent {
@@ -212,6 +212,46 @@ pub(crate) fn create_agent(
     audit(tx, &actor.id, "agent.create", &agent.id)?;
     Ok(
         json!({"agent": agent.view(), "credential": {"issuer": core.config.issuer, "agent_id": agent.id, "token": credential, "expires_at": agent.expires_at}}),
+    )
+}
+
+/// Preserve the agent rotation error before a receipt lookup, and validate
+/// again within the management transaction.
+pub(crate) fn validate_agent_rotation_ttl(ttl: u64) -> Result<()> {
+    if !(60..=2_592_000).contains(&ttl) {
+        return Err(Error::bad("Agent lifetime must be 60 seconds to 30 days"));
+    }
+    Ok(())
+}
+
+/// Replace a live agent's credential without changing its owner or permissions.
+pub(crate) fn rotate_agent(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    id: &str,
+    ttl: u64,
+) -> Result<Value> {
+    let actor = core.admin(tx, token)?;
+    validate_agent_rotation_ttl(ttl)?;
+    let mut agent = tx
+        .get::<Agent>("agents", id)?
+        .filter(|agent| agent.enabled)
+        .ok_or_else(|| Error::missing("Enabled agent not found"))?;
+    // A disabled or deleted parent blocks rotation even if the row was not revoked yet.
+    if !parent_active(tx, &agent)? {
+        return Err(Error::conflict("Agent parent is disabled or deleted"));
+    }
+    tx.delete("agent_tokens", &agent.token_hash)?;
+    let credential = crypto::random_token("ri_agent_");
+    // Parent, id, permissions and creation time stay as created.
+    agent.token_hash = digest(&credential);
+    agent.expires_at = now() + ttl;
+    tx.put("agents", id, &agent)?;
+    tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
+    audit(tx, &actor.id, "agent.rotate", id)?;
+    Ok(
+        json!({"agent": agent.view(), "credential": {"issuer": core.config.issuer, "agent_id": id, "token": credential, "expires_at": agent.expires_at}}),
     )
 }
 

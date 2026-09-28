@@ -1,5 +1,5 @@
 use crate::{
-    core::{Core, audit},
+    core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
     management,
@@ -142,23 +142,11 @@ impl Principal {
 
 impl Core {
     pub fn rotate_agent(&self, token: &str, id: &str, ttl: u64) -> Result<Value> {
-        if !(60..=2_592_000).contains(&ttl) {
-            return Err(Error::bad("Agent lifetime must be 60 seconds to 30 days"));
-        }
+        // Retain the existing validation order before receipt lookup; the
+        // writer repeats it at its transaction boundary.
+        management::validate_agent_rotation_ttl(ttl)?;
         self.mutation(token, |tx| {
-            let actor = self.admin(tx, token)?;
-            let mut agent = tx.get::<Agent>("agents", id)?.filter(|a| a.enabled).ok_or_else(|| Error::missing("Enabled agent not found"))?;
-            // A disabled or deleted parent blocks rotation even if the row was not revoked yet.
-            if !parent_active(tx, &agent)? {
-                return Err(Error::conflict("Agent parent is disabled or deleted"));
-            }
-            tx.delete("agent_tokens", &agent.token_hash)?;
-            let credential = crypto::random_token("ri_agent_");
-            // Parent, id, and permissions stay as created. Only the token and expiry change.
-            agent.token_hash = digest(&credential); agent.expires_at = now() + ttl;
-            tx.put("agents", id, &agent)?; tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
-            audit(tx, &actor.id, "agent.rotate", id)?;
-            Ok(json!({"agent":agent.view(),"credential":{"issuer":self.config.issuer,"agent_id":id,"token":credential,"expires_at":agent.expires_at}}))
+            management::rotate_agent(self, tx, token, id, ttl)
         })
     }
     pub fn principal(&self, tx: &Tx<'_>, token: &str) -> Result<Principal> {
