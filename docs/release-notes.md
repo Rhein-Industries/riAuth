@@ -114,12 +114,16 @@
   change `iss` on another. The preflight reports the binding as a non-blocking
   manual finding. Existing bundles need no new input. Manifests without
   `issuer`, including exports, are not bound.
-- Enabled group bindings on a converted application now become the client's
-  `allowed_groups`, where riAuth can keep their meaning exactly. Each binding
-  is matched to its application through `target`. Policy expressions, user,
-  negated and expiring bindings, groups that are not converted, and several
-  groups in `all` mode block until reviewed. A client that would admit every
-  user its Authentik bindings restricted also blocks.
+- Enabled group and user bindings on a converted application now become the
+  client's access conditions where riAuth keeps their meaning exactly. Each
+  binding is matched to its application through `target`. In `any` mode,
+  groups become `allowed_groups`, or users become the `users` list. In `all`
+  mode, or for a single binding, groups become required groups, a user the
+  `users` list, and negated groups and users become denied ones. Policy
+  expressions, expiring bindings, unconverted groups or accounts, several
+  users in `all` mode, alternatives riAuth cannot combine, and unknown modes
+  block until reviewed. A client that would admit every user its Authentik
+  bindings restricted also blocks.
 
 # Unreleased dependency refresh
 

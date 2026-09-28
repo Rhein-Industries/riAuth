@@ -584,26 +584,44 @@ fn verify_links(
     Ok(carried)
 }
 
-/// Access an application's enabled Authentik bindings grant, kept only where riAuth expresses it
+/// Exported groups and accounts that bindings can name, and whether each is converted.
+struct Directory<'a> {
+    /// Exported group ID -> name.
+    group_names: &'a BTreeMap<String, String>,
+    converted_groups: &'a BTreeSet<String>,
+    /// Exported user ID -> username, and whether the account is converted.
+    accounts: BTreeMap<String, (&'a str, bool)>,
+}
+/// One static binding as the condition it places on a user.
+enum Condition {
+    Group(String),
+    NotGroup(String),
+    User(String),
+    NotUser(String),
+}
+
+/// Access an application's enabled Authentik bindings impose, kept only where riAuth expresses it
 /// exactly. Authentik admits a user when any (in `all` mode, every) enabled binding passes, and
 /// everyone when none is enabled; a group binding passes for members of the group and of every
-/// group below it, which flattened memberships give riAuth's any-of `allowed_groups`. riAuth ANDs
-/// its access conditions, so a binding left out can only narrow access, never broaden it. Returns
-/// the allowed groups and the bindings classified here.
+/// group below it, which flattened memberships give riAuth. riAuth ANDs any-of `allowed_groups`
+/// with the required and denied groups and users of `settings.policy.access`. So `all` mode, or a
+/// single binding, maps each static binding to one condition, while `any` mode keeps only its
+/// positive groups, or else its positive users, as one any-of list. Every other binding blocks
+/// until reviewed. Returns the allowed groups, the merged access rule and the bindings classified.
 fn application_access(
     p: &mut Preflight,
     cid: &str,
     application: &Value,
     bindings: &[Value],
-    group_names: &BTreeMap<String, String>,
-    converted_groups: &BTreeSet<String>,
+    directory: &Directory<'_>,
     resolution: &ClientResolution,
-) -> Result<(BTreeSet<String>, Vec<String>)> {
+) -> Result<(BTreeSet<String>, crate::model::claims::Rule, Vec<String>)> {
+    let mut rule = resolution.settings.policy.access.clone();
     let (mut allowed, mut handled) = (BTreeSet::new(), Vec::new());
     // Bindings target the application's policy binding model.
     let Ok(key) = identifier(&application["pbm_uuid"]).or_else(|_| identifier(&application["pk"]))
     else {
-        return Ok((allowed, handled));
+        return Ok((allowed, rule, handled));
     };
     let mut enabled = Vec::new();
     for binding in bindings {
@@ -620,79 +638,217 @@ fn application_access(
             enabled.push((id, binding));
         }
     }
-    let exact_group = |binding: &Value| {
-        !binding["group"].is_null()
-            && binding["policy"].is_null()
-            && binding["user"].is_null()
-            && binding["negate"] != true
-            && binding["expiring"] != true
-    };
-    let groups = enabled.iter().filter(|(_, b)| exact_group(b)).count();
-    // In `all` mode a single group is one required condition; several are not any-of groups.
-    let combined = match application["policy_engine_mode"].as_str() {
-        Some("any") => Ok(()),
-        Some("all") if groups <= 1 => Ok(()),
-        Some("all") => Err("In all mode a user needs every bound group, which any-of allowed groups cannot express".to_owned()),
-        None if enabled.len() <= 1 => Ok(()),
-        None => Err("The export has no policy_engine_mode, so several bindings cannot be combined".to_owned()),
-        Some(other) => Err(format!("Policy engine mode {other} is not recognized")),
-    };
+    let mut conditions = Vec::new();
     for (id, binding) in &enabled {
-        let reason = if !binding["policy"].is_null() {
-            "Policy bindings are never executed or assumed equivalent".to_owned()
-        } else if !exact_group(binding) {
-            if binding["negate"] == true {
-                "Negated bindings are not converted into allowed groups".to_owned()
-            } else if binding["expiring"] == true {
-                "Expiring bindings are not converted, because an allowed group would outlive the expiry".to_owned()
-            } else {
-                "User bindings are not converted into allowed groups".to_owned()
-            }
-        } else {
+        let negate = binding["negate"] == true;
+        let condition = if !binding["policy"].is_null() {
+            Err("Policy bindings are never executed or assumed equivalent".to_owned())
+        } else if binding["expiring"] == true {
+            Err("Expiring bindings are not converted, because a permanent condition would outlive the expiry".to_owned())
+        } else if !binding["group"].is_null() && binding["user"].is_null() {
             let group = identifier(&binding["group"])?;
-            let name = group_names
+            let name = directory
+                .group_names
                 .get(&group)
                 .ok_or_else(|| Error::bad("Policy binding references an unexported group"))?;
-            if !converted_groups.contains(&group) {
-                format!("Group {name} is not converted, so this restriction cannot be kept")
-            } else if let Err(reason) = &combined {
-                reason.clone()
+            if !directory.converted_groups.contains(&group) {
+                Err(format!(
+                    "Group {name} is not converted, so this condition cannot be kept"
+                ))
+            } else if negate {
+                Ok(Condition::NotGroup(name.clone()))
             } else {
-                allowed.insert(name.clone());
-                p.add(ItemKind::PolicyBinding, id, Classification::Convertible,
-                    format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
-                    "Review the client's converted allowed groups");
-                continue;
+                Ok(Condition::Group(name.clone()))
             }
+        } else if !binding["user"].is_null() && binding["group"].is_null() {
+            let (name, converted) = *directory
+                .accounts
+                .get(&identifier(&binding["user"])?)
+                .ok_or_else(|| Error::bad("Policy binding references an unexported user"))?;
+            if !converted {
+                Err(format!(
+                    "User {name} is not converted, so this condition cannot be kept"
+                ))
+            } else if negate {
+                Ok(Condition::NotUser(name.to_owned()))
+            } else {
+                Ok(Condition::User(name.to_owned()))
+            }
+        } else {
+            Err("The binding names neither exactly one group nor exactly one user".to_owned())
         };
-        let item = p.add(ItemKind::PolicyBinding, id, Classification::Manual, reason,
-            "Translate it into reviewed settings.policy rules and list its ID in translated_binding_ids; converted allowed groups still apply, so access can only narrow");
-        if !resolution.translated_binding_ids.contains(id) {
-            item.block(format!(
-                "{cid}: application binding {id} cannot be converted exactly and needs a reviewed translation"
-            ));
+        conditions.push((id.as_str(), condition));
+    }
+    // Every condition is required in `all` mode and for a single binding; one suffices in `any`.
+    // Authentik admits no one under a mode it does not know, so that never converts.
+    let required = match application["policy_engine_mode"].as_str() {
+        Some(other) if other != "all" && other != "any" => {
+            Err(format!("Policy engine mode {other} is not recognized"))
+        }
+        _ if enabled.len() == 1 => Ok(true),
+        Some("all") => Ok(true),
+        Some("any") => Ok(false),
+        _ => Err(
+            "The export has no policy_engine_mode, so several bindings cannot be combined"
+                .to_owned(),
+        ),
+    };
+    let count = |pick: fn(&Condition) -> Option<&String>| {
+        conditions
+            .iter()
+            .filter_map(|(_, c)| c.as_ref().ok().and_then(pick))
+            .collect::<BTreeSet<_>>()
+            .len()
+    };
+    let users = count(|c| match c {
+        Condition::User(name) => Some(name),
+        _ => None,
+    });
+    let groups = count(|c| match c {
+        Condition::Group(name) => Some(name),
+        _ => None,
+    });
+    let mut converted_users = BTreeSet::new();
+    let mut outcomes = Vec::new();
+    for (id, condition) in conditions {
+        let outcome = match (condition, &required) {
+            (Err(reason), _) => Err(reason),
+            (Ok(_), Err(reason)) => Err(reason.clone()),
+            // A lone required group keeps the any-of `allowed_groups` of a single binding.
+            (Ok(Condition::Group(name)), Ok(true)) if enabled.len() == 1 => Ok((
+                format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
+                Condition::Group(name),
+                false,
+            )),
+            (Ok(Condition::Group(name)), Ok(true)) => Ok((
+                format!("The group binding becomes required group {name} in settings.policy.access.all_groups; members of it and of every group below it pass, as in Authentik"),
+                Condition::Group(name),
+                true,
+            )),
+            (Ok(Condition::NotGroup(name)), Ok(true)) => Ok((
+                format!("The negated group binding becomes denied group {name} in settings.policy.access.denied_groups; members of it and of every group below it are refused, as in Authentik"),
+                Condition::NotGroup(name),
+                true,
+            )),
+            (Ok(Condition::User(_)), Ok(true)) if users > 1 => Err(
+                "In all mode a user must be every bound user at once, which riAuth cannot express"
+                    .to_owned(),
+            ),
+            (Ok(Condition::User(name)), Ok(true)) => Ok((
+                format!("The user binding admits only {name} through settings.policy.access.users, as in Authentik"),
+                Condition::User(name),
+                true,
+            )),
+            (Ok(Condition::NotUser(name)), Ok(true)) => Ok((
+                format!("The negated user binding refuses {name} through settings.policy.access.denied_users, as in Authentik"),
+                Condition::NotUser(name),
+                true,
+            )),
+            // In `any` mode one any-of list survives: the groups, or else the users.
+            (Ok(Condition::Group(name)), Ok(false)) => Ok((
+                format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
+                Condition::Group(name),
+                false,
+            )),
+            (Ok(Condition::User(name)), Ok(false)) if groups == 0 => Ok((
+                format!("The user binding admits {name} as one of the users in settings.policy.access.users, as in Authentik"),
+                Condition::User(name),
+                false,
+            )),
+            (Ok(_), Ok(false)) => Err(
+                "In any mode this binding is an alternative riAuth cannot combine with the converted ones"
+                    .to_owned(),
+            ),
+        };
+        if let Ok((_, Condition::User(name), _)) = &outcome {
+            converted_users.insert(name.clone());
+        }
+        outcomes.push((id, outcome));
+    }
+    // riAuth keeps one users allow-list, so reviewed and converted lists must both hold.
+    let admitted = if rule.users.is_empty() {
+        converted_users.clone()
+    } else if converted_users.is_empty() {
+        rule.users.clone()
+    } else {
+        rule.users.intersection(&converted_users).cloned().collect()
+    };
+    for (id, outcome) in outcomes {
+        let outcome = match outcome {
+            Ok((_, Condition::User(name), _)) if !admitted.contains(&name) => Err(format!(
+                "The reviewed settings.policy.access.users does not admit {name}, and riAuth keeps only the users both lists admit"
+            )),
+            outcome => outcome,
+        };
+        match outcome {
+            Ok((reason, condition, required_group)) => {
+                match condition {
+                    Condition::Group(name) if required_group => {
+                        rule.all_groups.insert(name);
+                    }
+                    Condition::Group(name) => {
+                        allowed.insert(name);
+                    }
+                    Condition::NotGroup(name) => {
+                        rule.denied_groups.insert(name);
+                    }
+                    Condition::User(_) => {}
+                    Condition::NotUser(name) => {
+                        rule.denied_users.insert(name);
+                    }
+                }
+                p.add(
+                    ItemKind::PolicyBinding,
+                    id,
+                    Classification::Convertible,
+                    reason,
+                    "Review the client's converted access conditions",
+                );
+            }
+            Err(reason) => {
+                let item = p.add(ItemKind::PolicyBinding, id, Classification::Manual, reason,
+                    if matches!(required, Ok(false)) {
+                        "Translate it into reviewed settings.policy rules and list its ID in translated_binding_ids; in any mode leaving it out narrows access to the converted alternatives"
+                    } else {
+                        "Translate it exactly into reviewed settings.policy rules and list its ID in translated_binding_ids; leaving a required condition out would admit users Authentik refused"
+                    });
+                if !resolution.translated_binding_ids.contains(id) {
+                    item.block(format!(
+                        "{cid}: application binding {id} cannot be converted exactly and needs a reviewed translation"
+                    ));
+                }
+            }
         }
     }
+    // An empty list admits everyone, so lists with nothing in common keep the reviewed one.
+    if !admitted.is_empty() {
+        rule.users = admitted;
+    }
     // Authentik restricted the application, so a client that admits everyone would broaden access.
-    let access = &resolution.settings.policy.access;
     if !enabled.is_empty()
         && allowed.is_empty()
         && [
-            &access.all_groups,
-            &access.any_groups,
-            &access.denied_groups,
-            &access.users,
-            &access.denied_users,
+            &rule.all_groups,
+            &rule.any_groups,
+            &rule.denied_groups,
+            &rule.users,
+            &rule.denied_users,
         ]
         .iter()
         .all(|set| set.is_empty())
+        // Reviewed conditional predicates can only narrow access, so they also restrict it.
+        && resolution
+            .settings
+            .policy
+            .conditional()
+            .is_none_or(|conditional| conditional.access.is_empty())
     {
         p.add(ItemKind::Application, application["slug"].as_str().unwrap_or(cid), Classification::Manual,
             "Authentik admits only users its enabled bindings pass, but the converted client would admit every user",
             "Add the reviewed restriction to settings.policy, or remove bindings that admitted every user in Authentik before the final export")
             .block(format!("{cid}: converted client would admit every user its Authentik bindings restricted"));
     }
-    Ok((allowed, handled))
+    Ok((allowed, rule, handled))
 }
 
 /// Whether relying parties keep the issuer Authentik published for a provider. Authentik derives it
@@ -988,6 +1144,21 @@ pub fn convert(input: Import) -> Result<Value> {
         .keys()
         .map(|id| Ok((id.as_str(), group_ancestors(&parents, id)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
+    let accounts = accounts(&mut p, users)?;
+    let directory = Directory {
+        group_names: &group_names,
+        converted_groups: &converted_groups,
+        accounts: users
+            .iter()
+            .map(|u| {
+                let username = field(u, "username")?;
+                Ok((
+                    identifier(&u["pk"])?,
+                    (username, accounts.contains_key(username)),
+                ))
+            })
+            .collect::<Result<_>>()?,
+    };
     let mut subject_modes = BTreeMap::new();
     let mut client_issuers = Vec::new();
     let mut exported_subjects = BTreeMap::<String, Vec<String>>::new();
@@ -1102,16 +1273,16 @@ pub fn convert(input: Import) -> Result<Value> {
         let slug = application.and_then(|a| a["slug"].as_str()).unwrap_or(&cid);
         let allowed_groups = match (reviewed, application) {
             (Some(_), Some(application)) => {
-                let (allowed, classified) = application_access(
+                let (allowed, access, classified) = application_access(
                     &mut p,
                     &cid,
                     application,
                     bindings,
-                    &group_names,
-                    &converted_groups,
+                    &directory,
                     resolution,
                 )?;
                 handled_bindings.extend(classified);
+                settings.policy.access = access;
                 allowed
             }
             _ => BTreeSet::new(),
@@ -1489,7 +1660,6 @@ pub fn convert(input: Import) -> Result<Value> {
                 .block(format!("Application {slug} has provisioning providers requiring separate migration"));
         }
     }
-    let accounts = accounts(&mut p, users)?;
     manifest.source_links = verify_links(
         &mut p,
         &input,
