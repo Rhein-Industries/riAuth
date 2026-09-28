@@ -2956,7 +2956,7 @@ async fn cloud_test_connection(
     Path((kind, id)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
+    app.run_connector(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
         .await
 }
 #[cfg(feature = "platform")]
