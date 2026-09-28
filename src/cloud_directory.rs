@@ -13,7 +13,7 @@ use crate::{
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Group, Session, User},
+    model::{Group, User},
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -881,17 +881,17 @@ struct SyncRun {
     window_start: u64,
     attempts: u32,
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Binding {
-    kind: String,
-    directory: String,
-    tenant: String,
-    identity_fingerprint: String,
-    external_id: String,
-    user_id: String,
-    groups: BTreeSet<String>,
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct Binding {
+    pub(crate) kind: String,
+    pub(crate) directory: String,
+    pub(crate) tenant: String,
+    pub(crate) identity_fingerprint: String,
+    pub(crate) external_id: String,
+    pub(crate) user_id: String,
+    pub(crate) groups: BTreeSet<String>,
 }
-fn binding_key(kind: &str, directory: &str, external_id: &str) -> String {
+pub(crate) fn binding_key(kind: &str, directory: &str, external_id: &str) -> String {
     digest(&format!("{kind}\0{directory}\0{external_id}"))
 }
 
@@ -933,7 +933,6 @@ fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Resul
 }
 
 fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Result<Vec<Entry>> {
-    let mut linked = BTreeMap::new();
     for (_, binding) in tx.list::<Binding>("cloud_directory_bindings")? {
         if binding.kind == settings.kind && binding.directory == settings.id {
             if binding.identity_fingerprint != settings.identity_fingerprint {
@@ -941,24 +940,19 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
                     "Cloud directory identity mapping changed while accounts are linked; use a new directory ID",
                 ));
             }
-            let user = tx
+            let _ = tx
                 .get::<User>("users", &binding.user_id)?
                 .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
-            linked.insert(binding.external_id, user.username);
         }
     }
     let mut entries = Vec::new();
     let mut names = BTreeSet::new();
     for user in users {
-        let username = if let Some(username) = linked.get(&user.external_id) {
-            username.clone()
-        } else {
-            derive_username(
-                &settings.username_prefix,
-                user.email.as_deref(),
-                &user.external_id,
-            )?
-        };
+        let username = derive_username(
+            &settings.username_prefix,
+            user.email.as_deref(),
+            &user.external_id,
+        )?;
         if !names.insert(username.clone()) {
             return Err(Error::conflict(
                 "Cloud directory snapshot contains duplicate usernames",
@@ -975,16 +969,6 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
     }
     entries.sort_by(|left, right| left.external_id.cmp(&right.external_id));
     Ok(entries)
-}
-
-fn revoke_sessions(tx: &Tx<'_>, user: &User) -> Result<()> {
-    for (sid, mut session) in tx.list::<Session>("sessions")? {
-        if session.identity.user_id == user.id && !session.revoked {
-            session.revoked = true;
-            tx.put("sessions", &sid, &session)?;
-        }
-    }
-    crate::logout::queue_user(tx, &user.id)
 }
 
 fn membership(
@@ -1090,16 +1074,16 @@ fn reconcile(
     for entry in snapshot {
         let old = remaining.remove(&entry.external_id);
         actor.require("user.write", &format!("user/{}", entry.username))?;
+        let owner = crate::management::CloudUserOwner {
+            kind: settings.kind,
+            directory: &settings.id,
+            tenant: &settings.tenant,
+            identity_fingerprint: &settings.identity_fingerprint,
+            external_id: &entry.external_id,
+        };
         let mut user = if let Some(binding) = &old {
-            let user = tx
-                .get::<User>("users", &binding.user_id)?
-                .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
-            if user.username != entry.username {
-                return Err(Error::conflict(
-                    "Linked cloud directory username changed; create a new plan",
-                ));
-            }
-            user
+            tx.get::<User>("users", &binding.user_id)?
+                .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?
         } else {
             User {
                 has_passkeys: false,
@@ -1123,36 +1107,13 @@ fn reconcile(
                 recovery_codes: Default::default(),
             }
         };
-        actor.require("user.write", &format!("user/{}", user.username))?;
-        if user.admin {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot manage an administrator",
-            ));
-        }
-        if tx.get::<Value>("directory_users", &user.id)?.is_some() {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot take ownership of an LDAP-linked account",
-            ));
-        }
-        if let Some(link) = tx.get::<Binding>("cloud_directory_users", &user.id)?
-            && (link.kind != settings.kind || link.directory != settings.id)
-        {
-            return Err(Error::conflict(
-                "Account is already linked to a different directory",
-            ));
-        }
-        if tx
-            .get::<String>("usernames", &entry.username)?
-            .is_some_and(|uid| uid != user.id)
-        {
-            return Err(Error::conflict(
-                "Cloud directory username collides with an existing account; accounts are never automatically linked",
-            ));
-        }
         let is_new = old.is_none();
+        let previous = old.as_ref().map(|_| user.clone());
         // The shared group writer validates members against local user rows.
         if is_new {
-            tx.put("users", &user.id, &user)?;
+            crate::management::stage_cloud_user(tx, actor, owner, &user)?;
+        } else {
+            crate::management::check_cloud_user_owner(tx, actor, owner, &user)?;
         }
         let previous_groups = old
             .as_ref()
@@ -1162,6 +1123,7 @@ fn reconcile(
             membership(tx, actor, &user.id, &allow, &previous_groups, &entry.groups)?;
         let email_changed = user.email != entry.email;
         let display_changed = user.display_name != entry.display_name;
+        let username_changed = user.username != entry.username;
         let enabling = !entry.disabled && !user.enabled;
         let disabling = entry.disabled && user.enabled;
         if email_changed {
@@ -1171,25 +1133,35 @@ fn reconcile(
         if display_changed {
             user.display_name = entry.display_name.clone();
         }
+        if username_changed {
+            user.username = entry.username.clone();
+        }
         if disabling {
             user.enabled = false;
         } else if enabling {
             user.enabled = true;
         }
-        let security = !is_new && (email_changed || disabling);
+        let security = !is_new && (username_changed || email_changed || disabling);
         if security {
             user.epoch = user.epoch.saturating_add(1);
         }
-        let changed =
-            is_new || email_changed || display_changed || disabling || enabling || groups_changed;
+        let changed = is_new
+            || username_changed
+            || email_changed
+            || display_changed
+            || disabling
+            || enabling
+            || groups_changed;
         if changed {
-            if is_new {
-                tx.put("usernames", &user.username, &user.id)?;
-            }
-            tx.put("users", &user.id, &user)?;
-            if security {
-                revoke_sessions(tx, &user)?;
-            }
+            crate::management::write_cloud_user(
+                tx,
+                actor,
+                owner,
+                previous.as_ref(),
+                &user,
+                false,
+                security,
+            )?;
             let action = if is_new {
                 "create"
             } else if disabling {
@@ -1197,7 +1169,6 @@ fn reconcile(
             } else {
                 "update"
             };
-            audit(tx, &actor.id, "user.cloud_directory_sync", &user.username)?;
             changes.push(Change {
                 username: user.username.clone(),
                 action: action.into(),
@@ -1230,12 +1201,15 @@ fn reconcile(
         let mut user = tx
             .get::<User>("users", &binding.user_id)?
             .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
-        actor.require("user.write", &format!("user/{}", user.username))?;
-        if user.admin {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot manage an administrator",
-            ));
-        }
+        let owner = crate::management::CloudUserOwner {
+            kind: settings.kind,
+            directory: &settings.id,
+            tenant: &settings.tenant,
+            identity_fingerprint: &settings.identity_fingerprint,
+            external_id: &binding.external_id,
+        };
+        crate::management::check_cloud_user_owner(tx, actor, owner, &user)?;
+        let previous = user.clone();
         let groups_changed = membership(
             tx,
             actor,
@@ -1245,19 +1219,19 @@ fn reconcile(
             &BTreeSet::new(),
         )?;
         if user.enabled || groups_changed {
-            if user.enabled {
-                user.enabled = false;
+            let security = user.enabled;
+            if security {
                 user.epoch = user.epoch.saturating_add(1);
-                tx.put("users", &user.id, &user)?;
-                revoke_sessions(tx, &user)?;
-            } else if groups_changed {
-                tx.put("users", &user.id, &user)?;
             }
-            audit(
+            user.enabled = false;
+            crate::management::write_cloud_user(
                 tx,
-                &actor.id,
-                "user.cloud_directory_disable",
-                &user.username,
+                actor,
+                owner,
+                Some(&previous),
+                &user,
+                true,
+                security,
             )?;
             changes.push(Change {
                 username: user.username.clone(),

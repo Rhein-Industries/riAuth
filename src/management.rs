@@ -13,6 +13,8 @@
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
+#[cfg(feature = "platform")]
+use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
 use crate::{
     agent::Principal,
     core::{
@@ -217,11 +219,136 @@ pub(crate) struct DirectoryUserOwner<'a> {
     pub(crate) external_id: &'a str,
 }
 
+#[cfg(feature = "platform")]
+#[derive(Clone, Copy)]
+pub(crate) struct CloudUserOwner<'a> {
+    pub(crate) kind: &'a str,
+    pub(crate) directory: &'a str,
+    pub(crate) tenant: &'a str,
+    pub(crate) identity_fingerprint: &'a str,
+    pub(crate) external_id: &'a str,
+}
+
 enum UserRecord<'a> {
     Direct(&'a str),
     Plan,
     DirectorySync(DirectoryUserOwner<'a>),
     DirectoryDisable(DirectoryUserOwner<'a>),
+    #[cfg(feature = "platform")]
+    CloudSync(CloudUserOwner<'a>, bool),
+    #[cfg(feature = "platform")]
+    CloudDisable(CloudUserOwner<'a>, bool),
+}
+
+#[cfg(feature = "platform")]
+fn require_cloud_owner(
+    tx: &Tx<'_>,
+    owner: CloudUserOwner<'_>,
+    existing: Option<&User>,
+) -> Result<()> {
+    let key = cloud_binding_key(owner.kind, owner.directory, owner.external_id);
+    let binding = tx.get::<CloudBinding>("cloud_directory_bindings", &key)?;
+    match existing {
+        Some(user) => {
+            let binding = binding.ok_or_else(|| {
+                Error::conflict("Cloud directory owned user is missing its binding")
+            })?;
+            if binding.kind != owner.kind
+                || binding.directory != owner.directory
+                || binding.tenant != owner.tenant
+                || binding.identity_fingerprint != owner.identity_fingerprint
+                || binding.external_id != owner.external_id
+                || binding.user_id != user.id
+                || tx.get::<CloudBinding>("cloud_directory_users", &user.id)? != Some(binding)
+            {
+                return Err(Error::conflict(
+                    "Cloud directory user ownership does not match its binding",
+                ));
+            }
+            if tx.get::<Value>("directory_users", &user.id)?.is_some() {
+                return Err(Error::conflict(
+                    "Cloud directory sync cannot take ownership of an LDAP-linked account",
+                ));
+            }
+        }
+        None if binding.is_some() => {
+            return Err(Error::conflict(
+                "Cloud stable identity already has a binding",
+            ));
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn cloud_resource(owner: CloudUserOwner<'_>) -> String {
+    format!("{}/{}", owner.kind, owner.directory)
+}
+
+/// Check ownership and exact authority even for a snapshot that changes no
+/// user fields. The forward and reverse bindings must name the same local ID.
+#[cfg(feature = "platform")]
+pub(crate) fn check_cloud_user_owner(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: CloudUserOwner<'_>,
+    user: &User,
+) -> Result<()> {
+    actor.require("directory.sync", &cloud_resource(owner))?;
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    require_cloud_owner(tx, owner, Some(user))?;
+    if user.admin {
+        return Err(Error::conflict(
+            "Cloud directory sync cannot manage an administrator",
+        ));
+    }
+    if tx.get::<String>("usernames", &user.username)?.as_deref() != Some(user.id.as_str()) {
+        return Err(Error::conflict(
+            "Cloud user identity does not match its index",
+        ));
+    }
+    Ok(())
+}
+
+/// New cloud users are staged for the shared group writer's member check.
+/// The caller's transaction rolls this provisional row back on any failure.
+#[cfg(feature = "platform")]
+pub(crate) fn stage_cloud_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: CloudUserOwner<'_>,
+    user: &User,
+) -> Result<()> {
+    actor.require("directory.sync", &cloud_resource(owner))?;
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    validate_name(&user.username)?;
+    validate_display(&user.display_name)?;
+    if let Some(email) = &user.email {
+        validate_email(email)?;
+    }
+    if user.admin || !user.password_hash.is_empty() {
+        return Err(Error::conflict(
+            "Cloud directory may only create non-administrator accounts",
+        ));
+    }
+    require_cloud_owner(tx, owner, None)?;
+    if tx.get::<String>("usernames", &user.username)?.is_some() {
+        return Err(Error::conflict(
+            "Cloud directory username collides with an existing account; accounts are never automatically linked",
+        ));
+    }
+    if tx.get::<User>("users", &user.id)?.is_some()
+        || tx.get::<Value>("directory_users", &user.id)?.is_some()
+        || tx
+            .get::<Value>("cloud_directory_users", &user.id)?
+            .is_some()
+    {
+        return Err(Error::conflict(
+            "Cloud user ID already belongs to another account",
+        ));
+    }
+    tx.put("users", &user.id, user)
 }
 
 fn require_directory_owner(
@@ -323,11 +450,10 @@ pub(crate) fn stage_directory_user(
     tx.put("users", &user.id, user)
 }
 
-/// Persist a prepared user from direct, desired-state or LDAP import. Direct
-/// and plan writes bind an immutable username; LDAP may rename only the user
-/// owned by its stable external binding. Every path rechecks exact authority
-/// and the local ID/index before persistence. A plan emits its reconciliation
-/// audit only after `state` verifies the complete reviewed change set.
+/// Persist a prepared user from direct, desired-state, LDAP or cloud import.
+/// Connectors may rename only the user owned by their stable external binding.
+/// Every path rechecks exact authority and the local ID/index before writing.
+/// A plan emits its reconciliation audit after its reviewed change set matches.
 fn write_user_record(
     tx: &Tx<'_>,
     actor: &Principal,
@@ -340,8 +466,23 @@ fn write_user_record(
         UserRecord::DirectorySync(owner) | UserRecord::DirectoryDisable(owner) => Some(*owner),
         _ => None,
     };
+    #[cfg(feature = "platform")]
+    let cloud_owner = match &record {
+        UserRecord::CloudSync(owner, _) | UserRecord::CloudDisable(owner, _) => Some(*owner),
+        _ => None,
+    };
+    #[cfg(not(feature = "platform"))]
+    let cloud_owner: Option<()> = None;
+    #[cfg(feature = "platform")]
+    let cloud_disable = matches!(&record, UserRecord::CloudDisable(_, _));
+    #[cfg(not(feature = "platform"))]
+    let cloud_disable = false;
     if let Some(owner) = directory_owner {
         actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
+    }
+    #[cfg(feature = "platform")]
+    if let Some(owner) = cloud_owner {
+        actor.require("directory.sync", &cloud_resource(owner))?;
     }
     if let Some(previous) = existing {
         actor.require("user.write", &format!("user/{}", previous.username))?;
@@ -371,12 +512,46 @@ fn write_user_record(
             ));
         }
     }
+    #[cfg(feature = "platform")]
+    if let Some(owner) = cloud_owner {
+        validate_name(&user.username)?;
+        validate_display(&user.display_name)?;
+        if let Some(email) = &user.email {
+            validate_email(email)?;
+        }
+        if user.admin || existing.is_some_and(|previous| previous.admin) {
+            return Err(Error::conflict(
+                "Cloud directory sync cannot manage an administrator",
+            ));
+        }
+        require_cloud_owner(tx, owner, existing)?;
+        let revoke = matches!(
+            &record,
+            UserRecord::CloudSync(_, true) | UserRecord::CloudDisable(_, true)
+        );
+        if let Some(previous) = existing {
+            let sensitive = previous.username != user.username
+                || previous.email != user.email
+                || previous.enabled && !user.enabled;
+            if sensitive != revoke || user.epoch != previous.epoch.saturating_add(u64::from(revoke))
+            {
+                return Err(Error::conflict(
+                    "Cloud user security change must revoke prior sessions",
+                ));
+            }
+        } else if revoke {
+            return Err(Error::conflict(
+                "New cloud user cannot revoke prior sessions",
+            ));
+        }
+    }
     match (existing, directory_owner) {
         (Some(previous), owner) => {
             if previous.id != user.id
-                || owner.is_none() && previous.username != user.username
+                || owner.is_none() && cloud_owner.is_none() && previous.username != user.username
                 || matches!(&record, UserRecord::DirectoryDisable(_))
                     && previous.username != user.username
+                || cloud_disable && previous.username != user.username
             {
                 return Err(Error::conflict("User identity is immutable"));
             }
@@ -390,13 +565,13 @@ fn write_user_record(
             {
                 return Err(Error::conflict("User identity does not match its index"));
             }
-            if owner.is_some()
+            if (owner.is_some() || cloud_owner.is_some())
                 && tx
                     .get::<String>("usernames", &user.username)?
                     .is_some_and(|id| id != user.id)
             {
                 return Err(Error::conflict(
-                    "LDAP username collides with an existing account; accounts are never automatically linked",
+                    "Directory username collides with an existing account; accounts are never automatically linked",
                 ));
             }
         }
@@ -414,13 +589,27 @@ fn write_user_record(
             }
         }
         (None, None) => {
-            if tx.get::<String>("usernames", &user.username)?.is_some() {
-                return Err(Error::conflict("Username already exists"));
-            }
-            if tx.get::<User>("users", &user.id)?.is_some() {
-                return Err(Error::conflict(
-                    "User ID already belongs to another identity",
-                ));
+            if cloud_owner.is_some() {
+                if tx.get::<String>("usernames", &user.username)?.is_some() {
+                    return Err(Error::conflict(
+                        "Cloud directory username collides with an existing account; accounts are never automatically linked",
+                    ));
+                }
+                if tx
+                    .get::<User>("users", &user.id)?
+                    .is_none_or(|staged| staged.username != user.username)
+                {
+                    return Err(Error::conflict("Cloud staged user identity changed"));
+                }
+            } else {
+                if tx.get::<String>("usernames", &user.username)?.is_some() {
+                    return Err(Error::conflict("Username already exists"));
+                }
+                if tx.get::<User>("users", &user.id)?.is_some() {
+                    return Err(Error::conflict(
+                        "User ID already belongs to another identity",
+                    ));
+                }
             }
         }
     }
@@ -440,11 +629,37 @@ fn write_user_record(
             crate::logout::queue_user(tx, &user.id)?;
         }
     }
+    #[cfg(feature = "platform")]
+    if let Some(previous) =
+        existing.filter(|previous| cloud_owner.is_some() && previous.username != user.username)
+    {
+        tx.delete("usernames", &previous.username)?;
+    }
     tx.put("users", &user.id, user)?;
-    if existing.is_none() || matches!(&record, UserRecord::Plan | UserRecord::DirectorySync(_)) {
+    if existing.is_none()
+        || matches!(&record, UserRecord::Plan | UserRecord::DirectorySync(_))
+        || cloud_owner.is_some()
+            && existing.is_some_and(|previous| previous.username != user.username)
+    {
         tx.put("usernames", &user.username, &user.id)?;
     }
-    if !directory_sync && existing.is_some_and(|previous| previous.epoch != user.epoch) {
+    if !directory_sync
+        && cloud_owner.is_none()
+        && existing.is_some_and(|previous| previous.epoch != user.epoch)
+    {
+        crate::logout::queue_user(tx, &user.id)?;
+    }
+    #[cfg(feature = "platform")]
+    if matches!(
+        &record,
+        UserRecord::CloudSync(_, true) | UserRecord::CloudDisable(_, true)
+    ) {
+        for (sid, mut session) in tx.list::<crate::model::Session>("sessions")? {
+            if session.identity.user_id == user.id && !session.revoked {
+                session.revoked = true;
+                tx.put("sessions", &sid, &session)?;
+            }
+        }
         crate::logout::queue_user(tx, &user.id)?;
     }
     if signal_session_revocation {
@@ -462,6 +677,19 @@ fn write_user_record(
         }
         UserRecord::DirectoryDisable(_) => {
             audit(tx, &actor.id, "user.directory_disable", &user.username)?;
+        }
+        #[cfg(feature = "platform")]
+        UserRecord::CloudSync(_, _) => {
+            audit(tx, &actor.id, "user.cloud_directory_sync", &user.username)?;
+        }
+        #[cfg(feature = "platform")]
+        UserRecord::CloudDisable(_, _) => {
+            audit(
+                tx,
+                &actor.id,
+                "user.cloud_directory_disable",
+                &user.username,
+            )?;
         }
         UserRecord::Plan => {}
     }
@@ -485,6 +713,29 @@ pub(crate) fn write_directory_user(
         UserRecord::DirectoryDisable(owner)
     } else {
         UserRecord::DirectorySync(owner)
+    };
+    write_user_record(tx, actor, existing, user, record, false)
+}
+
+#[cfg(feature = "platform")]
+pub(crate) fn write_cloud_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: CloudUserOwner<'_>,
+    existing: Option<&User>,
+    user: &User,
+    missing: bool,
+    revoke_sessions: bool,
+) -> Result<()> {
+    if missing && (existing.is_none() || user.enabled) {
+        return Err(Error::conflict(
+            "Cloud user write intent does not match account state",
+        ));
+    }
+    let record = if missing {
+        UserRecord::CloudDisable(owner, revoke_sessions)
+    } else {
+        UserRecord::CloudSync(owner, revoke_sessions)
     };
     write_user_record(tx, actor, existing, user, record, false)
 }

@@ -863,15 +863,17 @@ fn exercise(kind: &'static str) {
         .cloud_apply(&fixture.admin, kind, renamed["id"].as_str().unwrap())
         .unwrap();
     let users = users_of(&fixture);
-    let alice = user_named(&users, "alice").unwrap();
+    let alice = user_named(&users, "alice.moved").unwrap();
     assert_eq!(alice["email"], "alice.moved@example.test");
     assert_eq!(alice["email_verified"], false);
-    assert_eq!(alice["username"], "alice");
+    assert_eq!(alice["username"], "alice.moved");
+    assert_eq!(alice["id"], alice_id);
+    assert!(user_named(&users, "alice").is_none());
     fixture
         .core
         .update_user(
             &fixture.admin,
-            "alice",
+            "alice.moved",
             UserPatch {
                 password: Some(common::PASSWORD.into()),
                 ..Default::default()
@@ -880,7 +882,7 @@ fn exercise(kind: &'static str) {
         .unwrap();
     let session = fixture
         .core
-        .login("alice".into(), common::PASSWORD.into(), None)
+        .login("alice.moved".into(), common::PASSWORD.into(), None)
         .unwrap();
     let token = session["session_token"].as_str().unwrap().to_owned();
     let session_id = fixture.core.me(&token).unwrap()["session_id"]
@@ -900,7 +902,7 @@ fn exercise(kind: &'static str) {
         .unwrap();
     assert!(fixture.core.me(&token).is_err());
     let users = users_of(&fixture);
-    let alice = user_named(&users, "alice").unwrap();
+    let alice = user_named(&users, "alice.moved").unwrap();
     assert_eq!(alice["enabled"], false);
     assert_eq!(alice["id"], alice_id);
     let stored: Session = fixture
@@ -920,14 +922,14 @@ fn exercise(kind: &'static str) {
         .cloud_apply(&fixture.admin, kind, restored["id"].as_str().unwrap())
         .unwrap();
     assert_eq!(
-        user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+        user_named(&users_of(&fixture), "alice.moved").unwrap()["enabled"],
         true
     );
     assert!(fixture.core.me(&token).is_err());
     assert!(
         fixture
             .core
-            .login("alice".into(), common::PASSWORD.into(), None)
+            .login("alice.moved".into(), common::PASSWORD.into(), None)
             .is_ok()
     );
 }
@@ -940,6 +942,190 @@ fn workspace_links_membership_suspension_and_redaction() {
 #[test]
 fn entra_links_membership_suspension_and_redaction() {
     exercise("entra");
+}
+
+#[test]
+fn cloud_user_writer_preserves_identity_authority_and_revocation() {
+    for kind in ["workspace", "entra"] {
+        let directory = serve(
+            kind,
+            vec![person("ext-alice", "alice@example.test", "Alice", false)],
+            SECRET,
+        );
+        let mut fixture = Fixture::new();
+        configure(&mut fixture, kind, "corp", &directory, "");
+        fixture.core.create_group(&fixture.admin, "staff").unwrap();
+        let resource = format!("{kind}/corp");
+        let writer = agent_token(
+            &fixture,
+            "cloud-user-writer",
+            vec![
+                permission("directory.sync", &resource),
+                permission("directory.read", &resource),
+                permission("user.write", "user/alice"),
+                permission("user.write", "user/alice.renamed"),
+            ],
+        );
+        let denied = agent_token(
+            &fixture,
+            "cloud-user-denied",
+            vec![
+                permission("directory.sync", &resource),
+                permission("directory.read", &resource),
+                permission("user.write", "user/bob"),
+            ],
+        );
+        let old_name_only = agent_token(
+            &fixture,
+            "cloud-user-old-name-only",
+            vec![
+                permission("directory.sync", &resource),
+                permission("directory.read", &resource),
+                permission("user.write", "user/alice"),
+            ],
+        );
+
+        let created = fixture.core.cloud_plan(&writer, kind, "corp").unwrap();
+        assert_eq!(created["changes"][0]["action"], "create");
+        let plan_id = created["id"].as_str().unwrap();
+        fixture.core.cloud_apply(&writer, kind, plan_id).unwrap();
+        let first = user_named(&users_of(&fixture), "alice").unwrap().clone();
+        let user_id = first["id"].as_str().unwrap().to_owned();
+        assert_eq!(first["enabled"], true);
+        let user_audits = || {
+            fixture
+                .core
+                .audit_events(&fixture.admin, 1000)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == "user.cloud_directory_sync")
+                .count()
+        };
+        assert_eq!(user_audits(), 1);
+        fixture.core.cloud_apply(&writer, kind, plan_id).unwrap();
+        assert_eq!(user_audits(), 1);
+
+        fixture
+            .core
+            .update_user(
+                &fixture.admin,
+                "alice",
+                UserPatch {
+                    password: Some(common::PASSWORD.into()),
+                    email_verified: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let token = fixture
+            .core
+            .login("alice".into(), common::PASSWORD.into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let session_id = fixture.core.me(&token).unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        {
+            let mut people = directory.state.people.lock().unwrap();
+            people[0].email = "alice.renamed@second.example.test".into();
+            people[0].name = "Alice Updated".into();
+        }
+        let before_denial = user_named(&users_of(&fixture), "alice").unwrap().clone();
+        let audits_before_denial = user_audits();
+        assert_eq!(
+            fixture
+                .core
+                .cloud_plan(&denied, kind, "corp")
+                .unwrap_err()
+                .code,
+            "access_denied"
+        );
+        assert_eq!(
+            user_named(&users_of(&fixture), "alice"),
+            Some(&before_denial)
+        );
+        assert_eq!(user_audits(), audits_before_denial);
+        assert_eq!(
+            fixture
+                .core
+                .cloud_plan(&old_name_only, kind, "corp")
+                .unwrap_err()
+                .code,
+            "access_denied"
+        );
+        assert_eq!(
+            user_named(&users_of(&fixture), "alice"),
+            Some(&before_denial)
+        );
+
+        let updated = fixture.core.cloud_plan(&writer, kind, "corp").unwrap();
+        assert_eq!(updated["changes"][0]["action"], "update");
+        let plan_id = updated["id"].as_str().unwrap();
+        fixture.core.cloud_apply(&writer, kind, plan_id).unwrap();
+        let after_update = user_named(&users_of(&fixture), "alice.renamed")
+            .unwrap()
+            .clone();
+        assert_eq!(after_update["id"], user_id);
+        assert_eq!(after_update["email"], "alice.renamed@second.example.test");
+        assert_eq!(after_update["display_name"], "Alice Updated");
+        assert_eq!(after_update["email_verified"], false);
+        assert!(user_named(&users_of(&fixture), "alice").is_none());
+        assert_eq!(user_audits(), 2);
+        assert!(fixture.core.me(&token).is_err());
+        let stored: Session = fixture
+            .core
+            .store
+            .get("sessions", &session_id)
+            .unwrap()
+            .unwrap();
+        assert!(stored.revoked);
+        fixture.core.cloud_apply(&writer, kind, plan_id).unwrap();
+        assert_eq!(user_audits(), 2);
+
+        let token = fixture
+            .core
+            .login("alice.renamed".into(), common::PASSWORD.into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let session_id = fixture.core.me(&token).unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        directory.state.people.lock().unwrap()[0].disabled = true;
+        let disabled = fixture.core.cloud_plan(&writer, kind, "corp").unwrap();
+        assert_eq!(disabled["changes"][0]["action"], "disable");
+        let plan_id = disabled["id"].as_str().unwrap();
+        fixture
+            .core
+            .cloud_apply_confirmed(&writer, kind, plan_id, Some(plan_id))
+            .unwrap();
+        let after_disable = user_named(&users_of(&fixture), "alice.renamed")
+            .unwrap()
+            .clone();
+        assert_eq!(after_disable["id"], user_id);
+        assert_eq!(after_disable["enabled"], false);
+        assert_eq!(user_audits(), 3);
+        assert!(fixture.core.me(&token).is_err());
+        let stored: Session = fixture
+            .core
+            .store
+            .get("sessions", &session_id)
+            .unwrap()
+            .unwrap();
+        assert!(stored.revoked);
+        fixture
+            .core
+            .cloud_apply_confirmed(&writer, kind, plan_id, Some(plan_id))
+            .unwrap();
+        assert_eq!(user_audits(), 3);
+    }
 }
 
 fn linked_pair(kind: &'static str) -> (Directory, Fixture) {
