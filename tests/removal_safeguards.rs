@@ -20,6 +20,7 @@ use tokio_util::codec::Framed;
 #[derive(Clone, Copy, Debug)]
 enum Mode {
     Full,
+    Renamed,
     Empty,
     EmptyMembers,
     Error,
@@ -79,11 +80,16 @@ async fn peer() -> Peer {
                                 } else {
                                     0
                                 };
+                                let username = if n == 0 && matches!(mode, Mode::Renamed) {
+                                    "renamed0".to_owned()
+                                } else {
+                                    format!("person{n}")
+                                };
                                 let entry = LdapSearchResultEntry {
-                                    dn: format!("uid=person{n},ou=people,dc=test"),
+                                    dn: format!("uid={username},ou=people,dc=test"),
                                     attributes: [
                                         ("entryUUID", format!("stable-{n}")),
-                                        ("uid", format!("person{n}")),
+                                        ("uid", username),
                                         ("cn", format!("Person {n}")),
                                     ]
                                     .into_iter()
@@ -178,6 +184,173 @@ fn canonical(f: &Fixture) -> Value {
         "sessions":tx.list::<Value>("sessions")?,"revision":tx.get::<u64>("meta","revision")?,
         "audit":tx.list::<Value>("audit")?,"plans":tx.list::<Value>("directory_plans")?
     }))).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ldap_user_writes_share_management_seam() {
+    let peer = peer().await;
+    let url = peer.url.clone();
+    let mode = peer.mode.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut f = Fixture::new();
+        configure(&mut f, url);
+        f.user("local");
+        // A local name reserved for the second LDAP entry rejects the whole
+        // preview; the first staged user and its membership roll back.
+        let local_id: String = f.core.store.get("usernames", "local").unwrap().unwrap();
+        let mut occupant = f
+            .core
+            .store
+            .get::<User>("users", &local_id)
+            .unwrap()
+            .unwrap();
+        occupant.id = riauth::crypto::id();
+        occupant.username = "person1".into();
+        f.core
+            .store
+            .write(|tx| {
+                tx.put("users", &occupant.id, &occupant)?;
+                tx.put("usernames", &occupant.username, &occupant.id)
+            })
+            .unwrap();
+        let before_collision = canonical(&f);
+        assert_eq!(
+            f.core.directory_plan(&f.admin, "staff").unwrap_err().code,
+            "conflict"
+        );
+        assert_eq!(canonical(&f), before_collision);
+        f.core
+            .store
+            .write(|tx| {
+                tx.delete("usernames", &occupant.username)?;
+                tx.delete("users", &occupant.id)
+            })
+            .unwrap();
+
+        let plan = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(plan["changes"].as_array().unwrap().len(), 2);
+        let plan_id = text(&plan, "id");
+        let applied = f.core.directory_apply(&f.admin, &plan_id).unwrap();
+        assert_eq!(applied["changes"].as_array().unwrap().len(), 2);
+        let (bindings, by_user) = f
+            .core
+            .store
+            .read(|tx| {
+                Ok((
+                    tx.list::<Value>("directory_bindings")?,
+                    tx.list::<Value>("directory_users")?,
+                ))
+            })
+            .unwrap();
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(by_user.len(), 2);
+        assert_ne!(bindings[0].1["external_id"], bindings[1].1["external_id"]);
+        let visible = f.core.list_users(&f.admin).unwrap();
+        for name in ["person0", "person1"] {
+            let user_id: String = f.core.store.get("usernames", name).unwrap().unwrap();
+            let row = visible
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["username"] == name)
+                .unwrap();
+            assert_eq!(row["id"], user_id);
+            assert_eq!(row["enabled"], true);
+            let binding = by_user.iter().find(|(id, _)| id == &user_id).unwrap();
+            assert_eq!(binding.1["user_id"], user_id);
+            assert_eq!(binding.1["directory"], "staff");
+            assert!(bindings.iter().any(|(_, value)| value == &binding.1));
+        }
+        let original_id: String = f.core.store.get("usernames", "person0").unwrap().unwrap();
+        let session = text(
+            &f.core
+                .login("person0".into(), "fixture-password".into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        assert!(f.core.me(&session).is_ok());
+
+        *mode.lock().unwrap() = Mode::Renamed;
+        let rename = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(rename["changes"].as_array().unwrap().len(), 1);
+        f.core
+            .directory_apply(&f.admin, &text(&rename, "id"))
+            .unwrap();
+        let renamed_id: String = f.core.store.get("usernames", "renamed0").unwrap().unwrap();
+        assert_eq!(renamed_id, original_id);
+        assert!(
+            f.core
+                .store
+                .get::<String>("usernames", "person0")
+                .unwrap()
+                .is_none()
+        );
+        assert!(f.core.me(&session).is_err());
+        let session = text(
+            &f.core
+                .login("renamed0".into(), "fixture-password".into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        assert!(f.core.me(&session).is_ok());
+
+        *mode.lock().unwrap() = Mode::Empty;
+        let disable = f.core.directory_plan(&f.admin, "staff").unwrap();
+        assert_eq!(disable["changes"].as_array().unwrap().len(), 2);
+        let disable_id = text(&disable, "id");
+        let disabled = f
+            .core
+            .directory_apply_confirmed(&f.admin, &disable_id, Some(&disable_id))
+            .unwrap();
+        assert!(f.core.me(&session).is_err());
+        let disabled_users = f.core.list_users(&f.admin).unwrap();
+        for name in ["renamed0", "person1"] {
+            let row = disabled_users
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["username"] == name)
+                .unwrap();
+            assert_eq!(row["enabled"], false);
+        }
+        let disabled_bindings = f.core.store.list::<Value>("directory_users").unwrap();
+        for (id, before) in &by_user {
+            let after = disabled_bindings
+                .iter()
+                .find(|(user_id, _)| user_id == id)
+                .unwrap();
+            assert_eq!(after.1["external_id"], before["external_id"]);
+        }
+        let events = f.core.audit_events(&f.admin, 100).unwrap();
+        let events = events.as_array().unwrap();
+        for (action, expected) in [
+            ("user.directory_sync", 3),
+            ("user.directory_disable", 2),
+            ("directory.apply", 3),
+        ] {
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event["action"] == action)
+                    .count(),
+                expected
+            );
+            assert!(
+                events
+                    .iter()
+                    .filter(|event| event["action"] == action)
+                    .all(|event| event["actor"] == plan["actor"])
+            );
+        }
+        let committed = canonical(&f);
+        assert_eq!(
+            f.core.directory_apply(&f.admin, &disable_id).unwrap(),
+            disabled
+        );
+        assert_eq!(canonical(&f), committed);
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

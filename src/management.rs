@@ -20,6 +20,7 @@ use crate::{
         validate_client, validate_display, validate_email, validate_name,
     },
     crypto::{self, digest, now},
+    directory::{Binding as DirectoryBinding, binding_key as directory_binding_key},
     error::{Error, Result},
     jose::ClientAuthMethod,
     lifecycle::{Invitation, InvitationReservation, Purpose},
@@ -209,36 +210,210 @@ fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result
     Ok(())
 }
 
-/// Persist a prepared user from either the direct or desired-state adapter.
-/// Both paths bind the username and immutable ID at the write boundary and
-/// recheck the exact user scope. A plan emits its reconciliation audit only
-/// after `state` verifies the complete set of changes against the stored plan.
+#[derive(Clone, Copy)]
+pub(crate) struct DirectoryUserOwner<'a> {
+    pub(crate) directory: &'a str,
+    pub(crate) identity_fingerprint: &'a str,
+    pub(crate) external_id: &'a str,
+}
+
+enum UserRecord<'a> {
+    Direct(&'a str),
+    Plan,
+    DirectorySync(DirectoryUserOwner<'a>),
+    DirectoryDisable(DirectoryUserOwner<'a>),
+}
+
+fn require_directory_owner(
+    tx: &Tx<'_>,
+    owner: DirectoryUserOwner<'_>,
+    existing: Option<&User>,
+) -> Result<()> {
+    let key = directory_binding_key(owner.directory, owner.external_id);
+    let binding = tx.get::<DirectoryBinding>("directory_bindings", &key)?;
+    match existing {
+        Some(user) => {
+            let binding =
+                binding.ok_or_else(|| Error::conflict("LDAP owned user is missing its binding"))?;
+            if binding.directory != owner.directory
+                || binding.identity_fingerprint != owner.identity_fingerprint
+                || binding.external_id != owner.external_id
+                || binding.user_id != user.id
+                || tx.get::<DirectoryBinding>("directory_users", &user.id)? != Some(binding)
+            {
+                return Err(Error::conflict(
+                    "LDAP user ownership does not match its binding",
+                ));
+            }
+            if tx
+                .get::<Value>("cloud_directory_users", &user.id)?
+                .is_some()
+            {
+                return Err(Error::conflict(
+                    "LDAP sync cannot take ownership of a cloud-linked account",
+                ));
+            }
+        }
+        None if binding.is_some() => {
+            return Err(Error::conflict(
+                "LDAP stable identity already has a binding",
+            ));
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+/// Recheck a previously imported LDAP identity even when a snapshot produces
+/// no user-record change. The stable binding and reverse lookup must agree.
+pub(crate) fn check_directory_user_owner(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: DirectoryUserOwner<'_>,
+    user: &User,
+) -> Result<()> {
+    actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    require_directory_owner(tx, owner, Some(user))?;
+    if tx.get::<String>("usernames", &user.username)?.as_deref() != Some(user.id.as_str()) {
+        return Err(Error::conflict(
+            "LDAP user identity does not match its index",
+        ));
+    }
+    Ok(())
+}
+
+/// A new LDAP user must exist before the shared group writer can validate its
+/// member ID. This provisional row is only visible in the caller transaction;
+/// the final write and its audit happen after group membership succeeds.
+pub(crate) fn stage_directory_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: DirectoryUserOwner<'_>,
+    user: &User,
+) -> Result<()> {
+    actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    validate_name(&user.username)?;
+    validate_display(&user.display_name)?;
+    if let Some(email) = &user.email {
+        validate_email(email)?;
+    }
+    if user.admin || !user.password_hash.is_empty() {
+        return Err(Error::conflict(
+            "LDAP may only manage non-administrator directory accounts",
+        ));
+    }
+    require_directory_owner(tx, owner, None)?;
+    if tx.get::<String>("usernames", &user.username)?.is_some() {
+        return Err(Error::conflict(
+            "LDAP username collides with an existing account; accounts are never automatically linked",
+        ));
+    }
+    if tx.get::<User>("users", &user.id)?.is_some()
+        || tx.get::<Value>("directory_users", &user.id)?.is_some()
+        || tx
+            .get::<Value>("cloud_directory_users", &user.id)?
+            .is_some()
+    {
+        return Err(Error::conflict(
+            "LDAP user ID already belongs to another account",
+        ));
+    }
+    tx.put("users", &user.id, user)
+}
+
+/// Persist a prepared user from direct, desired-state or LDAP import. Direct
+/// and plan writes bind an immutable username; LDAP may rename only the user
+/// owned by its stable external binding. Every path rechecks exact authority
+/// and the local ID/index before persistence. A plan emits its reconciliation
+/// audit only after `state` verifies the complete reviewed change set.
 fn write_user_record(
     tx: &Tx<'_>,
     actor: &Principal,
     existing: Option<&User>,
     user: &User,
-    record: Record<'_>,
+    record: UserRecord<'_>,
     signal_session_revocation: bool,
 ) -> Result<()> {
+    let directory_owner = match &record {
+        UserRecord::DirectorySync(owner) | UserRecord::DirectoryDisable(owner) => Some(*owner),
+        _ => None,
+    };
+    if let Some(owner) = directory_owner {
+        actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
+    }
+    if let Some(previous) = existing {
+        actor.require("user.write", &format!("user/{}", previous.username))?;
+    }
     actor.require("user.write", &format!("user/{}", user.username))?;
     if actor.agent && (user.admin || existing.is_some_and(|previous| previous.admin)) {
         return Err(Error::forbidden());
     }
-    match existing {
-        Some(previous) => {
-            if previous.id != user.id || previous.username != user.username {
+    if let Some(owner) = directory_owner {
+        validate_name(&user.username)?;
+        validate_display(&user.display_name)?;
+        if let Some(email) = &user.email {
+            validate_email(email)?;
+        }
+        if user.admin
+            || !user.password_hash.is_empty()
+            || existing.is_some_and(|previous| previous.admin || !previous.password_hash.is_empty())
+        {
+            return Err(Error::conflict(
+                "LDAP may only manage non-administrator directory accounts",
+            ));
+        }
+        require_directory_owner(tx, owner, existing)?;
+        if existing.is_some_and(|previous| user.epoch <= previous.epoch) {
+            return Err(Error::conflict(
+                "LDAP user change must revoke prior sessions",
+            ));
+        }
+    }
+    match (existing, directory_owner) {
+        (Some(previous), owner) => {
+            if previous.id != user.id
+                || owner.is_none() && previous.username != user.username
+                || matches!(&record, UserRecord::DirectoryDisable(_))
+                    && previous.username != user.username
+            {
                 return Err(Error::conflict("User identity is immutable"));
             }
-            if tx.get::<String>("usernames", &user.username)?.as_deref() != Some(user.id.as_str())
+            if tx
+                .get::<String>("usernames", &previous.username)?
+                .as_deref()
+                != Some(user.id.as_str())
                 || tx
                     .get::<User>("users", &user.id)?
-                    .is_none_or(|current| current.username != user.username)
+                    .is_none_or(|current| current.username != previous.username)
             {
                 return Err(Error::conflict("User identity does not match its index"));
             }
+            if owner.is_some()
+                && tx
+                    .get::<String>("usernames", &user.username)?
+                    .is_some_and(|id| id != user.id)
+            {
+                return Err(Error::conflict(
+                    "LDAP username collides with an existing account; accounts are never automatically linked",
+                ));
+            }
         }
-        None => {
+        (None, Some(_)) => {
+            if tx.get::<String>("usernames", &user.username)?.is_some() {
+                return Err(Error::conflict(
+                    "LDAP username collides with an existing account; accounts are never automatically linked",
+                ));
+            }
+            if tx
+                .get::<User>("users", &user.id)?
+                .is_none_or(|staged| staged.username != user.username)
+            {
+                return Err(Error::conflict("LDAP staged user identity changed"));
+            }
+        }
+        (None, None) => {
             if tx.get::<String>("usernames", &user.username)?.is_some() {
                 return Err(Error::conflict("Username already exists"));
             }
@@ -258,11 +433,18 @@ fn write_user_record(
             "Passkey-only administrators require two passkeys",
         ));
     }
+    let directory_sync = matches!(&record, UserRecord::DirectorySync(_));
+    if let Some(previous) = existing.filter(|_| directory_sync) {
+        tx.delete("usernames", &previous.username)?;
+        if previous.epoch != user.epoch {
+            crate::logout::queue_user(tx, &user.id)?;
+        }
+    }
     tx.put("users", &user.id, user)?;
-    if existing.is_none() || matches!(&record, Record::Plan) {
+    if existing.is_none() || matches!(&record, UserRecord::Plan | UserRecord::DirectorySync(_)) {
         tx.put("usernames", &user.username, &user.id)?;
     }
-    if existing.is_some_and(|previous| previous.epoch != user.epoch) {
+    if !directory_sync && existing.is_some_and(|previous| previous.epoch != user.epoch) {
         crate::logout::queue_user(tx, &user.id)?;
     }
     if signal_session_revocation {
@@ -273,10 +455,38 @@ fn write_user_record(
             "",
         )?;
     }
-    if let Record::Direct(action) = record {
-        audit(tx, &actor.id, action, &user.id)?;
+    match record {
+        UserRecord::Direct(action) => audit(tx, &actor.id, action, &user.id)?,
+        UserRecord::DirectorySync(_) => {
+            audit(tx, &actor.id, "user.directory_sync", &user.username)?;
+        }
+        UserRecord::DirectoryDisable(_) => {
+            audit(tx, &actor.id, "user.directory_disable", &user.username)?;
+        }
+        UserRecord::Plan => {}
     }
     Ok(())
+}
+
+pub(crate) fn write_directory_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    owner: DirectoryUserOwner<'_>,
+    existing: Option<&User>,
+    user: &User,
+    disable: bool,
+) -> Result<()> {
+    if disable && (existing.is_none() || user.enabled) || !disable && !user.enabled {
+        return Err(Error::conflict(
+            "LDAP user write intent does not match account state",
+        ));
+    }
+    let record = if disable {
+        UserRecord::DirectoryDisable(owner)
+    } else {
+        UserRecord::DirectorySync(owner)
+    };
+    write_user_record(tx, actor, existing, user, record, false)
 }
 
 /// Direct user writes from the API, CLI and browser stay inside the caller's
@@ -300,7 +510,14 @@ pub(crate) fn create_user(
         "",
         &user.password_hash,
     )?;
-    write_user_record(tx, actor, None, &user, Record::Direct("user.create"), false)?;
+    write_user_record(
+        tx,
+        actor,
+        None,
+        &user,
+        UserRecord::Direct("user.create"),
+        false,
+    )?;
     Ok(json!(UserView::from(&user)))
 }
 
@@ -391,7 +608,7 @@ pub(crate) fn update_user(
         actor,
         Some(&previous),
         &user,
-        Record::Direct("user.update"),
+        UserRecord::Direct("user.update"),
         patch.revoke_sessions,
     )?;
     Ok(json!(UserView::from(&user)))
@@ -614,7 +831,7 @@ pub(crate) fn write_desired_user(
     user.admin = spec.admin;
     user.attributes = spec.attributes.clone();
     user.subjects = spec.subjects.clone();
-    write_user_record(tx, actor, existing.as_ref(), &user, Record::Plan, false)?;
+    write_user_record(tx, actor, existing.as_ref(), &user, UserRecord::Plan, false)?;
     Ok(Some(Change {
         resource,
         action: if existing.is_some() {

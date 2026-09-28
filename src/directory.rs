@@ -484,14 +484,14 @@ pub struct Entry {
 struct Snapshot {
     users: Vec<Entry>,
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Binding {
-    directory: String,
-    identity_fingerprint: String,
-    external_id: String,
-    user_id: String,
-    dn: String,
-    groups: BTreeSet<String>,
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct Binding {
+    pub(crate) directory: String,
+    pub(crate) identity_fingerprint: String,
+    pub(crate) external_id: String,
+    pub(crate) user_id: String,
+    pub(crate) dn: String,
+    pub(crate) groups: BTreeSet<String>,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Change {
@@ -520,7 +520,7 @@ struct Attempts {
     start: u64,
     count: u32,
 }
-fn binding_key(directory: &str, external_id: &str) -> String {
+pub(crate) fn binding_key(directory: &str, external_id: &str) -> String {
     digest(&format!("{directory}\0{external_id}"))
 }
 
@@ -956,6 +956,7 @@ fn reconcile(
     snapshot: &Snapshot,
 ) -> Result<Vec<Change>> {
     actor.require("directory.sync", &format!("directory/{id}"))?;
+    let fingerprint = directory.identity_fingerprint();
     let mut remaining: BTreeMap<_, _> = tx
         .list::<Binding>("directory_bindings")?
         .into_iter()
@@ -964,7 +965,7 @@ fn reconcile(
         .collect();
     if remaining
         .values()
-        .any(|b| b.identity_fingerprint != directory.identity_fingerprint())
+        .any(|b| b.identity_fingerprint != fingerprint)
     {
         return Err(Error::conflict(
             "LDAP identity mapping changed while accounts are linked; use a new directory ID",
@@ -974,6 +975,11 @@ fn reconcile(
     for entry in &snapshot.users {
         actor.require("user.write", &format!("user/{}", entry.username))?;
         let old = remaining.remove(&entry.external_id);
+        let owner = crate::management::DirectoryUserOwner {
+            directory: id,
+            identity_fingerprint: &fingerprint,
+            external_id: &entry.external_id,
+        };
         let mut user = if let Some(binding) = &old {
             tx.get::<User>("users", &binding.user_id)?
                 .ok_or_else(|| Error::conflict("LDAP owned user is missing"))?
@@ -1000,6 +1006,7 @@ fn reconcile(
                 recovery_codes: Default::default(),
             }
         };
+        let previous = old.as_ref().map(|_| user.clone());
         actor.require("user.write", &format!("user/{}", user.username))?;
         if user.admin || !user.password_hash.is_empty() {
             return Err(Error::conflict(
@@ -1014,10 +1021,10 @@ fn reconcile(
                 "LDAP username collides with an existing account; accounts are never automatically linked",
             ));
         }
-        // Stage a new user so the shared writer can validate the member ID.
-        // A later failure rolls this row back with the whole reconciliation.
         if old.is_none() {
-            tx.put("users", &user.id, &user)?;
+            crate::management::stage_directory_user(tx, actor, owner, &user)?;
+        } else {
+            crate::management::check_directory_user_owner(tx, actor, owner, &user)?;
         }
         let groups_changed = membership(
             tx,
@@ -1034,9 +1041,7 @@ fn reconcile(
             || groups_changed;
         if changed {
             if old.is_some() {
-                tx.delete("usernames", &user.username)?;
                 user.epoch += 1;
-                crate::logout::queue_user(tx, &user.id)?;
             }
             if user.email != entry.email {
                 user.email_verified = false;
@@ -1045,9 +1050,14 @@ fn reconcile(
             user.email = entry.email.clone();
             user.display_name = entry.display_name.clone();
             user.enabled = true;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            audit(tx, &actor.id, "user.directory_sync", &user.username)?;
+            crate::management::write_directory_user(
+                tx,
+                actor,
+                owner,
+                previous.as_ref(),
+                &user,
+                false,
+            )?;
             changes.push(Change {
                 username: user.username.clone(),
                 action: if old.is_some() { "update" } else { "create" }.into(),
@@ -1056,7 +1066,7 @@ fn reconcile(
         }
         let binding = Binding {
             directory: id.into(),
-            identity_fingerprint: directory.identity_fingerprint(),
+            identity_fingerprint: fingerprint.clone(),
             external_id: entry.external_id.clone(),
             user_id: user.id.clone(),
             dn: entry.dn.clone(),
@@ -1073,18 +1083,30 @@ fn reconcile(
         let mut user = tx
             .get::<User>("users", &binding.user_id)?
             .ok_or_else(|| Error::conflict("LDAP owned user is missing"))?;
+        let owner = crate::management::DirectoryUserOwner {
+            directory: id,
+            identity_fingerprint: &fingerprint,
+            external_id: &binding.external_id,
+        };
+        let previous = user.clone();
         actor.require("user.write", &format!("user/{}", user.username))?;
         if user.admin {
             return Err(Error::conflict("LDAP cannot disable an administrator"));
         }
+        crate::management::check_directory_user_owner(tx, actor, owner, &user)?;
         let groups_changed =
             membership(tx, actor, &user.id, Some(&binding.groups), &BTreeSet::new())?;
         if user.enabled || groups_changed {
             user.enabled = false;
             user.epoch += 1;
-            tx.put("users", &user.id, &user)?;
-            crate::logout::queue_user(tx, &user.id)?;
-            audit(tx, &actor.id, "user.directory_disable", &user.username)?;
+            crate::management::write_directory_user(
+                tx,
+                actor,
+                owner,
+                Some(&previous),
+                &user,
+                true,
+            )?;
             changes.push(Change {
                 username: user.username.clone(),
                 action: "disable".into(),
