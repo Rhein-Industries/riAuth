@@ -19,6 +19,14 @@ pub(super) fn routes() -> Router<App> {
     Router::new()
         .route("/api/workflows/password", post(start))
         .route("/api/workflows/authorization", post(authorization_start))
+        .route(
+            "/api/workflows/authorization/passkey",
+            post(passkey_authorization_start),
+        )
+        .route(
+            "/api/workflows/authorization/sources/{source}",
+            post(source_authorization_start),
+        )
         .route("/api/workflows/passkey", post(passkey_start))
         .route("/api/workflows/sources/{source}", post(source_start))
         .route("/api/workflows/{id}", get(resume))
@@ -173,6 +181,33 @@ async fn authorization_start(
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_authorization_start(&token, request).map(Json))
         .await
+}
+
+async fn passkey_authorization_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(request): Json<crate::oidc::Authorization>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_passkey_authorization_start(&token, request)
+            .map(Json)
+    })
+    .await
+}
+
+async fn source_authorization_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(source): Path<String>,
+    Json(request): Json<crate::oidc::Authorization>,
+) -> Result<Json<SourceStart>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_source_authorization_start(&token, &source, request)
+            .map(Json)
+    })
+    .await
 }
 
 async fn resume(

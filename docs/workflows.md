@@ -4,8 +4,8 @@ Status: **W01 model, W03 proof provenance, and bounded W02 verifier paths.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication for a live bearer session.
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
-verifiers and finalize through the W03 store boundary. The canonical password/MFA
-chain can also complete an explicitly approved downstream OIDC request. No path
+verifiers and finalize through the W03 store boundary. These canonical chains
+can also complete an explicitly approved downstream OIDC request. No path
 issues a new session. Other built-in
 verifier actions remain unconnected. The existing
 sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
@@ -184,11 +184,13 @@ and exhausted recovery denies. Revision-one runs retain their original path.
 On Platform, prepare a terminal authorization with its existing live bearer
 session, review the request, and send the complete `Authorization` JSON, including
 `transaction_id`, `decision: "approve"`, and `prompt: "login"` or `max_age: 0`, to
-`POST /api/workflows/authorization`. This starts the canonical password/MFA
-chain with the authorization already pinned. Requiring request-bound freshness
-also prevents ordinary approval from leaving a reusable transaction before the
-workflow reserves it. It does not attach an older
-reauthentication result or infer consent from password verification.
+`POST /api/workflows/authorization` for the canonical password/MFA chain,
+`POST /api/workflows/authorization/passkey` for a user-verified passkey, or
+`POST /api/workflows/authorization/sources/{source}` for upstream reauthentication.
+Each starts with the authorization already pinned, before any verifier challenge.
+Requiring request-bound freshness also prevents ordinary approval from leaving a
+reusable transaction before the workflow reserves it. It does not attach an older
+reauthentication result or infer consent from verification.
 
 The reservation covers the full OIDC request hash (client, redirect, PKCE, nonce,
 scopes, resource, claims and request references), current client configuration,
@@ -206,14 +208,20 @@ transaction. Policy failure rolls them all back. The final view's
 `authorization_response` holds the existing issuer's callback URL; resuming the
 same owned run returns that response without issuing another code.
 
-The authorization grant gets only this run's verified password/factor assurance
-and password verification time. The stored bearer session is unchanged, so
-workflow success does not open factor-management privileges. This entry point
-requires an account-bound prepared transaction and explicit approval; silent
-requests, account selection and embedded-source clients are rejected. Passkey
-and upstream-source workflow grants, browser integration, and arbitrary
-configured workflow selection remain unconnected. Essentials sign-in and OIDC
-behavior are unchanged.
+The authorization grant gets only this run's verified primary authentication time
+and assurance: `pwd`, `webauthn mfa`, or `federated` with `mfa` only when the
+pinned source verifier trusts that assurance. Local factors add `otp` or
+`recovery_code`. Upstream MFA never skips an enrolled local factor in the source
+workflow. Raw upstream AMR and the bearer's previous assurance are not inherited.
+Source grants retain the exact verified source fingerprint and account link.
+SAML grants additionally require the bearer's existing source, NameID and
+SessionIndex association to match the assertion; new or changed SAML session
+associations remain unsupported. The stored bearer session is unchanged, so
+workflow success does not open factor-management privileges. These entry points
+require an account-bound prepared transaction and explicit approval; silent
+requests, account selection and embedded-source clients are rejected. Browser
+integration and arbitrary configured workflow selection remain unconnected.
+Essentials sign-in and OIDC behavior are unchanged.
 
 ## Local passkey reauthentication
 
@@ -363,16 +371,16 @@ These are not implemented or established by this slice:
 * Connecting the remaining verifier actions and existing OIDC/browser sign-in,
   lifecycle, consent and embedded source-stage paths. Current W02 endpoints
   cover password, passkey and OIDC/SAML source reauthentication for a live bearer
-  session. The password/MFA chain now consumes a prepared terminal OIDC request
-  atomically; passkey/source grants and browser integration remain unconnected.
+  session. Password/MFA, passkey and source/MFA chains consume a prepared terminal
+  OIDC request atomically; browser integration and changing a SAML session's
+  logout association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * An atomic credential-mutation receipt/finalization protocol for enrollment and
   password reset across account epoch E to E+1, including passkey enrollment's
   session revocation. Until then these success outcomes remain blocked. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Arbitrary configured workflows, custom stage execution, trusted upstream MFA
-  assertion adapters, invitation
+* Arbitrary configured workflows, custom stage execution, invitation
   acceptance, and the other built-in verifiers. The password
   path stores attempt timing, enforces retry and run
   bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
@@ -401,6 +409,9 @@ These are not implemented or established by this slice:
   The OIDC contract checks request/client/run/version/session isolation, replay,
   revoked and expired authority, rollback on a live membership-policy denial,
   concurrent finalization and real one-time authorization-code redemption.
+  The passkey/source OIDC contract additionally checks actual UV/trusted-source
+  assurance, rejection of untrusted upstream MFA, mandatory local factors and
+  source-link revocation, with complete transaction rollback snapshots.
   PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

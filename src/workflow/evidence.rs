@@ -75,6 +75,19 @@ pub(crate) struct SourceEvidence {
     pub link: String,
     pub subject: String,
     pub transaction: String,
+    /// Normalized assurance from the source verifier and pinned trust settings,
+    /// never a raw upstream AMR or a workflow-stage assertion.
+    #[serde(default)]
+    pub mfa: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saml_session: Option<SourceSession>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SourceSession {
+    pub subject: Option<String>,
+    pub index: String,
 }
 
 /// Account and request facts read by the trusted store for this run. The path

@@ -10,6 +10,7 @@ pub struct SourceStart {
 }
 
 pub(super) const TOTP_WORKFLOW: &str = "platform-source-totp-reauthentication";
+pub(super) const SOURCE_WORKFLOW: &str = "platform-source-reauthentication";
 
 pub(super) fn definition(source: &Id, totp: bool) -> Result<Validated> {
     definition_at_revision(source, totp, if totp { 2 } else { 1 })
@@ -25,7 +26,7 @@ pub(super) fn definition_at_revision(source: &Id, totp: bool, revision: u32) -> 
     let id = |value| Id::new(value).map_err(Error::internal);
     let mut definition = Definition {
         format: Format::V1,
-        id: id("platform-source-reauthentication")?,
+        id: id(SOURCE_WORKFLOW)?,
         revision: 1,
         category: Category::Authentication,
         origin: Origin::Configured,
@@ -134,6 +135,25 @@ impl Core {
     /// Start one bounded OIDC or SAML reauthentication for the exact live bearer
     /// session. The caller chooses an enabled source, never a workflow or proof.
     pub fn workflow_source_start(&self, token: &str, source: &str) -> Result<SourceStart> {
+        self.start_source_authorization_workflow(token, source, None)
+    }
+
+    /// Bind the downstream request before reserving the upstream verifier.
+    pub fn workflow_source_authorization_start(
+        &self,
+        token: &str,
+        source: &str,
+        request: crate::oidc::Authorization,
+    ) -> Result<SourceStart> {
+        self.start_source_authorization_workflow(token, source, Some(request))
+    }
+
+    fn start_source_authorization_workflow(
+        &self,
+        token: &str,
+        source: &str,
+        authorization: Option<crate::oidc::Authorization>,
+    ) -> Result<SourceStart> {
         let source = Id::new(source).map_err(Error::bad)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
@@ -190,11 +210,7 @@ impl Core {
                 totp: None,
                 recovery_code: None,
             };
-            let (attempt, authorization_url) =
-                self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
-            reservation.source = Some(attempt);
-            run.in_flight = Some(reservation);
-            let request = RequestAuthority {
+            let mut request = RequestAuthority {
                 id: request_id.clone(),
                 run: run_id.clone(),
                 account: user.id,
@@ -203,9 +219,20 @@ impl Core {
                 token_hash: digest(token),
                 expires_at,
                 requires_mfa,
-                source: Some(pin),
+                source: Some(pin.clone()),
                 authorization: None,
             };
+            if let Some(authorization) = &authorization {
+                authorization::bind(tx, &run.record, &mut request, authorization, at)?;
+            }
+            let (attempt, authorization_url) = self.begin_workflow_source(
+                tx,
+                &pin,
+                binding(&run, &reservation)?,
+                request.expires_at,
+            )?;
+            reservation.source = Some(attempt);
+            run.in_flight = Some(reservation);
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;

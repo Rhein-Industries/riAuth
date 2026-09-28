@@ -201,6 +201,7 @@ impl Core {
                 || staged.identity.user_id != user.id
                 || staged.identity.epoch != user.epoch
                 || !staged.identity.mfa
+                || staged.identity.amr != ["webauthn", "mfa"]
                 || staged.identity.source.is_some()
                 || !staged.identity.session_id.is_empty()
                 || staged.identity.auth_time < run.step_started_at

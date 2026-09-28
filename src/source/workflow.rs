@@ -3,7 +3,10 @@
 
 pub(crate) use super::WorkflowBinding as Binding;
 use super::*;
-use crate::workflow::{Id, evidence::SourceEvidence};
+use crate::workflow::{
+    Id,
+    evidence::{SourceEvidence, SourceSession},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -183,6 +186,11 @@ pub(crate) fn consume(
         link: link_key(&source.id, &source.issuer, &identity.subject),
         subject: identity.subject.clone(),
         transaction: attempt.login.clone(),
+        mfa: identity.mfa,
+        saml_session: identity.saml_session.as_ref().map(|session| SourceSession {
+            subject: session.subject.clone(),
+            index: session.index.clone(),
+        }),
     };
     // Existing explicit links only: a workflow cannot create or reattach an account.
     evidence_authority(tx, pin, user, &evidence)?;
@@ -191,6 +199,48 @@ pub(crate) fn consume(
         authority: evidence,
         auth_time: identity.auth_time,
         expires_at,
+    })
+}
+
+/// Retain source provenance on the grant without upgrading the bearer session.
+/// A SAML grant must retain the existing session's exact logout association;
+/// a fresh assertion cannot overwrite it or borrow another source's session.
+pub(crate) fn authorization_identity(
+    tx: &Tx<'_>,
+    session: &Session,
+    evidence: &SourceEvidence,
+) -> Result<SourceIdentity> {
+    let source = enabled(tx, evidence.source.as_str())?;
+    if source.saml.is_some() {
+        let verified = evidence
+            .saml_session
+            .as_ref()
+            .ok_or_else(Error::forbidden)?;
+        let existing = session
+            .identity
+            .source
+            .as_ref()
+            .ok_or_else(Error::forbidden)?;
+        let upstream: saml::UpstreamSession = tx
+            .get("saml_source_sessions", &session.id)?
+            .ok_or_else(Error::forbidden)?;
+        if existing.id != evidence.source.as_str()
+            || existing.fingerprint != evidence.fingerprint
+            || existing.link != evidence.link
+            || verified.subject.is_none()
+            || upstream.subject != verified.subject
+            || upstream.index != verified.index
+            || upstream.expires_at.is_some_and(|expiry| expiry <= now())
+        {
+            return Err(Error::forbidden());
+        }
+    } else if evidence.saml_session.is_some() {
+        return Err(Error::forbidden());
+    }
+    Ok(SourceIdentity {
+        id: evidence.source.as_str().to_owned(),
+        fingerprint: evidence.fingerprint.clone(),
+        link: evidence.link.clone(),
     })
 }
 

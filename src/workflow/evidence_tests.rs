@@ -122,6 +122,8 @@ fn receipt(
                 fingerprint: "source-fingerprint".into(),
                 link: "account-link".into(),
                 subject: "subject".into(),
+                mfa: false,
+                saml_session: None,
                 transaction: "login".into(),
             }),
             _ => None,

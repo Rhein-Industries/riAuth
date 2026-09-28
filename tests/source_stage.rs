@@ -14,6 +14,479 @@ use std::sync::{Arc, Mutex};
 
 type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)>>>;
 
+/// Real signed WebAuthn/OIDC proofs must retain their own assurance while the
+/// downstream reservation, verifier consumption and code commit remain atomic.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
+    use riauth::workflow::{Outcome, RunState};
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+    for (passkey, trusted, local_factor, require_mfa) in [
+        (true, false, false, true),
+        (false, false, false, false),
+        (false, false, false, true),
+        (false, true, false, true),
+        (false, true, true, true),
+    ] {
+        let f = Fixture::new();
+        f.client("app", false);
+        f.client("other", false);
+        let mut upstream = Upstream::new(&f, false).await;
+        if trusted {
+            upstream.source.trusted_mfa_acr = strings(&["urn:upstream:mfa"]);
+            f.core
+                .source_put(
+                    &f.admin,
+                    SourceInput {
+                        source: upstream.source.clone(),
+                        client_secret: None,
+                    },
+                )
+                .unwrap();
+        }
+        let initial = f.user("workflow-grant");
+        let bob = f.user("workflow-other");
+        let user_id = text(&f.core.me(&initial).unwrap()["user"], "id");
+        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        if passkey {
+            let registration = f
+                .core
+                .passkey_register_start(&initial, "Key".into())
+                .unwrap();
+            let proof = authenticator
+                .do_registration(
+                    "http://localhost:9000".parse().unwrap(),
+                    serde_json::from_value(registration["public_key"].clone()).unwrap(),
+                )
+                .unwrap();
+            f.core
+                .passkey_register_finish(&initial, &text(&registration, "ceremony"), proof)
+                .unwrap();
+        } else {
+            let link = f
+                .core
+                .source_start(
+                    "upstream",
+                    riauth::source::Start {
+                        link: true,
+                        authentication_transaction: None,
+                    },
+                    Some(&initial),
+                )
+                .unwrap();
+            upstream.callback(&f, &link, "workflow-subject").await;
+            f.core
+                .source_finish(riauth::source::Finish {
+                    credential: text(&link["credential"], "token"),
+                    approve: true,
+                    otp: None,
+                })
+                .unwrap();
+        }
+        let otp = if local_factor {
+            let enrollment = f.core.mfa_begin(&initial).unwrap();
+            let totp = crypto::totp(&text(&enrollment, "secret"), "workflow-grant").unwrap();
+            f.core
+                .mfa_confirm(&initial, &totp.generate((now() / 30 - 1) * 30).to_string())
+                .unwrap();
+            Some(totp.generate(now()).to_string())
+        } else {
+            None
+        };
+        let alice = text(
+            &f.core
+                .login("workflow-grant".into(), common::PASSWORD.into(), otp)
+                .unwrap(),
+            "session_token",
+        );
+        let recovery = local_factor.then(|| {
+            f.core.recovery_codes(&alice).unwrap()["recovery_codes"]
+                .as_array()
+                .unwrap()
+                .clone()
+        });
+        let second = text(
+            &f.core
+                .login(
+                    "workflow-grant".into(),
+                    common::PASSWORD.into(),
+                    recovery
+                        .as_ref()
+                        .map(|codes| codes[0].as_str().unwrap().to_owned()),
+                )
+                .unwrap(),
+            "session_token",
+        );
+        let sid: String = f
+            .core
+            .store
+            .get("session_tokens", &digest(&alice))
+            .unwrap()
+            .unwrap();
+        let group = Group {
+            name: "workflow-access".into(),
+            members: strings(&[&user_id]),
+        };
+        f.core
+            .store
+            .write(|tx| {
+                let mut client: Client = tx.get("clients", "app")?.unwrap();
+                client.require_mfa = require_mfa;
+                client.allowed_groups = strings(&[&group.name]);
+                tx.put("clients", "app", &client)?;
+                tx.put("groups", &group.name, &group)?;
+                let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+                // Deliberately unrelated bearer assurance must not leak into the grant.
+                session.identity.mfa = !require_mfa;
+                session.identity.amr = vec!["unrelated-bearer-method".into()];
+                tx.put("sessions", &sid, &session)
+            })
+            .unwrap();
+        let session_before: Value = f.core.store.get("sessions", &sid).unwrap().unwrap();
+        let verifier = crypto::random_token("");
+        let mut request = f.request("app", &verifier);
+        request.prompt = Some("login".into());
+        request.transaction_id = Some(text(
+            &f.core
+                .authorization_prepare(Some(&alice), request.clone())
+                .unwrap(),
+            "transaction_id",
+        ));
+        let begin = |token: &str, request| {
+            if passkey {
+                f.core
+                    .workflow_passkey_authorization_start(token, request)
+                    .map(|run| (run.id, None))
+            } else {
+                f.core
+                    .workflow_source_authorization_start(token, "upstream", request)
+                    .map(|start| (start.workflow.id, Some(start.authorization_url)))
+            }
+        };
+        assert!(begin(&bob, request.clone()).is_err());
+        let mut other_request = request.clone();
+        other_request.client_id = "other".into();
+        assert!(begin(&alice, other_request).is_err());
+        let (run_id, upstream_url) = begin(&alice, request.clone()).unwrap();
+        let response = if passkey {
+            let challenge = f.core.workflow_passkey_challenge(&alice, &run_id).unwrap();
+            Some(
+                authenticator
+                    .do_authentication(
+                        "http://localhost:9000".parse().unwrap(),
+                        serde_json::from_value(challenge.public_key).unwrap(),
+                    )
+                    .unwrap(),
+            )
+        } else {
+            upstream
+                .callback(
+                    &f,
+                    &json!({"authorization_url": upstream_url.unwrap()}),
+                    "workflow-subject",
+                )
+                .await;
+            None
+        };
+        let factor_challenge = if local_factor {
+            let primary = f.core.workflow_source_finish(&alice, &run_id).unwrap();
+            assert!(matches!(primary.state, RunState::Active { .. }));
+            assert!(primary.authorization_response.is_none());
+            assert!(
+                codes(&f).is_empty(),
+                "trusted upstream MFA skipped the enrolled local factor"
+            );
+            let totp = f.core.workflow_totp_challenge(&alice, &run_id).unwrap();
+            Some(
+                f.core
+                    .workflow_recovery_challenge(&alice, &run_id, Some(&totp.challenge))
+                    .unwrap()
+                    .challenge,
+            )
+        } else {
+            None
+        };
+        let finish = |token: &str| {
+            if let Some(response) = &response {
+                f.core.workflow_passkey(token, &run_id, response.clone())
+            } else if let Some(challenge) = &factor_challenge {
+                f.core.workflow_recovery_code(
+                    token,
+                    &run_id,
+                    challenge,
+                    recovery.as_ref().unwrap()[1].as_str().unwrap().to_owned(),
+                )
+            } else {
+                f.core.workflow_source_finish(token, &run_id)
+            }
+        };
+        for token in [&bob, &second] {
+            let before = f.snapshot().unwrap();
+            assert!(finish(token).is_err());
+            f.assert_snapshot(&before);
+        }
+        for token in [&alice, &second] {
+            for transaction in [request.transaction_id.clone(), None] {
+                let mut bypass = request.clone();
+                bypass.transaction_id = transaction;
+                assert!(f.core.authorize(token, bypass).is_err());
+            }
+        }
+        let request_hash = request.request_hash().unwrap();
+        let epoch = f
+            .core
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .epoch;
+        for (bucket, key, pointer, value) in [
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/account",
+                json!("other-account"),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/session",
+                json!("other-session"),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/run",
+                json!("other-run"),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/version/revision",
+                json!(99),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/workflow_request",
+                json!("other-request"),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/request/client_id",
+                json!("other"),
+            ),
+            (
+                "workflow_authorizations",
+                request_hash.as_str(),
+                "/pin/expires_at",
+                json!(now()),
+            ),
+            (
+                "workflow_runs",
+                run_id.as_str(),
+                "/in_flight/attempt",
+                json!(99),
+            ),
+            ("sessions", sid.as_str(), "/revoked", json!(true)),
+            ("users", user_id.as_str(), "/epoch", json!(epoch + 1)),
+        ] {
+            let original: Value = f.core.store.get(bucket, key).unwrap().unwrap();
+            let mut changed = original.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, key, &changed))
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert!(finish(&alice).is_err(), "{bucket}{pointer}");
+            f.assert_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put(bucket, key, &original))
+                .unwrap();
+        }
+        if !passkey {
+            let (key, link) = f
+                .core
+                .store
+                .list::<Value>("source_links")
+                .unwrap()
+                .pop()
+                .unwrap();
+            f.core
+                .store
+                .write(|tx| tx.delete("source_links", &key))
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert!(finish(&alice).is_err());
+            f.assert_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("source_links", &key, &link))
+                .unwrap();
+        }
+        if local_factor {
+            let (key, receipt) = f
+                .core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .pop()
+                .unwrap();
+            let mut expired = receipt.clone();
+            expired["expires_at"] = json!(now());
+            f.core
+                .store
+                .write(|tx| tx.put("workflow_evidence", &key, &expired))
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert!(finish(&alice).is_err());
+            f.assert_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("workflow_evidence", &key, &receipt))
+                .unwrap();
+        }
+        // A live policy failure occurs after the actual verifier. All verifier,
+        // factor, evidence, authentication and issuer writes must roll back.
+        f.core
+            .store
+            .write(|tx| {
+                tx.put(
+                    "groups",
+                    &group.name,
+                    &Group {
+                        name: group.name.clone(),
+                        members: Default::default(),
+                    },
+                )
+            })
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        assert!(finish(&alice).is_err());
+        f.assert_snapshot(&before);
+        f.core
+            .store
+            .write(|tx| tx.put("groups", &group.name, &group))
+            .unwrap();
+        if require_mfa && !passkey && !trusted && !local_factor {
+            let before = f.snapshot().unwrap();
+            assert!(
+                finish(&alice).is_err(),
+                "untrusted upstream ACR satisfied RP MFA"
+            );
+            f.assert_snapshot(&before);
+            f.core.workflow_cancel(&alice, &run_id).unwrap();
+            continue;
+        }
+        let results = std::thread::scope(|scope| {
+            let first = scope.spawn(|| finish(&alice));
+            let second = scope.spawn(|| finish(&alice));
+            [first.join().unwrap(), second.join().unwrap()]
+        });
+        assert_eq!(
+            results.iter().filter(|r| r.is_ok()).count(),
+            1,
+            "passkey={passkey}, trusted={trusted}, local_factor={local_factor}"
+        );
+        let finished = results.into_iter().find_map(Result::ok).unwrap();
+        assert!(matches!(
+            finished.state,
+            RunState::Finished {
+                outcome: Outcome::Authenticated,
+                ..
+            }
+        ));
+        let params = query(&finished.authorization_response.unwrap());
+        let grants = codes(&f);
+        assert_eq!(grants.len(), 1);
+        let grant = &grants[0];
+        assert_eq!(grant.client_id, "app");
+        assert_eq!(grant.identity.user_id, user_id);
+        assert_eq!(grant.identity.session_id, sid);
+        assert_eq!(grant.identity.epoch, epoch);
+        assert_eq!(grant.challenge, digest(&verifier));
+        assert_eq!(grant.nonce, request.nonce);
+        assert_eq!(grant.identity.mfa, passkey || trusted || local_factor);
+        let expected_amr = if passkey {
+            vec!["webauthn", "mfa"]
+        } else if local_factor {
+            vec!["federated", "mfa", "recovery_code"]
+        } else if trusted {
+            vec!["federated", "mfa"]
+        } else {
+            vec!["federated"]
+        };
+        assert_eq!(grant.identity.amr, expected_amr);
+        let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+        assert_eq!(receipts.len(), 1 + usize::from(local_factor));
+        assert!(
+            receipts
+                .iter()
+                .all(|(_, receipt)| receipt["consumed"] == true)
+        );
+        let primary = receipts
+            .iter()
+            .find(|(_, receipt)| receipt["step"] == if passkey { "passkey" } else { "source" })
+            .unwrap();
+        assert_eq!(
+            grant.identity.auth_time,
+            primary.1["verified_at"].as_u64().unwrap()
+        );
+        if let Some(source) = &grant.identity.source {
+            assert!(!passkey);
+            assert_eq!(source.id, "upstream");
+            assert_eq!(source.fingerprint, upstream.source.fingerprint().unwrap());
+            assert_eq!(source.link, primary.1["source"]["link"]);
+        } else {
+            assert!(passkey);
+        }
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("sessions", &sid)
+                .unwrap()
+                .unwrap(),
+            session_before
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>(
+                    "authentication",
+                    &digest(request.transaction_id.as_deref().unwrap())
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("workflow_authorizations", &request_hash)
+                .unwrap()
+                .unwrap()["completed"],
+            true
+        );
+        let before = f.snapshot().unwrap();
+        assert!(finish(&alice).is_err());
+        assert!(f.core.authorize(&second, request.clone()).is_err());
+        f.assert_snapshot(&before);
+        let redemption = TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("app".into()),
+            code: Some(params["code"].clone()),
+            redirect_uri: Some(request.redirect_uri),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        };
+        assert!(f.core.token(redemption.clone()).is_ok());
+        assert!(f.core.token(redemption).is_err());
+    }
+}
+
 /// Both canonical chains must spend the actual account code, primary receipt and
 /// completion together, without turning a recovery proof into factor authority.
 #[cfg(feature = "platform")]

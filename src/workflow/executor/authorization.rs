@@ -80,6 +80,19 @@ impl Core {
             Some(request),
         )
     }
+
+    /// The same request reservation with a real, user-verified passkey ceremony.
+    pub fn workflow_passkey_authorization_start(
+        &self,
+        token: &str,
+        request: Authorization,
+    ) -> Result<View> {
+        self.start_authorization_workflow(
+            token,
+            &local_definition(PASSKEY_WORKFLOW)?,
+            Some(request),
+        )
+    }
 }
 
 pub(super) fn bind(
@@ -104,7 +117,14 @@ pub(super) fn bind(
         ));
     }
     let (client, _) = crate::oidc::validate_authorization(tx, request)?;
-    if client.settings.source_stage.is_some() || client.require_mfa && !authority.requires_mfa {
+    // A UV passkey or trusted upstream assurance can satisfy the RP's MFA
+    // policy. The issuer checks the actual receipts at completion. The enrolled
+    // local-factor requirement remains independently pinned in the workflow.
+    if client.settings.source_stage.is_some()
+        || (client.require_mfa
+            && run.binding.workflow.as_str() == PASSWORD_WORKFLOW
+            && !authority.requires_mfa)
+    {
         return Err(Error::conflict(
             "This client needs a different verifier path",
         ));
@@ -220,6 +240,77 @@ pub(super) fn check(
     Ok(())
 }
 
+fn grant_identity(
+    tx: &Tx<'_>,
+    run: &StoredRun,
+    authority: &RequestAuthority,
+    session: &Session,
+    evidence: &[StoredEvidence],
+) -> Result<Identity> {
+    // Accept only the canonical chain's exact proof shape. In particular,
+    // upstream MFA never substitutes for an enrolled local factor.
+    let (primary_kind, local_factor) = match run.binding.workflow.as_str() {
+        PASSWORD_WORKFLOW => (Proof::Password, false),
+        password::TOTP_WORKFLOW => (Proof::Password, true),
+        PASSKEY_WORKFLOW => (Proof::Passkey, false),
+        source::SOURCE_WORKFLOW => (Proof::Source, false),
+        source::TOTP_WORKFLOW => (Proof::Source, true),
+        _ => return Err(Error::forbidden()),
+    };
+    let primary = evidence
+        .iter()
+        .find(|e| e.proof == primary_kind)
+        .ok_or_else(Error::forbidden)?;
+    let factor = evidence
+        .iter()
+        .find(|e| matches!(e.proof, Proof::Totp | Proof::RecoveryCode));
+    if authority.requires_mfa != local_factor
+        || factor.is_some() != local_factor
+        || evidence.len() != 1 + usize::from(local_factor)
+        || authority.source.is_some() != (primary_kind == Proof::Source)
+    {
+        return Err(Error::forbidden());
+    }
+    let (mut amr, upstream_mfa, source) = match primary_kind {
+        Proof::Password => (vec!["pwd".into()], false, None),
+        // The adapter only emits this proof after the existing verifier's UV
+        // requirement and its normalized [webauthn, mfa] assurance agree.
+        Proof::Passkey => (vec!["webauthn".into(), "mfa".into()], true, None),
+        Proof::Source => {
+            let receipt = primary.source.as_ref().ok_or_else(Error::forbidden)?;
+            let mut amr = vec!["federated".into()];
+            if receipt.mfa {
+                amr.push("mfa".into());
+            }
+            (
+                amr,
+                receipt.mfa,
+                Some(upstream::authorization_identity(tx, session, receipt)?),
+            )
+        }
+        _ => return Err(Error::forbidden()),
+    };
+    if let Some(factor) = factor {
+        amr.push(
+            if factor.proof == Proof::Totp {
+                "otp"
+            } else {
+                "recovery_code"
+            }
+            .into(),
+        );
+    }
+    Ok(Identity {
+        user_id: run.account.clone(),
+        epoch: run.account_epoch,
+        session_id: session.id.clone(),
+        auth_time: primary.verified_at,
+        mfa: upstream_mfa || local_factor,
+        amr,
+        source,
+    })
+}
+
 /// Called only after the W03 completion store validates and consumes every
 /// receipt, inside the same transaction as factor consumption and run completion.
 pub(super) fn complete(
@@ -234,46 +325,11 @@ pub(super) fn complete(
         return Ok(None);
     }
     let mut bound = pending(tx, run, &authority, at)?;
-    let password = evidence
-        .iter()
-        .find(|e| e.proof == Proof::Password)
-        .ok_or_else(Error::forbidden)?;
-    if !matches!(
-        run.binding.workflow.as_str(),
-        PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
-    ) || evidence
-        .iter()
-        .any(|e| !matches!(e.proof, Proof::Password | Proof::Totp | Proof::RecoveryCode))
-    {
-        return Err(Error::forbidden());
-    }
     let mut session: Session = tx
         .get("sessions", &bound.session)?
         .ok_or_else(Error::forbidden)?;
-    let factor = evidence
-        .iter()
-        .find(|e| matches!(e.proof, Proof::Totp | Proof::RecoveryCode));
-    let mut methods = vec!["pwd".to_owned()];
-    if let Some(factor) = factor {
-        methods.push(
-            if factor.proof == Proof::Totp {
-                "otp"
-            } else {
-                "recovery_code"
-            }
-            .into(),
-        );
-    }
     // Assurance belongs to this authorization grant, never to the stored session.
-    session.identity = Identity {
-        user_id: run.account.clone(),
-        epoch: run.account_epoch,
-        session_id: bound.session.clone(),
-        auth_time: password.verified_at,
-        mfa: factor.is_some(),
-        amr: methods,
-        source: None,
-    };
+    session.identity = grant_identity(tx, run, &authority, &session, evidence)?;
     let mut proof: AuthenticationTransaction = tx
         .get("authentication", &bound.pin.authentication)?
         .ok_or_else(Error::forbidden)?;
