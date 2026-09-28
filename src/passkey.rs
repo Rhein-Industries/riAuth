@@ -15,6 +15,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use webauthn_rs::prelude::*;
 
+#[cfg(feature = "platform")]
+pub(crate) mod workflow;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Credential {
     pub(crate) id: String,
@@ -30,6 +33,29 @@ pub(crate) struct Registration {
     pub(crate) name: String,
     pub(crate) expires_at: u64,
     pub(crate) state: PasskeyRegistration,
+    /// A workflow-owned ceremony cannot be completed by the ordinary API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) workflow_binding: Option<String>,
+}
+
+/// Only the registration verifier constructs this capability. A workflow keeps
+/// it in memory until its completion store has checked every receipt at E.
+pub(crate) struct VerifiedRegistration {
+    credential: Credential,
+    account_epoch: u64,
+}
+
+impl VerifiedRegistration {
+    pub(crate) fn new(credential: Credential, account_epoch: u64) -> Self {
+        Self {
+            credential,
+            account_epoch,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (Credential, u64) {
+        (self.credential, self.account_epoch)
+    }
 }
 
 /// A new administrator is invisible until two distinct credentials have been verified.

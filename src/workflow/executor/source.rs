@@ -199,6 +199,7 @@ impl Core {
                 attempts: vec![],
                 in_flight: None,
                 authorization_response: None,
+                credential_mutation: None,
             };
             let mut reservation = InFlight {
                 nonce: crypto::id(),
@@ -209,6 +210,7 @@ impl Core {
                 passkey: None,
                 totp: None,
                 recovery_code: None,
+                enrollment: None,
             };
             let mut request = RequestAuthority {
                 id: request_id.clone(),

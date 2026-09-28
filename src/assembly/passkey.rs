@@ -7,7 +7,7 @@ use crate::{
     model::{AuthenticationTransaction, Identity, Session, User},
     passkey::{
         AdminEnrollment, AdminRegistration, Authentication, BrowserPasskeyContext, Credential, NewPasskeyAdmin,
-        PasskeyMaintenance, PasskeyTx, Registration, credential_id, credential_key, handle,
+        PasskeyMaintenance, PasskeyTx, Registration, VerifiedRegistration, credential_id, credential_key, handle,
         passkey_list_in, public_request, require_fresh_factor, unknown_passkey, user_keys, view,
         webauthn_for_issuer,
     },
@@ -57,6 +57,58 @@ impl PasskeyMaintenance for Tx<'_> {
     fn delete_pending(&self, bucket: &str, id: &str) -> Result<()> {
         self.delete(bucket, id)
     }
+}
+
+impl VerifiedRegistration {
+    fn apply(self, tx: &Tx<'_>) -> Result<Value> {
+        let (credential, account_epoch) = self.into_parts();
+        let mut user: User = tx
+            .get("users", &credential.user_id)?
+            .ok_or_else(Error::forbidden)?;
+        if !user.enabled
+            || user.epoch != account_epoch
+            || tx.get::<Credential>("passkeys", &credential.id)?.is_some()
+            || user_keys(tx, &user.id)?.len() >= 16
+        {
+            return Err(Error::forbidden());
+        }
+        user.epoch = user.epoch.checked_add(1).ok_or_else(Error::forbidden)?;
+        user.has_passkeys = true;
+        tx.put("passkeys", &credential.id, &credential)?;
+        tx.put("users", &user.id, &user)?;
+        crate::logout::queue_user(tx, &user.id)?;
+        audit(tx, &user.id, "passkey.enroll", &credential.id)?;
+        Ok(json!({"passkey":view(&credential),"sessions_revoked":true,"instruction":"Log in with the new passkey"}))
+    }
+
+    #[cfg(feature = "platform")]
+    pub(crate) fn commit_workflow(self, tx: &Tx<'_>) -> Result<crate::passkey::workflow::Mutation> {
+        let mutation = self.mutation()?;
+        self.apply(tx)?;
+        let user: User = tx
+            .get("users", &mutation.account)?
+            .ok_or_else(Error::forbidden)?;
+        if user.epoch != mutation.to_epoch {
+            return Err(Error::forbidden());
+        }
+        Ok(mutation)
+    }
+}
+
+/// Idempotently discard only the ceremony owned by this workflow reservation.
+pub(crate) fn discard_workflow_registration(
+    tx: &Tx<'_>,
+    ceremony: &str,
+    binding: &str,
+) -> Result<()> {
+    let key = digest(ceremony);
+    if let Some(pending) = tx.get::<Registration>("passkey_registration", &key)? {
+        if pending.workflow_binding.as_deref() != Some(digest(binding).as_str()) {
+            return Err(Error::forbidden());
+        }
+        tx.delete("passkey_registration", &key)?;
+    }
+    Ok(())
 }
 
 fn webauthn(core: &Core) -> Result<Webauthn> {
@@ -422,6 +474,7 @@ impl Core {
                 name,
                 expires_at: now() + 300,
                 state,
+                workflow_binding: None,
             },
         )?;
         Ok(json!({"ceremony":ceremony,"public_key":public_key,"expires_in":300}))
@@ -440,11 +493,27 @@ impl Core {
     pub(crate) fn passkey_register_finish_in(
         &self,
         tx: &Tx<'_>,
-        mut user: User,
+        user: User,
         session: &Session,
         ceremony: &str,
         response: RegisterPublicKeyCredential,
     ) -> Result<Result<Value>> {
+        match self.verify_registration_in(tx, user, session, ceremony, response, None)? {
+            Ok(verified) => Ok(Ok(verified.apply(tx)?)),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+
+    fn verify_registration_in(
+        &self,
+        tx: &Tx<'_>,
+        user: User,
+        session: &Session,
+        ceremony: &str,
+        response: RegisterPublicKeyCredential,
+        workflow_binding: Option<&str>,
+    ) -> Result<Result<VerifiedRegistration>> {
+        let expected_binding = workflow_binding.map(digest);
         let pending = tx
             .get::<Registration>("passkey_registration", &digest(ceremony))?
             .filter(|p| {
@@ -452,6 +521,7 @@ impl Core {
                     && p.identity.user_id == user.id
                     && p.identity.session_id == session.id
                     && p.identity.epoch == user.epoch
+                    && p.workflow_binding == expected_binding
             })
             .ok_or_else(Error::unauthorized)?;
         tx.delete("passkey_registration", &digest(ceremony))?;
@@ -472,23 +542,48 @@ impl Core {
             return Ok(Err(Error::conflict("Credential is already enrolled")));
         }
         let credential = Credential {
-            id: id.clone(),
+            id,
             user_id: user.id.clone(),
             name: pending.name,
             created_at: now(),
             counter: 0,
             key,
         };
-        tx.put("passkeys", &id, &credential)?;
-        user.has_passkeys = true;
-        user.epoch += 1;
-        tx.put("users", &user.id, &user)?;
-        crate::logout::queue_user(tx, &user.id)?;
-        audit(tx, &user.id, "passkey.enroll", &id)?;
-        Ok(Ok(
-            json!({"passkey":view(&credential),"sessions_revoked":true,"instruction":"Log in with the new passkey"}),
-        ))
+        Ok(Ok(VerifiedRegistration::new(credential, user.epoch)))
     }
+
+    pub(crate) fn workflow_register_start_in(
+        &self,
+        tx: &Tx<'_>,
+        user: &User,
+        session: &Session,
+        name: String,
+        binding: &str,
+        expires_at: u64,
+    ) -> Result<Value> {
+        let started = self.passkey_register_start_in(tx, user, session, name, false)?;
+        let key = digest(started["ceremony"].as_str().ok_or_else(Error::forbidden)?);
+        let mut pending: Registration = tx
+            .get("passkey_registration", &key)?
+            .ok_or_else(Error::forbidden)?;
+        pending.workflow_binding = Some(digest(binding));
+        pending.expires_at = pending.expires_at.min(expires_at);
+        tx.put("passkey_registration", &key, &pending)?;
+        Ok(started)
+    }
+
+    pub(crate) fn workflow_register_verify_in(
+        &self,
+        tx: &Tx<'_>,
+        user: User,
+        session: &Session,
+        ceremony: &str,
+        response: RegisterPublicKeyCredential,
+        binding: &str,
+    ) -> Result<Result<VerifiedRegistration>> {
+        self.verify_registration_in(tx, user, session, ceremony, response, Some(binding))
+    }
+
     pub fn passkey_register_cancel(&self, token: &str, ceremony: &str) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
@@ -508,6 +603,7 @@ impl Core {
                 pending.identity.user_id == user.id
                     && pending.identity.session_id == session.id
                     && pending.identity.epoch == user.epoch
+                    && pending.workflow_binding.is_none()
             })
             .ok_or_else(Error::unauthorized)?;
         tx.delete("passkey_registration", &key)?;

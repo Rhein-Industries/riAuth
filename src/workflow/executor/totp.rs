@@ -269,6 +269,7 @@ impl Core {
                     passkey: None,
                     totp: None,
                     recovery_code: None,
+                    enrollment: None,
                 };
                 let bound = Some(binding(&run, &reservation, &challenge, factor)?);
                 match factor {

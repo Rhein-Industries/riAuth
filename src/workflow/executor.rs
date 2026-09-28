@@ -1,6 +1,7 @@
 //! Durable, server-owned local credential and upstream source reauthentication.
 
 pub(crate) mod authorization;
+mod enrollment;
 mod passkey;
 mod password;
 mod recovery;
@@ -36,6 +37,7 @@ const EVIDENCE: &str = "workflow_evidence";
 const ACTIVE_SESSIONS: &str = "workflow_active_sessions";
 const PASSWORD_WORKFLOW: &str = "essentials-password-sign-in";
 const PASSKEY_WORKFLOW: &str = "essentials-passkey-sign-in";
+const PASSKEY_ENROLLMENT: &str = "essentials-passkey-enrollment";
 const RECEIPT_SECONDS: u64 = 120;
 const RETAIN_FINAL_SECONDS: u64 = 7 * 86_400;
 
@@ -53,6 +55,8 @@ pub struct View {
     pub executions: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_response: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential_epoch: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -106,6 +110,8 @@ struct InFlight {
     totp: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recovery_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enrollment: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,6 +126,8 @@ struct RuntimeRun {
     in_flight: Option<InFlight>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     authorization_response: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    credential_mutation: Option<crate::passkey::workflow::Mutation>,
 }
 
 impl RuntimeRun {
@@ -129,7 +137,7 @@ impl RuntimeRun {
         // on every resume so a changed or corrupt row cannot alter routing.
         let checked = if matches!(
             self.definition.id.as_str(),
-            PASSWORD_WORKFLOW | PASSKEY_WORKFLOW
+            PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
         ) {
             validate(self.definition.clone(), &Environment::essentials()).map_err(invalid_error)?
         } else if self.definition.id.as_str() == password::TOTP_WORKFLOW {
@@ -183,6 +191,7 @@ impl RuntimeRun {
         debug_assert!(attempt <= max_attempts);
         Ok(View {
             authorization_response: self.authorization_response.clone(),
+            credential_epoch: self.credential_mutation.as_ref().map(|m| m.to_epoch),
             id: self.record.id.clone(),
             binding: self.record.binding.clone(),
             state: self.record.state.clone(),
@@ -406,6 +415,19 @@ fn finish_step(
     evidence: Option<StoredEvidence>,
     at: u64,
 ) -> Result<()> {
+    finish_step_with_mutation(core, tx, checked, run, signal, evidence, at, None)
+}
+
+fn finish_step_with_mutation(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &mut RuntimeRun,
+    signal: Label,
+    evidence: Option<StoredEvidence>,
+    at: u64,
+    mutation: Option<enrollment::Verified>,
+) -> Result<()> {
     let RunState::Active { step, attempt } = &run.record.state else {
         return Err(Error::conflict("Workflow run is already final"));
     };
@@ -478,6 +500,9 @@ fn finish_step(
         .map_err(invalid_error)?
     {
         Target::Step(next) => {
+            if mutation.is_some() {
+                return Err(Error::forbidden());
+            }
             run.record.state = RunState::Active {
                 step: next.id.clone(),
                 attempt: 1,
@@ -489,7 +514,12 @@ fn finish_step(
             // W03 expects the completed last step to remain active until its
             // CompletionStore adapter consumes receipts and marks it final.
             tx.put(RUNS, &run.record.id, run)?;
-            let mut adapter = TxCompletion { core, tx, at };
+            let mut adapter = TxCompletion {
+                core,
+                tx,
+                at,
+                mutation,
+            };
             checked
                 .complete(&run.record.id, &terminal.id, &mut adapter)
                 .map_err(invalid_error)?;
@@ -517,6 +547,7 @@ fn fail_attempt(
         .ok_or_else(|| Error::internal("Unknown workflow step"))?;
     source::discard(tx, run)?;
     passkey::discard(tx, run)?;
+    enrollment::discard(tx, run)?;
     if run.in_flight.take().is_none() {
         run.executions = run.executions.saturating_add(1);
     }
@@ -544,6 +575,7 @@ fn fail_attempt(
 fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     source::discard(tx, run)?;
     passkey::discard(tx, run)?;
+    enrollment::discard(tx, run)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence {
             if let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)? {
@@ -620,6 +652,7 @@ struct TxCompletion<'a, 'b> {
     core: &'a Core,
     tx: &'a Tx<'b>,
     at: u64,
+    mutation: Option<enrollment::Verified>,
 }
 
 fn storage_invalid(error: Error) -> Invalid {
@@ -628,6 +661,11 @@ fn storage_invalid(error: Error) -> Invalid {
 }
 
 impl CompletionStore for TxCompletion<'_, '_> {
+    fn authorizes_mutation(&self, run: &StoredRun, terminal: &super::Terminal) -> bool {
+        self.mutation
+            .as_ref()
+            .is_some_and(|m| m.matches(run, terminal))
+    }
     fn now(&self) -> u64 {
         self.at
     }
@@ -753,6 +791,18 @@ impl CompletionStore for TxCompletion<'_, '_> {
                 authorization::complete(self.core, self.tx, run, evidence, at)
                     .map_err(storage_invalid)?;
         }
+        if matches!(
+            terminal.outcome,
+            super::Outcome::Enrolled | super::Outcome::Recovered
+        ) {
+            current.credential_mutation = Some(
+                self.mutation
+                    .take()
+                    .ok_or_else(|| fail(Code::MutationPending, "run", "Missing verified mutation"))?
+                    .commit(self.core, self.tx, run, terminal, evidence)
+                    .map_err(storage_invalid)?,
+            );
+        }
         current.record.state = RunState::Finished {
             terminal: terminal.id.clone(),
             outcome: terminal.outcome,
@@ -795,7 +845,11 @@ impl Core {
             ) {
                 crate::password::require_local(tx, &user)?;
             }
-            if checked.definition().id.as_str() == PASSKEY_WORKFLOW && !user.has_passkeys {
+            if matches!(
+                checked.definition().id.as_str(),
+                PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
+            ) && !user.has_passkeys
+            {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
                 ));
@@ -850,7 +904,7 @@ impl Core {
                 },
                 steps: vec![],
             };
-            let run = RuntimeRun {
+            let mut run = RuntimeRun {
                 record,
                 definition: checked.definition().clone(),
                 step_started_at: at,
@@ -858,6 +912,7 @@ impl Core {
                 attempts: vec![],
                 in_flight: None,
                 authorization_response: None,
+                credential_mutation: None,
             };
             let mut request = RequestAuthority {
                 id: request_id.clone(),
@@ -877,6 +932,9 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT {
+                enrollment::resume_session(self, tx, checked, &mut run, at)?;
+            }
             run.view(checked)
         })
     }
@@ -950,6 +1008,7 @@ mod tests {
                     passkey: None,
                     totp: None,
                     recovery_code: None,
+                    enrollment: None,
                 });
                 run.executions = 1;
                 tx.put(RUNS, &id, &run)

@@ -119,6 +119,11 @@ pub(crate) trait CompletionStore {
     fn load_run(&self, run: &str) -> Result<Option<StoredRun>, Invalid>;
     fn load_evidence(&self, evidence: &str) -> Result<Option<StoredEvidence>, Invalid>;
     fn load_facts(&self, run: &StoredRun) -> Result<TrustedFacts, Invalid>;
+    /// Only a live, verifier-produced mutation capability in the same writer
+    /// may cross E to E+1. Persisted receipts alone never enable this path.
+    fn authorizes_mutation(&self, _run: &StoredRun, _terminal: &Terminal) -> bool {
+        false
+    }
     fn finish(
         &mut self,
         run: &StoredRun,
@@ -149,8 +154,8 @@ impl Validated {
     /// Finish only a persisted, active run whose recorded path actually reaches
     /// `terminal`. Every proof must come from the matching built-in step and a
     /// trusted store record; mere proof kinds are never accepted. Enrollment
-    /// and recovery success remain blocked until W02 can atomically bind an
-    /// E-to-E+1 credential mutation and finalization. `finish` is the atomic
+    /// and recovery success require an in-transaction E-to-E+1 mutation
+    /// capability. `finish` is the atomic
     /// consumption and final-state boundary for supported outcomes.
     pub(crate) fn complete(
         &self,
@@ -204,7 +209,9 @@ impl Validated {
             .iter()
             .find(|t| &t.id == terminal_id)
             .ok_or_else(|| fail(Code::UnknownNode, terminal_id.as_str(), "Unknown terminal"))?;
-        if matches!(target.outcome, Outcome::Enrolled | Outcome::Recovered) {
+        if matches!(target.outcome, Outcome::Enrolled | Outcome::Recovered)
+            && !store.authorizes_mutation(&run, target)
+        {
             return Err(fail(
                 Code::MutationPending,
                 terminal_id.as_str(),

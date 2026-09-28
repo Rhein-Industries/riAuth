@@ -28,6 +28,12 @@ pub(super) fn routes() -> Router<App> {
             post(source_authorization_start),
         )
         .route("/api/workflows/passkey", post(passkey_start))
+        .route("/api/workflows/passkey-enrollment", post(enrollment_start))
+        .route(
+            "/api/workflows/{id}/passkey-enrollment/start",
+            post(enrollment_challenge),
+        )
+        .route("/api/workflows/{id}/passkey-enrollment", post(enroll))
         .route("/api/workflows/sources/{source}", post(source_start))
         .route("/api/workflows/{id}", get(resume))
         .route("/api/workflows/{id}/password", post(password))
@@ -118,6 +124,52 @@ async fn passkey_start(State(app): State<App>, headers: HeaderMap) -> Result<Jso
     let token = bearer(&headers)?;
     app.run(move |core| core.workflow_passkey_start(&token).map(Json))
         .await
+}
+
+async fn enrollment_start(State(app): State<App>, headers: HeaderMap) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.workflow_passkey_enrollment_start(&token).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnrollmentStart {
+    name: String,
+}
+
+async fn enrollment_challenge(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<EnrollmentStart>,
+) -> Result<Json<PasskeyChallenge>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_passkey_enrollment_challenge(&token, &id, input.name)
+            .map(Json)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Enrollment {
+    response: webauthn_rs::prelude::RegisterPublicKeyCredential,
+}
+
+async fn enroll(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Enrollment>,
+) -> Result<Json<View>> {
+    let token = bearer(&headers)?;
+    app.run_credentials(move |core| {
+        core.workflow_passkey_enroll(&token, &id, input.response)
+            .map(Json)
+    })
+    .await
 }
 
 async fn passkey_challenge(

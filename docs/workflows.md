@@ -7,7 +7,9 @@ Password and source paths require TOTP or a one-time recovery code when enrolled
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
 issues a new session. Other built-in
-verifier actions remain unconnected. The existing
+verifier actions remain unconnected except passkey enrollment authorized by a
+fresh existing-passkey proof, which finalizes the credential and epoch change
+atomically. The existing ordinary
 sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -244,6 +246,39 @@ expiry discard that attempt's ceremony. A response from a cancelled run or
 earlier attempt cannot verify a new challenge. The workflow permits three
 attempts of at most five minutes within its ten-minute run limit.
 
+## Passkey enrollment finalization
+
+On Platform, `POST /api/workflows/passkey-enrollment` starts the shipped
+enrollment journey for an existing passkey owner and records the exact live
+session proof. Complete its existing `/passkey/start` and `/passkey` steps with
+user verification, then send `{"name":"Added key"}` to
+`POST /api/workflows/{id}/passkey-enrollment/start`. This returns registration
+options; submit the signed credential as `response` to
+`POST /api/workflows/{id}/passkey-enrollment`.
+
+The registration ceremony stays server-side and binds account, session, workflow
+request, run/version, step/attempt, nonce and account epoch E. Ordinary enrollment
+finish/cancel cannot use it. Starting and finishing recheck live authority and
+the exact unspent session/passkey receipts, with a 120-second receipt lifetime.
+Neither a recovered bearer nor a stored success assertion substitutes for the
+existing passkey's real UV proof. The stored bearer's assurance is never upgraded.
+
+The shared registration verifier returns a private in-memory capability. Only
+the completion writer can use it after checking the full path and all receipts
+at E. Registration consumption, the credential write, account epoch E to E+1,
+existing logout/revocation effects, consumed receipts and final run state share
+one transaction. A completion rejection rolls all of those writes back; invalid
+WebAuthn responses spend their reserved attempt and deny without changing the
+account. Concurrent completion can commit only once. The durable run records
+the credential and epoch transition; its successful view reports `enrolled`
+and `credential_epoch`. Previous sessions cannot resume or reuse the result.
+Sign in again after enrollment.
+
+This slice supports adding a passkey after verification of an existing passkey.
+First-passkey enrollment through password/TOTP, invitation enrollment, password
+reset and other credential mutations still require their own bound adapters.
+Persisted mutation receipts alone cannot enable any of those success outcomes.
+
 ## Source reauthentication
 
 On Platform, `POST /api/workflows/sources/{source}` with a live bearer session
@@ -375,9 +410,9 @@ These are not implemented or established by this slice:
   OIDC request atomically; browser integration and changing a SAML session's
   logout association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
-* An atomic credential-mutation receipt/finalization protocol for enrollment and
-  password reset across account epoch E to E+1, including passkey enrollment's
-  session revocation. Until then these success outcomes remain blocked. A
+* Extending atomic credential-mutation finalization beyond existing-passkey
+  authorized passkey enrollment: first-passkey/password/TOTP enrollment,
+  invitations and password reset remain blocked pending their real adapters. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Arbitrary configured workflows, custom stage execution, invitation

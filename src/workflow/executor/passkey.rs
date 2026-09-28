@@ -95,6 +95,7 @@ impl Core {
                     passkey: None,
                     totp: None,
                     recovery_code: None,
+                    enrollment: None,
                 };
                 let binding = binding(&run, &reservation)?;
                 let expires_at = request.expires_at.min(
@@ -162,6 +163,7 @@ impl Core {
                 || reservation.source.is_some()
                 || reservation.totp.is_some()
                 || reservation.recovery_code.is_some()
+                || reservation.enrollment.is_some()
                 || !matches!(
                     checked.step(step).map(|s| &s.action),
                     Some(Action::VerifyPasskey {})

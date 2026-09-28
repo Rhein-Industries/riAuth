@@ -147,6 +147,7 @@ impl Core {
                 passkey: None,
                 totp: None,
                 recovery_code: None,
+                enrollment: None,
             };
             run.in_flight = Some(reservation.clone());
             run.executions += 1;
