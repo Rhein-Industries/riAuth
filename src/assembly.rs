@@ -11,6 +11,8 @@ mod exchange;
 mod issuer;
 mod keyring;
 mod logout;
+#[cfg(feature = "platform")]
+mod mtls;
 mod oidc;
 pub(crate) mod passkey;
 mod password;
