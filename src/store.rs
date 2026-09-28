@@ -2,7 +2,7 @@ pub mod maintenance;
 mod ownership;
 mod prepared;
 #[doc(hidden)]
-pub use ownership::shared_filesystem;
+pub use ownership::{require_local_in, shared_filesystem};
 #[cfg(feature = "test-support")]
 pub use prepared::with_prepared_pause;
 use prepared::{Prepared, Range};

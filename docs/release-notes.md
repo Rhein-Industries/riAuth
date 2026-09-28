@@ -47,9 +47,11 @@
   filesystem does not enforce them, or on Linux one on NFS, SMB/CIFS, CephFS,
   GlusterFS, Lustre or another network or cluster filesystem, is refused with
   `storage_not_exclusive` (status 400, CLI exit status 2) before any record is
-  read or written. A deployment with such a data directory must stop every
-  process using it and move the directory to local storage, or migrate to
-  PostgreSQL from a local copy.
+  read or written. Symbolic links in the store path are resolved first, and a
+  dangling store link or unresolvable directory fails closed before redb can
+  create anything through it. A deployment with such a data directory must
+  stop every process using it and move the directory to local storage, or
+  migrate to PostgreSQL from a local copy.
 
 # Unreleased durable offboarding delivery (P04)
 

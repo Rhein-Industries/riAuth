@@ -80,3 +80,69 @@ fn redb_refuses_a_second_or_shared_owner_with_actionable_diagnostics() {
         );
     }
 }
+
+// Creating through a dangling link writes wherever it points, so the check runs
+// on the resolved location and an unresolvable link fails closed before redb
+// opens anything. Valid local links keep working.
+#[cfg(unix)]
+#[test]
+fn redb_checks_the_resolved_location_and_refuses_dangling_links() {
+    use riauth::store::require_local_in;
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let (local, remote) = (root.join("local"), root.join("remote"));
+    std::fs::create_dir(&local).unwrap();
+    std::fs::create_dir(&remote).unwrap();
+    // `remote` stands for an NFS mount inside an otherwise local tree.
+    let mountinfo = format!(
+        "22 1 8:1 / / rw - ext4 /dev/sda1 rw\n40 22 0:40 / {} rw - nfs4 filer:/x rw\n",
+        remote
+            .display()
+            .to_string()
+            .replace('\\', "\\134")
+            .replace(' ', "\\040")
+    );
+    let refused = |path: &Path, reason: &str| {
+        let error = require_local_in(&mountinfo, path).unwrap_err();
+        assert_eq!(
+            (error.status, error.code),
+            (StatusCode::BAD_REQUEST, "storage_not_exclusive")
+        );
+        assert!(error.message.contains(reason), "{}", error.message);
+    };
+
+    // The reviewed bypass: a local store link to a share file not yet created.
+    let target = remote.join("riauth.redb");
+    let dangling = local.join("riauth.redb");
+    symlink(&target, &dangling).unwrap();
+    refused(&dangling, "Cannot confirm");
+    let error = Store::open(&dangling).err().expect("dangling link opened");
+    assert_eq!(error.code, "storage_not_exclusive");
+    assert!(!target.exists() && dangling.symlink_metadata().is_ok());
+    // Resolved links are checked at their target, for an existing file and for
+    // a new store under a directory link.
+    std::fs::write(remote.join("existing.redb"), b"").unwrap();
+    symlink(remote.join("existing.redb"), local.join("linked.redb")).unwrap();
+    refused(&local.join("linked.redb"), "nfs4");
+    symlink(&remote, local.join("share")).unwrap();
+    refused(&local.join("share/riauth.redb"), "nfs4");
+    // A dangling ancestor and a link loop fail closed.
+    symlink(remote.join("missing"), local.join("gone")).unwrap();
+    refused(&local.join("gone/riauth.redb"), "Cannot confirm");
+    symlink(local.join("loop.redb"), local.join("loop.redb")).unwrap();
+    refused(&local.join("loop.redb"), "Cannot confirm");
+
+    // Valid local paths are unchanged: a plain new store, a directory link and a
+    // link to an existing local store all open.
+    let real = local.join("real");
+    std::fs::create_dir(&real).unwrap();
+    symlink(&real, local.join("alias")).unwrap();
+    require_local_in(&mountinfo, &local.join("plain.redb")).unwrap();
+    require_local_in(&mountinfo, &local.join("alias/riauth.redb")).unwrap();
+    drop(Store::open(&local.join("alias/riauth.redb")).unwrap());
+    assert!(real.join("riauth.redb").is_file());
+    symlink(real.join("riauth.redb"), local.join("store.redb")).unwrap();
+    require_local_in(&mountinfo, &local.join("store.redb")).unwrap();
+    drop(Store::open(&local.join("store.redb")).unwrap());
+}

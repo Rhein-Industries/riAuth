@@ -11,7 +11,10 @@
 
 use crate::error::{Error, Result};
 use axum::http::StatusCode;
-use std::path::Path;
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 /// Linux filesystem types that exist to share one tree between hosts. The 9p
 /// and virtiofs transports are absent because gVisor and Kata runtimes also use
@@ -50,23 +53,48 @@ const SHARED: &[&str] = &[
 /// Refuses a redb path on a filesystem other hosts can open, before redb
 /// creates, repairs or locks the file.
 pub(super) fn require_local(path: &Path) -> Result<()> {
-    let Some(mountinfo) = mount_table(path)? else {
-        return Ok(());
-    };
-    // A new store is created in its parent directory.
-    let target = if path.try_exists().map_err(Error::internal)? {
-        path.canonicalize()
-    } else {
-        match path.parent() {
+    let location = location(path)?;
+    match mount_table(path)? {
+        Some(mountinfo) => refuse_shared(&mountinfo, path, &location),
+        None => Ok(()),
+    }
+}
+
+/// [`require_local`] against a supplied `/proc/self/mountinfo` table.
+#[doc(hidden)]
+pub fn require_local_in(mountinfo: &str, path: &Path) -> Result<()> {
+    refuse_shared(mountinfo, path, &location(path)?)
+}
+
+/// Where opening `path` reads or creates the file, with every link resolved.
+/// Creating through a dangling link writes wherever it points, so a link or
+/// ancestor that does not resolve fails closed instead of falling back to the
+/// lexical parent.
+fn location(path: &Path) -> Result<PathBuf> {
+    let resolved = match path.symlink_metadata() {
+        // An existing entry, or a link that must reach one.
+        Ok(_) => path.canonicalize(),
+        // A new store is created in its directory.
+        Err(error) if error.kind() == ErrorKind::NotFound => match path.parent() {
             Some(parent) if !parent.as_os_str().is_empty() => parent.canonicalize(),
             _ => Path::new(".").canonicalize(),
-        }
-    }
-    .map_err(Error::internal)?;
-    match shared_filesystem(&mountinfo, Path::new(&*target.to_string_lossy())) {
-        Some(kind) => Err(not_exclusive(format!(
-            "The embedded redb store {} is on a {kind} network or cluster filesystem, where file locks cannot keep one owning process across hosts. Stop every process using it and move the data directory to local storage on the one host that runs riAuth, or configure PostgreSQL for several service processes. Remote gateways and workers must use the authorized API, never this file.",
+        },
+        Err(error) => Err(error),
+    };
+    resolved.map_err(|error| {
+        not_exclusive(format!(
+            "Cannot confirm where the embedded redb store {} would be opened ({error}). Point data_dir at an existing local directory, and make every symbolic link on the path resolve to existing local storage.",
             path.display()
+        ))
+    })
+}
+
+fn refuse_shared(mountinfo: &str, path: &Path, location: &Path) -> Result<()> {
+    match shared_filesystem(mountinfo, Path::new(&*location.to_string_lossy())) {
+        Some(kind) => Err(not_exclusive(format!(
+            "The embedded redb store {} resolves to {}, on a {kind} network or cluster filesystem, where file locks cannot keep one owning process across hosts. Stop every process using it and move the data directory to local storage on the one host that runs riAuth, or configure PostgreSQL for several service processes. Remote gateways and workers must use the authorized API, never this file.",
+            path.display(),
+            location.display()
         ))),
         None => Ok(()),
     }
