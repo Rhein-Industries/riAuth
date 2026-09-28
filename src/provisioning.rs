@@ -526,6 +526,7 @@ impl Core {
                 "provisioner.sync",
                 &format!("provisioner/{target_id}"),
             )?;
+            crate::reconciliation::validate_apply_lease(tx, &caller)?;
             let at = now();
             let mut active = None;
             let mut settling = false;
@@ -574,6 +575,7 @@ impl Core {
                 "provisioner.sync",
                 &format!("provisioner/{target_id}"),
             )?;
+            crate::reconciliation::validate_apply_lease(tx, &actor)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let fingerprint = self.provisioning_fingerprint(target_id, target)?;
             for (id, plan) in tx.list::<Plan>("provisioning_plans")? {

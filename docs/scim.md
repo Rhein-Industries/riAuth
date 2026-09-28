@@ -69,6 +69,12 @@ policies for unconfigured targets are rejected at configuration validation.
 Changing a mode invalidates pending plans and stales queued jobs before another
 remote dispatch.
 
+A scheduled or event controller job records `snapshot_in_progress` as a compact
+progress outcome and returns to the queue for the next page. Normal pages do
+not spend the controller's four-attempt failure budget. Each resumed claim
+rechecks its lease, configured credential and live scoped authority before
+advancing the durable snapshot.
+
 `token_file` is a static bearer token. To acquire and refresh an OAuth access token instead, omit `token_file` and set `oauth`. A target must use exactly one of those modes. OAuth supports `client_credentials` or a configured `refresh_token` file with Basic/post client authentication; access tokens stay in process memory and a SCIM 401 triggers one refresh/retry. See [OAuth for outbound SCIM](enterprise/ENT-12.md) for the configuration, token lifetime and opaque-token limitations.
 
 ```sh

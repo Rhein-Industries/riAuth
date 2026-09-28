@@ -201,7 +201,8 @@ pub struct Job {
     pub lease_owner: Option<String>,
     pub lease_until: u64,
     pub last_error: Option<String>,
-    /// A compact decision; a queued SCIM delivery is never recorded as delivered.
+    /// A compact decision or snapshot progress; a queued SCIM delivery is never
+    /// recorded as delivered.
     pub outcome: Option<Value>,
     pub created_at: u64,
 }
@@ -852,16 +853,23 @@ impl Core {
             "applied" => "local_applied",
             "queued" | "in_progress" => "downstream_queued",
             "awaiting_prior_delivery" => "pending_prior_delivery",
-            "awaiting_review" => "none",
+            "awaiting_review" | "snapshot_in_progress" => "none",
             _ => return Err(Error::internal("Unknown controller decision")),
         };
-        Ok(json!({
+        let mut outcome = json!({
             "decision":decision,
             "delivery":delivery,
             "mode":result["mode"],
             "plan_id":result["plan"]["id"].as_str().or_else(|| result["plan"]["plan_id"].as_str()),
             "provisioning_job_id":result["job"]["id"],
-        }))
+        });
+        if decision == "snapshot_in_progress" {
+            if result["snapshot"]["snapshot_id"].as_str().is_none() {
+                return Err(Error::internal("Controller snapshot progress has no durable ID"));
+            }
+            outcome["snapshot"] = result["snapshot"].clone();
+        }
+        Ok(outcome)
     }
 
     fn finish_reconciliation(&self, id: &str, owner: &str, result: Result<Value>) -> Result<()> {
@@ -869,18 +877,31 @@ impl Core {
             let Some(mut job) = tx.get::<Job>(JOBS, id)? else {
                 return Ok(());
             };
-            if job.status != Status::Running || job.lease_owner.as_deref() != Some(owner) {
+            if job.status != Status::Running
+                || job.lease_owner.as_deref() != Some(owner)
+                || job.lease_until <= now()
+            {
                 return Ok(());
             }
             job.lease_owner = None;
             job.lease_until = 0;
             match result {
+                Ok(outcome) if outcome["decision"] == "snapshot_in_progress" => {
+                    // The durable draft advanced normally. Leave this job due
+                    // for its next bounded page without spending retry budget.
+                    job.status = Status::Queued;
+                    job.attempts = job.attempts.saturating_sub(1);
+                    job.next_attempt = now();
+                    job.outcome = Some(outcome);
+                    job.last_error = None;
+                }
                 Ok(outcome) => {
                     job.status = Status::Completed;
                     job.outcome = Some(outcome);
                     job.last_error = None;
                 }
                 Err(error) => {
+                    job.outcome = None;
                     job.last_error = Some(bounded_error(&error));
                     if matches!(error.code, "access_denied" | "invalid_token" | "not_found")
                         || error.code == "conflict" && error.message.contains("Reconciliation")
