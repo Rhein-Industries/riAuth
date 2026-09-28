@@ -72,6 +72,7 @@ pub(crate) enum GroupIntent<'a> {
     },
     /// Dependent cleanup for an already disabled identity. This only removes
     /// that identity and is authorized by its exact user.write scope.
+    #[cfg(feature = "platform")]
     OffboardMember {
         user_id: &'a str,
         username: &'a str,
@@ -154,6 +155,7 @@ pub(crate) fn write_group(
             }
             Ok(GroupWrite { group, changed })
         }
+        #[cfg(feature = "platform")]
         GroupIntent::OffboardMember { user_id, username } => {
             actor.require("user.write", &format!("user/{username}"))?;
             validate_name(username)?;

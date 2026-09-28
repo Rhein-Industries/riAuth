@@ -229,6 +229,7 @@ fn scope_details(
                     .copied()
                     .unwrap_or_default(),
             ),
+            #[cfg(feature = "platform")]
             "workspace" => (
                 "directory.sync",
                 format!("workspace/{id}"),
@@ -242,6 +243,7 @@ fn scope_details(
                     .copied()
                     .unwrap_or_default(),
             ),
+            #[cfg(feature = "platform")]
             "entra" => (
                 "directory.sync",
                 format!("entra/{id}"),
@@ -255,6 +257,10 @@ fn scope_details(
                     .copied()
                     .unwrap_or_default(),
             ),
+            #[cfg(not(feature = "platform"))]
+            "workspace" | "entra" => {
+                return Err(Error::bad("Cloud controllers require the Platform build"));
+            }
             "scim" => (
                 "provisioner.sync",
                 format!("provisioner/{id}"),
@@ -284,7 +290,10 @@ fn action_resource(scope: &str) -> Result<(&'static str, String)> {
     validate_name(id)?;
     match kind {
         "ldap" => Ok(("directory.sync", format!("directory/{id}"))),
+        #[cfg(feature = "platform")]
         "workspace" | "entra" => Ok(("directory.sync", format!("{kind}/{id}"))),
+        #[cfg(not(feature = "platform"))]
+        "workspace" | "entra" => Err(Error::bad("Cloud controllers require the Platform build")),
         "scim" => Ok(("provisioner.sync", format!("provisioner/{id}"))),
         _ => Err(Error::bad(
             "Controller kind must be ldap, workspace, entra or scim",
@@ -789,7 +798,12 @@ impl Core {
         let _lease = LeaseScope::enter(job, owner);
         let result = match kind {
             "ldap" => self.directory_reconcile(&token, id)?,
+            #[cfg(feature = "platform")]
             "workspace" | "entra" => self.cloud_reconcile(&token, kind, id)?,
+            #[cfg(not(feature = "platform"))]
+            "workspace" | "entra" => {
+                return Err(Error::bad("Cloud controllers require the Platform build"));
+            }
             "scim" => self.provisioning_reconcile(&token, id)?,
             _ => return Err(Error::internal("Invalid controller kind")),
         };

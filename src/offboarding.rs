@@ -21,32 +21,14 @@ use crate::{
     store::Tx,
 };
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
+pub use crate::offboarding_types::{BUCKET, Job, LOCAL_ACTIONS, MAX_ATTEMPTS, Status};
 
-pub const BUCKET: &str = "offboard_jobs";
-pub const MAX_ATTEMPTS: u32 = 5;
 const LEASE_SECONDS: u64 = 60;
 const MAX_SCHEDULE_SECONDS: u64 = 366 * 24 * 60 * 60;
 const TIME_ERROR: &str = "execute_at must be an absolute RFC3339 timestamp with a numeric offset (or Z) or a JSON integer number of unix seconds. Naive local times are rejected. The timezone label is stored for audit and is not used to interpret the instant";
 const ZONE_ERROR: &str = "timezone must match [A-Za-z0-9_+-]{1,64}(/[A-Za-z0-9_+-]{1,64}){0,2}. It is an audit label, not a zone-database lookup; UTC and numeric offsets are not applied to the instant";
-
-pub const LOCAL_ACTIONS: &[&str] = &[
-    "user.disable",
-    "session.revoke",
-    "grant.revoke",
-    "downstream.local-only",
-];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Status {
-    Scheduled,
-    Running,
-    Done,
-    Cancelled,
-    Failed,
-}
 
 /// What the worker should do after the lease is held and before side effects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,33 +59,6 @@ pub struct ScheduleRequest {
 pub struct RescheduleRequest {
     pub execute_at: ExecuteAt,
     pub timezone: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Job {
-    pub id: String,
-    pub username: String,
-    pub user_id: String,
-    pub execute_at: u64,
-    pub timezone: String,
-    pub status: Status,
-    pub attempts: u32,
-    pub lease_owner: Option<String>,
-    pub lease_until: u64,
-    pub last_error: Option<String>,
-    pub created_by: String,
-    pub actions: Vec<String>,
-    pub cancel_requested: bool,
-    pub next_attempt: u64,
-    pub result: Option<Value>,
-    pub created_at: u64,
-}
-
-impl Job {
-    fn active(&self) -> bool {
-        matches!(self.status, Status::Scheduled | Status::Running)
-    }
 }
 
 pub fn valid_timezone_label(value: &str) -> bool {

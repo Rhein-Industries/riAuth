@@ -3,37 +3,15 @@ use crate::{
     core::Core,
     crypto::{SigningKey, now},
     error::{Error, Result},
-    jose::PublicJwk,
 };
 use base64::{
     Engine,
     engine::general_purpose::{STANDARD, URL_SAFE, URL_SAFE_NO_PAD},
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{io::Read, path::PathBuf, time::Duration};
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VaultSigner {
-    pub address: String,
-    #[serde(default = "transit")]
-    pub mount: String,
-    pub key_name: String,
-    pub key_version: u32,
-    pub public_jwk: PublicJwk,
-    pub token_file: PathBuf,
-    pub ca_file: Option<PathBuf>,
-    pub namespace: Option<String>,
-}
-fn transit() -> String {
-    "transit".into()
-}
-#[derive(Clone, Serialize, Deserialize)]
-pub struct RemoteKey {
-    pub signer: String,
-    pub key_version: u32,
-    pub public_jwk: PublicJwk,
-}
+use std::{io::Read, time::Duration};
+pub use crate::kms_types::{RemoteKey, VaultSigner};
+
 impl VaultSigner {
     pub fn validate(&self) -> Result<()> {
         crate::config::validate_server_url(&self.address)

@@ -15,7 +15,7 @@ keywords = ["identity", "oidc", "saml", "sso"]
 # Preserve the existing source-build behavior. Release artifacts select an edition explicitly.
 default = ["platform"]
 essentials = []
-platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser"]
+platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "futures-util/sink"]
 terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []
@@ -52,8 +52,8 @@ url = "2.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
 webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["usb", "ui-cli"] }
-futures-util = { version = "0.3", features = ["sink"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["codec"], optional = true }
 tokio-rustls = "0.26"
 ldap3_proto = { version = "0.8.1", features = ["serde"], optional = true }
 md-5 = { version = "0.11", optional = true }

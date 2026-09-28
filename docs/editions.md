@@ -25,10 +25,20 @@ client-certificate login, SSF transport, event-map, and workflow runtime modules
 are compiled only with `platform`. Their persisted configuration shapes remain
 shared so Essentials can reject incompatible stores and settings. `risaml`,
 `roxmltree`, `flate2`, `ldap3_proto`, `md-5`, `psl`, the direct `sha1` and
-`x509-parser` dependencies, and the proxy's direct Hyper dependencies are
-optional under `platform`. Shared source federation using ordinary
-OIDC/OAuth, LDAP synchronization/password authentication, outbound SCIM, PostgreSQL,
-and advanced OIDC profiles remain available in both.
+`x509-parser` dependencies, the proxy's direct Hyper dependencies, and the
+LDAP/proxy direct `tokio-util` dependency are optional under `platform`; the
+direct `futures-util/sink` feature is also Platform-only. Shared source
+federation using ordinary OIDC/OAuth, LDAP synchronization/password
+authentication, outbound SCIM, PostgreSQL, and advanced OIDC profiles remain
+available in both.
+
+Cloud Workspace/Entra synchronization, inbound SCIM, Windows login, device-trust
+verification, temporary-access approval, scheduled offboarding and Vault Transit
+signing engines also compile only in Platform. Shared configuration, temporary
+access, offboarding and remote-key records remain decodable for restore and
+downgrade inspection. Essentials refuses a retained remote signing key before
+serving, even if its signer configuration has been removed. Its local JWT signing
+path keeps the same token semantics and rejects any remote key reference.
 
 Essentials agent issuance requires exact `directory/<id>` scopes for directory
 actions. Parent-owned agents, `workspace/<id>` and `entra/<id>` scopes, and a
@@ -38,6 +48,7 @@ Stored reconciliation schedules and jobs for Workspace or Entra also block an
 Essentials downgrade, even when the row is terminal. Shared LDAP and outbound
 SCIM controller rows are accepted after their stored shape is checked; their
 worker still revalidates current config, agent authority, and lease before apply.
+Workspace and Entra controller configuration is rejected by Essentials as well.
 
 The release workflow builds separate x86-64 Essentials and Platform native
 archives and container image archives from the checked tag, plus the standalone
@@ -49,13 +60,13 @@ The release smoke gate extracts the named native archives, reloads the saved
 images, checks public Platform route presence, Essentials agent issuance
 boundaries, and a stored Platform agent downgrade refusal on both artifact types.
 
-This remains a partial A05 assembly. Other Platform implementation modules,
-including cloud directory connectors, device integrations, temporary access and
-offboarding engines, and external signing, still compile in Essentials because
-shared models and request paths refer to them; their exposed routes and
-configuration are disabled. Complete module extraction,
-configured/enabled/usable capability state, all durable
-reference checks for downgrade, native ARM64 release evidence, and broader
-packaged integration gates remain A05/A06/A09/Q08 work. A capability name in
-this preview means the artifact exposes that operation; it does not assert that
-an external peer or runtime configuration has been verified.
+This remains a partial A05 assembly. Embedded source-stage execution still lives
+in the shared federation module. The direct SAML, RADIUS, proxy and certificate
+adapter dependencies are feature-gated; `md-5`, `sha1` and `x509-parser` still
+appear transitively in Essentials through shared PostgreSQL, TOTP and LDAP
+functionality. Complete module extraction and remaining durable-reference checks
+for downgrade remain A05 work. Configured/enabled/usable capability state is A06
+work. Native ARM64 release evidence and broader packaged integration gates remain
+A09/Q08 work. A capability name in this preview means the artifact exposes that
+operation; it does not assert that an external peer or runtime configuration has
+been verified.

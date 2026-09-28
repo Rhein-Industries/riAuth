@@ -6,7 +6,6 @@ use crate::{
     model::{Group, User},
     store::Tx,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -16,51 +15,7 @@ const DENIED: &str = "denied";
 const RETAIN_SECONDS: u64 = 7 * 86_400;
 const MAX_PENDING: usize = 1_000;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AccessRequest {
-    pub id: String,
-    pub user_id: String,
-    pub username: String,
-    pub group: String,
-    pub reason: String,
-    pub ttl: u64,
-    pub status: String,
-    pub created_at: u64,
-    #[serde(default)]
-    pub decided_at: Option<u64>,
-    #[serde(default)]
-    pub decided_by: Option<String>,
-    #[serde(default)]
-    pub grant_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AccessGrant {
-    pub id: String,
-    pub user_id: String,
-    pub group: String,
-    pub not_before: u64,
-    pub expires_at: u64,
-    pub request_id: String,
-    #[serde(default)]
-    pub revoked_at: Option<u64>,
-    #[serde(default)]
-    pub revoked_by: Option<String>,
-}
-
-impl AccessGrant {
-    pub fn active(&self, now: u64) -> bool {
-        self.revoked_at.is_none() && self.not_before <= now && now < self.expires_at
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NewAccessRequest {
-    pub group: String,
-    pub reason: String,
-    pub ttl: u64,
-}
+pub use crate::pam_types::{AccessGrant, AccessRequest, NewAccessRequest};
 
 fn validate_reason(reason: &str) -> Result<()> {
     let length = reason.chars().count();

@@ -128,6 +128,7 @@ pub(super) async fn observe(State(app): State<App>, req: Request, next: Next) ->
         "OPTIONS" => "OPTIONS",
         _ => "OTHER",
     };
+    #[cfg(feature = "platform")]
     let scim = req.uri().path().starts_with("/scim/");
     app.stats.requests.fetch_add(1, Relaxed);
     let mut response = next.run(req).await;
@@ -174,6 +175,7 @@ pub(super) async fn observe(State(app): State<App>, req: Request, next: Next) ->
             app.stats.latency_buckets[index].fetch_add(1, Relaxed);
         }
     }
+    #[cfg(feature = "platform")]
     if scim
         && response.status().is_client_error()
         && !response.headers().get("content-type").is_some_and(|v| {

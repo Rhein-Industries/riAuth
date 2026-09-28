@@ -104,6 +104,11 @@ pub fn validate_config(config: &Config) -> anyhow::Result<()> {
             anyhow::bail!("{field} requires the Platform build");
         }
     }
+    for scope in config.reconciliation_controllers.keys() {
+        if scope.starts_with("workspace/") || scope.starts_with("entra/") {
+            anyhow::bail!("reconciliation_controllers.{scope} requires the Platform build");
+        }
+    }
     for key in ["saml", "forward_auth", "outpost_start"] {
         if config.rate_limits.contains_key(key) {
             anyhow::bail!("rate_limits.{key} requires the Platform build");
@@ -167,6 +172,29 @@ pub fn validate_store(store: &Store) -> Result<()> {
                     "Stored agent ownership or permissions require the Platform build",
                 ));
             }
+        }
+        // Removing the signer configuration is not a safe downgrade if a
+        // retained key still delegates signatures to that remote service.
+        if tx
+            .get::<crate::crypto::Keys>("meta", "keys")?
+            .is_some_and(|keys| keys.active.remote.is_some())
+        {
+            return Err(Error::bad(
+                "Stored remote signing key requires the Platform build",
+            ));
+        }
+        let mut after = None;
+        loop {
+            let page = tx.scan::<crate::crypto::Keys>("key_domains", after.as_deref(), 256)?;
+            if page.is_empty() {
+                break;
+            }
+            if page.iter().any(|(_, keys)| keys.active.remote.is_some()) {
+                return Err(Error::bad(
+                    "Stored remote signing key requires the Platform build",
+                ));
+            }
+            after = page.last().map(|(key, _)| key.clone());
         }
         // Certificate-authenticated identities carry Platform authority even if
         // their binding index was removed. Reject those shared session rows too.

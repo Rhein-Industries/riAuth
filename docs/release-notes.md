@@ -50,6 +50,9 @@
 - Essentials now omits the SAML, RADIUS, proxy/outpost, client-certificate,
   SSF transport, event-map and workflow runtime implementations at compile time.
   The temporary-access administration routes and browser controls are Platform-only.
+- Essentials also compiles out the Workspace/Entra, inbound SCIM, Windows login,
+  device-trust, temporary-access, offboarding and external-signing engines. A
+  retained remote signing key now blocks downgrade before any listener starts.
 
 # Unreleased management changes
 

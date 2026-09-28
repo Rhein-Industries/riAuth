@@ -769,6 +769,7 @@ impl Core {
         self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
         self.store.write(|tx| crate::directory::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
         self.store
             .write(|tx| crate::cloud_directory::cleanup(tx, at))?;
         self.store.write(|tx| crate::outpost::cleanup(tx, at))?;
@@ -781,9 +782,11 @@ impl Core {
         #[cfg(feature = "platform")]
         self.store
             .write(|tx| crate::workflow::executor::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
         self.store.write(|tx| crate::pam::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::identity::logout_queue::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
         self.store
             .write(|tx| crate::device_trust::cleanup(tx, at))?;
         self.store.write(|tx| crate::ssf::cleanup(tx, at))?;
@@ -862,7 +865,9 @@ impl Core {
             }
             Ok(())
         })?;
-        crate::offboarding::cleanup(self)
+        #[cfg(feature = "platform")]
+        crate::offboarding::cleanup(self)?;
+        Ok(())
     }
     pub(crate) fn session(&self, tx: &Tx<'_>, token: &str) -> Result<(User, Session)> {
         let sid = tx

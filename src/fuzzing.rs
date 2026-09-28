@@ -14,12 +14,16 @@ pub fn parsers(data: &[u8]) {
     crate::radius::fuzz_packet(data);
     let _ = crate::ldap_server::fuzz_ber(data);
     if let Ok(text) = std::str::from_utf8(data) {
+        #[cfg(feature = "platform")]
         let _ = crate::saml::wire::document(text);
         let _ = jsonwebtoken::decode_header(text);
         if data.len() <= MAX_STRUCTURED_BYTES {
+            #[cfg(feature = "platform")]
             crate::saml::wire::fuzz_form(text);
+            #[cfg(feature = "platform")]
             crate::saml::wire::fuzz_verified_redirect(text);
             crate::jose::fuzz_verify_claims(text);
+            #[cfg(feature = "platform")]
             crate::scim::fuzz_filter(text);
             let pairs: Vec<_> = url::form_urlencoded::parse(data)
                 .take(MAX_FORM_PAIRS + 1)
@@ -28,9 +32,11 @@ pub fn parsers(data: &[u8]) {
             if pairs.len() <= MAX_FORM_PAIRS {
                 let _ = crate::oidc::parse_form::<crate::oidc::TokenRequest>(pairs.clone());
                 let _ = crate::oidc::parse_form::<crate::oidc::Authorization>(pairs);
+                #[cfg(feature = "platform")]
                 let _ = serde_urlencoded::from_str::<crate::scim::Query>(text);
             }
             if let Some(value) = bounded_json(data) {
+                #[cfg(feature = "platform")]
                 crate::scim::fuzz_resource(value);
                 crate::provisioning::fuzz_scim_response(data);
                 // Deserialize the original bytes: Value would erase duplicate JWK fields.
