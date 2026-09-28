@@ -1101,6 +1101,37 @@
     if (delivery.status === "stopped") return `Not delivered after ${delivery.attempts} ${delivery.attempts === 1 ? "attempt" : "attempts"}`;
     return delivery.attempts ? `Queued, retrying after ${delivery.attempts} ${delivery.attempts === 1 ? "attempt" : "attempts"}` : "Queued for delivery";
   }
+  // The outbox changes delivery state after the page loads. While a shown message is queued,
+  // re-read invitations and replace only the delivery text, so open forms keep their input.
+  // Checks start every five seconds and slow to once a minute while a message keeps waiting.
+  let inviteTimer = null, inviteChecks = 0;
+  const inviteDelivery = (invitation) => h("span", { "data-delivery": invitation.user.id }, deliveryState(invitation));
+  function watchInvitations(restart = false) {
+    clearTimeout(inviteTimer);
+    if (restart) inviteChecks = 0;
+    if (!data.invitations.some((i) => i.delivery && i.delivery.status === "queued")) return;
+    const run = generation;
+    inviteTimer = setTimeout(async () => {
+      if (run !== generation || !document.querySelector("#view [data-delivery]")) return;
+      let latest;
+      try { latest = await api("GET", "admin/invitations"); } catch { return; }
+      if (run !== generation) return;
+      // Only the same link's delivery is taken over; anything else waits for a refresh.
+      let changed = latest.invitations.length !== data.invitations.length;
+      for (const shown of data.invitations) {
+        const next = latest.invitations.find((i) => i.user.id === shown.user.id);
+        if (next && next.status === shown.status && next.expires_at === shown.expires_at) shown.delivery = next.delivery;
+        else changed = true;
+      }
+      for (const node of document.querySelectorAll("#view [data-delivery]")) {
+        const invitation = data.invitations.find((i) => i.user.id === node.dataset.delivery);
+        if (invitation) node.replaceChildren(...[deliveryState(invitation)].flat());
+      }
+      if (changed) { connection("Newer changes available"); return; }
+      inviteChecks += 1;
+      watchInvitations();
+    }, Math.min(5000 * 2 ** Math.floor(inviteChecks / 6), 60000));
+  }
   function revokeInvitation(invitation) {
     const { username } = invitation.user;
     confirmAction({
@@ -1112,26 +1143,29 @@
       },
     });
   }
-  const replaceable = (invitation) => invitation.status !== "pending";
-  // A replacement is the invitation API's reissue: sent as the signed-in administrator to the
-  // reviewed address with the reviewed groups. It supersedes any earlier link for the account.
+  // Sending again is the invitation API's reissue: as the signed-in administrator, to the
+  // reviewed address with the reviewed groups. The new link supersedes any earlier one, so a
+  // resent pending link stops working as soon as the replacement is queued.
   function reissueForm(user, invitation) {
     if (!data.mail) return h("p", { class: "field-hint" }, "Email delivery isn't configured on this server, so a new invitation can't be sent. Set a password for them instead.");
+    const resend = invitation.status === "pending";
     const names = data.groups.map((g) => g.name).sort(byName);
     const form = h("form", { class: "admin-form", novalidate: true, "aria-labelledby": "reissue-title" },
-      h("h3", { id: "reissue-title" }, "Send a new invitation"),
+      h("h3", { id: "reissue-title" }, resend ? "Resend the invitation" : "Send a new invitation"),
       field("Send to", h("input", { id: "reissue-email", type: "email", maxlength: "320", spellcheck: "false", autocomplete: "off", value: user.email || "" })),
       h("fieldset", { class: "group-checks" }, h("legend", {}, "Adds groups"),
         names.length ? names.map((name, index) => check(`reissue-group-${index}`, name, invitation.groups.includes(name))) : h("p", { class: "field-hint" }, "There are no groups yet.")),
-      h("p", { class: "field-hint" }, `Sent as you. It replaces the earlier link and works for ${days(data.lifetime)}. `,
-        invitation.status === "inactive" ? "The earlier link's groups are no longer known, so choose them again." : "Groups that no longer exist are left out."),
-      actions(h("button", { class: "button primary", type: "submit" }, "Send new invitation")));
+      h("p", { class: "field-hint" }, resend
+        ? `Sent as you. The current link stops working as soon as the new one is queued; the new link works for ${days(data.lifetime)}.`
+        : [`Sent as you. It replaces the earlier link and works for ${days(data.lifetime)}. `,
+          invitation.status === "inactive" ? "The earlier link's groups are no longer known, so choose them again." : "Groups that no longer exist are left out."]),
+      actions(h("button", { class: "button primary", type: "submit" }, resend ? "Resend invitation" : "Send new invitation")));
     bindForm(form, async (key) => {
       const email = value(form, "reissue-email");
       if (!email) throw invalid("Enter the email address the new invitation goes to.");
       const body = { username: user.username, email, display_name: user.display_name, groups: selectedGroups(form, "reissue") };
       await api("POST", "admin/invitations", body, { revision: data.revision, key });
-      await saved(`New invitation queued for ${email}. The link works for ${days(data.lifetime)}.`);
+      await saved(resend ? `Invitation resent: queued for ${email}. The earlier link no longer works.` : `New invitation queued for ${email}. The link works for ${days(data.lifetime)}.`);
     }, {
       404: (error) => /group/i.test(error.message) ? "A selected group no longer exists. Reload to see the current groups." : undefined,
       409: (error) => /already exists/i.test(error.message) ? "This account is no longer waiting for an invitation, so no new link was sent. Reload to see its current state." : undefined,
@@ -1146,19 +1180,22 @@
       { label: "Person", cell: (i) => h("span", { class: "cell-title" }, link(hash("people", i.user.username), personName(i.user)), h("small", {}, i.user.username)) },
       { label: "Email", cell: (i) => i.user.email || "—" },
       { label: "Status", cell: (i) => h("span", {}, invitationBadge(i), " ", linkState(i)) },
-      { label: "Delivery", cell: deliveryState },
+      { label: "Delivery", cell: inviteDelivery },
       { label: "Groups", cell: (i) => i.groups.length ? i.groups.join(", ") : "—" },
       { label: "Actions", cell: (i) => h("span", { class: "row-actions" },
-        replaceable(i) ? link(hash("people", i.user.username), "Send new link", { class: "text-button", "aria-label": `Review and send a new invitation to ${i.user.username}` }) : null,
+        i.status === "pending"
+          ? link(hash("people", i.user.username), "Resend", { class: "text-button", "aria-label": `Review and resend the invitation to ${i.user.username}` })
+          : link(hash("people", i.user.username), "Send new link", { class: "text-button", "aria-label": `Review and send a new invitation to ${i.user.username}` }),
         i.status === "inactive" ? null : h("button", { class: "text-button", type: "button", "aria-label": `Revoke the invitation for ${i.user.username}`, onclick: () => revokeInvitation(i) }, "Revoke")) },
     ], rows, "No invitations are waiting.", (i) => i.user.username);
     return h("section", { class: "admin-section", "aria-labelledby": "invitations-title" },
       h("h2", { id: "invitations-title", tabindex: "-1" }, "Invitations"),
-      h("p", { class: "field-hint" }, "Accepting sets their password, verifies the address, enables the account and adds the listed groups. Send new link reviews the address and groups, then replaces an expired, revoked or blocked link."),
+      h("p", { class: "field-hint" }, "Accepting sets their password, verifies the address, enables the account and adds the listed groups. Resend and Send new link review the address and groups first; the new link replaces the old one. Delivery updates here while a message is queued."),
       grid.node);
   }
   function people() {
     const rows = [...data.users].sort((a, b) => byName(personName(a), personName(b)));
+    watchInvitations(true);
     return {
       node: listView({
         eyebrow: "PEOPLE", title: "People", description: "Accounts that can sign in to riAuth and the applications it protects.",
@@ -1238,12 +1275,13 @@
       h("dl", { class: "facts" },
         h("dt", {}, "Status"), h("dd", {}, invitationBadge(invitation)),
         h("dt", {}, "Link"), h("dd", {}, linkState(invitation)),
-        h("dt", {}, "Delivery"), h("dd", {}, deliveryState(invitation)),
+        h("dt", {}, "Delivery"), h("dd", {}, inviteDelivery(invitation)),
         h("dt", {}, "Adds groups"), h("dd", {}, invitation.groups.length ? invitation.groups.join(", ") : "None"),
         h("dt", {}, "Invited by"), h("dd", {}, invitation.invited_by ? actorName(invitation.invited_by) : "—")),
       h("p", { class: "field-hint" }, "Queued means the message is in riAuth's outbox; accepted by the mail server doesn't confirm it reached the inbox."),
       invitation.status === "inactive" ? null : h("div", { class: "stack" }, h("button", { class: "button secondary", type: "button", onclick: () => revokeInvitation(invitation) }, "Revoke invitation")),
-      replaceable(invitation) ? reissueForm(user, invitation) : null) : null;
+      reissueForm(user, invitation)) : null;
+    if (invitation) watchInvitations(true);
     const node = h("div", {},
       heading("PERSON", personName(user), null),
       h("p", { class: "badges" }, h("code", {}, user.username), self ? badge("You", "info") : null, user.admin ? badge("Administrator", "info") : null,
