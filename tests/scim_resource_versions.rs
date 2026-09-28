@@ -373,6 +373,68 @@ async fn scim_group_record_cannot_point_at_another_local_group() {
     f.assert_http_mutation_snapshot(&before);
 }
 
+#[test]
+fn scim_user_list_rejects_forged_related_group_like_get() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-related-group-binding".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write", "group.read", "group.write", "group.members"]
+            .map(|action| Permission { action: action.into(), resource: "*".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let user = f.core.scim_write(
+        &token,
+        "Users",
+        None,
+        json!({"schemas":[scim::USER],"userName":"bound-list-user"}),
+        false,
+    ).unwrap();
+    let user_id = text(&user, "id");
+    f.core.create_group(&f.admin, "bound-related-group").unwrap();
+    f.core.group_member(&f.admin, "bound-related-group", "bound-list-user", true).unwrap();
+    let group = f.core.scim_write(
+        &token,
+        "Groups",
+        None,
+        json!({"schemas":[scim::GROUP],"displayName":"forged-related-group"}),
+        false,
+    ).unwrap();
+    let group_id = text(&group, "id");
+
+    let get = f.core.scim_get(&token, "Users", &user_id).unwrap();
+    let listed = f.core.scim_list(&token, "Users", scim::Query {
+        count: Some(1),
+        ..Default::default()
+    }).unwrap();
+    assert_eq!(listed["Resources"][0], get);
+
+    // The record now claims a different local group to which the user belongs.
+    // It is owner-matched and relation-matched, but its immutable identity is
+    // inconsistent with its displayName and must fail closed in both reads.
+    f.core.store.write(|tx| {
+        let mut record: Value = tx.get("scim_groups", &group_id)?.unwrap();
+        record["local_id"] = json!("bound-related-group");
+        tx.put("scim_groups", &group_id, &record)
+    }).unwrap();
+    let get_error = f.core.scim_get(&token, "Users", &user_id).unwrap_err();
+    assert_eq!(get_error.status, StatusCode::CONFLICT);
+    assert_eq!(get_error.code, "conflict");
+    assert_eq!(get_error.message, "SCIM resource identity does not match its local record");
+    for query in [
+        scim::Query { count: Some(1), ..Default::default() },
+        scim::Query { count: Some(1), filter: Some("userName eq \"bound-list-user\"".into()), ..Default::default() },
+        scim::Query { count: Some(1), sort_by: Some("id".into()), ..Default::default() },
+    ] {
+        let list_error = f.core.scim_list(&token, "Users", query).unwrap_err();
+        assert_eq!(list_error.status, get_error.status);
+        assert_eq!(list_error.code, get_error.code);
+        assert_eq!(list_error.message, get_error.message);
+    }
+}
+
 #[tokio::test]
 async fn scim_group_create_keeps_the_scim_membership_authority_requirement() {
     let f = Fixture::new();
