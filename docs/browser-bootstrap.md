@@ -1,7 +1,7 @@
 # Browser first-administrator setup
 
 An operator prepares ownership privately; the first administrator chooses their
-username and password in the browser. Anonymous visitors cannot claim a fresh
+username and a password or two passkeys in the browser. Anonymous visitors cannot claim a fresh
 server. This is the shared server baseline, with the same password, identity,
 storage and recovery semantics as `riauth init`.
 
@@ -43,6 +43,9 @@ The proxy must preserve Host and Origin, serve setup/assets under the issuer
 path, avoid request-body logging, and not add credentialed CORS. Do not replace
 the issuer with a temporary public name or expose a plaintext setup listener.
 Other identity protocols and background delivery workers start after setup.
+Passkey setup requires an issuer hostname (for example `localhost` for a local
+evaluation, or the production HTTPS domain); the shared WebAuthn RP model does
+not support IP-address issuers. Choose the hostname before preparing ownership.
 
 Configure `database_key_file` and/or `postgres` before preparation to use the
 existing encrypted storage or PostgreSQL backend. The pending verifier uses
@@ -53,17 +56,35 @@ that same backend and encryption configuration; there is no plaintext fallback.
 1. Open the setup URL, such as `http://localhost:9000/setup`. Opening, reloading,
    scanning or fetching assets never consumes the proof.
 2. Paste the privately supplied proof. Choose an administrator username, display
-   name, optional email and password, then confirm the password.
-3. Select **Create administrator**. The ordinary password policy applies:
-   12–1024 UTF-8 bytes. Email is not automatically verified. The current shared
-   first-admin policy creates a password account without a pre-enrolled factor;
-   this flow has the same rule and offers no passkey-only bypass.
+   name, optional email and sign-in method. Email is not automatically verified.
+3. For **Password**, enter and confirm a password, then select **Create
+   administrator**. The ordinary 12–1024 UTF-8 byte password policy applies.
+   For **Passkeys only**, name a primary and backup passkey. Select **Enroll
+   primary passkey**, then enroll the backup on a separate device or security
+   key. The account and instance remain pending until both credentials verify.
+   The server requires user verification and distinct credential IDs, using the
+   same U09 administrator policy; it cannot prove that synced passkeys reside
+   on physically independent devices. Keep both credentials and rehearse backup
+   sign-in. Losing them requires the [offline recovery procedure](operations.md#diagnostics-and-recovery),
+   including explicit factor reset. Ordinary administration cannot silently add
+   a password or remove the required backup.
 4. Select **Continue to sign in** and sign in normally. Ownership alone creates
    no session or bearer credential. Browser login uses the portal's protected
    HttpOnly cookie. No operator restart is needed to use the account.
 
+Passkey enrollment expires after at most five minutes, or when the ownership
+proof expires, whichever comes first. Dismissing a native prompt allows an
+explicit retry while its challenge is unused. **Cancel passkey setup** discards
+the pending ceremony without consuming ownership. Starting again replaces any
+previous enrollment. Once a credential response reaches verification, its
+challenge is consumed even if attestation fails; enter the proof again to
+restart. A timeout or lost final response requires checking ordinary sign-in
+before retrying. Neither partial registration nor cancellation creates a user.
+
 The browser clears proof/password fields after submission and on navigation;
-it never puts them in URLs, browser storage or generated HTML. Setup uses JSON,
+it retains the proof only in page memory during passkey enrollment and clears
+it on cancellation, expiry or completion. It never puts secrets in URLs,
+browser storage or generated HTML. Setup uses JSON,
 an exact Origin, the portal custom header and same-origin Fetch Metadata when
 present. A cross-site form cannot initialize the instance. Responses are
 uncacheable and cannot be framed.
@@ -80,17 +101,26 @@ the live transition without restarting the service.
 
 ## Ownership and transaction boundary
 
-Pending storage contains an instance ID, exact issuer, creation/expiry times
-and a domain-separated SHA-256 proof verifier. It contains no raw proof,
-administrator or signing key. Verification compares fixed-length digests in
+The ownership record contains an instance ID, exact issuer, creation/expiry
+times and a domain-separated SHA-256 proof verifier. It contains no raw proof
+or signing key. A separate bounded passkey record contains the pending account
+and WebAuthn state, including the intended username/user handle, first verified
+credential, proof verifier, instance, exact issuer, ceremony digest and deadline.
+It has no live identity or authority. The shared WebAuthn implementation derives
+RP ID and origin from the configured issuer and verifies both on every response. Verification compares fixed-length digests in
 constant time and requires the same instance, issuer, uninitialized state and
 unexpired bounded lifetime. The persisted instance ID survives restart/rotation.
 
 Ownership is checked before expensive credential work and again inside the
 shared initialization writer. That transaction creates schema/index metadata,
 issuer, signing key, dummy password hash, the administrator, username index,
-password history and success audit, and deletes the pending verifier. All
-effects commit together. The redb writer/PostgreSQL advisory-locked writer
+password history (when applicable) and success audit, and deletes the pending
+verifier and ceremony. Passkey setup first claims the final ceremony once, then
+rechecks ownership, uninitialized state and the enrollment deadline under that
+same initialization writer. It registers both credentials through the shared
+U09 identity/passkey implementation inside the transaction. Invalid backup
+registration leaves ownership pending and creates no live user or signing key.
+All initialization effects commit together. The redb writer/PostgreSQL advisory-locked writer
 selects one winner. A losing HTTP/node cannot create another administrator.
 Runtime activation belongs to the worker, so a disconnected HTTP caller cannot
 strand a committed instance in setup mode. Other pending PostgreSQL nodes check
@@ -117,7 +147,12 @@ CARGO_BUILD_JOBS=2 cargo test --locked --test bootstrap --test bootstrap_cli
 The HTTP tests cover plaintext/encrypted redb, protected operator output,
 success and cookie sign-in, wrong/expired/instance/issuer proof, Origin/Host/
 Fetch Metadata/JSON checks, replay, scanner GET, password-policy rollback,
-concurrent winner and pending/initialized restart. An opt-in disposable
+concurrent winner and pending/initialized restart. Focused passkey checks cover
+primary-only non-activation, valid two-key registration, both keys signing in,
+U09 password/backup protections, bad origin and challenge, intended account
+binding, cancellation, expiry, proof/instance/issuer binding, one concurrent
+passkey winner, and password-versus-passkey races. Run these with the shared U09
+contracts using `cargo test --locked --test bootstrap --test passkey_admin`. An opt-in disposable
 PostgreSQL test covers two independent HTTP nodes, one atomic winner and restart:
 
 ```sh

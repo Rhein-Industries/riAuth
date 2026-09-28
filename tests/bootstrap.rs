@@ -28,9 +28,12 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new(encrypted: bool) -> Self {
+        Self::with_host(encrypted, "127.0.0.1").await
+    }
+    async fn with_host(encrypted: bool, host: &str) -> Self {
         let dir = tempfile::TempDir::new().unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let origin = format!("http://{host}:{}", listener.local_addr().unwrap().port());
         let url = format!("{origin}/identity");
         let key = dir.path().join("storage.key");
         if encrypted {
@@ -383,6 +386,33 @@ async fn origin_host_fetch_metadata_and_json_guard_reject_confusion() {
         .await
         .unwrap();
     assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    for action in ["start", "first", "finish", "cancel"] {
+        let target = format!("{}/api/setup/passkey/{action}", f.url);
+        assert_eq!(
+            f.http
+                .post(&target)
+                .header("origin", "http://wrong.example.test")
+                .header("x-riauth-portal", "1")
+                .json(&json!({}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            f.http
+                .post(format!("{target}?proof=forbidden"))
+                .header("origin", &f.origin)
+                .header("x-riauth-portal", "1")
+                .json(&json!({}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
     f.empty();
     assert_eq!(f.post(f.input("owner")).await.status(), StatusCode::OK);
 }
@@ -705,4 +735,316 @@ async fn postgres_http_nodes_share_one_winner_restart_and_encrypted_state() {
     .unwrap();
     server_a.abort();
     server_b.abort();
+}
+
+// The software authenticator verifies the same challenge/RP/origin/UV contract;
+// it has no resident storage, so only that client-side option is relaxed here.
+type Authenticator = webauthn_authenticator_rs::WebauthnAuthenticator<
+    webauthn_authenticator_rs::softpasskey::SoftPasskey,
+>;
+fn authenticator() -> Authenticator {
+    Authenticator::new(webauthn_authenticator_rs::softpasskey::SoftPasskey::new(
+        true,
+    ))
+}
+fn registration(f: &Fixture, key: &mut Authenticator, start: &Value) -> Value {
+    let mut options = start["public_key"].clone();
+    options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+    serde_json::to_value(
+        key.do_registration(
+            f.origin.parse().unwrap(),
+            serde_json::from_value(options).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+impl Fixture {
+    async fn passkey(&self, action: &str, mut input: Value) -> reqwest::Response {
+        input["proof"] = json!(self.proof);
+        self.http
+            .post(format!("{}/api/setup/passkey/{action}", self.url))
+            .header("origin", &self.origin)
+            .header("x-riauth-portal", "1")
+            .header("sec-fetch-site", "same-origin")
+            .json(&input)
+            .send()
+            .await
+            .unwrap()
+    }
+    async fn start_passkeys(&self, username: &str) -> Value {
+        let response = self
+            .passkey(
+                "start",
+                json!({"account":{
+                    "username":username,"display_name":"Owner","email":null,
+                    "primary_name":"Primary device","backup_name":"Separate backup key"
+                }}),
+            )
+            .await;
+        let status = response.status();
+        let started: Value = response.json().await.unwrap();
+        assert_eq!(status, StatusCode::OK, "{}", started["error_description"]);
+        assert_eq!(started["public_key"]["publicKey"]["user"]["name"], username);
+        assert_eq!(started["public_key"]["publicKey"]["rp"]["id"], "localhost");
+        assert_eq!(
+            started["public_key"]["publicKey"]["authenticatorSelection"]["userVerification"],
+            "required"
+        );
+        started
+    }
+    async fn primary(&self, start: &Value, key: &mut Authenticator) -> Value {
+        let response = self
+            .passkey(
+                "first",
+                json!({"ceremony":start["ceremony"],"credential":registration(self,key,start)}),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        self.empty();
+        assert!(
+            self.setup
+                .store
+                .list::<Value>("passkeys")
+                .unwrap()
+                .is_empty()
+        );
+        response.json().await.unwrap()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn passkey_setup_requires_backup_and_one_concurrent_finish_then_both_keys_sign_in() {
+    for encrypted in [false, true] {
+        let mut f = Fixture::with_host(encrypted, "localhost").await;
+        let ownership = f.pending();
+        let first = f.start_passkeys("passkey-owner").await;
+        let mut primary = authenticator();
+        let second = f.primary(&first, &mut primary).await;
+        assert_eq!(f.pending(), ownership);
+        let mut backup = authenticator();
+        let credential = registration(&f, &mut backup, &second);
+        let answer = json!({"ceremony":second["ceremony"],"credential":credential});
+        let (a, b) = tokio::join!(
+            f.passkey("finish", answer.clone()),
+            f.passkey("finish", answer.clone())
+        );
+        if a.status() != StatusCode::OK && b.status() != StatusCode::OK {
+            panic!(
+                "No winner: {} {} / {} {}",
+                a.status(),
+                b.status(),
+                a.text().await.unwrap(),
+                b.text().await.unwrap()
+            );
+        }
+        assert_eq!(
+            [a.status(), b.status()]
+                .into_iter()
+                .filter(|s| *s == StatusCode::OK)
+                .count(),
+            1
+        );
+        assert!([a.status(), b.status()].into_iter().all(|s| {
+            [
+                StatusCode::OK,
+                StatusCode::UNAUTHORIZED,
+                StatusCode::CONFLICT,
+            ]
+            .contains(&s)
+        }));
+        assert!(!a.headers().contains_key("set-cookie") && !b.headers().contains_key("set-cookie"));
+        assert_eq!(
+            f.passkey("finish", answer).await.status(),
+            StatusCode::CONFLICT
+        );
+        let users = f.setup.store.list::<User>("users").unwrap();
+        assert_eq!(users.len(), 1);
+        assert!(users[0].1.password_hash.is_empty() && users[0].1.admin && users[0].1.has_passkeys);
+        assert_eq!(f.setup.store.list::<Value>("passkeys").unwrap().len(), 2);
+        assert!(f.setup.store.list::<Value>("sessions").unwrap().is_empty());
+        for key in ["browser_setup", "browser_setup_passkeys"] {
+            assert!(f.setup.store.get::<Value>("meta", key).unwrap().is_none());
+        }
+        // Open through the ordinary runtime after releasing the pending server/store.
+        let config = f.setup.config.clone();
+        let origin: url::Url = f.origin.parse().unwrap();
+        f.server.abort();
+        let _ = (&mut f.server).await;
+        let _dir = std::mem::replace(&mut f._dir, tempfile::TempDir::new().unwrap());
+        drop(f);
+        let core = Core::open(config).unwrap();
+        for key in [&mut primary, &mut backup] {
+            let started = core.passkey_login_start("passkey-owner", None).unwrap();
+            let response = key
+                .do_authentication(
+                    origin.clone(),
+                    serde_json::from_value(started["public_key"].clone()).unwrap(),
+                )
+                .unwrap();
+            let login = core
+                .passkey_login_finish(started["ceremony"].as_str().unwrap(), response)
+                .unwrap();
+            let token = login["session_token"].as_str().unwrap();
+            assert!(
+                core.update_user(
+                    token,
+                    "passkey-owner",
+                    riauth::model::UserPatch {
+                        password: Some(PASSWORD.into()),
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+            );
+            let listed = core.passkeys(token).unwrap();
+            let id = listed.as_array().unwrap()[0]["id"].as_str().unwrap();
+            assert!(core.passkey_remove(token, id).is_err());
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn passkey_setup_consumes_bad_attestations_and_rejects_cross_ceremony_or_origin() {
+    for wrong_origin in [false, true] {
+        let f = Fixture::with_host(false, "localhost").await;
+        let first = f.start_passkeys("original-owner").await;
+        let mut response = registration(&f, &mut authenticator(), &first);
+        let started = if wrong_origin {
+            use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+            let encoded = response["response"]["clientDataJSON"].as_str().unwrap();
+            let mut client: Value =
+                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).unwrap()).unwrap();
+            client["origin"] = json!("http://wrong.example.test");
+            response["response"]["clientDataJSON"] =
+                json!(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&client).unwrap()));
+            first
+        } else {
+            // Starting for a different username invalidates the original handle and
+            // even the current handle cannot submit the previous user's challenge.
+            let next = f.start_passkeys("intended-owner").await;
+            assert_eq!(
+                f.passkey(
+                    "first",
+                    json!({"ceremony":first["ceremony"],"credential":response})
+                )
+                .await
+                .status(),
+                StatusCode::UNAUTHORIZED
+            );
+            next
+        };
+        let bad = json!({"ceremony":started["ceremony"],"credential":response});
+        assert_eq!(
+            f.passkey("first", bad.clone()).await.status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            f.passkey("first", bad).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        f.empty();
+        assert!(
+            f.setup
+                .store
+                .get::<Value>("meta", "browser_setup_passkeys")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            f.post(f.input("password-owner")).await.status(),
+            StatusCode::OK
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn passkey_setup_cancellation_expiry_and_ownership_binding_leave_instance_pending() {
+    for field in ["cancel", "expires_at", "instance", "issuer", "proof_hash"] {
+        let f = Fixture::with_host(false, "localhost").await;
+        let first = f.start_passkeys("owner").await;
+        let second = f.primary(&first, &mut authenticator()).await;
+        let answer = json!({"ceremony":second["ceremony"],"credential":registration(&f,&mut authenticator(),&second)});
+        if field == "cancel" {
+            assert_eq!(
+                f.passkey("cancel", json!({"ceremony":second["ceremony"]}))
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+        } else {
+            let mut pending: Value = f
+                .setup
+                .store
+                .get("meta", "browser_setup_passkeys")
+                .unwrap()
+                .unwrap();
+            pending[field] = if field == "expires_at" {
+                json!(crypto::now())
+            } else {
+                json!("other-binding")
+            };
+            f.setup
+                .store
+                .write(|tx| tx.put("meta", "browser_setup_passkeys", &pending))
+                .unwrap();
+        }
+        assert_eq!(
+            f.passkey("finish", answer).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        f.empty();
+        assert!(f.setup.store.list::<Value>("passkeys").unwrap().is_empty());
+        assert!(
+            f.setup
+                .store
+                .get::<Value>("meta", "browser_setup")
+                .unwrap()
+                .is_some()
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn passkey_and_password_setup_race_share_one_initialization_commit() {
+    let f = Fixture::with_host(false, "localhost").await;
+    let first = f.start_passkeys("passkey-owner").await;
+    let second = f.primary(&first, &mut authenticator()).await;
+    let credential = registration(&f, &mut authenticator(), &second);
+    let (passkey, password) = tokio::join!(
+        f.passkey(
+            "finish",
+            json!({"ceremony":second["ceremony"],"credential":credential})
+        ),
+        f.post(f.input("password-owner"))
+    );
+    assert_eq!(
+        [passkey.status(), password.status()]
+            .into_iter()
+            .filter(|s| *s == StatusCode::OK)
+            .count(),
+        1
+    );
+    assert!([passkey.status(), password.status()].contains(&StatusCode::CONFLICT));
+    let users = f.setup.store.list::<User>("users").unwrap();
+    assert_eq!(users.len(), 1);
+    let credentials = f.setup.store.list::<Value>("passkeys").unwrap();
+    assert_eq!(
+        credentials.len(),
+        if users[0].1.password_hash.is_empty() {
+            2
+        } else {
+            0
+        }
+    );
+    for (_, key) in credentials {
+        assert_eq!(key["user_id"], users[0].1.id);
+    }
+    assert!(
+        f.setup
+            .store
+            .get::<Value>("meta", "browser_setup_passkeys")
+            .unwrap()
+            .is_none()
+    );
 }

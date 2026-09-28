@@ -6,12 +6,13 @@ use crate::{
     crypto,
     error::{Error, Result},
     model::NewUser,
+    passkey::{AdminEnrollment, NewPasskeyAdmin},
     store::{Store, Tx},
 };
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{ConnectInfo, DefaultBodyLimit, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path as RoutePath, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
@@ -27,10 +28,13 @@ use std::{
 };
 use tokio::sync::{Semaphore, oneshot};
 use tower::ServiceExt;
+use webauthn_rs::prelude::RegisterPublicKeyCredential;
 use zeroize::Zeroizing;
 
 const RECORD: &str = "browser_setup";
 const PREFIX: &str = "ri_setup_";
+const PASSKEY_RECORD: &str = "browser_setup_passkeys";
+const CEREMONY_PREFIX: &str = "ri_setup_passkey_";
 
 // No raw proof, signing key, user or password exists in pending storage.
 #[derive(Serialize, Deserialize)]
@@ -40,6 +44,19 @@ struct Pending {
     proof_hash: String,
     created_at: u64,
     expires_at: u64,
+}
+
+// One bounded enrollment per pending instance. Starting again replaces it; neither
+// an unverified user nor its first credential can authenticate from this record.
+#[derive(Serialize, Deserialize)]
+struct PasskeySetup {
+    instance: String,
+    issuer: String,
+    proof_hash: String,
+    ceremony_hash: String,
+    created_at: u64,
+    expires_at: u64,
+    enrollment: AdminEnrollment,
 }
 
 #[derive(Clone)]
@@ -101,6 +118,7 @@ impl Bootstrap {
             // an unusable private file, never an unprotected active proof.
             crate::config::write_private(proof_file, proof.as_bytes(), false)
                 .map_err(Error::internal)?;
+            tx.delete("meta", PASSKEY_RECORD)?;
             tx.put(
                 "meta",
                 RECORD,
@@ -143,6 +161,10 @@ impl Bootstrap {
 
     fn verify(&self, tx: &Tx<'_>, proof: &str) -> Result<()> {
         uninitialized(tx)?;
+        self.verify_ownership(tx, proof)
+    }
+
+    fn verify_ownership(&self, tx: &Tx<'_>, proof: &str) -> Result<()> {
         let pending = tx
             .get::<Pending>("meta", RECORD)?
             .ok_or_else(invalid_proof)?;
@@ -173,6 +195,142 @@ impl Bootstrap {
             self.verify(tx, &proof)
         })
     }
+
+    fn passkey_start(&self, proof: String, account: NewPasskeyAdmin) -> Result<Value> {
+        let proof = Zeroizing::new(proof);
+        self.store.write(|tx| {
+            self.verify(tx, &proof)?;
+            let ownership = tx.get::<Pending>("meta", RECORD)?.ok_or_else(invalid_proof)?;
+            let (public_key, enrollment) = AdminEnrollment::start(&self.config.issuer, account)?;
+            let ceremony = crypto::random_token(CEREMONY_PREFIX);
+            let created_at = crypto::now();
+            let expires_at = ownership.expires_at.min(created_at + 300);
+            tx.put("meta", PASSKEY_RECORD, &PasskeySetup {
+                instance: self.instance.clone(), issuer: self.config.issuer.clone(),
+                proof_hash: ownership.proof_hash, ceremony_hash: crypto::digest(&ceremony),
+                created_at, expires_at, enrollment,
+            })?;
+            Ok(json!({"ceremony":ceremony,"public_key":public_key,"expires_in":expires_at.saturating_sub(created_at)}))
+        })
+    }
+
+    fn passkey_pending(&self, tx: &Tx<'_>, proof: &str, ceremony: &str) -> Result<PasskeySetup> {
+        self.verify(tx, proof)?;
+        let pending = tx
+            .get::<PasskeySetup>("meta", PASSKEY_RECORD)?
+            .ok_or_else(invalid_ceremony)?;
+        self.verify_passkey_binding(&pending, proof)?;
+        if ceremony.len() != CEREMONY_PREFIX.len() + 43
+            || !ceremony.starts_with(CEREMONY_PREFIX)
+            || !crypto::constant_eq(&pending.ceremony_hash, &crypto::digest(ceremony))
+        {
+            return Err(invalid_ceremony());
+        }
+        Ok(pending)
+    }
+
+    fn verify_passkey_binding(&self, pending: &PasskeySetup, proof: &str) -> Result<()> {
+        let at = crypto::now();
+        if pending.instance != self.instance
+            || pending.issuer != self.config.issuer
+            || !crypto::constant_eq(
+                &pending.proof_hash,
+                &proof_hash(&self.instance, &self.config.issuer, proof),
+            )
+            || pending.created_at > at
+            || pending.expires_at <= at
+            || pending.expires_at.saturating_sub(pending.created_at) > 300
+        {
+            return Err(invalid_ceremony());
+        }
+        Ok(())
+    }
+
+    fn passkey_first(
+        &self,
+        proof: String,
+        ceremony: String,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<Value> {
+        let proof = Zeroizing::new(proof);
+        self.store.write(|tx| {
+            let mut pending = self.passkey_pending(tx, &proof, &ceremony)?;
+            if pending.enrollment.has_primary() { return Err(invalid_ceremony()); }
+            tx.delete("meta", PASSKEY_RECORD)?;
+            // Commit consumption even on invalid attestation. Only an unused native
+            // prompt can retry; a submitted response requires a fresh setup ceremony.
+            let result = (|| {
+                let public_key = pending.enrollment.first(&self.config.issuer, tx, response)?;
+                let next = crypto::random_token(CEREMONY_PREFIX);
+                pending.ceremony_hash = crypto::digest(&next);
+                self.verify_passkey_binding(&pending, &proof)?;
+                self.verify(tx, &proof)?;
+                tx.put("meta", PASSKEY_RECORD, &pending)?;
+                Ok(json!({"ceremony":next,"public_key":public_key,"expires_in":pending.expires_at.saturating_sub(crypto::now())}))
+            })();
+            Ok(result)
+        })?
+    }
+
+    fn passkey_finish(
+        &self,
+        proof: String,
+        ceremony: String,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<Core> {
+        let proof = Zeroizing::new(proof);
+        let pending = self.store.write(|tx| {
+            let pending = self.passkey_pending(tx, &proof, &ceremony)?;
+            if !pending.enrollment.has_primary() {
+                return Err(invalid_ceremony());
+            }
+            // Claim the response once, including invalid responses and disconnected
+            // callers. This spends only the ceremony, never the ownership proof.
+            tx.delete("meta", PASSKEY_RECORD)?;
+            Ok(pending)
+        })?;
+        Core::initialize_with_administrator(self.config.clone(), self.store.clone(), |tx| {
+            self.verify(tx, &proof)?;
+            self.verify_passkey_binding(&pending, &proof)?;
+            let user = pending
+                .enrollment
+                .finish(&self.config.issuer, tx, response)?;
+            // Credential verification can cross the deadline; check at commit too.
+            // This serialized writer now contains our own user, so uninitialized
+            // was checked before those writes; ownership must still be current.
+            self.verify_ownership(tx, &proof)?;
+            if pending.expires_at <= crypto::now() {
+                return Err(invalid_ceremony());
+            }
+            Ok(user)
+        })
+    }
+
+    fn passkey_cancel(&self, proof: String, ceremony: String) -> Result<Value> {
+        let proof = Zeroizing::new(proof);
+        self.store.write(|tx| {
+            self.passkey_pending(tx, &proof, &ceremony)?;
+            tx.delete("meta", PASSKEY_RECORD)?;
+            Ok(json!({"cancelled":true}))
+        })
+    }
+
+    fn rate_limit(&self, ip: std::net::IpAddr) -> Result<()> {
+        let limit = self
+            .config
+            .rate_limits
+            .get("account")
+            .copied()
+            .unwrap_or(10);
+        if self.store.shared_rate_limit(ip, "account", limit)? {
+            return Err(Error::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate_limited",
+                "Too many setup attempts; retry later",
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn invalid_proof() -> Error {
@@ -180,6 +338,14 @@ fn invalid_proof() -> Error {
         StatusCode::UNAUTHORIZED,
         "invalid_setup_proof",
         "Setup proof is invalid or expired",
+    )
+}
+
+fn invalid_ceremony() -> Error {
+    Error::new(
+        StatusCode::UNAUTHORIZED,
+        "invalid_setup_ceremony",
+        "Passkey setup is invalid, expired or already used; start again",
     )
 }
 
@@ -282,6 +448,10 @@ pub(crate) fn router_with_signal(
         .route(&format!("{base}/setup/"), get(page))
         .route(&format!("{base}/api/setup"), post(complete))
         .route(
+            &format!("{base}/api/setup/passkey/{{action}}"),
+            post(passkey),
+        )
+        .route(
             &format!("{base}/portal/assets/setup.js"),
             get(|| async {
                 (
@@ -318,7 +488,7 @@ pub(crate) fn router_with_signal(
             }),
         )
         .fallback(dispatch)
-        .layer(DefaultBodyLimit::max(8 * 1024))
+        .layer(DefaultBodyLimit::max(64 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), protect))
         .with_state(app)
 }
@@ -328,8 +498,10 @@ async fn protect(State(app): State<SetupApp>, req: Request, next: Next) -> Respo
     let expected = &url[url::Position::BeforeHost..url::Position::AfterPort];
     let setup_path = format!("{}/setup", url.path().trim_end_matches('/'));
     let valid_host = intended_host(expected, &req);
+    let api_setup = format!("{}/api/setup", url.path().trim_end_matches('/'));
     let is_setup = req.uri().path().starts_with(&setup_path)
-        || req.uri().path() == format!("{}/api/setup", url.path().trim_end_matches('/'));
+        || req.uri().path() == api_setup
+        || req.uri().path().starts_with(&format!("{api_setup}/"));
     // Never accept proofs in navigation/query parameters, and never expose them in errors.
     let mut response = if !valid_host || (is_setup && req.uri().query().is_some()) {
         Error::bad("Invalid setup request").into_response()
@@ -422,19 +594,7 @@ async fn complete(
     let ip = peer.ip();
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let limit = setup
-            .config
-            .rate_limits
-            .get("account")
-            .copied()
-            .unwrap_or(10);
-        if setup.store.shared_rate_limit(ip, "account", limit)? {
-            return Err(Error::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "rate_limited",
-                "Too many setup attempts; retry later",
-            ));
-        }
+        setup.rate_limit(ip)?;
         let core = setup.complete(
             input.proof,
             NewUser {
@@ -457,6 +617,83 @@ async fn complete(
     // No bearer or browser session is issued by an ownership proof. The new account
     // must use the ordinary password/factor sign-in and browser cookie machinery.
     Ok(Json(json!({"initialized":true})))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyStartInput {
+    proof: String,
+    account: NewPasskeyAdmin,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyResponseInput {
+    proof: String,
+    ceremony: String,
+    credential: RegisterPublicKeyCredential,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCancelInput {
+    proof: String,
+    ceremony: String,
+}
+
+async fn passkey(
+    State(app): State<SetupApp>,
+    RoutePath(action): RoutePath<String>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    body: Bytes,
+) -> Result<Json<Value>> {
+    crate::portal::http::browser_write_guard_for(&app.setup.config.issuer, &headers)?;
+    if app.ready.get().is_some() {
+        return Err(closed());
+    }
+    if !headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(';').next() == Some("application/json"))
+    {
+        return Err(Error::bad("Setup requires JSON"));
+    }
+    let body = Zeroizing::new(body.to_vec());
+    let started = Instant::now();
+    let permit = app.permit().await?;
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        app.setup.rate_limit(peer.ip())?;
+        let invalid = |_| Error::bad("Invalid setup request");
+        match action.as_str() {
+            "start" => {
+                let input: PasskeyStartInput = serde_json::from_slice(&body).map_err(invalid)?;
+                app.setup.passkey_start(input.proof, input.account)
+            }
+            "first" | "finish" => {
+                let input: PasskeyResponseInput = serde_json::from_slice(&body).map_err(invalid)?;
+                if action == "first" {
+                    app.setup
+                        .passkey_first(input.proof, input.ceremony, input.credential)
+                } else {
+                    let core =
+                        app.setup
+                            .passkey_finish(input.proof, input.ceremony, input.credential)?;
+                    // Same worker-owned activation as password setup, even on disconnect.
+                    app.activate(core)?;
+                    Ok(json!({"initialized":true}))
+                }
+            }
+            "cancel" => {
+                let input: PasskeyCancelInput = serde_json::from_slice(&body).map_err(invalid)?;
+                app.setup.passkey_cancel(input.proof, input.ceremony)
+            }
+            _ => Err(Error::missing("Unknown setup action")),
+        }
+    })
+    .await
+    .map_err(Error::internal)?;
+    crate::api::credential_floor(started, result.is_err()).await;
+    result.map(Json)
 }
 
 async fn dispatch(State(app): State<SetupApp>, req: Request) -> Response {
@@ -490,6 +727,7 @@ pub(crate) fn closed_routes() -> Router<crate::api::App> {
         .route("/setup", get(closed_page))
         .route("/setup/", get(closed_page))
         .route("/api/setup", post(|| async { closed() }))
+        .route("/api/setup/passkey/{action}", post(|| async { closed() }))
 }
 async fn closed_page(State(app): State<crate::api::App>) -> Response {
     closed_browser_page(&app.core.cookie_path())

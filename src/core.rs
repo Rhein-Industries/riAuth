@@ -96,15 +96,31 @@ impl Core {
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
-        let key = SigningKey::generate()?;
-        let dummy = crypto::password_hash(&crypto::random_token(""))?;
         let mut user = make_user(input)?;
         user.admin = true;
+        Self::initialize_with_administrator(config, store, |tx| {
+            ownership(tx)?;
+            Ok(user)
+        })
+    }
+
+    /// Shared initialization commit for password and verified passkey administrators.
+    /// The closure must recheck ownership and persist any credentials in this writer.
+    pub(crate) fn initialize_with_administrator(
+        config: Config,
+        store: Store,
+        administrator: impl FnOnce(&Tx<'_>) -> Result<User>,
+    ) -> Result<Self> {
+        if store.get::<u32>("meta", "schema")?.is_some() {
+            return Err(Error::conflict("Instance already initialized"));
+        }
+        let key = SigningKey::generate()?;
+        let dummy = crypto::password_hash(&crypto::random_token(""))?;
         store.write(|tx| {
             if tx.get::<u32>("meta", "schema")?.is_some() {
                 return Err(Error::conflict("Instance already initialized"));
             }
-            ownership(tx)?;
+            let user = administrator(tx)?;
             tx.put("meta", "schema", &crate::upgrade::SCHEMA)?;
             tx.put(
                 "meta",
@@ -131,6 +147,7 @@ impl Core {
             tx.put("users", &user.id, &user)?;
             tx.put("usernames", &user.username, &user.id)?;
             tx.delete("meta", "browser_setup")?;
+            tx.delete("meta", "browser_setup_passkeys")?;
             crate::recovery::stamp_lineage(tx)?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;

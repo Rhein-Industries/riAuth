@@ -21,9 +21,24 @@
       <div class="field"><label for="setup-username">Administrator username</label><input id="setup-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
       <div class="field"><label for="setup-name">Display name</label><input id="setup-name" name="display_name" autocomplete="name" maxlength="200" required></div>
       <div class="field"><label for="setup-email">Email (optional)</label><input id="setup-email" name="email" type="email" autocomplete="email" maxlength="254"></div>
+      <div id="setup-method" role="radiogroup" aria-labelledby="setup-method-label">
+        <p id="setup-method-label">Sign-in method</p>
+        <label class="checkbox"><input type="radio" name="setup-method" value="password" checked> Password</label>
+        <label class="checkbox"><input type="radio" name="setup-method" value="passkey"> Passkeys only</label>
+      </div>
+      <div id="setup-password-fields">
       <div class="field"><label for="setup-password">Password</label><input id="setup-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required aria-describedby="password-hint"><p class="field-hint" id="password-hint">Use at least 12 characters. Keep it in a password manager. You can add passkeys after signing in.</p></div>
       <div class="field"><label for="setup-confirm">Confirm password</label><input id="setup-confirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></div>
+      </div>
+      <div id="setup-passkey-fields" hidden>
+        <div class="field"><label for="setup-primary">Primary passkey name</label><input id="setup-primary" maxlength="200" autocomplete="off" value="Primary device"></div>
+        <div class="field"><label for="setup-backup">Backup passkey name</label><input id="setup-backup" maxlength="200" autocomplete="off" value="Backup security key"></div>
+        <p class="field-hint">Enroll your primary passkey, then a backup on a separate device or security key. riAuth verifies two distinct credentials but cannot prove that synced passkeys are stored independently. Both are required before setup completes.</p>
+        <p class="field-hint">Keep both passkeys. If you lose them, your operator must use the offline administrator recovery procedure.</p>
+      </div>
+      <p id="setup-progress" role="status" tabindex="-1" hidden></p>
       <button class="button primary" id="setup-submit" type="submit">Create administrator</button>
+      <button class="button secondary" id="setup-cancel" type="button" hidden>Cancel passkey setup</button>
     </form>
     <section id="setup-complete" hidden aria-live="polite" tabindex="-1">
       <h2>Your administrator is ready</h2>

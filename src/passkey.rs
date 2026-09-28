@@ -36,12 +36,20 @@ struct Registration {
 /// throughout the ceremony. The pending record contains no password or live authority.
 #[derive(Serialize, Deserialize)]
 struct AdminRegistration {
-    user: User,
+    #[serde(flatten)]
+    enrollment: AdminEnrollment,
     owner_id: String,
     session_id: String,
     session_epoch: u64,
     binding_hash: String,
     expires_at: u64,
+}
+
+/// Shared two-credential administrator policy, used by management and first setup.
+/// These are pending credentials, never a provisional live identity.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct AdminEnrollment {
+    pub(crate) user: User,
     state: PasskeyRegistration,
     primary: Option<Credential>,
     primary_name: String,
@@ -87,11 +95,15 @@ pub(crate) struct BrowserPasskeyContext<'a> {
 }
 
 fn webauthn(core: &Core) -> Result<Webauthn> {
-    let uri = url::Url::parse(&core.config.issuer).map_err(Error::internal)?;
+    webauthn_for_issuer(&core.config.issuer)
+}
+
+fn webauthn_for_issuer(issuer: &str) -> Result<Webauthn> {
+    let uri = url::Url::parse(issuer).map_err(Error::internal)?;
     let origin = url::Url::parse(&uri.origin().ascii_serialization()).map_err(Error::internal)?;
     WebauthnBuilder::new(
-        uri.host_str()
-            .ok_or_else(|| Error::bad("WebAuthn RP host missing"))?,
+        uri.domain()
+            .ok_or_else(|| Error::bad("Passkeys require an issuer hostname, not an IP address"))?,
         &origin,
     )
     .map_err(|_| Error::bad("Invalid WebAuthn relying-party origin"))?
@@ -161,11 +173,11 @@ fn validate_passkey_name(name: &str) -> Result<()> {
 }
 
 fn admin_registration_options(
-    core: &Core,
+    issuer: &str,
     user: &User,
     exclude: Vec<CredentialID>,
 ) -> Result<(Value, PasskeyRegistration)> {
-    let (challenge, state) = webauthn(core)?
+    let (challenge, state) = webauthn_for_issuer(issuer)?
         .start_passkey_registration(
             handle(&user.id),
             &user.username,
@@ -177,6 +189,136 @@ fn admin_registration_options(
     options["publicKey"]["authenticatorSelection"] =
         json!({"residentKey":"required","requireResidentKey":true,"userVerification":"required"});
     Ok((options, state))
+}
+
+impl AdminEnrollment {
+    pub(crate) fn start(issuer: &str, input: NewPasskeyAdmin) -> Result<(Value, Self)> {
+        validate_name(&input.username)?;
+        validate_passkey_name(&input.primary_name)?;
+        validate_passkey_name(&input.backup_name)?;
+        if input.primary_name.trim() == input.backup_name.trim() {
+            return Err(Error::bad(
+                "Give the primary and backup passkeys different names",
+            ));
+        }
+        if let Some(email) = &input.email {
+            validate_email(email)?;
+        }
+        let display_name = if input.display_name.is_empty() {
+            input.username.clone()
+        } else {
+            input.display_name
+        };
+        validate_display(&display_name)?;
+        let user = User {
+            has_passkeys: false,
+            totp_settings: Default::default(),
+            pairwise_seed: crypto::random_token(""),
+            id: crypto::id(),
+            username: input.username,
+            email: input.email,
+            display_name,
+            password_hash: String::new(),
+            enabled: true,
+            admin: true,
+            epoch: 0,
+            totp_secret: None,
+            totp_pending: None,
+            totp_last_step: None,
+            created_at: now(),
+            attributes: Default::default(),
+            email_verified: false,
+            subjects: Default::default(),
+            recovery_codes: Default::default(),
+        };
+        let (options, state) = admin_registration_options(issuer, &user, Vec::new())?;
+        Ok((
+            options,
+            Self {
+                user,
+                state,
+                primary: None,
+                primary_name: input.primary_name,
+                backup_name: input.backup_name,
+            },
+        ))
+    }
+
+    pub(crate) fn has_primary(&self) -> bool {
+        self.primary.is_some()
+    }
+
+    pub(crate) fn first(
+        &mut self,
+        issuer: &str,
+        tx: &Tx<'_>,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<Value> {
+        if self.primary.is_some() {
+            return Err(Error::unauthorized());
+        }
+        let key = webauthn_for_issuer(issuer)?
+            .finish_passkey_registration(&response, &self.state)
+            .map_err(|_| Error::bad("Primary passkey verification failed"))?;
+        let id = credential_id(key.cred_id());
+        if tx.get::<Credential>("passkeys", &id)?.is_some() {
+            return Err(Error::conflict("Credential is already enrolled"));
+        }
+        let primary = Credential {
+            id,
+            user_id: self.user.id.clone(),
+            name: self.primary_name.clone(),
+            created_at: now(),
+            counter: 0,
+            key,
+        };
+        let (options, state) =
+            admin_registration_options(issuer, &self.user, vec![primary.key.cred_id().clone()])?;
+        self.primary = Some(primary);
+        self.state = state;
+        Ok(options)
+    }
+
+    /// Caller supplies its authorization and lifecycle checks inside this same writer.
+    pub(crate) fn finish(
+        self,
+        issuer: &str,
+        tx: &Tx<'_>,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<User> {
+        let primary = self.primary.ok_or_else(Error::unauthorized)?;
+        if tx
+            .get::<String>("usernames", &self.user.username)?
+            .is_some()
+        {
+            return Err(Error::conflict("Username already exists"));
+        }
+        let key = webauthn_for_issuer(issuer)?
+            .finish_passkey_registration(&response, &self.state)
+            .map_err(|_| Error::bad("Backup passkey verification failed"))?;
+        let backup_id = credential_id(key.cred_id());
+        if backup_id == primary.id
+            || tx.get::<Credential>("passkeys", &backup_id)?.is_some()
+            || tx.get::<Credential>("passkeys", &primary.id)?.is_some()
+        {
+            return Err(Error::conflict("Use a distinct, unenrolled backup passkey"));
+        }
+        let backup = Credential {
+            id: backup_id,
+            user_id: self.user.id.clone(),
+            name: self.backup_name,
+            created_at: now(),
+            counter: 0,
+            key,
+        };
+        let mut user = self.user;
+        user.has_passkeys = true;
+        tx.put("users", &user.id, &user)?;
+        tx.put("usernames", &user.username, &user.id)?;
+        tx.put("passkeys", &primary.id, &primary)?;
+        tx.put("passkeys", &backup.id, &backup)?;
+        Ok(user)
+    }
 }
 
 impl Core {
@@ -222,48 +364,19 @@ impl Core {
         cookie: &str,
         input: NewPasskeyAdmin,
     ) -> Result<Value> {
-        validate_name(&input.username)?;
-        validate_passkey_name(&input.primary_name)?;
-        validate_passkey_name(&input.backup_name)?;
-        if input.primary_name.trim() == input.backup_name.trim() {
-            return Err(Error::bad(
-                "Give the primary and backup passkeys different names",
-            ));
-        }
-        if let Some(email) = &input.email {
-            validate_email(email)?;
-        }
-        let display_name = if input.display_name.is_empty() {
-            input.username.clone()
-        } else {
-            input.display_name
-        };
-        validate_display(&display_name)?;
-        let user = User {
-            has_passkeys: false,
-            totp_settings: Default::default(),
-            pairwise_seed: crypto::random_token(""),
-            id: crypto::id(),
-            username: input.username,
-            email: input.email,
-            display_name,
-            password_hash: String::new(),
-            enabled: true,
-            admin: true,
-            epoch: 0,
-            totp_secret: None,
-            totp_pending: None,
-            totp_last_step: None,
-            created_at: now(),
-            attributes: Default::default(),
-            email_verified: false,
-            subjects: Default::default(),
-            recovery_codes: Default::default(),
-        };
+        let (public_key, enrollment) = AdminEnrollment::start(&self.config.issuer, input)?;
         self.store.write(|tx| {
-            let (owner, session) =
-                self.admin_registration_session(tx, token, cookie, None, &user.username)?;
-            if tx.get::<String>("usernames", &user.username)?.is_some() {
+            let (owner, session) = self.admin_registration_session(
+                tx,
+                token,
+                cookie,
+                None,
+                &enrollment.user.username,
+            )?;
+            if tx
+                .get::<String>("usernames", &enrollment.user.username)?
+                .is_some()
+            {
                 return Err(Error::conflict("Username already exists"));
             }
             let pending = tx.list::<AdminRegistration>("admin_passkey_registration")?;
@@ -278,22 +391,17 @@ impl Core {
                     "Too many pending administrator enrollments",
                 ));
             }
-            let (public_key, state) = admin_registration_options(self, &user, Vec::new())?;
             let ceremony = crypto::random_token("ri_admin_passkey_");
             tx.put(
                 "admin_passkey_registration",
                 &digest(&ceremony),
                 &AdminRegistration {
-                    user,
+                    enrollment,
                     owner_id: owner.id,
                     session_id: session.id,
                     session_epoch: owner.epoch,
                     binding_hash: digest(cookie),
                     expires_at: now() + 300,
-                    state,
-                    primary: None,
-                    primary_name: input.primary_name,
-                    backup_name: input.backup_name,
                 },
             )?;
             Ok(json!({"ceremony":ceremony,"public_key":public_key,"expires_in":300}))
@@ -309,18 +417,9 @@ impl Core {
     ) -> Result<Value> {
         self.store.write(|tx| {
             let mut pending = tx.get::<AdminRegistration>("admin_passkey_registration", &digest(ceremony))?
-                .filter(|p| p.primary.is_none()).ok_or_else(Error::unauthorized)?;
-            self.admin_registration_session(tx, token, cookie, Some(&pending), &pending.user.username)?;
-            let key = webauthn(self)?.finish_passkey_registration(&response, &pending.state)
-                .map_err(|_| Error::bad("Primary passkey verification failed"))?;
-            let id = credential_id(key.cred_id());
-            if tx.get::<Credential>("passkeys", &id)?.is_some() {
-                return Err(Error::conflict("Credential is already enrolled"));
-            }
-            let primary = Credential { id, user_id: pending.user.id.clone(), name: pending.primary_name.clone(), created_at: now(), counter: 0, key };
-            let (public_key, state) = admin_registration_options(self, &pending.user, vec![primary.key.cred_id().clone()])?;
-            pending.primary = Some(primary);
-            pending.state = state;
+                .filter(|p| !p.enrollment.has_primary()).ok_or_else(Error::unauthorized)?;
+            self.admin_registration_session(tx, token, cookie, Some(&pending), &pending.enrollment.user.username)?;
+            let public_key = pending.enrollment.first(&self.config.issuer, tx, response)?;
             let next = crypto::random_token("ri_admin_passkey_");
             tx.delete("admin_passkey_registration", &digest(ceremony))?;
             tx.put("admin_passkey_registration", &digest(&next), &pending)?;
@@ -339,44 +438,16 @@ impl Core {
             let pending = tx
                 .get::<AdminRegistration>("admin_passkey_registration", &digest(ceremony))?
                 .ok_or_else(Error::unauthorized)?;
-            let primary = pending.primary.as_ref().ok_or_else(Error::unauthorized)?;
             let (owner, _) = self.admin_registration_session(
                 tx,
                 token,
                 cookie,
                 Some(&pending),
-                &pending.user.username,
+                &pending.enrollment.user.username,
             )?;
-            if tx
-                .get::<String>("usernames", &pending.user.username)?
-                .is_some()
-            {
-                return Err(Error::conflict("Username already exists"));
-            }
-            let key = webauthn(self)?
-                .finish_passkey_registration(&response, &pending.state)
-                .map_err(|_| Error::bad("Backup passkey verification failed"))?;
-            let backup_id = credential_id(key.cred_id());
-            if backup_id == primary.id
-                || tx.get::<Credential>("passkeys", &backup_id)?.is_some()
-                || tx.get::<Credential>("passkeys", &primary.id)?.is_some()
-            {
-                return Err(Error::conflict("Use a distinct, unenrolled backup passkey"));
-            }
-            let backup = Credential {
-                id: backup_id,
-                user_id: pending.user.id.clone(),
-                name: pending.backup_name,
-                created_at: now(),
-                counter: 0,
-                key,
-            };
-            let mut user = pending.user;
-            user.has_passkeys = true;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            tx.put("passkeys", &primary.id, primary)?;
-            tx.put("passkeys", &backup.id, &backup)?;
+            let user = pending
+                .enrollment
+                .finish(&self.config.issuer, tx, response)?;
             tx.delete("admin_passkey_registration", &digest(ceremony))?;
             audit(tx, &owner.id, "user.create.passkey_only", &user.id)?;
             Ok(json!({"user":crate::model::UserView::from(&user),"passkeys":2}))
@@ -393,7 +464,7 @@ impl Core {
                 token,
                 cookie,
                 Some(&pending),
-                &pending.user.username,
+                &pending.enrollment.user.username,
             )?;
             tx.delete("admin_passkey_registration", &digest(ceremony))?;
             Ok(json!({"cancelled":true}))
