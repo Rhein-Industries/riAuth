@@ -31,6 +31,46 @@ fn retain_selected(users: &mut BTreeMap<String, User>, id: &str, user: User) -> 
     Ok(())
 }
 
+fn ensure_unique_group_dn(
+    tx: &Tx<'_>,
+    name: &str,
+    visible: &BTreeMap<String, String>,
+) -> Result<()> {
+    let mut after = None;
+    let mut indexed = false;
+    let folded = name.to_ascii_lowercase();
+    loop {
+        let page = tx.group_dn_fold_page(name, after.as_deref())?;
+        if page.is_empty() {
+            break;
+        }
+        let full = page.len() == crate::store::maintenance::PAGE;
+        after = page.last().cloned();
+        for other_name in page {
+            if other_name.to_ascii_lowercase() != folded {
+                return Err(Error::internal("LDAP Group DN index has a mismatched fold"));
+            }
+            if other_name == name {
+                indexed = true;
+                continue;
+            }
+            let other = tx
+                .get::<Group>("groups", &other_name)?
+                .ok_or_else(|| Error::internal("LDAP Group DN index has a missing Group"))?;
+            if other.members.iter().any(|id| visible.contains_key(id)) {
+                return Err(Error::conflict("LDAP group DNs collide"));
+            }
+        }
+        if !full {
+            break;
+        }
+    }
+    if !indexed {
+        return Err(Error::internal("LDAP Group DN index is missing a Group"));
+    }
+    Ok(())
+}
+
 fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result<Option<User>> {
     let (client, _) = core.ldap_profile(tx, cid)?;
     match auth {
@@ -237,6 +277,8 @@ impl Core {
                 .map(|u| (u.id.clone(), u.username.clone()))
                 .collect();
             let mut rows = Vec::new();
+            // Only selected User DNs enter this set (at most MAX_SELECTED_USERS).
+            // Group DNs use the case-fold index below.
             let mut unique = BTreeSet::new();
             let base = query.base.to_ascii_lowercase();
             let suffix = format!(",{base}");
@@ -356,9 +398,7 @@ impl Core {
                             continue;
                         }
                         let dn = settings.group_dn(&name);
-                        if !unique.insert(dn.to_ascii_lowercase()) {
-                            return Err(Error::conflict("LDAP group DNs collide"));
-                        }
+                        ensure_unique_group_dn(tx, &name, &visible)?;
                         include(entry(
                             dn,
                             vec![
@@ -670,10 +710,10 @@ mod tests {
         assert_eq!(after.0, before.0, "search must not list either bucket");
         assert_eq!(
             after.1 - before.1,
-            4,
-            "two Group pages and two membership reads"
+            6,
+            "two Group pages, two memberships and two DN-fold checks"
         );
-        assert_eq!(after.2 - before.2, 136);
+        assert_eq!(after.2 - before.2, 138);
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert_eq!(dns.len(), 7);
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -888,8 +928,8 @@ mod tests {
             "non-retained members must not cause unbounded point reads"
         );
         assert_eq!(after.1, before.1, "no unbounded bucket read");
-        assert_eq!(after.2 - before.2, if disabled_members { 6 } else { 5 });
-        assert_eq!(after.3 - before.3, if disabled_members { 261 } else { 135 });
+        assert_eq!(after.2 - before.2, if disabled_members { 7 } else { 6 });
+        assert_eq!(after.3 - before.3, if disabled_members { 262 } else { 136 });
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(dns.len(), 6);
@@ -906,6 +946,179 @@ mod tests {
                 .vals
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn ldap_group_dn_fold_index_keeps_filtered_collision_and_rebuild_semantics() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "directory").unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "groups"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let created = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "fold-ldap-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            created["credential"]["token"].as_str().unwrap().into(),
+        ));
+        core.store
+            .write(|tx| {
+                let id: String = tx.get("usernames", "admin")?.unwrap();
+                let mut directory: Group = tx.get("groups", "directory")?.unwrap();
+                directory.members.insert(id.clone());
+                tx.put("groups", "directory", &directory)?;
+                for index in 0..130 {
+                    let name = format!("group-{index:03}");
+                    tx.put(
+                        "groups",
+                        &name,
+                        &Group {
+                            name: name.clone(),
+                            members: [id.clone()].into(),
+                        },
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        // Group entries are filtered out, but their DNs still participate in
+        // collision checks. More than one Group page must not grow a DN set.
+        let query = LdapSearchRequest {
+            base: "ou=users,dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::OneLevel,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("uid".into()),
+            attrs: vec![],
+        };
+        let scans = &core.store.telemetry().reads;
+        let before = (
+            scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).count(),
+            scans.scans(ReadContext::Read, true).sum(),
+        );
+        let (rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let after = (
+            scans.scans(ReadContext::Read, false).count(),
+            scans.scans(ReadContext::Read, true).count(),
+            scans.scans(ReadContext::Read, true).sum(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].dn, "uid=admin,ou=users,dc=riauth,dc=test");
+        assert_eq!(after.0, before.0);
+        assert_eq!(after.1 - before.1, 135);
+        assert_eq!(after.2 - before.2, 393);
+
+        // A non-visible case variant is harmless; making it visible conflicts
+        // even though the query excludes every Group entry.
+        core.store
+            .write(|tx| {
+                tx.put(
+                    "groups",
+                    "GROUP-129",
+                    &Group {
+                        name: "GROUP-129".into(),
+                        members: BTreeSet::new(),
+                    },
+                )
+            })
+            .unwrap();
+        assert!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .is_ok()
+        );
+        core.store
+            .write(|tx| {
+                let id: String = tx.get("usernames", "admin")?.unwrap();
+                let mut group: Group = tx.get("groups", "GROUP-129")?.unwrap();
+                group.members.insert(id);
+                tx.put("groups", "GROUP-129", &group)
+            })
+            .unwrap();
+        let collision = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap_err();
+        assert_eq!(collision.status, axum::http::StatusCode::CONFLICT);
+
+        // Restored-state recovery rebuilds derived indexes from Group records.
+        // Remove the fold rows to prove this check uses the rebuilt index.
+        let fold = format!(
+            "index_group_dn_folds/{}",
+            crate::crypto::digest("group-129")
+        );
+        core.store
+            .write(|tx| {
+                tx.delete(&fold, "GROUP-129")?;
+                tx.delete(&fold, "group-129")
+            })
+            .unwrap();
+        let recovery = crate::recovery::invalidate_restored(&core.store).unwrap();
+        assert_eq!(
+            core.store
+                .read(|tx| tx.group_dn_fold_page("group-129", None))
+                .unwrap(),
+            ["GROUP-129", "group-129"]
+        );
+        crate::recovery::complete(&core.store, &recovery.id, true).unwrap();
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
         );
     }
 }

@@ -494,14 +494,16 @@ pub fn indexed_user_group_membership(backend: Backend) {
     assert!(!names.contains("group-001") && !names.contains("group-002"));
     assert!(names.contains("group-003"));
 
-    // Opening an older index version rebuilds it from durable group records.
+    // A restored-state or upgrade rebuild reconstructs derived membership
+    // entries from durable Group records without rolling back activation.
     f.core
         .store
         .write(|tx| {
             for (key, _) in tx.list::<Value>("index_user_groups")? {
                 tx.delete("index_user_groups", &key)?;
             }
-            tx.put("meta", "index_version", &2u32)
+            assert!(tx.user_group_names(&alice.id)?.is_empty());
+            tx.rebuild_indexes()
         })
         .unwrap();
     drop(store);

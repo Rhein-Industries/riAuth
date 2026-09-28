@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 4;
+pub const INDEX_VERSION: u32 = 5;
 pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -14,6 +14,7 @@ pub const QUEUES: [&str; 6] = [
 ];
 // Outbound SCIM user links, grouped by local user for the disable transition.
 const USER_LINKS: &str = "index_user_provisioning_links";
+const GROUP_DN_FOLDS: &str = "index_group_dn_folds";
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
 // Imported records can approach the archive's per-frame limit. The ordinary
 // maintenance PAGE would decode 128 such records before returning to rebuild.
@@ -259,6 +260,15 @@ impl Tx<'_> {
         before: Option<&crate::model::Group>,
         after: Option<&crate::model::Group>,
     ) -> Result<()> {
+        let fold_bucket = format!(
+            "{GROUP_DN_FOLDS}/{}",
+            crypto::digest(&id.to_ascii_lowercase())
+        );
+        if before.is_none() && after.is_some() {
+            self.put(&fold_bucket, id, &true)?;
+        } else if before.is_some() && after.is_none() {
+            self.delete(&fold_bucket, id)?;
+        }
         let key = crypto::digest(id);
         if let Some(old) = before {
             for user in &old.members {
@@ -299,6 +309,25 @@ impl Tx<'_> {
             }
         }
         Ok(names)
+    }
+    /// Group storage keys whose LDAP DNs have the same ASCII case fold.
+    /// A page is enough for the read side to detect visible collisions without
+    /// retaining every projected Group DN.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_dn_fold_page(
+        &self,
+        name: &str,
+        after: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let bucket = format!(
+            "{GROUP_DN_FOLDS}/{}",
+            crypto::digest(&name.to_ascii_lowercase())
+        );
+        Ok(self
+            .scan::<bool>(&bucket, after, PAGE)?
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect())
     }
     /// Only grants for this user are visited; revoked grants are absent from the index.
     pub fn user_access_grants<T: DeserializeOwned>(&self, user_id: &str) -> Result<Vec<T>> {
@@ -523,6 +552,7 @@ impl Tx<'_> {
             "session_retention".into(),
             "index_user_access_grants".into(),
             "index_user_groups".into(),
+            GROUP_DN_FOLDS.into(),
             USER_LINKS.into(),
         ];
         for bucket in COUNTED {
