@@ -6,11 +6,11 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", security: "Security", "grant-review": "Reviewed grants" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
-  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], mail: false, lifetime: 0 };
+  const data = { me: null, revision: 0, clients: [], users: [], groups: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], deliveries: [], deliveryLoadedAt: 0, mail: false, lifetime: 0 };
   // The routes can read and revoke retained grants after approver rules are removed.
   const accessRoutes = () => !!data.me?.user?.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
   const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
@@ -170,6 +170,7 @@
   function forget() {
     RiAuthGrantReview.reset();
     draft = null; captureWizard = null;
+    data.deliveries = []; data.deliveryLoadedAt = 0;
     $("view").replaceChildren();
     $("secret-value").value = "";
     for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
@@ -197,7 +198,7 @@
     $("gate-title").textContent = content[1]; $("gate-text").textContent = content[2];
     $("gate-link").textContent = content[3]; $("gate-retry").hidden = !content[4];
     $("account").hidden = kind !== "forbidden" || !who;
-    for (const id of ["count-applications", "count-people", "count-groups", "count-security"]) $(id).textContent = "—";
+    for (const id of ["count-applications", "count-people", "count-groups", "count-deliveries", "count-security"]) $(id).textContent = "—";
     connection(kind === "offline" ? "Offline" : "Not signed in");
     screen("gate"); $("gate-title").focus();
   }
@@ -211,17 +212,18 @@
       await RiAuthCapabilities.refresh();
       const me = await api("GET", "admin/session");
       const canReadAccess = me.user.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
-      const [clients, users, groups, requests, grants, audit, invites, directories] = await Promise.all([
+      const [clients, users, groups, requests, grants, audit, invites, directories, deliveries] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
         canReadAccess ? api("GET", "admin/access/requests") : Promise.resolve([]),
         canReadAccess ? api("GET", "admin/access/grants") : Promise.resolve([]),
         api("GET", "admin/audit?limit=50").catch((error) => { if (error.status === 403) return []; throw error; }),
         api("GET", "admin/invitations"),
         cloudAvailable() ? api("GET", "admin/cloud-directories") : Promise.resolve([]),
+        api("GET", "admin/provisioning/deactivations"),
       ]);
       if (run !== generation) return;
       if (draft && draft.owner !== me.user.id) forget();
-      Object.assign(data, { me, revision: me.revision, clients, users, groups, directories, operations: {}, probes: {}, requests, grants, audit });
+      Object.assign(data, { me, revision: me.revision, clients, users, groups, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000 });
       Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -252,6 +254,7 @@
     $("count-applications").textContent = data.clients.length;
     $("count-people").textContent = data.users.length;
     $("count-groups").textContent = data.groups.length;
+    $("count-deliveries").textContent = data.deliveries.length;
     const waiting = pending().length;
     const badge = $("count-security");
     badge.hidden = !accessRoutes();
@@ -294,7 +297,7 @@
     const grantReview = (id) => RiAuthGrantReview.view({ id, api, h, me: data.me, users: data.users,
       identityChanged: () => { forget(); loaded = false; refresh({ focus: true }); },
       sessionLost: (status) => gate(status === 401 ? "signin" : "forbidden") });
-    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
+    const views = { applications: [applications, application, newApplication], people: [people, person, newPerson], groups: [groups, group, null], operations: [connectors, connector, null], deliveries: [deliveries, delivery, null], security: [security, null, null], "grant-review": [grantReview, grantReview, null] }[section];
     const [list, detail, create] = views;
     const content = id === "new" && create ? create() : id && detail ? detail(id) : list();
     const view = $("view");
@@ -1170,6 +1173,118 @@
     return { crumb: "New application", node };
   }
 
+  // ---- Durable downstream deactivation -----------------------------------------------------
+  // These are retained observations, not live target checks. Only the server's verified
+  // delivered/succeeded pair is completion; operator attestations and waivers stay separate.
+  function remoteOutcome(row) {
+    if (row.uncertain || row.delivery_state === "ambiguous") return ["Ambiguous", "warn", "A request may have reached the target. Its effect is unknown."];
+    if (row.status === "dismissed" || row.dismissal) return ["Not confirmed", "warn", "Further attempts were waived. Dismissal does not confirm remote deactivation."];
+    if (row.delivery_state === "resolved") return ["Operator attested", "info", "An operator recorded an observation. riAuth did not verify completion."];
+    if (row.status === "delivered" && row.delivery_state === "succeeded") return ["Confirmed inactive", "ok", "riAuth verified the linked account was inactive at completion. This is a retained result, not a live check."];
+    if (row.status === "running") return ["Leased · unconfirmed", "info", "A worker claimed this request. A lease, including an expired lease awaiting settlement, does not confirm delivery."];
+    if (row.status === "pending") return row.hold
+      ? ["Held · unconfirmed", "warn", "The intent is retained and waiting for its hold to clear."]
+      : ["Queued · unconfirmed", "info", "The intent is queued for downstream delivery."];
+    if (row.status === "superseded") return ["Superseded", "muted", "This intent was superseded after local re-enablement. See any retained remote observation below."];
+    if (row.status === "failed" || row.status === "stale") return ["Needs review", "warn", "Delivery stopped without confirmed completion. Inspect the retained error and target state."];
+    return ["Unconfirmed", "warn", "No confirmed remote completion is recorded."];
+  }
+  function remoteBadges(row) {
+    const [label, tone] = remoteOutcome(row);
+    return h("div", { class: "delivery-badges" }, badge(label, tone), row.status === "dismissed" || row.dismissal ? badge("Dismissed", "muted") : null);
+  }
+  function localBadge(row) {
+    const user = userById(row.user_id);
+    return user ? badge(user.enabled ? "Enabled now" : "Disabled in riAuth", user.enabled ? "warn" : "ok") : badge("Current state unavailable", "muted");
+  }
+  const deliveryName = (row) => { const user = userById(row.user_id); return user ? personName(user) : row.username; };
+  function deliverySnapshot() {
+    return h("p", { class: "notice delivery-snapshot" }, "Snapshot loaded ", when(data.deliveryLoadedAt), ". Refresh to see worker changes. Shows up to 1,000 visible retained deactivation records; an empty list does not prove remote completion.");
+  }
+  function deliveries() {
+    return { node: listView({
+      eyebrow: "DOWNSTREAM ACCOUNTS", title: "Delivery outcomes",
+      description: "Local revocation and remote deactivation are separate outcomes. Review each target's durable request and any operator evidence.",
+      before: deliverySnapshot(), caption: "Retained downstream deactivations", rows: data.deliveries,
+      empty: "No visible retained deactivation records. Remote account state is not established by this list.",
+      filter: (row) => [deliveryName(row), row.username, row.user_id, row.target, row.id, row.status, row.delivery_state, ...remoteOutcome(row)].join(" "),
+      columns: [
+        { label: "Person", cell: (row) => h("div", { class: "cell-title" }, link(hash("deliveries", row.id), deliveryName(row)), h("small", {}, row.username)) },
+        { label: "Target", cell: (row) => row.target },
+        { label: "Local account", cell: localBadge },
+        { label: "Remote delivery", cell: remoteBadges },
+        { label: "Recorded", cell: (row) => when(row.created_at) },
+      ],
+    }) };
+  }
+  function personDeliveries(user) {
+    const rows = data.deliveries.filter((row) => row.user_id === user.id);
+    return card("Downstream delivery",
+      h("p", { class: "field-hint" }, "Disabling access in riAuth records separate deactivation requests for linked downstream accounts."),
+      rows.length ? h("ul", { class: "plain-list delivery-links" }, rows.map((row) => h("li", {},
+        link(hash("deliveries", row.id), row.target), remoteBadges(row))))
+        : h("p", { class: "field-hint" }, "No visible retained requests for this person. Remote completion is not established."),
+      link(hash("deliveries"), "All delivery outcomes", { class: "text-button" }));
+  }
+  const dismissalReason = (reason) => ({ remote_absent: "Remote identity is gone", permanently_unverifiable: "Remote state is permanently unverifiable" }[reason] || reason);
+  function dismissalForm(row) {
+    // Eligibility here only hides inapplicable controls. Core authorizes against the current
+    // immutable identity, checks leases and the exact row revision, and writes the audit.
+    const eligible = (row.status === "pending" && row.hold || ["failed", "stale"].includes(row.status))
+      && !row.dismissal && !["applied", "absent"].includes(row.resolution && row.resolution.observed)
+      && !row.lease_owner && row.lease_until <= Date.now() / 1000;
+    if (!eligible) return null;
+    const revision = data.revision;
+    const form = h("form", { class: "admin-form", novalidate: true },
+      h("p", { class: "field-hint" }, "Use only when the remote identity is gone or its state is permanently unverifiable. This waives further attempts for this intent and keeps its original uncertainty and evidence."),
+      h("fieldset", { class: "choices" }, h("legend", {}, "Reason"),
+        ["remote_absent", "permanently_unverifiable"].map((reason) => h("label", { class: "choice" },
+          h("input", { type: "radio", name: "dismiss-reason", value: reason, required: true }), h("strong", {}, dismissalReason(reason))))),
+      field("Evidence or review reference", h("textarea", { id: "dismiss-evidence", rows: "3", maxlength: "280", required: true }), "1–280 characters, including surrounding whitespace. Cite the check or ticket; omit credentials and control characters."),
+      check("dismiss-acknowledge", "I understand this stops further attempts without confirming remote completion.", false),
+      actions(h("button", { class: "button danger", type: "submit" }, "Dismiss further attempts")));
+    bindForm(form, async (key) => {
+      const reason = form.querySelector("[name=dismiss-reason]:checked")?.value, evidence = form.querySelector("#dismiss-evidence").value;
+      if (!reason) throw invalid("Choose why further attempts must be waived.");
+      if (!evidence.trim() || [...evidence].length > 280) throw invalid("Enter evidence of 1–280 characters, including surrounding whitespace.");
+      if (!checked(form, "dismiss-acknowledge")) throw invalid("Acknowledge that dismissal does not confirm remote completion.");
+      const result = await api("POST", `admin/provisioning/deactivations/${seg(row.id)}/dismiss`, { revision: row.revision, reason, evidence }, { revision, key });
+      // Apply only the server's committed response, even if the subsequent refresh fails.
+      data.deliveries = data.deliveries.map((item) => item.id === result.id ? result : item);
+      render();
+      await saved("Dismissal audited. Remote completion is not confirmed.");
+    }, { 409: "This request changed or cannot currently be dismissed. Refresh and review its latest state before submitting again." }, "Recording dismissal…");
+    return card("Audited dismissal", form);
+  }
+  function delivery(id) {
+    const row = data.deliveries.find((item) => item.id === id);
+    if (!row) return { crumb: "Unavailable", node: heading("DELIVERY OUTCOMES", "Delivery record unavailable", "The record is outside the visible retained results or you no longer have access to it. This does not establish remote completion.", link(hash("deliveries"), "Back to delivery outcomes", { class: "button secondary" })) };
+    const user = userById(row.user_id), waiver = row.dismissal, resolution = row.resolution;
+    const facts = (entries) => h("dl", { class: "facts delivery-facts" }, entries.map(([label, content]) => [h("dt", {}, label), h("dd", {}, content == null ? "—" : content)]));
+    const outcome = {
+      deactivated: "Verified inactive after deactivation", already_inactive: "Verified already inactive", reviewed_delivery: "Verified by a reviewed delivery",
+      remote_inactive: "Read-back found inactive after re-enablement; a reviewed plan must reactivate the remote account",
+      remote_active: "Read-back found active after re-enablement",
+    }[row.outcome] || row.outcome || "No confirmed observation";
+    return { crumb: row.target, node: h("div", { class: "delivery-detail" },
+      heading("DELIVERY OUTCOMES", `${deliveryName(row)} · ${row.target}`, "A retained request for one linked downstream account. Local account state and remote delivery are shown separately.", link(hash("deliveries"), "All outcomes", { class: "button secondary" })),
+      deliverySnapshot(),
+      h("div", { class: "delivery-summary" },
+        card("Local revocation", localBadge(row),
+          h("p", { class: "field-hint" }, "This downstream intent was recorded with local account revocation. The current riAuth account state above may have changed since then."),
+          facts([["Person", user ? link(hash("people", user.username), user.username) : "Unavailable"], ["Recorded", when(row.created_at)], ["Disable epoch", row.epoch]])),
+        card("Remote delivery", remoteBadges(row), h("p", { class: "field-hint" }, remoteOutcome(row)[2]),
+          facts([["Worker status", row.status], ["Completion verified", row.status === "delivered" && row.delivery_state === "succeeded" && !row.uncertain && !waiver ? (row.delivered_at ? when(row.delivered_at) : "Timestamp unavailable") : "Not confirmed"], ["Retained observation", outcome]]))),
+      h("div", { class: "detail-grid" },
+        h("div", { class: "detail-side" },
+          waiver ? card("Audited dismissal", h("p", { class: "notice warn-notice" }, "Further attempts were waived. The original intent and any ambiguity remain retained; this is not remote success."),
+            facts([["Reason", dismissalReason(waiver.reason)], ["Evidence", waiver.evidence], ["Recorded by", actorName(waiver.by)], ["Recorded at", when(waiver.at)], ["Previous status", waiver.previous_status], ["Reviewed revision", h("code", {}, waiver.revision)]])) : dismissalForm(row),
+          resolution ? card("Operator observation", h("p", { class: "field-hint" }, "Operator evidence, not a verified delivery result."),
+            facts([["Observed", { applied: "Applied", not_applied: "Not applied", absent: "Remote identity absent" }[resolution.observed] || resolution.observed], ["Evidence", resolution.evidence], ["Recorded by", actorName(resolution.by)], ["Recorded at", when(resolution.at)]])) : null,
+          card("Delivery record", facts([["Hold", row.hold], ["Attempts", row.attempts], ["Next evaluation", row.status === "pending" && row.next_attempt ? when(row.next_attempt) : "None scheduled"], ["Lease until", row.lease_until ? when(row.lease_until) : "No retained lease"], ["Last error", row.last_error]]))),
+        card("Bound identity", facts([["Target", row.target], ["Target URL", row.target_url], ["Local user ID", h("code", {}, row.user_id)], ["Recorded username", row.username], ["Remote ID", h("code", {}, row.remote_id)], ["External ID", h("code", {}, row.external_id)], ["Intent ID", h("code", {}, row.id)], ["Current row revision", h("code", {}, row.revision)]])))) };
+  }
+
   // ---- People ------------------------------------------------------------------------------
   // Invitations go through the account invitation API: an invited account stays disabled
   // until its owner accepts the emailed link, which sets a password and adds the groups.
@@ -1316,7 +1431,7 @@
         field("Email", h("input", { id: "person-email", type: "email", maxlength: "320", spellcheck: "false", value: user.email || "" })),
         check("person-verified", "Email address verified", user.email_verified, "A changed address is saved unverified; they confirm it themselves.")),
       card("Access",
-        check("person-enabled", "Account enabled", user.enabled, self ? "Disabling your own account signs you out of this page." : invitation ? "Accepting the invitation enables the account. Enabling it here stops the invitation link from working." : "Disabling signs them out everywhere."),
+        check("person-enabled", "Account enabled", user.enabled, self ? "Disabling your own account signs you out of this page." : invitation ? "Accepting the invitation enables the account. Enabling it here stops the invitation link from working." : "Disabling revokes access in riAuth. Linked downstream accounts deactivate separately; check Delivery outcomes."),
         check("person-admin", "Administrator", user.admin, self ? "Removing your own administrator role ends your access to this page. riAuth keeps at least one enabled administrator." : "Administrators manage everything on these pages.")),
       actions(h("button", { class: "button primary", type: "submit" }, "Save changes"), link(hash("people"), "Cancel", { class: "button secondary" })));
     bindForm(form, async (key) => {
@@ -1379,7 +1494,7 @@
       h("p", { class: "badges" }, h("code", {}, user.username), self ? badge("You", "info") : null, user.admin ? badge("Administrator", "info") : null,
         invitation ? invitationBadge(invitation) : user.enabled ? badge("Active", "ok") : badge("Disabled", "muted"), user.mfa_enabled ? badge("MFA on", "ok") : badge("MFA not set up", user.admin ? "warn" : "muted")),
       h("div", { class: "detail-grid" }, form,
-        h("div", { class: "detail-side" }, invitationCard, membership,
+        h("div", { class: "detail-side" }, invitationCard, membership, personDeliveries(user),
           card("Sign-in and security",
             h("p", { class: "field-hint" }, user.password_available === false && user.admin ? "Passkey-only administrator. Keep two passkeys on separate devices or security keys. Password recovery requires the offline operator procedure." : user.mfa_enabled ? "Signs in with a passkey or an authenticator code." : "Has no passkey or authenticator app. Only they can add one, after signing in."),
             h("div", { class: "stack" }, passwordAction, mfaAction, signOutAction)),

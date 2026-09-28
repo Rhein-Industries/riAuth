@@ -149,6 +149,24 @@ Rows also report `delivery_state`, derived in this order:
 
 Held rows stay `pending`; `hold` names the reason: `awaiting_controller`, `awaiting_controller_authority`, `target_unconfigured`, `manual_mode`, `guarded_removal`, `removal_review_required`, `awaiting_prior_delivery` or `retry`. They are re-evaluated at an interval that grows with age to one hour, and they count as pending in the delivery queue metrics. The backlog alert therefore also reports offboarded accounts that are still active downstream. Delivery never rewrites managed links, so reviewed plans still count the departure until they deliver it. A reviewed plan made while the account was enabled cannot reactivate it: its job goes stale at that account. A write that was dispatched before the disable and lands after it records new intent. Terminal rows are kept for 90 days, except dismissed rows, whose intent and waiver remain retained.
 
+### Operator view
+
+Administrators can open **Delivery outcomes** at `/admin#/deliveries` to inspect
+retained deactivation requests, separately from the current local account state.
+The view distinguishes queued, held and leased attempts, ambiguity, verified
+completion, operator attestations and audited dismissals. Each person's detail
+page links to their visible requests. Results are a manually refreshed snapshot
+of up to 1,000 visible retained rows; an empty list does not establish remote
+completion. Deleted local identities currently fail closed and are not listed.
+
+Eligible held, stale or failed requests offer **Dismiss further attempts**, with
+a required reason, evidence and acknowledgment. The browser uses the existing
+management operation through guarded same-origin routes, with the reviewed row
+revision and an idempotency key. The server checks current authority, state and
+leases and retains the audit. Dismissal never labels the remote account inactive.
+Retry, ambiguity resolution and reviewed provisioning job controls remain in the
+management API and CLI.
+
 ### Resolving ambiguity
 
 Some ambiguity cannot be settled by any attempt: a deactivation row that is `stale`, for example because its link was removed, or `failed`, or a stopped job whose current item stayed ambiguous. For these, an operator records what the target shows:

@@ -13,6 +13,7 @@ use crate::{
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
     passkey::NewPasskeyAdmin,
+    provisioning::DismissDeactivation,
 };
 use axum::{
     Json, Router,
@@ -71,6 +72,11 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/clients/{id}/explain", post(explain))
         .route("/api/admin/policy/simulate", post(simulate_policy))
         .route("/api/admin/client-checks", post(check_client))
+        .route("/api/admin/provisioning/deactivations", get(deactivations))
+        .route(
+            "/api/admin/provisioning/deactivations/{id}/dismiss",
+            post(dismiss_deactivation),
+        )
         .route("/api/admin/audit", get(audit));
     #[cfg(feature = "platform")]
     let routes = routes.merge(access_routes()).merge(cloud_routes());
@@ -271,6 +277,21 @@ read!(users, list_users);
 read!(groups, list_groups);
 read!(clients, list_clients);
 read!(invitations, account_invitations);
+read!(deactivations, provisioning_deactivations);
+
+async fn dismiss_deactivation(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<DismissDeactivation>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.provisioning_deactivation_dismiss(&token, &id, input)
+            .map(Json)
+    })
+    .await
+}
 
 async fn human_grants(
     State(app): State<App>,

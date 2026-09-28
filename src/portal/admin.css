@@ -94,11 +94,19 @@ details summary{cursor:pointer;font-size:12px;font-weight:600;color:#4f3bb0;marg
 .admin-section>.field-hint{margin-bottom:12px}
 .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
 .warn-notice{background:#fbf0d9;border-color:#efd9a6;color:#5c3f00}
+.delivery-badges{display:flex;flex-wrap:wrap;gap:6px}
+.delivery-snapshot{display:block}
+.delivery-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-bottom:22px}
+.delivery-summary .field-hint{margin:12px 0}
+.delivery-facts{grid-template-columns:minmax(90px,auto) minmax(0,1fr)}
+.delivery-facts dd{overflow-wrap:anywhere;white-space:pre-wrap}
+.delivery-links li{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .admin-dialog .dialog-actions{display:flex;gap:10px;margin-top:12px}
 .admin-dialog .dialog-actions .button{flex:1;width:auto}
 .admin-dialog .field input{width:100%}
 @media(max-width:1000px){.detail-grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){
+  .delivery-summary{grid-template-columns:1fr}
   .admin .sidebar nav{overflow-x:auto;scrollbar-width:none}
   .admin-apps-link{display:none}
   .admin .page-heading{flex-direction:column;align-items:flex-start}

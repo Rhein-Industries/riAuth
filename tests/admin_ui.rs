@@ -53,6 +53,7 @@ struct Call<'a> {
     portal: bool,
     origin: Option<&'a str>,
     revision: Option<u64>,
+    key: Option<&'a str>,
     body: Option<Value>,
 }
 
@@ -79,6 +80,9 @@ async fn send(app: &axum::Router, uri: &str, call: Call<'_>) -> (StatusCode, Hea
     if let Some(revision) = call.revision {
         request = request.header("if-match", format!("\"{revision}\""));
     }
+    if let Some(key) = call.key {
+        request = request.header("idempotency-key", key);
+    }
     let body = match call.body {
         Some(body) => {
             request = request.header("content-type", "application/json");
@@ -97,6 +101,202 @@ async fn send(app: &axum::Router, uri: &str, call: Call<'_>) -> (StatusCode, Hea
     let value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into()));
     (status, headers, value)
+}
+
+#[tokio::test]
+async fn delivery_browser_contract_preserves_ambiguity_and_audits_scoped_dismissal() {
+    use riauth::{crypto, identity::downstream, model::UserPatch};
+
+    let fixture = Fixture::new();
+    fixture.user("ada");
+    let member_session = fixture.user("viewer");
+    let member = sso_cookie(&fixture.core, &member_session);
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let users = fixture.core.list_users(&fixture.admin).unwrap();
+    let ada = users
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["username"] == "ada")
+        .unwrap();
+    let user_id = ada["id"].as_str().unwrap();
+    // A real local disable commits the intent for a previously delivered active link.
+    let link = crypto::digest(&format!("payroll\0Users\0{user_id}"));
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "provisioning_links",
+                &link,
+                &json!({
+                    "target": "payroll", "url": "http://127.0.0.1:9/scim/v2", "kind": "Users",
+                    "local_id": user_id, "remote_id": "remote-ada", "external_id": "external-ada",
+                    "body": {"active": true},
+                }),
+            )
+        })
+        .unwrap();
+    fixture
+        .core
+        .update_user(
+            &fixture.admin,
+            "ada",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let mut row = fixture
+        .core
+        .provisioning_deactivations(&fixture.admin)
+        .unwrap()[0]
+        .clone();
+    row["status"] = json!("stale");
+    row["uncertain"] = json!(true);
+    row["last_error"] = json!("Remote identity cannot be verified");
+    let id = row["id"].as_str().unwrap().to_owned();
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put(downstream::BUCKET, &id, &row))
+        .unwrap();
+    let app = riauth::api::router(fixture.core.clone());
+    let path = "/api/admin/provisioning/deactivations";
+    for (cookie, portal, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(member.as_str()), true, StatusCode::FORBIDDEN),
+        (Some(admin.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            send(
+                &app,
+                path,
+                Call {
+                    cookie,
+                    portal,
+                    ..Default::default()
+                }
+            )
+            .await
+            .0,
+            expected
+        );
+    }
+    let read = || Call {
+        cookie: Some(&admin),
+        portal: true,
+        ..Default::default()
+    };
+    let (status, _, rows) = send(&app, path, read()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        rows,
+        fixture
+            .core
+            .provisioning_deactivations(&fixture.admin)
+            .unwrap()
+    );
+    let reviewed = rows[0].clone();
+    assert_eq!(reviewed["delivery_state"], "ambiguous");
+    let revision = send(&app, "/api/admin/session", read()).await.2["revision"]
+        .as_u64()
+        .unwrap();
+    let origin = origin(&fixture.core);
+    let input = json!({"revision": reviewed["revision"], "reason": "permanently_unverifiable", "evidence": "Payroll console unavailable permanently; OPS-42"});
+    let write = || Call {
+        method: "POST",
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        revision: Some(revision),
+        key: Some("delivery-browser-dismiss"),
+        body: Some(input.clone()),
+        ..Default::default()
+    };
+    let path = format!("{path}/{id}/dismiss");
+    let before = fixture.snapshot().unwrap();
+    for (call, expected) in [
+        (
+            Call {
+                origin: Some("https://evil.example"),
+                ..write()
+            },
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            Call {
+                cookie: Some(&member),
+                ..write()
+            },
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            Call {
+                key: None,
+                ..write()
+            },
+            StatusCode::PRECONDITION_REQUIRED,
+        ),
+        (
+            Call {
+                body: Some(
+                    json!({"revision": "old", "reason": "remote_absent", "evidence": "OPS-42"}),
+                ),
+                ..write()
+            },
+            StatusCode::CONFLICT,
+        ),
+        (
+            Call {
+                body: Some(
+                    json!({"revision": reviewed["revision"], "reason": "remote_absent", "evidence": "  "}),
+                ),
+                ..write()
+            },
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let (status, _, body) = send(&app, &path, call).await;
+        assert_eq!(status, expected, "{body}");
+        fixture.assert_http_mutation_snapshot(&before);
+    }
+    let (status, _, dismissed) = send(&app, &path, write()).await;
+    assert_eq!(status, StatusCode::OK, "{dismissed}");
+    assert_eq!(dismissed["status"], "dismissed");
+    assert_eq!(dismissed["delivery_state"], "ambiguous");
+    assert_eq!(dismissed["uncertain"], true);
+    assert!(dismissed["delivered_at"].is_null());
+    for field in ["user_id", "remote_id", "epoch", "last_error", "attempts"] {
+        assert_eq!(dismissed[field], reviewed[field], "{field}");
+    }
+    assert_eq!(dismissed["dismissal"]["evidence"], input["evidence"]);
+    assert_eq!(dismissed["dismissal"]["revision"], reviewed["revision"]);
+    assert_eq!(dismissed["dismissal"]["previous_status"], "stale");
+    let after = fixture.snapshot().unwrap();
+    let replay = send(&app, &path, write()).await;
+    assert_eq!(replay.0, StatusCode::OK, "{}", replay.2);
+    assert_eq!(replay.2, dismissed);
+    fixture.assert_http_mutation_snapshot(&after);
+    assert_eq!(
+        send(&app, "/api/admin/provisioning/deactivations", read())
+            .await
+            .2[0],
+        dismissed
+    );
+    let audit = fixture.core.audit_events(&fixture.admin, 50).unwrap();
+    let events: Vec<_> = audit
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "provisioner.deactivate.dismiss")
+        .collect();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0]["details"]["context"]["dismissal"],
+        dismissed["dismissal"]
+    );
 }
 
 #[tokio::test]
