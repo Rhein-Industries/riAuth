@@ -59,7 +59,16 @@ pub fn requested_scopes(
                 .claim_mappings
                 .iter()
                 .find(|m| m.claim == other)
-                .map(|m| m.scope.as_str()),
+                .map(|m| m.scope.as_str())
+                .or_else(|| {
+                    client.settings.policy.conditional().and_then(|policy| {
+                        policy
+                            .claim_mappings
+                            .iter()
+                            .find(|m| m.mapping.claim == other)
+                            .map(|m| m.mapping.scope.as_str())
+                    })
+                }),
         };
         if let Some(scope) = scope {
             if !client.scopes.contains(scope) {

@@ -174,6 +174,18 @@ impl Core {
         }
         // Edition compatibility is read-only and must run before either migration
         // or restored-lineage reconciliation mutates shared state.
+        if !cfg!(feature = "platform") {
+            store.read(|tx| {
+                for (_, client) in tx.list::<serde_json::Value>("clients")? {
+                    if client["settings"]["policy"].get("conditional").is_some() {
+                        return Err(Error::bad(
+                            "Stored conditional policy requires the Platform build",
+                        ));
+                    }
+                }
+                Ok(())
+            })?;
+        }
         crate::edition::validate_store(&store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
@@ -1078,6 +1090,7 @@ pub(crate) fn validate_client(tx: &Tx<'_>, c: &Client) -> Result<()> {
     crate::provider::validate_settings(c)?;
     crate::saml::validate_key(tx, c)?;
     crate::claims::validate_mappings(c)?;
+    crate::claims::validate_conditional_references(tx, c)?;
     for rule in std::iter::once(&c.settings.policy.access).chain(c.settings.policy.scopes.values())
     {
         for group in rule

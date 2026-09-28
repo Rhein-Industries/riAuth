@@ -76,6 +76,37 @@ RFC 8693 exchange requires an authenticated confidential requester, an `exchange
 
 ## Authorization and assurance
 
+### Platform conditional application policy
+
+Platform clients may set `settings.policy.conditional` in the existing client
+settings API or manifest. `access` is a list of required predicates; each entry
+in `scopes` is required when that scope is requested. These checks add to the
+existing application, group, MFA, scope, device-trust and assurance rules. An
+absent `conditional` value keeps the existing behavior. Essentials does not
+accept or advertise this setting, and a stored conditional policy prevents an
+Essentials server from opening the database.
+
+The closed predicate set is `application` (`id`), `group_member` (`group`),
+`verified_source` (`source`), `proof_fresh` (`proof`: `password`, `passkey` or
+`source`, plus `max_age_seconds`), `assurance` (`level`: `password`, `mfa`,
+`federated` or `certificate`), `approved_device` (`max_age_seconds`), and
+bounded `all`, `any` and `not` combinations. Application IDs must name the
+owning client. Group and source references must exist when the client is saved.
+Freshness uses the authenticated session's server-held time and method;
+OAuth-only upstream identity without authentication time cannot satisfy it.
+`verified_source` requires a currently valid upstream link and source; LDAP
+directory identity is not treated as an upstream source. `approved_device`
+requires an unexpired verification record bound to the current user, session
+and account epoch. Unknown types and fields are rejected.
+
+`conditional.claim_mappings` uses the same scoped `ClaimMapping` source and
+claim validation as ordinary mappings, with an additional `when` predicate.
+These mappings are projected only after authorization and never replace
+protocol or built-in identity claims. They are re-evaluated for token issuance,
+refresh, UserInfo and SAML assertions. `riauth explain` has no live session, so
+it reports `conditional_policy_requires_session` and does not simulate these
+claims as granted.
+
 Supported response modes are `query`, `fragment`, `form_post`, `jwt`, `query.jwt`, `fragment.jwt`, and `form_post.jwt`, using authorization code with mandatory S256 PKCE. The `jwt` modes deliver a signed JARM response. Implicit and hybrid grants are not advertised.
 
 `claims` requests can make supported claims essential and constrain their values. Mapped claims require their registered scopes and consent. The base assurance values are `urn:riauth:acr:password`, `urn:riauth:acr:mfa`, and `urn:riauth:acr:federated`. When HTTPS client-certificate authentication is configured, discovery also advertises `urn:riauth:acr:certificate`; an enrolled certificate produces AMR `cert` and does not satisfy MFA. See [client-certificate login](enterprise/ENT-05.md). A source satisfies MFA only when its verified ACR is explicitly listed in the source's `trusted_mfa_acr`, or when local TOTP is completed. Authentication-method claims retain their provenance.

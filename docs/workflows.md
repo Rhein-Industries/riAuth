@@ -7,7 +7,13 @@ uses the existing local password verifier and finalizes through the W03 store
 boundary. It does not yet complete an OIDC sign-in transaction or issue a new
 session, and other built-in verifier actions remain unconnected. The existing
 sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
-Nothing here enables configurable workflows or the P01 Platform capability.
+The W04 Platform conditional application policy now narrows existing client
+authorization and projects scoped claims from verified session signals; see
+[OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
+It does not yet enable configured workflow execution or the full P01 Platform
+capability. The W02/W03 workflow proof receipts remain bound to their account,
+session, request and run, and this client policy cannot produce a workflow proof
+or success outcome.
 
 ## Scope
 

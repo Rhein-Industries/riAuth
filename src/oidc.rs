@@ -435,7 +435,8 @@ impl Core {
         let user = self.authorize_identity(tx, client, identity)?;
         crate::claims::enforce(tx, client, &user, identity, scopes)?;
         let requested_claims = crate::assurance::claims_request(request.claims.as_deref())?;
-        let mapped = crate::claims::mapped_claims(tx, &user, client, scopes)?;
+        let mapped =
+            crate::claims::mapped_claims_for_identity(tx, &user, client, scopes, identity)?;
         crate::assurance::enforce(
             client,
             identity,
@@ -509,16 +510,20 @@ impl Core {
                 return Err(Error::conflict("Device request already decided"));
             }
             let client = get_client(tx, &device.client_id)?;
-            Ok(json!({"client_id": client.id, "application": client.name, "scopes": device.scopes,
+            Ok(
+                json!({"client_id": client.id, "application": client.name, "scopes": device.scopes,
                 "claims": device_claim_names(&client, &device.scopes), "resource":device.resource,
-                "expires_at": device.expires_at, "require_mfa": client.require_mfa}))
+                "expires_at": device.expires_at, "require_mfa": client.require_mfa}),
+            )
         })
     }
     /// Read-only review for the signed-in browser. The review value binds the code and
     /// the session shown on this page; a later account switch cannot approve as another user.
     pub fn device_browser_details(&self, sso: Option<&str>, user_code: &str) -> Result<Value> {
         self.store.read(|tx| {
-            let session = self.browser_session(tx, sso)?.ok_or_else(Error::unauthorized)?;
+            let session = self
+                .browser_session(tx, sso)?
+                .ok_or_else(Error::unauthorized)?;
             let (key, device) = lookup_device(tx, user_code)?;
             if !matches!(device.status, DeviceStatus::Pending) {
                 return Err(Error::conflict("Device request already decided"));
@@ -526,7 +531,8 @@ impl Core {
             let client = get_client(tx, &device.client_id)?;
             let user = self.identity_user(tx, &session.identity)?;
             let stale = device_authentication_stale(&session);
-            let approval_allowed = match self.device_approval_policy(tx, &client, &device, &session) {
+            let approval_allowed = match self.device_approval_policy(tx, &client, &device, &session)
+            {
                 Ok(()) => !stale,
                 Err(error) if error.status.is_server_error() => return Err(error),
                 Err(_) => false,
@@ -562,7 +568,9 @@ impl Core {
         session_ref: &str,
     ) -> Result<Value> {
         self.store.write(|tx| {
-            let session = self.browser_session(tx, sso)?.ok_or_else(Error::unauthorized)?;
+            let session = self
+                .browser_session(tx, sso)?
+                .ok_or_else(Error::unauthorized)?;
             self.device_decide_in(tx, &session, user_code, approve, Some(session_ref))
         })
     }
@@ -581,12 +589,20 @@ impl Core {
         if let Some(review) = review
             && !crypto::constant_eq(review, &crate::signin::session_ref(&key, &session.id))
         {
-            return Err(Error::new(StatusCode::CONFLICT, "account_changed", "Review this device request again with the current account"));
+            return Err(Error::new(
+                StatusCode::CONFLICT,
+                "account_changed",
+                "Review this device request again with the current account",
+            ));
         }
         let client = get_client(tx, &device.client_id)?;
         if approve {
             if device_authentication_stale(session) {
-                return Err(Error::new(StatusCode::FORBIDDEN, "reauthentication_required", "Sign in again before approving this device request"));
+                return Err(Error::new(
+                    StatusCode::FORBIDDEN,
+                    "reauthentication_required",
+                    "Sign in again before approving this device request",
+                ));
             }
             self.device_approval_policy(tx, &client, &device, session)?;
             device.status = DeviceStatus::Approved(session.identity.clone());
@@ -594,18 +610,44 @@ impl Core {
             device.status = DeviceStatus::Denied;
         }
         tx.put("devices", &key, &device)?;
-        audit(tx, &session.identity.user_id,
-            if approve { "device.approved" } else { "device.denied" }, &device.client_id)?;
+        audit(
+            tx,
+            &session.identity.user_id,
+            if approve {
+                "device.approved"
+            } else {
+                "device.denied"
+            },
+            &device.client_id,
+        )?;
         Ok(json!({"approved": approve}))
     }
-    fn device_approval_policy(&self, tx: &Tx<'_>, client: &Client, device: &Device, session: &Session) -> Result<()> {
+    fn device_approval_policy(
+        &self,
+        tx: &Tx<'_>,
+        client: &Client,
+        device: &Device,
+        session: &Session,
+    ) -> Result<()> {
         let user = self.authorize_identity(tx, client, &session.identity)?;
         if !device.scopes.is_subset(&client.scopes) {
             return Err(Error::forbidden());
         }
         crate::claims::enforce(tx, client, &user, &session.identity, &device.scopes)?;
-        let claims = crate::claims::mapped_claims(tx, &user, client, &device.scopes)?;
-        crate::assurance::enforce(client, &session.identity, None, &Default::default(), &claims)
+        let claims = crate::claims::mapped_claims_for_identity(
+            tx,
+            &user,
+            client,
+            &device.scopes,
+            &session.identity,
+        )?;
+        crate::assurance::enforce(
+            client,
+            &session.identity,
+            None,
+            &Default::default(),
+            &claims,
+        )
     }
     pub fn token(&self, request: TokenRequest) -> Result<Value> {
         if request.audience.is_some() && request.grant_type != crate::exchange::TOKEN_EXCHANGE {
@@ -910,7 +952,13 @@ impl Core {
                     self.authorize_identity(tx, &client, identity)?
                 };
                 crate::claims::enforce(tx, &client, &user, identity, &grant.scopes)?;
-                let mapped = crate::claims::mapped_claims(tx, &user, &client, &grant.scopes)?;
+                let mapped = crate::claims::mapped_claims_for_identity(
+                    tx,
+                    &user,
+                    &client,
+                    &grant.scopes,
+                    identity,
+                )?;
                 crate::assurance::enforce(
                     &client,
                     identity,
@@ -1062,8 +1110,14 @@ impl Core {
             };
             crate::claims::enforce(tx, &client, &user, identity, &grant.scopes)
                 .map_err(|_| Error::unauthorized())?;
-            let mapped = crate::claims::mapped_claims(tx, &user, &client, &grant.scopes)
-                .map_err(|_| Error::unauthorized())?;
+            let mapped = crate::claims::mapped_claims_for_identity(
+                tx,
+                &user,
+                &client,
+                &grant.scopes,
+                identity,
+            )
+            .map_err(|_| Error::unauthorized())?;
             crate::assurance::enforce(
                 &client,
                 identity,
@@ -1117,11 +1171,12 @@ impl Core {
                 ));
             }
             let identity = grant.identity.as_ref().ok_or_else(Error::unauthorized)?;
-            let mut claims = crate::claims::mapped_claims(
+            let mut claims = crate::claims::mapped_claims_for_identity(
                 tx,
                 &self.identity_user(tx, identity)?,
                 &client,
                 &grant.scopes,
+                identity,
             )?;
             crate::assurance::add_protocol_claims(&mut claims, &grant.claims_request, identity);
             if client.settings.userinfo_signed_response
@@ -1400,7 +1455,10 @@ fn device_authentication_stale(session: &Session) -> bool {
 /// names, never claim values, before the user consents.
 fn device_claim_names(client: &Client, scopes: &BTreeSet<String>) -> BTreeSet<String> {
     let mut names = BTreeSet::from([
-        "sub".to_owned(), "auth_time".to_owned(), "acr".to_owned(), "amr".to_owned(),
+        "sub".to_owned(),
+        "auth_time".to_owned(),
+        "acr".to_owned(),
+        "amr".to_owned(),
     ]);
     if scopes.contains("profile") {
         names.extend(["name".to_owned(), "preferred_username".to_owned()]);
@@ -1408,12 +1466,20 @@ fn device_claim_names(client: &Client, scopes: &BTreeSet<String>) -> BTreeSet<St
     if scopes.contains("email") {
         names.extend(["email".to_owned(), "email_verified".to_owned()]);
     }
-    if scopes.contains("groups") || client.settings.groups_in_profile && scopes.contains("profile") {
+    if scopes.contains("groups") || client.settings.groups_in_profile && scopes.contains("profile")
+    {
         names.insert("groups".to_owned());
     }
     for mapping in &client.settings.claim_mappings {
         if scopes.contains(&mapping.scope) {
             names.insert(mapping.claim.clone());
+        }
+    }
+    if let Some(policy) = client.settings.policy.conditional() {
+        for conditional in &policy.claim_mappings {
+            if scopes.contains(&conditional.mapping.scope) {
+                names.insert(conditional.mapping.claim.clone());
+            }
         }
     }
     names

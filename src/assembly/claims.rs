@@ -5,7 +5,7 @@ use crate::{
     core::{self, Core},
     device_trust,
     error::{Error, Result},
-    model::{Client, User},
+    model::{Client, Group, Identity, Session, User},
     store::Tx,
 };
 use serde_json::Value;
@@ -24,6 +24,48 @@ impl ClaimsTx for Tx<'_> {
 
     fn scan_users(&self, after: Option<&str>, limit: usize) -> Result<Vec<(String, User)>> {
         self.scan("users", after, limit)
+    }
+
+    fn session(&self, session_id: &str) -> Result<Option<Session>> {
+        self.get("sessions", session_id)
+    }
+
+    fn verified_upstream_source(&self, identity: &Identity) -> Result<Option<String>> {
+        crate::source::validate_identity(self, identity)?;
+        Ok(identity
+            .source
+            .as_ref()
+            .filter(|source| !source.id.starts_with("ldap/"))
+            .map(|source| source.id.clone()))
+    }
+
+    fn approved_device_at(&self, identity: &Identity, at: u64) -> Result<Option<u64>> {
+        Ok(self
+            .get::<device_trust::DeviceVerification>("device_verifications", &identity.session_id)?
+            .filter(|record| {
+                record.user_id == identity.user_id
+                    && record.session_id == identity.session_id
+                    && record.epoch == identity.epoch
+                    && !record.device_id.is_empty()
+                    && record.verified_at > 0
+                    && record.verified_at <= at
+                    && record.expires_at > at
+            })
+            .map(|record| record.verified_at))
+    }
+
+    fn validate_reference_name(&self, name: &str) -> Result<()> {
+        core::validate_name(name)
+    }
+
+    fn group_exists(&self, group: &str) -> Result<bool> {
+        Ok(self.get::<Group>("groups", group)?.is_some())
+    }
+
+    fn source_available(&self, source: &str) -> Result<bool> {
+        Ok(self
+            .get::<crate::source::Source>("sources", source)?
+            .is_some_and(|source| source.enabled))
     }
 }
 

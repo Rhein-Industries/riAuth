@@ -1,5 +1,161 @@
 use super::*;
 
+#[cfg(feature = "platform")]
+#[test]
+fn platform_conditional_policy_uses_bound_signals_and_projects_only_allowed_claims() {
+    use riauth::claims::{
+        AssuranceLevel, AuthenticationProof, ClaimMapping, ClaimSource, ConditionalClaimMapping,
+        ConditionalPolicy, Predicate,
+    };
+
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("alice");
+    f.core.create_group(&f.admin, "engineering").unwrap();
+    f.core
+        .group_member(&f.admin, "engineering", "alice", true)
+        .unwrap();
+
+    let mut settings = ProviderSettings::default();
+    settings.policy.conditional = Some(ConditionalPolicy {
+        access: vec![Predicate::All {
+            of: vec![
+                Predicate::Application { id: "app".into() },
+                Predicate::ProofFresh {
+                    proof: AuthenticationProof::Password,
+                    max_age_seconds: 300,
+                },
+                Predicate::Assurance {
+                    level: AssuranceLevel::Password,
+                },
+            ],
+        }],
+        scopes: std::collections::BTreeMap::from([(
+            "profile".into(),
+            vec![Predicate::GroupMember {
+                group: "engineering".into(),
+            }],
+        )]),
+        claim_mappings: vec![
+            ConditionalClaimMapping {
+                mapping: ClaimMapping {
+                    scope: "profile".into(),
+                    claim: "team_approved".into(),
+                    source: ClaimSource::Literal { value: json!(true) },
+                },
+                when: Predicate::GroupMember {
+                    group: "engineering".into(),
+                },
+            },
+            ConditionalClaimMapping {
+                mapping: ClaimMapping {
+                    scope: "profile".into(),
+                    claim: "device_approved".into(),
+                    source: ClaimSource::Literal { value: json!(true) },
+                },
+                when: Predicate::ApprovedDevice {
+                    max_age_seconds: 300,
+                },
+            },
+        ],
+        ..Default::default()
+    });
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                settings: Some(settings.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let tokens = f.tokens("app", &alice, None);
+    let access = text(&tokens, "access_token");
+    let info = f.core.userinfo(&access).unwrap();
+    assert_eq!(info["team_approved"], true);
+    assert!(info.get("device_approved").is_none());
+
+    f.core
+        .group_member(&f.admin, "engineering", "alice", false)
+        .unwrap();
+    assert!(f.core.userinfo(&access).is_err());
+    assert!(
+        f.core
+            .token(TokenRequest {
+                grant_type: "refresh_token".into(),
+                client_id: Some("app".into()),
+                refresh_token: Some(text(&tokens, "refresh_token")),
+                ..Default::default()
+            })
+            .is_err()
+    );
+
+    f.core
+        .group_member(&f.admin, "engineering", "alice", true)
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let sid: String = tx.get("session_tokens", &digest(&alice))?.unwrap();
+            let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+            session.identity.auth_time = now().saturating_sub(301);
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let sid: String = tx.get("session_tokens", &digest(&alice))?.unwrap();
+            let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+            session.identity.auth_time = now();
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+
+    settings.policy.conditional.as_mut().unwrap().access = vec![Predicate::ApprovedDevice {
+        max_age_seconds: 300,
+    }];
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                settings: Some(settings.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+
+    settings.policy.conditional.as_mut().unwrap().access = vec![Predicate::VerifiedSource {
+        source: "unconfigured".into(),
+    }];
+    assert!(
+        f.core
+            .update_client(
+                &f.admin,
+                "app",
+                ClientPatch {
+                    settings: Some(settings),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+    );
+    assert!(serde_json::from_value::<Predicate>(json!({"type":"client_asserted_mfa"})).is_err());
+}
+
 #[test]
 fn last_administrator_is_preserved() {
     let f = Fixture::new();

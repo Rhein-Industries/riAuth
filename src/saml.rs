@@ -1,6 +1,7 @@
 //! SAML 2.0 browser SSO with signed requests, terminal consent and pinned trust.
 pub mod logout;
 pub(crate) mod wire;
+use crate::signin::{insufficient_error, stale};
 use crate::{
     browser::{BrowserDecision, BrowserReply},
     core::{Core, audit},
@@ -18,7 +19,6 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use webauthn_rs::prelude::PublicKeyCredential;
 use wire::{ASSERTION, DSIG, METADATA, POST, PROTOCOL, REDIRECT, RSA256};
-use crate::signin::{insufficient_error, stale};
 
 pub use crate::model::client_settings::saml::{Attribute, NameIdFormat, Settings};
 
@@ -1137,8 +1137,13 @@ impl Core {
                 .as_ref()
                 .map(|id| format!(" InResponseTo=\"{}\"", escape(id)))
                 .unwrap_or_default();
-            let claims =
-                crate::claims::mapped_claims(tx, &user, client, &settings.scopes(client)?)?;
+            let claims = crate::claims::mapped_claims_for_identity(
+                tx,
+                &user,
+                client,
+                &settings.scopes(client)?,
+                identity,
+            )?;
             let mut attributes = String::new();
             for attr in &settings.attributes {
                 let value = &claims[&attr.claim];
