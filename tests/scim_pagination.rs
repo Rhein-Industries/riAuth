@@ -163,25 +163,36 @@ fn redb_paged_scim_lists() {
     paged_scim_lists_count_without_building_every_resource(Backend::Redb);
 }
 
-#[test]
-fn redb_scim_user_pages_cross_store_scan_boundary() {
-    let f = Backend::Redb.fixture();
+fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
+    let f = backend.fixture();
     let owner = agent(&f, "boundary-scim-owner");
-    let mut expected = Vec::with_capacity(130);
+    let mut created = Vec::with_capacity(130);
     for index in 0..130 {
-        let created = f
+        let user_name = format!("boundary-user-{index:03}");
+        let resource = f
             .core
             .scim_write(
                 &owner,
                 "Users",
                 None,
-                json!({"schemas":[scim::USER],"userName":format!("boundary-user-{index:03}")}),
+                json!({"schemas":[scim::USER],"userName":user_name}),
                 false,
             )
             .unwrap();
-        expected.push(text(&created, "id"));
+        created.push((text(&resource, "id"), user_name));
     }
-    expected.sort();
+    created.sort_by(|left, right| left.0.cmp(&right.0));
+    let expected: Vec<_> = created.iter().map(|(id, _)| id.clone()).collect();
+    // One group makes a full User view scan a measurable opposite-bucket read.
+    f.core
+        .scim_write(
+            &owner,
+            "Groups",
+            None,
+            json!({"schemas":[scim::GROUP],"displayName":"boundary-group"}),
+            false,
+        )
+        .unwrap();
 
     // The store scan reads 128 rows at a time. These pages cover both sides
     // of the cursor transition and must account for every owned resource.
@@ -208,6 +219,79 @@ fn redb_scim_user_pages_cross_store_scan_boundary() {
     let beyond = list(&f, &owner, "Users", 131, 2);
     assert_eq!(beyond["totalResults"], 130);
     assert_eq!(beyond["itemsPerPage"], 0);
+
+    // A presence filter matches every record and must retain the same bounded
+    // key-order pages. A sparse compound filter matches rows on either side
+    // of the 128-record store cursor transition.
+    let filtered = |filter: &str, start, count| {
+        f.core
+            .scim_list(
+                &owner,
+                "Users",
+                Query {
+                    filter: Some(filter.into()),
+                    start_index: Some(start),
+                    count: Some(count),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    };
+    let filtered_first = filtered("userName pr", 1, 128);
+    let filtered_tail = filtered("userName pr", 129, 2);
+    assert_eq!(filtered_first["totalResults"], 130);
+    assert_eq!(filtered_tail["totalResults"], 130);
+    let mut filtered_ids = ids(&filtered_first);
+    filtered_ids.extend(ids(&filtered_tail));
+    assert_eq!(filtered_ids, expected);
+
+    let boundary_filter = format!(
+        "active eq true and (userName eq {} or userName eq {})",
+        serde_json::to_string(&created[127].1).unwrap(),
+        serde_json::to_string(&created[128].1).unwrap()
+    );
+    let scanned = || {
+        f.core
+            .store
+            .telemetry()
+            .scanned_records
+            .load(Ordering::Relaxed)
+    };
+    let before = scanned();
+    let match_before = filtered(&boundary_filter, 1, 1);
+    let read_records = scanned() - before;
+    assert!(
+        read_records <= 140,
+        "filtered one-item page scanned {read_records} records"
+    );
+    let match_after = filtered(&boundary_filter, 2, 1);
+    let no_more = filtered(&boundary_filter, 3, 1);
+    for (page, start, id) in [
+        (&match_before, 1, &expected[127]),
+        (&match_after, 2, &expected[128]),
+    ] {
+        assert_eq!(page["totalResults"], 2);
+        assert_eq!(page["startIndex"], start);
+        assert_eq!(page["itemsPerPage"], 1);
+        assert_eq!(text(&page["Resources"][0], "id"), id.as_str());
+        assert_eq!(
+            page["Resources"][0],
+            f.core.scim_get(&owner, "Users", id).unwrap()
+        );
+    }
+    assert_eq!(no_more["totalResults"], 2);
+    assert_eq!(no_more["itemsPerPage"], 0);
+}
+
+#[test]
+fn redb_scim_user_pages_cross_store_scan_boundary() {
+    scim_user_pages_cross_store_scan_boundary(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_scim_user_pages_cross_store_scan_boundary() {
+    scim_user_pages_cross_store_scan_boundary(Backend::Postgres);
 }
 
 #[test]

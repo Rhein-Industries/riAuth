@@ -1002,6 +1002,35 @@ impl Projection {
     }
 }
 
+// List filters only reference id, userName, displayName, externalId, active,
+// and emails. Build those effective fields without assembling memberships or
+// resource ETags for every candidate in a default-order scan. Keep this in
+// step with parse_filter_predicate when adding supported filter attributes.
+fn scim_filter_view(tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
+    let mut value = record.data.clone();
+    value["id"] = json!(id);
+    if record.kind == "Users" {
+        let user = tx
+            .get::<User>("users", &record.local_id)?
+            .ok_or_else(|| Error::missing("User missing"))?;
+        value["active"] = json!(user.enabled);
+        value["displayName"] = json!(user.display_name);
+        let stored_email = read_email(&value)?;
+        if stored_email != user.email {
+            value["emails"] = json!(
+                user.email
+                    .iter()
+                    .map(|email| json!({"value":email,"primary":true}))
+                    .collect::<Vec<_>>()
+            );
+        }
+    } else {
+        tx.get::<Group>("groups", &record.local_id)?
+            .ok_or_else(|| Error::missing("Group missing"))?;
+    }
+    Ok(value)
+}
+
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
         record_binding(&record.kind, record)?;
@@ -1172,10 +1201,15 @@ impl Core {
                     if require(&actor, &record, "read").is_err() {
                         continue;
                     }
-                    if filter.is_none() && sort.is_none() {
-                        total += 1;
-                        if total >= start && page_records.len() < count {
-                            page_records.push((id, record));
+                    if sort.is_none() {
+                        let matches = filter.as_ref().map_or(Ok(true), |filter| {
+                            Ok(filter.matches(&scim_filter_view(tx, &id, &record)?))
+                        })?;
+                        if matches {
+                            total += 1;
+                            if total >= start && page_records.len() < count {
+                                page_records.push((id, record));
+                            }
                         }
                     } else {
                         let value = self.scim_view(tx, &id, &record)?;
@@ -1191,10 +1225,10 @@ impl Core {
                     break;
                 }
             }
-            // A plain key-order page needs full views only for its returned
+            // A key-order page needs full views only for its returned
             // resources. Those views retain the resource-level ETags and live
             // memberships used by GET, filters, and sorted list requests.
-            if filter.is_none() && sort.is_none() {
+            if sort.is_none() {
                 for (id, record) in page_records {
                     values.push(self.scim_view(tx, &id, &record)?);
                 }
