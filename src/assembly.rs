@@ -25,6 +25,8 @@ mod portal_self_service;
 mod portal_sources;
 #[cfg(feature = "platform")]
 mod proxy_server;
+#[cfg(feature = "platform")]
+mod radius;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

@@ -300,6 +300,12 @@ def main() -> None:
             refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/ldap_server.rs: LDAP protocol refers directly to storage")
+        if path == SRC / "radius.rs":
+            radius_source = masked_rust_source(path.read_text())
+            if re.search(r"\.\s*store\s*\.\s*read\s*\(", radius_source) or re.search(
+                r"\bfn\s+(?:client|radius_identity)\s*\(", radius_source
+            ):
+                errors.append("src/radius.rs: RADIUS client or identity read belongs in assembly")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:

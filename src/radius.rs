@@ -11,12 +11,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    net::SocketAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, UdpSocket},
@@ -300,19 +295,6 @@ struct Cached {
     response: Option<Vec<u8>>,
     identity: Option<Identity>,
 }
-fn client(tx: &Tx<'_>, id: &str) -> Result<(Client, Settings)> {
-    let client = tx
-        .get::<Client>("clients", id)?
-        .filter(|c| c.enabled)
-        .ok_or_else(Error::forbidden)?;
-    let settings = client
-        .settings
-        .radius
-        .clone()
-        .ok_or_else(Error::forbidden)?;
-    settings.validate(&client)?;
-    Ok((client, settings))
-}
 fn fingerprint(client: &Client) -> Result<String> {
     Ok(digest(
         &serde_json::to_string(client).map_err(Error::internal)?,
@@ -334,19 +316,6 @@ fn close(tx: &Tx<'_>, identity: Option<&Identity>) -> Result<()> {
     Ok(())
 }
 impl Core {
-    fn radius_identity(&self, tx: &Tx<'_>, client: &Client, identity: &Identity) -> Result<User> {
-        let user = self.authorize_identity(tx, client, identity)?;
-        if tx
-            .get::<Session>("sessions", &identity.session_id)?
-            .is_none_or(|s| s.expires_at <= now())
-            || crate::assurance::needs_step_up(client, &Default::default(), identity)
-        {
-            return Err(Error::forbidden());
-        }
-        crate::claims::enforce(tx, client, &user, identity, &["radius".into()].into())?;
-        Ok(user)
-    }
-
     fn radius_packet(
         &self,
         listener_id: &str,
@@ -368,7 +337,7 @@ impl Core {
             New,
         }
         let claim = self.store.write(|tx| {
-            let (client, settings) = client(tx, &nas.client_id)?;
+            let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
             let fp = fingerprint(&client)?;
             if let Some(mut cached) = tx.get::<Cached>("radius_requests", &key)? {
                 if cached.expires_at > now() {
@@ -424,10 +393,7 @@ impl Core {
             return Ok(reply);
         }
         if packet.attr(79).is_some() {
-            let client = self.store.read(|tx| {
-                let (client, settings) = client(tx, &nas.client_id)?;
-                Ok(settings.eap_tls.then_some(client))
-            })?;
+            let client = self.radius_eap_client(&nas.client_id)?;
             let outcome = match client {
                 Some(client) if self.config.radius_listeners[listener_id].eap_tls.is_some() => {
                     engine.process(
@@ -464,13 +430,7 @@ impl Core {
             .map_err(|_| Error::bad("Invalid RADIUS username"))?;
             validate_name(username)?;
             let password = packet.password(secret.as_bytes())?;
-            let mfa = self
-                .store
-                .read(|tx| match crate::core::user_by_name(tx, username) {
-                    Ok(user) => Ok(user.totp_secret.is_some()),
-                    Err(e) if e.status.as_u16() == 404 => Ok(false),
-                    Err(e) => Err(e),
-                })?;
+            let mfa = self.radius_user_requires_mfa(username)?;
             let (password, otp) = if mfa {
                 password
                     .rsplit_once(';')
@@ -498,7 +458,7 @@ impl Core {
                 .filter(|c| c.expires_at > now() && c.response.is_none())
                 .ok_or_else(|| Error::conflict("RADIUS request expired"))?;
             let allowed = (|| -> Result<(Identity, WireAttributes)> {
-                let (client, settings) = client(tx, &nas.client_id)?;
+                let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
                 if fingerprint(&client)? != cached.client_fingerprint {
                     return Err(Error::forbidden());
                 }
@@ -570,7 +530,7 @@ impl Core {
                 .get::<Cached>("radius_requests", key)?
                 .filter(|c| c.expires_at > now() && c.response.is_none())
                 .ok_or_else(|| Error::conflict("RADIUS request expired"))?;
-            let (client, settings) = client(tx, &nas.client_id)?;
+            let (client, settings) = self.radius_client_profile(tx, &nas.client_id)?;
             let unchanged = settings.eap_tls && fingerprint(&client)? == cached.client_fingerprint;
             let (code, attrs) = if !unchanged {
                 (3, eap::failure(packet))

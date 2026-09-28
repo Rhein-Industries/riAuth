@@ -343,7 +343,7 @@ impl Core {
         let fingerprint = certificate_fingerprint(der);
         let key = certificate_key(listener, &fingerprint);
         self.store.write(|tx| {
-            let (current, settings) = super::client(tx, &client.id)?;
+            let (current, settings) = self.radius_client_profile(tx, &client.id)?;
             if !settings.eap_tls || super::fingerprint(&current)? != super::fingerprint(client)? {
                 return Err(Error::forbidden());
             }
