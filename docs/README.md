@@ -43,6 +43,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |
 | [RADIUS](radius.md) | PAP, RadSec, EAP-TLS, certificate lifecycle and policy |
 | [Proxy SSO](proxy.md) | nginx and Traefik forward auth, shared cookies and the embedded reverse proxy |
+| [Workflow model](workflows.md) | Typed workflow definitions, validation and Essentials defaults; not yet used by request paths |
 
 ## Advanced features
 

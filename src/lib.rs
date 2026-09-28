@@ -60,6 +60,7 @@ pub mod store;
 pub mod telemetry;
 pub mod upgrade;
 pub mod windows_login;
+pub mod workflow;
 
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
