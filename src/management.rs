@@ -15,6 +15,10 @@
 
 #[cfg(feature = "platform")]
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
+#[cfg(feature = "platform")]
+use crate::identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKETS};
+#[cfg(feature = "platform")]
+use crate::windows_login::{EnrollDevice, issue_offline, offline_ttl};
 use crate::{
     agent::Principal,
     config::Config,
@@ -211,6 +215,159 @@ fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result
         audit(tx, &actor.id, action, target)?;
     }
     Ok(())
+}
+
+#[cfg(feature = "platform")]
+const MAX_WINDOWS_DEVICES: usize = 32;
+
+/// Validated before entering `Core::mutation`, preserving the public request
+/// errors while the transaction writer owns all device state changes.
+#[cfg(feature = "platform")]
+pub(crate) struct WindowsDeviceEnrollment {
+    input: EnrollDevice,
+    ttl: Option<u64>,
+}
+
+#[cfg(feature = "platform")]
+impl WindowsDeviceEnrollment {
+    pub(crate) fn new(input: EnrollDevice) -> Result<Self> {
+        validate_name(&input.id)?;
+        validate_name(&input.username)?;
+        validate_display(&input.display_name)?;
+        let ttl = offline_ttl(input.offline_ttl)?;
+        Ok(Self { input, ttl })
+    }
+}
+
+#[cfg(feature = "platform")]
+pub(crate) struct WindowsDeviceWrite {
+    pub(crate) device: Device,
+    pub(crate) secret: String,
+    pub(crate) offline: Option<(String, u64)>,
+}
+
+#[cfg(feature = "platform")]
+fn delete_windows_tickets(tx: &Tx<'_>, device_id: &str) -> Result<()> {
+    for (id, _) in tx
+        .list::<SignInTicket>(TICKETS)?
+        .into_iter()
+        .filter(|(_, ticket)| ticket.device_id == device_id)
+    {
+        tx.delete(TICKETS, &id)?;
+    }
+    Ok(())
+}
+
+/// Enroll or rotate a Windows device under the exact device authority. A
+/// repeat without an idempotency receipt intentionally rotates the secret;
+/// the Core envelope returns a saved result for a matching receipt.
+#[cfg(feature = "platform")]
+pub(crate) fn enroll_windows_device(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    request: &WindowsDeviceEnrollment,
+) -> Result<WindowsDeviceWrite> {
+    let input = &request.input;
+    let actor = core.management(tx, token, "device.enroll", &format!("device/{}", input.id))?;
+    let user = user_by_name(tx, &input.username)?;
+    if !user.enabled {
+        return Err(Error::bad("Cannot enroll a disabled user"));
+    }
+    let existing = tx.get::<Device>(DEVICES, &input.id)?;
+    if existing
+        .as_ref()
+        .is_some_and(|device| device.id != input.id)
+    {
+        return Err(Error::conflict(
+            "Windows device identity does not match its key",
+        ));
+    }
+    if actor.agent {
+        if user.admin {
+            return Err(Error::forbidden());
+        }
+        if let Some(existing) = &existing {
+            let bound = tx
+                .get::<User>("users", &existing.user_id)?
+                .ok_or_else(Error::forbidden)?;
+            if bound.admin {
+                return Err(Error::forbidden());
+            }
+        }
+    }
+    if existing
+        .as_ref()
+        .is_none_or(|device| device.user_id != user.id)
+    {
+        let count = tx
+            .list::<Device>(DEVICES)?
+            .iter()
+            .filter(|(_, device)| device.user_id == user.id)
+            .count();
+        if count >= MAX_WINDOWS_DEVICES {
+            return Err(Error::conflict("User has too many Windows devices"));
+        }
+    }
+    let secret = crypto::random_token("ri_windev_");
+    let at = now();
+    let device = Device {
+        id: input.id.clone(),
+        display_name: input.display_name.clone(),
+        username: user.username.clone(),
+        user_id: user.id.clone(),
+        secret_hash: digest(&secret),
+        created_at: existing
+            .as_ref()
+            .map(|device| device.created_at)
+            .unwrap_or(at),
+        rotated_at: at,
+        revoked: false,
+    };
+    tx.put(DEVICES, &device.id, &device)?;
+    delete_windows_tickets(tx, &device.id)?;
+    let offline = request
+        .ttl
+        .map(|ttl| issue_offline(&secret, &device, user.epoch, ttl))
+        .transpose()?;
+    audit(tx, &actor.id, "device.enroll", &device.id)?;
+    Ok(WindowsDeviceWrite {
+        device,
+        secret,
+        offline,
+    })
+}
+
+/// Revoke a Windows device and every unredeemed sign-in ticket in the caller
+/// transaction. A repeated revoke keeps the existing audit behavior.
+#[cfg(feature = "platform")]
+pub(crate) fn revoke_windows_device(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    id: &str,
+) -> Result<Device> {
+    validate_name(id)?;
+    let mut device = tx
+        .get::<Device>(DEVICES, id)?
+        .ok_or_else(|| Error::missing("Windows device not found"))?;
+    let actor = core.management(tx, token, "device.enroll", &format!("device/{id}"))?;
+    if device.id != id {
+        return Err(Error::conflict(
+            "Windows device identity does not match its key",
+        ));
+    }
+    let user = tx
+        .get::<User>("users", &device.user_id)?
+        .ok_or_else(Error::forbidden)?;
+    if actor.agent && user.admin {
+        return Err(Error::forbidden());
+    }
+    device.revoked = true;
+    tx.put(DEVICES, id, &device)?;
+    delete_windows_tickets(tx, id)?;
+    audit(tx, &actor.id, "device.revoke", id)?;
+    Ok(device)
 }
 
 #[derive(Clone, Copy)]

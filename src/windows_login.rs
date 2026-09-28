@@ -1,7 +1,7 @@
 //! Windows local logon protocol. A credential provider calls these endpoints;
 //! this crate does not build, install, or test a Windows CP DLL.
 use crate::{
-    core::{Core, audit, user_by_name, validate_display, validate_name},
+    core::{Core, audit, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     identity::windows_credentials::{DEVICES, Device, SignInTicket, TICKETS},
@@ -21,7 +21,6 @@ const TICKET_TTL: u64 = 300;
 /// Same fresh-authentication window as MFA and passkey changes.
 const REAUTH_TTL: u64 = 300;
 const OFFLINE_MAX: u64 = 72 * 60 * 60;
-const MAX_DEVICES: usize = 32;
 
 /// Compact JSON, in this field order, is the HMAC payload. Do not re-encode it.
 #[derive(Serialize, Deserialize)]
@@ -122,7 +121,7 @@ fn check_secret(secret: &str) -> Result<()> {
     }
     Ok(())
 }
-fn offline_ttl(ttl: Option<u64>) -> Result<Option<u64>> {
+pub(crate) fn offline_ttl(ttl: Option<u64>) -> Result<Option<u64>> {
     match ttl {
         None => Ok(None),
         Some(ttl) if (1..=OFFLINE_MAX).contains(&ttl) => Ok(Some(ttl)),
@@ -171,7 +170,12 @@ fn tag_eq(expected: &[u8; 32], presented: &[u8]) -> bool {
     bool::from(expected.ct_eq(&actual)) & len_ok
 }
 
-fn issue_offline(secret: &str, device: &Device, epoch: u64, ttl: u64) -> Result<(String, u64)> {
+pub(crate) fn issue_offline(
+    secret: &str,
+    device: &Device,
+    epoch: u64,
+    ttl: u64,
+) -> Result<(String, u64)> {
     let iat = now();
     let exp = iat.saturating_add(ttl);
     let claims = OfflineClaims {
@@ -194,19 +198,6 @@ fn issue_offline(secret: &str, device: &Device, epoch: u64, ttl: u64) -> Result<
         ),
         exp,
     ))
-}
-
-fn delete_tickets(tx: &Tx<'_>, mut keep: impl FnMut(&SignInTicket) -> bool) -> Result<()> {
-    let ids = tx
-        .list::<SignInTicket>(TICKETS)?
-        .into_iter()
-        .filter(|(_, ticket)| keep(ticket))
-        .map(|(id, _)| id)
-        .collect::<Vec<_>>();
-    for id in ids {
-        tx.delete(TICKETS, &id)?;
-    }
-    Ok(())
 }
 
 fn locked(tx: &Tx<'_>, username: &str) -> Result<bool> {
@@ -312,71 +303,14 @@ fn verify_reauth(core: &Core, tx: &Tx<'_>, user: &User, token: &str, at: u64) ->
 
 impl Core {
     pub fn windows_device_enroll(&self, token: &str, input: EnrollDevice) -> Result<Value> {
-        validate_name(&input.id)?;
-        validate_name(&input.username)?;
-        validate_display(&input.display_name)?;
-        let ttl = offline_ttl(input.offline_ttl)?;
+        let request = crate::management::WindowsDeviceEnrollment::new(input)?;
         self.mutation(token, |tx| {
-            let actor =
-                self.management(tx, token, "device.enroll", &format!("device/{}", input.id))?;
-            let user = user_by_name(tx, &input.username)?;
-            if !user.enabled {
-                return Err(Error::bad("Cannot enroll a disabled user"));
-            }
-            let existing = tx.get::<Device>(DEVICES, &input.id)?;
-            if actor.agent {
-                if user.admin {
-                    return Err(Error::forbidden());
-                }
-                if let Some(existing) = &existing {
-                    let bound = tx
-                        .get::<User>("users", &existing.user_id)?
-                        .ok_or_else(Error::forbidden)?;
-                    if bound.admin {
-                        return Err(Error::forbidden());
-                    }
-                }
-            }
-            if existing
-                .as_ref()
-                .is_none_or(|device| device.user_id != user.id)
-            {
-                let count = tx
-                    .list::<Device>(DEVICES)?
-                    .iter()
-                    .filter(|(_, device)| device.user_id == user.id)
-                    .count();
-                if count >= MAX_DEVICES {
-                    return Err(Error::conflict("User has too many Windows devices"));
-                }
-            }
-            // Re-enroll is the only way to replace the secret or the bound user.
-            let secret = crypto::random_token("ri_windev_");
-            let at = now();
-            let device = Device {
-                id: input.id.clone(),
-                display_name: input.display_name.clone(),
-                username: user.username.clone(),
-                user_id: user.id.clone(),
-                secret_hash: digest(&secret),
-                created_at: existing
-                    .as_ref()
-                    .map(|device| device.created_at)
-                    .unwrap_or(at),
-                rotated_at: at,
-                revoked: false,
-            };
-            tx.put(DEVICES, &device.id, &device)?;
-            delete_tickets(tx, |ticket| ticket.device_id == device.id)?;
-            let offline = ttl
-                .map(|ttl| issue_offline(&secret, &device, user.epoch, ttl))
-                .transpose()?;
-            audit(tx, &actor.id, "device.enroll", &device.id)?;
+            let written = crate::management::enroll_windows_device(self, tx, token, &request)?;
             Ok(json!({
-                "device": view(&device),
-                "device_secret": secret,
-                "offline_ticket": offline.as_ref().map(|(ticket, _)| ticket),
-                "offline_expires_at": offline.as_ref().map(|(_, exp)| exp),
+                "device": view(&written.device),
+                "device_secret": written.secret,
+                "offline_ticket": written.offline.as_ref().map(|(ticket, _)| ticket),
+                "offline_expires_at": written.offline.as_ref().map(|(_, exp)| exp),
             }))
         })
     }
@@ -398,20 +332,7 @@ impl Core {
     pub fn windows_device_revoke(&self, token: &str, id: &str) -> Result<Value> {
         validate_name(id)?;
         self.mutation(token, |tx| {
-            let mut device = tx
-                .get::<Device>(DEVICES, id)?
-                .ok_or_else(|| Error::missing("Windows device not found"))?;
-            let actor = self.management(tx, token, "device.enroll", &format!("device/{id}"))?;
-            let user = tx
-                .get::<User>("users", &device.user_id)?
-                .ok_or_else(Error::forbidden)?;
-            if actor.agent && user.admin {
-                return Err(Error::forbidden());
-            }
-            device.revoked = true;
-            tx.put(DEVICES, id, &device)?;
-            delete_tickets(tx, |ticket| ticket.device_id == id)?;
-            audit(tx, &actor.id, "device.revoke", id)?;
+            let device = crate::management::revoke_windows_device(self, tx, token, id)?;
             Ok(view(&device))
         })
     }

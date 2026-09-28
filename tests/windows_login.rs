@@ -557,3 +557,145 @@ fn agent_cannot_enroll_an_administrator() {
         1
     );
 }
+
+#[test]
+fn device_writer_preserves_scope_binding_and_ticket_invalidation() {
+    let fx = Fixture::new();
+    fx.user("alice");
+    fx.user("bob");
+    let created = fx
+        .core
+        .create_agent(
+            &fx.admin,
+            NewAgent {
+                id: "device-writer".into(),
+                permissions: vec![Permission {
+                    action: "device.enroll".into(),
+                    resource: "device/laptop".into(),
+                }],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap();
+    let agent = text(&created["credential"], "token");
+    let request = |id: &str, username: &str| EnrollDevice {
+        id: id.into(),
+        display_name: format!("{username} device"),
+        username: username.into(),
+        offline_ttl: None,
+    };
+
+    let before = fx.snapshot().unwrap();
+    let denied = fx
+        .core
+        .windows_device_enroll(&agent, request("other", "alice"))
+        .unwrap_err();
+    assert_eq!(denied.code, "access_denied");
+    fx.assert_snapshot(&before);
+
+    fx.core
+        .windows_device_enroll(&fx.admin, request("laptop", "admin"))
+        .unwrap();
+    let before = fx.snapshot().unwrap();
+    let denied = fx
+        .core
+        .windows_device_enroll(&agent, request("laptop", "alice"))
+        .unwrap_err();
+    assert_eq!(denied.code, "access_denied");
+    fx.assert_snapshot(&before);
+
+    let first = fx
+        .core
+        .windows_device_enroll(&fx.admin, request("laptop", "alice"))
+        .unwrap();
+    let first_secret = text(&first, "device_secret");
+    let first_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "alice",
+            &first_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+
+    let rotated = fx
+        .core
+        .windows_device_enroll(&agent, request("laptop", "alice"))
+        .unwrap();
+    let rotated_secret = text(&rotated, "device_secret");
+    assert_ne!(rotated_secret, first_secret);
+    assert!(fx.core.windows_ticket_redeem(&first_ticket).is_err());
+    let rotated_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "alice",
+            &rotated_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+
+    let rebound = fx
+        .core
+        .windows_device_enroll(&agent, request("laptop", "bob"))
+        .unwrap();
+    let rebound_secret = text(&rebound, "device_secret");
+    assert_eq!(rebound["device"]["username"], "bob");
+    assert_ne!(rebound_secret, rotated_secret);
+    assert!(fx.core.windows_ticket_redeem(&rotated_ticket).is_err());
+    let rebound_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "bob",
+            &rebound_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+
+    fx.core.windows_device_revoke(&agent, "laptop").unwrap();
+    assert!(fx.core.windows_ticket_redeem(&rebound_ticket).is_err());
+    assert_eq!(fx.core.windows_devices(&agent).unwrap()[0]["revoked"], true);
+    fx.core.windows_device_revoke(&agent, "laptop").unwrap();
+    let events = fx.core.audit_events(&fx.admin, 100).unwrap();
+    let events = events.as_array().unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["action"] == "device.enroll" && event["target"] == "laptop")
+            .count(),
+        4
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["action"] == "device.revoke" && event["target"] == "laptop")
+            .count(),
+        2
+    );
+    assert_absent(
+        &fx,
+        &[
+            &first_secret,
+            &rotated_secret,
+            &rebound_secret,
+            &first_ticket,
+            &rotated_ticket,
+            &rebound_ticket,
+        ],
+    );
+}
