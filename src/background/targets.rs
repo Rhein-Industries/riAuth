@@ -1,7 +1,7 @@
 //! One active operation per configured connector, shared by manual operations
 //! and durable claims. A permit lives through dispatch and durable finish,
 //! including after the HTTP/scheduler waiter has gone away.
-use super::{Background, Job, Relaxed};
+use super::{Background, Job, LANES, Relaxed};
 use crate::{error::Result, store::Store};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -14,10 +14,15 @@ pub(crate) struct TargetPermit {
 impl Background {
     pub(crate) fn try_target(self: &Arc<Self>, job: Job, scope: &str) -> Option<TargetPermit> {
         let mut targets = self.targets.lock().unwrap_or_else(|e| e.into_inner());
+        let mut available = if matches!(job, Job::Deactivation) {
+            LANES[0].1..targets.len()
+        } else {
+            0..LANES[0].1
+        };
         if !targets
             .iter()
             .any(|target| target.as_deref() == Some(scope))
-            && let Some(slot) = targets.iter().position(Option::is_none)
+            && let Some(slot) = available.find(|&slot| targets[slot].is_none())
         {
             targets[slot] = Some(scope.into());
             return Some(TargetPermit {

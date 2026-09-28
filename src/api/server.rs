@@ -48,10 +48,7 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
                 .map_err(Error::internal)?
         }
     });
-    let provisioning_core = core.clone();
-    let provisioning_worker = background.spawn(Job::Provisioning, move || {
-        crate::provisioning::deliver(provisioning_core.clone())
-    });
+    let [provisioning_worker, deactivation_worker] = background.spawn_provisioning(core.clone());
     let mail_core = core.clone();
     let mail_worker = background.spawn(Job::Mail, move || {
         crate::lifecycle::deliver(mail_core.clone())
@@ -96,6 +93,7 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
             delivery_worker,
             mail_worker,
             provisioning_worker,
+            deactivation_worker,
             reconciliation_worker,
         ]),
     })

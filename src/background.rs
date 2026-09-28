@@ -25,7 +25,13 @@ mod targets;
 pub(crate) use targets::{ConnectorWork, TargetPermit};
 
 const DEADLINE: Duration = Duration::from_secs(60);
-const LANES: [(&str, usize); 3] = [("connectors", 2), ("delivery", 2), ("maintenance", 1)];
+const DEACTIVATION_LANE: usize = 3;
+const LANES: [(&str, usize); 4] = [
+    ("connectors", 2),
+    ("delivery", 2),
+    ("maintenance", 1),
+    ("deactivation", 1),
+];
 
 #[derive(Clone, Copy)]
 pub(crate) enum Job {
@@ -36,9 +42,10 @@ pub(crate) enum Job {
     Maintenance,
     Alerts,
     ManualConnector,
+    Deactivation,
 }
 impl Job {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Reconciliation,
         Self::Provisioning,
         Self::Mail,
@@ -46,6 +53,7 @@ impl Job {
         Self::Maintenance,
         Self::Alerts,
         Self::ManualConnector,
+        Self::Deactivation,
     ];
     fn label(self) -> &'static str {
         match self {
@@ -56,6 +64,7 @@ impl Job {
             Self::Maintenance => "maintenance",
             Self::Alerts => "alerts",
             Self::ManualConnector => "manual_connector",
+            Self::Deactivation => "deactivation",
         }
     }
     fn lane(self) -> usize {
@@ -63,11 +72,12 @@ impl Job {
             Self::Reconciliation | Self::Provisioning | Self::ManualConnector => 0,
             Self::Mail | Self::Delivery | Self::Alerts => 1,
             Self::Maintenance => 2,
+            Self::Deactivation => DEACTIVATION_LANE,
         }
     }
     fn cadence(self) -> Duration {
         match self {
-            Self::Provisioning => Duration::from_millis(250),
+            Self::Provisioning | Self::Deactivation => Duration::from_millis(250),
             Self::Delivery => Duration::from_secs(2),
             Self::Reconciliation | Self::Mail => Duration::from_secs(5),
             Self::Maintenance | Self::Alerts => Duration::from_secs(60),
@@ -195,21 +205,18 @@ impl Drop for Lane {
 }
 
 pub(crate) struct Background {
-    lanes: [Lane; 3],
+    lanes: [Lane; LANES.len()],
     jobs: [Arc<Semaphore>; Job::ALL.len()],
     store: Store,
     deadline: Duration,
-    // Only active targets are retained; rejected callers never enter a queue.
-    targets: Mutex<[Option<String>; LANES[0].1]>,
+    // Two general entries plus one reserved for deactivation. Rejecting work
+    // never adds a waiter, and the reserve still shares target exclusion.
+    targets: Mutex<[Option<String>; LANES[0].1 + LANES[DEACTIVATION_LANE].1]>,
 }
 impl Background {
     fn new(store: Store) -> Self {
         Self {
-            lanes: [
-                Lane::new(LANES[0]),
-                Lane::new(LANES[1]),
-                Lane::new(LANES[2]),
-            ],
+            lanes: std::array::from_fn(|i| Lane::new(LANES[i])),
             jobs: std::array::from_fn(|i| Arc::new(Semaphore::new(Job::ALL[i].capacity()))),
             store,
             deadline: DEADLINE,
@@ -236,6 +243,45 @@ impl Background {
             lane.handle()?;
         }
         Ok(())
+    }
+    /// A due deactivation gets its own service opportunity even when every
+    /// general connector slot is occupied. Each existing Core API retains the
+    /// complete claim/dispatch/finish and its authority and lease fences.
+    pub(crate) fn spawn_provisioning(
+        self: &Arc<Self>,
+        core: crate::core::Core,
+    ) -> [JoinHandle<()>; 2] {
+        let reviewed = core.clone();
+        let provisioning = self.spawn(Job::Provisioning, move || {
+            let core = reviewed.clone();
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    crate::telemetry::in_activity(crate::telemetry::Activity::Provisioning, || {
+                        if core.config.scim_targets.is_empty() {
+                            Ok(())
+                        } else {
+                            core.provisioning_step()
+                        }
+                    })
+                })
+                .await
+                .map_err(Error::internal)?
+            }
+        });
+        let deactivation = self.spawn(Job::Deactivation, move || {
+            let core = core.clone();
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    crate::telemetry::in_activity(crate::telemetry::Activity::Provisioning, || {
+                        // Always recheck intent, including for removed targets.
+                        core.deactivation_step().map(drop)
+                    })
+                })
+                .await
+                .map_err(Error::internal)?
+            }
+        });
+        [provisioning, deactivation]
     }
     pub(crate) async fn connector<T: Send + 'static>(
         self: &Arc<Self>,
@@ -425,6 +471,235 @@ mod tests {
     }
 
     #[test]
+    fn deactivation_has_reserved_capacity_under_manual_saturation() {
+        use crate::{
+            agent::{NewAgent, Permission},
+            config::write_private,
+            connector_guard::ReconciliationMode,
+            identity::downstream::{self, Link},
+            model::{User, UserPatch},
+            provisioning::Target,
+            reconciliation::ControllerConfig,
+        };
+        use tokio::sync::Notify;
+
+        let (dir, mut core) = fixture();
+        let admin = core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        for username in ["alice", "bob"] {
+            core.create_user(
+                &admin,
+                NewUser {
+                    username: username.into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: username.into(),
+                    admin: false,
+                },
+            )
+            .unwrap();
+        }
+        core.create_group(&admin, "staff").unwrap();
+        let alice_session =
+            core.login("alice".into(), PASSWORD.into(), None).unwrap()["session_token"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let token_file = dir.path().join("scim-token");
+        write_private(&token_file, b"local-deactivation-test", false).unwrap();
+        core.config.scim_targets.insert(
+            "offboarding".into(),
+            Target {
+                url: url.clone(),
+                token_file: Some(token_file),
+                oauth: None,
+                ca_file: None,
+                groups: ["staff".into()].into(),
+                export_groups: false,
+            },
+        );
+        core.config
+            .scim_reconciliation_modes
+            .insert("offboarding".into(), ReconciliationMode::Automatic);
+        let agent = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "deactivator".into(),
+                    ttl: 3600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "provisioner.sync".into(),
+                        resource: "provisioner/offboarding".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let credential_file = dir.path().join("controller-token");
+        write_private(
+            &credential_file,
+            agent["credential"]["token"].as_str().unwrap().as_bytes(),
+            false,
+        )
+        .unwrap();
+        core.config.reconciliation_controllers.insert(
+            "scim/offboarding".into(),
+            ControllerConfig {
+                agent_id: "deactivator".into(),
+                credential_file,
+                interval_seconds: 3600,
+            },
+        );
+        let users = core.store.list::<User>("users").unwrap();
+        // Two known active links keep Alice's removal below the existing review
+        // floor. A second target for Alice is deliberately busy during delivery.
+        for (_, user) in users.iter().filter(|(_, user)| !user.admin) {
+            for target in if user.username == "alice" {
+                vec!["offboarding", "manual-a"]
+            } else {
+                vec!["offboarding"]
+            } {
+                let link = Link {
+                    target: target.into(),
+                    url: url.clone(),
+                    kind: "Users".into(),
+                    local_id: user.id.clone(),
+                    remote_id: user.username.clone(),
+                    external_id: format!("external-{}", user.username),
+                    body: json!({"userName":user.username,"active":true}),
+                };
+                let key = downstream::link_key(target, "Users", &user.id);
+                core.store
+                    .write(|tx| tx.put(downstream::LINKS, &key, &link))
+                    .unwrap();
+            }
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            // Gate a read of an already inactive account. The P08 held-dispatch
+            // proof protocol remains covered by its own tests, not reimplemented.
+            let started = Arc::new(Notify::new());
+            let release_read = Arc::new(Notify::new());
+            let reads = Arc::new(AtomicU64::new(0));
+            let mock = axum::Router::new().route("/Users/alice", axum::routing::get({
+                let started = started.clone();
+                let release_read = release_read.clone();
+                let reads = reads.clone();
+                move |headers: axum::http::HeaderMap| {
+                    let started = started.clone();
+                    let release_read = release_read.clone();
+                    let reads = reads.clone();
+                    async move {
+                        assert_eq!(headers["authorization"], "Bearer local-deactivation-test");
+                        reads.fetch_add(1, Relaxed);
+                        started.notify_one();
+                        release_read.notified().await;
+                        ([("etag", "\"1\"")], axum::Json(json!({"id":"alice","externalId":"external-alice","active":false,"meta":{"version":"1"}})))
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+            let background = Background::shared(&core.store);
+            let mut releases = Vec::new();
+            for target in ["manual-a", "manual-b"] {
+                let app = App::new(core.clone());
+                let (release, wait) = mpsc::channel();
+                let (started, ready) = tokio::sync::oneshot::channel();
+                let waiter = tokio::spawn(async move {
+                    app.run_connector(ConnectorWork::target("scim", target), move |_| {
+                        let _ = started.send(());
+                        wait.recv_timeout(Duration::from_secs(30)).map_err(Error::internal)
+                    }).await
+                });
+                ready.await.unwrap();
+                waiter.abort();
+                assert!(waiter.await.unwrap_err().is_cancelled());
+                releases.push(release);
+            }
+            let app = App::new(core.clone());
+            // The reserved registry entry is unavailable to general work and
+            // cannot bypass exclusion of a target held in the general lane.
+            assert!(background.try_target(Job::Provisioning, "scim/third").is_none());
+            assert!(background.try_target(Job::Deactivation, "scim/manual-a").is_none());
+            assert_eq!(app.run_connector::<()>(ConnectorWork::target("scim", "third"), |_| {
+                panic!("manual requests cannot borrow the deactivation reserve")
+            }).await.unwrap_err().code, "connector_overloaded");
+            // Local revocation and durable enqueue still use foreground capacity.
+            let token = admin.clone();
+            tokio::time::timeout(Duration::from_secs(3), app.run(move |core| {
+                core.update_user(&token, "alice", UserPatch { enabled: Some(false), ..Default::default() })
+            })).await.unwrap().unwrap();
+            assert!(core.me(&alice_session).is_err());
+            let rows = core.store.list::<Value>(downstream::BUCKET).unwrap();
+            assert_eq!(rows.len(), 2);
+            let (busy_id, busy_before) = rows.iter().find(|(_, row)| row["target"] == "manual-a").unwrap().clone();
+            let id = rows.iter().find(|(_, row)| row["target"] == "offboarding").unwrap().0.clone();
+
+            // Use the same split production workers, not a synthetic reserved job.
+            let workers = background.spawn_provisioning(core.clone());
+            tokio::time::timeout(Duration::from_secs(3), started.notified()).await.unwrap();
+            let claimed = core.store.get::<Value>(downstream::BUCKET, &id).unwrap().unwrap();
+            assert_eq!(claimed["status"], "running");
+            assert_eq!(claimed["attempts"], 1);
+            assert!(claimed["lease_owner"].as_str().is_some());
+            assert_eq!(core.store.get::<Value>(downstream::BUCKET, &busy_id).unwrap().unwrap(), busy_before);
+            assert_eq!(background.targets.lock().unwrap().iter().flatten().count(), 3);
+            assert!(background.try_target(Job::Reconciliation, "scim/offboarding").is_none());
+            for worker in workers {
+                worker.abort();
+                assert!(worker.await.unwrap_err().is_cancelled());
+            }
+            // Cancelling the scheduler is not settlement; no replacement pass
+            // may claim while the existing synchronous API is still in flight.
+            assert_eq!(background.run(Job::Deactivation, async {
+                panic!("cancelled waiter must retain reserved capacity")
+            }).await.unwrap_err().code, "background_overloaded");
+            let login = tokio::time::timeout(Duration::from_secs(3), app.run_credentials(|core| {
+                core.login("admin".into(), PASSWORD.into(), None)
+            })).await.unwrap().unwrap();
+            let token = login["session_token"].as_str().unwrap().to_owned();
+            let logout_token = token.clone();
+            tokio::time::timeout(Duration::from_secs(3), app.run(move |core| core.logout(&logout_token)))
+                .await.unwrap().unwrap();
+            assert!(core.me(&token).is_err());
+            let routes = crate::api::router(core.clone());
+            for path in ["/livez", "/readyz"] {
+                let response = tokio::time::timeout(Duration::from_secs(1), routes.clone().oneshot(
+                    Request::get(path).body(Body::empty()).unwrap()
+                )).await.unwrap().unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+            }
+            assert_eq!(core.store.get::<Value>(downstream::BUCKET, &id).unwrap().unwrap(), claimed);
+            release_read.notify_one();
+            drained(&background, Job::Deactivation).await;
+            let delivered = core.store.get::<Value>(downstream::BUCKET, &id).unwrap().unwrap();
+            assert_eq!(delivered["status"], "delivered");
+            assert_eq!(delivered["outcome"], "already_inactive");
+            assert_eq!(delivered["attempts"], 1);
+            assert!(delivered["lease_owner"].is_null());
+            assert_eq!(reads.load(Relaxed), 1);
+            assert_eq!(background.targets.lock().unwrap().iter().flatten().count(), 2);
+            let stats = core.store.telemetry().background.snapshot();
+            assert_eq!(stats["lanes"]["deactivation"], 1);
+            assert_eq!(stats["jobs"]["deactivation"]["finished"], 1);
+            assert_eq!(stats["jobs"]["manual_connector"]["active"], 2);
+            for release in releases { release.send(()).unwrap(); }
+            drained(&background, Job::ManualConnector).await;
+            server.abort();
+        });
+    }
+
+    #[test]
     fn busy_target_cannot_starve_unrelated_manual_or_due_work() {
         use crate::{config::write_private, identity::downstream::BUCKET, provisioning::Target};
         use http_body_util::BodyExt;
@@ -548,7 +823,7 @@ mod tests {
             let stats = core.store.telemetry().background.snapshot();
             assert_eq!(stats["connector_target_capacity"], 1);
             assert_eq!(stats["jobs"]["manual_connector"]["target_deferred"], 8);
-            assert!(stats["jobs"]["provisioning"]["target_deferred"].as_u64().unwrap() >= 16);
+            assert!(stats["jobs"]["deactivation"]["target_deferred"].as_u64().unwrap() >= 16);
             let mut metrics = String::new();
             core.store.telemetry().background.render(&mut metrics);
             assert!(metrics.contains("riauth_background_target_deferred_total{job=\"manual_connector\",lane=\"connectors\"} 8"));

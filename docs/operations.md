@@ -181,16 +181,17 @@ Group writes maintain an encrypted per-user membership index in the same transac
 
 ## Background capacity and overload
 
-Both editions run scheduled and manual connector work on three dedicated Tokio
+Both editions run scheduled and manual connector work on four dedicated Tokio
 runtimes. Each has one async thread, the blocking-thread cap shown below, and a matching limit on
 admitted passes. Foreground sign-in, session revocation and probes retain their
 existing runtime and admission pools.
 
 | Lane | Passes / blocking threads | Work |
 | --- | --- | --- |
-| `connectors` | 2 | Reconciliation; provisioning plus offboarding deactivation; manual LDAP/cloud/SCIM plans and applies; reconciliation event submission |
+| `connectors` | 2 | Reconciliation; reviewed provisioning; manual LDAP/cloud/SCIM plans and applies; reconciliation event submission |
 | `delivery` | 2 | Mail; logout followed by SSF (Platform); alert webhooks |
 | `maintenance` | 1 | Cleanup, including scheduled local offboarding |
+| `deactivation` | 1 | Due offboarding deactivation through the existing complete claim/dispatch/finish API |
 
 Each scheduled worker admits at most one pass at a time; manual requests can
 use up to the two shared connector slots for different targets. There is no
@@ -218,10 +219,29 @@ Each configured target (`ldap/id`, `workspace/id`, `entra/id` or `scim/id`)
 admits one active operation across manual requests, reconciliation, reviewed
 SCIM delivery and offboarding deactivation. Apply requests resolve the target
 from the stored plan or retained SCIM job, so different plan IDs cannot bypass
-admission. The fixed registry has only two active entries and no waiters; a
-cancelled or timed-out caller keeps its target permit until the operation and
+admission. The fixed registry has two general entries and one entry reserved
+for deactivation, with no waiters. A cancelled or timed-out caller keeps its
+target permit until the operation and
 durable finish actually return. Busy scheduled candidates are skipped before
 claiming: their status, leases, attempts and retry times are unchanged.
+
+The deactivation runtime and target entry are reserved even when idle; manual,
+reviewed and reconciliation work cannot borrow them. Two unrelated slow manual
+targets therefore cannot prevent a due deactivation on a third target from
+getting a service opportunity. Production starts independent reviewed and
+deactivation loops at the same 250 ms cadence. Deactivation is checked even
+without configured targets, and does not wait for reviewed provisioning to
+succeed or return. The production reviewed worker calls `provisioning_step`
+only, so it no longer schedules a second deactivation leg.
+
+The reserved entry still excludes an active operation with the same
+`scim/<target>` key in either lane. The existing synchronous `deactivation_step`
+owns claim, every-send authority/dispatch fences and durable finish/ack. Its
+target and pass permits live until that call returns. Scheduler cancellation,
+timeout or shutdown does not settle a durable dispatch pin or initiate recovery.
+Local revocation and intent enqueue retain their foreground transaction and
+never wait for connector admission or remote delivery. A pass can update held
+or closed rows without dispatching; runtime completion is not remote success.
 
 The SCIM claim paths inspect at most 16 due index entries per pass. Two durable
 `connector_due_cursors` records advance past inspected entries and wrap at a
@@ -247,11 +267,11 @@ A 60-second deadline bounds the scheduler's wait. It reports
 outcome, expire a lease or release capacity. The running pass keeps its job and
 lane slots until all work finishes. Later ticks report `background_overloaded`
 without starting a replacement. Completed late work retains its normal durable
-result. A process stop leaves interrupted work to its existing lease/restart
-recovery; delivery remains at least once.
+result. A process stop leaves interrupted work and durable dispatch pins to
+the queue's existing recovery rules; the runtime never initiates pin recovery.
 
-Worker retries use the existing cadence: provisioning 250 ms, logout/SSF 2 s,
-mail and reconciliation 5 s, maintenance and alerts 60 s. Missed ticks are
+Worker retries use the existing cadence: provisioning and deactivation 250 ms,
+logout/SSF 2 s, mail and reconciliation 5 s, maintenance and alerts 60 s. Missed ticks are
 skipped rather than replayed in a burst. These intervals are admission retry
 hints, not promises of downstream completion, and do not override durable job
 backoff. Warnings include the finite `job`, `lane`, error `code` and
@@ -270,6 +290,9 @@ passes, including failures; it is not a remote delivery outcome.
 these use only fixed job/lane labels, never target IDs or URLs. JSON policy
 reports `connector_target_capacity: 1`. Rising timeouts/deferred counts with
 occupied slots identify the lane to investigate.
+Reserved-worker metrics use the fixed job/lane label `deactivation`; its capacity
+is one. SCIM target deferrals are attributed to `provisioning` or `deactivation`
+according to the claim path. Storage activity for both remains `provisioning`.
 Check its connector timeout, network dependency and storage contention; do not
 force a second claim or infer successful delivery from a runtime timeout.
 
@@ -286,9 +309,11 @@ store handles/processes have separate budgets. Direct Core callers, protocol
 login/federation exchanges and bulk administrative operations outside the listed
 connector routes retain their existing limits (durable Core claim paths also
 use target admission). This prevents one configured target occupying both
-connector slots; it does not reserve a turn for each caller. Multiple busy
-target IDs can still fill the lane, and one stalled scheduled pass still delays
-its own serialized worker. Strict fairness between manual and scheduled work,
+general connector slots; it does not reserve a turn for each caller. Multiple
+busy target IDs can still fill the general lane. A deactivation for one of those
+same targets must wait for exclusion, and a stalled deactivation occupies the
+single reserve until it returns. One stalled scheduled pass still delays its
+own serialized worker. Strict fairness between manual and scheduled work,
 per-tenant or endpoint-wide quotas, reserved CPU/storage capacity, cross-node
 quotas, hard process isolation and production load/latency characterization
 remain O05 follow-up work.

@@ -343,7 +343,7 @@ impl Core {
                     return Ok(None);
                 }
                 let Some(target) = background.try_target(
-                    crate::background::Job::Provisioning,
+                    crate::background::Job::Deactivation,
                     &scope(&row.target),
                 ) else {
                     return Ok(None);
