@@ -10,8 +10,8 @@
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
 use super::{
-    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, refused, rejected,
-    remote_error, scim_json, stale_lease_settling, validate_evidence,
+    DismissDeactivation, Job, Resolve, Target, authorized, discard_body, lease_settling, refused,
+    rejected, remote_error, scim_json, stale_lease_settling, validate_evidence,
 };
 use crate::{
     agent::Principal,
@@ -627,7 +627,7 @@ impl Core {
     /// binding and restarts evaluation, so a reviewed delivery made since then
     /// closes it as delivered and a re-enabled account supersedes it.
     pub fn provisioning_deactivation_retry(&self, token: &str, id: &str) -> Result<Value> {
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let mut row = tx
                 .get::<Deactivation>(BUCKET, id)?
                 .ok_or_else(|| Error::missing("Deactivation not found"))?;
@@ -676,7 +676,8 @@ impl Core {
                 &format!("{}/{}", row.target, row.username),
             )?;
             row_view_for(tx, &row, &actor)
-        })
+        })?;
+        self.deactivation_response(token, result)
     }
 
     /// Operator resolution for an ambiguous row that no attempt can settle: its
@@ -690,7 +691,7 @@ impl Core {
         input: Resolve,
     ) -> Result<Value> {
         validate_evidence(&input.evidence)?;
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let mut row = tx
                 .get::<Deactivation>(BUCKET, id)?
                 .ok_or_else(|| Error::missing("Deactivation not found"))?;
@@ -726,7 +727,8 @@ impl Core {
                 Some(json!({"delivery": id, "resolution": resolution})),
             )?;
             row_view(&row)
-        })
+        })?;
+        self.deactivation_response(token, result)
     }
 
     /// Waive further attempts without changing what is known about delivery.
@@ -750,7 +752,7 @@ impl Core {
                 "Dismissal requires an Idempotency-Key and the reviewed row revision",
             ));
         }
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let mut row = tx
                 .get::<Deactivation>(BUCKET, id)?
                 .ok_or_else(|| Error::missing("Deactivation not found"))?;
@@ -779,12 +781,10 @@ impl Core {
             let at = now();
             if row.lease_owner.is_some()
                 || row.lease_until > at
-                || tx.list::<Job>("provisioning_jobs")?.iter().any(|(_, job)| {
-                    job.plan.target == row.target
-                        && !job.completed
-                        && job.lease.is_some()
-                        && (job.next_attempt > at || stale_lease_settling(job, at))
-                })
+                || tx
+                    .list::<Job>("provisioning_jobs")?
+                    .iter()
+                    .any(|(_, job)| job.plan.target == row.target && lease_settling(job, at))
             {
                 return Err(Error::conflict(
                     "Delivery is still in flight; wait for its lease to settle",
@@ -811,6 +811,25 @@ impl Core {
                 Some(json!({"delivery": id, "dismissal": dismissal})),
             )?;
             row_view(&row)
+        })?;
+        self.deactivation_response(token, result)
+    }
+
+    /// Reauthorize account details after either mutation or receipt replay.
+    /// Authorize the retained response's immutable identity against its current
+    /// user, keeping the exact cached result and retry semantics when readable.
+    /// Write-only retry responses contain no account details and stay minimal.
+    fn deactivation_response(&self, token: &str, result: Value) -> Result<Value> {
+        self.store.read(|tx| {
+            let viewer = self.principal(tx, token)?;
+            if result.get("user_id").is_some() {
+                let row: Deactivation =
+                    serde_json::from_value(result.clone()).map_err(|_| Error::forbidden())?;
+                if !row_readable(tx, &row, &viewer)? {
+                    return Err(Error::forbidden());
+                }
+            }
+            Ok(result)
         })
     }
 

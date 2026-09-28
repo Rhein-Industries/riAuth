@@ -294,8 +294,9 @@ fn snapshot_key(target: &str) -> String {
 }
 // A claimed item has a 60-second lease. A remote write can start just before
 // expiry and take up to 10 seconds, followed by a bounded read-back. Keep a
-// stale leased job from overlapping replacement delivery through that window.
-const STALE_LEASE_SETTLE_SECONDS: u64 = 30;
+// leased job fenced from dismissal, and a stale job from replacement delivery,
+// through that entire window.
+const LEASE_SETTLE_SECONDS: u64 = 30;
 // Attempts on one item, with exponential backoff capped at an hour, before the
 // job stops and releases the target for a fresh reviewed plan.
 const MAX_ITEM_ATTEMPTS: u32 = 12;
@@ -448,10 +449,14 @@ fn compact_terminal_job(job: &mut Job) {
     }
 }
 
+/// A write admitted just before lease expiry may still be completing, even
+/// while the job remains active. Dismissal must fence that entire window.
+fn lease_settling(job: &Job, at: u64) -> bool {
+    job.lease.is_some() && job.next_attempt.saturating_add(LEASE_SETTLE_SECONDS) > at
+}
+
 fn stale_lease_settling(job: &Job, at: u64) -> bool {
-    job.stale
-        && job.lease.is_some()
-        && job.next_attempt.saturating_add(STALE_LEASE_SETTLE_SECONDS) > at
+    job.stale && lease_settling(job, at)
 }
 
 /// A reviewed plan's active account must still be enabled locally when it is
@@ -901,7 +906,7 @@ impl Core {
         id: &str,
         reviewed_plan: Option<&str>,
     ) -> Result<Value> {
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             // A completed job remains an idempotent apply result even after
             // its bulky source plan has been superseded and removed.
@@ -974,13 +979,14 @@ impl Core {
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.apply", &job.plan.target)?;
             job_view(tx, &job, &actor)
-        })
+        })?;
+        self.job_response(token, result)
     }
     /// Operator stop for an unfinished job; it releases the target for a fresh
     /// reviewed plan. A leased item may still be dispatching, so it keeps its
     /// lease until it settles, reads as ambiguous, and is verified by its worker.
     pub fn provisioning_stop(&self, token: &str, id: &str) -> Result<Value> {
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let mut job = tx
                 .get::<Job>("provisioning_jobs", id)?
                 .ok_or_else(|| Error::missing("Provisioning job not found"))?;
@@ -1009,14 +1015,15 @@ impl Core {
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.stop", &job.plan.target)?;
             job_view(tx, &job, &actor)
-        })
+        })?;
+        self.job_response(token, result)
     }
     /// Operator resolution for a stopped job whose current item stayed
     /// ambiguous. It records the evidence and ends the ambiguity; the job stays
     /// stopped and reads as `failed`, so it never reports the item delivered.
     pub fn provisioning_resolve(&self, token: &str, id: &str, input: Resolve) -> Result<Value> {
         validate_evidence(&input.evidence)?;
-        self.mutation(token, |tx| {
+        let result = self.mutation(token, |tx| {
             let mut job = tx
                 .get::<Job>("provisioning_jobs", id)?
                 .ok_or_else(|| Error::missing("Provisioning job not found"))?;
@@ -1061,6 +1068,28 @@ impl Core {
                 Some(json!({"job": id, "item": job.item, "resolution": resolution})),
             )?;
             job_view(tx, &job, &actor)
+        })?;
+        self.job_response(token, result)
+    }
+
+    /// Receipts keep the original result, but read authority over its identity
+    /// can change without changing the caller's permissions (rename/deletion).
+    /// Check the returned snapshot, not today's job cursor, before exposing it.
+    /// Do not rerun mutation gates or modify the receipt on an authorized replay.
+    fn job_response(&self, token: &str, result: Value) -> Result<Value> {
+        self.store.read(|tx| {
+            let viewer = self.principal(tx, token)?;
+            if result["item"].get("local_id").is_some()
+                || result["resolution"].get("evidence").is_some()
+            {
+                let target = result["target"].as_str().ok_or_else(Error::forbidden)?;
+                let item: Item = serde_json::from_value(result["item"].clone())
+                    .map_err(|_| Error::forbidden())?;
+                if !item_readable(tx, &viewer, target, &item)? {
+                    return Err(Error::forbidden());
+                }
+            }
+            Ok(result)
         })
     }
     pub fn provisioning_jobs(&self, token: &str) -> Result<Value> {

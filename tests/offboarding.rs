@@ -2084,6 +2084,223 @@ fn p08_dismiss(
 }
 
 #[test]
+fn p08_review_dismissal_fences_every_reviewed_lease_through_settlement() {
+    let (f, job_id, mut job) = p08_resolution_fixture();
+    let row = p08_ambiguous_deactivation(&f);
+    job["lease"] = json!("reviewed-worker");
+    // A write admitted at second 59 can still settle at second 61. Neither
+    // active/stale nor an inconsistent completed flag may waive that lease.
+    for (stale, completed) in [(false, false), (true, false), (false, true)] {
+        for deadline in [crypto::now() + 60, crypto::now() - 1] {
+            job["stale"] = json!(stale);
+            job["completed"] = json!(completed);
+            job["next_attempt"] = json!(deadline);
+            f.core
+                .store
+                .write(|tx| tx.put("provisioning_jobs", &job_id, &job))
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                p08_dismiss(&f, &f.admin, &row, "OPS-61").unwrap_err().code,
+                "conflict"
+            );
+            f.assert_snapshot(&before);
+        }
+    }
+    // Past the grace, an active job's old lease no longer blocks the decision.
+    // The dismissal does not consume or rewrite that job's lease or state.
+    job["stale"] = json!(false);
+    job["completed"] = json!(false);
+    job["next_attempt"] = json!(crypto::now() - 31);
+    f.core
+        .store
+        .write(|tx| tx.put("provisioning_jobs", &job_id, &job))
+        .unwrap();
+    let dismissed = p08_dismiss(&f, &f.admin, &row, "OPS-61").unwrap();
+    assert_eq!(dismissed["status"], "dismissed");
+    assert_eq!(dismissed["delivery_state"], "ambiguous");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &job_id)
+            .unwrap()
+            .unwrap(),
+        job
+    );
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        p08_dismiss(&f, &f.admin, &row, "OPS-61").unwrap(),
+        dismissed
+    );
+    f.assert_snapshot(&after);
+}
+
+#[test]
+fn p08_review_delivery_receipts_reauthorize_current_identity() {
+    let (f, job_id, original_job) = p08_resolution_fixture();
+    let original_row = p08_ambiguous_deactivation(&f);
+    let row_id = text(&original_row, "id");
+    let alice = account(&f.core, "alice");
+    let reader = agent(
+        &f,
+        "receipt-reader",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "user/alice"),
+        ],
+    );
+    let writer = agent(
+        &f,
+        "receipt-writer",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let index = original_job["plan"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|resource| resource["kind"] == "Users")
+        .unwrap();
+    let row: downstream::Deactivation = serde_json::from_value(original_row.clone()).unwrap();
+    let dismissal = json!({"revision": row.revision().unwrap(), "reason": "permanently_unverifiable", "evidence": "OPS-62"});
+
+    // One receipt-privacy contract across all item-bearing delivery mutations,
+    // including the existing minimal response for a write-only retry.
+    for operation in [
+        "dismiss",
+        "resolve",
+        "retry",
+        "job-resolve",
+        "job-stop",
+        "job-apply",
+        "write-only-retry",
+    ] {
+        let mut job = original_job.clone();
+        job["cursor"] = json!(index);
+        job["item"] = json!({"index": index, "kind": "Users", "local_id": alice.id});
+        job["plan"]["actor"] = json!("agent:receipt-reader");
+        job["stale"] = json!(operation != "job-stop");
+        f.core
+            .store
+            .write(|tx| {
+                tx.put("provisioning_jobs", &job_id, &job)?;
+                tx.put(downstream::BUCKET, &row_id, &original_row)
+            })
+            .unwrap();
+        let full = operation != "write-only-retry";
+        let token = if full { &reader } else { &writer };
+        let context = riauth::context::RequestContext {
+            revision: Some(revision(&f.core)),
+            idempotency_key: Some(format!("delivery-receipt-{operation}")),
+            fingerprint: crypto::digest(&format!("{operation}/{row_id}/{job_id}/OPS-62")),
+            ..Default::default()
+        };
+        let call = || {
+            riauth::context::scope(Some(context.clone()), || match operation {
+                "dismiss" => f.core.provisioning_deactivation_dismiss(
+                    token,
+                    &row_id,
+                    serde_json::from_value(dismissal.clone()).unwrap(),
+                ),
+                "resolve" => f.core.provisioning_deactivation_resolve(
+                    token,
+                    &row_id,
+                    p08_resolution("OPS-62"),
+                ),
+                "retry" | "write-only-retry" => {
+                    f.core.provisioning_deactivation_retry(token, &row_id)
+                }
+                "job-resolve" => {
+                    f.core
+                        .provisioning_resolve(token, &job_id, p08_resolution("OPS-62"))
+                }
+                "job-stop" => f.core.provisioning_stop(token, &job_id),
+                "job-apply" => f.core.provisioning_apply(token, &job_id),
+                _ => unreachable!(),
+            })
+        };
+        let expected = call().unwrap();
+        if operation.starts_with("job-") {
+            assert_eq!(expected["item"]["local_id"], alice.id);
+        } else if full {
+            assert_eq!(expected["user_id"], alice.id);
+        } else {
+            assert!(expected["user_id"].is_null() && expected["username"].is_null());
+        }
+        // Keep the original request revision: replay must not rerun configuration
+        // preconditions, row revision/state checks or the already committed action.
+        f.core
+            .create_group(&f.admin, &format!("revision-{operation}"))
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        assert_eq!(call().unwrap(), expected);
+        f.assert_snapshot(&before);
+
+        // Permissions are unchanged, but the immutable user moved out of scope.
+        // A replacement user at the recorded name must not authorize the receipt.
+        let mut renamed = alice.clone();
+        renamed.username = "alicia".into();
+        let mut replacement = alice.clone();
+        replacement.id = crypto::id();
+        f.core
+            .store
+            .write(|tx| {
+                tx.put("users", &alice.id, &renamed)?;
+                tx.put("usernames", "alicia", &alice.id)?;
+                tx.put("users", &replacement.id, &replacement)?;
+                tx.put("usernames", "alice", &replacement.id)
+            })
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        if full {
+            assert_eq!(call().unwrap_err().code, "access_denied", "{operation}");
+        } else {
+            assert_eq!(call().unwrap(), expected);
+        }
+        f.assert_snapshot(&before);
+
+        // Reauthorization does not redact or replace the saved receipt. Once
+        // readable again, the exact original response still replays unchanged.
+        f.core
+            .store
+            .write(|tx| {
+                tx.delete("users", &replacement.id)?;
+                tx.delete("usernames", "alicia")?;
+                tx.put("users", &alice.id, &alice)?;
+                tx.put("usernames", "alice", &alice.id)
+            })
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        assert_eq!(call().unwrap(), expected);
+        f.assert_snapshot(&before);
+
+        f.core
+            .store
+            .write(|tx| {
+                tx.delete("users", &alice.id)?;
+                tx.put("users", &replacement.id, &replacement)?;
+                tx.put("usernames", "alice", &replacement.id)
+            })
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        if full {
+            assert_eq!(call().unwrap_err().code, "access_denied", "{operation}");
+        } else {
+            assert_eq!(call().unwrap(), expected);
+        }
+        f.assert_snapshot(&before);
+        f.core
+            .store
+            .write(|tx| {
+                tx.delete("users", &replacement.id)?;
+                tx.put("users", &alice.id, &alice)?;
+                tx.put("usernames", "alice", &alice.id)
+            })
+            .unwrap();
+    }
+}
+
+#[test]
 fn p08_security_resolution_requires_actual_user_or_group_when_item_is_missing() {
     let (f, id, original) = p08_resolution_fixture();
     let target_only = agent(

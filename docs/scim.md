@@ -215,12 +215,21 @@ event; changing the request under the same key conflicts.
 Dismissal needs `provisioner.sync` and `provisioner.read` on the target plus
 `user.read` on the named account. Running rows, delivered or superseded rows,
 satisfied resolutions, and targets with a live or settling reviewed-job lease
-cannot be dismissed. Stopping that job does not bypass its settle window.
+cannot be dismissed. Every reviewed-job lease fences dismissal until its
+60-second expiry plus the 30-second settlement grace, whether the job is active
+or stale. Stopping that job does not bypass its settle window.
 Deactivation listings, full retry responses, resolutions and dismissals load the
 current account by immutable `user_id` before checking its read scope. The stored
 username is historical evidence: renaming or reusing it never transfers access.
 If that local identity no longer exists, these account-detail operations fail
 closed; the durable intent remains stored.
+
+Full delivery-action responses, including idempotency receipt replays, recheck
+the returned identity's current read scope before exposing account details or
+operator evidence. A rename or deletion can therefore deny a formerly readable
+receipt without repeating or undoing its committed action. The saved receipt
+remains unchanged and replays exactly if that identity becomes readable again.
+Write-only retry receipts remain minimal; they do not gain account details.
 
 The row becomes `status: dismissed` and leaves the automatic queue. Its original
 identity, epoch, hold, attempts, error, outcome and `uncertain` flag stay intact.
