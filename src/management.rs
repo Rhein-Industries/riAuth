@@ -1,27 +1,30 @@
 //! Shared management writes (M03).
 //!
-//! A resource moved here has one mutation implementation that every adapter
-//! reaches: the `Core` methods behind `Core::mutation` (HTTP API, and therefore
-//! the CLI, which manages remotely over HTTP) and desired-state reconcile.
-//! Adapters keep only their envelope: direct writes use receipts and
-//! `If-Match`; plans use their own immutable binding. Authorization, validation,
-//! credential handling, dependent revocation, persistence and the direct audit
-//! record are decided here, inside the caller's transaction.
+//! Human-management resources moved here have one mutation implementation
+//! reached by `Core::mutation` (HTTP API and remote CLI) and desired-state
+//! reconcile. Direct writes use receipts and `If-Match`; plans use their own
+//! immutable binding. Authorization, validation, credential handling,
+//! dependent revocation, persistence and audit run in the caller's transaction.
+//! Self-service writers below use live bearer or browser authority and their
+//! own scoped receipts; they do not grant human-management privileges.
 //!
 //! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
 //! this seam. Agent create, rotate and revoke use the writers below, as does
 //! signing-key rotation. Inbound SCIM User and Group writes reach their shared writers.
 //! Source unlink has a separate self-service receipt scope tied to a live session.
 //! Session revocation has a live-caller receipt only when another session is targeted.
+//! Consent withdrawal has a receipt bound to the live caller session and channel.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
+mod consents;
 pub(crate) mod grants;
 mod client_creation;
 mod client_policy;
 mod memberships;
 mod sessions;
 mod source_links;
+pub(crate) use consents::{ConsentWithdraw, withdraw_consent};
 pub(crate) use sessions::{RevokeIntent, revoke_sessions};
 pub(crate) use source_links::{SourceLinkAuthority, write_source_link};
 

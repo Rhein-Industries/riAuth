@@ -1,11 +1,11 @@
 //! Browser session and consent self-service over the server transaction.
 
 use crate::{
-    browser::{BrowserReply, consents_for_user, revoke_consent_for_user},
+    browser::{BrowserReply, consents_for_user},
     core::{Core, require_factor_session},
     crypto::now,
     error::{Error, Result},
-    management::{RevokeIntent, revoke_sessions},
+    management::{ConsentWithdraw, RevokeIntent, revoke_sessions, withdraw_consent},
     model::{Session, User},
     portal::self_service::Binding,
     signin::{FRESH_SECONDS, bearer_backed},
@@ -109,15 +109,12 @@ impl Core {
         client_id: &str,
     ) -> Result<Value> {
         self.store.write(|tx| {
-            let (user, _) = self.verified_browser(tx, cookie, binding)?;
-            if !consents_for_user(tx, &user.id)?
-                .iter()
-                .any(|consent| consent["client_id"] == client_id)
-            {
-                return Err(Error::missing("Remembered consent not found"));
-            }
-            revoke_consent_for_user(tx, &user.id, client_id)?;
-            Ok(json!({"withdrawn":true,"client_id":client_id}))
+            withdraw_consent(
+                self,
+                tx,
+                ConsentWithdraw::Browser { cookie, binding },
+                client_id,
+            )
         })
     }
 

@@ -84,9 +84,11 @@
       if (consent.resource) details.append(node("p", "", `Resource: ${consent.resource}`));
       const button = node("button", "button secondary", "Withdraw");
       button.type = "button"; button.setAttribute("aria-label", `Withdraw remembered consent for ${consent.name}`);
+      let retryKey = null;
       RiAuth.guard(button, () => act(button, `consents/${encodeURIComponent(consent.client_id)}/withdraw`,
         `Withdraw remembered consent for ${consent.name}?`,
-        "Remembered consent withdrawn. riAuth grants for this application were revoked."));
+        "Remembered consent withdrawn. riAuth grants for this application were revoked.",
+        () => (retryKey ||= crypto.randomUUID())));
       row.append(details, button); return row;
     });
     $("consent-list").replaceChildren(...consents);
@@ -166,13 +168,14 @@
       }
     });
   }
-  async function act(button, path, question, success) {
+  async function act(button, path, question, success, receiptKey) {
     if (!snapshot) return;
     if (!snapshot.can_manage) { showVerify(); return; }
     if (!window.confirm(question)) return;
     await RiAuth.inFlight(button, async () => {
       try {
-        const result = await RiAuth.post(`api/portal/security/${path}`, binding());
+        const result = await RiAuth.post(`api/portal/security/${path}`, binding(),
+          receiptKey ? { key: receiptKey(), retry: true } : {});
         if (result.signed_out) {
           signedOut(path === "sessions/revoke-all"
             ? "Your riAuth sessions have ended. Connected applications may need to finish sign-out."
