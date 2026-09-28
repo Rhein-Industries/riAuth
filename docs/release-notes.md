@@ -91,6 +91,16 @@
   `riauth backup` now writes (R01).
   Restores and rollbacks now sign every user out.
 
+# Unreleased migration conversions (G03)
+
+- Application bindings to an Authentik expression policy now convert when the
+  whole expression is one `ak_is_group_member(request.user, name="<group>")`
+  check, optionally negated. That check passes like a group binding, so it
+  becomes the same allowed, required or denied group. Supply the policies as
+  `expression_policies`. Any other expression, a group that is not the only
+  converted group of its name, and an expiring binding still follow the
+  unconverted-binding rules. Expression text never appears in the report.
+
 # Unreleased migration identity continuity (G02)
 
 - The Authentik preflight and `import-authentik --out` now classify issuer and

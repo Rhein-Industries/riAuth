@@ -35,6 +35,11 @@ pub struct Import {
     /// and no username, subject or source link is moved to another account.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_state: Option<Manifest>,
+    /// Complete export of `/api/v3/policies/expression/`. Application bindings to an expression
+    /// that is exactly one `ak_is_group_member` check convert like group bindings; the preflight
+    /// never executes an expression or reports its text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expression_policies: Option<Value>,
     #[serde(default)]
     pub totp: BTreeMap<String, PasswordReference>,
     #[serde(default)]
@@ -680,6 +685,44 @@ struct Directory<'a> {
     converted_groups: &'a BTreeSet<String>,
     /// Exported user ID -> username, and whether the account is converted.
     accounts: BTreeMap<String, (&'a str, bool)>,
+    /// Exported expression policy ID -> name and expression.
+    expressions: BTreeMap<String, (&'a str, &'a str)>,
+}
+
+/// The one expression form riAuth converts: a single line
+/// `return [not ]ak_is_group_member(request.user, name="<group>")`, with a plain single- or
+/// double-quoted name. Authentik's `ak_is_group_member` returns
+/// `user.all_groups().filter(**filters).exists()`, so it passes for members of the group and of
+/// every group below it, exactly like a group binding. Anything else, including direct-membership
+/// checks, other filters, extra logic, comments or escapes, is not recognized.
+fn group_check(expression: &str) -> Option<(bool, &str)> {
+    let line = expression.trim();
+    if line.contains(['\n', '\r', ';', '#']) {
+        return None;
+    }
+    let rest = line.strip_prefix("return")?;
+    let rest = rest.strip_prefix([' ', '\t'])?.trim_start();
+    let (negated, rest) = match rest.strip_prefix("not") {
+        Some(after) if after.starts_with([' ', '\t']) => (true, after.trim_start()),
+        _ => (false, rest),
+    };
+    let arguments = rest
+        .strip_prefix("ak_is_group_member")?
+        .trim_start()
+        .strip_prefix('(')?
+        .strip_suffix(')')?;
+    let (user, filter) = arguments.split_once(',')?;
+    let (key, value) = filter.split_once('=')?;
+    if user.trim() != "request.user" || key.trim() != "name" {
+        return None;
+    }
+    let value = value.trim();
+    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+    let name = value.strip_prefix(quote)?.strip_suffix(quote)?;
+    if name.is_empty() || name.contains([quote, '\\']) {
+        return None;
+    }
+    Some((negated, name))
 }
 /// One static binding as the condition it places on a user.
 enum Condition {
@@ -728,12 +771,42 @@ fn application_access(
         }
     }
     let mut conditions = Vec::new();
+    // Bindings whose condition comes from an expression policy, by that policy's name.
+    let mut origins = BTreeMap::new();
     for (id, binding) in &enabled {
         let negate = binding["negate"] == true;
-        let condition = if !binding["policy"].is_null() {
-            Err("Policy bindings are never executed or assumed equivalent".to_owned())
-        } else if binding["expiring"] == true {
+        let condition = if binding["expiring"] == true {
             Err("Expiring bindings are not converted, because a permanent condition would outlive the expiry".to_owned())
+        } else if !binding["policy"].is_null() {
+            let policy = identifier(&binding["policy"])?;
+            match directory.expressions.get(&policy) {
+                None => Err("The bound policy is not an exported expression policy, and policies are never executed or assumed equivalent".to_owned()),
+                Some((policy, expression)) => match group_check(expression) {
+                    None => Err(format!("Expression policy {policy} is not the single ak_is_group_member check riAuth converts, and expressions are never executed or assumed equivalent")),
+                    Some((negated, group)) => {
+                        // Authentik filters every group of that name, so exactly one may exist.
+                        let named = directory
+                            .group_names
+                            .iter()
+                            .filter(|(_, name)| name.as_str() == group)
+                            .map(|(pk, _)| pk)
+                            .collect::<Vec<_>>();
+                        match named.as_slice() {
+                            [pk] if directory.converted_groups.contains(*pk) => {
+                                origins.insert(id.as_str(), *policy);
+                                // A negated binding flips the policy's result.
+                                if negated != negate {
+                                    Ok(Condition::NotGroup(group.to_owned()))
+                                } else {
+                                    Ok(Condition::Group(group.to_owned()))
+                                }
+                            }
+                            [] => Err(format!("Expression policy {policy} checks group {group}, which is not in the export")),
+                            _ => Err(format!("Expression policy {policy} checks group {group}, which is not converted as exactly one riAuth group")),
+                        }
+                    }
+                },
+            }
         } else if !binding["group"].is_null() && binding["user"].is_null() {
             let group = identifier(&binding["group"])?;
             let name = directory
@@ -913,6 +986,12 @@ fn application_access(
                         rule.denied_users.insert(name);
                     }
                 }
+                let reason = match origins.get(id) {
+                    Some(policy) => format!(
+                        "Expression policy {policy} is exactly one ak_is_group_member check, which passes like a group binding. {reason}"
+                    ),
+                    None => reason,
+                };
                 p.add(
                     ItemKind::PolicyBinding,
                     id,
@@ -1267,6 +1346,18 @@ pub fn convert(input: Import) -> Result<Value> {
     if let Some(state) = &input.target_state {
         continuity(&mut p, &mut accounts, state);
     }
+    let mut expressions = BTreeMap::new();
+    if let Some(policies) = &input.expression_policies {
+        for policy in rows(policies)? {
+            let entry = (field(policy, "name")?, field(policy, "expression")?);
+            if expressions
+                .insert(identifier(&policy["pk"])?, entry)
+                .is_some()
+            {
+                return Err(Error::bad("Duplicate exported expression policy"));
+            }
+        }
+    }
     let directory = Directory {
         group_names: &group_names,
         converted_groups: &converted_groups,
@@ -1283,6 +1374,7 @@ pub fn convert(input: Import) -> Result<Value> {
                 ))
             })
             .collect::<Result<_>>()?,
+        expressions,
     };
     let mut subject_modes = BTreeMap::new();
     let mut client_issuers = Vec::new();
