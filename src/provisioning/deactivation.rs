@@ -9,7 +9,10 @@
 //! only the leasing worker records the outcome. A row becomes `delivered` only
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
-use super::{Job, Target, authorized, remote_error, scim_json, stale_lease_settling};
+use super::{
+    Job, Target, authorized, discard_body, refused, rejected, remote_error, scim_json,
+    stale_lease_settling,
+};
 use crate::{
     agent::Principal,
     connector_guard::{ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding},
@@ -22,6 +25,7 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
+use std::cell::Cell;
 
 /// Covers three bounded SCIM requests, each with a token acquisition and one
 /// 401 retry at the 10-second request timeout.
@@ -52,6 +56,29 @@ struct Claim {
     owner: String,
     actor: Principal,
     binding: ReviewBinding,
+}
+
+/// What one attempt learned about the remote account.
+#[derive(Default)]
+struct Evidence {
+    /// The account's current state was read.
+    inspected: Cell<bool>,
+    /// A PATCH was sent and its effect is not yet verified.
+    dispatched: Cell<bool>,
+}
+
+impl Evidence {
+    /// `Some(true)` keeps the row ambiguous, `Some(false)` clears an earlier
+    /// ambiguity, and `None` leaves it unchanged.
+    fn uncertain(&self) -> Option<bool> {
+        if self.dispatched.get() {
+            Some(true)
+        } else if self.inspected.get() {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
 fn scope(target: &str) -> String {
@@ -289,6 +316,8 @@ impl Core {
                     continue;
                 }
                 if expired && row.attempts >= MAX_ATTEMPTS {
+                    // The expired worker may have sent its PATCH.
+                    row.uncertain = true;
                     close(
                         tx,
                         &mut row,
@@ -371,7 +400,7 @@ impl Core {
         })
     }
 
-    fn attempt_deactivation(&self, claim: &Claim) -> Attempt {
+    fn attempt_deactivation(&self, claim: &Claim, evidence: &Evidence) -> Attempt {
         if let Err(error) = crate::reconciliation::authenticate_controller(
             self,
             &scope(&claim.row.target),
@@ -379,7 +408,7 @@ impl Core {
         ) {
             return Attempt::Hold("awaiting_controller_authority", bounded(&error.message));
         }
-        match self.dispatch_deactivation(claim) {
+        match self.dispatch_deactivation(claim, evidence) {
             Ok(outcome) => Attempt::Delivered(outcome),
             Err(error) if error.code == "deactivation_stale" => Attempt::Stale(error.message),
             Err(error) if error.code == "conflict" => Attempt::Retry(error.message),
@@ -387,7 +416,7 @@ impl Core {
         }
     }
 
-    fn dispatch_deactivation(&self, claim: &Claim) -> Result<&'static str> {
+    fn dispatch_deactivation(&self, claim: &Claim, evidence: &Evidence) -> Result<&'static str> {
         let row = &claim.row;
         let target: Target = self
             .config
@@ -417,6 +446,7 @@ impl Core {
         };
         let (current, etag) = read()?;
         verify_remote(row, &current)?;
+        evidence.inspected.set(true);
         if current["active"] == false {
             return Ok("already_inactive");
         }
@@ -428,6 +458,7 @@ impl Core {
         // version replays the identical request under the same key.
         let key = idempotency_key(&row.id, row.epoch, &etag);
         self.fence_deactivation(claim)?;
+        evidence.dispatched.set(true);
         let patch = json!({
             "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
             "Operations": [{"op": "replace", "value": {"active": false}}],
@@ -440,6 +471,12 @@ impl Core {
                 .header("content-type", "application/scim+json")
                 .json(&patch)
         })?;
+        if refused(&response) {
+            // Processed and refused: not applied. A changed version is re-read.
+            evidence.dispatched.set(false);
+            discard_body(response);
+            return Err(rejected());
+        }
         // A conforming target may answer 204; read back before recording delivery.
         let updated = if response.status() == reqwest::StatusCode::NO_CONTENT {
             read()?.0
@@ -455,7 +492,12 @@ impl Core {
         Ok("deactivated")
     }
 
-    fn finish_deactivation(&self, claim: &Claim, attempt: Attempt) -> Result<()> {
+    fn finish_deactivation(
+        &self,
+        claim: &Claim,
+        attempt: Attempt,
+        uncertain: Option<bool>,
+    ) -> Result<()> {
         self.store.write(|tx| {
             let at = now();
             let Some(mut row) = tx.get::<Deactivation>(BUCKET, &claim.row.id)? else {
@@ -465,8 +507,14 @@ impl Core {
             if row.status != Status::Running || row.lease_owner.as_deref() != Some(&claim.owner) {
                 return Ok(());
             }
+            if let Some(uncertain) = uncertain {
+                row.uncertain = uncertain;
+            }
             match attempt {
-                Attempt::Delivered(outcome) => close(tx, &mut row, Status::Delivered, Some(outcome), None, at),
+                Attempt::Delivered(outcome) => {
+                    row.uncertain = false;
+                    close(tx, &mut row, Status::Delivered, Some(outcome), None, at)
+                }
                 Attempt::Stale(message) => close(tx, &mut row, Status::Stale, None, Some(bounded(&message)), at),
                 Attempt::Hold(reason, message) => {
                     row.attempts = row.attempts.saturating_sub(1);
@@ -505,9 +553,61 @@ impl Core {
         let Some(claim) = self.claim_deactivation(&owner)? else {
             return Ok(false);
         };
-        let attempt = self.attempt_deactivation(&claim);
-        self.finish_deactivation(&claim, attempt)?;
+        let evidence = Evidence::default();
+        let attempt = self.attempt_deactivation(&claim, &evidence);
+        self.finish_deactivation(&claim, attempt, evidence.uncertain())?;
         Ok(true)
+    }
+
+    /// Operator retry for a failed or stale row. It takes the current link
+    /// binding and restarts evaluation, so a reviewed delivery made since then
+    /// closes it as delivered and a re-enabled account supersedes it.
+    pub fn provisioning_deactivation_retry(&self, token: &str, id: &str) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let mut row = tx
+                .get::<Deactivation>(BUCKET, id)?
+                .ok_or_else(|| Error::missing("Deactivation not found"))?;
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{}", row.target),
+            )?;
+            if !matches!(row.status, Status::Failed | Status::Stale) {
+                return Err(Error::conflict(
+                    "Only a failed or stale deactivation can be retried",
+                ));
+            }
+            let link = tx
+                .get::<Link>(LINKS, &row.link)?
+                .filter(|link| {
+                    link.target == row.target
+                        && link.kind == "Users"
+                        && link.local_id == row.user_id
+                })
+                .ok_or_else(|| {
+                    Error::conflict("The outbound link was removed; there is nothing to deactivate")
+                })?;
+            row.target_url = link.url.clone();
+            row.remote_id = link.remote_id.clone();
+            row.external_id = link.external_id.clone();
+            row.link_digest = link_digest(&link)?;
+            row.status = Status::Pending;
+            row.hold = None;
+            row.outcome = None;
+            row.delivered_at = None;
+            row.attempts = 0;
+            row.next_attempt = now();
+            release(&mut row);
+            tx.put(BUCKET, id, &row)?;
+            audit(
+                tx,
+                &actor.id,
+                "provisioner.deactivate.retry",
+                &format!("{}/{}", row.target, row.username),
+            )?;
+            row_view(&row)
+        })
     }
 
     /// The newest per-target deactivation outcomes the caller may read. Rows
@@ -526,9 +626,16 @@ impl Core {
                 .collect();
             rows.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
             rows.truncate(MAX_LISTED);
-            Ok(json!(rows))
+            let views = rows.iter().map(row_view).collect::<Result<Vec<_>>>()?;
+            Ok(Value::Array(views))
         })
     }
+}
+
+fn row_view(row: &Deactivation) -> Result<Value> {
+    let mut view = serde_json::to_value(row).map_err(Error::internal)?;
+    view["delivery_state"] = json!(row.delivery_state());
+    Ok(view)
 }
 
 pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {

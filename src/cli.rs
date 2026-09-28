@@ -548,8 +548,16 @@ pub enum ProvisionCommand {
         confirm_removals: bool,
     },
     Jobs,
+    /// Stop an unfinished delivery job so the target can be replanned
+    Stop {
+        job: String,
+    },
     /// Per-target offboarding deactivation outcomes
     Deactivations,
+    /// Re-evaluate a failed or stale deactivation against the current link
+    RetryDeactivation {
+        id: String,
+    },
 }
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
@@ -1532,7 +1540,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Provision { command } => match command {
             ProvisionCommand::Targets=>remote.call(Method::GET,"/api/provisioning/targets",None,true).await?,
             ProvisionCommand::Jobs=>remote.call(Method::GET,"/api/provisioning/jobs",None,true).await?,
+            ProvisionCommand::Stop{job}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/stop",segment(&job)?),None,true).await?,
             ProvisionCommand::Deactivations=>remote.call(Method::GET,"/api/provisioning/deactivations",None,true).await?,
+            ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
                 let plan=remote.call(Method::POST,&format!("/api/provisioning/targets/{}/plan",segment(&target)?),None,true).await?;

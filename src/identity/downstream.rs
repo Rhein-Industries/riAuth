@@ -109,6 +109,25 @@ pub struct Deactivation {
     pub created_at: u64,
     #[serde(default)]
     pub delivered_at: Option<u64>,
+    /// The latest PATCH may have been applied without a verified result.
+    /// Cleared when a later attempt reads the account again.
+    #[serde(default)]
+    pub uncertain: bool,
+}
+
+impl Deactivation {
+    /// Delivery state shared with reviewed SCIM jobs: `succeeded` only after
+    /// confirmation, `ambiguous` while an unverified PATCH may have been applied,
+    /// `cancelled` when re-enabling superseded the intent.
+    pub fn delivery_state(&self) -> &'static str {
+        match self.status {
+            Status::Delivered => "succeeded",
+            Status::Superseded => "cancelled",
+            _ if self.uncertain => "ambiguous",
+            Status::Pending | Status::Running => "pending",
+            Status::Stale | Status::Failed => "failed",
+        }
+    }
 }
 
 pub fn delivery_id(link: &str, epoch: u64) -> String {
@@ -188,6 +207,7 @@ pub(crate) fn enqueue_link(
             outcome: None,
             created_at: at,
             delivered_at: None,
+            uncertain: false,
         };
         tx.put(BUCKET, &id, &row)?;
     }

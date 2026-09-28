@@ -233,6 +233,7 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
             Some(row) => json!({
                 "target": target,
                 "delivery": id,
+                "delivery_state": row.delivery_state(),
                 "status": row.status,
                 "hold": row.hold,
                 "outcome": row.outcome,

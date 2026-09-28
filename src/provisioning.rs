@@ -207,6 +207,9 @@ const MAX_RETAINED_JOB_BYTES: usize = 32 * 1024 * 1024;
 // expiry and take up to 10 seconds, followed by a bounded read-back. Keep a
 // stale leased job from overlapping replacement delivery through that window.
 const STALE_LEASE_SETTLE_SECONDS: u64 = 30;
+// Attempts on one item, with exponential backoff capped at an hour, before the
+// job stops and releases the target for a fresh reviewed plan.
+const MAX_ITEM_ATTEMPTS: u32 = 12;
 #[derive(Clone, Serialize, Deserialize)]
 struct Job {
     plan: Plan,
@@ -221,6 +224,19 @@ struct Job {
     error: Option<String>,
     #[serde(default)]
     reviewed_removals: bool,
+    /// The current item's last write may have been applied without a verified
+    /// result. Cleared only when a later attempt verifies the remote state.
+    #[serde(default)]
+    uncertain: bool,
+    /// The item the latest failed attempt concerned.
+    #[serde(default)]
+    item: Option<Item>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct Item {
+    index: usize,
+    kind: String,
+    local_id: String,
 }
 fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
@@ -246,8 +262,22 @@ fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         })
     }
 }
+/// `succeeded` only after every item was verified; `ambiguous` while the current
+/// item's last write may have been applied without a verified result; `failed`
+/// for a stopped job; otherwise `pending`, including retries before dispatch.
+fn delivery_state(job: &Job) -> &'static str {
+    if job.completed {
+        "succeeded"
+    } else if job.uncertain {
+        "ambiguous"
+    } else if job.stale {
+        "failed"
+    } else {
+        "pending"
+    }
+}
 fn job_view(job: &Job) -> Value {
-    json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error})
+    json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":job.item})
 }
 
 fn compact_terminal_job(job: &mut Job) {
@@ -654,10 +684,45 @@ impl Core {
                 lease: None,
                 error: None,
                 reviewed_removals: reviewed_plan == Some(id),
+                uncertain: false,
+                item: None,
             };
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.apply", &job.plan.target)?;
+            Ok(job_view(&job))
+        })
+    }
+    /// Operator stop for an unfinished job; it releases the target for a fresh
+    /// reviewed plan. A leased item may still be dispatching, so it keeps its
+    /// lease until it settles, reads as ambiguous, and is verified by its worker.
+    pub fn provisioning_stop(&self, token: &str, id: &str) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let mut job = tx
+                .get::<Job>("provisioning_jobs", id)?
+                .ok_or_else(|| Error::missing("Provisioning job not found"))?;
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{}", job.plan.target),
+            )?;
+            if job.completed || job.stale {
+                return Ok(job_view(&job));
+            }
+            job.stale = true;
+            job.error = Some(
+                "Stopped by an operator; inspect partial results and create a new plan".into(),
+            );
+            if job.lease.is_some() {
+                job.uncertain = true;
+                if job.next_attempt <= now() {
+                    job.lease = None;
+                }
+            }
+            compact_terminal_job(&mut job);
+            tx.put("provisioning_jobs", id, &job)?;
+            audit(tx, &actor.id, "provisioner.stop", &job.plan.target)?;
             Ok(job_view(&job))
         })
     }
@@ -705,6 +770,10 @@ impl Core {
             .get(&job.plan.target)
             .ok_or_else(Error::forbidden)?
             .clone();
+        // `inspected`: this attempt read the item's current remote state.
+        // `dispatched`: a write was sent and its effect is not yet verified.
+        let inspected = std::cell::Cell::new(false);
+        let dispatched = std::cell::Cell::new(false);
         let result = (|| {
             let mut body = resource.body.clone();
             if resource.kind == "Groups" {
@@ -794,6 +863,7 @@ impl Core {
                     validate_remote_removals(&resource.kind, &body, &current, known.as_ref())?;
                 }
                 if !equal {
+                    inspected.set(true);
                     // Check live authority/lease after the remote reads, immediately
                     // before dispatch. Accepted remote writes cannot be rolled back.
                     self.validate_dispatch(&job)?;
@@ -813,22 +883,28 @@ impl Core {
                         .map(|(key, value)| (key.clone(), value.clone()))
                         .collect();
                     let patch = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","value":changes}]});
+                    // The key names this exact conditional request: a retry that read
+                    // a different version sends a new request under a new key.
+                    let key = format!(
+                        "ri-{}-{}",
+                        job.plan.id,
+                        digest(&format!("{}:{}\0{etag}", resource.kind, resource.local_id))
+                    );
+                    dispatched.set(true);
                     let response =
                         authorized(self, &job.plan.target, &target, &http, |http, token| {
                             http.patch(item_url.clone())
                                 .bearer_auth(token)
                                 .header("if-match", etag.clone())
-                                .header(
-                                    "idempotency-key",
-                                    format!(
-                                        "ri-{}-{}",
-                                        job.plan.id,
-                                        digest(&format!("{}:{}", resource.kind, resource.local_id))
-                                    ),
-                                )
+                                .header("idempotency-key", key.clone())
                                 .header("content-type", "application/scim+json")
                                 .json(&patch)
                         })?;
+                    if refused(&response) {
+                        dispatched.set(false);
+                        discard_body(response);
+                        return Err(rejected());
+                    }
                     // RFC 7644 allows a successful PATCH to return 204 with no body.
                     // Read the resource back before advancing the durable job so that
                     // a lost or incomplete update cannot be mistaken for success.
@@ -870,7 +946,9 @@ impl Core {
                 {
                     return Ok(None);
                 }
+                inspected.set(true);
                 self.validate_dispatch(&job)?;
+                dispatched.set(true);
                 let response =
                     authorized(self, &job.plan.target, &target, &http, |http, token| {
                         http.post(&url)
@@ -886,6 +964,11 @@ impl Core {
                             .header("content-type", "application/scim+json")
                             .json(&body)
                     })?;
+                if refused(&response) {
+                    dispatched.set(false);
+                    discard_body(response);
+                    return Err(rejected());
+                }
                 let (created, _) = scim_json(response)?;
                 if created["externalId"] != external_id || !managed_equal(&body, &created) {
                     return Err(remote_error());
@@ -922,7 +1005,33 @@ impl Core {
                             error.code.into()
                         },
                     );
+                    // A retry reads the remote state before any new write. An
+                    // unverified write stays ambiguous until an attempt observes
+                    // the item again; a refused write was not applied.
+                    if dispatched.get() {
+                        current.uncertain = true;
+                    } else if inspected.get() {
+                        current.uncertain = false;
+                    }
+                    current.item = Some(Item {
+                        index: job.cursor,
+                        kind: resource.kind.clone(),
+                        local_id: resource.local_id.clone(),
+                    });
                     current.next_attempt = now() + 2u64.pow(current.attempts.min(12)).min(3600);
+                    if !current.stale && current.attempts >= MAX_ITEM_ATTEMPTS {
+                        current.stale = true;
+                        current.error = Some(format!(
+                            "Stopped after {MAX_ITEM_ATTEMPTS} attempts on this item: {}",
+                            current.error.take().unwrap_or_default()
+                        ));
+                        audit(
+                            tx,
+                            &current.plan.actor,
+                            "provisioner.stop",
+                            &current.plan.target,
+                        )?;
+                    }
                     compact_terminal_job(&mut current);
                     tx.put("provisioning_jobs", &job.plan.id, &current)?;
                 }
@@ -969,6 +1078,9 @@ impl Core {
                 }
             }
             current.cursor=(current.cursor+1).min(current.plan.resources.len());current.completed=current.cursor==current.plan.resources.len();current.lease=None;current.error=None;current.next_attempt=now();current.attempts=0;
+            // This item's remote state was verified; the next item starts clean.
+            current.uncertain = false;
+            current.item = None;
             let authority_valid = actor(tx, &current.plan.actor)
                 .and_then(|actor| {
                     actor.require(
@@ -1620,6 +1732,19 @@ fn invalidate_generation(name: &str, key: &str, generation: u64) {
         slot.expires_at = 0;
         slot.generation = slot.generation.saturating_add(1);
     }
+}
+/// A 4xx answer, other than a timeout or throttling, means the target
+/// processed and refused the write, so it was not applied.
+fn refused(response: &reqwest::blocking::Response) -> bool {
+    let status = response.status();
+    status.is_client_error() && !matches!(status.as_u16(), 408 | 425 | 429)
+}
+fn rejected() -> Error {
+    Error::new(
+        axum::http::StatusCode::BAD_GATEWAY,
+        "provisioning_rejected",
+        "SCIM target refused the write; it was not applied",
+    )
 }
 fn remote_error() -> Error {
     Error::new(

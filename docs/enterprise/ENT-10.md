@@ -39,7 +39,7 @@ The job never calls a SCIM target inside its commit, and `status: done` means on
 | `delivered` | Every recorded target confirmed that the account is inactive |
 | `incomplete` | Every target has an outcome and at least one is `stale`, `failed`, `superseded` or `expired` (retention elapsed) |
 
-Each entry in `downstream.targets` shows that target's `status`, `hold`, `outcome`, `attempts`, `last_error` and `delivered_at`. An agent sees an entry only with `provisioner.read` on `provisioner/<target>`. Hidden targets are counted in `hidden_targets` and still decide `state`, so a hidden pending target never reads as delivered. If the account had no active outbound link, `result.downstream.targets` is empty and `downstream` is omitted. Jobs completed by earlier releases keep `downstream: local-only`.
+Each entry in `downstream.targets` shows that target's `delivery_state`, `status`, `hold`, `outcome`, `attempts`, `last_error` and `delivered_at`. An agent sees an entry only with `provisioner.read` on `provisioner/<target>`. Hidden targets are counted in `hidden_targets` and still decide `state`, so a hidden pending target never reads as delivered. If the account had no active outbound link, `result.downstream.targets` is empty and `downstream` is omitted. Jobs completed by earlier releases keep `downstream: local-only`.
 
 A target delivers automatically only when it has a `scim/<target>` scoped controller and `automatic` reconciliation mode, below the shared removal floor. Otherwise the row is held until a reviewed `riauth provision plan` / `provision apply` delivers the disable; the row then closes as `delivered`.
 

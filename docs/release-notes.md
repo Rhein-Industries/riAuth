@@ -1,3 +1,22 @@
+# Unreleased reliable delivery outcomes (P08)
+
+- Outbound SCIM jobs and offboarding deactivation rows report `delivery_state`:
+  `pending`, `ambiguous`, `succeeded`, `failed`, and `cancelled` for superseded
+  deactivations. A write is `ambiguous` only after it was sent without a
+  verified result, and it stays so until an attempt reads the resource again. A
+  4xx refusal other than 408, 425 or 429 counts as not applied.
+- A delivery job stops after 12 attempts on one item (about two hours of capped
+  backoff) instead of retrying indefinitely. It is audited as
+  `provisioner.stop` and releases its target for a new reviewed plan.
+- Reviewed PATCH idempotency keys now include the `If-Match` version, like
+  offboarding deactivations.
+- Operators can stop an unfinished job with `riauth provision stop <job-id>`
+  (`POST /api/provisioning/jobs/{id}/stop`). They can re-evaluate a failed or
+  stale deactivation against the current link with
+  `riauth provision retry-deactivation <id>`
+  (`POST /api/provisioning/deactivations/{id}/retry`). Both need
+  `provisioner.sync` on the target and are audited.
+
 # Unreleased durable offboarding delivery (P04)
 
 - Every transaction that disables or deletes an account now also records one

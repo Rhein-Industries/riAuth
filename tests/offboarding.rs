@@ -25,7 +25,7 @@ use riauth::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -670,6 +670,8 @@ struct Scim {
     users: Arc<Mutex<Vec<Value>>>,
     requests: Arc<Mutex<Vec<(String, String)>>>,
     patches: Arc<Mutex<Vec<(String, Option<String>, Value)>>>,
+    /// Scripted `(status, apply)` replies for the next PATCH requests.
+    script: Arc<Mutex<VecDeque<(u16, bool)>>>,
 }
 
 impl Scim {
@@ -763,21 +765,27 @@ async fn scim_patch(
         .lock()
         .unwrap()
         .push((id.clone(), condition, patch.clone()));
+    let scripted = scim.script.lock().unwrap().pop_front();
     let mut users = scim.users.lock().unwrap();
     let Some(user) = users.iter_mut().find(|user| user["id"] == id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    for (key, value) in patch["Operations"][0]["value"].as_object().unwrap() {
-        user[key] = value.clone();
+    if scripted.is_none_or(|(_, apply)| apply) {
+        for (key, value) in patch["Operations"][0]["value"].as_object().unwrap() {
+            user[key] = value.clone();
+        }
+        let version = user["meta"]["version"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+            + 1;
+        user["meta"]["version"] = json!(version.to_string());
     }
-    let version = user["meta"]["version"]
-        .as_str()
-        .unwrap()
-        .parse::<u64>()
-        .unwrap()
-        + 1;
-    user["meta"]["version"] = json!(version.to_string());
-    versioned(user)
+    match scripted {
+        Some((status, _)) => StatusCode::from_u16(status).unwrap().into_response(),
+        None => versioned(user),
+    }
 }
 
 fn scim_body(user: &User) -> Value {
@@ -1040,6 +1048,183 @@ fn offboarding_commits_downstream_intent_and_reports_each_target_only_after_deli
     let job = f.core.offboard_get(&f.admin, &id).unwrap();
     assert_eq!(job["downstream"]["state"], "delivered");
     assert!(targets(&f.core, "provisioner.deactivate").contains(&"payroll/alice".to_owned()));
+}
+
+fn make_due(core: &Core, row: &Value) {
+    let mut due = row.clone();
+    due["next_attempt"] = json!(1);
+    core.store
+        .write(|tx| tx.put(downstream::BUCKET, due["id"].as_str().unwrap(), &due))
+        .unwrap();
+}
+
+fn listed(f: &Fixture, user: &User) -> Value {
+    f.core
+        .provisioning_deactivations(&f.admin)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["user_id"] == user.id.as_str())
+        .cloned()
+        .unwrap()
+}
+
+/// P08 contract: each attempt's outcome is classified by what the target
+/// verifiably did. A refused write stays pending, an applied write without a
+/// verified reply is ambiguous until a read resolves it without another write,
+/// an operator retry re-evaluates a stale row, and an operator stop frees a
+/// reviewed job's target without claiming delivery.
+#[test]
+fn delivery_outcomes_separate_refused_ambiguous_retried_and_stopped_work() {
+    let mut f = Fixture::new();
+    for name in ["alice", "bob", "carol", "dave", "erin"] {
+        f.user(name);
+    }
+    let payroll = Scim::default();
+    let url = payroll.serve();
+    let target = scim_target(&f, "payroll", &url, "payroll");
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert("payroll".into(), ReconciliationMode::Automatic);
+    let controller = agent(
+        &f,
+        "payroll_controller",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let credential_file = f._dir.path().join("payroll-controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    f.core.config.reconciliation_controllers.insert(
+        "scim/payroll".into(),
+        ControllerConfig {
+            agent_id: "payroll_controller".into(),
+            credential_file,
+            interval_seconds: 3600,
+        },
+    );
+    // Five delivered active links keep two departures below the removal floor.
+    for name in ["alice", "bob", "carol", "dave", "erin"] {
+        let user = account(&f.core, name);
+        linked(&f, &payroll, "payroll", &url, &user, &format!("p-{name}"));
+    }
+    payroll
+        .users
+        .lock()
+        .unwrap()
+        .retain(|user| user["id"] != "p-bob");
+    payroll
+        .script
+        .lock()
+        .unwrap()
+        .extend([(412, false), (503, true)]);
+    for name in ["alice", "bob"] {
+        f.core
+            .update_user(
+                &f.admin,
+                name,
+                riauth::model::UserPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    let (alice, bob) = (account(&f.core, "alice"), account(&f.core, "bob"));
+    for _ in 0..4 {
+        f.core.deactivation_step().unwrap();
+    }
+
+    // Refused: the target processed and rejected the PATCH, so nothing changed.
+    let refused = listed(&f, &alice);
+    assert_eq!(refused["status"], "pending");
+    assert_eq!(refused["hold"], "retry");
+    assert_eq!(refused["last_error"], "provisioning_rejected");
+    assert_eq!(refused["uncertain"], false);
+    assert_eq!(refused["delivery_state"], "pending");
+    assert_eq!(payroll.user("p-alice")["active"], true);
+    // A missing linked account is stale and reads as failed, not delivered.
+    let missing = listed(&f, &bob);
+    assert_eq!(missing["status"], "stale");
+    assert_eq!(missing["delivery_state"], "failed");
+
+    // Ambiguous: the PATCH is applied but its reply is lost.
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    assert!(f.core.deactivation_step().unwrap());
+    let ambiguous = listed(&f, &alice);
+    assert_eq!(ambiguous["delivery_state"], "ambiguous");
+    assert_eq!(ambiguous["uncertain"], true);
+    assert_eq!(payroll.user("p-alice")["active"], false);
+
+    // The retry reads the applied state and records delivery without another PATCH.
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    assert!(f.core.deactivation_step().unwrap());
+    let resolved = listed(&f, &alice);
+    assert_eq!(resolved["delivery_state"], "succeeded");
+    assert_eq!(resolved["outcome"], "already_inactive");
+    assert_eq!(resolved["uncertain"], false);
+    let patches = payroll.patches.lock().unwrap().clone();
+    assert_eq!(patches.len(), 2);
+    assert!(
+        patches
+            .iter()
+            .all(|(id, condition, _)| id == "p-alice" && condition.as_deref() == Some("\"1\""))
+    );
+
+    // Operator reconciliation: restore the remote account and retry the stale row.
+    let mut remote = scim_body(&bob);
+    remote["id"] = json!("p-bob");
+    remote["meta"] = json!({"version": "1"});
+    payroll.users.lock().unwrap().push(remote);
+    let id = missing["id"].as_str().unwrap();
+    let retried = f
+        .core
+        .provisioning_deactivation_retry(&f.admin, id)
+        .unwrap();
+    assert_eq!(retried["delivery_state"], "pending");
+    assert!(f.core.deactivation_step().unwrap());
+    assert_eq!(listed(&f, &bob)["delivery_state"], "succeeded");
+    assert_eq!(payroll.user("p-bob")["active"], false);
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_retry(&f.admin, id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert!(targets(&f.core, "provisioner.deactivate.retry").contains(&"payroll/bob".to_owned()));
+
+    // A queued reviewed job can be stopped; it reads as failed and frees the target.
+    let reviewer = agent(
+        &f,
+        "payroll-reviewer",
+        &[
+            ("provisioner.read", "provisioner/payroll"),
+            ("provisioner.sync", "provisioner/payroll"),
+        ],
+    );
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    let plan = f.core.provisioning_plan(&reviewer, "payroll").unwrap();
+    let plan_id = text(&plan, "id");
+    let queued = f
+        .core
+        .provisioning_apply_confirmed(&reviewer, &plan_id, Some(&plan_id))
+        .unwrap();
+    assert_eq!(queued["delivery_state"], "pending");
+    let stopped = f.core.provisioning_stop(&f.admin, &plan_id).unwrap();
+    assert_eq!(stopped["stale"], true);
+    assert_eq!(stopped["delivery_state"], "failed");
+    assert_eq!(
+        f.core.provisioning_stop(&f.admin, &plan_id).unwrap(),
+        stopped
+    );
+    assert!(targets(&f.core, "provisioner.stop").contains(&"payroll".to_owned()));
+    let replacement = f.core.provisioning_plan(&reviewer, "payroll").unwrap();
+    let replacement_id = text(&replacement, "id");
+    f.core
+        .provisioning_apply_confirmed(&reviewer, &replacement_id, Some(&replacement_id))
+        .unwrap();
 }
 
 #[test]

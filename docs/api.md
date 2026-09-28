@@ -299,8 +299,10 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/provisioning/targets/{id}/plan` | Create an immutable provisioning plan |
 | GET | `/api/provisioning/plans/{id}` | Inspect caller-bound plan |
 | POST | `/api/provisioning/plans/{id}/apply` | Apply reviewed plan to a durable delivery job |
-| GET | `/api/provisioning/jobs` | Inspect permitted delivery jobs |
-| GET | `/api/provisioning/deactivations` | Newest per-target offboarding deactivation outcomes; `provisioner.read` on the target and `user.read` on the account |
+| GET | `/api/provisioning/jobs` | Inspect permitted delivery jobs and their `delivery_state` |
+| POST | `/api/provisioning/jobs/{id}/stop` | Stop an unfinished delivery job so its target can be replanned; `provisioner.sync` |
+| GET | `/api/provisioning/deactivations` | Newest per-target offboarding deactivation outcomes and `delivery_state`; `provisioner.read` on the target and `user.read` on the account |
+| POST | `/api/provisioning/deactivations/{id}/retry` | Re-evaluate a failed or stale deactivation against the current link; `provisioner.sync` |
 | GET, POST | `/api/keys` | List/import/generate signing-key domains |
 | POST | `/api/keys/rotate` | Authorized signing-key rotation |
 | POST | `/api/state/plan` | Versioned manifest; redacted immutable plan |

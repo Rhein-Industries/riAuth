@@ -240,9 +240,14 @@ pub fn router(core: Core) -> Router {
             post(provisioning_apply),
         )
         .route("/api/provisioning/jobs", get(provisioning_jobs))
+        .route("/api/provisioning/jobs/{id}/stop", post(provisioning_stop))
         .route(
             "/api/provisioning/deactivations",
             get(provisioning_deactivations),
+        )
+        .route(
+            "/api/provisioning/deactivations/{id}/retry",
+            post(provisioning_deactivation_retry),
         )
         .route(
             "/api/reconciliation/schedules",
@@ -2904,6 +2909,24 @@ async fn entra_apply(
 }
 session_handler!(provisioning_jobs, provisioning_jobs);
 session_handler!(provisioning_deactivations, provisioning_deactivations);
+async fn provisioning_stop(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.provisioning_stop(&token, &id).map(Json))
+        .await
+}
+async fn provisioning_deactivation_retry(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.provisioning_deactivation_retry(&token, &id).map(Json))
+        .await
+}
 async fn provisioning_plan(
     State(app): State<App>,
     headers: HeaderMap,
