@@ -602,8 +602,84 @@ fn plans_supersede_pending_snapshots_and_bound_historical_links() {
             Ok(())
         })
         .unwrap();
-    let error = f.core.provisioning_plan(&agent, &target_name).unwrap_err();
+    let error = loop {
+        match f.core.provisioning_plan(&agent, &target_name) {
+            Ok(progress) => assert_eq!(progress["decision"], "snapshot_in_progress"),
+            Err(error) => break error,
+        }
+    };
     assert!(error.message.contains("total resource limit"));
+}
+
+#[test]
+fn paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("paged-plan");
+    let target_url = "http://127.0.0.1:9/scim/v2".to_owned();
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: target_url.clone(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    f.core.store.write(|tx| {
+        for index in 0..128 {
+            let id = format!("historical-{index:04}");
+            let external_id = format!("urn:example:{id}");
+            let link = json!({
+                "target": target_name,
+                "url": target_url,
+                "kind": "Users",
+                "local_id": id,
+                "remote_id": format!("remote-{index}"),
+                "external_id": external_id,
+                "body": {"schemas": [riauth::scim::USER], "externalId": external_id, "active": true}
+            });
+            tx.put("provisioning_links", &digest(&format!("{target_name}\0Users\0{id}")), &link)?;
+        }
+        Ok(())
+    }).unwrap();
+
+    let first = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(first["decision"], "snapshot_in_progress");
+    assert_eq!(first["scanned_links"], 128);
+    assert!(f.core.store.list::<Value>("provisioning_plans").unwrap().is_empty());
+    assert_eq!(f.core.store.list::<Value>("provisioning_snapshots").unwrap().len(), 1);
+
+    let f = f.reopen_with(|_| {});
+    // This key sorts before the durable cursor. Finishing from the cursor
+    // alone would silently omit its required disable.
+    f.core.store.write(|tx| {
+        let link = json!({
+            "target": target_name,
+            "url": target_url,
+            "kind": "Users",
+            "local_id": "late",
+            "remote_id": "remote-late",
+            "external_id": "urn:example:late",
+            "body": {"schemas": [riauth::scim::USER], "externalId": "urn:example:late", "active": true}
+        });
+        tx.put("provisioning_links", "!", &link)
+    }).unwrap();
+    let restarted = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(restarted["decision"], "snapshot_in_progress");
+    assert_eq!(restarted["restart"], true);
+    assert!(f.core.store.list::<Value>("provisioning_plans").unwrap().is_empty());
+
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(plan["resources"].as_array().unwrap().len(), 129);
+    assert_eq!(plan["removal_impact"]["disabled_users"], 129);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert!(f.core.provisioning_apply(&agent, plan["id"].as_str().unwrap()).is_err());
+    assert!(f.core.store.list::<Value>("provisioning_snapshots").unwrap().is_empty());
 }
 
 #[test]

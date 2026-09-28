@@ -1549,7 +1549,17 @@ pub async fn run(cli: Cli) -> Result<()> {
             ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
-                let plan=remote.call(Method::POST,&format!("/api/provisioning/targets/{}/plan",segment(&target)?),None,true).await?;
+                let path = format!("/api/provisioning/targets/{}/plan",segment(&target)?);
+                let mut plan = Value::Null;
+                // Every request commits at most one source and one link page.
+                // A later invocation can resume the server's durable snapshot.
+                for _ in 0..1024 {
+                    plan = remote.call(Method::POST,&path,None,true).await?;
+                    if plan["decision"] != "snapshot_in_progress" { break; }
+                }
+                if plan["id"].as_str().is_none() {
+                    bail!("SCIM snapshot did not complete within the request quota; retry provision plan to resume");
+                }
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"target":plan["target"],"resources":plan["resources"]})
             },

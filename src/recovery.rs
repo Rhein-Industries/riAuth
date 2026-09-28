@@ -150,12 +150,15 @@ const RETAINED: &[&str] = &[
     "scim_users",
     "scim_groups",
     "provisioning_links",
+    "provisioning_user_generation",
+    "provisioning_link_generations",
     "audit",
     "schema_migrations",
     "logout_deliveries",
     "ssf_deliveries",
     "provisioning_jobs",
     "provisioning_plans",
+    "provisioning_snapshots",
     "offboard_jobs",
     // Deactivation intent revalidates the account, link, target and scoped
     // controller authority before any dispatch; delivery is idempotent.

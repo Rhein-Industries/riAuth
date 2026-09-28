@@ -203,6 +203,92 @@ const MAX_RETAINED_PLANS: usize = 32;
 const MAX_RETAINED_PLAN_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RETAINED_JOBS: usize = 64;
 const MAX_RETAINED_JOB_BYTES: usize = 32 * 1024 * 1024;
+/// A planning call visits at most one page in each collection. The draft is
+/// committed with its cursors, so another call (or another node) can resume it.
+const SNAPSHOT_PAGE: usize = 128;
+const MAX_SNAPSHOT_SCANNED: usize = 100_000;
+const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
+const SNAPSHOT_SECONDS: u64 = 3600;
+const SNAPSHOTS: &str = "provisioning_snapshots";
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SnapshotPhase {
+    Users,
+    Links,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SnapshotDraft {
+    id: String,
+    target: String,
+    actor: String,
+    revision: u64,
+    users_generation: u64,
+    links_generation: u64,
+    target_fingerprint: String,
+    groups_fingerprint: String,
+    expires_at: u64,
+    phase: SnapshotPhase,
+    users_after: Option<String>,
+    links_after: Option<String>,
+    scanned_users: usize,
+    scanned_links: usize,
+    active: BTreeSet<String>,
+    resources: BTreeMap<String, Resource>,
+    managed_links: BTreeMap<String, String>,
+}
+
+impl SnapshotDraft {
+    fn progress(&self, restarted: bool) -> Value {
+        json!({
+            "decision": "snapshot_in_progress",
+            "snapshot_id": self.id,
+            "phase": self.phase,
+            "scanned_users": self.scanned_users,
+            "scanned_links": self.scanned_links,
+            "expires_at": self.expires_at,
+            "restart": restarted,
+        })
+    }
+
+    fn insert(&mut self, resource: Resource) -> Result<()> {
+        self.resources.insert(resource_key(&resource.kind, &resource.local_id), resource);
+        if self.resources.len() > MAX_PLAN_RESOURCES {
+            return Err(Error::bad("SCIM plan exceeds the total resource limit"));
+        }
+        Ok(())
+    }
+
+    fn advance(&mut self, phase: SnapshotPhase, count: usize) -> Result<()> {
+        let scanned = match phase {
+            SnapshotPhase::Users => &mut self.scanned_users,
+            SnapshotPhase::Links => &mut self.scanned_links,
+        };
+        *scanned = scanned.saturating_add(count);
+        if *scanned > MAX_SNAPSHOT_SCANNED {
+            return Err(Error::bad("SCIM snapshot scan quota exceeded"));
+        }
+        Ok(())
+    }
+
+    fn bounded(&self) -> Result<()> {
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_SNAPSHOT_BYTES {
+            return Err(Error::bad("SCIM snapshot staging quota exceeded"));
+        }
+        Ok(())
+    }
+}
+
+fn resource_key(kind: &str, id: &str) -> String {
+    format!("{kind}\0{id}")
+}
+
+fn snapshot_key(target: &str) -> String {
+    // Configuration admits at most 32 targets, so the durable draft store has
+    // at most 32 records even if many operators request the same target.
+    digest(target)
+}
 // A claimed item has a 60-second lease. A remote write can start just before
 // expiry and take up to 10 seconds, followed by a bounded read-back. Keep a
 // stale leased job from overlapping replacement delivery through that window.
@@ -490,19 +576,18 @@ impl Core {
             )?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let fingerprint = self.provisioning_fingerprint(target_id, target)?;
-            let links = managed_links(tx, target_id)?;
             for (id, plan) in tx.list::<Plan>("provisioning_plans")? {
                 if plan.actor == actor.id
                     && plan.target == target_id
                     && plan.expires_at > now()
                     && plan.revision == revision
                     && plan.target_fingerprint == fingerprint
-                    && plan.managed_links == links
                     && tx.get::<Job>("provisioning_jobs", &id)?.is_none()
                     && plan
                         .review
                         .validate(tx, &actor, &plan_content(&plan)?)
                         .is_ok()
+                    && plan.managed_links == managed_links(tx, target_id)?
                 {
                     return Ok(Some(json!(plan)));
                 }
@@ -513,6 +598,9 @@ impl Core {
             Some(plan) => plan,
             None => self.provisioning_plan(token, target_id)?,
         };
+        if plan["decision"] == "snapshot_in_progress" {
+            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan,"prior_delivery_settling":settling}));
+        }
         let impact: RemovalImpact =
             serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
         let reason = mode.review_reason(&impact);
@@ -566,42 +654,157 @@ impl Core {
             .get(target_id)
             .ok_or_else(|| Error::missing("SCIM target not configured"))?;
         target.validate()?;
-        self.store.write(|tx|{
-            let actor=self.management(tx,token,"provisioner.sync",&format!("provisioner/{target_id}"))?;
-            let mut groups=Vec::new();let mut selected=BTreeSet::new();
-            for name in &target.groups {let group=tx.get::<Group>("groups",name)?.ok_or_else(||Error::bad("SCIM target references a missing group"))?;selected.extend(group.members.iter().cloned());groups.push(group);}
-            let prefix=format!("urn:riauth:{}",digest(&self.config.issuer));let mut resources=BTreeMap::new();let mut active=BTreeSet::new();
-            for (id,user) in tx.list::<User>("users")? {
-                if !selected.contains(&id) || !user.enabled || user.admin {continue;}
-                active.insert(id.clone());
-                let body=json!({"schemas":[crate::scim::USER],"externalId":format!("{prefix}:Users:{id}"),"userName":user.username,"displayName":user.display_name,"active":true,"emails":user.email.iter().map(|email|json!({"value":email,"primary":true})).collect::<Vec<_>>()});
-                resources.insert(("Users".to_owned(),id.clone()),Resource{kind:"Users".into(),local_id:id,body,member_ids:vec![]});
+        self.store.write(|tx| {
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{target_id}"),
+            )?;
+            let mut groups = Vec::new();
+            let mut selected = BTreeSet::new();
+            for name in &target.groups {
+                let group = tx
+                    .get::<Group>("groups", name)?
+                    .ok_or_else(|| Error::bad("SCIM target references a missing group"))?;
+                selected.extend(group.members.iter().cloned());
+                if selected.len() > 2000 {
+                    return Err(Error::bad(
+                        "This SCIM target profile supports at most 2000 selected users",
+                    ));
+                }
+                groups.push(group);
             }
-            if active.len()>2000 {return Err(Error::bad("This SCIM target profile supports at most 2000 selected users"));}
-            if target.export_groups {
-                for group in groups {let id=group.name;resources.insert(("Groups".into(),id.clone()),Resource{kind:"Groups".into(),local_id:id.clone(),body:json!({"schemas":[crate::scim::GROUP],"externalId":format!("{prefix}:Groups:{}",digest(&id)),"displayName":id,"members":[]}),member_ids:group.members.intersection(&active).cloned().collect()});}
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let users_generation = tx
+                .get::<u64>("provisioning_user_generation", "all")?
+                .unwrap_or(0);
+            let links_generation = tx
+                .get::<u64>("provisioning_link_generations", target_id)?
+                .unwrap_or(0);
+            let fingerprint = self.provisioning_fingerprint(target_id, target)?;
+            let groups_fingerprint = crate::connector_guard::hash(&groups)?;
+            let key = snapshot_key(target_id);
+            let previous = tx.get::<SnapshotDraft>(SNAPSHOTS, &key)?;
+            let valid = previous.as_ref().is_some_and(|draft| {
+                draft.actor == actor.id
+                    && draft.target == target_id
+                    && draft.revision == revision
+                    && draft.users_generation == users_generation
+                    && draft.links_generation == links_generation
+                    && draft.target_fingerprint == fingerprint
+                    && draft.groups_fingerprint == groups_fingerprint
+                    && draft.expires_at > now()
+            });
+            let restarted = previous.is_some() && !valid;
+            let mut draft = previous
+                .filter(|_| valid)
+                .unwrap_or_else(|| SnapshotDraft {
+                    id: crypto::id(),
+                    target: target_id.into(),
+                    actor: actor.id.clone(),
+                    revision,
+                    users_generation,
+                    links_generation,
+                    target_fingerprint: fingerprint,
+                    groups_fingerprint,
+                    expires_at: now().saturating_add(SNAPSHOT_SECONDS),
+                    phase: SnapshotPhase::Users,
+                    users_after: None,
+                    links_after: None,
+                    scanned_users: 0,
+                    scanned_links: 0,
+                    active: BTreeSet::new(),
+                    resources: BTreeMap::new(),
+                    managed_links: BTreeMap::new(),
+                });
+            let prefix = format!("urn:riauth:{}", digest(&self.config.issuer));
+            if draft.phase == SnapshotPhase::Users {
+                let page = tx.scan::<User>("users", draft.users_after.as_deref(), SNAPSHOT_PAGE)?;
+                draft.advance(SnapshotPhase::Users, page.len())?;
+                let full = page.len() == SNAPSHOT_PAGE;
+                draft.users_after = page.last().map(|(key, _)| key.clone());
+                for (id, user) in page {
+                    if !selected.contains(&id) || !user.enabled || user.admin {
+                        continue;
+                    }
+                    draft.active.insert(id.clone());
+                    let body = json!({"schemas":[crate::scim::USER],"externalId":format!("{prefix}:Users:{id}"),"userName":user.username,"displayName":user.display_name,"active":true,"emails":user.email.iter().map(|email|json!({"value":email,"primary":true})).collect::<Vec<_>>()});
+                    draft.insert(Resource {
+                        kind: "Users".into(),
+                        local_id: id,
+                        body,
+                        member_ids: vec![],
+                    })?;
+                }
+                if full {
+                    draft.expires_at = now().saturating_add(SNAPSHOT_SECONDS);
+                    draft.bounded()?;
+                    tx.put(SNAPSHOTS, &key, &draft)?;
+                    return Ok(draft.progress(restarted));
+                }
+                if target.export_groups {
+                    for group in &groups {
+                        let id = &group.name;
+                        draft.insert(Resource {
+                            kind: "Groups".into(),
+                            local_id: id.clone(),
+                            body: json!({"schemas":[crate::scim::GROUP],"externalId":format!("{prefix}:Groups:{}",digest(id)),"displayName":id,"members":[]}),
+                            member_ids: group.members.intersection(&draft.active).cloned().collect(),
+                        })?;
+                    }
+                }
+                draft.phase = SnapshotPhase::Links;
             }
-            // Retain ownership records and disable departed users; never delete remote accounts.
-            for (_,link) in tx.list::<Link>("provisioning_links")?.into_iter().filter(|(_,l)|l.target==target_id) {
-                if link.url!=target.url {return Err(Error::conflict("Target URL changed while remote accounts are linked; configure a new target ID"));}
-                let key=(link.kind.clone(),link.local_id.clone());
-                resources.entry(key).or_insert_with(||{let mut body=link.body;if link.kind=="Users"{body["active"]=json!(false);}else{body["members"]=json!([]);}Resource{kind:link.kind,local_id:link.local_id,body,member_ids:vec![]}});
+            let page = tx.scan::<Link>("provisioning_links", draft.links_after.as_deref(), SNAPSHOT_PAGE)?;
+            draft.advance(SnapshotPhase::Links, page.len())?;
+            let full = page.len() == SNAPSHOT_PAGE;
+            draft.links_after = page.last().map(|(key, _)| key.clone());
+            for (link_key, link) in page {
+                if link.target != target_id {
+                    continue;
+                }
+                if link.url != target.url {
+                    return Err(Error::conflict("Target URL changed while remote accounts are linked; configure a new target ID"));
+                }
+                draft.managed_links.insert(link_key, crate::connector_guard::hash(&link)?);
+                let resource_key = resource_key(&link.kind, &link.local_id);
+                if !draft.resources.contains_key(&resource_key) {
+                    let mut body = link.body;
+                    if link.kind == "Users" {
+                        body["active"] = json!(false);
+                    } else {
+                        body["members"] = json!([]);
+                    }
+                    draft.insert(Resource {
+                        kind: link.kind,
+                        local_id: link.local_id,
+                        body,
+                        member_ids: vec![],
+                    })?;
+                }
             }
-            if resources.len() > MAX_PLAN_RESOURCES {
-                return Err(Error::bad("SCIM plan exceeds the total resource limit"));
+            draft.bounded()?;
+            if full {
+                draft.expires_at = now().saturating_add(SNAPSHOT_SECONDS);
+                tx.put(SNAPSHOTS, &key, &draft)?;
+                return Ok(draft.progress(restarted));
             }
-            let mut resources:Vec<_>=resources.into_values().collect();resources.sort_by(|a,b|(a.kind!="Users",&a.local_id).cmp(&(b.kind!="Users",&b.local_id)));
+            // The generation is updated in the link write transaction. A
+            // changed link behind a persisted cursor resets the draft above.
+            let mut resources: Vec<_> = draft.resources.into_values().collect();
+            resources.sort_by(|a, b| (a.kind != "Users", &a.local_id).cmp(&(b.kind != "Users", &b.local_id)));
             let removal_impact = provisioning_impact(tx, target_id, &resources)?;
             let mut plan = Plan {
                 id: crypto::id(),
                 target: target_id.into(),
                 actor: actor.id.clone(),
-                revision: tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+                revision: draft.revision,
                 expires_at: now() + 3600,
                 target_fingerprint: self.provisioning_fingerprint(target_id, target)?,
                 resources,
                 removal_impact,
-                managed_links: managed_links(tx, target_id)?,
+                managed_links: draft.managed_links,
                 review: ReviewBinding::default(),
             };
             plan.review=ReviewBinding::new(tx, &actor,&plan_content(&plan)?)?;
@@ -633,7 +836,9 @@ impl Core {
             {
                 return Err(Error::bad("Too many retained SCIM plans; complete or expire older jobs"));
             }
-            tx.put("provisioning_plans",&plan.id,&plan)?;audit(tx,&actor.id,"provisioner.plan",target_id)?;
+            tx.put("provisioning_plans",&plan.id,&plan)?;
+            tx.delete(SNAPSHOTS, &key)?;
+            audit(tx,&actor.id,"provisioner.plan",target_id)?;
             Ok(json!(plan))
         })
     }
@@ -1136,19 +1341,44 @@ impl Core {
     }
 }
 fn managed_links(tx: &Tx<'_>, target: &str) -> Result<BTreeMap<String, String>> {
-    tx.list::<Link>("provisioning_links")?
+    target_links(tx, target)?
         .into_iter()
-        .filter(|(_, link)| link.target == target)
         .map(|(key, link)| Ok((key, crate::connector_guard::hash(&link)?)))
         .collect()
 }
 
+/// Scan storage in fixed pages, retaining only this target's bounded ownership
+/// records. Other targets cannot make this target's plan allocate their links.
+fn target_links(tx: &Tx<'_>, target: &str) -> Result<Vec<(String, Link)>> {
+    let mut result = Vec::new();
+    let mut after = None;
+    let mut scanned = 0usize;
+    loop {
+        let page = tx.scan::<Link>("provisioning_links", after.as_deref(), SNAPSHOT_PAGE)?;
+        scanned = scanned.saturating_add(page.len());
+        if scanned > MAX_SNAPSHOT_SCANNED {
+            return Err(Error::bad("SCIM link scan quota exceeded"));
+        }
+        let full = page.len() == SNAPSHOT_PAGE;
+        after = page.last().map(|(key, _)| key.clone());
+        for (key, link) in page {
+            if link.target == target {
+                result.push((key, link));
+                if result.len() > MAX_PLAN_RESOURCES {
+                    return Err(Error::bad("SCIM plan exceeds the total resource limit"));
+                }
+            }
+        }
+        if !full {
+            return Ok(result);
+        }
+    }
+}
+
 fn provisioning_impact(tx: &Tx<'_>, target: &str, resources: &[Resource]) -> Result<RemovalImpact> {
-    let links: Vec<Link> = tx
-        .list::<Link>("provisioning_links")?
+    let links: Vec<Link> = target_links(tx, target)?
         .into_iter()
         .map(|(_, link)| link)
-        .filter(|link| link.target == target)
         .collect();
     let mut impact = RemovalImpact::default();
     let mut active = 0;
@@ -1853,6 +2083,11 @@ pub async fn deliver(core: Core) -> Result<()> {
     .map_err(Error::internal)?
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (id, draft) in tx.maintenance_page::<SnapshotDraft>(SNAPSHOTS)? {
+        if draft.expires_at <= at {
+            tx.delete(SNAPSHOTS, &id)?;
+        }
+    }
     for (id, plan) in tx.maintenance_page::<Plan>("provisioning_plans")? {
         if plan.expires_at + 7 * 86400 < at {
             tx.delete("provisioning_plans", &id)?;

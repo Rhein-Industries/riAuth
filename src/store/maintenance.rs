@@ -98,6 +98,16 @@ impl Tx<'_> {
         id: &str,
         after: Option<&Value>,
     ) -> Result<()> {
+        if bucket == "users" {
+            // User writes need not all bump the management revision. A source
+            // insertion behind a saved scan cursor must still restart it.
+            let generation = self
+                .get::<u64>("provisioning_user_generation", "all")?
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or_else(|| Error::internal("SCIM user generation exhausted"))?;
+            self.put("provisioning_user_generation", "all", &generation)?;
+        }
         if bucket == "groups" {
             let before = self.get::<crate::model::Group>(bucket, id)?;
             let after = after
@@ -113,6 +123,22 @@ impl Tx<'_> {
         if bucket == "provisioning_links" {
             let before = self.get::<Value>(bucket, id)?;
             self.update_link_index(id, before.as_ref(), after)?;
+            // A planning cursor spans transactions. Any ownership change for
+            // its target invalidates that cursor, including an insertion that
+            // sorts before the cursor or an offboarding link update.
+            let targets: std::collections::BTreeSet<_> = [before.as_ref(), after]
+                .into_iter()
+                .flatten()
+                .filter_map(|link| link.get("target").and_then(Value::as_str))
+                .collect();
+            for target in targets {
+                let generation = self
+                    .get::<u64>("provisioning_link_generations", target)?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("SCIM link generation exhausted"))?;
+                self.put("provisioning_link_generations", target, &generation)?;
+            }
         }
         if COUNTED.contains(&bucket) {
             let previous = self.get::<Value>(bucket, id)?;

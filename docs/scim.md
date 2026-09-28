@@ -54,8 +54,12 @@ payroll = "guarded-automatic"
 omitted target uses `manual-review`. `guarded-automatic` queues plans with no
 removals; `automatic` also queues below-threshold user deactivations. Both stop
 at the shared removal review threshold and return the exact plan for operator
-review. A controller trigger returns `awaiting_review`, `queued` (with a durable
-job), or `in_progress`; queued work is not reported as delivered. If an old
+review. A controller trigger returns `snapshot_in_progress`, `awaiting_review`,
+`queued` (with a durable job), or `in_progress`; queued work is not reported as
+delivered. Each `snapshot_in_progress` call advances a persisted source and
+ownership-link cursor by at most 128 records per collection. It has no plan ID
+and cannot be applied. The `provision plan` CLI repeats these calls until the
+snapshot is complete; an interrupted command can be run again to resume. If an old
 leased job becomes stale, it returns `awaiting_prior_delivery` with a current
 plan until the in-flight request settles, so replacement delivery cannot race it.
 The trigger is available to server-side callers through
@@ -78,6 +82,15 @@ riauth provision jobs
 Grant the agent `provisioner.read` and `provisioner.sync` on `provisioner/payroll`, plus the usual current revision for applying a direct mutation. These permissions authorize reading and delivering the target's selected identity data. The target endpoint and credential paths are configured on the server, outside the agent API. A plan is actor-bound and expires after one hour. It records the local revision, target configuration and exact desired resources; the CLI verifies its saved copy against the server before applying. Creating a new plan for the same actor and target supersedes earlier plan snapshots; active jobs retain their immutable copy. A retained completed job remains an idempotent apply result by its ID after its plan snapshot is removed.
 
 The worker persists progress and leases across restart and multiple nodes. It creates users before groups, uses issuer-namespaced `externalId` values, and never adopts an account merely because its username or email matches. It reconciles username, display name, active state, primary email and selected group membership. Only changed managed attributes are patched, preserving other attributes. Administrators are excluded. A user who leaves the selected groups or is disabled is deactivated remotely by a subsequently reviewed/applied plan; remote accounts are not deleted. Departed groups are emptied through explicit removal review. Plans include `removal_impact`; when `review_required` is true, inspect the resources and use `provision apply --plan deployment-private/payroll-plan.json --confirm-removals`, or send `X-riAuth-Confirm-Removals: <exact-plan-id>` to the apply endpoint. Apply checks exact content, current authority and the previously delivered managed links. See [connector removal safeguards](removal-safeguards.md) for thresholds and upgrade behavior.
+
+Planning scans local users and ownership links in storage pages, persisting the
+cursor, source revision, user and target link generations, selected group fingerprint and
+quotas after each page. A changed source, group or link starts a fresh scan;
+an incomplete scan never yields a disable plan. A draft expires after one hour
+without progress and is limited to 100,000 scanned records per collection and 2 MiB of staged
+data. The selected group population is limited to 2,000 member IDs, including
+inactive members. These quotas stop very large or rapidly changing inventories
+for operator inspection rather than treating an unseen record as departed.
 
 This profile requires an authenticated SCIM endpoint with `externalId eq` filtering, Users/Groups creation, PATCH and ETags for conditional updates. A successful empty `204 No Content` PATCH is read back and verified before the job advances. Responses, redirects and request duration are bounded; all non-loopback endpoints require verified HTTPS. The selected population is limited to 2000 users. Including historical links and groups, a plan is limited to 2064 resources and 2 MiB serialized size; the retained plan store is limited to 32 plans and 16 MiB. Completed and stale jobs retain their progress and error summary without the resource bodies; at most 64 jobs and 32 MiB of job records are retained, with the oldest terminal records removed when capacity is needed. If the remote external ID is ambiguous, a linked remote ID changes, or a linked account disappears, the worker stops that item for review. Local configuration or agent-authority changes mark an in-progress plan stale, including partial progress. Inconsistent filtered page totals/metadata never dispatch a write. Membership replacement, and accepting a group as already up to date while it has reviewed managed or desired members, requires a complete explicit member array with bounded unique IDs (an omitted, `null` or `membersNextLink`-paginated `members` field is rejected, not treated as empty), and refuses to remove remote members outside the reviewed previous managed snapshot. Missing or malformed active state cannot authorize a disable. Resolve incomplete data or unexpected remote drift before replanning.
 
