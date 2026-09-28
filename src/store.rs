@@ -2,7 +2,7 @@ pub mod maintenance;
 mod ownership;
 mod prepared;
 #[doc(hidden)]
-pub use ownership::{open_owner_in, require_local_in, shared_filesystem};
+pub use ownership::{lock_support_in, open_owner_in, require_local_in, shared_filesystem};
 #[cfg(feature = "test-support")]
 pub use prepared::with_prepared_pause;
 use prepared::{Prepared, Range};
@@ -345,11 +345,15 @@ impl Store {
             );
         }
         let path = config.data_dir.join("riauth.redb");
-        if !path.try_exists().map_err(Error::internal)? {
-            return f("redb", None);
+        // Only an absent entry is a missing store. A dangling link goes on to
+        // the check below, which refuses it as startup does.
+        match path.symlink_metadata() {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return f("redb", None),
+            Err(error) => return Err(Error::internal(error)),
+            Ok(_) => {}
         }
         let checked = ownership::require_local(&path)?;
-        ownership::require_lock_support(&path, &checked)?;
+        let store = ownership::require_lock_support(&path, &checked)?;
         // Read-only: never repairs, formats or re-permissions the file.
         let db = redb::ReadOnlyDatabase::open(&path).map_err(|error| match error {
             redb::DatabaseError::RepairAborted => Error::conflict(
@@ -357,7 +361,7 @@ impl Store {
             ),
             error => ownership::open_error(&path, error),
         })?;
-        ownership::reopened(&path, &checked, None)?;
+        ownership::reopened(&path, &checked, Some(&store))?;
         let transaction = db.begin_read().map_err(Error::internal)?;
         let encoding = match transaction.open_table(FORMAT) {
             Ok(table) => table

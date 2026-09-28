@@ -165,8 +165,9 @@ fn own(
 }
 
 /// Checks an opened store again against a fresh mount table: the path must
-/// still reach the mount checked before. Given the open descriptor on Linux,
-/// its own mount, which no later mount change can move, must not be shared.
+/// still reach the mount checked before and, when given, the open file. On
+/// Linux that file's own mount, which no later mount change can move, must not
+/// be shared.
 pub(super) fn reopened(path: &Path, checked: &Checked, file: Option<&File>) -> Result<()> {
     recheck(path, checked, file, &mut mount_table, &opened_mount)
 }
@@ -178,6 +179,9 @@ fn recheck(
     tables: Tables<'_>,
     opened: Opened<'_>,
 ) -> Result<()> {
+    if let Some(file) = file {
+        same_file(path, file.metadata().ok().as_ref().and_then(identity))?;
+    }
     let Some(mountinfo) = tables(path)? else {
         return Ok(());
     };
@@ -198,33 +202,75 @@ fn recheck(
 /// Read-only inspection must not take the store's writer lock, because a
 /// writer open can repair the file. It asks startup's lock question of a
 /// scratch database beside the store instead, removes it, and fails closed
-/// without an answer.
-pub(super) fn require_lock_support(path: &Path, checked: &Checked) -> Result<()> {
+/// without an answer. Returns the store, opened read-only and unlocked, for
+/// the recheck after redb opens it.
+pub(super) fn require_lock_support(path: &Path, checked: &Checked) -> Result<File> {
+    probe_in_place(path, checked, &opened_mount)
+}
+
+/// [`require_lock_support`] where open descriptors report mount `opened`.
+#[doc(hidden)]
+pub fn lock_support_in(path: &Path, opened: &dyn Fn(&File) -> Option<String>) -> Result<()> {
+    probe_in_place(path, &require_local(path)?, opened).map(drop)
+}
+
+fn probe_in_place(path: &Path, checked: &Checked, opened: Opened<'_>) -> Result<File> {
+    // Only identifies the store; it takes no lock and reads nothing.
+    let store = File::open(path).map_err(|error| match error.kind() {
+        ErrorKind::NotFound => changed(path),
+        _ => Error::internal(error),
+    })?;
     let directory = checked.location.parent().unwrap_or(&checked.location);
     let probe = directory.join(format!(
         ".riauth-lock-probe-{}",
         crate::crypto::random_token("")
     ));
-    let unverified = |error: &dyn std::fmt::Display| {
+    let unverified = |reason: String| {
         not_exclusive(format!(
-            "Cannot confirm that the filesystem holding the embedded redb store {} enforces file locks: a scratch database in {} failed ({error}). Run the command as the store's owner, where riAuth can write beside the store.",
-            path.display(),
+            "Cannot confirm that the filesystem holding the embedded redb store {} enforces file locks: {reason}. Run the command as the store's owner, with the store in a directory on its own filesystem rather than mounted as a single file.",
+            path.display()
+        ))
+    };
+    let failed = |error: &dyn std::fmt::Display| {
+        unverified(format!(
+            "a scratch database in {} failed ({error})",
             directory.display()
         ))
     };
-    let file = options(true)
-        .open(&probe)
-        .map_err(|error| unverified(&error))?;
-    let result = match Database::builder().create_file(file) {
-        Ok(scratch) => {
-            let enforced = lock_enforced(&probe, path);
-            drop(scratch);
-            enforced
+    let scratch = options(true).open(&probe).map_err(|error| failed(&error))?;
+    // Beside a store mounted as a file, or on another filesystem than its
+    // directory, the scratch database would answer for different storage.
+    let result = if same_place(&scratch, &store, opened) {
+        match Database::builder().create_file(scratch) {
+            Ok(scratch) => {
+                let enforced = lock_enforced(&probe, path);
+                drop(scratch);
+                enforced
+            }
+            Err(error) => Err(failed(&error)),
         }
-        Err(error) => Err(unverified(&error)),
+    } else {
+        drop(scratch);
+        Err(unverified(format!(
+            "the store is mounted apart from {} or lies on another filesystem, so a scratch database there would test different storage",
+            directory.display()
+        )))
     };
     let _ = std::fs::remove_file(&probe);
-    result
+    result.map(|()| store)
+}
+
+/// Whether two open files share a filesystem and, where descriptors report
+/// one, a mount. A file mounted on its own is a different place.
+fn same_place(a: &File, b: &File, opened: Opened<'_>) -> bool {
+    let device = |file: &File| {
+        file.metadata()
+            .ok()
+            .as_ref()
+            .and_then(identity)
+            .map(|(device, _)| device)
+    };
+    device(a) == device(b) && opened(a) == opened(b)
 }
 
 /// A second, read-only open must meet the lock `probe` is held under; redb

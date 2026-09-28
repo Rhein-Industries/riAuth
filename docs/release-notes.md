@@ -59,7 +59,9 @@
   removed. `recovery status` and `transition-preflight` confirm file-lock
   enforcement the way startup does, using a scratch database they create and
   remove beside the store; they open the store itself only read-only and fail
-  closed where they cannot create the scratch file.
+  closed where they cannot create the scratch file on the store's own
+  filesystem and mount, as for a store mounted as a single file. A dangling
+  store link is an error for them, not a missing store.
 
 # Unreleased durable offboarding delivery (P04)
 

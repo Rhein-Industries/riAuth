@@ -268,3 +268,65 @@ fn redb_inspection_checks_lock_support_without_touching_the_store() {
         );
     }
 }
+
+// A scratch database answers only for storage it shares a filesystem and mount
+// with. A store mounted as a single file, such as a 9p or virtiofs file bound into
+// a local directory, cannot be probed beside it, so inspection fails closed there.
+// A dangling store link is refused as startup refuses it, not reported missing.
+#[cfg(unix)]
+#[test]
+fn redb_inspection_refuses_a_store_it_cannot_probe_in_place() {
+    use riauth::store::lock_support_in;
+    use std::os::unix::fs::{MetadataExt, symlink};
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let config = Config {
+        data_dir: data.clone(),
+        ..Default::default()
+    };
+    let file = data.join("riauth.redb");
+    drop(Store::open(&file).unwrap());
+    let store = std::fs::metadata(&file).unwrap();
+    let store = (store.dev(), store.ino());
+    // Descriptors report the store file on `mount` and everything else on 22.
+    let mounts = |mount: &'static str| {
+        move |opened: &std::fs::File| {
+            let metadata = opened.metadata().unwrap();
+            let id = (metadata.dev(), metadata.ino());
+            Some(if id == store { mount } else { "22" }.to_owned())
+        }
+    };
+    let listed = || {
+        let mut names: Vec<_> = std::fs::read_dir(&data)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let (names, bytes) = (listed(), std::fs::read(&file).unwrap());
+    lock_support_in(&file, &mounts("22")).unwrap();
+    let error = lock_support_in(&file, &mounts("41")).unwrap_err();
+    assert_eq!(
+        (error.status, error.code),
+        (StatusCode::BAD_REQUEST, "storage_not_exclusive")
+    );
+    assert!(error.message.contains("mounted apart"), "{}", error.message);
+    assert_eq!(listed(), names);
+    assert_eq!(std::fs::read(&file).unwrap(), bytes);
+
+    // Only an absent entry, or an absent directory, is a missing store.
+    std::fs::remove_file(&file).unwrap();
+    let missing = |config: &Config| Store::inspect(config, |_, tx| Ok(tx.is_none())).unwrap();
+    assert!(missing(&config));
+    assert!(missing(&Config {
+        data_dir: dir.path().join("absent"),
+        ..Default::default()
+    }));
+    let target = dir.path().join("elsewhere.redb");
+    symlink(&target, &file).unwrap();
+    let error = Store::inspect(&config, |_, _| Ok(())).unwrap_err();
+    assert_eq!(error.code, "storage_not_exclusive");
+    assert!(!target.exists());
+}
