@@ -1,5 +1,7 @@
 pub mod maintenance;
 mod prepared;
+#[cfg(feature = "test-support")]
+pub use prepared::with_prepared_pause;
 use prepared::{Prepared, Range};
 
 use crate::{

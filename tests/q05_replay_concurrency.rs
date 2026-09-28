@@ -15,6 +15,7 @@ use riauth::{
     postgres_store::PostgresConfig,
     signin,
     state::{ApplyRequest, Manifest},
+    store::with_prepared_pause,
 };
 use serde_json::{Value, json};
 use std::{
@@ -1197,6 +1198,195 @@ fn offboarding_lease_reclaim_after_reopen(h: Harness, postgres: bool) {
     });
 }
 
+/// Starts a bearer login that stops after its prepared credential verification and
+/// before the writer revalidates it. Sending on the returned channel resumes it.
+fn paused_login(
+    core: &Core,
+    at: u64,
+    username: &str,
+    password: &str,
+    otp: Option<String>,
+) -> (
+    thread::JoinHandle<riauth::error::Result<Value>>,
+    mpsc::Sender<()>,
+) {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let core = core.clone();
+    let (username, password) = (username.to_owned(), password.to_owned());
+    let worker = thread::spawn(move || {
+        with_test_time(at, || {
+            with_prepared_pause(
+                move || {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(15)).unwrap();
+                },
+                || core.login(username, password, otp),
+            )
+        })
+    });
+    entered_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("login did not finish preparing");
+    assert!(!worker.is_finished());
+    (worker, release_tx)
+}
+
+fn stale_factor_after_prepared_verification(h: &Harness) {
+    const ROTATED: &str = "q05-rotated-test-password";
+    let carol_id = h.add_user("q05-carol");
+    let carol = |core: &Core, at: u64, password: &str, otp: Option<String>| {
+        with_test_time(at, || core.login("q05-carol".into(), password.into(), otp))
+    };
+    let first = text(
+        &carol(&h.first, AT, PASSWORD, None).unwrap(),
+        "session_token",
+    );
+    let pending = h.first.mfa_begin(&first).unwrap();
+    let totp = crypto::totp(&text(&pending, "secret"), "q05-carol").unwrap();
+    h.first
+        .mfa_confirm(&first, &totp.generate(AT).to_string())
+        .unwrap();
+    let code = |at: u64| Some(totp.generate(at).to_string());
+    let recovery = with_test_time(AT + 30, || {
+        let mfa = text(
+            &carol(&h.first, AT + 30, PASSWORD, code(AT + 30)).unwrap(),
+            "session_token",
+        );
+        h.first.recovery_codes(&mfa).unwrap()["recovery_codes"][0]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    });
+    let carol_sessions = || {
+        h.second
+            .store
+            .list::<Session>("sessions")
+            .unwrap()
+            .into_iter()
+            .map(|(_, session)| session)
+            .filter(|session| session.identity.user_id == carol_id)
+            .collect::<Vec<_>>()
+    };
+    let conflicts = || {
+        h.second
+            .store
+            .telemetry()
+            .optimistic_conflicts
+            .load(Ordering::Relaxed)
+    };
+    let invalid = |result: riauth::error::Result<Value>| {
+        assert_eq!(result.unwrap_err().code, "invalid_credentials");
+    };
+
+    // Spend: another writer commits the same TOTP step after this login verified it.
+    let (sessions, successes, failures, conflicts_before) = (
+        carol_sessions().len(),
+        h.audits("login.succeeded", None),
+        h.audits("login.failed", Some("q05-carol")),
+        conflicts(),
+    );
+    let (stale, release) = paused_login(&h.second, AT + 60, "q05-carol", PASSWORD, code(AT + 60));
+    let winner = text(
+        &carol(&h.first, AT + 60, PASSWORD, code(AT + 60)).unwrap(),
+        "session_token",
+    );
+    release.send(()).unwrap();
+    invalid(stale.join().unwrap());
+    assert_eq!(conflicts(), conflicts_before + 1);
+    assert_eq!(carol_sessions().len(), sessions + 1);
+    assert_eq!(h.audits("login.succeeded", None), successes + 1);
+    assert_eq!(h.audits("login.failed", Some("q05-carol")), failures + 1);
+    assert_eq!(h.user("q05-carol").totp_last_step, Some((AT + 60) / 30));
+    assert!(h.second.me(&winner).is_ok());
+
+    // Rotate: a password change commits after this recovery-code login verified the old one.
+    let epoch = h.user("q05-carol").epoch;
+    let (sessions, successes, failures, changes, conflicts_before) = (
+        carol_sessions().len(),
+        h.audits("login.succeeded", None),
+        h.audits("login.failed", Some("q05-carol")),
+        h.audits("user.password.change", Some(&carol_id)),
+        conflicts(),
+    );
+    let (stale, release) = paused_login(
+        &h.second,
+        AT + 90,
+        "q05-carol",
+        PASSWORD,
+        Some(recovery.clone()),
+    );
+    with_test_time(AT + 90, || {
+        h.first
+            .change_password(&winner, PASSWORD.into(), ROTATED.into(), code(AT + 90))
+            .unwrap()
+    });
+    release.send(()).unwrap();
+    invalid(stale.join().unwrap());
+    assert_eq!(conflicts(), conflicts_before + 1);
+    let rotated = h.user("q05-carol");
+    assert_eq!(rotated.epoch, epoch + 1);
+    assert!(rotated.recovery_codes.contains(&digest(&recovery)));
+    // Only change_password's own reauthentication session was minted, under the old epoch.
+    let minted = carol_sessions();
+    assert_eq!(minted.len(), sessions + 1);
+    assert!(minted.iter().all(|session| session.identity.epoch <= epoch));
+    assert_eq!(h.audits("login.succeeded", None), successes + 1);
+    assert_eq!(h.audits("login.failed", Some("q05-carol")), failures + 1);
+    assert_eq!(
+        h.audits("user.password.change", Some(&carol_id)),
+        changes + 1
+    );
+    assert_eq!(h.second.me(&winner).unwrap_err().code, "invalid_token");
+    // The rejected stale attempt did not spend the recovery code.
+    let current = text(
+        &carol(&h.second, AT + 120, ROTATED, Some(recovery.clone())).unwrap(),
+        "session_token",
+    );
+    assert!(
+        !h.user("q05-carol")
+            .recovery_codes
+            .contains(&digest(&recovery))
+    );
+
+    // Remove: an administrator resets MFA after this login verified password and TOTP.
+    let (successes, updates, conflicts_before) = (
+        h.audits("login.succeeded", None),
+        h.audits("user.update", Some(&carol_id)),
+        conflicts(),
+    );
+    let (reset, release) = paused_login(&h.second, AT + 150, "q05-carol", ROTATED, code(AT + 150));
+    with_test_time(AT + 150, || {
+        h.first
+            .update_user(
+                &h.admin,
+                "q05-carol",
+                UserPatch {
+                    reset_mfa: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    });
+    release.send(()).unwrap();
+    let token = text(&reset.join().unwrap().unwrap(), "session_token");
+    assert_eq!(conflicts(), conflicts_before + 1);
+    let reset_user = h.user("q05-carol");
+    assert_eq!(reset_user.epoch, epoch + 2);
+    assert!(reset_user.totp_secret.is_none() && reset_user.totp_last_step.is_none());
+    // The session reflects the committed state, not the factor verified before the reset.
+    let session = carol_sessions()
+        .into_iter()
+        .find(|session| session.token_hash == digest(&token))
+        .unwrap();
+    assert_eq!(session.identity.epoch, epoch + 2);
+    assert!(!session.identity.mfa);
+    assert_eq!(h.second.me(&token).unwrap()["mfa"], false);
+    assert_eq!(h.second.me(&current).unwrap_err().code, "invalid_token");
+    assert_eq!(h.audits("login.succeeded", None), successes + 1);
+    assert_eq!(h.audits("user.update", Some(&carol_id)), updates + 1);
+}
+
 fn run_suite(postgres: bool) {
     with_test_time(AT, || {
         let h = Harness::new(postgres);
@@ -1209,6 +1399,7 @@ fn run_suite(postgres: bool) {
         management_retry_race(&h);
         interrupted_offboarding_authority(&h);
         refresh_family_replay_during_concurrent_preparation(&h);
+        stale_factor_after_prepared_verification(&h);
         offboarding_lease_reclaim_after_reopen(h, postgres);
     });
 }

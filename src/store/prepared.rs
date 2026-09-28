@@ -62,6 +62,24 @@ impl Drop for Prepared {
     }
 }
 
+#[cfg(feature = "test-support")]
+thread_local! {
+    static AFTER_PREPARE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+/// Test-only schedule point: `pause` runs once on this thread after the first prepared
+/// callback returns `Ok` and before its writer revalidates the recorded reads.
+#[cfg(feature = "test-support")]
+pub fn with_prepared_pause<T>(pause: impl FnOnce() + 'static, f: impl FnOnce() -> T) -> T {
+    struct Reset(Option<Box<dyn FnOnce()>>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            AFTER_PREPARE.with(|hook| *hook.borrow_mut() = self.0.take());
+        }
+    }
+    let _reset = Reset(AFTER_PREPARE.with(|hook| hook.borrow_mut().replace(Box::new(pause))));
+    f()
+}
+
 impl Store {
     /// The callback may run again after a conflict. Do not perform irreversible
     /// external effects in it. Generated credentials are returned only after commit.
@@ -84,6 +102,10 @@ impl Store {
             };
             let output = f(&tx)?;
             drop(preparing);
+            #[cfg(feature = "test-support")]
+            if let Some(pause) = AFTER_PREPARE.with(|hook| hook.borrow_mut().take()) {
+                pause();
+            }
             let prepared = tx
                 .prepared
                 .borrow_mut()
