@@ -149,23 +149,28 @@ pub(crate) fn reconcile_link(
         secret_references: BTreeSet::new(),
     }))
 }
-pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpec>> {
+pub(crate) fn export_all_links(tx: &Tx<'_>) -> Result<Vec<LinkSpec>> {
     let mut output = Vec::new();
     for (_, link) in tx.list::<Link>("source_links")? {
         let user = tx
             .get::<User>("users", &link.user_id)?
             .ok_or_else(|| Error::internal("Linked user missing"))?;
-        if actor.allows("source.read", &format!("source/{}", link.source))
-            && actor.allows("user.read", &format!("user/{}", user.username))
-        {
-            output.push(LinkSpec {
-                source: link.source,
-                subject: link.subject,
-                username: user.username,
-            });
-        }
+        output.push(LinkSpec {
+            source: link.source,
+            subject: link.subject,
+            username: user.username,
+        });
     }
     Ok(output)
+}
+pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpec>> {
+    Ok(export_all_links(tx)?
+        .into_iter()
+        .filter(|link| {
+            actor.allows("source.read", &format!("source/{}", link.source))
+                && actor.allows("user.read", &format!("user/{}", link.username))
+        })
+        .collect())
 }
 
 /// Persisted reservation metadata is shared by both editions. Essentials must

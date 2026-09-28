@@ -1980,6 +1980,11 @@ pub fn convert(input: Import) -> Result<Value> {
     let mut manifest = Manifest {
         api_version: "riauth/v1".into(),
         issuer: Some(input.issuer.clone()),
+        target_state_fingerprint: input
+            .target_state
+            .as_ref()
+            .map(crate::state::target_identity_fingerprint)
+            .transpose()?,
         ..Default::default()
     };
     p.add(ItemKind::Issuer, "*", Classification::Manual,

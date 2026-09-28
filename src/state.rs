@@ -35,6 +35,10 @@ pub struct Manifest {
     /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
+    /// Identity dependencies observed in the target export used by an offline migration.
+    /// Planning and applying reject a target whose identities changed after conversion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_state_fingerprint: Option<String>,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -150,6 +154,18 @@ impl Manifest {
                 Error::bad("Manifest issuer must be a canonical HTTPS URL (HTTP only on loopback)")
             })?;
         }
+        if self
+            .target_state_fingerprint
+            .as_ref()
+            .is_some_and(|fingerprint| {
+                fingerprint.len() != 43
+                    || !fingerprint
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            })
+        {
+            return Err(Error::bad("Invalid target_state_fingerprint"));
+        }
         if self.users.len()
             + self.groups.len()
             + self.clients.len()
@@ -225,6 +241,17 @@ impl Manifest {
             _ => Ok(()),
         }
     }
+    fn require_target_state(&self, tx: &Tx<'_>) -> Result<()> {
+        if let Some(expected) = &self.target_state_fingerprint {
+            let current = live_target_identity_fingerprint(tx)?;
+            if !crypto::constant_eq(expected, &current) {
+                return Err(Error::conflict(
+                    "Target identity state changed since export; export the target and convert again",
+                ));
+            }
+        }
+        Ok(())
+    }
     pub fn secret_references(&self) -> BTreeSet<&str> {
         self.users
             .iter()
@@ -234,6 +261,85 @@ impl Manifest {
             .chain(self.users.iter().filter_map(|u| u.totp_ref.as_deref()))
             .collect()
     }
+}
+
+/// Keep only the exported facts used to prove account, subject and source-link continuity.
+/// Sorting removes export-order differences; the version separates this binding from other hashes.
+pub(crate) fn target_identity_fingerprint(state: &Manifest) -> Result<String> {
+    let mut users = state
+        .users
+        .iter()
+        .map(|user| {
+            (
+                user.id.as_deref(),
+                user.username.as_str(),
+                user.attributes.get("riauth.migration.authentik"),
+                &user.subjects,
+            )
+        })
+        .collect::<Vec<_>>();
+    users.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+    let mut clients = state
+        .clients
+        .iter()
+        .map(|client| {
+            (
+                client.client_id.as_str(),
+                client.settings.issuer.as_deref(),
+                client.settings.pairwise_sector.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    clients.sort();
+    let mut sources = state
+        .sources
+        .iter()
+        .map(|source| (source.source.id.as_str(), source.source.issuer.as_str()))
+        .collect::<Vec<_>>();
+    sources.sort();
+    let mut links = state
+        .source_links
+        .iter()
+        .map(|link| {
+            (
+                link.source.as_str(),
+                link.subject.as_str(),
+                link.username.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    links.sort();
+    Ok(digest(
+        &serde_json::to_string(&("riauth.target-identity/v1", users, clients, sources, links))
+            .map_err(Error::internal)?,
+    ))
+}
+
+fn live_target_identity_fingerprint(tx: &Tx<'_>) -> Result<String> {
+    let state = Manifest {
+        users: tx
+            .list::<User>("users")?
+            .into_iter()
+            .map(|(_, user)| user_spec(&user))
+            .collect(),
+        clients: tx
+            .list::<Client>("clients")?
+            .into_iter()
+            .map(|(_, client)| client_spec(&client))
+            .collect(),
+        sources: tx
+            .list::<crate::source::Source>("sources")?
+            .into_iter()
+            .map(|(_, source)| crate::source::SourceSpec {
+                source,
+                secret_ref: None,
+                secret_version: None,
+            })
+            .collect(),
+        source_links: crate::source::export_all_links(tx)?,
+        ..Default::default()
+    };
+    target_identity_fingerprint(&state)
 }
 
 /// Desired-state manifests name only the resources they manage. Omission is
@@ -459,6 +565,7 @@ impl Core {
             let actor = self.principal(tx, token)?;
             if actor.delegated { return Err(Error::forbidden()); }
             manifest.require_issuer(&self.config.issuer)?;
+            manifest.require_target_state(tx)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
             let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
@@ -489,6 +596,7 @@ impl Core {
                     "Instance or plan authority changed during planning; plan again",
                 ));
             }
+            plan.manifest.require_target_state(tx)?;
             plan.review = ReviewBinding::new(tx, &current, &plan_content(&plan)?)?;
             tx.put(
                 "plans",
@@ -531,6 +639,7 @@ impl Core {
                 validate_state_review(tx, &actor, &stored)?;
                 return Ok(result.clone());
             }
+            input.plan.manifest.require_target_state(tx)?;
             let impact = state_removal_impact(tx, &input.plan.manifest)?;
             ApplyGate {
                 id: &input.plan.plan_id,
@@ -577,7 +686,7 @@ impl Core {
                 .filter(|(_, d)| actor.allows("workflow.read", &format!("workflow/{}", d.id)))
                 .map(|(_, d)| d)
                 .collect();
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, issuer: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
         })
     }
     /// Browser list uses the same scoped authority as manifest export.

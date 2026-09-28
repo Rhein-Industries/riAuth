@@ -3158,6 +3158,93 @@ fn authentik_reimport_keeps_verified_accounts_and_never_moves_identities() {
 }
 
 #[test]
+fn authentik_plan_rejects_target_identity_claimed_after_export() {
+    let f = Fixture::new();
+    let target_state = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+    let bundle = |state: &Value| {
+        json!({"api_version":"riauth.authentik-import/v1","issuer":f.core.config.issuer,
+            "target_state":state,
+            "users":[{"pk":42,"uid":"uid-42","uuid":"uuid-42","username":"alice",
+                "name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],"sources":[],
+            "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"v1"}},"clients":{}})
+    };
+    let report =
+        riauth::migration::convert(serde_json::from_value(bundle(&target_state)).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    let manifest: riauth::state::Manifest =
+        serde_json::from_value(report["manifest"].clone()).unwrap();
+    assert!(manifest.target_state_fingerprint.is_some());
+    let stale_plan = f.core.plan_state(&f.admin, manifest.clone()).unwrap();
+
+    // Another Authentik account claims the same riAuth ID and username after conversion.
+    // The stale manifest must never overwrite its recorded UUID at planning time.
+    let claimant: riauth::state::Manifest = serde_json::from_value(json!({
+        "api_version":"riauth/v1", "users":[{"id":"authentik-42","username":"alice",
+            "display_name":"Alice","password_disabled":true,
+            "attributes":{"riauth.migration.authentik":{"pk":"42","uuid":"uuid-other"}}}]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&f.admin, claimant).unwrap();
+    f.core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan: stale_plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.status.as_u16(), 409);
+    assert!(
+        error
+            .message
+            .contains("Target identity state changed since export")
+    );
+    let error = f.core.plan_state(&f.admin, manifest).err().unwrap();
+    assert_eq!(error.status.as_u16(), 409);
+    assert!(
+        error
+            .message
+            .contains("Target identity state changed since export")
+    );
+    let stored = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+    let alice = stored["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == "authentik-42")
+        .unwrap();
+    assert_eq!(
+        alice["attributes"]["riauth.migration.authentik"]["uuid"],
+        "uuid-other"
+    );
+
+    let fresh =
+        riauth::migration::convert(serde_json::from_value(bundle(&stored)).unwrap()).unwrap();
+    assert_eq!(fresh["ready_for_plan"], false);
+    assert!(fresh["blockers"].as_array().unwrap().iter().any(|blocker| {
+        blocker
+            .as_str()
+            .unwrap()
+            .contains("records a different Authentik account")
+    }));
+}
+
+#[test]
 fn authentik_manifest_plans_only_on_its_exact_target_issuer() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();

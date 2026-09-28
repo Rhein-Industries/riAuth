@@ -288,8 +288,10 @@
   records its Authentik UUID in `riauth.migration.authentik`. An account
   Authentik renamed keeps its immutable riAuth username only when that UUID
   matches, and otherwise blocks. With a current `target_state`, the converter
-  blocks reassigned usernames, issued subjects and source links. Apply does
-  not yet recheck continuity against a target changed after that export.
+  blocks reassigned usernames, issued subjects and source links. The converted
+  manifest binds the target's identity dependencies; planning and applying
+  reject it if those facts changed after the export, requiring a fresh export
+  and conversion.
   Authentik's temporary accounts are no longer converted, and inactive accounts
   without a password are kept disabled instead of blocking.
 - Converted manifests now record the bundle's `issuer`. Planning and applying
