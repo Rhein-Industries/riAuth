@@ -1565,6 +1565,49 @@ fn window_open(run: &SyncRun) -> bool {
 }
 
 impl Core {
+    /// One read-only upstream page for operational diagnostics. This does not
+    /// create a plan, consume the sync retry budget, or persist connector state.
+    pub(crate) fn cloud_connection_probe(&self, kind: &str, id: &str) -> Result<()> {
+        let settings = self.cloud_settings(kind, id)?;
+        let http = http_client()?;
+        let token = access_token(&settings, &http)?;
+        let users = if kind == "workspace" {
+            endpoint(
+                &settings.base_url,
+                &["admin", "directory", "v1", "users"],
+                &[
+                    ("customer", settings.tenant.as_str()),
+                    ("domain", settings.domain.as_str()),
+                    ("maxResults", "1"),
+                ],
+            )?
+        } else {
+            endpoint(
+                &settings.base_url,
+                &["v1.0", "users"],
+                &[("$select", "id"), ("$top", "1")],
+            )?
+        };
+        let body = get_json(&http, &token, &users)?;
+        let valid = if kind == "workspace" {
+            body.get("users").is_some_and(Value::is_array)
+                || (body.get("users").is_none()
+                    && body.get("nextPageToken").is_none()
+                    && body
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| {
+                            matches!(value, "admin#directory#users" | "directory#users")
+                        }))
+        } else {
+            body.get("value").is_some_and(Value::is_array)
+        };
+        if !valid || body.get("error").is_some() {
+            return Err(unavailable("Cloud directory returned an unreadable page"));
+        }
+        Ok(())
+    }
+
     fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
         let modes = match provider {
             Provider::Workspace => &self.config.workspace_reconciliation_modes,

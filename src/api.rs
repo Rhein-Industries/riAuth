@@ -526,6 +526,14 @@ fn platform_routes() -> Router<App> {
         .route("/api/entra-directory-plans/{id}", get(entra_plan_get))
         .route("/api/entra-directory-plans/{id}/apply", post(entra_apply))
         .route(
+            "/api/cloud-directories/{kind}/{id}/operations",
+            get(cloud_operations),
+        )
+        .route(
+            "/api/cloud-directories/{kind}/{id}/test-connection",
+            post(cloud_test_connection),
+        )
+        .route(
             "/oauth/source-stages/{id}/resume",
             get(source_stage_resume).post(source_stage_resume_post),
         )
@@ -2887,6 +2895,26 @@ async fn workspace_directories(State(app): State<App>, headers: HeaderMap) -> Re
 async fn entra_directories(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.cloud_directories(&token, "entra").map(Json))
+        .await
+}
+#[cfg(feature = "platform")]
+async fn cloud_operations(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.cloud_operations(&token, &kind, &id).map(Json))
+        .await
+}
+#[cfg(feature = "platform")]
+async fn cloud_test_connection(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.cloud_test_connection(&token, &kind, &id).map(Json))
         .await
 }
 #[cfg(feature = "platform")]

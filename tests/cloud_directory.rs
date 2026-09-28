@@ -2436,6 +2436,175 @@ fn directory_urls_reject_non_loopback_http() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cloud_operational_api_validates_probes_and_redacts() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use riauth::reconciliation::{Job, Origin, Schedule, Status};
+    use tower::ServiceExt;
+
+    async fn call(app: &axum::Router, method: &str, uri: &str, token: &str) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        (status, value)
+    }
+
+    let workspace = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let entra = serve(
+        "entra",
+        vec![person("en-1", "bob@example.test", "Bob", false)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &workspace, "");
+    configure(&mut fixture, "entra", "tenant", &entra, "");
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "reconciliation_schedules",
+                "workspace/corp",
+                &Schedule {
+                    scope: "workspace/corp".into(),
+                    config_fingerprint: "fingerprint".into(),
+                    agent_id: "syncer".into(),
+                    interval_seconds: 300,
+                    next_run: 123,
+                    last_job: Some("job-1".into()),
+                    last_error: Some(SECRET.into()),
+                    last_outcome: Some(json!({"secret": SECRET})),
+                },
+            )?;
+            tx.put(
+                "reconciliation_jobs",
+                "job-1",
+                &Job {
+                    id: "job-1".into(),
+                    scope: "workspace/corp".into(),
+                    origin: Origin::Event,
+                    actor: "agent:syncer".into(),
+                    config_fingerprint: "fingerprint".into(),
+                    authority: Default::default(),
+                    status: Status::Failed,
+                    attempts: 1,
+                    next_attempt: 0,
+                    lease_owner: None,
+                    lease_until: 0,
+                    last_error: Some(SECRET.into()),
+                    outcome: Some(json!({"secret": SECRET})),
+                    created_at: 100,
+                },
+            )
+        })
+        .unwrap();
+    let before = fixture.snapshot().unwrap();
+    let app = riauth::api::router(fixture.core.clone());
+
+    for (kind, id, directory) in [
+        ("workspace", "corp", &workspace),
+        ("entra", "tenant", &entra),
+    ] {
+        let path = format!("/api/cloud-directories/{kind}/{id}/operations");
+        let (status, operations) = call(&app, "GET", &path, &fixture.admin).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(operations["validation"]["valid"], true);
+        assert_eq!(
+            operations["configuration"]["groups"]["staff"],
+            if kind == "workspace" {
+                "staff@example.test"
+            } else {
+                "staff-gid"
+            }
+        );
+        assert_redacted(&operations);
+        assert!(!operations.to_string().contains(".secret"));
+        if kind == "workspace" {
+            assert_eq!(operations["schedule"]["interval_seconds"], 300);
+            assert_eq!(operations["jobs"][0]["status"], "failed");
+        } else {
+            assert!(operations["schedule"].is_null());
+            assert_eq!(operations["jobs"], json!([]));
+        }
+        let path = format!("/api/cloud-directories/{kind}/{id}/test-connection");
+        let (status, probe) = call(&app, "POST", &path, &fixture.admin).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(probe["connected"], true);
+        assert_redacted(&probe);
+        assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    }
+    let (_, denied) = call(
+        &app,
+        "GET",
+        "/api/cloud-directories/workspace/corp/operations",
+        "invalid",
+    )
+    .await;
+    assert_eq!(denied["error"], "invalid_token");
+    workspace.state.token_status.store(503, Ordering::Relaxed);
+    let (_, failed) = call(
+        &app,
+        "POST",
+        "/api/cloud-directories/workspace/corp/test-connection",
+        &fixture.admin,
+    )
+    .await;
+    assert_eq!(failed["connected"], false);
+    assert_redacted(&failed);
+    let token_hits = workspace.state.token_hits.load(Ordering::Relaxed);
+    fixture
+        .core
+        .config
+        .workspace_directories
+        .get_mut("corp")
+        .unwrap()
+        .domain = "invalid".into();
+    let invalid_app = riauth::api::router(fixture.core.clone());
+    let (_, invalid) = call(
+        &invalid_app,
+        "GET",
+        "/api/cloud-directories/workspace/corp/operations",
+        &fixture.admin,
+    )
+    .await;
+    assert_eq!(invalid["validation"]["valid"], false);
+    assert_redacted(&invalid);
+    let (_, skipped) = call(
+        &invalid_app,
+        "POST",
+        "/api/cloud-directories/workspace/corp/test-connection",
+        &fixture.admin,
+    )
+    .await;
+    assert_eq!(skipped["connected"], false);
+    assert_eq!(skipped["error"], "invalid_request");
+    assert_eq!(
+        workspace.state.token_hits.load(Ordering::Relaxed),
+        token_hits
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn http_workspace_plan_does_not_write_until_apply() {
     use axum::{
         body::{Body, to_bytes},

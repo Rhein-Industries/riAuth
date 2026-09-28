@@ -19,6 +19,8 @@ pub mod cloud_directory;
 #[path = "cloud_directory_essentials.rs"]
 pub mod cloud_directory;
 mod cloud_directory_types;
+#[cfg(feature = "platform")]
+mod cloud_operations;
 pub mod config;
 pub mod connector_guard;
 pub mod context;
