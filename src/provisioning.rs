@@ -6,10 +6,10 @@ use crate::{
         ApplyGate, Pagination, ReconciliationDecision, ReconciliationMode, RemovalImpact,
         ReviewBinding, plan_content,
     },
-    core::{Core, audit},
+    core::{Core, audit, audit_with},
     crypto::{self, digest, now},
     error::{Error, Result},
-    identity::downstream::{Link, link_key},
+    identity::downstream::{Link, Observed, Resolution, link_key},
     model::{Group, User},
     store::Tx,
 };
@@ -320,6 +320,9 @@ struct Job {
     /// The item the latest failed attempt concerned.
     #[serde(default)]
     item: Option<Item>,
+    /// Operator attestation that closed the item's ambiguity after the job stopped.
+    #[serde(default)]
+    resolution: Option<Resolution>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Item {
@@ -373,18 +376,31 @@ fn delivery_state(job: &Job) -> &'static str {
 /// viewer who may read the target and that user or group; others see its
 /// position and kind.
 fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
+    let readable = match &job.item {
+        Some(item) => item_readable(tx, viewer, &job.plan.target, item)?,
+        None => viewer.allows(
+            "provisioner.read",
+            &format!("provisioner/{}", job.plan.target),
+        ),
+    };
     let item = match &job.item {
         Some(item) => {
             let mut view = json!({"index": item.index, "kind": item.kind});
-            if item_readable(tx, viewer, &job.plan.target, item)? {
+            if readable {
                 view["local_id"] = json!(item.local_id);
             }
             view
         }
         None => Value::Null,
     };
+    // Evidence can describe the account; others see only what was attested.
+    let resolution = match &job.resolution {
+        Some(resolution) if readable => json!(resolution),
+        Some(resolution) => json!({"observed": resolution.observed, "at": resolution.at}),
+        None => Value::Null,
+    };
     Ok(
-        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item}),
+        json!({"id":job.plan.id,"target":job.plan.target,"revision":job.plan.revision,"processed":job.cursor,"total":job.total.max(job.plan.resources.len()),"completed":job.completed,"stale":job.stale,"attempts":job.attempts,"next_attempt":job.next_attempt,"error":job.error,"delivery_state":delivery_state(job),"item":item,"resolution":resolution}),
     )
 }
 fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> Result<bool> {
@@ -928,6 +944,7 @@ impl Core {
                 reviewed_removals: reviewed_plan == Some(id),
                 uncertain: false,
                 item: None,
+                resolution: None,
             };
             ensure_job_capacity(tx, &job)?;
             tx.put("provisioning_jobs", id, &job)?;
@@ -958,6 +975,16 @@ impl Core {
             );
             if job.lease.is_some() {
                 job.uncertain = true;
+                // Name the in-flight item before compaction can drop the plan copy.
+                if job.item.is_none()
+                    && let Some(resource) = job.plan.resources.get(job.cursor)
+                {
+                    job.item = Some(Item {
+                        index: job.cursor,
+                        kind: resource.kind.clone(),
+                        local_id: resource.local_id.clone(),
+                    });
+                }
                 if job.next_attempt <= now() {
                     job.lease = None;
                 }
@@ -965,6 +992,63 @@ impl Core {
             compact_terminal_job(&mut job);
             tx.put("provisioning_jobs", id, &job)?;
             audit(tx, &actor.id, "provisioner.stop", &job.plan.target)?;
+            job_view(tx, &job, &actor)
+        })
+    }
+    /// Operator resolution for a stopped job whose current item stayed
+    /// ambiguous. It records the evidence and ends the ambiguity; the job stays
+    /// stopped and reads as `failed`, so it never reports the item delivered.
+    pub fn provisioning_resolve(&self, token: &str, id: &str, input: Resolve) -> Result<Value> {
+        validate_evidence(&input.evidence)?;
+        self.mutation(token, |tx| {
+            let mut job = tx
+                .get::<Job>("provisioning_jobs", id)?
+                .ok_or_else(|| Error::missing("Provisioning job not found"))?;
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{}", job.plan.target),
+            )?;
+            // An attestation names the ambiguous item, so it needs read access to it.
+            let readable = match &job.item {
+                Some(item) => item_readable(tx, &actor, &job.plan.target, item)?,
+                None => actor.allows(
+                    "provisioner.read",
+                    &format!("provisioner/{}", job.plan.target),
+                ),
+            };
+            if !readable {
+                return Err(Error::forbidden());
+            }
+            if !job.stale || !job.uncertain {
+                return Err(Error::conflict(
+                    "Only a stopped job whose current item is ambiguous can be resolved",
+                ));
+            }
+            if job.lease.is_some() && job.next_attempt > now() {
+                return Err(Error::conflict(
+                    "The item is still in flight; resolve it after its lease expires",
+                ));
+            }
+            let resolution = Resolution {
+                observed: input.observed,
+                evidence: input.evidence,
+                by: actor.id.clone(),
+                at: now(),
+            };
+            job.uncertain = false;
+            job.lease = None;
+            job.resolution = Some(resolution.clone());
+            compact_terminal_job(&mut job);
+            tx.put("provisioning_jobs", id, &job)?;
+            audit_with(
+                tx,
+                &actor.id,
+                "provisioner.resolve",
+                &job.plan.target,
+                Some(json!({"job": id, "item": job.item, "resolution": resolution})),
+            )?;
             job_view(tx, &job, &actor)
         })
     }
@@ -2029,6 +2113,51 @@ fn invalidate_generation(name: &str, key: &str, generation: u64) {
         slot.generation = slot.generation.saturating_add(1);
     }
 }
+/// Operator evidence for an ambiguous write: what the target showed and a
+/// reference to where it was checked.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Resolve {
+    pub observed: Observed,
+    pub evidence: String,
+}
+
+/// Evidence is stored and audited: 1-280 characters, no control characters and
+/// nothing that looks like a credential, as for access-request reasons.
+fn validate_evidence(evidence: &str) -> Result<()> {
+    let length = evidence.trim().chars().count();
+    if !(1..=280).contains(&length) || evidence.chars().any(char::is_control) {
+        return Err(Error::bad(
+            "Evidence must be 1-280 characters without control characters",
+        ));
+    }
+    let lower = evidence.to_ascii_lowercase();
+    if [
+        "password",
+        "secret",
+        "bearer ",
+        "private key",
+        "private_key",
+        "begin ",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+        || [
+            "ri_session_",
+            "ri_agent_",
+            "ri_client_",
+            "ri_mail_",
+            "ri_recovery_",
+            "ri_portal_",
+        ]
+        .iter()
+        .any(|needle| evidence.contains(needle))
+    {
+        return Err(Error::bad("Evidence must not contain secrets"));
+    }
+    Ok(())
+}
+
 /// A 4xx answer, other than a timeout or throttling, means the target
 /// processed and refused the write, so it was not applied.
 fn refused(response: &reqwest::blocking::Response) -> bool {

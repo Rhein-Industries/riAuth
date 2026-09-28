@@ -31,6 +31,14 @@
   `provisioner.sync` on the target and are audited. Their responses, like
   job lists, name an account only to a caller with `provisioner.read` on the
   target and `user.read` (or `group.read`) on that account.
+- Operators can resolve ambiguity that no attempt can settle, such as a stale row
+  whose link was removed, a failed row, or a stopped job. They use
+  `riauth provision resolve-deactivation` or `riauth provision resolve` with
+  `--observed applied|not_applied|absent` and `--evidence`. This needs
+  `provisioner.sync` plus read access to the named account or item. The record
+  keeps its original intent and status, the evidence is audited, and a satisfied
+  deactivation reads as `resolved`, never `succeeded`. Offboarding jobs report
+  `downstream.state: resolved` when every target was delivered or resolved.
 - `ambiguous` outranks every other state. An account enabled again after an
   unverified PATCH stays `ambiguous` until one read of the remote account
   records `remote_inactive` or `remote_active`; nothing is written.

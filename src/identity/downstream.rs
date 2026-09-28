@@ -72,6 +72,37 @@ impl Status {
     }
 }
 
+/// What an operator saw at the target for a write whose effect riAuth could
+/// not verify.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Observed {
+    /// The write took effect.
+    Applied,
+    /// The target still shows the state before the write.
+    NotApplied,
+    /// The remote resource no longer exists.
+    Absent,
+}
+
+/// An operator's attestation that closed an ambiguity. It is evidence, not a
+/// delivery: riAuth never verified it and never reports it as succeeded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Resolution {
+    pub observed: Observed,
+    /// Operator reference for the check, such as a ticket or console record.
+    pub evidence: String,
+    pub by: String,
+    pub at: u64,
+}
+
+impl Resolution {
+    /// Applied or absent: nothing downstream is still active for the intent.
+    pub fn satisfied(&self) -> bool {
+        self.observed != Observed::NotApplied
+    }
+}
+
 /// One target's deactivation of one linked remote account for one disable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Deactivation {
@@ -113,16 +144,24 @@ pub struct Deactivation {
     /// Cleared when a later attempt reads the account again.
     #[serde(default)]
     pub uncertain: bool,
+    /// Operator attestation that closed an ambiguity riAuth could not resolve.
+    #[serde(default)]
+    pub resolution: Option<Resolution>,
 }
 
 impl Deactivation {
     /// Delivery state shared with reviewed SCIM jobs. An unverified PATCH
     /// outranks every local outcome: the row is `ambiguous` until a read
-    /// observes the account, and only then `succeeded` (confirmed inactive),
-    /// `cancelled` (enabled again), `failed` (stale or exhausted) or `pending`.
+    /// observes the account, or an operator attests what the target shows.
+    /// An attestation that nothing is left active is `resolved`, never
+    /// `succeeded`. Otherwise `succeeded` (confirmed inactive), `cancelled`
+    /// (enabled again), `failed` (stale or exhausted) or `pending`.
     pub fn delivery_state(&self) -> &'static str {
         if self.uncertain {
             return "ambiguous";
+        }
+        if self.resolution.as_ref().is_some_and(Resolution::satisfied) {
+            return "resolved";
         }
         match self.status {
             Status::Delivered => "succeeded",
@@ -211,6 +250,7 @@ pub(crate) fn enqueue_link(
             created_at: at,
             delivered_at: None,
             uncertain: false,
+            resolution: None,
         };
         tx.put(BUCKET, &id, &row)?;
     }

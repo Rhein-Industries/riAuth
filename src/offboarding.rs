@@ -19,7 +19,7 @@ use crate::{
     core::{Core, audit, ensure_remaining_admin, user_by_name, validate_name},
     crypto::{self, now},
     error::{Error, Result},
-    identity::downstream::{self, Deactivation, Status as Delivery},
+    identity::downstream::{self, Deactivation},
     model::User,
     pam::AccessGrant,
     store::Tx,
@@ -213,14 +213,15 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
         return Ok(value);
     };
     let mut targets = Vec::new();
-    let (mut hidden, mut open, mut delivered) = (0usize, 0usize, 0usize);
+    let (mut hidden, mut open, mut delivered, mut resolved) = (0usize, 0usize, 0usize, 0usize);
     for entry in recorded {
         let target = entry["target"].as_str().unwrap_or_default();
         let id = entry["delivery"].as_str().unwrap_or_default();
         let row = tx.get::<Deactivation>(downstream::BUCKET, id)?;
-        match row.as_ref().map(|row| row.status) {
-            Some(Delivery::Delivered) => delivered += 1,
-            Some(status) if !status.terminal() => open += 1,
+        match row.as_ref() {
+            Some(row) if row.delivery_state() == "succeeded" => delivered += 1,
+            Some(row) if row.delivery_state() == "resolved" => resolved += 1,
+            Some(row) if !row.status.terminal() => open += 1,
             _ => {}
         }
         if viewer.is_some_and(|viewer| {
@@ -240,15 +241,20 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
                 "attempts": row.attempts,
                 "last_error": row.last_error,
                 "delivered_at": row.delivered_at,
+                "resolution": row.resolution,
             }),
             // Terminal rows are retained for 90 days.
             None => json!({"target": target, "delivery": id, "status": "expired"}),
         });
     }
+    // `resolved` counts operator attestations toward completion without
+    // reporting them as delivered.
     let state = if open > 0 {
         "pending"
     } else if delivered == recorded.len() {
         "delivered"
+    } else if delivered + resolved == recorded.len() {
+        "resolved"
     } else {
         "incomplete"
     };

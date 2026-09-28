@@ -583,6 +583,26 @@ pub enum ProvisionCommand {
     RetryDeactivation {
         id: String,
     },
+    /// Record what the target shows for a stopped job's ambiguous item
+    Resolve {
+        job: String,
+        /// applied, not_applied or absent
+        #[arg(long)]
+        observed: String,
+        /// Reference for the check, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Record what the target shows for an ambiguous stale or failed deactivation
+    ResolveDeactivation {
+        id: String,
+        /// applied, not_applied or absent
+        #[arg(long)]
+        observed: String,
+        /// Reference for the check, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+    },
 }
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
@@ -1581,6 +1601,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             ProvisionCommand::Stop{job}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/stop",segment(&job)?),None,true).await?,
             ProvisionCommand::Deactivations=>remote.call(Method::GET,"/api/provisioning/deactivations",None,true).await?,
             ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
+            ProvisionCommand::Resolve{job,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/resolve",segment(&job)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
+            ProvisionCommand::ResolveDeactivation{id,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
                 let path = format!("/api/provisioning/targets/{}/plan",segment(&target)?);

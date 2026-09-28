@@ -1047,6 +1047,25 @@ pub(crate) const AUDIT_RETENTION_SECONDS: u64 = 90 * 24 * 60 * 60;
 pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Result<()> {
     audit_with_details(tx, actor, action, target, Value::Null)
 }
+
+/// `audit` with operator-supplied context, such as resolution evidence. The
+/// context is stored in `details.context` and redacted like the change log.
+pub(crate) fn audit_with(
+    tx: &Tx<'_>,
+    actor: &str,
+    action: &str,
+    target: &str,
+    context: Option<Value>,
+) -> Result<()> {
+    audit_with_details(
+        tx,
+        actor,
+        action,
+        target,
+        context.map_or(Value::Null, |context| json!({"context": context})),
+    )
+}
+
 pub(crate) fn audit_with_details(
     tx: &Tx<'_>,
     actor: &str,

@@ -281,12 +281,20 @@ pub fn router(core: Core) -> Router {
         .route("/api/provisioning/jobs", get(provisioning_jobs))
         .route("/api/provisioning/jobs/{id}/stop", post(provisioning_stop))
         .route(
+            "/api/provisioning/jobs/{id}/resolve",
+            post(provisioning_resolve),
+        )
+        .route(
             "/api/provisioning/deactivations",
             get(provisioning_deactivations),
         )
         .route(
             "/api/provisioning/deactivations/{id}/retry",
             post(provisioning_deactivation_retry),
+        )
+        .route(
+            "/api/provisioning/deactivations/{id}/resolve",
+            post(provisioning_deactivation_resolve),
         )
         .route(
             "/api/reconciliation/schedules",
@@ -3173,6 +3181,29 @@ async fn provisioning_deactivation_retry(
     let token = bearer(&headers)?;
     app.run(move |core| core.provisioning_deactivation_retry(&token, &id).map(Json))
         .await
+}
+async fn provisioning_resolve(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::provisioning::Resolve>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.provisioning_resolve(&token, &id, input).map(Json))
+        .await
+}
+async fn provisioning_deactivation_resolve(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::provisioning::Resolve>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.provisioning_deactivation_resolve(&token, &id, input)
+            .map(Json)
+    })
+    .await
 }
 async fn provisioning_plan(
     State(app): State<App>,

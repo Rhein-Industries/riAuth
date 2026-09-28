@@ -20,7 +20,7 @@ use riauth::{
         BUCKET, BeforeCommit, ExecuteAt, Job, RescheduleRequest, ScheduleRequest, Status,
         format_rfc3339, format_rfc3339_at_offset,
     },
-    provisioning::Target,
+    provisioning::{Resolve, Target},
     reconciliation::ControllerConfig,
 };
 use serde_json::{Value, json};
@@ -1415,6 +1415,206 @@ fn reenabled_account_keeps_an_unverified_deactivation_ambiguous_until_read() {
     assert_eq!(resolved["uncertain"], false);
     assert_eq!(resolved["delivery_state"], "cancelled");
     assert_eq!(payroll.patches.lock().unwrap().len(), 1);
+}
+
+fn audit_context(core: &Core, action: &str) -> Vec<Value> {
+    core.store
+        .list::<riauth::model::Audit>("audit")
+        .unwrap()
+        .into_iter()
+        .filter(|(_, event)| event.action == action)
+        .map(|(_, event)| event.details["context"].clone())
+        .collect()
+}
+
+/// P08 contract: when no attempt can settle an ambiguous write (link removed,
+/// or the job stopped), a scoped operator records explicit evidence. The
+/// record keeps its original intent and status, the evidence is audited, and
+/// nothing is ever reported as delivered or succeeded on that basis.
+#[test]
+fn operator_resolution_needs_scoped_evidence_and_never_reports_delivery() {
+    let mut f = Fixture::new();
+    for name in ["alice", "bob", "carol"] {
+        f.user(name);
+    }
+    let payroll = Scim::default();
+    let url = payroll.serve();
+    let target = scim_target(&f, "payroll", &url, "payroll");
+    f.core.config.scim_targets.insert("payroll".into(), target);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert("payroll".into(), ReconciliationMode::Automatic);
+    let controller = agent(
+        &f,
+        "payroll_controller",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let credential_file = f._dir.path().join("payroll-controller-token");
+    write_private(&credential_file, controller.as_bytes(), false).unwrap();
+    f.core.config.reconciliation_controllers.insert(
+        "scim/payroll".into(),
+        ControllerConfig {
+            agent_id: "payroll_controller".into(),
+            credential_file,
+            interval_seconds: 3600,
+        },
+    );
+    for name in ["alice", "bob", "carol"] {
+        let user = account(&f.core, name);
+        linked(&f, &payroll, "payroll", &url, &user, &format!("p-{name}"));
+    }
+    payroll.script.lock().unwrap().push_back((503, true));
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            riauth::model::UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let alice = account(&f.core, "alice");
+    assert!(f.core.deactivation_step().unwrap());
+    assert_eq!(listed(&f, &alice)["delivery_state"], "ambiguous");
+
+    // The link is removed: no attempt can settle the row and retry cannot run.
+    let link = crypto::digest(&format!("payroll\0Users\0{}", alice.id));
+    f.core
+        .store
+        .write(|tx| tx.delete("provisioning_links", &link))
+        .unwrap();
+    make_due(&f.core, &delivery(&f.core, "payroll", &alice));
+    assert!(!f.core.deactivation_step().unwrap());
+    let stale = listed(&f, &alice);
+    assert_eq!(stale["status"], "stale");
+    assert_eq!(stale["delivery_state"], "ambiguous");
+    let id = stale["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_retry(&f.admin, &id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+
+    let writer = agent(
+        &f,
+        "payroll-writer",
+        &[("provisioner.sync", "provisioner/payroll")],
+    );
+    let reader = agent(
+        &f,
+        "payroll-reader",
+        &[
+            ("provisioner.sync", "provisioner/payroll"),
+            ("provisioner.read", "provisioner/payroll"),
+            ("user.read", "*"),
+        ],
+    );
+    let resolve = |observed: &str, evidence: &str| -> Resolve {
+        serde_json::from_value(json!({"observed": observed, "evidence": evidence})).unwrap()
+    };
+    let evidence = "Checked the payroll console; ticket OPS-42";
+    // Write authority alone cannot attest about an account it cannot read.
+    assert_eq!(
+        f.core
+            .provisioning_deactivation_resolve(&writer, &id, resolve("applied", evidence))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    for missing in ["", "   ", "Bearer abc"] {
+        assert_eq!(
+            f.core
+                .provisioning_deactivation_resolve(&reader, &id, resolve("applied", missing))
+                .unwrap_err()
+                .code,
+            "invalid_request"
+        );
+    }
+    assert!(
+        serde_json::from_value::<Resolve>(json!({"observed": "delivered", "evidence": evidence}))
+            .is_err()
+    );
+    let resolved = f
+        .core
+        .provisioning_deactivation_resolve(&reader, &id, resolve("applied", evidence))
+        .unwrap();
+    // The original intent and status stay; nothing claims riAuth delivered it.
+    assert_eq!(resolved["status"], "stale");
+    assert_eq!(resolved["outcome"], Value::Null);
+    assert_eq!(resolved["delivered_at"], Value::Null);
+    assert_eq!(resolved["remote_id"], "p-alice");
+    assert_eq!(resolved["uncertain"], false);
+    assert_eq!(resolved["delivery_state"], "resolved");
+    assert_eq!(resolved["resolution"]["observed"], "applied");
+    assert_eq!(resolved["resolution"]["evidence"], evidence);
+    assert_eq!(resolved["resolution"]["by"], "agent:payroll-reader");
+    assert_eq!(listed(&f, &alice)["delivery_state"], "resolved");
+    for repeat in [
+        f.core
+            .provisioning_deactivation_resolve(&reader, &id, resolve("applied", evidence))
+            .unwrap_err(),
+        f.core
+            .provisioning_deactivation_retry(&reader, &id)
+            .unwrap_err(),
+    ] {
+        assert_eq!(repeat.code, "conflict");
+    }
+    let audited = audit_context(&f.core, "provisioner.deactivate.resolve");
+    assert_eq!(audited.len(), 1);
+    assert_eq!(audited[0]["delivery"], id.as_str());
+    assert_eq!(audited[0]["resolution"]["evidence"], evidence);
+
+    // A stopped job whose item stayed ambiguous is resolved the same way; the
+    // job still reads as failed because it did not deliver its plan.
+    f.core.create_group(&f.admin, "payroll").unwrap();
+    let plan = f.core.provisioning_plan(&reader, "payroll").unwrap();
+    let plan_id = text(&plan, "id");
+    f.core
+        .provisioning_apply_confirmed(&reader, &plan_id, Some(&plan_id))
+        .unwrap();
+    let bob = account(&f.core, "bob");
+    f.core
+        .store
+        .write(|tx| {
+            let mut job: Value = tx.get("provisioning_jobs", &plan_id)?.unwrap();
+            job["stale"] = json!(true);
+            job["uncertain"] = json!(true);
+            job["item"] = json!({"index": 0, "kind": "Users", "local_id": bob.id});
+            tx.put("provisioning_jobs", &plan_id, &job)
+        })
+        .unwrap();
+    let observed = "Payroll still shows bob active; ticket OPS-43";
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&writer, &plan_id, resolve("not_applied", observed))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    let job = f
+        .core
+        .provisioning_resolve(&reader, &plan_id, resolve("not_applied", observed))
+        .unwrap();
+    assert_eq!(job["stale"], true);
+    assert_eq!(job["completed"], false);
+    assert_eq!(job["delivery_state"], "failed");
+    assert_eq!(job["item"]["local_id"], bob.id.as_str());
+    assert_eq!(job["resolution"]["observed"], "not_applied");
+    assert_eq!(
+        f.core
+            .provisioning_resolve(&reader, &plan_id, resolve("not_applied", observed))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    let audited = audit_context(&f.core, "provisioner.resolve");
+    assert_eq!(audited.len(), 1);
+    assert_eq!(audited[0]["job"], plan_id.as_str());
+    assert_eq!(audited[0]["resolution"]["evidence"], observed);
 }
 
 #[test]

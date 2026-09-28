@@ -10,16 +10,16 @@
 //! after the target reports the linked account inactive, or when a reviewed SCIM
 //! job already delivered that state. Managed links stay owned by reviewed jobs.
 use super::{
-    Job, Target, authorized, discard_body, refused, rejected, remote_error, scim_json,
-    stale_lease_settling,
+    Job, Resolve, Target, authorized, discard_body, refused, rejected, remote_error, scim_json,
+    stale_lease_settling, validate_evidence,
 };
 use crate::{
     agent::Principal,
     connector_guard::{ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding},
-    core::{Core, audit},
+    core::{Core, audit, audit_with},
     crypto::{self, digest, now},
     error::{Error, Result},
-    identity::downstream::{BUCKET, Deactivation, LINKS, Link, Status, link_digest},
+    identity::downstream::{BUCKET, Deactivation, LINKS, Link, Resolution, Status, link_digest},
     model::User,
     store::Tx,
 };
@@ -640,6 +640,11 @@ impl Core {
                     "Only a failed or stale deactivation can be retried",
                 ));
             }
+            if row.resolution.as_ref().is_some_and(Resolution::satisfied) {
+                return Err(Error::conflict(
+                    "An operator resolved this deactivation; nothing is left to retry",
+                ));
+            }
             let link = tx
                 .get::<Link>(LINKS, &row.link)?
                 .filter(|link| {
@@ -669,6 +674,58 @@ impl Core {
                 &format!("{}/{}", row.target, row.username),
             )?;
             row_view_for(&row, &actor)
+        })
+    }
+
+    /// Operator resolution for an ambiguous row that no attempt can settle: its
+    /// link was removed, or it is stale or failed. The row keeps its original
+    /// intent, status and outcome and gains the attested evidence; a satisfied
+    /// attestation reads as `resolved`, never as delivered or succeeded.
+    pub fn provisioning_deactivation_resolve(
+        &self,
+        token: &str,
+        id: &str,
+        input: Resolve,
+    ) -> Result<Value> {
+        validate_evidence(&input.evidence)?;
+        self.mutation(token, |tx| {
+            let mut row = tx
+                .get::<Deactivation>(BUCKET, id)?
+                .ok_or_else(|| Error::missing("Deactivation not found"))?;
+            let actor = self.management(
+                tx,
+                token,
+                "provisioner.sync",
+                &format!("provisioner/{}", row.target),
+            )?;
+            // An attestation names the account, so it needs the listing's read scopes.
+            if !actor.allows("provisioner.read", &format!("provisioner/{}", row.target))
+                || !actor.allows("user.read", &format!("user/{}", row.username))
+            {
+                return Err(Error::forbidden());
+            }
+            if !row.uncertain || !matches!(row.status, Status::Failed | Status::Stale) {
+                return Err(Error::conflict(
+                    "Only an ambiguous stale or failed deactivation can be resolved",
+                ));
+            }
+            let resolution = Resolution {
+                observed: input.observed,
+                evidence: input.evidence,
+                by: actor.id.clone(),
+                at: now(),
+            };
+            row.uncertain = false;
+            row.resolution = Some(resolution.clone());
+            tx.put(BUCKET, id, &row)?;
+            audit_with(
+                tx,
+                &actor.id,
+                "provisioner.deactivate.resolve",
+                &format!("{}/{}", row.target, row.username),
+                Some(json!({"delivery": id, "resolution": resolution})),
+            )?;
+            row_view(&row)
         })
     }
 
