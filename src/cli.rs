@@ -122,7 +122,7 @@ pub struct Cli {
     /// Fail instead of prompting for missing input
     #[arg(long, global = true)]
     pub non_interactive: bool,
-    /// Stable identifier to retry the same management mutation for up to 24 hours
+    /// Stable identifier to retry the same mutation for up to 24 hours
     #[arg(long, global = true)]
     pub idempotency_key: Option<String>,
     /// Apply a direct management mutation only at this configuration revision
@@ -1663,8 +1663,11 @@ pub async fn run(cli: Cli) -> Result<()> {
                 let credential: Value = serde_json::from_slice(&fs::read(credential_file)?)?;
                 if credential["issuer"].as_str() != Some(&remote.issuer) { bail!("Registration credential belongs to another issuer"); }
                 let input: crate::registration::RegistrationRequest = serde_json::from_slice(&fs::read(file)?)?;
-                response_json(remote.http.post(format!("{}/oauth/register", remote.issuer.trim_end_matches('/')))
-                    .bearer_auth(credential["token"].as_str().context("Missing initial access token")?).json(&input).send().await?).await?
+                let mut request = remote.http.post(format!("{}/oauth/register", remote.issuer.trim_end_matches('/')))
+                    .bearer_auth(credential["token"].as_str().context("Missing initial access token")?).json(&input);
+                if let Some(run_id) = &remote.run_id { request = request.header("x-riauth-run-id", run_id); }
+                if let Some(key) = &remote.idempotency_key { request = request.header("idempotency-key", key); }
+                response_json(request.send().await?).await?
             }
         },
         Command::Agent { command } => match command {

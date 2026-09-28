@@ -41,22 +41,14 @@ impl Core {
                 .map(|k| digest(&format!("{}\0{k}", actor.id)));
             let permissions = serde_json::to_value(&actor.permissions).map_err(Error::internal)?;
             if let Some(key) = &receipt_key
-                && let Some(receipt) = tx.get::<crate::context::Receipt>("receipts", key)?
+                && let Some(result) = crate::context::replay_receipt(
+                    tx,
+                    key,
+                    &context.as_ref().unwrap().fingerprint,
+                    &permissions,
+                )?
             {
-                if receipt.expires_at <= now() {
-                    return Err(Error::conflict(
-                        "Idempotency receipt expired; inspect state before using a new key",
-                    ));
-                }
-                if receipt.fingerprint != context.as_ref().unwrap().fingerprint {
-                    return Err(Error::conflict(
-                        "Idempotency key was used for a different request",
-                    ));
-                }
-                if receipt.permissions != permissions {
-                    return Err(Error::forbidden());
-                }
-                return Ok(receipt.result);
+                return Ok(result);
             }
             if let Some(c) = &context {
                 if actor.agent && c.revision.is_none() {
@@ -73,15 +65,12 @@ impl Core {
             }
             let result = f(tx)?;
             if let Some(key) = receipt_key {
-                tx.put(
-                    "receipts",
+                crate::context::save_receipt(
+                    tx,
                     &key,
-                    &crate::context::Receipt {
-                        fingerprint: context.unwrap().fingerprint,
-                        permissions,
-                        result: result.clone(),
-                        expires_at: now() + 86_400,
-                    },
+                    context.unwrap().fingerprint,
+                    permissions,
+                    &result,
                 )?;
             }
             Ok(result)

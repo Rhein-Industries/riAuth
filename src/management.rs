@@ -19,7 +19,9 @@ use crate::{
     error::{Error, Result},
     jose::ClientAuthMethod,
     model::{Client, Group, ProviderSettings, User},
-    registration::{RegistrationAuthority, RegistrationRequest},
+    registration::{
+        InitialAccess, RegistrationAuthority, RegistrationRequest, RegistrationTemplate,
+    },
     store::Tx,
 };
 use serde_json::{Value, json};
@@ -282,6 +284,7 @@ struct Checked {
     client: Client,
     issued: Option<String>,
     credential_change: bool,
+    other_change: bool,
 }
 
 fn write_client_as(
@@ -295,7 +298,14 @@ fn write_client_as(
         client: next,
         issued,
         credential_change,
+        other_change,
     } = check_client_as(tx, &authority, existing, next, secret)?;
+    if existing.is_some() && !other_change && !credential_change {
+        return Ok(ClientWrite {
+            client: existing.unwrap().clone(),
+            secret: None,
+        });
+    }
     if let Some(c) = existing
         && (!next.enabled
             || credential_change
@@ -404,6 +414,7 @@ fn check_client_as(
         client: next,
         issued,
         credential_change,
+        other_change,
     })
 }
 
@@ -472,6 +483,119 @@ fn require_registration_bounds(
     Ok(())
 }
 
+/// Configure bounded registration authority through the same management
+/// transaction and receipt envelope used by direct application writes.
+pub(crate) fn create_registration_template(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    template: RegistrationTemplate,
+) -> Result<Value> {
+    actor.require(
+        "registration.write",
+        &format!("registration/{}", template.id),
+    )?;
+    actor.require("client.write", "*")?;
+    validate_name(&template.id)?;
+    if !(60..=2_592_000).contains(&template.ttl)
+        || !(1..=1000).contains(&template.max_uses)
+        || template.redirect_uris.is_empty()
+        || template.auth_methods.is_empty()
+        || template.auth_methods.iter().any(|method| {
+            ![
+                "none",
+                "client_secret_basic",
+                "client_secret_post",
+                "private_key_jwt",
+            ]
+            .contains(&method.as_str())
+        })
+        || template.grant_types.is_empty()
+        || template.grant_types.iter().any(|grant| {
+            ![
+                "authorization_code",
+                "refresh_token",
+                crate::oidc::DEVICE_GRANT,
+            ]
+            .contains(&grant.as_str())
+        })
+    {
+        return Err(Error::bad(
+            "Invalid registration template limits, grants or authentication methods",
+        ));
+    }
+    // Registration cannot create machine trusts, exchange permissions or inherit keys.
+    if template.settings.exchange.is_some()
+        || !template.settings.exchange_from.is_empty()
+        || !template.settings.machine_trust.is_empty()
+        || template.settings.jwks.is_some()
+        || template.settings.token_endpoint_auth_method.is_some()
+    {
+        return Err(Error::bad(
+            "Registration templates cannot delegate machine/exchange trust or client keys",
+        ));
+    }
+    if template.settings.implicit_consent {
+        return Err(Error::bad(
+            "Registration templates cannot skip browser consent",
+        ));
+    }
+    let mut sample = Client {
+        id: "registration-validation".into(),
+        name: "Registration validation".into(),
+        secret_hash: None,
+        redirect_uris: template.redirect_uris.clone(),
+        scopes: template.scopes.clone(),
+        allowed_groups: template.allowed_groups.clone(),
+        require_mfa: template.require_mfa,
+        enabled: true,
+        service: false,
+        settings: template.settings.clone(),
+    };
+    sample.settings.allowed_grants = template.grant_types.clone();
+    validate_client(tx, &sample)?;
+    if tx
+        .get::<InitialAccess>("registrations", &template.id)?
+        .is_some()
+    {
+        return Err(Error::conflict("Registration template already exists"));
+    }
+    let credential = crypto::random_token("ri_register_");
+    let record = InitialAccess {
+        token_hash: digest(&credential),
+        created_by: actor.id.clone(),
+        creator_agent: actor.agent,
+        expires_at: now() + template.ttl,
+        used: 0,
+        enabled: true,
+        template,
+    };
+    tx.put("registrations", &record.template.id, &record)?;
+    tx.put(
+        "registration_tokens",
+        &record.token_hash,
+        &record.template.id,
+    )?;
+    audit(tx, &actor.id, "registration.create", &record.template.id)?;
+    Ok(json!({"registration": record.view(), "initial_access_token": credential}))
+}
+
+pub(crate) fn revoke_registration_template(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    id: &str,
+) -> Result<Value> {
+    actor.require("registration.write", &format!("registration/{id}"))?;
+    let mut record = tx
+        .get::<InitialAccess>("registrations", id)?
+        .ok_or_else(|| Error::missing("Template not found"))?;
+    if record.enabled {
+        record.enabled = false;
+        tx.put("registrations", id, &record)?;
+        audit(tx, &actor.id, "registration.revoke", id)?;
+    }
+    Ok(record.view())
+}
+
 /// RFC 7591 registration uses an initial access token only. Its template,
 /// current creator rights, use count, client write and audit are checked and
 /// committed in the caller's single store transaction.
@@ -481,6 +605,30 @@ pub(crate) fn register_client(
     request: RegistrationRequest,
 ) -> Result<Value> {
     let mut authority = RegistrationAuthority::for_token(tx, initial_token)?;
+    let context = crate::context::current();
+    // Keep registration receipts separate from management principal receipts.
+    // Revalidate the live token and creator before looking up a replay.
+    let receipt_key = context
+        .as_ref()
+        .and_then(|context| context.idempotency_key.as_ref())
+        .map(|key| {
+            digest(&format!(
+                "registration-token\0{}\0{key}",
+                digest(initial_token)
+            ))
+        });
+    let receipt_scope = json!({"registration": authority.id()});
+    if let Some(key) = &receipt_key
+        && let Some(result) = crate::context::replay_receipt(
+            tx,
+            key,
+            &context.as_ref().unwrap().fingerprint,
+            &receipt_scope,
+        )?
+    {
+        return Ok(result);
+    }
+    authority.require_available()?;
     let template = authority.template().clone();
     if request.redirect_uris.is_empty()
         || request
@@ -593,6 +741,15 @@ pub(crate) fn register_client(
     if let Some(secret) = secret {
         response["client_secret"] = json!(secret);
         response["client_secret_expires_at"] = json!(0);
+    }
+    if let Some(key) = receipt_key {
+        crate::context::save_receipt(
+            tx,
+            &key,
+            context.unwrap().fingerprint,
+            receipt_scope,
+            &response,
+        )?;
     }
     Ok(response)
 }

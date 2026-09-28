@@ -42,6 +42,48 @@ pub(crate) struct Receipt {
     pub(crate) result: Value,
     pub(crate) expires_at: u64,
 }
+pub(crate) fn replay_receipt(
+    tx: &Tx<'_>,
+    key: &str,
+    fingerprint: &str,
+    permissions: &Value,
+) -> Result<Option<Value>> {
+    let Some(receipt) = tx.get::<Receipt>("receipts", key)? else {
+        return Ok(None);
+    };
+    if receipt.expires_at <= now() {
+        return Err(crate::error::Error::conflict(
+            "Idempotency receipt expired; inspect state before using a new key",
+        ));
+    }
+    if receipt.fingerprint != fingerprint {
+        return Err(crate::error::Error::conflict(
+            "Idempotency key was used for a different request",
+        ));
+    }
+    if receipt.permissions != *permissions {
+        return Err(crate::error::Error::forbidden());
+    }
+    Ok(Some(receipt.result))
+}
+pub(crate) fn save_receipt(
+    tx: &Tx<'_>,
+    key: &str,
+    fingerprint: String,
+    permissions: Value,
+    result: &Value,
+) -> Result<()> {
+    tx.put(
+        "receipts",
+        key,
+        &Receipt {
+            fingerprint,
+            permissions,
+            result: result.clone(),
+            expires_at: now() + 86_400,
+        },
+    )
+}
 pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
     // Keep expired receipts as bounded tombstones for seven days, preventing accidental immediate reuse.
     for (id, receipt) in tx.maintenance_page::<Receipt>("receipts")? {

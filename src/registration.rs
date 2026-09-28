@@ -1,10 +1,10 @@
 //! RFC 7591 registration using bounded, revocable initial access tokens.
 use crate::{
-    core::{Core, audit, validate_client, validate_name},
-    crypto::{self, digest, now},
+    core::Core,
+    crypto::{digest, now},
     error::{Error, Result},
     jose::PublicJwks,
-    model::{Client, ProviderSettings},
+    model::ProviderSettings,
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
@@ -29,17 +29,17 @@ pub struct RegistrationTemplate {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct InitialAccess {
-    template: RegistrationTemplate,
-    token_hash: String,
-    created_by: String,
-    creator_agent: bool,
-    expires_at: u64,
-    used: u32,
-    enabled: bool,
+pub(crate) struct InitialAccess {
+    pub(crate) template: RegistrationTemplate,
+    pub(crate) token_hash: String,
+    pub(crate) created_by: String,
+    pub(crate) creator_agent: bool,
+    pub(crate) expires_at: u64,
+    pub(crate) used: u32,
+    pub(crate) enabled: bool,
 }
 impl InitialAccess {
-    fn view(&self) -> Value {
+    pub(crate) fn view(&self) -> Value {
         json!({"template": self.template, "created_by": self.created_by, "expires_at": self.expires_at, "used": self.used, "enabled": self.enabled})
     }
 }
@@ -60,11 +60,7 @@ impl RegistrationAuthority {
         let record = tx
             .get::<InitialAccess>("registrations", &id)?
             .filter(|r| {
-                r.template.id == id
-                    && r.token_hash == hash
-                    && r.enabled
-                    && r.expires_at > now()
-                    && r.used < r.template.max_uses
+                r.template.id == id && r.token_hash == hash && r.enabled && r.expires_at > now()
             })
             .ok_or_else(Error::unauthorized)?;
         check_creator(tx, &record)?;
@@ -79,8 +75,18 @@ impl RegistrationAuthority {
         &self.record.template.id
     }
 
+    /// A completed request may replay its receipt after the final use; new
+    /// registrations still require an available use.
+    pub(crate) fn require_available(&self) -> Result<()> {
+        if self.record.used >= self.record.template.max_uses {
+            return Err(Error::unauthorized());
+        }
+        Ok(())
+    }
+
     /// Persist use in the same transaction as the client and its audit event.
     pub(crate) fn consume(&mut self, tx: &Tx<'_>) -> Result<()> {
+        self.require_available()?;
         self.record.used += 1;
         tx.put("registrations", self.id(), &self.record)
     }
@@ -107,95 +113,8 @@ impl Core {
         template: RegistrationTemplate,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor = self.management(
-                tx,
-                token,
-                "registration.write",
-                &format!("registration/{}", template.id),
-            )?;
-            actor.require("client.write", "*")?;
-            validate_name(&template.id)?;
-            if !(60..=2_592_000).contains(&template.ttl)
-                || !(1..=1000).contains(&template.max_uses)
-                || template.redirect_uris.is_empty()
-                || template.auth_methods.is_empty()
-                || template.auth_methods.iter().any(|m| {
-                    ![
-                        "none",
-                        "client_secret_basic",
-                        "client_secret_post",
-                        "private_key_jwt",
-                    ]
-                    .contains(&m.as_str())
-                })
-                || template.grant_types.is_empty()
-                || template.grant_types.iter().any(|g| {
-                    ![
-                        "authorization_code",
-                        "refresh_token",
-                        crate::oidc::DEVICE_GRANT,
-                    ]
-                    .contains(&g.as_str())
-                })
-            {
-                return Err(Error::bad(
-                    "Invalid registration template limits, grants or authentication methods",
-                ));
-            }
-            // Registration cannot create machine trusts, exchange permissions or inherit keys.
-            if template.settings.exchange.is_some()
-                || !template.settings.exchange_from.is_empty()
-                || !template.settings.machine_trust.is_empty()
-                || template.settings.jwks.is_some()
-                || template.settings.token_endpoint_auth_method.is_some()
-            {
-                return Err(Error::bad(
-                    "Registration templates cannot delegate machine/exchange trust or client keys",
-                ));
-            }
-            if template.settings.implicit_consent {
-                return Err(Error::bad(
-                    "Registration templates cannot skip browser consent",
-                ));
-            }
-            let mut sample = Client {
-                id: "registration-validation".into(),
-                name: "Registration validation".into(),
-                secret_hash: None,
-                redirect_uris: template.redirect_uris.clone(),
-                scopes: template.scopes.clone(),
-                allowed_groups: template.allowed_groups.clone(),
-                require_mfa: template.require_mfa,
-                enabled: true,
-                service: false,
-                settings: template.settings.clone(),
-            };
-            sample.settings.allowed_grants = template.grant_types.clone();
-            validate_client(tx, &sample)?;
-            if tx
-                .get::<InitialAccess>("registrations", &template.id)?
-                .is_some()
-            {
-                return Err(Error::conflict("Registration template already exists"));
-            }
-            let credential = crypto::random_token("ri_register_");
-            let record = InitialAccess {
-                token_hash: digest(&credential),
-                created_by: actor.id.clone(),
-                creator_agent: actor.agent,
-                expires_at: now() + template.ttl,
-                used: 0,
-                enabled: true,
-                template,
-            };
-            tx.put("registrations", &record.template.id, &record)?;
-            tx.put(
-                "registration_tokens",
-                &record.token_hash,
-                &record.template.id,
-            )?;
-            audit(tx, &actor.id, "registration.create", &record.template.id)?;
-            Ok(json!({"registration": record.view(), "initial_access_token": credential}))
+            let actor = self.principal(tx, token)?;
+            crate::management::create_registration_template(tx, &actor, template)
         })
     }
     pub fn registration_templates(&self, token: &str) -> Result<Value> {
@@ -215,19 +134,8 @@ impl Core {
     }
     pub fn revoke_registration(&self, token: &str, id: &str) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor = self.management(
-                tx,
-                token,
-                "registration.write",
-                &format!("registration/{id}"),
-            )?;
-            let mut record = tx
-                .get::<InitialAccess>("registrations", id)?
-                .ok_or_else(|| Error::missing("Template not found"))?;
-            record.enabled = false;
-            tx.put("registrations", id, &record)?;
-            audit(tx, &actor.id, "registration.revoke", id)?;
-            Ok(record.view())
+            let actor = self.principal(tx, token)?;
+            crate::management::revoke_registration_template(tx, &actor, id)
         })
     }
     pub fn dynamic_register(
