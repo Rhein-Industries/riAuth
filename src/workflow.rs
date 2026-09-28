@@ -1,18 +1,17 @@
-//! Canonical typed, versioned workflow definitions.
+//! Canonical typed, versioned workflow definitions and durable execution.
 //!
 //! The W01 definition model and W03 completion seam describe authentication,
-//! enrollment, recovery, consent and sensitive-action journeys. This module
-//! imports no Core, storage or protocol module and executes nothing. A later
-//! executor consumes only [`Validated`] definitions; see `docs/workflows.md`.
+//! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
+//! consumes only [`Validated`] definitions and currently exposes a local-password
+//! path for live bearer sessions; see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
 
 mod essentials;
-// W02 will connect this checked seam to its durable executor.
-#[allow(dead_code)]
 pub(crate) mod evidence;
+pub mod executor;
 mod validate;
 
 pub use essentials::{builtin, defaults};

@@ -7,6 +7,7 @@ mod interaction;
 mod observability;
 mod probes;
 mod rates;
+mod workflow;
 use observability::{Permits, Stats, metrics, observe, prometheus};
 #[doc(hidden)]
 pub use rates::RateTable;
@@ -172,6 +173,7 @@ pub fn router(core: Core) -> Router {
         .merge(crate::portal::http::routes())
         .merge(crate::bootstrap::closed_routes())
         .merge(interaction::routes())
+        .merge(workflow::routes())
         .route("/scim/v2/ServiceProviderConfig", get(||async{crate::scim::response(crate::scim::metadata("ServiceProviderConfig"),StatusCode::OK)}))
         .route("/scim/v2/ResourceTypes", get(||async{crate::scim::response(crate::scim::metadata("ResourceTypes"),StatusCode::OK)}))
         .route("/scim/v2/Schemas", get(||async{crate::scim::response(crate::scim::metadata("Schemas"),StatusCode::OK)}))
@@ -536,6 +538,7 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         | "/api/windows-devices/login"
         | "/api/windows-devices/tickets/redeem"
         | "/api/windows-devices/offline/verify" => ("login", 20),
+        path if path.starts_with("/api/workflows/") && path.ends_with("/password") => ("login", 20),
         path if path.starts_with("/api/passkey/") => ("passkey", 30),
         path if path.starts_with("/api/account/") || path.starts_with("/api/portal/account/") => {
             ("account", 10)

@@ -1,12 +1,13 @@
 # Workflow definition model
 
-Status: **W01 model with a W03 proof provenance seam.** This page describes the
-canonical data model and static validation in [workflow.rs](../src/workflow.rs),
-plus the bounded completion checks for a recorded run. No request path, runtime
-store, management endpoint, executor or editor uses it yet. The existing sign-in,
-enrollment, recovery, consent and source-stage code paths are unchanged. Nothing
-here enables configurable workflows, and it is not evidence of the P01 Platform
-capability or of an Essentials/Platform build split.
+Status: **W01 model, W03 proof provenance, and a limited W02 executor path.**
+The server now persists bounded runs, attempts, requests and evidence, and exposes
+an Essentials password reauthentication workflow for a live bearer session. It
+uses the existing local password verifier and finalizes through the W03 store
+boundary. It does not yet complete an OIDC sign-in transaction or issue a new
+session, and other built-in verifier actions remain unconnected. The existing
+sign-in, enrollment, recovery, consent and source-stage paths are unchanged.
+Nothing here enables configurable workflows or the P01 Platform capability.
 
 ## Scope
 
@@ -169,29 +170,26 @@ not require a revision increase.
 
 These are not implemented or established by this slice:
 
-* Running definitions, persisting runs or evidence, or connecting to today's
-  sign-in, passkey, lifecycle, consent and source-stage paths (W02). The defaults
-  describe target journeys. Parity with existing endpoint behavior has not been
-  checked. The W03 completion store is a model boundary, not a production store
-  adapter or a second credential verifier.
+* Connecting the remaining verifier actions and existing OIDC/browser sign-in,
+  passkey, lifecycle, consent and source-stage paths. The current W02 endpoint
+  covers only local-password reauthentication for a live bearer session; it
+  neither consumes an OIDC request nor issues a session. Endpoint parity has not
+  been checked.
 * An atomic credential-mutation receipt/finalization protocol for enrollment and
   password reset across account epoch E to E+1, including passkey enrollment's
   session revocation. Until then these success outcomes remain blocked. A
   denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Runtime enforcement of attempt counters, cancellation and expiry, source and
-  stage state, invitation acceptance never adding a credential to an existing
-  identity, and rejecting passwords for upstream-only accounts. W02 must obtain
-  evidence only after the existing credential verifiers succeed, bind it when
-  written, and check account/session liveness, epoch, request identity,
-  verifier-specific expiry and single-use state again inside the completing
-  transaction. It must record step timing and enforce step timeout semantics.
+* Runtime source and stage state, invitation acceptance, and the other built-in
+  verifiers. The password path now stores attempt timing, enforces retry and run
+  bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
+  account, session, request and receipt authority in its final transaction.
 * Binding runs to their security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. It does not cover the `Environment`
   (active sources, stage registrations and permissions) or any approval record
   that RI-WF-002 requires.
-* End-to-end invariant and race tests for RI-WF-001/002 and Q02-C07/Q05-R01
-  against the future executor and both durable backends. W03 model tests exercise
-  its completion boundary but cannot establish runtime integration.
+* End-to-end invariant and race tests for the remaining verifier integrations
+  and both durable backends. The focused password path is covered on the local
+  store; PostgreSQL has not been exercised for this executor slice.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

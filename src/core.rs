@@ -865,6 +865,8 @@ impl Core {
         self.store.write(crate::context::cleanup)?;
         self.store.write(|tx| crate::browser::cleanup(tx, at))?;
         self.store.write(|tx| crate::portal::cleanup(tx, at))?;
+        self.store
+            .write(|tx| crate::workflow::executor::cleanup(tx, at))?;
         self.store.write(|tx| crate::pam::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::identity::logout_queue::cleanup(tx, at))?;
