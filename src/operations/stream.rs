@@ -626,6 +626,16 @@ fn open(path: &Path) -> Result<BufReader<std::fs::File>> {
     ))
 }
 
+/// Length of an archive's plaintext preamble: `MAGIC || stream_id`.
+pub const PREAMBLE_BYTES: usize = MAGIC.len() + 16;
+
+/// The stream ID of an archive, from its first [`PREAMBLE_BYTES`], in the
+/// encoding of [`StreamSummary::stream_id`]. It authenticates nothing.
+pub fn preamble_stream_id(preamble: &[u8]) -> Option<String> {
+    let stream_id = preamble.strip_prefix(MAGIC.as_slice())?.get(..16)?;
+    Some(URL_SAFE_NO_PAD.encode(stream_id))
+}
+
 /// A v3 archive that authenticated completely, with the issuer it restores.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct VerifiedArchive {

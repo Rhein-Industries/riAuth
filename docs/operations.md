@@ -281,9 +281,22 @@ accepts no data for `stall_timeout_seconds`, when it is still running after
 The export holds a redb read transaction or a PostgreSQL `REPEATABLE READ`
 transaction and pooled connection for its whole duration. A
 failure after the response started aborts the body instead of ending it, and
-the partial archive has no trailer, which verification and restore reject. The
-server logs the start of each export's transfer, its progress every 10 seconds,
-and its completion (stream ID, frames, records, bytes) or abort reason.
+the partial archive has no trailer, which verification and restore reject. On
+shutdown the server also drops archive bytes still queued for the client.
+
+Every export that passes authorization records durable audit events for its
+actor with target `backup/<stream ID>`. `operations.backup.started` is committed
+before the response begins; if it cannot be recorded, the export is refused.
+Exactly one terminal event follows: `operations.backup.completed` (frames,
+records, bytes, transcript) only after every archive byte, trailer included,
+was handed to the connection; otherwise `operations.backup.cancelled` (client
+disconnected or stopped reading, deadline, shutdown) or `operations.backup.failed`
+(for example the quota), each with the reason and the bytes handed over. An
+export that finished sealing while its response was cut short is recorded as
+cancelled, not completed; only the client's verification confirms receipt.
+Details never contain the backup key or a credential. Audit events are written
+in their own transactions, so the exported snapshot never contains them. The
+server also logs each event and the export's progress every 10 seconds.
 
 Server quotas live in an optional `[backup]` table; put it after all top-level keys:
 

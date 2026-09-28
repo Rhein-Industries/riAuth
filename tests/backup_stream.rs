@@ -1291,3 +1291,117 @@ async fn http_stream_shutdown_cancels_export_and_restart_serves_again() {
     .unwrap();
     assert_eq!(verified.summary.bytes, bytes.len() as u64);
 }
+
+/// Every started export leaves a durable `started` event and exactly one
+/// terminal event for its actor and stream ID. A response cut short, here a
+/// small archive already queued when its server shuts down, is recorded as
+/// cancelled and never as completed; a whole archive is recorded as completed
+/// with the size and transcript the client verifies. No event holds the key.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_stream_audit_records_completion_only_for_a_whole_archive() {
+    use axum::{
+        Extension,
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use riauth::{api::Shutdown, model::Audit, operations::stream::preamble_stream_id};
+    use std::time::Duration;
+    use tower::ServiceExt;
+
+    let seed = Seed::new(0);
+    let core = seed.fixture.core.clone();
+    let key = riauth::crypto::random_token("");
+    let admin = seed.fixture.admin.clone();
+    let request = || {
+        Request::post("/api/operations/backup/stream")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {admin}"))
+            .body(Body::from(
+                serde_json::json!({"encryption_key": key}).to_string(),
+            ))
+            .unwrap()
+    };
+    let server =
+        |shutdown: &Shutdown| riauth::api::router(core.clone()).layer(Extension(shutdown.clone()));
+    let events = |stream_id: &str| {
+        let target = format!("backup/{stream_id}");
+        let mut events: Vec<Audit> = core
+            .store
+            .list::<Audit>("audit")
+            .unwrap()
+            .into_iter()
+            .map(|(_, event)| event)
+            .filter(|event| event.target == target)
+            .collect();
+        events.sort_by(|a, b| a.action.cmp(&b.action));
+        events
+    };
+    let actions = |events: &[Audit]| {
+        events
+            .iter()
+            .map(|event| event.action.clone())
+            .collect::<Vec<_>>()
+    };
+
+    let stopping = Shutdown::default();
+    let mut cut = server(&stopping).oneshot(request()).await.unwrap();
+    assert_eq!(cut.status(), StatusCode::OK);
+    let mut preamble = Vec::new();
+    while preamble.len() < 32 {
+        let frame = cut.body_mut().frame().await.unwrap().unwrap();
+        preamble.extend_from_slice(&frame.into_data().unwrap());
+    }
+    let cut_id = preamble_stream_id(&preamble).unwrap();
+    // The small export finishes queueing its whole archive meanwhile.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    stopping.begin();
+    assert!(cut.into_body().collect().await.is_err());
+    let cut_events = events(&cut_id);
+    assert_eq!(
+        actions(&cut_events),
+        ["operations.backup.cancelled", "operations.backup.started"]
+    );
+    assert_eq!(cut_events[0].details["reason"], "server is shutting down");
+
+    let whole = server(&Shutdown::default())
+        .oneshot(request())
+        .await
+        .unwrap();
+    assert_eq!(whole.status(), StatusCode::OK);
+    let bytes = whole.into_body().collect().await.unwrap().to_bytes();
+    let directory = tempfile::tempdir().unwrap();
+    let key_path = key_file(directory.path(), "audited", &key);
+    let verified = riauth::operations::stream::verify_file(
+        &archive(directory.path(), "audited", &bytes),
+        &riauth::crypto::read_key(&key_path).unwrap(),
+        StreamOptions::default(),
+    )
+    .unwrap();
+    let whole_events = events(&verified.summary.stream_id);
+    assert_eq!(
+        actions(&whole_events),
+        ["operations.backup.completed", "operations.backup.started"]
+    );
+    let admin_id = core
+        .store
+        .get::<String>("usernames", "admin")
+        .unwrap()
+        .unwrap();
+    assert!(
+        whole_events
+            .iter()
+            .chain(&cut_events)
+            .all(|event| event.actor == admin_id)
+    );
+    assert_eq!(whole_events[0].details["bytes"], bytes.len() as u64);
+    assert_eq!(
+        whole_events[0].details["transcript"],
+        verified.summary.transcript
+    );
+    let audit = serde_json::to_string(&core.store.list::<Value>("audit").unwrap()).unwrap();
+    assert!(
+        !audit.contains(key.as_str()),
+        "an audit event holds the backup key"
+    );
+}
