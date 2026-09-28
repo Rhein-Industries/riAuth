@@ -655,6 +655,10 @@ struct SortSpec {
     descending: bool,
 }
 
+// Non-id sorts keep a Record and its effective JSON sort view per candidate.
+// Roughly four maximum-sized pages bound that retained set independently of offset.
+const MAX_SORT_CANDIDATES: usize = 4096;
+
 fn parse_sort(kind: &str, by: Option<&str>, order: Option<&str>) -> Result<Option<SortSpec>> {
     let Some(by) = by else {
         if order.is_some() {
@@ -1302,6 +1306,11 @@ impl Core {
             } else {
                 start.saturating_sub(1).saturating_add(count)
             };
+            if !store_order && sort_window > MAX_SORT_CANDIDATES {
+                return Err(Error::bad(format!(
+                    "Non-id SCIM sort requires at most {MAX_SORT_CANDIDATES} candidates (startIndex - 1 + count); reduce the page range or sortBy=id"
+                )));
+            }
             let mut total = 0;
             let mut page_records = Vec::new();
             let mut sorted_records = BinaryHeap::new();

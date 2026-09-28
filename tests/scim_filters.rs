@@ -293,3 +293,65 @@ async fn scim_sort_is_scoped_stable_and_shared_by_list_and_search() {
         assert_eq!(error["scimType"], "invalidValue");
     }
 }
+
+#[tokio::test]
+async fn scim_non_id_sort_window_rejects_deep_pages_before_scan() {
+    use std::sync::atomic::Ordering;
+
+    let f = Fixture::new();
+    let owner = f.core.create_agent(&f.admin, NewAgent {
+        id: "bounded-sort-owner".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write", "group.read", "group.write", "group.members"]
+            .map(|action| Permission { action: action.into(), resource: "*".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&owner["credential"], "token");
+    let mut expected = Vec::new();
+    for (username, display) in [
+        ("bounded-z", "Zulu"),
+        ("bounded-a", "Alpha"),
+        ("bounded-b", "alpha"),
+    ] {
+        let resource = f.core.scim_write(&token, "Users", None, json!({
+            "schemas": [scim::USER], "userName": username, "displayName": display
+        }), false).unwrap();
+        expected.push((display.to_lowercase(), text(&resource, "id")));
+    }
+    expected.sort();
+    let app = riauth::api::router(f.core.clone());
+
+    let (status, ordinary) = listed(&app, &token, "Users", None, Some("displayName"), None, 1, 2, false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ordinary["totalResults"], 3);
+    assert_eq!(ordinary["itemsPerPage"], 2);
+    for (index, resource) in ordinary["Resources"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(resource["id"], expected[index].1);
+        assert_eq!(*resource, f.core.scim_get(&token, "Users", &expected[index].1).unwrap());
+    }
+
+    // The maximum candidate window is accepted even when the page is beyond
+    // the total. The next offset must fail without scanning the SCIM bucket.
+    let (status, near_limit) = listed(&app, &token, "Users", None, Some("displayName"), None, 4096, 1, false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(near_limit["totalResults"], 3);
+    assert_eq!(near_limit["startIndex"], 4096);
+    assert_eq!(near_limit["itemsPerPage"], 0);
+
+    for (start, count) in [(4097, 1), (4096, 2)] {
+        for post in [false, true] {
+            let before = f.core.store.telemetry().scanned_records.load(Ordering::Relaxed);
+            let (status, error) = listed(&app, &token, "Users", None, Some("displayName"), None, start, count, post).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(error["scimType"], "invalidValue");
+            assert!(error["detail"].as_str().unwrap().contains("4096 candidates"));
+            assert_eq!(f.core.store.telemetry().scanned_records.load(Ordering::Relaxed), before);
+        }
+    }
+
+    let (status, id_page) = listed(&app, &token, "Users", None, Some("id"), Some("descending"), 4097, 1, false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(id_page["totalResults"], 3);
+    assert_eq!(id_page["itemsPerPage"], 0);
+}
