@@ -4,7 +4,7 @@ mod common;
 use common::{Fixture, text};
 use riauth::{
     crypto::{self, digest, now},
-    model::{Code, Session},
+    model::{AuthenticationTransaction, Code, Session},
     workflow::{self, ConfiguredWorkflow, Id, Origin, Outcome, Proof, RunState},
 };
 use serde_json::{Value, json};
@@ -252,4 +252,139 @@ fn configured_consent_requires_prepared_explicit_one_use_decision() {
             .is_err()
     );
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+}
+
+#[test]
+fn ordinary_prepared_decision_spends_consent_authority_even_without_transaction_id() {
+    let mut f = Fixture::new();
+    f.core.config.workflows.insert(
+        "local-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: consent_definition(),
+        },
+    );
+    f.core.config.validate().unwrap();
+    f.client("app", false);
+    let alice = f.user("ordinary-consent");
+    let prepare = |request: &mut riauth::oidc::Authorization| {
+        request.decision = None;
+        let prepared = f
+            .core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap();
+        assert_eq!(prepared["reauthentication_required"], false);
+        request.transaction_id = Some(text(&prepared, "transaction_id"));
+    };
+
+    let mut request = f.request("app", &crypto::random_token(""));
+    prepare(&mut request);
+    let authentication = digest(request.transaction_id.as_deref().unwrap());
+    let mut invalid = request.clone();
+    invalid.decision = Some("invalid".into());
+    assert!(f.core.authorize(&alice, invalid).is_err());
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &authentication)
+            .unwrap()
+            .is_some(),
+        "a rejected decision leaves the prepared request retryable"
+    );
+    let mut approve = request.clone();
+    approve.decision = Some("approve".into());
+    assert!(
+        f.core
+            .authorize(&alice, approve.clone())
+            .unwrap()
+            .contains("code=")
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &authentication)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", request.clone())
+            .is_err()
+    );
+    assert_eq!(
+        f.core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        f.core.authorize(&alice, approve.clone()).unwrap_err().code,
+        "conflict"
+    );
+    approve.transaction_id = None;
+    assert_eq!(
+        f.core.authorize(&alice, approve).unwrap_err().code,
+        "conflict"
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let mut omitted = f.request("app", &crypto::random_token(""));
+    prepare(&mut omitted);
+    let omitted_key = digest(omitted.transaction_id.as_deref().unwrap());
+    let mut ordinary = omitted.clone();
+    ordinary.decision = Some("approve".into());
+    ordinary.transaction_id = None;
+    assert!(
+        f.core
+            .authorize(&alice, ordinary)
+            .unwrap()
+            .contains("code=")
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &omitted_key)
+            .unwrap()
+            .is_some(),
+        "omitting the ID leaves the row, so the decision tombstone must block it"
+    );
+    assert_eq!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", omitted)
+            .unwrap_err()
+            .code,
+        "conflict",
+        "omitting the transaction ID cannot leave a prepared consent grant"
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
+
+    let mut denied = f.request("app", &crypto::random_token(""));
+    prepare(&mut denied);
+    let denied_key = digest(denied.transaction_id.as_deref().unwrap());
+    let mut ordinary_denial = denied.clone();
+    ordinary_denial.decision = Some("deny".into());
+    assert!(
+        f.core
+            .authorize(&alice, ordinary_denial)
+            .unwrap()
+            .contains("access_denied")
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &denied_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "local-consent", denied)
+            .is_err()
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
+
+    let direct = f.request("app", &crypto::random_token(""));
+    assert!(f.core.authorize(&alice, direct).unwrap().contains("code="));
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 3);
 }

@@ -852,6 +852,7 @@ impl Core {
         self.store.write(|tx| crate::state::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::authorization::cleanup(tx, at))?;
+        self.store.write(|tx| crate::assembly::cleanup_decided(tx, at))?;
         self.store
             .write(|tx| crate::session_protocol::cleanup(tx, at))?;
         self.store.write(|tx| crate::source::cleanup(tx, at))?;

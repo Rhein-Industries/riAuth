@@ -120,6 +120,7 @@ pub const REPLAY_CACHES: &[&str] = &[
     // Used/revoked account-proof tombstones preserve useful replay outcomes.
     "account_proof_outcomes",
     "assertion_replays",
+    "authorization_decisions",
     "dpop_replays",
     "saml_replays",
     "saml_source_replays",

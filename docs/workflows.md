@@ -318,7 +318,8 @@ requests needing reauthentication, silent or account-selection prompts, browser
 bindings and embedded source stages. With the same bearer, send
 `{"approve":true}` or `{"approve":false}` to
 `POST /api/workflows/{id}/consent`. `GET /api/workflows/{id}` resumes the run;
-`POST /api/workflows/{id}/cancel` cancels it. The final view's
+`POST /api/workflows/{id}/cancel` cancels only an active, cancellable step. The
+final view's
 `authorization_response` contains the existing issuer's code callback on
 approval or denial callback without a code.
 
@@ -327,9 +328,10 @@ client, prepared transaction, workflow request, run and definition. It emits
 session proof from the live session; only the explicit approval emits consent
 proof. Completion consumes the one-use transaction and bound receipts in the
 same write as the existing issuer's response. Ordinary authorization cannot use
-a reserved request, even without its transaction ID. Expiry and cancellation
-discard the pending transaction; completed and closed runs retain replay
-protection. No new session or remembered consent grant is created. Browser and
+a reserved request, even without its transaction ID; an ordinary decision made
+first also prevents that preparation's later consent reservation. Expiry and
+cancellation discard the pending transaction; completed and closed runs retain
+replay protection. No new session or remembered consent grant is created. Browser and
 remembered-consent adapters are not connected.
 
 ## Downstream OIDC completion

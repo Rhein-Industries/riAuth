@@ -94,6 +94,7 @@ pub(super) fn bind(
     {
         return Err(Error::forbidden());
     }
+    crate::assembly::reject_decided(tx, request)?;
     authorization::reject_reserved(tx, request)?;
     let expires_at = authority
         .expires_at

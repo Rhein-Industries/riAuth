@@ -15,9 +15,52 @@ use crate::{
 };
 use axum::http::StatusCode;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
+
+const AUTHORIZATION_DECISIONS: &str = "authorization_decisions";
+// Prepared terminal transactions live 600 seconds. Keep each decision at least
+// that long so an omitted transaction ID cannot revive an earlier preparation.
+const DECISION_RETAIN_SECONDS: u64 = 600;
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DecidedRequest {
+    expires_at: u64,
+}
+
+/// A prepared request must not be completed through one path and then bound to
+/// another, including when ordinary authorization omits its transaction ID.
+pub(crate) fn reject_decided(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
+    if tx
+        .get::<DecidedRequest>(AUTHORIZATION_DECISIONS, &request.request_hash()?)?
+        .is_some_and(|record| record.expires_at > now())
+    {
+        return Err(Error::conflict("Authorization request already decided"));
+    }
+    Ok(())
+}
+
+fn record_decision(tx: &Tx<'_>, request_hash: &str) -> Result<()> {
+    tx.put(
+        AUTHORIZATION_DECISIONS,
+        request_hash,
+        &DecidedRequest {
+            expires_at: now().saturating_add(DECISION_RETAIN_SECONDS),
+        },
+    )
+}
+
+pub(crate) fn cleanup_decided(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (key, record) in tx.maintenance_page::<DecidedRequest>(AUTHORIZATION_DECISIONS)? {
+        if record.expires_at <= at {
+            tx.delete(AUTHORIZATION_DECISIONS, &key)?;
+        }
+    }
+    Ok(())
+}
 
 impl OidcTx for Tx<'_> {
     fn client(&self, id: &str) -> Result<Option<Client>> {
@@ -229,6 +272,7 @@ impl Core {
     ) -> Result<Value> {
         self.store.write(|tx| {
             let (client, scopes) = validate_authorization(tx, &request)?;
+            reject_decided(tx, &request)?;
             if request.has_prompt("none") {
                 return Err(Error::oauth("login_required", "Terminal authentication and consent are required"));
             }
@@ -403,6 +447,8 @@ impl Core {
             return Err(Error::unauthorized());
         }
         let (client, scopes) = validate_authorization(tx, &request)?;
+        reject_decided(tx, &request)?;
+        let request_hash = request.request_hash()?;
         crate::source::enforce_pending_stage(tx, &request, &session)?;
         if request.has_prompt("none") && !remembered {
             return Err(Error::oauth(
@@ -410,21 +456,31 @@ impl Core {
                 "Explicit terminal consent is required",
             ));
         }
-        if request.decision.as_deref() != Some("deny")
-            && needs_reauthentication(&client, &request, &session.identity)
-        {
+        let needs_proof = request.decision.as_deref() != Some("deny")
+            && needs_reauthentication(&client, &request, &session.identity);
+        // A supplied terminal transaction is one-use even without a freshness
+        // requirement. Browser proofs remain optional when freshness is not needed.
+        if needs_proof || request.transaction_id.is_some() {
             let key = proof_key.ok_or_else(|| {
                 Error::oauth("login_required", "Complete request-bound reauthentication")
             })?;
             let challenge = tx
                 .get::<AuthenticationTransaction>("authentication", key)?
                 .filter(|c| {
-                    c.expires_at > now() && c.authenticated_session.as_deref() == Some(&session.id)
+                    c.expires_at > now()
+                        && c.user_id
+                            .as_ref()
+                            .is_none_or(|id| id == &session.identity.user_id)
+                        && c.authenticated_session
+                            .as_ref()
+                            .is_none_or(|id| id == &session.id)
+                        && (!needs_proof
+                            || c.authenticated_session.as_deref() == Some(&session.id))
                 })
                 .ok_or_else(|| {
                     Error::oauth("login_required", "Complete request-bound reauthentication")
                 })?;
-            if challenge.request_hash != request.request_hash()? {
+            if challenge.request_hash != request_hash {
                 return Err(Error::bad(
                     "Authentication transaction belongs to another request",
                 ));
@@ -507,6 +563,7 @@ impl Core {
                 }
             }
         }
+        record_decision(tx, &request_hash)?;
         self.secure_authorization_response(
             tx,
             &client,
@@ -546,7 +603,10 @@ impl Core {
         request: &Authorization,
         actor: &str,
     ) -> Result<String> {
+        #[cfg(feature = "platform")]
+        crate::workflow::executor::authorization::reject_reserved(tx, request)?;
         let (client, _) = validate_authorization(tx, request)?;
+        reject_decided(tx, request)?;
         let mut redirect = url::Url::parse(&request.redirect_uri)
             .map_err(|_| Error::bad("Invalid redirect URI"))?;
         {
@@ -562,6 +622,7 @@ impl Core {
         }
         crate::authorization::consume(tx, request)?;
         audit(tx, actor, "authorization.denied", &client.id)?;
+        record_decision(tx, &request.request_hash()?)?;
         self.secure_authorization_response(
             tx,
             &client,
