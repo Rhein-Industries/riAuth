@@ -1417,6 +1417,27 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
         )
         .unwrap();
     let credential = text(&result, "initial_access_token");
+    assert_eq!(
+        f.core
+            .create_client(
+                &credential,
+                NewClient {
+                    client_id: "unbounded".into(),
+                    name: "Unbounded".into(),
+                    confidential: false,
+                    redirect_uris: vec![],
+                    scopes: strings(&["openid"]),
+                    allowed_groups: Default::default(),
+                    require_mfa: false,
+                    service: false,
+                    settings: Default::default(),
+                },
+            )
+            .unwrap_err()
+            .status
+            .as_u16(),
+        401
+    );
     let mut request = RegistrationRequest {
         redirect_uris: vec!["https://evil.example.test/callback".into()],
         token_endpoint_auth_method: Some("private_key_jwt".into()),
@@ -1440,6 +1461,21 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
             .code,
         "invalid_client_metadata"
     );
+    let before = f.snapshot().unwrap();
+    let mut missing_key = request.clone();
+    missing_key.jwks = None;
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, missing_key)
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
     let out = f
         .core
         .dynamic_register(&credential, request.clone())
@@ -1453,6 +1489,19 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
         .unwrap()
         .unwrap();
     assert!(c.confidential());
+    let registrations: Vec<_> = f
+        .core
+        .audit_events(&f.admin, 100)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "client.register")
+        .cloned()
+        .collect();
+    assert_eq!(registrations.len(), 1);
+    assert_eq!(registrations[0]["actor"], "registration:test");
+    assert_eq!(registrations[0]["target"], out["client_id"]);
     assert!(
         f.core
             .dynamic_register(&credential, request.clone())
@@ -1475,6 +1524,151 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     );
     let plans = f.core.registration_templates(&f.admin).unwrap();
     assert!(!plans.to_string().contains(&credential));
+}
+
+#[test]
+fn service_type_is_consistent_across_direct_and_manifest_writes() {
+    use riauth::state::{ApplyRequest, Manifest};
+
+    let f = Fixture::new();
+    let direct = f
+        .core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "direct-service".into(),
+                name: "Direct service".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["api.read"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: true,
+                settings: Default::default(),
+            },
+        )
+        .unwrap();
+    assert_eq!(direct["client"]["confidential"], true);
+    assert!(direct["client_secret"].is_string());
+
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": "manifest-service",
+            "name": "Manifest service",
+            "service": true,
+            "scopes": ["api.read"],
+            "secret_ref": "env:SERVICE_SECRET",
+            "secret_version": "v1"
+        }]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&f.admin, manifest.clone()).unwrap();
+    assert_eq!(plan.changes.len(), 1);
+    f.core
+        .apply_state(
+            &f.admin,
+            ApplyRequest {
+                plan,
+                secrets: [("env:SERVICE_SECRET".into(), "s".repeat(40))].into(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    let stored: Client = f
+        .core
+        .store
+        .get("clients", "manifest-service")
+        .unwrap()
+        .unwrap();
+    assert!(stored.service && stored.confidential());
+    assert!(
+        f.core
+            .plan_state(&f.admin, manifest)
+            .unwrap()
+            .changes
+            .is_empty()
+    );
+}
+
+#[test]
+fn manifest_rotation_permission_precedes_secret_resolution() {
+    use riauth::{
+        agent::Agent,
+        state::{ApplyRequest, Manifest},
+    };
+
+    let f = Fixture::new();
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "rotation-target".into(),
+                name: "Rotation target".into(),
+                confidential: true,
+                redirect_uris: vec![],
+                scopes: strings(&["openid"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: Default::default(),
+            },
+        )
+        .unwrap();
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            riauth::agent::NewAgent {
+                id: "rotation-manager".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: ["client.write", "client.rotate"]
+                    .into_iter()
+                    .map(|action| riauth::agent::Permission {
+                        action: action.into(),
+                        resource: "client/rotation-target".into(),
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap();
+    let token = text(&created["credential"], "token");
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": "rotation-target",
+            "name": "Rotation target",
+            "confidential": true,
+            "scopes": ["openid"],
+            "secret_ref": "env:MISSING",
+            "secret_version": "v2"
+        }]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&token, manifest).unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent: Agent = tx.get("agents", "rotation-manager")?.unwrap();
+            agent.permissions.retain(|p| p.action != "client.rotate");
+            tx.put("agents", "rotation-manager", &agent)
+        })
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &token,
+            ApplyRequest {
+                plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 403);
+    f.assert_snapshot(&before);
 }
 
 #[test]

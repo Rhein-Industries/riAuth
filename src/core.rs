@@ -595,7 +595,11 @@ impl Core {
                 "client.write",
                 &format!("client/{}", input.client_id),
             )?;
-            let secret = if input.confidential || input.service {
+            let secret = if crate::management::effective_confidential(
+                input.confidential,
+                input.service,
+                &input.settings,
+            ) {
                 crate::management::Secret::Issue
             } else {
                 crate::management::Secret::Keep

@@ -610,19 +610,22 @@ fn reconcile(
         let resource = format!("client/{}", spec.client_id);
         actor.require("client.write", &resource)?;
         let existing = tx.get::<Client>("clients", &spec.client_id)?;
-        if spec.service && !spec.confidential {
-            return Err(Error::bad("Service clients must be confidential"));
-        }
+        let confidential = crate::management::effective_confidential(
+            spec.confidential,
+            spec.service,
+            &spec.settings,
+        );
         let before = existing
             .as_ref()
             .map(|c| value(&client_spec(c)))
             .transpose()?
             .unwrap_or(Value::Null);
         let mut clean = spec.clone();
+        clean.confidential = confidential;
         clean.secret_ref = None;
         clean.secret_version = None;
         let after = value(&clean)?;
-        let secret_change = spec.confidential
+        let secret_change = confidential
             && spec.settings.token_endpoint_auth_method
                 != Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
             && (existing.is_none() || changed_secret(tx, &resource, &spec.secret_version)?);
@@ -632,6 +635,9 @@ fn reconcile(
         let credential_change = secret_change || auth_change;
         if before == after && !credential_change {
             continue;
+        }
+        if credential_change && existing.is_some() {
+            actor.require("client.rotate", &resource)?;
         }
         let supplied = if secret_change {
             if spec.secret_ref.is_none() {
@@ -672,10 +678,10 @@ fn reconcile(
             supplied,
             crate::management::Record::Plan,
         )?;
-        // The shared write kept the stored type; the manifest must declare it too.
+        // The declared type is normalized by the same rule as direct create.
         if existing
             .as_ref()
-            .is_some_and(|c| c.confidential() != spec.confidential)
+            .is_some_and(|c| c.confidential() != confidential)
         {
             return Err(Error::bad("Existing client type is immutable"));
         }

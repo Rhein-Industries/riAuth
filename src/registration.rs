@@ -3,7 +3,7 @@ use crate::{
     core::{Core, audit, validate_client, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    jose::{ClientAuthMethod, PublicJwks},
+    jose::PublicJwks,
     model::{Client, ProviderSettings},
     store::Tx,
 };
@@ -44,6 +44,48 @@ impl InitialAccess {
     }
 }
 
+/// Proof that an initial access token is live and its issuing authority still
+/// holds registration rights. This is deliberately separate from an agent or
+/// management principal: the token never acquires `client.write`.
+pub(crate) struct RegistrationAuthority {
+    record: InitialAccess,
+}
+
+impl RegistrationAuthority {
+    pub(crate) fn for_token(tx: &Tx<'_>, token: &str) -> Result<Self> {
+        let hash = digest(token);
+        let id = tx
+            .get::<String>("registration_tokens", &hash)?
+            .ok_or_else(Error::unauthorized)?;
+        let record = tx
+            .get::<InitialAccess>("registrations", &id)?
+            .filter(|r| {
+                r.template.id == id
+                    && r.token_hash == hash
+                    && r.enabled
+                    && r.expires_at > now()
+                    && r.used < r.template.max_uses
+            })
+            .ok_or_else(Error::unauthorized)?;
+        check_creator(tx, &record)?;
+        Ok(Self { record })
+    }
+
+    pub(crate) fn template(&self) -> &RegistrationTemplate {
+        &self.record.template
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.record.template.id
+    }
+
+    /// Persist use in the same transaction as the client and its audit event.
+    pub(crate) fn consume(&mut self, tx: &Tx<'_>) -> Result<()> {
+        self.record.used += 1;
+        tx.put("registrations", self.id(), &self.record)
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegistrationRequest {
@@ -56,10 +98,6 @@ pub struct RegistrationRequest {
     pub application_type: Option<String>,
     pub jwks: Option<PublicJwks>,
     pub post_logout_redirect_uris: Option<Vec<String>>,
-}
-
-fn metadata(message: &str) -> Error {
-    Error::oauth("invalid_client_metadata", message)
 }
 
 impl Core {
@@ -197,61 +235,8 @@ impl Core {
         initial_token: &str,
         request: RegistrationRequest,
     ) -> Result<Value> {
-        self.store.write(|tx| {
-            let hash = digest(initial_token);
-            let id = tx.get::<String>("registration_tokens", &hash)?.ok_or_else(Error::unauthorized)?;
-            let mut record = tx.get::<InitialAccess>("registrations", &id)?.filter(|r| r.enabled && r.expires_at > now() && r.used < r.template.max_uses)
-                .ok_or_else(Error::unauthorized)?;
-            check_creator(tx, &record)?;
-            let template = &record.template;
-            if request.redirect_uris.is_empty() || request.redirect_uris.iter().any(|uri| !template.redirect_uris.contains(uri)) {
-                return Err(Error::oauth("invalid_redirect_uri", "Redirects must be an exact subset of the registration template"));
-            }
-            let method = request.token_endpoint_auth_method.as_deref().unwrap_or("client_secret_basic");
-            if !template.auth_methods.contains(method) { return Err(metadata("Authentication method is outside the template")); }
-            let grants = request.grant_types.unwrap_or_else(|| BTreeSet::from(["authorization_code".into()]));
-            if grants.is_empty() || !grants.is_subset(&template.grant_types)
-                || request.response_types.as_ref().is_some_and(|r| r != &BTreeSet::from(["code".into()])) {
-                return Err(metadata("Unsupported grant or response type"));
-            }
-            if request.application_type.as_deref().is_some_and(|t| t != if template.settings.native { "native" } else { "web" }) {
-                return Err(metadata("Application type is fixed by the template"));
-            }
-            let secret = ["client_secret_basic", "client_secret_post"].contains(&method).then(|| crypto::random_token("ri_client_"));
-            let mut settings = template.settings.clone();
-            // Only client.write holders may waive consent, never a self-registered client.
-            settings.implicit_consent = false;
-            settings.allowed_grants = grants;
-            settings.token_endpoint_auth_method = Some(match method {
-                "none" => ClientAuthMethod::None, "client_secret_basic" => ClientAuthMethod::ClientSecretBasic,
-                "client_secret_post" => ClientAuthMethod::ClientSecretPost, "private_key_jwt" => ClientAuthMethod::PrivateKeyJwt,
-                _ => return Err(metadata("Unsupported authentication method")),
-            });
-            if let Some(uris) = request.post_logout_redirect_uris {
-                if uris.iter().any(|uri| !settings.post_logout_redirect_uris.contains(uri)) { return Err(metadata("Logout redirects are outside the template")); }
-                settings.post_logout_redirect_uris = uris;
-            }
-            settings.jwks = request.jwks;
-            let cid = format!("{}-{}", template.id, crypto::id());
-            validate_name(&cid).map_err(|_| metadata("Template id leaves insufficient space for a generated client id"))?;
-            let mut client = Client { id: cid, name: request.client_name.unwrap_or_else(|| template.id.clone()), secret_hash: secret.as_deref().map(digest),
-                redirect_uris: request.redirect_uris, scopes: template.scopes.clone(), allowed_groups: template.allowed_groups.clone(),
-                require_mfa: template.require_mfa, enabled: true, service: false, settings };
-            if let Some(scope) = request.scope { client.scopes = crate::oidc::scope_request(&scope, &client).map_err(|_| metadata("Scopes are outside the template"))?; }
-            crate::core::validate_display(&client.name).map_err(|_| metadata("Invalid client name"))?;
-            validate_client(tx, &client).map_err(|_| metadata("Client metadata conflicts with provider policy"))?;
-            tx.put("clients", &client.id, &client)?;
-            record.used += 1; tx.put("registrations", &id, &record)?;
-            audit(tx, &format!("registration:{id}"), "client.register", &client.id)?;
-            let mut response = json!({"client_id": client.id, "client_id_issued_at": now(), "client_name": client.name,
-                "redirect_uris": client.redirect_uris, "scope": client.scopes.iter().cloned().collect::<Vec<_>>().join(" "),
-                "grant_types": client.settings.allowed_grants, "response_types": ["code"], "token_endpoint_auth_method": method,
-                "application_type": if client.settings.native { "native" } else { "web" },
-                "post_logout_redirect_uris": client.settings.post_logout_redirect_uris});
-            if let Some(jwks) = &client.settings.jwks { response["jwks"] = json!(jwks); }
-            if let Some(secret) = secret { response["client_secret"] = json!(secret); response["client_secret_expires_at"] = json!(0); }
-            Ok(response)
-        })
+        self.store
+            .write(|tx| crate::management::register_client(tx, initial_token, request))
     }
 }
 
