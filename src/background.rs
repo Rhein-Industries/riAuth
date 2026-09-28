@@ -14,7 +14,7 @@ use std::{
     fmt::Write,
     future::Future,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering::Relaxed},
     },
     time::Duration,
@@ -32,15 +32,17 @@ pub(crate) enum Job {
     Delivery,
     Maintenance,
     Alerts,
+    ManualConnector,
 }
 impl Job {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::Reconciliation,
         Self::Provisioning,
         Self::Mail,
         Self::Delivery,
         Self::Maintenance,
         Self::Alerts,
+        Self::ManualConnector,
     ];
     fn label(self) -> &'static str {
         match self {
@@ -50,11 +52,12 @@ impl Job {
             Self::Delivery => "logout_ssf",
             Self::Maintenance => "maintenance",
             Self::Alerts => "alerts",
+            Self::ManualConnector => "manual_connector",
         }
     }
     fn lane(self) -> usize {
         match self {
-            Self::Reconciliation | Self::Provisioning => 0,
+            Self::Reconciliation | Self::Provisioning | Self::ManualConnector => 0,
             Self::Mail | Self::Delivery | Self::Alerts => 1,
             Self::Maintenance => 2,
         }
@@ -65,6 +68,14 @@ impl Job {
             Self::Delivery => Duration::from_secs(2),
             Self::Reconciliation | Self::Mail => Duration::from_secs(5),
             Self::Maintenance | Self::Alerts => Duration::from_secs(60),
+            Self::ManualConnector => Duration::from_secs(1),
+        }
+    }
+    fn capacity(self) -> usize {
+        if matches!(self, Self::ManualConnector) {
+            LANES[self.lane()].1
+        } else {
+            1
         }
     }
 }
@@ -78,7 +89,7 @@ struct JobStats {
     timeouts: AtomicU64,
 }
 #[derive(Default)]
-pub(crate) struct Stats([JobStats; 6]);
+pub(crate) struct Stats([JobStats; Job::ALL.len()]);
 impl Stats {
     pub(crate) fn snapshot(&self) -> Value {
         let jobs: serde_json::Map<_, _> = Job::ALL.into_iter().map(|job| {
@@ -128,22 +139,37 @@ impl Stats {
 }
 
 struct Lane {
-    runtime: Option<Runtime>,
+    runtime: Mutex<Option<Runtime>>,
+    spec: (&'static str, usize),
     slots: Arc<Semaphore>,
 }
 impl Lane {
-    fn new((name, capacity): (&str, usize)) -> std::io::Result<Self> {
-        Ok(Self {
-            runtime: Some(
+    fn new(spec: (&'static str, usize)) -> Self {
+        Self {
+            runtime: Mutex::new(None),
+            spec,
+            slots: Arc::new(Semaphore::new(spec.1)),
+        }
+    }
+    fn handle(&self) -> Result<tokio::runtime::Handle> {
+        let mut runtime = self.runtime.lock().map_err(Error::internal)?;
+        if runtime.is_none() {
+            let (name, capacity) = self.spec;
+            *runtime = Some(
                 tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(1)
                     .max_blocking_threads(capacity)
                     .thread_name(format!("riauth-{name}"))
                     .enable_all()
-                    .build()?,
-            ),
-            slots: Arc::new(Semaphore::new(capacity)),
-        })
+                    .build()
+                    .map_err(Error::internal)?,
+            );
+        }
+        Ok(runtime
+            .as_ref()
+            .expect("initialized runtime")
+            .handle()
+            .clone())
     }
 }
 impl Drop for Lane {
@@ -151,7 +177,12 @@ impl Drop for Lane {
         self.slots.close();
         // Dropping a server from an async context must not block on synchronous
         // connector I/O. Durable claims retain their existing crash recovery.
-        if let Some(runtime) = self.runtime.take() {
+        if let Some(runtime) = self
+            .runtime
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             runtime.shutdown_background();
         }
     }
@@ -159,28 +190,62 @@ impl Drop for Lane {
 
 pub(crate) struct Background {
     lanes: [Lane; 3],
-    jobs: [Arc<Semaphore>; 6],
+    jobs: [Arc<Semaphore>; Job::ALL.len()],
     store: Store,
     deadline: Duration,
 }
 impl Background {
-    pub(crate) fn new(store: Store) -> std::io::Result<Self> {
-        Ok(Self {
+    fn new(store: Store) -> Self {
+        Self {
             lanes: [
-                Lane::new(LANES[0])?,
-                Lane::new(LANES[1])?,
-                Lane::new(LANES[2])?,
+                Lane::new(LANES[0]),
+                Lane::new(LANES[1]),
+                Lane::new(LANES[2]),
             ],
-            jobs: std::array::from_fn(|_| Arc::new(Semaphore::new(1))),
+            jobs: std::array::from_fn(|i| Arc::new(Semaphore::new(Job::ALL[i].capacity()))),
             store,
             deadline: DEADLINE,
-        })
+        }
+    }
+    /// API routers, bootstrap activation and scheduled workers sharing a Store
+    /// share one budget. The weak registry avoids a Store/executor reference cycle.
+    pub(crate) fn shared(store: &Store) -> Arc<Self> {
+        let mut shared = store
+            .telemetry()
+            .background_executor
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(executor) = shared.upgrade() {
+            return executor;
+        }
+        let executor = Arc::new(Self::new(store.clone()));
+        *shared = Arc::downgrade(&executor);
+        executor
+    }
+    pub(crate) fn initialize(&self) -> Result<()> {
+        for lane in &self.lanes {
+            lane.handle()?;
+        }
+        Ok(())
+    }
+    pub(crate) async fn connector<T: Send + 'static>(
+        self: &Arc<Self>,
+        work: impl Future<Output = Result<T>> + Send + 'static,
+    ) -> Result<T> {
+        self.execute(Job::ManualConnector, work).await
     }
     async fn run(
-        &self,
+        self: &Arc<Self>,
         job: Job,
         work: impl Future<Output = Result<()>> + Send + 'static,
     ) -> Result<()> {
+        self.execute(job, work).await
+    }
+    async fn execute<T: Send + 'static>(
+        self: &Arc<Self>,
+        job: Job,
+        work: impl Future<Output = Result<T>> + Send + 'static,
+    ) -> Result<T> {
         let stats = &self.store.telemetry().background.0[job as usize];
         let lane = &self.lanes[job.lane()];
         let admission = self.jobs[job as usize]
@@ -196,17 +261,18 @@ impl Background {
             stats.deferred.fetch_add(1, Relaxed);
             Error::new(
                 axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                "background_overloaded",
-                "Background capacity occupied; retry on the next worker tick",
+                if matches!(job, Job::ManualConnector) { "connector_overloaded" } else { "background_overloaded" },
+                "Connector/background capacity occupied; no work started; retry after capacity is available",
             )
         })?;
+        let runtime = lane.handle()?;
         stats.active.enter();
         let guard = Running {
-            store: self.store.clone(),
+            executor: self.clone(),
             job,
             failed: true,
         };
-        let task = lane.runtime.as_ref().expect("live background runtime").spawn(async move {
+        let task = runtime.spawn(async move {
             let _permits = permits;
             let mut guard = guard;
             let result = work.await;
@@ -222,6 +288,12 @@ impl Background {
             .await
             .map_err(|_| {
                 stats.timeouts.fetch_add(1, Relaxed);
+                if matches!(job, Job::ManualConnector) {
+                    // An admitted mutation may commit after its response deadline.
+                    // Do not label this safe to retry like an admission refusal.
+                    return Error::new(axum::http::StatusCode::CONFLICT, "connector_operation_pending",
+                        "Connector response deadline expired; work may still commit. Inspect durable state before retrying");
+                }
                 Error::new(
                     axum::http::StatusCode::SERVICE_UNAVAILABLE,
                     "background_timeout",
@@ -261,13 +333,15 @@ impl Background {
     }
 }
 struct Running {
-    store: Store,
+    // A disconnected caller or replaced router cannot drop the runtime and
+    // open a fresh budget while its old blocking work is still executing.
+    executor: Arc<Background>,
     job: Job,
     failed: bool,
 }
 impl Drop for Running {
     fn drop(&mut self) {
-        let stats = &self.store.telemetry().background.0[self.job as usize];
+        let stats = &self.executor.store.telemetry().background.0[self.job as usize];
         stats.finished.fetch_add(1, Relaxed);
         if self.failed {
             stats.failed.fetch_add(1, Relaxed);
@@ -331,12 +405,264 @@ mod tests {
     async fn drained(background: &Background, job: Job) {
         let permit = tokio::time::timeout(
             Duration::from_secs(3),
-            background.jobs[job as usize].clone().acquire_owned(),
+            background.jobs[job as usize]
+                .clone()
+                .acquire_many_owned(job.capacity() as u32),
         )
         .await
         .unwrap()
         .unwrap();
         drop(permit);
+    }
+
+    #[test]
+    fn manual_connector_overload_preserves_foreground_and_durable_work() {
+        use crate::{config::write_private, provisioning::Target};
+        use http_body_util::BodyExt;
+
+        async fn call(routes: &axum::Router, request: Request<Body>) -> axum::response::Response {
+            tokio::time::timeout(Duration::from_secs(3), routes.clone().oneshot(request))
+                .await
+                .unwrap()
+                .unwrap()
+        }
+        async fn body(response: axum::response::Response) -> Value {
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap()
+        }
+
+        let (dir, mut core) = fixture();
+        let admin = core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_group(&admin, "staff").unwrap();
+        let token_file = dir.path().join("target-token");
+        write_private(&token_file, b"local-isolation-test-only", false).unwrap();
+        core.config.scim_targets.insert(
+            "payroll".into(),
+            Target {
+                url: "http://127.0.0.1:9/scim/v2".into(),
+                token_file: Some(token_file),
+                oauth: None,
+                ca_file: None,
+                groups: ["staff".into()].into(),
+                export_groups: false,
+            },
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let background = Background::shared(&core.store);
+            let scheduled = background.clone();
+            let (release_scheduled, scheduled_started, work) = stalled();
+            let scheduled_waiter =
+                tokio::spawn(async move { scheduled.run(Job::Reconciliation, work).await });
+            scheduled_started.await.unwrap();
+            let app = App::new(core.clone());
+            let (release_manual, wait) = mpsc::channel();
+            let (started, manual_started) = tokio::sync::oneshot::channel();
+            let manual_waiter = tokio::spawn(async move {
+                app.run_connector(move |_| {
+                    let _ = started.send(());
+                    wait.recv_timeout(Duration::from_secs(15))
+                        .map_err(Error::internal)
+                })
+                .await
+            });
+            manual_started.await.unwrap();
+            // Cancellation and router replacement cannot create a new budget
+            // around the two still-running blocking calls.
+            manual_waiter.abort();
+            scheduled_waiter.abort();
+            assert!(manual_waiter.await.unwrap_err().is_cancelled());
+            assert!(scheduled_waiter.await.unwrap_err().is_cancelled());
+            drop(background);
+            let routes = crate::api::router(core.clone());
+            let background = Background::shared(&core.store);
+            let before = core.store.read(|tx| tx.snapshot()).unwrap();
+            let mut paths = vec![
+                "/api/directories/slow/plan",
+                "/api/directory-plans/slow/apply",
+                "/api/provisioning/targets/payroll/plan",
+                "/api/provisioning/plans/slow/apply",
+                "/api/reconciliation/scim/payroll/events",
+            ];
+            #[cfg(feature = "platform")]
+            paths.extend([
+                "/api/workspace-directories/slow/plan",
+                "/api/workspace-directory-plans/slow/apply",
+                "/api/entra-directories/slow/plan",
+                "/api/entra-directory-plans/slow/apply",
+            ]);
+            for path in paths {
+                let start = std::time::Instant::now();
+                let response = call(
+                    &routes,
+                    Request::post(path)
+                        .header("authorization", format!("Bearer {admin}"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(r#"{"event_id":"overload-event"}"#))
+                        .unwrap(),
+                )
+                .await;
+                assert!(
+                    start.elapsed() < Duration::from_secs(1),
+                    "{path} must refuse promptly"
+                );
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
+                assert_eq!(response.headers()["retry-after"], "1");
+                assert_eq!(body(response).await["error"], "connector_overloaded");
+            }
+            let after = core.store.read(|tx| tx.snapshot()).unwrap();
+            assert!(
+                before == after,
+                "refusal must not claim, queue or mutate durable records"
+            );
+            assert_eq!(
+                background
+                    .run(Job::Provisioning, async {
+                        panic!("connector lane is full")
+                    })
+                    .await
+                    .unwrap_err()
+                    .code,
+                "background_overloaded"
+            );
+            for job in [Job::Delivery, Job::Maintenance] {
+                background
+                    .run(job, async {
+                        tokio::task::spawn_blocking(|| Ok(()))
+                            .await
+                            .map_err(Error::internal)?
+                    })
+                    .await
+                    .unwrap();
+            }
+            let response = call(
+                &routes,
+                Request::post("/api/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"username":"admin","password":PASSWORD}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let login = body(response).await;
+            let token = login["session_token"].as_str().unwrap();
+            let response = call(
+                &routes,
+                Request::post("/api/logout")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(core.me(token).is_err());
+            for path in ["/livez", "/readyz"] {
+                assert_eq!(
+                    call(&routes, Request::get(path).body(Body::empty()).unwrap())
+                        .await
+                        .status(),
+                    StatusCode::OK
+                );
+            }
+            assert_eq!(
+                core.store.telemetry().background.0[Job::ManualConnector as usize]
+                    .active
+                    .current(),
+                1
+            );
+            release_manual.send(()).unwrap();
+            release_scheduled.send(()).unwrap();
+            drained(&background, Job::Reconciliation).await;
+            drained(&background, Job::ManualConnector).await;
+
+            // The admitted API path still carries revision, request/audit and
+            // idempotency context across the dedicated runtime and blocking hop.
+            let plan = call(
+                &routes,
+                Request::post("/api/provisioning/targets/payroll/plan")
+                    .header("authorization", format!("Bearer {admin}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(plan.status(), StatusCode::OK);
+            let plan = body(plan).await;
+            let path = format!(
+                "/api/provisioning/plans/{}/apply",
+                plan["id"].as_str().unwrap()
+            );
+            let apply = |revision: u64| {
+                Request::post(&path)
+                    .header("authorization", format!("Bearer {admin}"))
+                    .header("if-match", format!("\"{revision}\""))
+                    .header("idempotency-key", "o05-manual-apply")
+                    .header("x-riauth-run-id", "o05-manual-run")
+                    .body(Body::empty())
+                    .unwrap()
+            };
+            let revision = plan["revision"].as_u64().unwrap();
+            assert_eq!(
+                call(&routes, apply(revision + 1)).await.status(),
+                StatusCode::CONFLICT
+            );
+            assert!(
+                core.store
+                    .list::<Value>("provisioning_jobs")
+                    .unwrap()
+                    .is_empty()
+            );
+            let applied = call(&routes, apply(revision)).await;
+            assert_eq!(applied.status(), StatusCode::OK);
+            let request_id = applied.headers()["x-request-id"]
+                .to_str()
+                .unwrap()
+                .to_owned();
+            let applied = body(applied).await;
+            let replayed = call(&routes, apply(revision)).await;
+            assert_eq!(replayed.status(), StatusCode::OK);
+            assert_eq!(body(replayed).await, applied);
+            assert_eq!(
+                core.store.list::<Value>("provisioning_jobs").unwrap().len(),
+                1
+            );
+            assert_eq!(core.store.list::<Value>("receipts").unwrap().len(), 1);
+            let audit = core.store.list::<crate::model::Audit>("audit").unwrap();
+            let audit = audit
+                .iter()
+                .find(|(_, event)| event.action == "provisioner.apply")
+                .unwrap();
+            assert_eq!(audit.1.run_id.as_deref(), Some("o05-manual-run"));
+            assert_eq!(audit.1.details["request_id"], request_id);
+
+            // A deadline after admission is not a safe-to-retry refusal. Retain
+            // capacity while late work finishes and omit the overload retry hint.
+            drop(routes);
+            let mut background = Arc::try_unwrap(background).ok().unwrap();
+            background.deadline = Duration::from_millis(50);
+            let background = Arc::new(background);
+            let (release, started, work) = stalled();
+            let error = background.connector(work).await.unwrap_err();
+            started.await.unwrap();
+            assert_eq!(error.status, StatusCode::CONFLICT);
+            assert_eq!(error.code, "connector_operation_pending");
+            use axum::response::IntoResponse;
+            assert!(!error.into_response().headers().contains_key("retry-after"));
+            assert_eq!(
+                background.jobs[Job::ManualConnector as usize].available_permits(),
+                1
+            );
+            release.send(()).unwrap();
+            drained(&background, Job::ManualConnector).await;
+        });
     }
 
     #[test]
@@ -350,8 +676,9 @@ mod tests {
             .build()
             .unwrap();
         runtime.block_on(async {
-            let mut background = Background::new(core.store.clone()).unwrap();
+            let mut background = Background::new(core.store.clone());
             background.deadline = Duration::from_millis(500);
+            let background = Arc::new(background);
             let mut releases = Vec::new();
             for job in [
                 Job::Reconciliation,
@@ -480,7 +807,7 @@ mod tests {
     #[tokio::test]
     async fn cancelled_waiter_keeps_capacity_until_pass_finishes() {
         let (_dir, core) = fixture();
-        let background = Arc::new(Background::new(core.store.clone()).unwrap());
+        let background = Arc::new(Background::new(core.store.clone()));
         let (release, ready, work) = stalled();
         let runner = background.clone();
         let waiter = tokio::spawn(async move { runner.run(Job::Provisioning, work).await });

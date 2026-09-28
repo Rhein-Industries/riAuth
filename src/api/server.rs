@@ -37,7 +37,8 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
     #[cfg(feature = "platform")]
     let _proxy_servers = crate::proxy_server::start(core.clone()).await?;
     use crate::background::{Background, Job};
-    let background = Arc::new(Background::new(core.store.clone())?);
+    let background = Background::shared(&core.store);
+    background.initialize()?;
     let reconciliation_core = core.clone();
     let reconciliation_worker = background.spawn(Job::Reconciliation, move || {
         let core = reconciliation_core.clone();

@@ -339,6 +339,8 @@ impl Reads {
 #[derive(Default)]
 pub struct Telemetry {
     pub(crate) background: crate::background::Stats,
+    pub(crate) background_executor:
+        std::sync::Mutex<std::sync::Weak<crate::background::Background>>,
     pub write_wait: Histogram,
     pub write_hold: Histogram,
     pub pool_wait: Histogram,

@@ -181,25 +181,46 @@ Group writes maintain an encrypted per-user membership index in the same transac
 
 ## Background capacity and overload
 
-Both editions run scheduled work on three dedicated Tokio runtimes. Each has
-one async thread, the blocking-thread cap shown below, and a matching limit on
+Both editions run scheduled and manual connector work on three dedicated Tokio
+runtimes. Each has one async thread, the blocking-thread cap shown below, and a matching limit on
 admitted passes. Foreground sign-in, session revocation and probes retain their
 existing runtime and admission pools.
 
 | Lane | Passes / blocking threads | Work |
 | --- | --- | --- |
-| `connectors` | 2 | Reconciliation; provisioning plus offboarding deactivation |
+| `connectors` | 2 | Reconciliation; provisioning plus offboarding deactivation; manual LDAP/cloud/SCIM plans and applies; reconciliation event submission |
 | `delivery` | 2 | Mail; logout followed by SSF (Platform); alert webhooks |
 | `maintenance` | 1 | Cleanup, including scheduled local offboarding |
 
-Each worker admits at most one pass at a time. There is no in-memory waiting
-queue: a busy lane defers the pass before it claims durable work. Existing
+Each scheduled worker admits at most one pass at a time; manual requests can
+use up to the two shared connector slots. There is no in-memory waiting queue: a busy lane defers the pass before it claims durable work. Existing
 outboxes, job leases, retry limits, removal review and authorization checks
 remain authoritative. Mail and logout each retain their 16-item batch bound and
 drain all child finishes before releasing the pass, including after an error.
 Alert dispatch runs independently of maintenance, so a slow webhook cannot
 hold up the next scheduled local revocation pass. Logout still precedes SSF
 within a delivery pass.
+
+Manual plan/apply and reconciliation event requests use the same connector
+runtime and slots as scheduled work, including after bootstrap activation.
+Routers sharing a store share one executor; creating a router starts no extra
+runtime until needed. Delivery and maintenance retain their separate 2/1
+budgets. An occupied connector lane returns `503 connector_overloaded` with
+`Retry-After: 1` immediately, without queuing the operation, claiming a durable
+job, or consuming a foreground worker. The one-second hint is not a completion
+promise. Existing read/status, stop and deactivation retry operations remain
+available through foreground admission; accepted durable retries still dispatch
+through their scheduled lane.
+
+Manual requests also have a 60-second response deadline. An admitted operation
+that exceeds it returns `409 connector_operation_pending` without a retry hint;
+it may still commit, so inspect durable state before retrying. The CLI treats
+this as a conflict, not a retryable outage. Request cancellation and router
+replacement retain both the shared executor and occupied slots until work
+actually finishes. Audit attribution, revision guards, idempotency receipts,
+removal confirmation and local-revocation/outbox ordering still execute inside
+the original operation. This adds runtime admission errors, not delivery outcome
+fields. Manual metrics use the fixed job label `manual_connector`.
 
 A 60-second deadline bounds the scheduler's wait. It reports
 `background_timeout`; it does **not** cancel a transaction, classify a remote
@@ -236,9 +257,12 @@ within two seconds. Embedded users of `api::router` must run a delivery worker
 
 This is process-local runtime isolation, not a latency or resource reservation
 for the whole deployment. Storage locks/connections, CPU and memory remain
-shared; synchronous connector calls are not forcibly interrupted. Manual
-connector API calls still use foreground admission. Per-target fairness,
-reserved storage capacity, cross-node quotas, hard process isolation and
+shared; synchronous connector calls are not forcibly interrupted. Separate
+store handles/processes have separate budgets. Direct Core callers, protocol
+login/federation exchanges and bulk administrative operations outside the listed
+connector routes retain their existing limits. Fairness between targets and
+between manual and scheduled work, reserved storage capacity, cross-node quotas,
+hard process isolation and
 production load/latency characterization remain O05 follow-up work.
 
 ## Rate limits and admission

@@ -48,6 +48,7 @@ const CREDENTIAL_FAILURE_FLOOR: Duration = Duration::from_millis(1000);
 #[derive(Clone)]
 pub struct App {
     pub core: Arc<Core>,
+    background: Arc<crate::background::Background>,
     workers: Arc<Semaphore>,
     /// Password verification may occupy at most half of the workers.
     credentials: Arc<Semaphore>,
@@ -62,6 +63,7 @@ pub struct App {
 impl App {
     pub fn new(core: Core) -> Self {
         Self {
+            background: crate::background::Background::shared(&core.store),
             core: Arc::new(core),
             workers: Arc::new(Semaphore::new(8)),
             credentials: Arc::new(Semaphore::new(4)),
@@ -83,6 +85,23 @@ impl App {
             return Err(busy());
         };
         self.blocking(Permits::Workers, permit, f).await
+    }
+    /// Manual connector work shares the scheduled connector budget and never
+    /// occupies a foreground permit or blocking thread. Context must survive
+    /// both runtime hops for audit, revision guards and mutation receipts.
+    pub(crate) async fn run_connector<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let core = self.core.clone();
+        let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
+        self.background
+            .connector(async move {
+                tokio::task::spawn_blocking(move || crate::context::scope(context, || f(&core)))
+                    .await
+                    .map_err(Error::internal)?
+            })
+            .await
     }
     /// Runs a read-only forward-auth check on the forward permits instead of a worker.
     pub async fn run_forward<T: Send + 'static>(
@@ -2839,7 +2858,7 @@ async fn reconciliation_event(
     Json(input): Json<crate::reconciliation::EventTrigger>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| {
+    app.run_connector(move |core| {
         core.reconciliation_event(&token, &kind, &id, input)
             .map(Json)
     })
@@ -2852,7 +2871,7 @@ async fn directory_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.directory_plan(&token, &id).map(Json))
+    app.run_connector(move |core| core.directory_plan(&token, &id).map(Json))
         .await
 }
 async fn directory_plan_get(
@@ -2902,7 +2921,7 @@ async fn directory_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run(move |core| {
+    app.run_connector(move |core| {
         core.directory_apply_confirmed(&token, &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -2947,7 +2966,7 @@ async fn workspace_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.cloud_plan(&token, "workspace", &id).map(Json))
+    app.run_connector(move |core| core.cloud_plan(&token, "workspace", &id).map(Json))
         .await
 }
 #[cfg(feature = "platform")]
@@ -2957,7 +2976,7 @@ async fn entra_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.cloud_plan(&token, "entra", &id).map(Json))
+    app.run_connector(move |core| core.cloud_plan(&token, "entra", &id).map(Json))
         .await
 }
 #[cfg(feature = "platform")]
@@ -2988,7 +3007,7 @@ async fn workspace_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run(move |core| {
+    app.run_connector(move |core| {
         core.cloud_apply_confirmed(&token, "workspace", &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -3002,7 +3021,7 @@ async fn entra_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run(move |core| {
+    app.run_connector(move |core| {
         core.cloud_apply_confirmed(&token, "entra", &id, reviewed_plan.as_deref())
             .map(Json)
     })
@@ -3034,7 +3053,7 @@ async fn provisioning_plan(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.provisioning_plan(&token, &id).map(Json))
+    app.run_connector(move |core| core.provisioning_plan(&token, &id).map(Json))
         .await
 }
 async fn provisioning_plan_get(
@@ -3053,7 +3072,7 @@ async fn provisioning_apply(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     let reviewed_plan = removal_confirmation(&headers)?;
-    app.run(move |core| {
+    app.run_connector(move |core| {
         core.provisioning_apply_confirmed(&token, &id, reviewed_plan.as_deref())
             .map(Json)
     })
