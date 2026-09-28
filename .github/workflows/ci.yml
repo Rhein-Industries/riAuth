@@ -91,6 +91,8 @@ jobs:
         run: RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_logout_independent_xmlsec -- --ignored
       - name: PostgreSQL replication and service failover
         run: PG_BIN="$(pg_config --bindir)" scripts/test-postgres.sh
+      - name: Shared contracts on isolated PostgreSQL databases
+        run: PG_BIN="$(pg_config --bindir)" bash scripts/test-contracts-postgres.sh
       - name: OpenLDAP synchronization and authentication
         run: scripts/test-ldap.sh
       - name: Real browser and relying party

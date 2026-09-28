@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod backend;
 pub mod security;
 
 use riauth::{
@@ -27,6 +28,60 @@ pub fn text(value: &Value, key: &str) -> String {
 }
 
 impl Fixture {
+    pub fn snapshot(&self) -> riauth::error::Result<std::collections::BTreeMap<String, Value>> {
+        self.core.store.read(|tx| tx.snapshot())
+    }
+
+    pub fn assert_snapshot(&self, expected: &std::collections::BTreeMap<String, Value>) {
+        self.assert_snapshot_except(expected, |_| false);
+    }
+
+    pub fn assert_http_mutation_snapshot(
+        &self,
+        expected: &std::collections::BTreeMap<String, Value>,
+    ) {
+        // PostgreSQL middleware persists request counters before authorization;
+        // redb middleware uses per-node memory. Only this operational ledger may
+        // differ. Configuration, credentials, receipts, audit and other indexes
+        // remain part of the same mutation oracle on both backends.
+        self.assert_snapshot_except(expected, |key| {
+            key.starts_with("http_rates/")
+                || key.starts_with("index_expiry_http_rates/")
+                || key == "index_counts/http_rates"
+        });
+    }
+
+    pub fn assert_snapshot_except(
+        &self,
+        expected: &std::collections::BTreeMap<String, Value>,
+        allowed: impl Fn(&str) -> bool,
+    ) {
+        let observed = self.snapshot().unwrap();
+        let changed: BTreeSet<_> = expected
+            .keys()
+            .chain(observed.keys())
+            .filter(|key| !allowed(key) && expected.get(*key) != observed.get(*key))
+            .collect();
+        // Never dump values: a full test snapshot contains generated private keys
+        // and recoverable credentials, even when all fixtures are synthetic.
+        assert!(
+            changed.is_empty(),
+            "Unexpected changed records: {changed:?}"
+        );
+    }
+
+    pub fn reopen_with(self, check: impl FnOnce(&Config)) -> Self {
+        let Self { _dir, core, admin } = self;
+        let config = core.config.clone();
+        drop(core);
+        check(&config);
+        Self {
+            _dir,
+            core: Core::open(config).unwrap(),
+            admin,
+        }
+    }
+
     pub fn new() -> Self {
         static TEMPLATE: OnceLock<TempDir> = OnceLock::new();
         let template = TEMPLATE.get_or_init(|| {

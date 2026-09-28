@@ -1,0 +1,2515 @@
+//! Contract bodies have no backend-specific branches or replacement enforcement.
+//! IDs refer to the reviewed Q01 catalog supplied in target/riwork/prerequisites.
+#[path = "cloud_mock.rs"]
+mod cloud_mock;
+
+use crate::common::{
+    Fixture, PASSWORD,
+    backend::Backend,
+    security::{Dependents, events, subscribe},
+    strings, text,
+};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use http_body_util::BodyExt;
+use riauth::{
+    agent::{Agent, NewAgent, Permission},
+    cloud_directory::{Attributes, WorkspaceDirectory},
+    config::write_private,
+    core::Core,
+    crypto::{self, digest, now},
+    error::Error,
+    lifecycle::{Invitation, MailConfig, MailSecurity, Purpose},
+    model::{Attempts, Client, ClientPatch, Group, Session, User, UserPatch},
+    offboarding::{self, ExecuteAt, Job, ScheduleRequest, Status},
+    oidc::{Authorization, TokenRequest},
+    signin,
+    state::{ApplyRequest, Manifest},
+};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use tower::ServiceExt;
+
+#[cfg(feature = "test-support")]
+use riauth::offboarding::BeforeCommit;
+
+fn user(f: &Fixture, username: &str) -> User {
+    let id: String = f.core.store.get("usernames", username).unwrap().unwrap();
+    f.core.store.get("users", &id).unwrap().unwrap()
+}
+
+fn session(f: &Fixture, token: &str) -> Session {
+    let id = text(&f.core.me(token).unwrap(), "session_id");
+    f.core.store.get("sessions", &id).unwrap().unwrap()
+}
+
+fn agent(f: &Fixture, id: &str, permissions: &[(&str, &str)]) -> String {
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: id.into(),
+                ttl: 3600,
+                parent: None,
+                permissions: permissions
+                    .iter()
+                    .map(|(action, resource)| Permission {
+                        action: (*action).into(),
+                        resource: (*resource).into(),
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap();
+    text(&created["credential"], "token")
+}
+
+fn refresh(client: &str, tokens: &Value) -> TokenRequest {
+    TokenRequest {
+        grant_type: "refresh_token".into(),
+        client_id: Some(client.into()),
+        refresh_token: Some(text(tokens, "refresh_token")),
+        ..Default::default()
+    }
+}
+
+fn audit(f: &Fixture) -> Vec<Value> {
+    f.core
+        .audit_events(&f.admin, 1000)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn audit_count(f: &Fixture, action: &str) -> usize {
+    audit(f)
+        .iter()
+        .filter(|event| event["action"] == action)
+        .count()
+}
+
+// Only synthetic, undelivered test messages are inspected for a proof token.
+fn configure_mail(f: &mut Fixture) {
+    f.core.config.mail = Some(MailConfig {
+        host: "127.0.0.1".into(),
+        port: 2525,
+        from: "Identity <identity@example.test>".into(),
+        security: MailSecurity::Loopback,
+        username: None,
+        password_file: None,
+    });
+}
+
+fn mail_codes_for(f: &Fixture, username: &str) -> Vec<String> {
+    let account = format!("Account: {username}");
+    f.core
+        .store
+        .list::<Value>("mail_deliveries")
+        .unwrap()
+        .into_iter()
+        .filter_map(|(_, delivery)| {
+            let body = delivery["body"].as_str()?;
+            body.contains(&account).then(|| {
+                body.lines()
+                    .find(|line| line.starts_with("ri_mail_"))
+                    .unwrap()
+                    .to_owned()
+            })
+        })
+        .collect()
+}
+
+fn mail_code_for(f: &Fixture, username: &str) -> String {
+    mail_codes_for(f, username).into_iter().next().unwrap()
+}
+
+// RI-ACC-001, RI-DIST-001, Q02-C01: reopening the same instance, not a
+// migration/product-parity claim. An issuer mismatch must fail for its own reason.
+pub fn identity_and_issuer_continuity(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let id = user(&f, "alice").id;
+    assert_ne!(id, user(&f, "bob").id);
+    let tokens = f.tokens("app", &alice, None);
+    let subject = text(
+        &f.core.userinfo(&text(&tokens, "access_token")).unwrap(),
+        "sub",
+    );
+    assert_eq!(
+        subject, id,
+        "the default subject is the stable local identity"
+    );
+    let issuer = f.core.config.issuer.clone();
+    let keys = f.core.jwks().unwrap();
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                display_name: Some("Alice renamed".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let f = f.reopen_with(|config| {
+        let mut wrong = config.clone();
+        wrong.issuer = "https://different-issuer.example.test".into();
+        let error = Core::open(wrong)
+            .err()
+            .expect("changed issuer must be rejected");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert!(error.to_string().contains("issuer"));
+    });
+    f.assert_snapshot(&before);
+    assert_eq!(user(&f, "alice").id, id);
+    assert_eq!(f.core.config.issuer, issuer);
+    assert_eq!(f.core.jwks().unwrap(), keys);
+    assert_eq!(f.core.me(&alice).unwrap()["user"]["id"], id);
+    assert!(f.core.me(&bob).is_ok());
+    assert_eq!(
+        f.core.userinfo(&text(&tokens, "access_token")).unwrap()["sub"],
+        subject
+    );
+    let rotated = f.core.token(refresh("app", &tokens)).unwrap();
+    assert_eq!(
+        f.core.userinfo(&text(&rotated, "access_token")).unwrap()["sub"],
+        subject
+    );
+}
+
+// A01 INV-1, RI-SES-004, RI-MGT-004, Q02-C01/C04/C08.
+// Shared existing dependent/SSF assertions are reused across three real writers.
+pub fn disable_reenable_revokes_dependents(backend: Backend) {
+    for writer in ["core", "manifest", "scim-patch"] {
+        let f = backend.fixture();
+        f.client("app", false);
+        f.core
+            .update_client(
+                &f.admin,
+                "app",
+                ClientPatch {
+                    settings: Some(riauth::model::ProviderSettings {
+                        backchannel_logout_uri: Some("https://app.example.test/logout".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let (alice, scim_id) =
+            if writer == "scim-patch" {
+                let created = f.core.scim_write(&f.admin, "Users", None, json!({
+                "schemas":[riauth::scim::USER],"userName":"alice", "displayName":"Alice",
+                "password":PASSWORD,"active":true
+            }), false).unwrap();
+                let alice = text(
+                    &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+                    "session_token",
+                );
+                (alice, Some(text(&created, "id")))
+            } else {
+                (f.user("alice"), None)
+            };
+        let original = user(&f, "alice");
+        let tokens = f.tokens("app", &alice, None);
+        let unspent = f.exchange_request("app", &alice, None);
+        let code_key = digest(unspent.code.as_deref().unwrap());
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("codes", &code_key)
+                .unwrap()
+                .unwrap()["issued_family"],
+            Value::Null,
+            "the code must be unspent before disabling the account"
+        );
+        subscribe(&f, "alice");
+        let children = Dependents::create(&f, "alice");
+        assert!(
+            f.core
+                .store
+                .get::<Agent>("agents", "child-alice")
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("windows_devices", "device-alice")
+                .unwrap()
+                .unwrap()["revoked"],
+            false
+        );
+        assert!(events(&f, "alice").is_empty());
+        match writer {
+            "core" => {
+                f.core
+                    .update_user(
+                        &f.admin,
+                        "alice",
+                        UserPatch {
+                            enabled: Some(false),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
+            "manifest" => {
+                let manifest = serde_json::from_value(json!({"api_version":"riauth/v1","users":[{"username":"alice","display_name":"Alice","enabled":false}]})).unwrap();
+                let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+                assert!(events(&f, "alice").is_empty());
+                assert!(user(&f, "alice").enabled, "preview is not revocation");
+                let input = || ApplyRequest {
+                    plan: plan.clone(),
+                    secrets: Default::default(),
+                    run_id: None,
+                };
+                f.core.apply_state(&f.admin, input()).unwrap();
+                let committed = f.snapshot().unwrap();
+                f.core.apply_state(&f.admin, input()).unwrap();
+                f.assert_snapshot(&committed);
+            }
+            "scim-patch" => {
+                f.core
+                    .scim_write(
+                        &f.admin,
+                        "Users",
+                        scim_id.as_deref(),
+                        json!({
+                            "schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                            "Operations":[{"op":"replace","path":"active","value":false}]
+                        }),
+                        true,
+                    )
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert!(!user(&f, "alice").enabled, "{writer}");
+        assert!(user(&f, "alice").epoch > original.epoch);
+        assert!(f.core.me(&alice).is_err());
+        assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+        assert!(f.core.token(refresh("app", &tokens)).is_err());
+        let disabled = f.snapshot().unwrap();
+        assert_eq!(
+            f.core.token(unspent.clone()).unwrap_err().code,
+            "invalid_grant"
+        );
+        f.assert_snapshot(&disabled);
+        children.assert_revoked(&f);
+        assert_eq!(
+            events(&f, "alice"),
+            vec![(riauth::ssf::ACCOUNT_DISABLED.into(), "".into())]
+        );
+        assert_eq!(
+            f.core
+                .store
+                .list::<Value>("logout_deliveries")
+                .unwrap()
+                .len(),
+            1
+        );
+        f.core
+            .update_user(
+                &f.admin,
+                "alice",
+                UserPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        children.assert_revoked_after_reenable(&f);
+        assert!(
+            user(&f, "alice").enabled,
+            "{writer}: account was not re-enabled"
+        );
+        assert_eq!(user(&f, "alice").id, original.id);
+        assert!(
+            f.core.me(&alice).is_err(),
+            "re-enable must not restore the old session"
+        );
+        assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+        assert!(f.core.token(refresh("app", &tokens)).is_err());
+        let reenabled = f.snapshot().unwrap();
+        assert_eq!(
+            f.core.token(unspent).unwrap_err().code,
+            "invalid_grant",
+            "{writer}: an old unspent code must not mint tokens after re-enable"
+        );
+        f.assert_snapshot(&reenabled);
+        assert_eq!(audit_count(&f, "authorization_code.replay"), 0);
+        assert_eq!(events(&f, "alice").len(), 1, "{writer}: duplicate signal");
+        assert_eq!(
+            f.core
+                .store
+                .list::<Value>("logout_deliveries")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(f.core.login("alice".into(), PASSWORD.into(), None).is_ok());
+    }
+}
+
+// A01 INV-2, RI-SES-002/003, Q02-C03: real session/proof and authorization path.
+pub fn proof_account_session_request_binding(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    let alice = session(&f, &f.user("alice"));
+    let bob = session(&f, &f.user("bob"));
+    let second = session(
+        &f,
+        &text(
+            &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        ),
+    );
+    let verifier = crypto::random_token("");
+    let mut request = f.request("app", &verifier);
+    request.prompt = Some("login".into());
+    request.request_binding = Some("interaction-1".into());
+    let hash = request.request_hash().unwrap();
+    let key = f
+        .core
+        .store
+        .write(|tx| {
+            signin::bind_proof(
+                tx,
+                None,
+                hash.clone(),
+                &alice.identity.user_id,
+                &alice.id,
+                now() + 600,
+            )
+        })
+        .unwrap();
+    let decide = |s: &Session, r: &Authorization, key: Option<&str>| {
+        f.core.store.write(|tx| {
+            f.core
+                .authorize_session_proof(tx, s.clone(), r.clone(), false, key)
+        })
+    };
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        decide(&alice, &request, None).unwrap_err().code,
+        "login_required"
+    );
+    for wrong in [&bob, &second] {
+        assert_eq!(
+            decide(wrong, &request, Some(&key)).unwrap_err().code,
+            "login_required"
+        );
+    }
+    for field in ["nonce", "interaction"] {
+        let mut wrong = request.clone();
+        if field == "nonce" {
+            wrong.nonce = Some("another-request".into());
+        } else {
+            wrong.request_binding = Some("interaction-2".into());
+        }
+        assert!(decide(&alice, &wrong, Some(&key)).is_err());
+    }
+    f.assert_snapshot(&before);
+    let callback = decide(&alice, &request, Some(&key)).unwrap();
+    let code = url::Url::parse(&callback)
+        .unwrap()
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    assert!(
+        f.core
+            .store
+            .get::<Value>("authentication", &key)
+            .unwrap()
+            .is_none()
+    );
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        decide(&alice, &request, Some(&key)).unwrap_err().code,
+        "login_required"
+    );
+    f.assert_snapshot(&committed);
+    assert_eq!(f.core.store.list::<Value>("codes").unwrap().len(), 1);
+    let tokens = f
+        .core
+        .token(TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("app".into()),
+            code: Some(code),
+            redirect_uri: Some(request.redirect_uri),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap();
+    let info = f.core.userinfo(&text(&tokens, "access_token")).unwrap();
+    assert_eq!(info["preferred_username"], "alice");
+}
+
+// A01 INV-3, RI-SES-003, Q02-C03: invalid binding cannot spend or kill a grant.
+pub fn code_binding_and_verified_replay(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    f.client("other", false);
+    let alice = f.user("alice");
+    let request = f.exchange_request("app", &alice, None);
+    let before = f.snapshot().unwrap();
+    let wrong_requests = |request: &TokenRequest| {
+        let mut client = request.clone();
+        client.client_id = Some("other".into());
+        let mut redirect = request.clone();
+        redirect.redirect_uri = Some("https://attacker.example.test/callback".into());
+        let mut pkce = request.clone();
+        pkce.code_verifier = Some(crypto::random_token(""));
+        [client, redirect, pkce]
+    };
+    for wrong in wrong_requests(&request) {
+        assert_eq!(f.core.token(wrong).unwrap_err().code, "invalid_grant");
+        f.assert_snapshot(&before);
+    }
+    let tokens = f.core.token(request.clone()).unwrap();
+    let unrelated = f.tokens("other", &alice, None);
+    let committed = f.snapshot().unwrap();
+    for wrong in wrong_requests(&request) {
+        assert_eq!(f.core.token(wrong).unwrap_err().code, "invalid_grant");
+        f.assert_snapshot(&committed);
+    }
+    assert!(f.core.userinfo(&text(&tokens, "access_token")).is_ok());
+    assert_eq!(f.core.token(request).unwrap_err().code, "invalid_grant");
+    assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+    assert!(f.core.token(refresh("app", &tokens)).is_err());
+    assert!(f.core.userinfo(&text(&unrelated, "access_token")).is_ok());
+    assert!(f.core.me(&alice).is_ok());
+}
+
+// RI-SES-003/005, Q02-C03: rotated refresh handles are single-use; bound replay
+// revokes that family, rather than the unrelated family or the login session.
+pub fn refresh_rotation_and_verified_replay(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    f.client("other", false);
+    let alice = f.user("alice");
+    let tokens = f.tokens("app", &alice, None);
+    let unrelated = f.tokens("other", &alice, None);
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core.token(refresh("other", &tokens)).unwrap_err().code,
+        "invalid_grant"
+    );
+    f.assert_snapshot(&before);
+    let rotated = f.core.token(refresh("app", &tokens)).unwrap();
+    assert_ne!(tokens["refresh_token"], rotated["refresh_token"]);
+    assert!(f.core.userinfo(&text(&rotated, "access_token")).is_ok());
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        f.core.token(refresh("other", &tokens)).unwrap_err().code,
+        "invalid_grant"
+    );
+    f.assert_snapshot(&committed);
+    assert_eq!(
+        f.core.token(refresh("app", &tokens)).unwrap_err().code,
+        "invalid_grant"
+    );
+    for old in [&tokens, &rotated] {
+        assert!(f.core.userinfo(&text(old, "access_token")).is_err());
+        assert_eq!(
+            f.core.token(refresh("app", old)).unwrap_err().code,
+            "invalid_grant"
+        );
+    }
+    assert!(f.core.userinfo(&text(&unrelated, "access_token")).is_ok());
+    assert!(f.core.me(&alice).is_ok());
+}
+
+// A01 INV-8, RI-AUTH-001, Q02-C05: existing tokens use live group policy.
+pub fn live_group_policy_revalidation(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    f.client("open", false);
+    let alice = f.user("alice");
+    f.core.create_group(&f.admin, "developers").unwrap();
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                allowed_groups: Some(strings(&["developers"])),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+    f.core
+        .group_member(&f.admin, "developers", "alice", true)
+        .unwrap();
+    let tokens = f.tokens("app", &alice, None);
+    let unrelated = f.tokens("open", &alice, None);
+    let access = text(&tokens, "access_token");
+    assert_eq!(
+        f.core.userinfo(&access).unwrap()["groups"],
+        json!(["developers"])
+    );
+    assert!(f.core.proxy_auth(&access, "app").is_ok());
+    assert!(f.core.proxy_auth(&access, "wrong-audience").is_err());
+    f.core
+        .group_member(&f.admin, "developers", "alice", false)
+        .unwrap();
+    assert!(f.core.userinfo(&access).is_err());
+    assert!(f.core.proxy_auth(&access, "app").is_err());
+    assert!(f.core.token(refresh("app", &tokens)).is_err());
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.userinfo(&text(&unrelated, "access_token")).is_ok());
+    assert!(
+        f.core
+            .store
+            .get::<Group>("groups", "developers")
+            .unwrap()
+            .unwrap()
+            .members
+            .is_empty()
+    );
+}
+
+// A01 INV-4, RI-STORE-001, Q02-C08. This lifts the prepared-store primitive
+// regression; it does not claim an actual password/signing-operation race.
+pub fn prepared_authority_revalidation(backend: Backend) {
+    let f = backend.fixture();
+    let alice = f.user("alice");
+    let s = session(&f, &alice);
+    let mut revoke = true;
+    let mut after_revocation = None;
+    let result = f.core.store.prepared_write(|tx| {
+        let user: User = tx.get("users", &s.identity.user_id)?.unwrap();
+        let session: Session = tx.get("sessions", &s.id)?.unwrap();
+        if !user.enabled || session.revoked || user.epoch != session.identity.epoch {
+            return Err(Error::forbidden());
+        }
+        if std::mem::take(&mut revoke) {
+            // A real authority change can commit while preparation holds reads.
+            f.core.update_user(
+                &f.admin,
+                "alice",
+                UserPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )?;
+            after_revocation = Some(f.snapshot()?);
+        }
+        tx.put(
+            "contract_effects",
+            "issued",
+            &json!({"credential":"must-not-escape"}),
+        )
+    });
+    assert_eq!(result.unwrap_err().status, StatusCode::FORBIDDEN);
+    f.assert_snapshot(&after_revocation.unwrap());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("contract_effects", "issued")
+            .unwrap()
+            .is_none()
+    );
+    assert!(f.core.me(&alice).is_err());
+}
+
+// RI-STORE-001/RI-SES-005, Q02-C08. Controlled clock; no timing sleep or
+// database mutation stands in for expiry. This is a store deadline contract.
+#[cfg(feature = "test-support")]
+pub fn prepared_deadline_revalidation(backend: Backend) {
+    // Key initialization validates JWTs against the library's real wall clock.
+    // Scope the controlled clock only around the store operation under test.
+    let f = backend.fixture();
+    let at = now();
+    crypto::with_test_time(at, || {
+        f.core
+            .store
+            .write(|tx| {
+                tx.put(
+                    "contract_authority",
+                    "grant",
+                    &json!({"expires_at":now()+1}),
+                )
+            })
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        let result = f.core.store.prepared_write(|tx| {
+            let grant: Value = tx.get("contract_authority", "grant")?.unwrap();
+            if grant["expires_at"].as_u64().unwrap() <= now() {
+                return Err(Error::forbidden());
+            }
+            crypto::set_test_time(at + 1);
+            tx.put("contract_effects", "issued", &true)
+        });
+        assert_eq!(result.unwrap_err().status, StatusCode::FORBIDDEN);
+        f.assert_snapshot(&before);
+    });
+}
+
+// RI-ACC-002, RI-STORE-001, Q02-C04/C08: reject after a real password/history
+// change has been staged; every record, index and audit must roll back.
+pub fn last_admin_failure_is_atomic(backend: Backend) {
+    let f = backend.fixture();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .update_user(
+                &f.admin,
+                "admin",
+                UserPatch {
+                    password: Some("replacement-password-for-contract-only".into()),
+                    enabled: Some(false),
+                    ..Default::default()
+                }
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    f.assert_snapshot(&before);
+    assert!(f.core.me(&f.admin).is_ok());
+    assert!(f.core.login("admin".into(), PASSWORD.into(), None).is_ok());
+}
+
+// RI-MGT-001/003/004, RI-STORE-001/002, Q02-C04/C08/C09. HTTP supplies real
+// fingerprints/preconditions; snapshots include receipt, secret, revision/audit.
+pub fn http_mutation_receipts_and_audit(backend: Backend) {
+    let f = backend.fixture();
+    let ordinary = f.user("ordinary");
+    let token = agent(
+        &f,
+        "writer",
+        &[
+            ("client.write", "client/app"),
+            ("client.rotate", "client/app"),
+        ],
+    );
+    let other = agent(&f, "other", &[("client.write", "client/other")]);
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let call = |token: &str, key: &str, revision: Option<u64>, body: &Value| {
+        let mut request = Request::post("/api/clients")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .header("idempotency-key", key)
+            .header("x-riauth-run-id", "contract-run");
+        if let Some(revision) = revision {
+            request = request.header("if-match", format!("\"{revision}\""));
+        }
+        runtime.block_on(async {
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::from(body.to_string())).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            assert!(response.headers().contains_key("x-request-id"));
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            (status, body)
+        })
+    };
+    let revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let body = json!({"client_id":"app","name":"app","confidential":true,"redirect_uris":[],"scopes":["openid"],"allowed_groups":[],"require_mfa":false,"service":false});
+    let before = f.snapshot().unwrap();
+    let mut denied = body.clone();
+    denied["client_id"] = json!("denied");
+    for credential in [&token, &ordinary] {
+        assert_eq!(
+            call(credential, "denied", Some(revision), &denied).0,
+            StatusCode::FORBIDDEN
+        );
+        f.assert_http_mutation_snapshot(&before);
+    }
+    let counters = f.core.store.list::<(u64, u32)>("http_rates").unwrap();
+    assert_eq!(
+        counters.len(),
+        usize::from(f.core.config.postgres.is_some())
+    );
+    for (_, (_, count)) in counters {
+        assert_eq!(count, 2, "both denied requests must still be counted");
+    }
+    assert_eq!(
+        call(&token, "create", None, &body).0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        call(&token, "create", Some(revision + 1), &body).0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before);
+    let (status, first) = call(&token, "create", Some(revision), &body);
+    assert_eq!(status, StatusCode::OK);
+    let secret = text(&first, "client_secret");
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        call(&token, "create", Some(revision), &body),
+        (StatusCode::OK, first)
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    let mut modified = body.clone();
+    modified["name"] = json!("changed");
+    assert_eq!(
+        call(&token, "create", Some(revision), &modified).0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(&token, "different", Some(revision), &body).0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    let mut other_body = body.clone();
+    other_body["client_id"] = json!("other");
+    let next = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let (status, other_result) = call(&other, "create", Some(next), &other_body);
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "receipt keys are scoped to the actor"
+    );
+    let other_secret = text(&other_result, "client_secret");
+    assert_ne!(secret, other_secret);
+    assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 2);
+    let events = audit(&f);
+    let created: Vec<_> = events
+        .iter()
+        .filter(|e| e["action"] == "client.create")
+        .collect();
+    assert_eq!(created.len(), 2);
+    assert!(
+        created
+            .iter()
+            .any(|e| e["actor"] == "agent:writer" && e["target"] == "app")
+    );
+    assert!(
+        created
+            .iter()
+            .any(|e| e["actor"] == "agent:other" && e["target"] == "other")
+    );
+    for event in created {
+        assert_eq!(event["run_id"], "contract-run");
+        assert!(event["details"]["request_id"].is_string());
+        assert!(
+            event["details"]["changes"]
+                .as_array()
+                .is_some_and(|c| !c.is_empty())
+        );
+    }
+    let serialized = serde_json::to_string(&events).unwrap();
+    for sensitive in [&secret, &other_secret, &token, &other, &digest(&secret)] {
+        assert!(!serialized.contains(sensitive));
+    }
+    // There is no agent permission-edit endpoint yet; fixture mutation models
+    // an authorized policy change. The real receipt path must revalidate it.
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent: Agent = tx.get("agents", "writer")?.unwrap();
+            agent.permissions.retain(|p| p.action != "client.rotate");
+            tx.put("agents", "writer", &agent)
+        })
+        .unwrap();
+    let changed = f.snapshot().unwrap();
+    assert_eq!(
+        call(&token, "create", Some(revision), &body).0,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_http_mutation_snapshot(&changed);
+    f.core.revoke_agent(&f.admin, "writer").unwrap();
+    let revoked = f.snapshot().unwrap();
+    assert!(!call(&token, "create", Some(revision), &body).0.is_success());
+    f.assert_http_mutation_snapshot(&revoked);
+}
+
+// RI-MGT-002/004, RI-STORE-001/002, Q02-C04/C08/C09. Exact plan fields and
+// references are tested. Resolved-secret byte commitment is still a Q01 gap.
+pub fn plan_binding_atomicity_and_retry(backend: Backend) {
+    let f = backend.fixture();
+    let permissions = [
+        ("group.write", "group/managed"),
+        ("group.read", "group/managed"),
+        ("group.members", "group/managed"),
+        ("client.write", "client/managed"),
+        ("client.read", "client/managed"),
+    ];
+    let token = agent(&f, "planner", &permissions);
+    let other = agent(&f, "other-planner", &permissions);
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version":"riauth/v1", "groups":[{"name":"managed"}],
+        "clients":[{"client_id":"managed","name":"Managed","confidential":true,"scopes":["openid"],"secret_ref":"env:CONTRACT_SECRET","secret_version":"v1"}]
+    })).unwrap();
+    let original_audit = audit(&f);
+    let plan = f.core.plan_state(&token, manifest.clone()).unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<Group>("groups", "managed")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Client>("clients", "managed")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(audit(&f), original_audit);
+    let input = |plan, secrets| ApplyRequest {
+        plan,
+        secrets,
+        run_id: Some("plan-contract-run".into()),
+    };
+    let before = f.snapshot().unwrap();
+    for field in ["content", "reference", "version"] {
+        let mut tampered = plan.clone();
+        match field {
+            "content" => tampered.manifest.clients[0].name = "Tampered".into(),
+            "reference" => {
+                tampered.manifest.clients[0].secret_ref = Some("env:SUBSTITUTED_SECRET".into())
+            }
+            "version" => tampered.manifest.clients[0].secret_version = Some("v2".into()),
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            f.core
+                .apply_state(&token, input(tampered, Default::default()))
+                .unwrap_err()
+                .status,
+            StatusCode::CONFLICT
+        );
+    }
+    assert_eq!(
+        f.core
+            .apply_state(&other, input(plan.clone(), Default::default()))
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    let mut tampered = plan.clone();
+    tampered.issuer = "https://other-issuer.example.test".into();
+    assert_eq!(
+        f.core
+            .apply_state(&token, input(tampered, Default::default()))
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    let missing = f
+        .core
+        .apply_state(&token, input(plan.clone(), Default::default()))
+        .unwrap_err();
+    assert_eq!(missing.status, StatusCode::BAD_REQUEST);
+    assert_eq!(missing.message, "Required secret value was not supplied");
+    f.assert_snapshot(&before);
+    f.core.create_group(&f.admin, "dependency-change").unwrap();
+    let changed = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .apply_state(&token, input(plan, Default::default()))
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    f.assert_snapshot(&changed);
+    let plan = f.core.plan_state(&token, manifest).unwrap();
+    let secret = "resolved-secret-for-contract-only-0123456789";
+    let secrets = || [("env:CONTRACT_SECRET".into(), secret.into())].into();
+    let first = f
+        .core
+        .apply_state(&token, input(plan.clone(), secrets()))
+        .unwrap();
+    assert_eq!(first["changed"], true);
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .apply_state(&token, input(plan.clone(), secrets()))
+            .unwrap(),
+        first
+    );
+    f.assert_snapshot(&committed);
+    let client: Client = f.core.store.get("clients", "managed").unwrap().unwrap();
+    assert_eq!(client.secret_hash.as_deref(), Some(digest(secret).as_str()));
+    assert!(
+        f.core
+            .store
+            .get::<Group>("groups", "managed")
+            .unwrap()
+            .is_some()
+    );
+    let events = audit(&f);
+    let applied: Vec<_> = events
+        .iter()
+        .filter(|e| e["action"] == "state.apply" && e["target"] == plan.plan_id)
+        .collect();
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0]["actor"], "agent:planner");
+    assert_eq!(applied[0]["run_id"], "plan-contract-run");
+    for view in [
+        serde_json::to_value(plan).unwrap(),
+        json!(events),
+        f.core.export_state(&f.admin).unwrap(),
+    ] {
+        assert!(!view.to_string().contains(secret));
+        assert!(!view.to_string().contains(&digest(secret)));
+        assert!(!view.to_string().contains(&token));
+    }
+}
+
+// RI-CRED-001/002, RI-STORE-001, Q02-C02: a failed password is accounted for,
+// while rejected writes leave the credential and existing authority intact.
+pub fn password_attempts_and_change(backend: Backend) {
+    let f = backend.fixture();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let original = user(&f, "alice");
+    let access = f.tokens("app", &alice, None);
+    for failures in 1..=5 {
+        assert_eq!(
+            f.core
+                .login("alice".into(), "incorrect-password".into(), None)
+                .unwrap_err()
+                .code,
+            "invalid_credentials"
+        );
+        let attempts: Attempts = f.core.store.get("attempts", "alice").unwrap().unwrap();
+        assert_eq!(attempts.failures, failures);
+        assert_eq!(user(&f, "alice").password_hash, original.password_hash);
+        assert!(f.core.me(&alice).is_ok());
+    }
+    assert_eq!(audit_count(&f, "login.failed"), 5);
+    assert_eq!(
+        f.core
+            .login("alice".into(), PASSWORD.into(), None)
+            .unwrap_err()
+            .code,
+        "rate_limited"
+    );
+    assert_eq!(audit_count(&f, "login.locked"), 1);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Attempts>("attempts", "alice")
+            .unwrap()
+            .unwrap()
+            .failures,
+        5
+    );
+    assert!(f.core.me(&bob).is_ok());
+
+    let reset = "admin-cleared-owner-password";
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                password: Some(reset.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<Attempts>("attempts", "alice")
+            .unwrap()
+            .is_none()
+    );
+    assert!(f.core.me(&alice).is_err());
+    assert!(f.core.userinfo(&text(&access, "access_token")).is_err());
+    assert_eq!(user(&f, "alice").id, original.id);
+    let before_reuse = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .update_user(
+                &f.admin,
+                "alice",
+                UserPatch {
+                    password: Some(reset.into()),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+    );
+    f.assert_snapshot(&before_reuse);
+
+    let fresh = text(
+        &f.core.login("alice".into(), reset.into(), None).unwrap(),
+        "session_token",
+    );
+    let before_wrong = user(&f, "alice");
+    assert!(
+        f.core
+            .change_password(
+                &fresh,
+                "incorrect-password".into(),
+                "new-owner-only-password".into(),
+                None
+            )
+            .is_err()
+    );
+    assert_eq!(user(&f, "alice").password_hash, before_wrong.password_hash);
+    assert_eq!(user(&f, "alice").epoch, before_wrong.epoch);
+    assert_eq!(audit_count(&f, "user.password.change"), 0);
+    assert!(f.core.me(&fresh).is_ok());
+    assert!(f.core.me(&bob).is_ok());
+    assert_eq!(
+        f.core
+            .change_password(&fresh, reset.into(), "new-owner-only-password".into(), None)
+            .unwrap()["sessions_revoked"],
+        true
+    );
+    assert_eq!(audit_count(&f, "user.password.change"), 1);
+    assert!(f.core.me(&fresh).is_err());
+    assert!(f.core.me(&bob).is_ok());
+    assert!(f.core.login("alice".into(), reset.into(), None).is_err());
+    assert!(
+        f.core
+            .login("alice".into(), "new-owner-only-password".into(), None)
+            .is_ok()
+    );
+    assert!(
+        !serde_json::to_string(&audit(&f))
+            .unwrap()
+            .contains("new-owner-only-password")
+    );
+}
+
+// RI-CRED-001/002, Q02-C02: enrollment is account-bound, a TOTP step cannot
+// be replayed, and a recovery code is spent even when request binding fails.
+pub fn totp_and_recovery_code_binding(backend: Backend) {
+    let f = backend.fixture();
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let previous = user(&f, "alice");
+    let pending = f.core.mfa_begin(&alice).unwrap();
+    let secret = text(&pending, "secret");
+    let totp = crypto::totp(&secret, "alice").unwrap();
+    let before_rejection = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .mfa_confirm(&bob, &totp.generate(now() - 30).to_string())
+            .is_err()
+    );
+    assert!(f.core.mfa_confirm(&alice, "invalid-code").is_err());
+    f.assert_snapshot(&before_rejection);
+    let prior = totp.generate(now() - 30).to_string();
+    f.core.mfa_confirm(&alice, &prior).unwrap();
+    let enrolled = user(&f, "alice");
+    assert_eq!(enrolled.id, previous.id);
+    assert!(enrolled.epoch > previous.epoch);
+    assert_eq!(enrolled.totp_secret.as_deref(), Some(secret.as_str()));
+    assert!(enrolled.totp_pending.is_none());
+    assert_eq!(audit_count(&f, "mfa.enabled"), 1);
+    assert!(f.core.me(&alice).is_err());
+    assert!(f.core.me(&bob).is_ok());
+    assert!(
+        f.core
+            .login("alice".into(), PASSWORD.into(), Some(prior))
+            .is_err()
+    );
+    let current = totp.generate(now()).to_string();
+    let fresh = text(
+        &f.core
+            .login("alice".into(), PASSWORD.into(), Some(current.clone()))
+            .unwrap(),
+        "session_token",
+    );
+    assert!(
+        f.core
+            .login("alice".into(), PASSWORD.into(), Some(current))
+            .is_err()
+    );
+    let before_wrong_session = f.snapshot().unwrap();
+    assert!(f.core.recovery_codes(&alice).is_err());
+    assert!(f.core.recovery_codes(&bob).is_err());
+    f.assert_snapshot(&before_wrong_session);
+    let codes = f.core.recovery_codes(&fresh).unwrap();
+    let first = codes["recovery_codes"][0].as_str().unwrap().to_owned();
+    let second = codes["recovery_codes"][1].as_str().unwrap().to_owned();
+    assert!(user(&f, "alice").recovery_codes.contains(&digest(&first)));
+    assert!(
+        !serde_json::to_string(&f.snapshot().unwrap())
+            .unwrap()
+            .contains(&first)
+    );
+    assert!(
+        f.core
+            .login(
+                "alice".into(),
+                "incorrect-password".into(),
+                Some(first.clone())
+            )
+            .is_err()
+    );
+    assert!(user(&f, "alice").recovery_codes.contains(&digest(&first)));
+    let before_sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    assert_eq!(
+        f.core
+            .login_for(
+                "alice".into(),
+                PASSWORD.into(),
+                Some(first.clone()),
+                Some("ri_auth_nonexistent".into())
+            )
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    assert!(!user(&f, "alice").recovery_codes.contains(&digest(&first)));
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        before_sessions
+    );
+    assert_eq!(audit_count(&f, "login.transaction_rejected"), 1);
+    assert!(
+        f.core
+            .login("alice".into(), PASSWORD.into(), Some(first.clone()))
+            .is_err()
+    );
+    let recovered = f
+        .core
+        .login("alice".into(), PASSWORD.into(), Some(second.clone()))
+        .unwrap();
+    assert_eq!(
+        f.core.me(&text(&recovered, "session_token")).unwrap()["mfa"],
+        true
+    );
+    assert!(
+        f.core
+            .login("alice".into(), PASSWORD.into(), Some(second.clone()))
+            .is_err()
+    );
+    assert!(f.core.me(&bob).is_ok());
+    let public_audit = serde_json::to_string(&audit(&f)).unwrap();
+    assert!(!public_audit.contains(&secret));
+    assert!(!public_audit.contains(&first));
+    assert!(!public_audit.contains(&second));
+    assert_eq!(audit_count(&f, "mfa.recovery_codes.rotate"), 1);
+}
+
+fn pending_passkey_authentication(f: &Fixture, challenge: &Value) -> Option<Value> {
+    f.core
+        .store
+        .get(
+            "passkey_authentication",
+            &digest(&text(challenge, "ceremony")),
+        )
+        .unwrap()
+}
+
+// RI-CRED-001/002, RI-STORE-001, Q02-C02: registration belongs to one live
+// session, and authentication is bound to origin, transaction and live counter.
+pub fn passkey_ceremony_binding_and_replay(backend: Backend) {
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+    let f = backend.fixture();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let origin = url::Url::parse(&f.core.config.issuer).unwrap();
+    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let registration = f
+        .core
+        .passkey_register_start(&alice, "Contract passkey".into())
+        .unwrap();
+    let response = authenticator
+        .do_registration(
+            origin.clone(),
+            serde_json::from_value(registration["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let other_alice = text(
+        &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+        "session_token",
+    );
+    let before_wrong_session = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .passkey_register_finish(&bob, &text(&registration, "ceremony"), response.clone())
+            .is_err()
+    );
+    assert!(
+        f.core
+            .passkey_register_finish(
+                &other_alice,
+                &text(&registration, "ceremony"),
+                response.clone()
+            )
+            .is_err()
+    );
+    f.assert_snapshot(&before_wrong_session);
+    let enrolled = f
+        .core
+        .passkey_register_finish(&alice, &text(&registration, "ceremony"), response.clone())
+        .unwrap();
+    let passkey_id = text(&enrolled["passkey"], "id");
+    let enrolled_state = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .passkey_register_finish(&alice, &text(&registration, "ceremony"), response)
+            .is_err()
+    );
+    f.assert_snapshot(&enrolled_state);
+    assert!(user(&f, "alice").has_passkeys);
+    assert!(f.core.me(&alice).is_err());
+    assert!(f.core.me(&other_alice).is_err());
+    assert!(f.core.me(&bob).is_ok());
+    assert_eq!(audit_count(&f, "passkey.enroll"), 1);
+
+    let transaction = f
+        .core
+        .authorization_prepare(Some(&bob), f.request("app", &crypto::random_token("")))
+        .unwrap();
+    let transaction_id = text(&transaction, "transaction_id");
+    let bound = f
+        .core
+        .passkey_login_start("alice", Some(transaction_id.clone()))
+        .unwrap();
+    let bound_proof = authenticator
+        .do_authentication(
+            origin.clone(),
+            serde_json::from_value(bound["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    assert!(pending_passkey_authentication(&f, &bound).is_some());
+    let before_sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&bound, "ceremony"), bound_proof)
+            .is_err()
+    );
+    assert!(pending_passkey_authentication(&f, &bound).is_none());
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        before_sessions
+    );
+    let transaction_record: Value = f
+        .core
+        .store
+        .get("authentication", &digest(&transaction_id))
+        .unwrap()
+        .unwrap();
+    assert!(transaction_record["authenticated_session"].is_null());
+    assert_eq!(audit_count(&f, "passkey.login_failed"), 1);
+
+    let wrong_origin = f.core.passkey_login_start("alice", None).unwrap();
+    let wrong_proof = authenticator
+        .do_authentication(
+            url::Url::parse("http://localhost:9001").unwrap(),
+            serde_json::from_value(wrong_origin["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    assert!(pending_passkey_authentication(&f, &wrong_origin).is_some());
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&wrong_origin, "ceremony"), wrong_proof.clone())
+            .is_err()
+    );
+    assert!(pending_passkey_authentication(&f, &wrong_origin).is_none());
+    let after_wrong_origin = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&wrong_origin, "ceremony"), wrong_proof)
+            .is_err()
+    );
+    f.assert_snapshot(&after_wrong_origin);
+    assert_eq!(audit_count(&f, "passkey.login_failed"), 2);
+
+    let older = f.core.passkey_login_start("alice", None).unwrap();
+    let newer = f.core.passkey_login_start("alice", None).unwrap();
+    let older_proof = authenticator
+        .do_authentication(
+            origin.clone(),
+            serde_json::from_value(older["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let newer_proof = authenticator
+        .do_authentication(
+            origin.clone(),
+            serde_json::from_value(newer["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let signed_in = f
+        .core
+        .passkey_login_finish(&text(&newer, "ceremony"), newer_proof.clone())
+        .unwrap();
+    let passkey_session = text(&signed_in, "session_token");
+    assert_eq!(f.core.me(&passkey_session).unwrap()["mfa"], true);
+    assert!(pending_passkey_authentication(&f, &older).is_some());
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&older, "ceremony"), older_proof)
+            .is_err()
+    );
+    assert!(pending_passkey_authentication(&f, &older).is_none());
+    let after_stale_counter = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&newer, "ceremony"), newer_proof)
+            .is_err()
+    );
+    f.assert_snapshot(&after_stale_counter);
+    assert_eq!(audit_count(&f, "passkey.login"), 1);
+    assert_eq!(audit_count(&f, "passkey.login_failed"), 3);
+
+    let before_remove = f.core.passkey_login_start("alice", None).unwrap();
+    let before_remove_proof = authenticator
+        .do_authentication(
+            origin,
+            serde_json::from_value(before_remove["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let before_wrong_remove = f.snapshot().unwrap();
+    assert!(f.core.passkey_remove(&bob, &passkey_id).is_err());
+    assert!(f.core.passkey_remove(&alice, &passkey_id).is_err());
+    f.assert_snapshot(&before_wrong_remove);
+    f.core
+        .passkey_remove(&passkey_session, &passkey_id)
+        .unwrap();
+    assert!(f.core.me(&passkey_session).is_err());
+    assert!(f.core.me(&bob).is_ok());
+    assert!(!user(&f, "alice").has_passkeys);
+    assert_eq!(audit_count(&f, "passkey.remove"), 1);
+    assert!(
+        f.core
+            .passkey_login_finish(&text(&before_remove, "ceremony"), before_remove_proof)
+            .is_err()
+    );
+    assert_eq!(audit_count(&f, "passkey.login_failed"), 4);
+}
+
+// RI-CRED-003, RI-SES-004, RI-STORE-001, Q02-C02/C03: reset proofs are
+// purpose/email-bound and single-use; a failed completion changes no state.
+pub fn account_reset_binding_and_atomicity(backend: Backend) {
+    let mut f = backend.fixture();
+    configure_mail(&mut f);
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    f.user("unverified");
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                email_verified: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let pending = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(&text(&pending, "secret"), "alice").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .unwrap();
+    let fresh = text(
+        &f.core
+            .login(
+                "alice".into(),
+                PASSWORD.into(),
+                Some(totp.generate(now()).to_string()),
+            )
+            .unwrap(),
+        "session_token",
+    );
+    let recovery = f.core.recovery_codes(&fresh).unwrap()["recovery_codes"][0]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = user(&f, "alice");
+    let access = f.tokens("app", &fresh, None);
+    let delivery_count = f.core.store.list::<Value>("mail_deliveries").unwrap().len();
+    assert_eq!(
+        f.core.account_reset_request("absent").unwrap()["accepted"],
+        true
+    );
+    assert_eq!(
+        f.core.account_reset_request("unverified").unwrap()["accepted"],
+        true
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("mail_deliveries").unwrap().len(),
+        delivery_count
+    );
+
+    f.core
+        .update_user(
+            &f.admin,
+            "bob",
+            UserPatch {
+                email_verified: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    f.core.account_reset_request("bob").unwrap();
+    let bob_code = mail_code_for(&f, "bob");
+    f.core
+        .update_user(
+            &f.admin,
+            "bob",
+            UserPatch {
+                email: Some("bob-changed@example.test".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let before_email_rejection = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(
+                bob_code,
+                Purpose::Reset,
+                Some("new-password-for-bob".into())
+            )
+            .is_err()
+    );
+    f.assert_snapshot(&before_email_rejection);
+    assert!(f.core.me(&bob).is_ok());
+
+    f.core.account_reset_request("alice").unwrap();
+    let code = mail_code_for(&f, "alice");
+    let before_invalid = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Verify, None)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(PASSWORD.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&before_invalid);
+    let replacement = "new-password-from-account-proof";
+    assert_eq!(
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(replacement.into()))
+            .unwrap()["completed"],
+        true
+    );
+    assert_eq!(audit_count(&f, "user.account.reset"), 1);
+    let after_completion = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Reset, Some(replacement.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&after_completion);
+    let reset = user(&f, "alice");
+    assert_eq!(reset.id, before.id);
+    assert!(reset.epoch > before.epoch);
+    assert_eq!(reset.totp_secret, before.totp_secret);
+    assert_eq!(reset.recovery_codes, before.recovery_codes);
+    assert!(f.core.me(&fresh).is_err());
+    assert!(f.core.userinfo(&text(&access, "access_token")).is_err());
+    assert!(f.core.me(&bob).is_ok());
+    assert!(f.core.login("alice".into(), PASSWORD.into(), None).is_err());
+    assert!(
+        f.core
+            .login("alice".into(), replacement.into(), None)
+            .is_err()
+    );
+    let recovered = f
+        .core
+        .login("alice".into(), replacement.into(), Some(recovery.clone()))
+        .unwrap();
+    assert_eq!(
+        f.core.me(&text(&recovered, "session_token")).unwrap()["mfa"],
+        true
+    );
+    assert!(
+        f.core
+            .login("alice".into(), replacement.into(), Some(recovery.clone()))
+            .is_err()
+    );
+    let published = json!({
+        "audit": audit(&f),
+        "deliveries": f.core.mail_deliveries(&f.admin).unwrap(),
+    })
+    .to_string();
+    assert!(!published.contains(&code));
+    assert!(!published.contains(&recovery));
+    assert!(!published.contains(replacement));
+}
+
+// RI-CRED-003, RI-SES-003/005, Q02-C02/C03: a newer reset replaces the
+// earlier proof, while deadline rejection cannot change credential state.
+#[cfg(feature = "test-support")]
+pub fn account_proof_supersession_and_expiry(backend: Backend) {
+    let start = now();
+    crypto::with_test_time(start, || {
+        let mut f = backend.fixture();
+        configure_mail(&mut f);
+        f.user("alice");
+        let bob = f.user("bob");
+        f.core
+            .update_user(
+                &f.admin,
+                "alice",
+                UserPatch {
+                    email_verified: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let alice = text(
+            &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        );
+        let original = user(&f, "alice");
+        f.core.account_reset_request("alice").unwrap();
+        let first = mail_code_for(&f, "alice");
+        let before_throttled = f.snapshot().unwrap();
+        assert_eq!(
+            f.core.account_reset_request("alice").unwrap()["accepted"],
+            true
+        );
+        f.assert_snapshot(&before_throttled);
+
+        crypto::set_test_time(start + 61);
+        f.core.account_reset_request("alice").unwrap();
+        let codes = mail_codes_for(&f, "alice");
+        assert_eq!(codes.len(), 2);
+        let second = codes.into_iter().find(|code| code != &first).unwrap();
+        assert!(
+            f.core
+                .store
+                .get::<Value>("account_proofs", &digest(&first))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>("account_proofs", &digest(&second))
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            f.core
+                .store
+                .get::<String>("account_latest", &format!("{}:reset", original.id))
+                .unwrap(),
+            Some(digest(&second))
+        );
+        let before_old = f.snapshot().unwrap();
+        assert!(
+            f.core
+                .account_complete(
+                    first.clone(),
+                    Purpose::Reset,
+                    Some("superseded-password".into())
+                )
+                .is_err()
+        );
+        f.assert_snapshot(&before_old);
+        assert_eq!(user(&f, "alice").epoch, original.epoch);
+        assert!(f.core.me(&alice).is_ok());
+        assert!(f.core.me(&bob).is_ok());
+
+        let replacement = "second-reset-proof-password";
+        assert_eq!(
+            f.core
+                .account_complete(second.clone(), Purpose::Reset, Some(replacement.into()))
+                .unwrap()["completed"],
+            true
+        );
+        assert_eq!(audit_count(&f, "user.account.reset"), 1);
+        assert!(f.core.me(&alice).is_err());
+        assert!(f.core.me(&bob).is_ok());
+        assert!(user(&f, "alice").epoch > original.epoch);
+
+        crypto::set_test_time(start + 122);
+        f.core.account_reset_request("alice").unwrap();
+        let third = mail_codes_for(&f, "alice")
+            .into_iter()
+            .find(|code| code != &first && code != &second)
+            .unwrap();
+        let expiry = f
+            .core
+            .store
+            .get::<Value>("account_proofs", &digest(&third))
+            .unwrap()
+            .unwrap()["expires_at"]
+            .as_u64()
+            .unwrap();
+        let after_reset = user(&f, "alice");
+        let before_expiry = f.snapshot().unwrap();
+        crypto::set_test_time(expiry);
+        assert!(
+            f.core
+                .account_complete(third, Purpose::Reset, Some("expired-password".into()))
+                .is_err()
+        );
+        f.assert_snapshot(&before_expiry);
+        assert_eq!(user(&f, "alice").epoch, after_reset.epoch);
+        assert!(user(&f, "alice").password_hash == after_reset.password_hash);
+        assert_eq!(audit_count(&f, "user.account.reset"), 1);
+        assert!(f.core.me(&bob).is_ok());
+    });
+}
+
+// RI-CRED-003, RI-CRED-002, Q02-C02: a verification request needs a recent
+// account session, and its proof affects only that account and current email.
+#[cfg(feature = "test-support")]
+pub fn verification_proof_binding_and_replay(backend: Backend) {
+    let start = now();
+    crypto::with_test_time(start, || {
+        let mut f = backend.fixture();
+        configure_mail(&mut f);
+        let alice = f.user("alice");
+        let bob = f.user("bob");
+        crypto::set_test_time(start + 301);
+        let before_stale = f.snapshot().unwrap();
+        assert_eq!(
+            f.core.account_verify_request(&alice).unwrap_err().code,
+            "access_denied"
+        );
+        f.assert_snapshot(&before_stale);
+        let fresh = text(
+            &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        );
+        f.core.account_verify_request(&fresh).unwrap();
+        let first = mail_code_for(&f, "alice");
+        let alice_id = user(&f, "alice").id;
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("account_proofs", &digest(&first))
+                .unwrap()
+                .unwrap()["user_id"],
+            alice_id
+        );
+        let before_wrong_purpose = f.snapshot().unwrap();
+        assert!(
+            f.core
+                .account_complete(first.clone(), Purpose::Reset, Some("wrong-purpose".into()))
+                .is_err()
+        );
+        f.assert_snapshot(&before_wrong_purpose);
+
+        f.core
+            .update_user(
+                &f.admin,
+                "alice",
+                UserPatch {
+                    email: Some("alice-new@example.test".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let before_old = f.snapshot().unwrap();
+        assert!(
+            f.core
+                .account_complete(first.clone(), Purpose::Verify, None)
+                .is_err()
+        );
+        f.assert_snapshot(&before_old);
+        assert!(!user(&f, "alice").email_verified);
+        assert!(!user(&f, "bob").email_verified);
+        assert!(f.core.me(&bob).is_ok());
+
+        crypto::set_test_time(start + 362);
+        let fresh = text(
+            &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        );
+        f.core.account_verify_request(&fresh).unwrap();
+        let codes = mail_codes_for(&f, "alice");
+        assert_eq!(codes.len(), 2);
+        let current = codes.into_iter().find(|code| code != &first).unwrap();
+        let current_proof: Value = f
+            .core
+            .store
+            .get("account_proofs", &digest(&current))
+            .unwrap()
+            .unwrap();
+        assert_eq!(current_proof["user_id"], alice_id);
+        assert_eq!(current_proof["email"], "alice-new@example.test");
+        assert_eq!(
+            f.core
+                .account_complete(current.clone(), Purpose::Verify, None)
+                .unwrap()["completed"],
+            true
+        );
+        let verified = user(&f, "alice");
+        assert_eq!(verified.id, alice_id);
+        assert!(verified.email_verified);
+        assert!(!user(&f, "bob").email_verified);
+        assert_eq!(audit_count(&f, "user.account.verify"), 1);
+        let after_completion = f.snapshot().unwrap();
+        assert!(
+            f.core
+                .account_complete(current, Purpose::Verify, None)
+                .is_err()
+        );
+        f.assert_snapshot(&after_completion);
+        assert!(f.core.me(&bob).is_ok());
+    });
+}
+
+// RI-CRED-003, RI-MGT-004, RI-STORE-001, Q02-C02/C04: invitation completion
+// rechecks the creator's live authority before it changes a user or group.
+pub fn invitation_acceptance_revalidates_creator(backend: Backend) {
+    let mut f = backend.fixture();
+    configure_mail(&mut f);
+    f.core.create_group(&f.admin, "invited").unwrap();
+    let bob = f.user("bob");
+    let inviter = agent(
+        &f,
+        "inviter",
+        &[
+            ("user.write", "user/pending"),
+            ("group.members", "group/invited"),
+        ],
+    );
+    let pending = Invitation {
+        username: "pending".into(),
+        email: "pending@example.test".into(),
+        display_name: "Pending account".into(),
+        groups: strings(&["invited"]),
+    };
+    f.core.account_invite(&inviter, pending.clone()).unwrap();
+    let code = mail_code_for(&f, "pending");
+    let pending_user = user(&f, "pending");
+    assert!(!pending_user.enabled);
+    assert!(pending_user.password_hash.is_empty());
+    let before_duplicate = f.snapshot().unwrap();
+    assert!(f.core.account_invite(&inviter, pending).is_err());
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Verify, None)
+            .is_err()
+    );
+    f.assert_snapshot(&before_duplicate);
+
+    f.core.revoke_agent(&f.admin, "inviter").unwrap();
+    let before_rejected_acceptance = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&before_rejected_acceptance);
+    assert!(!user(&f, "pending").enabled);
+    assert!(
+        !f.core
+            .store
+            .get::<Group>("groups", "invited")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&pending_user.id)
+    );
+    assert_eq!(audit_count(&f, "user.account.accept"), 0);
+    assert!(f.core.me(&bob).is_ok());
+
+    f.core
+        .account_invite(
+            &f.admin,
+            Invitation {
+                username: "accepted".into(),
+                email: "accepted@example.test".into(),
+                display_name: "Accepted account".into(),
+                groups: strings(&["invited"]),
+            },
+        )
+        .unwrap();
+    let accepted_code = mail_code_for(&f, "accepted");
+    let accepted_id = user(&f, "accepted").id;
+    assert_eq!(
+        f.core
+            .account_complete(
+                accepted_code.clone(),
+                Purpose::Invite,
+                Some(PASSWORD.into())
+            )
+            .unwrap()["completed"],
+        true
+    );
+    let accepted = user(&f, "accepted");
+    assert_eq!(accepted.id, accepted_id);
+    assert!(accepted.enabled && accepted.email_verified);
+    let members = &f
+        .core
+        .store
+        .get::<Group>("groups", "invited")
+        .unwrap()
+        .unwrap()
+        .members;
+    assert!(members.contains(&accepted_id));
+    assert!(!members.contains(&pending_user.id));
+    assert_eq!(audit_count(&f, "user.account.accept"), 1);
+    let after_acceptance = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .account_complete(accepted_code, Purpose::Invite, Some(PASSWORD.into()))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .account_complete(code, Purpose::Invite, Some(PASSWORD.into()))
+            .is_err()
+    );
+    f.assert_snapshot(&after_acceptance);
+    assert!(
+        f.core
+            .login("accepted".into(), PASSWORD.into(), None)
+            .is_ok()
+    );
+    assert!(f.core.me(&bob).is_ok());
+}
+
+// RI-CRED-001/002, Q02-C02: a registration response lacking user verification
+// consumes only its ceremony and cannot enroll or revoke account authority.
+pub fn passkey_registration_requires_user_verification(backend: Backend) {
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+    let f = backend.fixture();
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let before_user = user(&f, "alice");
+    let origin = url::Url::parse(&f.core.config.issuer).unwrap();
+    let mut weak = WebauthnAuthenticator::new(SoftPasskey::new(false));
+    let registration = f
+        .core
+        .passkey_register_start(&alice, "Unverified key".into())
+        .unwrap();
+    let mut options = registration["public_key"].clone();
+    options["publicKey"]["authenticatorSelection"]["userVerification"] = json!("discouraged");
+    let response = weak
+        .do_registration(origin.clone(), serde_json::from_value(options).unwrap())
+        .unwrap();
+    let ceremony = text(&registration, "ceremony");
+    assert!(
+        f.core
+            .passkey_register_finish(&alice, &ceremony, response.clone())
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkey_registration", &digest(&ceremony))
+            .unwrap()
+            .is_none()
+    );
+    let after_rejection = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .passkey_register_finish(&alice, &ceremony, response)
+            .is_err()
+    );
+    f.assert_snapshot(&after_rejection);
+    let unchanged = user(&f, "alice");
+    assert_eq!(unchanged.epoch, before_user.epoch);
+    assert!(!unchanged.has_passkeys);
+    assert!(unchanged.password_hash == before_user.password_hash);
+    assert!(f.core.store.list::<Value>("passkeys").unwrap().is_empty());
+    assert_eq!(audit_count(&f, "passkey.enroll"), 0);
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&bob).is_ok());
+
+    let mut strong = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let verified = f
+        .core
+        .passkey_register_start(&alice, "Verified key".into())
+        .unwrap();
+    let response = strong
+        .do_registration(
+            origin,
+            serde_json::from_value(verified["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    f.core
+        .passkey_register_finish(&alice, &text(&verified, "ceremony"), response)
+        .unwrap();
+    assert!(user(&f, "alice").has_passkeys);
+    assert_eq!(f.core.store.list::<Value>("passkeys").unwrap().len(), 1);
+    assert_eq!(audit_count(&f, "passkey.enroll"), 1);
+    assert!(f.core.me(&alice).is_err());
+    assert!(f.core.me(&bob).is_ok());
+}
+
+// RI-CRED-002, RI-SES-005, Q02-C02: existing-factor MFA and a fresh auth_time
+// gate key management; expired challenges cannot create a new session.
+#[cfg(feature = "test-support")]
+pub fn passkey_management_requires_fresh_mfa(backend: Backend) {
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+    let start = now();
+    crypto::with_test_time(start, || {
+        let f = backend.fixture();
+        let alice = f.user("alice");
+        let bob = f.user("bob");
+        let origin = url::Url::parse(&f.core.config.issuer).unwrap();
+        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let registration = f
+            .core
+            .passkey_register_start(&alice, "Managed key".into())
+            .unwrap();
+        let response = authenticator
+            .do_registration(
+                origin.clone(),
+                serde_json::from_value(registration["public_key"].clone()).unwrap(),
+            )
+            .unwrap();
+        let enrolled = f
+            .core
+            .passkey_register_finish(&alice, &text(&registration, "ceremony"), response)
+            .unwrap();
+        let key_id = text(&enrolled["passkey"], "id");
+        let password_only = text(
+            &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        );
+        let before_weak_session = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .passkey_register_start(&password_only, "Second key".into())
+                .unwrap_err()
+                .code,
+            "mfa_required"
+        );
+        assert_eq!(
+            f.core
+                .passkey_remove(&password_only, &key_id)
+                .unwrap_err()
+                .code,
+            "mfa_required"
+        );
+        f.assert_snapshot(&before_weak_session);
+
+        let first_login = f.core.passkey_login_start("alice", None).unwrap();
+        let first_proof = authenticator
+            .do_authentication(
+                origin.clone(),
+                serde_json::from_value(first_login["public_key"].clone()).unwrap(),
+            )
+            .unwrap();
+        let mfa = text(
+            &f.core
+                .passkey_login_finish(&text(&first_login, "ceremony"), first_proof)
+                .unwrap(),
+            "session_token",
+        );
+        let expired_login = f.core.passkey_login_start("alice", None).unwrap();
+        let expired_proof = authenticator
+            .do_authentication(
+                origin.clone(),
+                serde_json::from_value(expired_login["public_key"].clone()).unwrap(),
+            )
+            .unwrap();
+        crypto::set_test_time(start + 301);
+        let before_stale = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .passkey_register_start(&mfa, "Too late".into())
+                .unwrap_err()
+                .code,
+            "reauthentication_required"
+        );
+        assert_eq!(
+            f.core.passkey_remove(&mfa, &key_id).unwrap_err().code,
+            "reauthentication_required"
+        );
+        assert!(
+            f.core
+                .passkey_login_finish(&text(&expired_login, "ceremony"), expired_proof)
+                .is_err()
+        );
+        f.assert_snapshot(&before_stale);
+        assert!(f.core.me(&mfa).is_ok());
+        assert!(f.core.me(&bob).is_ok());
+        assert_eq!(audit_count(&f, "passkey.remove"), 0);
+
+        let second_login = f.core.passkey_login_start("alice", None).unwrap();
+        let second_proof = authenticator
+            .do_authentication(
+                origin,
+                serde_json::from_value(second_login["public_key"].clone()).unwrap(),
+            )
+            .unwrap();
+        let fresh_mfa = text(
+            &f.core
+                .passkey_login_finish(&text(&second_login, "ceremony"), second_proof)
+                .unwrap(),
+            "session_token",
+        );
+        assert_eq!(
+            f.core.passkey_remove(&fresh_mfa, &key_id).unwrap()["removed"],
+            true
+        );
+        assert!(!user(&f, "alice").has_passkeys);
+        assert!(f.core.me(&mfa).is_err());
+        assert!(f.core.me(&fresh_mfa).is_err());
+        assert!(f.core.me(&bob).is_ok());
+        assert_eq!(audit_count(&f, "passkey.remove"), 1);
+    });
+}
+
+fn offboard_job(f: &Fixture, id: &str) -> Job {
+    f.core.store.get(offboarding::BUCKET, id).unwrap().unwrap()
+}
+
+fn offboard_schedule(f: &Fixture, token: &str, username: &str, execute_at: u64) -> Value {
+    f.core
+        .offboard_schedule(
+            token,
+            ScheduleRequest {
+                username: username.into(),
+                execute_at: ExecuteAt::Unix(execute_at),
+                timezone: "UTC".into(),
+            },
+        )
+        .unwrap()
+}
+
+// RI-CON-004, RI-MGT-004, RI-STORE-001, Q02-C06/C08: one scheduled intent
+// survives reopening; duplicate and unauthorized requests cannot add jobs or
+// audits, and cancellation has an exact idempotent retry result.
+pub fn offboard_intent_durable_cancel(backend: Backend) {
+    let f = backend.fixture();
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let allowed = agent(&f, "scheduler", &[("user.offboard", "user/alice")]);
+    let denied = agent(&f, "other-scheduler", &[("user.offboard", "user/bob")]);
+    let due_at = now() + 3600;
+    let scheduled = offboard_schedule(&f, &allowed, "alice", due_at);
+    let id = text(&scheduled, "id");
+    let alice_id = user(&f, "alice").id;
+    assert_eq!(scheduled["user_id"], alice_id);
+    assert_eq!(scheduled["created_by"], "agent:scheduler");
+    assert_eq!(scheduled["status"], "scheduled");
+    assert_eq!(
+        f.core.store.list::<Job>(offboarding::BUCKET).unwrap().len(),
+        1
+    );
+    assert_eq!(audit_count(&f, "offboard.schedule"), 1);
+    assert!(audit(&f).iter().any(|event| {
+        event["action"] == "offboard.schedule"
+            && event["actor"] == "agent:scheduler"
+            && event["target"] == format!("{id}/alice")
+    }));
+    let before_rejection = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .offboard_schedule(
+                &allowed,
+                ScheduleRequest {
+                    username: "alice".into(),
+                    execute_at: ExecuteAt::Unix(due_at),
+                    timezone: "UTC".into(),
+                }
+            )
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        f.core.offboard_cancel(&denied, &id).unwrap_err().code,
+        "access_denied"
+    );
+    assert_eq!(
+        f.core.offboard_get(&denied, &id).unwrap_err().code,
+        "access_denied"
+    );
+    f.assert_snapshot(&before_rejection);
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&bob).is_ok());
+
+    let f = f.reopen_with(|_| {});
+    f.assert_snapshot(&before_rejection);
+    assert_eq!(f.core.offboard_get(&allowed, &id).unwrap(), scheduled);
+    let cancelled = f.core.offboard_cancel(&allowed, &id).unwrap();
+    assert_eq!(cancelled["status"], "cancelled");
+    assert_eq!(offboard_job(&f, &id).status, Status::Cancelled);
+    assert_eq!(audit_count(&f, "offboard.cancel"), 1);
+    let after_cancel = f.snapshot().unwrap();
+    assert_eq!(f.core.offboard_cancel(&allowed, &id).unwrap(), cancelled);
+    assert!(f.core.offboard_claim("worker").unwrap().is_none());
+    f.assert_snapshot(&after_cancel);
+    assert_eq!(
+        f.core.store.list::<Job>(offboarding::BUCKET).unwrap().len(),
+        1
+    );
+    assert_eq!(audit_count(&f, "offboard.schedule"), 1);
+    assert_eq!(audit_count(&f, "offboard.cancel"), 1);
+    assert_eq!(audit_count(&f, "offboard.execute"), 0);
+    assert!(user(&f, "alice").enabled);
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&bob).is_ok());
+}
+
+// RI-CON-004, RI-MGT-004, RI-STORE-001, Q02-C06/C08: a precommit fault is
+// retried without disabling the user; authority loss during the later lease
+// yields one terminal result and one matching audit, never a user mutation.
+#[cfg(feature = "test-support")]
+pub fn offboard_retry_rechecks_authority(backend: Backend) {
+    let start = now();
+    crypto::with_test_time(start, || {
+        let f = backend.fixture();
+        f.user("owner");
+        let alice = f.user("alice");
+        let bob = f.user("bob");
+        let created = f
+            .core
+            .create_agent(
+                &f.admin,
+                NewAgent {
+                    id: "owned-scheduler".into(),
+                    ttl: 3600,
+                    parent: Some("owner".into()),
+                    permissions: vec![Permission {
+                        action: "user.offboard".into(),
+                        resource: "user/alice".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let scheduler = text(&created["credential"], "token");
+        let id = text(&offboard_schedule(&f, &scheduler, "alice", start + 1), "id");
+        let before_user = user(&f, "alice");
+        crypto::set_test_time(start + 1);
+        assert!(
+            f.core
+                .offboard_process("worker-a", |_| BeforeCommit::RetryableFailure)
+                .unwrap()
+        );
+        let retry = offboard_job(&f, &id);
+        assert_eq!(retry.status, Status::Scheduled);
+        assert_eq!(retry.attempts, 1);
+        assert!(retry.next_attempt > now());
+        assert!(retry.last_error.is_some());
+        assert_eq!(audit_count(&f, "offboard.execute"), 0);
+        assert_eq!(user(&f, "alice").epoch, before_user.epoch);
+        assert!(user(&f, "alice").enabled);
+        assert!(f.core.me(&alice).is_ok());
+        let before_not_due = f.snapshot().unwrap();
+        assert!(
+            !f.core
+                .offboard_process("worker-b", |_| BeforeCommit::Proceed)
+                .unwrap()
+        );
+        f.assert_snapshot(&before_not_due);
+
+        crypto::set_test_time(retry.next_attempt);
+        let claimed = f.core.offboard_claim("worker-a").unwrap().unwrap();
+        assert_eq!(claimed["id"], id);
+        assert_eq!(claimed["attempts"], 2);
+        let before_wrong_owner = f.snapshot().unwrap();
+        assert!(f.core.offboard_claim("worker-b").unwrap().is_none());
+        assert_eq!(
+            f.core
+                .offboard_commit("worker-b", &id, BeforeCommit::Proceed)
+                .unwrap_err()
+                .code,
+            "lease_lost"
+        );
+        f.assert_snapshot(&before_wrong_owner);
+
+        f.core.revoke_agent(&f.admin, "owned-scheduler").unwrap();
+        let before_authority_rejection = f.snapshot().unwrap();
+        let failed = f
+            .core
+            .offboard_commit("worker-a", &id, BeforeCommit::Proceed)
+            .unwrap();
+        assert_eq!(failed["status"], "failed");
+        assert_eq!(failed["attempts"], 2);
+        assert_eq!(offboard_job(&f, &id).status, Status::Failed);
+        f.assert_snapshot_except(&before_authority_rejection, |key| {
+            key.starts_with("offboard_jobs/")
+                || key.starts_with("audit/")
+                || (key.starts_with("index_") && key.contains("offboard_jobs"))
+                || (key.starts_with("index_") && key.contains("audit"))
+                || key == "meta/revision"
+        });
+        let revision_before = before_authority_rejection["meta/revision"]
+            .as_u64()
+            .unwrap();
+        let revision_after: u64 = f.core.store.get("meta", "revision").unwrap().unwrap();
+        assert_eq!(revision_after, revision_before + 1);
+        let after_user = user(&f, "alice");
+        assert!(after_user.enabled);
+        assert_eq!(after_user.epoch, before_user.epoch);
+        assert!(after_user.password_hash == before_user.password_hash);
+        assert!(f.core.me(&alice).is_ok());
+        assert!(f.core.me(&bob).is_ok());
+        assert_eq!(audit_count(&f, "offboard.execute"), 1);
+        assert!(audit(&f).iter().any(|event| {
+            event["action"] == "offboard.execute"
+                && event["actor"] == "agent:owned-scheduler"
+                && event["target"] == format!("{id}/alice")
+        }));
+        let terminal = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .offboard_commit("worker-a", &id, BeforeCommit::Proceed)
+                .unwrap(),
+            failed
+        );
+        assert!(f.core.offboard_claim("worker-c").unwrap().is_none());
+        f.assert_snapshot(&terminal);
+        assert_eq!(audit_count(&f, "offboard.execute"), 1);
+    });
+}
+
+fn configure_cloud(f: &mut Fixture, remote: &cloud_mock::Mock) {
+    let secret_file = f._dir.path().join("contract-cloud.secret");
+    write_private(&secret_file, cloud_mock::SECRET.as_bytes(), true).unwrap();
+    f.core.config.workspace_directories.insert(
+        "corp".into(),
+        WorkspaceDirectory {
+            customer_id: "C01234567".into(),
+            domain: "example.test".into(),
+            token_url: remote.token_url.clone(),
+            client_id: cloud_mock::CLIENT_ID.into(),
+            client_secret_file: secret_file,
+            directory_url: remote.base.clone(),
+            groups: BTreeMap::new(),
+            attributes: Attributes {
+                email: "primaryEmail".into(),
+                display_name: "name.fullName".into(),
+                external_id: "id".into(),
+            },
+            username_prefix: String::new(),
+            scope: String::new(),
+        },
+    );
+}
+
+// RI-CON-001/002, RI-MGT-004, RI-STORE-001, Q02-C06/C08: a real loopback
+// connector produces a durable plan. Malformed, partial and changed snapshots
+// cannot apply it. A permission loss on the second entry must roll back the
+// first staged account, bindings, plan state and audit on every backend.
+pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
+    let remote = cloud_mock::Mock::new();
+    let mut f = backend.fixture();
+    configure_cloud(&mut f, &remote);
+    let local = f.user("local");
+    let syncer = agent(
+        &f,
+        "syncer",
+        &[
+            ("directory.sync", "workspace/corp"),
+            ("directory.read", "workspace/corp"),
+            ("user.write", "*"),
+        ],
+    );
+    let before_plan = f.snapshot().unwrap();
+    let plan = f.core.cloud_plan(&syncer, "workspace", "corp").unwrap();
+    let plan_id = text(&plan, "id");
+    assert_eq!(plan["actor"], "agent:syncer");
+    assert_eq!(plan["changes"].as_array().unwrap().len(), 2);
+    assert_eq!(plan["entries"][0]["username"], "cloud-alice");
+    assert_eq!(plan["entries"][1]["username"], "cloud-bob");
+    assert_eq!(plan["applied"], false);
+    assert_eq!(
+        f.core
+            .store
+            .list::<Value>("cloud_directory_plans")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(audit_count(&f, "cloud_directory.plan"), 1);
+    assert!(
+        f.core
+            .store
+            .get::<String>("usernames", "cloud-alice")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("usernames", "cloud-bob")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        before_plan
+            .keys()
+            .all(|key| !key.starts_with("cloud_directory_plans/"))
+    );
+    let before_wrong_actor = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .cloud_apply(&f.admin, "workspace", &plan_id)
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    f.assert_snapshot(&before_wrong_actor);
+
+    for mode in [
+        cloud_mock::Mode::MissingUsers,
+        cloud_mock::Mode::PartialFailure,
+    ] {
+        remote.set_mode(mode);
+        let before = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .cloud_apply(&syncer, "workspace", &plan_id)
+                .unwrap_err()
+                .code,
+            "directory_unavailable"
+        );
+        // Failed fetches advance only the connector's retry ledger.
+        f.assert_snapshot_except(&before, |key| key.starts_with("cloud_directory_runs/"));
+        assert_eq!(audit_count(&f, "cloud_directory.apply"), 0);
+    }
+    remote.set_mode(cloud_mock::Mode::Changed);
+    let before_stale = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .cloud_apply(&syncer, "workspace", &plan_id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_snapshot_except(&before_stale, |key| {
+        key.starts_with("cloud_directory_runs/")
+    });
+
+    remote.set_mode(cloud_mock::Mode::Complete);
+    let original_permissions = f
+        .core
+        .store
+        .get::<Agent>("agents", "syncer")
+        .unwrap()
+        .unwrap()
+        .permissions;
+    // There is no agent permission-edit endpoint. Model a live reduction at
+    // the existing authority record so apply passes its directory check but
+    // fails after staging the first of two users.
+    f.core
+        .store
+        .write(|tx| {
+            let mut actor: Agent = tx.get("agents", "syncer")?.unwrap();
+            actor.permissions.retain(|p| p.action != "user.write");
+            actor.permissions.push(Permission {
+                action: "user.write".into(),
+                resource: "user/cloud-alice".into(),
+            });
+            tx.put("agents", "syncer", &actor)
+        })
+        .unwrap();
+    let before_denied = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .cloud_apply(&syncer, "workspace", &plan_id)
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    f.assert_snapshot_except(&before_denied, |key| {
+        key.starts_with("cloud_directory_runs/")
+    });
+    assert!(
+        f.core
+            .store
+            .list::<Value>("cloud_directory_bindings")
+            .unwrap()
+            .is_empty()
+    );
+    for username in ["cloud-alice", "cloud-bob"] {
+        assert!(
+            f.core
+                .store
+                .get::<String>("usernames", username)
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert_eq!(audit_count(&f, "user.cloud_directory_sync"), 0);
+    assert_eq!(audit_count(&f, "cloud_directory.apply"), 0);
+    assert_eq!(
+        f.core
+            .cloud_plan_get(&syncer, "workspace", &plan_id)
+            .unwrap()["applied"],
+        false
+    );
+    assert!(f.core.me(&local).is_ok());
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut actor: Agent = tx.get("agents", "syncer")?.unwrap();
+            actor.permissions = original_permissions;
+            tx.put("agents", "syncer", &actor)
+        })
+        .unwrap();
+    let applied = f.core.cloud_apply(&syncer, "workspace", &plan_id).unwrap();
+    assert_eq!(applied["applied"], true);
+    assert_eq!(audit_count(&f, "user.cloud_directory_sync"), 2);
+    assert_eq!(audit_count(&f, "cloud_directory.apply"), 1);
+    assert_eq!(
+        f.core
+            .cloud_plan_get(&syncer, "workspace", &plan_id)
+            .unwrap()["applied"],
+        true
+    );
+    assert_eq!(
+        f.core
+            .store
+            .list::<Value>("cloud_directory_bindings")
+            .unwrap()
+            .len(),
+        2
+    );
+    for username in ["cloud-alice", "cloud-bob"] {
+        let account = user(&f, username);
+        assert!(account.enabled);
+        assert!(!account.admin);
+        assert!(account.password_hash.is_empty());
+    }
+    assert!(f.core.me(&local).is_ok());
+    let after_apply = f.snapshot().unwrap();
+    let hits = remote.users_hits();
+    assert_eq!(
+        f.core.cloud_apply(&syncer, "workspace", &plan_id).unwrap(),
+        applied
+    );
+    assert_eq!(remote.users_hits(), hits);
+    f.assert_snapshot(&after_apply);
+    f.core.revoke_agent(&f.admin, "syncer").unwrap();
+    let after_revoke = f.snapshot().unwrap();
+    assert!(f.core.cloud_apply(&syncer, "workspace", &plan_id).is_err());
+    f.assert_snapshot(&after_revoke);
+    assert_eq!(audit_count(&f, "cloud_directory.apply"), 1);
+}
