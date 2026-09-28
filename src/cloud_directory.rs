@@ -46,6 +46,7 @@ const CLOUD_PAGES_PER_PLAN_CALL: usize = 5;
 const CLOUD_SNAPSHOT_SECONDS: u64 = 300;
 const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
 const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
+const CLOUD_APPLY_SNAPSHOTS: &str = "cloud_directory_apply_snapshots";
 const MAX_GRAPH_CURSOR_BYTES: usize = 8192;
 
 pub use crate::cloud_directory_types::{
@@ -1292,14 +1293,57 @@ impl CloudSnapshotDraft {
     }
 }
 
-impl Settings {
-    fn fetch(&self) -> Result<Vec<RemoteUser>> {
-        let mut snapshot = CloudSnapshot::new();
-        snapshot.advance(self, MAX_PAGES * (self.groups.len() + 2))?;
-        if !snapshot.complete(self) {
-            return Err(unavailable("Cloud directory pagination did not finish"));
+/// The apply crawl is separate from planning. Its cursor is tied to the exact
+/// reviewed plan, so a new plan cannot inherit pages from an older one.
+#[derive(Clone, Serialize, Deserialize)]
+struct CloudApplyDraft {
+    plan_id: String,
+    review: ReviewBinding,
+    draft: CloudSnapshotDraft,
+}
+
+impl CloudApplyDraft {
+    fn new(settings: &Settings, actor: &Principal, plan: &Plan) -> Self {
+        Self {
+            plan_id: plan.id.clone(),
+            review: plan.review.clone(),
+            draft: CloudSnapshotDraft::new(
+                settings,
+                actor,
+                plan.revision,
+                plan.review.authority_digest.clone(),
+            ),
         }
-        Ok(snapshot.into_users())
+    }
+
+    fn valid(&self, settings: &Settings, plan: &Plan) -> bool {
+        self.plan_id == plan.id
+            && self.review == plan.review
+            && self.draft.directory == settings.id
+            && self.draft.actor == plan.actor
+            && self.draft.revision == plan.revision
+            && self.draft.fingerprint == settings.fingerprint
+            && self.draft.authority_digest == plan.review.authority_digest
+            && self.draft.expires_at > now()
+            && !self.draft.snapshot.complete(settings)
+            && self.draft.snapshot.phase <= settings.groups.len() + 2
+    }
+
+    fn bounded(&self) -> Result<()> {
+        self.draft.bounded()?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len() > MAX_TOTAL_BYTES {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    fn progress(&self, restarted: bool) -> Value {
+        let mut progress = self.draft.progress(restarted);
+        progress["plan_id"] = json!(self.plan_id);
+        progress["operation"] = json!("apply_validation");
+        progress
     }
 }
 
@@ -1907,20 +1951,6 @@ impl Core {
             Ok(())
         })
     }
-    fn fetch_entries(&self, settings: &Settings) -> Result<Vec<Entry>> {
-        self.ensure_budget(settings)?;
-        let remote = match settings.fetch() {
-            Ok(users) => users,
-            Err(error) => {
-                if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.record_failure(settings)?;
-                }
-                return Err(error);
-            }
-        };
-        self.reset_budget(settings)?;
-        self.store.read(|tx| materialize(tx, settings, remote))
-    }
     pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
         self.store.read(|tx| {
@@ -1984,13 +2014,46 @@ impl Core {
             Ok(json!(plan))
         })
     }
-    /// Controller trigger for one cloud directory. A still-bound pending plan
-    /// retains its exact ID; apply re-fetches the remote source and rechecks
-    /// current authority before committing local changes.
+    /// Controller trigger for one cloud directory. An in-progress apply crawl
+    /// resumes its exact plan without starting a new planning crawl.
     pub fn cloud_reconcile(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
         let mode = self.cloud_mode(provider, id);
-        let plan = self.cloud_plan_internal(token, kind, id, true)?;
+        let settings = self.cloud_settings(kind, id)?;
+        let key = digest(&settings.resource());
+        let pending = self.store.read(|tx| {
+            let Some(apply) = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)? else {
+                return Ok(None);
+            };
+            let Some(plan) = tx.get::<Plan>("cloud_directory_plans", &apply.plan_id)? else {
+                return Ok(None);
+            };
+            if plan.applied
+                || plan.expires_at <= now()
+                || plan.kind != settings.kind
+                || plan.directory != settings.id
+                || plan.fingerprint != settings.fingerprint
+                || !apply.valid(&settings, &plan)
+                || mode.decide(&plan.removal_impact)
+                    != crate::connector_guard::ReconciliationDecision::Eligible
+            {
+                return Ok(None);
+            }
+            let actor = self.cloud_snapshot_actor(
+                tx,
+                token,
+                &settings,
+                &plan.actor,
+                plan.revision,
+                &plan.review.authority_digest,
+            )?;
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
+            Ok(Some(json!(plan)))
+        })?;
+        let plan = match pending {
+            Some(plan) => plan,
+            None => self.cloud_plan_internal(token, kind, id, true)?,
+        };
         if plan["decision"] == "snapshot_in_progress" {
             return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
         }
@@ -2033,6 +2096,46 @@ impl Core {
                 "Cloud source, authority or local revision changed during snapshot",
             ));
         }
+        Ok(actor)
+    }
+
+    fn cloud_apply_actor(
+        &self,
+        tx: &Tx<'_>,
+        token: &str,
+        settings: &Settings,
+        expected: &Plan,
+        reviewed_plan: Option<&str>,
+    ) -> Result<Principal> {
+        let actor = self.cloud_snapshot_actor(
+            tx,
+            token,
+            settings,
+            &expected.actor,
+            expected.revision,
+            &expected.review.authority_digest,
+        )?;
+        let stored = tx
+            .get::<Plan>("cloud_directory_plans", &expected.id)?
+            .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
+        if stored.applied
+            || stored.kind != settings.kind
+            || stored.directory != settings.id
+            || stored.review != expected.review
+            || plan_content(&stored)? != plan_content(expected)?
+            || stored.expires_at <= now()
+        {
+            return Err(Error::conflict(
+                "Cloud directory plan changed during snapshot validation; create a new plan",
+            ));
+        }
+        expected
+            .review
+            .validate(tx, &actor, &plan_content(expected)?)?;
+        expected
+            .review
+            .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
+        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
         Ok(actor)
     }
 
@@ -2274,26 +2377,77 @@ impl Core {
             return Err(Error::missing("Cloud directory plan not found"));
         }
         let settings = self.cloud_settings(kind, &plan.directory)?;
-        self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            if !plan.applied {
-                authorize_reconcile(tx, &actor, &settings, &plan.entries)?;
+        let key = digest(&settings.resource());
+        let initially_applied = plan.applied;
+        let snapshot_prior = if initially_applied {
+            self.store.read(|tx| {
+                let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+                if actor.id != plan.actor {
+                    return Err(Error::forbidden());
+                }
+                Ok(())
+            })?;
+            None
+        } else {
+            let (prior, mut apply, restarted) = self.store.read(|tx| {
+                let actor = self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
+                let previous = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
+                let prior = previous
+                    .as_ref()
+                    .map(|apply| (apply.draft.id.clone(), apply.draft.sequence));
+                let valid = previous
+                    .as_ref()
+                    .is_some_and(|apply| apply.valid(&settings, &plan));
+                let restarted = previous.is_some() && !valid;
+                let apply = previous
+                    .filter(|_| valid)
+                    .unwrap_or_else(|| CloudApplyDraft::new(&settings, &actor, &plan));
+                apply.bounded()?;
+                Ok((prior, apply, restarted))
+            })?;
+            self.ensure_budget(&settings)?;
+            if let Err(error) = apply
+                .draft
+                .snapshot
+                .advance(&settings, CLOUD_PAGES_PER_PLAN_CALL)
+            {
+                if error.status == StatusCode::SERVICE_UNAVAILABLE {
+                    self.record_failure(&settings)?;
+                }
+                return Err(error);
             }
-            Ok(())
-        })?;
-        if !plan.applied {
-            if plan.expires_at <= now() || plan.fingerprint != settings.fingerprint {
-                return Err(Error::conflict(
-                    "Cloud directory plan expired or directory configuration changed",
-                ));
+            self.reset_budget(&settings)?;
+            apply.draft.sequence = apply.draft.sequence.saturating_add(1);
+            apply.draft.expires_at = now().saturating_add(CLOUD_SNAPSHOT_SECONDS);
+            apply.bounded()?;
+            if !apply.draft.snapshot.complete(&settings) {
+                return self.store.write(|tx| {
+                    self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
+                    let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
+                    if current
+                        .as_ref()
+                        .map(|apply| (&apply.draft.id, apply.draft.sequence))
+                        != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+                    {
+                        return Err(Error::conflict(
+                            "Cloud apply snapshot advanced concurrently; resume the latest cursor",
+                        ));
+                    }
+                    tx.put(CLOUD_APPLY_SNAPSHOTS, &key, &apply)?;
+                    Ok(apply.progress(restarted))
+                });
             }
-            let entries = self.fetch_entries(&settings)?;
+            let entries = self.store.read(|tx| {
+                self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
+                materialize(tx, &settings, apply.draft.snapshot.clone().into_users())
+            })?;
             if entries != plan.entries {
                 return Err(Error::conflict(
                     "Cloud directory changed after planning; create a new plan",
                 ));
             }
-        }
+            Some(prior)
+        };
         let observed_review = plan.review.clone();
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
@@ -2311,10 +2465,28 @@ impl Core {
                     "Cloud directory plan changed during snapshot validation; create a new plan",
                 ));
             }
+            if initially_applied && !plan.applied {
+                return Err(Error::conflict(
+                    "Cloud directory plan changed during snapshot validation; create a new plan",
+                ));
+            }
             if plan.applied {
                 return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
             }
-            authorize_reconcile(tx, &actor, &settings, &plan.entries)?;
+            self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
+            let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
+            if current
+                .as_ref()
+                .map(|apply| (&apply.draft.id, apply.draft.sequence))
+                != snapshot_prior
+                    .as_ref()
+                    .and_then(|prior| prior.as_ref())
+                    .map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "Cloud apply snapshot advanced concurrently; resume the latest cursor",
+                ));
+            }
             let impact = removal_impact(tx, &settings, &plan.entries)?;
             ApplyGate {
                 id,
@@ -2335,6 +2507,9 @@ impl Core {
             }
             plan.applied = true;
             tx.put("cloud_directory_plans", id, &plan)?;
+            if current.is_some() {
+                tx.delete(CLOUD_APPLY_SNAPSHOTS, &key)?;
+            }
             crate::delegation::audit_scoped(
                 tx,
                 &actor,
@@ -2353,6 +2528,11 @@ pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
             if draft.expires_at <= at {
                 tx.delete(bucket, &id)?;
             }
+        }
+    }
+    for (id, apply) in tx.maintenance_page::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS)? {
+        if apply.draft.expires_at <= at {
+            tx.delete(CLOUD_APPLY_SNAPSHOTS, &id)?;
         }
     }
     for (id, plan) in tx.maintenance_page::<Plan>("cloud_directory_plans")? {

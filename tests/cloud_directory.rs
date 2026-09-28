@@ -2400,7 +2400,7 @@ fn partial_pagination_does_not_deprovision_completed_removal_does() {
 }
 
 #[test]
-fn workspace_controller_resumes_interrupted_pages_without_planning_removal() {
+fn workspace_resumes_interrupted_plan_and_apply_pages_without_removal() {
     let (directory, mut fixture) = linked_pair("workspace");
     *directory.state.people.lock().unwrap() = vec![
         person("ext-alice", "alice@example.test", "Alice Cloud", true),
@@ -2486,14 +2486,80 @@ fn workspace_controller_resumes_interrupted_pages_without_planning_removal() {
             .code,
         "conflict"
     );
-    fixture
+    let progress = fixture
         .core
         .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
         .unwrap();
+    assert_eq!(progress["decision"], "snapshot_in_progress");
+    assert_eq!(progress["operation"], "apply_validation");
+    assert_eq!(progress["plan_id"], plan_id);
+    assert_eq!(progress["phase"], "users");
+    assert_eq!(progress["pages"], 5);
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+    let apply_cursor = fixture
+        .snapshot()
+        .unwrap()
+        .into_iter()
+        .find(|(key, _)| key.starts_with("cloud_directory_apply_snapshots/"))
+        .unwrap()
+        .1["draft"]["snapshot"]["cursor"]
+        .clone();
+    assert_eq!(apply_cursor, "users-6");
+
+    *directory.state.mode.lock().unwrap() = Mode::FailSecond;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert_eq!(
+        fixture
+            .snapshot()
+            .unwrap()
+            .into_iter()
+            .find(|(key, _)| key.starts_with("cloud_directory_apply_snapshots/"))
+            .unwrap()
+            .1["draft"]["snapshot"]["cursor"],
+        apply_cursor
+    );
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+
+    fixture = fixture.reopen_with(|_| {});
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+    let applied = fixture
+        .core
+        .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
+        .unwrap();
+    assert_eq!(applied["applied"], true);
     assert_eq!(
         user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
         false
     );
+    assert!(
+        fixture
+            .snapshot()
+            .unwrap()
+            .iter()
+            .all(|(key, _)| !key.starts_with("cloud_directory_apply_snapshots/"))
+    );
+    let hits = directory.state.directory_hits.load(Ordering::SeqCst);
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
+            .unwrap()["applied"],
+        true
+    );
+    assert_eq!(directory.state.directory_hits.load(Ordering::SeqCst), hits);
 }
 
 #[test]
@@ -2584,6 +2650,13 @@ fn entra_controller_rejects_repeated_resume_and_waits_for_complete_source() {
             .unwrap_err()
             .code,
         "conflict"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply_confirmed(&fixture.admin, "entra", plan_id, Some(plan_id))
+            .unwrap()["decision"],
+        "snapshot_in_progress"
     );
     fixture
         .core

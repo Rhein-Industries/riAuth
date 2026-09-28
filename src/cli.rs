@@ -2853,15 +2853,25 @@ async fn cloud_directory(
                     "This plan disables users or removes group access at the review threshold; inspect its changes and rerun with --confirm-removals"
                 );
             }
-            remote
-                .call_with_review(
-                    Method::POST,
-                    &format!("/api/{plans}/{}/apply", segment(id)?),
-                    None,
-                    true,
-                    if *confirm_removals { Some(id) } else { None },
-                )
-                .await?
+            let mut result = Value::Null;
+            for _ in 0..1024 {
+                result = remote
+                    .call_with_review(
+                        Method::POST,
+                        &format!("/api/{plans}/{}/apply", segment(id)?),
+                        None,
+                        true,
+                        if *confirm_removals { Some(id) } else { None },
+                    )
+                    .await?;
+                if result["decision"] != "snapshot_in_progress" {
+                    break;
+                }
+            }
+            if result["decision"] == "snapshot_in_progress" {
+                bail!("Cloud directory apply validation did not finish within the CLI page limit");
+            }
+            result
         }
     })
 }

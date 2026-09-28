@@ -118,6 +118,10 @@ pub fn reconcile_plan(
         .or_else(|| plan["plan_id"].as_str())
         .ok_or_else(|| Error::internal("Connector plan has no ID"))?;
     let result = apply(id)?;
+    if result["decision"] == "snapshot_in_progress" {
+        return Ok(json!({"decision":"snapshot_in_progress","mode":mode,
+            "plan":plan,"snapshot":result}));
+    }
     Ok(json!({"decision":"applied","mode":mode,"plan":plan,"result":result}))
 }
 

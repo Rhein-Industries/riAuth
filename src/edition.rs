@@ -324,6 +324,7 @@ const PLATFORM_BUCKETS: &[&str] = &[
     "cloud_directory_users",
     "cloud_directory_runs",
     "cloud_directory_plans",
+    "cloud_directory_apply_snapshots",
     "cloud_connection_checks",
     "scim_users",
     "scim_groups",
