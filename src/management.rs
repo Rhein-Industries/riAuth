@@ -22,6 +22,8 @@
 //! delivery cookie; the same writer owns start, one-time poll and cancellation.
 //! Platform temporary-access requests, decisions and revocations use live
 //! human-session authority, scoped receipts and the management revision.
+//! Platform SSF receiver and administrator stream writes use live owner/scope
+//! checks, the management revision and keyed receipts in one transaction.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -38,6 +40,8 @@ mod pam;
 mod portal_approvals;
 mod sessions;
 mod source_links;
+#[cfg(feature = "platform")]
+pub(crate) mod ssf_streams;
 pub(crate) use consents::{
     ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
 };

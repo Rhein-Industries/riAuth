@@ -1,16 +1,15 @@
 //! Platform SSF Core entry points and concrete transaction operations.
 
 use crate::{
-    core::{self, Core, audit, user_by_name},
-    crypto::{self, digest, now, SigningKey},
+    core::{self, Core, audit},
+    crypto::{SigningKey, digest, now},
     error::{Error, Result},
-    jose::PublicJwks,
-    model::{Grant, Session, User},
+    management::ssf_streams::{admin_caller, config_caller},
+    model::{Session, User},
     ssf::*,
     store::Tx,
 };
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
 
 impl SsfTx for Tx<'_> {
     fn deliveries(&self) -> Result<Vec<(String, Delivery)>> {
@@ -88,232 +87,19 @@ impl SsfDelivery for Core {
     }
 }
 
-fn require_protected_authorization(core: &Core, value: Option<&str>) -> Result<()> {
-    if value.is_some() && !core.store.encrypted_at_rest() {
-        return Err(Error::bad(
-            "Delivery authorization requires configured database encryption",
-        ));
-    }
-    Ok(())
-}
-
-
-fn admin_caller(core: &Core, tx: &Tx<'_>, auth: &SsfAuth) -> Result<Caller> {
-    match auth {
-        SsfAuth::Bearer(token) => {
-            let principal = core.principal(tx, token)?;
-            if principal.agent
-                && !principal
-                    .permissions
-                    .iter()
-                    .any(|permission| permission.action == "ssf.manage")
-            {
-                return Err(Error::forbidden());
-            }
-            Ok(Caller::Principal(principal))
-        }
-        SsfAuth::ClientBasic { .. } => Err(Error::forbidden()),
-    }
-}
-
-fn config_caller(core: &Core, tx: &Tx<'_>, auth: &SsfAuth) -> Result<Caller> {
-    match auth {
-        SsfAuth::ClientBasic { .. } => Err(Error::forbidden()),
-        SsfAuth::Bearer(token) => match core.principal(tx, token) {
-            Ok(principal) => {
-                if principal.agent
-                    && !principal
-                        .permissions
-                        .iter()
-                        .any(|permission| permission.action == "ssf.configure")
-                {
-                    return Err(Error::forbidden());
-                }
-                Ok(Caller::Principal(principal))
-            }
-            Err(error) if error.status == axum::http::StatusCode::UNAUTHORIZED => {
-                let grant = tx
-                    .get::<Grant>("access", &digest(token))?
-                    .ok_or_else(Error::unauthorized)?;
-                if grant.identity.is_some()
-                    || grant.exchange.is_some()
-                    || grant.confirmation_jkt.is_some()
-                    || grant.resource.is_some()
-                    || !grant.scopes.contains("ssf.configure")
-                {
-                    return Err(Error::forbidden());
-                }
-                let client = core.validate_grant(tx, &grant)?;
-                if !client.service {
-                    return Err(Error::forbidden());
-                }
-                Ok(Caller::Service(client.id))
-            }
-            Err(error) => Err(error),
-        },
-    }
-}
-
-
 impl Core {
     pub fn ssf_metadata(&self) -> Value {
         metadata(&self.config.issuer)
     }
 
     pub fn ssf_create(&self, auth: &SsfAuth, input: StreamInput) -> Result<Value> {
-        core::validate_name(&input.id)?;
-        transmitter_issuer(&input.issuer)?;
-        audience(&input.audience)?;
-        input.jwks.validate()?;
-        let mut events = if input.events_requested.is_empty() {
-            input.events.clone()
-        } else {
-            input.events_requested.clone()
-        };
-        if !input.events.is_empty() && !input.events_requested.is_empty() {
-            events = &input.events_requested | &input.events;
-        }
-        if events.is_empty()
-            || events.len() > SUPPORTED.len()
-            || events
-                .iter()
-                .any(|event| !SUPPORTED.contains(&event.as_str()))
-        {
-            return Err(Error::bad(
-                "Subscribe only to account-disabled, session-revoked, and credential-change",
-            ));
-        }
-        let (method, endpoint) = if let Some(delivery) = &input.delivery {
-            (delivery.method.clone(), delivery.endpoint_url.clone())
-        } else {
-            (
-                input.delivery_method.clone().unwrap_or_default(),
-                input.endpoint_url.clone().unwrap_or_default(),
-            )
-        };
-        let method = normalize_method(&method)?;
-        push_url(&endpoint)?;
-        let authorization = input
-            .delivery
-            .as_ref()
-            .and_then(|delivery| delivery.authorization_header.clone());
-        authorization_header(authorization.as_deref())?;
-        require_protected_authorization(self, authorization.as_deref())?;
-        if input.subjects.len() > 64 {
-            return Err(Error::bad("At most 64 subjects may be linked to a stream"));
-        }
-        self.store.write(|tx| {
-            let actor = admin_caller(self, tx, auth)?;
-            let Caller::Principal(principal) = &actor else {
-                return Err(Error::forbidden());
-            };
-            principal.require("ssf.manage", &format!("ssf/{}", input.id))?;
-            if tx.get::<Stream>("ssf_streams", &input.id)?.is_some() {
-                return Err(Error::conflict("SSF stream already exists"));
-            }
-            if tx.list::<Stream>("ssf_streams")?.len() >= 32 {
-                return Err(Error::bad("At most 32 SSF streams are allowed"));
-            }
-            let mut subjects = BTreeMap::new();
-            for (external, username) in &input.subjects {
-                let subject = binding_subject(external, &input.issuer)?;
-                core::validate_name(username)?;
-                let user = user_by_name(tx, username)?;
-                if subjects.insert(subject.key(), user.id).is_some() {
-                    return Err(Error::bad("Duplicate SSF subject binding"));
-                }
-            }
-            let stream = Stream {
-                id: input.id.clone(),
-                issuer: input.issuer.clone(),
-                audience: input.audience.clone(),
-                events,
-                events_requested: if input.events_requested.is_empty() {
-                    input.events.clone()
-                } else {
-                    input.events_requested.clone()
-                },
-                delivery_method: method,
-                endpoint_url: endpoint,
-                authorization_header: authorization,
-                jwks: input.jwks.clone(),
-                subjects,
-                owner: owner_of(&actor),
-                created_at: now(),
-                description: None,
-                standard: false,
-            };
-            tx.put("ssf_streams", &stream.id, &stream)?;
-            audit(tx, &stream.owner, "ssf.stream.create", &stream.id)?;
-            Ok(view(&self.config.issuer, &stream))
-        })
+        crate::management::ssf_streams::create_admin(self, auth, input)
     }
 
     /// Create the advertised receiver-managed transmitter stream. The caller
     /// cannot choose signing trust, local subjects, issuer, audience, or ID.
     pub fn ssf_config_create(&self, auth: &SsfAuth, input: ConfigurationInput) -> Result<Value> {
-        let delivered = requested_events(&input.events_requested)?;
-        let method = normalize_method(&input.delivery.method)?;
-        push_url(&input.delivery.endpoint_url)?;
-        authorization_header(input.delivery.authorization_header.as_deref())?;
-        require_protected_authorization(self, input.delivery.authorization_header.as_deref())?;
-        validate_description(input.description.as_deref())?;
-        self.store.write(|tx| {
-            let actor = config_caller(self, tx, auth)?;
-            if let Caller::Principal(principal) = &actor {
-                principal.require("ssf.configure", "*")?;
-            }
-            let streams = tx.list::<Stream>("ssf_streams")?;
-            if streams.len() >= 32 {
-                return Err(Error::bad("At most 32 SSF streams are allowed"));
-            }
-            let owner = owner_of(&actor);
-            if !matches!(&actor, Caller::Principal(principal) if !principal.agent && !principal.delegated) {
-                if streams
-                    .iter()
-                    .filter(|(_, stream)| stream.standard && stream.owner == owner)
-                    .count()
-                    >= 8
-                {
-                    return Err(Error::bad(
-                        "At most 8 receiver streams are allowed per owner",
-                    ));
-                }
-                if streams
-                    .iter()
-                    .filter(|(_, stream)| {
-                        stream.standard
-                            && (stream.owner.starts_with("agent:")
-                                || stream.owner.starts_with("client:"))
-                    })
-                    .count()
-                    >= 24
-                {
-                    return Err(Error::bad("Receiver stream capacity is exhausted"));
-                }
-            }
-            let id = crypto::id();
-            let audience = owner.clone();
-            let stream = Stream {
-                id: id.clone(),
-                issuer: self.config.issuer.clone(),
-                audience,
-                events: delivered,
-                events_requested: input.events_requested,
-                delivery_method: method,
-                endpoint_url: input.delivery.endpoint_url,
-                authorization_header: input.delivery.authorization_header,
-                jwks: PublicJwks::default(),
-                subjects: BTreeMap::new(),
-                owner,
-                created_at: now(),
-                description: input.description,
-                standard: true,
-            };
-            tx.put("ssf_streams", &id, &stream)?;
-            audit(tx, &stream.owner, "ssf.stream.create", &id)?;
-            Ok(configuration_view(&self.config.issuer, &stream))
-        })
+        crate::management::ssf_streams::create_receiver(self, auth, input)
     }
 
     pub fn ssf_config_read(&self, auth: &SsfAuth, id: Option<&str>) -> Result<Value> {
@@ -344,163 +130,11 @@ impl Core {
     }
 
     pub fn ssf_config_delete(&self, auth: &SsfAuth, id: &str) -> Result<()> {
-        core::validate_name(id)?;
-        self.store.write(|tx| {
-            let actor = config_caller(self, tx, auth)?;
-            let stream = tx
-                .get::<Stream>("ssf_streams", id)?
-                .filter(|stream| stream.standard)
-                .ok_or_else(|| Error::missing("SSF stream not found"))?;
-            config_allow(&actor, &stream)?;
-            cancel_pending(tx, id)?;
-            tx.delete("ssf_streams", id)?;
-            audit(tx, &owner_of(&actor), "ssf.stream.delete", id)
-        })
+        crate::management::ssf_streams::delete_receiver(self, auth, id)
     }
 
     pub fn ssf_config_update(&self, auth: &SsfAuth, input: Value, replace: bool) -> Result<Value> {
-        let fields = input
-            .as_object()
-            .ok_or_else(|| Error::bad("SSF stream configuration must be an object"))?;
-        let id = fields
-            .get("stream_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| Error::bad("stream_id is required"))?;
-        core::validate_name(id)?;
-        if fields.keys().any(|field| {
-            !matches!(
-                field.as_str(),
-                "stream_id"
-                    | "iss"
-                    | "aud"
-                    | "events_supported"
-                    | "events_requested"
-                    | "events_delivered"
-                    | "delivery"
-                    | "description"
-            )
-        }) {
-            return Err(Error::bad("Unknown SSF stream configuration property"));
-        }
-        let requested = fields
-            .get("events_requested")
-            .map(|value| {
-                serde_json::from_value::<BTreeSet<String>>(value.clone())
-                    .map_err(|_| Error::bad("Invalid events_requested"))
-            })
-            .transpose()?;
-        let delivery = fields
-            .get("delivery")
-            .map(|value| {
-                serde_json::from_value::<DeliverySpec>(value.clone())
-                    .map_err(|_| Error::bad("Invalid delivery configuration"))
-            })
-            .transpose()?;
-        let authorization_supplied = fields
-            .get("delivery")
-            .and_then(Value::as_object)
-            .is_some_and(|delivery| delivery.contains_key("authorization_header"));
-        authorization_header(
-            delivery
-                .as_ref()
-                .and_then(|delivery| delivery.authorization_header.as_deref()),
-        )?;
-        require_protected_authorization(
-            self,
-            delivery
-                .as_ref()
-                .and_then(|delivery| delivery.authorization_header.as_deref()),
-        )?;
-        let description = fields
-            .get("description")
-            .map(|value| {
-                if value.is_null() {
-                    Ok(None)
-                } else {
-                    value
-                        .as_str()
-                        .map(|value| Some(value.to_owned()))
-                        .ok_or_else(|| Error::bad("Invalid SSF stream description"))
-                }
-            })
-            .transpose()?;
-        validate_description(description.as_ref().and_then(|value| value.as_deref()))?;
-        if replace && delivery.is_none() {
-            return Err(Error::bad("PUT requires delivery configuration"));
-        }
-        let supported: BTreeSet<String> =
-            SUPPORTED.iter().map(|value| (*value).to_owned()).collect();
-        self.store.write(|tx| {
-            let actor = config_caller(self, tx, auth)?;
-            let mut stream = tx
-                .get::<Stream>("ssf_streams", id)?
-                .filter(|stream| stream.standard)
-                .ok_or_else(|| Error::missing("SSF stream not found"))?;
-            config_allow(&actor, &stream)?;
-            if fields
-                .get("iss")
-                .is_some_and(|value| value != &json!(self.config.issuer))
-                || fields
-                    .get("aud")
-                    .is_some_and(|value| value != &json!(stream.audience))
-                || fields.get("events_supported").is_some_and(|value| {
-                    serde_json::from_value::<BTreeSet<String>>(value.clone()).ok()
-                        != Some(supported.clone())
-                })
-                || fields
-                    .get("events_delivered")
-                    .is_some_and(|value| value != &json!(stream.events))
-            {
-                return Err(Error::bad("Transmitter-supplied SSF property mismatch"));
-            }
-            let next_requested = requested.clone().unwrap_or_else(|| {
-                if replace {
-                    BTreeSet::new()
-                } else {
-                    stream.events_requested.clone()
-                }
-            });
-            let next_events = requested_events(&next_requested)?;
-            let (next_method, next_endpoint, next_authorization) = if let Some(delivery) = &delivery
-            {
-                let method = normalize_method(&delivery.method)?;
-                push_url(&delivery.endpoint_url)?;
-                let authorization = if replace
-                    || authorization_supplied
-                    || delivery.endpoint_url != stream.endpoint_url
-                {
-                    delivery.authorization_header.clone()
-                } else {
-                    stream.authorization_header.clone()
-                };
-                (method, delivery.endpoint_url.clone(), authorization)
-            } else {
-                (
-                    stream.delivery_method.clone(),
-                    stream.endpoint_url.clone(),
-                    stream.authorization_header.clone(),
-                )
-            };
-            if next_events != stream.events
-                || next_endpoint != stream.endpoint_url
-                || next_authorization != stream.authorization_header
-            {
-                cancel_pending(tx, id)?;
-            }
-            stream.events_requested = next_requested;
-            stream.events = next_events;
-            stream.delivery_method = next_method;
-            stream.endpoint_url = next_endpoint;
-            stream.authorization_header = next_authorization;
-            if let Some(description) = &description {
-                stream.description = description.clone();
-            } else if replace {
-                stream.description = None;
-            }
-            tx.put("ssf_streams", id, &stream)?;
-            audit(tx, &owner_of(&actor), "ssf.stream.update", id)?;
-            Ok(configuration_view(&self.config.issuer, &stream))
-        })
+        crate::management::ssf_streams::update_receiver(self, auth, input, replace)
     }
 
     pub fn ssf_bind_subjects(
@@ -509,33 +143,7 @@ impl Core {
         id: &str,
         input: SubjectBindings,
     ) -> Result<Value> {
-        core::validate_name(id)?;
-        if input.subjects.len() > 64 {
-            return Err(Error::bad("At most 64 subjects may be linked to a stream"));
-        }
-        self.store.write(|tx| {
-            let actor = admin_caller(self, tx, auth)?;
-            let mut stream = tx
-                .get::<Stream>("ssf_streams", id)?
-                .ok_or_else(|| Error::missing("SSF stream not found"))?;
-            admin_allow(&actor, &stream)?;
-            let mut subjects = BTreeMap::new();
-            for (external, username) in &input.subjects {
-                let subject = binding_subject(external, &stream.issuer)?;
-                core::validate_name(username)?;
-                let user = user_by_name(tx, username)?;
-                if subjects.insert(subject.key(), user.id).is_some() {
-                    return Err(Error::bad("Duplicate SSF subject binding"));
-                }
-            }
-            if stream.subjects != subjects {
-                cancel_pending(tx, id)?;
-                stream.subjects = subjects;
-                tx.put("ssf_streams", id, &stream)?;
-                audit(tx, &owner_of(&actor), "ssf.stream.subjects", id)?;
-            }
-            Ok(view(&self.config.issuer, &stream))
-        })
+        crate::management::ssf_streams::bind_subjects(self, auth, id, input)
     }
 
     pub fn ssf_list(&self, auth: &SsfAuth) -> Result<Value> {
@@ -559,18 +167,7 @@ impl Core {
     }
 
     pub fn ssf_delete(&self, auth: &SsfAuth, id: &str) -> Result<Value> {
-        core::validate_name(id)?;
-        self.store.write(|tx| {
-            let actor = admin_caller(self, tx, auth)?;
-            let stream = tx
-                .get::<Stream>("ssf_streams", id)?
-                .ok_or_else(|| Error::missing("SSF stream not found"))?;
-            admin_allow(&actor, &stream)?;
-            cancel_pending(tx, id)?;
-            tx.delete("ssf_streams", id)?;
-            audit(tx, &owner_of(&actor), "ssf.stream.delete", id)?;
-            Ok(json!({"deleted": true, "stream_id": id}))
-        })
+        crate::management::ssf_streams::delete_admin(self, auth, id)
     }
 
     /// Accept a push SET. Unknown linked subjects are ignored with HTTP 202 at the route.
@@ -706,6 +303,7 @@ impl Core {
     }
 
     fn finish_delivery(&self, id: &str, attempt: u32, status: Option<u16>) -> Result<()> {
-        self.store.write(|tx| finish_delivery(tx, id, attempt, status))
+        self.store
+            .write(|tx| finish_delivery(tx, id, attempt, status))
     }
 }

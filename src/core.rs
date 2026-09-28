@@ -1068,6 +1068,7 @@ pub(crate) fn audit_with_details(
         "agent.",
         "delegation.",
         "access.",
+        "ssf.stream.",
         "signing_key.",
         "admin.recover",
         "directory.apply",
