@@ -13,6 +13,8 @@
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
+pub(crate) mod grants;
+
 #[cfg(feature = "platform")]
 use crate::cloud_directory::{Binding as CloudBinding, binding_key as cloud_binding_key};
 #[cfg(feature = "platform")]

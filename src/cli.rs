@@ -1,4 +1,5 @@
 mod backup;
+mod grants;
 pub mod local;
 mod transport;
 mod usb;
@@ -142,6 +143,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Assign low-risk human grants or stage, review and execute privileged changes
+    Grants {
+        #[command(subcommand)]
+        command: grants::GrantCommand,
+    },
     /// Plan and apply LDAP, Google Workspace, and Microsoft Entra directory imports
     Directory {
         #[command(subcommand)]
@@ -1871,6 +1877,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                     .await?
             }
         },
+        Command::Grants { command } => grants::run(&remote, command).await?,
         Command::User { command } => run_user(&remote, command).await?,
         Command::Offboard { command } => run_offboard(&remote, command).await?,
         Command::Ssf { command } => run_ssf(&remote, command).await?,

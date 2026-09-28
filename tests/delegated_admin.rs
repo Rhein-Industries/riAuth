@@ -34,6 +34,63 @@ fn grant(role: HumanRole, scope: &str) -> GrantInput {
     }
 }
 
+#[cfg(feature = "platform")]
+fn review_actors(f: &Fixture) -> (String, String) {
+    let tokens: Vec<_> = ["grant-reviewer", "grant-executor"]
+        .into_iter()
+        .map(|username| {
+            f.core
+                .create_user(
+                    &f.admin,
+                    riauth::model::NewUser {
+                        username: username.into(),
+                        password: PASSWORD.into(),
+                        email: None,
+                        display_name: username.into(),
+                        admin: true,
+                    },
+                )
+                .unwrap();
+            f.core
+                .login(username.into(), PASSWORD.into(), None)
+                .unwrap()["session_token"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    (tokens[0].clone(), tokens[1].clone())
+}
+
+#[cfg(feature = "platform")]
+fn reviewed_set(
+    f: &Fixture,
+    reviewer: &str,
+    executor: &str,
+    username: &str,
+    grants: Vec<GrantInput>,
+) {
+    let change = f
+        .core
+        .stage_human_grants(&f.admin, username, grants)
+        .unwrap();
+    finish_review(f, reviewer, executor, &change);
+}
+
+#[cfg(feature = "platform")]
+fn finish_review(f: &Fixture, reviewer: &str, executor: &str, change: &Value) {
+    let id = change["proposal"]["id"].as_str().unwrap();
+    let binding = riauth::delegation::GrantChangeBinding {
+        digest: change["digest"].as_str().unwrap().into(),
+    };
+    f.core
+        .approve_human_grant_change(reviewer, id, binding.clone())
+        .unwrap();
+    f.core
+        .execute_human_grant_change(executor, id, binding)
+        .unwrap();
+}
+
 fn revision(f: &Fixture) -> u64 {
     f.core.store.get("meta", "revision").unwrap().unwrap_or(0)
 }
@@ -401,6 +458,7 @@ fn help_desk_cannot_take_over_a_privileged_access_approver() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revocation() {
     let mut f = Fixture::new();
+    let (reviewer, executor) = review_actors(&f);
     let operator = f.user("operator");
     let auditor = f.user("auditor");
     let security = f.user("security");
@@ -445,10 +503,10 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
         )
         .unwrap();
     let app = riauth::api::router(f.core.clone());
-    let (status, _) = call(
+    let (status, change) = call(
         &app,
-        "PUT",
-        "/api/users/operator/delegated-grants",
+        "POST",
+        "/api/users/operator/delegated-grants/changes",
         Some(&f.admin),
         None,
         None,
@@ -456,6 +514,7 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+    finish_review(&f, &reviewer, &executor, &change);
     f.core
         .set_human_grants(
             &f.admin,
@@ -463,13 +522,13 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
             vec![grant(HumanRole::Auditor, "audit/events")],
         )
         .unwrap();
-    f.core
-        .set_human_grants(
-            &f.admin,
-            "security",
-            vec![grant(HumanRole::SecurityAdministrator, "key/app-key")],
-        )
-        .unwrap();
+    reviewed_set(
+        &f,
+        &reviewer,
+        &executor,
+        "security",
+        vec![grant(HumanRole::SecurityAdministrator, "key/app-key")],
+    );
     for invalid in [
         grant(HumanRole::DirectoryOperator, "workspace/*"),
         grant(HumanRole::DirectoryOperator, "workspace/missing"),
@@ -634,15 +693,11 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{pending}");
-    f.core
-        .set_human_grants(&f.admin, "operator", vec![])
-        .unwrap();
+    reviewed_set(&f, &reviewer, &executor, "operator", vec![]);
     f.core
         .set_human_grants(&f.admin, "auditor", vec![])
         .unwrap();
-    f.core
-        .set_human_grants(&f.admin, "security", vec![])
-        .unwrap();
+    reviewed_set(&f, &reviewer, &executor, "security", vec![]);
     let (status, _) = call(
         &app,
         "POST",
@@ -670,13 +725,13 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _) = call(&app, "GET", "/api/keys", Some(&security), None, None, None).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    f.core
-        .set_human_grants(
-            &f.admin,
-            "operator",
-            vec![grant(HumanRole::DirectoryOperator, "workspace/staff")],
-        )
-        .unwrap();
+    reviewed_set(
+        &f,
+        &reviewer,
+        &executor,
+        "operator",
+        vec![grant(HumanRole::DirectoryOperator, "workspace/staff")],
+    );
     let (status, _) = call(
         &app,
         "POST",

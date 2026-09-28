@@ -12,7 +12,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+
+pub use crate::management::grants::GrantChangeBinding;
 
 const BUCKET: &str = "human_grants";
 // Keep the original bucket so exposure recorded before agents were covered
@@ -313,7 +314,12 @@ pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<
     Ok(result)
 }
 
-fn bind(tx: &Tx<'_>, config: &Config, input: GrantInput, holder_id: &str) -> Result<HumanGrant> {
+pub(crate) fn bind(
+    tx: &Tx<'_>,
+    config: &Config,
+    input: GrantInput,
+    holder_id: &str,
+) -> Result<HumanGrant> {
     let (kind, name) = input.scope.split_once('/').ok_or_else(Error::forbidden)?;
     validate_name(name)?;
     if name.contains('*') || input.scope.matches('/').count() != 1 {
@@ -358,7 +364,7 @@ fn bind(tx: &Tx<'_>, config: &Config, input: GrantInput, holder_id: &str) -> Res
 
 /// Configuration is the identity of a directory target. Replacing or removing
 /// the configured connector invalidates its old grant on the next request.
-fn directory_target(config: &Config, scope: &str) -> Result<Option<String>> {
+pub(crate) fn directory_target(config: &Config, scope: &str) -> Result<Option<String>> {
     let Some((kind, id)) = scope.split_once('/') else {
         return Ok(None);
     };
@@ -396,62 +402,6 @@ fn key_target(tx: &Tx<'_>, scope: &str) -> Result<Option<String>> {
 }
 
 impl Core {
-    /// Only a full human administrator may replace a person's grants. This is
-    /// deliberately outside ordinary user patches and desired-state apply.
-    pub fn set_human_grants(
-        &self,
-        token: &str,
-        username: &str,
-        grants: Vec<GrantInput>,
-    ) -> Result<Value> {
-        self.mutation(token, |tx| {
-            let actor = self.principal(tx, token)?;
-            if actor.agent || actor.delegated {
-                return Err(Error::forbidden());
-            }
-            crate::reconciliation::validate_apply_lease(tx, &actor)?;
-            let holder = user_by_name(tx, username)?;
-            if holder.id == actor.id
-                || grants.len() > 32
-                || !grants.is_empty() && (!holder.enabled || holder.admin)
-            {
-                return Err(Error::forbidden());
-            }
-            if !grants.is_empty() {
-                require_elevation_ready(tx, &holder)?;
-            }
-            let mut seen = BTreeSet::new();
-            let mut bound = Vec::new();
-            for grant in grants {
-                if !seen.insert((grant.role, grant.scope.clone())) {
-                    return Err(Error::bad("Duplicate human grant"));
-                }
-                bound.push(bind(tx, &self.config, grant, &holder.id)?);
-            }
-            if stored(tx, &holder.id)? == bound {
-                return Ok(json!({"username": username, "grants": bound}));
-            }
-            if bound.is_empty() {
-                tx.delete(BUCKET, &holder.id)?;
-            } else {
-                tx.put(BUCKET, &holder.id, &bound)?;
-            }
-            let generation = tx
-                .get::<u64>("human_grant_generations", &holder.id)?
-                .unwrap_or(0)
-                .saturating_add(1);
-            tx.put("human_grant_generations", &holder.id, &generation)?;
-            audit_with_details(
-                tx,
-                &actor.id,
-                "delegation.grants.set",
-                username,
-                json!({"grants": bound}),
-            )?;
-            Ok(json!({"username": username, "grants": bound}))
-        })
-    }
-
     pub fn human_grants(&self, token: &str, username: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;

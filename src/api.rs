@@ -320,6 +320,23 @@ pub fn router(core: Core) -> Router {
             "/api/users/{username}/delegated-grants",
             get(human_grants).put(set_human_grants),
         )
+        .route(
+            "/api/users/{username}/delegated-grants/changes",
+            post(stage_human_grants),
+        )
+        .route("/api/delegated-grant-changes/{id}", get(human_grant_change))
+        .route(
+            "/api/delegated-grant-changes/{id}/approve",
+            post(approve_human_grant_change),
+        )
+        .route(
+            "/api/delegated-grant-changes/{id}/execute",
+            post(execute_human_grant_change),
+        )
+        .route(
+            "/api/delegated-grant-changes/{id}/cancel",
+            post(cancel_human_grant_change),
+        )
         .route("/api/groups", get(groups).post(create_group))
         .route(
             "/api/groups/{name}/members/{username}",
@@ -1831,6 +1848,42 @@ async fn set_human_grants(
     app.run(move |core| core.set_human_grants(&token, &username, grants).map(Json))
         .await
 }
+async fn stage_human_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Json(grants): Json<Vec<GrantInput>>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.stage_human_grants(&token, &username, grants).map(Json))
+        .await
+}
+async fn human_grant_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.human_grant_change(&token, &id).map(Json))
+        .await
+}
+macro_rules! grant_change_handler {
+    ($name:ident) => {
+        async fn $name(
+            State(app): State<App>,
+            headers: HeaderMap,
+            Path(id): Path<String>,
+            Json(binding): Json<crate::delegation::GrantChangeBinding>,
+        ) -> Result<Json<Value>> {
+            let token = bearer(&headers)?;
+            app.run(move |core| core.$name(&token, &id, binding).map(Json))
+                .await
+        }
+    };
+}
+grant_change_handler!(approve_human_grant_change);
+grant_change_handler!(execute_human_grant_change);
+grant_change_handler!(cancel_human_grant_change);
 #[cfg(feature = "platform")]
 session_handler!(offboard_jobs, offboard_list);
 session_handler!(groups, list_groups);

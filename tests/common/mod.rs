@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod backend;
+#[cfg(feature = "platform")]
 pub mod security;
 
 use riauth::{
