@@ -683,6 +683,145 @@ fn paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor() {
 }
 
 #[test]
+fn final_scim_plan_and_apply_read_only_reviewed_links() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("bounded-impact");
+    let target_url = "http://127.0.0.1:9/scim/v2".to_owned();
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: target_url.clone(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    let user_key = digest(&format!("{target_name}\0Users\0departed"));
+    f.core.store.write(|tx| {
+        for index in 0..300 {
+            let id = format!("other-{index:04}");
+            let link = json!({
+                "target": "other-target", "url": target_url, "kind": "Users",
+                "local_id": id, "remote_id": format!("remote-{index}"),
+                "external_id": format!("urn:example:{id}"),
+                "body": {"active": true}
+            });
+            tx.put("provisioning_links", &digest(&format!("other-target\0Users\0{id}")), &link)?;
+        }
+        tx.put("provisioning_links", &user_key, &json!({
+            "target": target_name, "url": target_url, "kind": "Users",
+            "local_id": "departed", "remote_id": "remote-departed",
+            "external_id": "urn:example:departed", "body": {"active": true}
+        }))?;
+        tx.put("provisioning_links", &digest(&format!("{target_name}\0Groups\0staff")), &json!({
+            "target": target_name, "url": target_url, "kind": "Groups",
+            "local_id": "staff", "remote_id": "remote-staff",
+            "external_id": "urn:example:staff",
+            "body": {"members": [{"value": "remote-departed"}]}
+        }))
+    }).unwrap();
+
+    let scanned = || f.core.store.telemetry().scanned_records.load(Ordering::Relaxed);
+    for _ in 0..2 {
+        assert_eq!(f.core.provisioning_plan(&agent, &target_name).unwrap()["decision"], "snapshot_in_progress");
+    }
+    let before_final = scanned();
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert!(scanned() - before_final < 128, "final planning rescanned all links");
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert_eq!(plan["managed_links"].as_object().unwrap().len(), 2);
+    assert!(plan["links_generation"].is_u64());
+    let before_reuse = scanned();
+    let pending = f.core.provisioning_reconcile(&agent, &target_name).unwrap();
+    assert_eq!(pending["plan"]["id"], plan["id"]);
+    assert!(scanned() - before_reuse < 128, "pending plan reuse rescanned all links");
+
+    f.core.store.write(|tx| {
+        let mut link = tx.get::<Value>("provisioning_links", &user_key)?.unwrap();
+        link["remote_id"] = json!("remote-rotated");
+        tx.put("provisioning_links", &user_key, &link)
+    }).unwrap();
+    let old_id = text(&plan, "id");
+    assert!(f.core.provisioning_apply_confirmed(&agent, &old_id, Some(&old_id)).is_err());
+
+    for _ in 0..2 {
+        assert_eq!(f.core.provisioning_plan(&agent, &target_name).unwrap()["decision"], "snapshot_in_progress");
+    }
+    let replanned = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    let new_id = text(&replanned, "id");
+    let before_apply = scanned();
+    let job = f.core.provisioning_apply_confirmed(&agent, &new_id, Some(&new_id)).unwrap();
+    assert!(scanned() - before_apply < 128, "apply rescanned all links");
+    assert_eq!(job["completed"], false);
+}
+
+#[test]
+fn scim_user_cursor_ignores_login_but_restarts_on_projection_change() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("selected");
+    f.core.group_member(&f.admin, "staff", "selected", true).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("login-cursor");
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: "http://127.0.0.1:9/scim/v2".into(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    let selected_id = f.core.store.get::<String>("usernames", "selected").unwrap().unwrap();
+    f.core.store.write(|tx| {
+        let selected = tx.get::<riauth::model::User>("users", &selected_id)?.unwrap();
+        for index in 0..128 {
+            let mut filler = selected.clone();
+            filler.id = format!("filler-{index:04}");
+            filler.username = filler.id.clone();
+            tx.put("users", &filler.id, &filler)?;
+        }
+        Ok(())
+    }).unwrap();
+    let generation = || f.core.store.get::<u64>("provisioning_user_generation", "all").unwrap().unwrap();
+
+    let first = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(first["decision"], "snapshot_in_progress");
+    assert_eq!(first["scanned_users"], 128);
+    let before_login = generation();
+    f.core.login("selected".into(), common::PASSWORD.into(), None).unwrap();
+    assert_eq!(generation(), before_login);
+
+    f.core.store.write(|tx| {
+        let mut selected = tx.get::<riauth::model::User>("users", &selected_id)?.unwrap();
+        selected.display_name = "Changed for SCIM".into();
+        tx.put("users", &selected_id, &selected)
+    }).unwrap();
+    assert!(generation() > before_login);
+    let restarted = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(restarted["decision"], "snapshot_in_progress");
+    assert_eq!(restarted["restart"], true);
+    assert_ne!(restarted["snapshot_id"], first["snapshot_id"]);
+
+    let before_second_login = generation();
+    f.core.login("selected".into(), common::PASSWORD.into(), None).unwrap();
+    assert_eq!(generation(), before_second_login);
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(plan["resources"].as_array().unwrap().len(), 1);
+    assert_eq!(plan["resources"][0]["body"]["displayName"], "Changed for SCIM");
+}
+
+#[test]
 fn completed_job_history_is_compact_and_bounded() {
     let mut f = Fixture::new();
     f.core.create_group(&f.admin, "staff").unwrap();

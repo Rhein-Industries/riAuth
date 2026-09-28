@@ -97,6 +97,12 @@ without progress and is limited to 100,000 scanned records per collection and 2 
 data. The selected group population is limited to 2,000 member IDs, including
 inactive members. These quotas stop very large or rapidly changing inventories
 for operator inspection rather than treating an unseen record as departed.
+Successful logins and other writes to authentication-only user fields do not
+restart a source scan; changes to username, display name, email, enabled or
+administrator status do. A completed plan binds the target link generation and
+computes removal impact from its bounded set of reviewed link keys. Applying it
+checks that generation and the exact saved link contents without scanning links
+for other targets. Plans saved before this binding must be replanned before apply.
 
 This profile requires an authenticated SCIM endpoint with `externalId eq` filtering, Users/Groups creation, PATCH and ETags for conditional updates. A successful empty `204 No Content` PATCH is read back and verified before the job advances. Responses, redirects and request duration are bounded; all non-loopback endpoints require verified HTTPS. The selected population is limited to 2000 users. Including historical links and groups, a plan is limited to 2064 resources and 2 MiB serialized size; the retained plan store is limited to 32 plans and 16 MiB. Completed and stale jobs retain their progress and error summary without the resource bodies; at most 64 jobs and 32 MiB of job records are retained, with the oldest terminal records removed when capacity is needed. If the remote external ID is ambiguous, a linked remote ID changes, or a linked account disappears, the worker stops that item for review. Local configuration or agent-authority changes mark an in-progress plan stale, including partial progress. Inconsistent filtered page totals/metadata never dispatch a write. Membership replacement, and accepting a group as already up to date while it has reviewed managed or desired members, requires a complete explicit member array with bounded unique IDs (an omitted, `null` or `membersNextLink`-paginated `members` field is rejected, not treated as empty), and refuses to remove remote members outside the reviewed previous managed snapshot. Missing or malformed active state cannot authorize a disable. Resolve incomplete data or unexpected remote drift before replanning.
 

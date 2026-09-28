@@ -192,6 +192,9 @@ pub struct Plan {
     pub removal_impact: RemovalImpact,
     #[serde(default)]
     pub managed_links: BTreeMap<String, String>,
+    /// Plans without this binding predate bounded apply and must be replanned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links_generation: Option<u64>,
     #[serde(default)]
     pub review: ReviewBinding,
 }
@@ -589,7 +592,7 @@ impl Core {
                         .review
                         .validate(tx, &actor, &plan_content(&plan)?)
                         .is_ok()
-                    && plan.managed_links == managed_links(tx, target_id)?
+                    && plan_links_match(tx, &plan)?
                 {
                     return Ok(Some(json!(plan)));
                 }
@@ -796,7 +799,7 @@ impl Core {
             // changed link behind a persisted cursor resets the draft above.
             let mut resources: Vec<_> = draft.resources.into_values().collect();
             resources.sort_by(|a, b| (a.kind != "Users", &a.local_id).cmp(&(b.kind != "Users", &b.local_id)));
-            let removal_impact = provisioning_impact(tx, target_id, &resources)?;
+            let removal_impact = provisioning_impact(tx, target_id, &resources, &draft.managed_links)?;
             let mut plan = Plan {
                 id: crypto::id(),
                 target: target_id.into(),
@@ -807,6 +810,7 @@ impl Core {
                 resources,
                 removal_impact,
                 managed_links: draft.managed_links,
+                links_generation: Some(draft.links_generation),
                 review: ReviewBinding::default(),
             };
             plan.review=ReviewBinding::new(tx, &actor,&plan_content(&plan)?)?;
@@ -879,12 +883,12 @@ impl Core {
                 .scim_targets
                 .get(&plan.target)
                 .ok_or_else(Error::forbidden)?;
-            if managed_links(tx, &plan.target)? != plan.managed_links {
+            if !plan_links_match(tx, &plan)? {
                 return Err(Error::conflict(
                     "SCIM managed snapshot changed; create a new plan",
                 ));
             }
-            let impact = provisioning_impact(tx, &plan.target, &plan.resources)?;
+            let impact = provisioning_impact(tx, &plan.target, &plan.resources, &plan.managed_links)?;
             ApplyGate {
                 id,
                 revision: plan.revision,
@@ -1342,74 +1346,88 @@ impl Core {
         })
     }
 }
-fn managed_links(tx: &Tx<'_>, target: &str) -> Result<BTreeMap<String, String>> {
-    target_links(tx, target)?
-        .into_iter()
-        .map(|(key, link)| Ok((key, crate::connector_guard::hash(&link)?)))
-        .collect()
+fn plan_links_match(tx: &Tx<'_>, plan: &Plan) -> Result<bool> {
+    let Some(expected) = plan.links_generation else {
+        // Older plans cannot prove that no target link was inserted behind the
+        // saved scan cursor. Require a fresh bounded plan rather than scan the
+        // entire link collection under the apply writer lock.
+        return Ok(false);
+    };
+    // Every target link write advances this counter in the same storage
+    // transaction. A matching value also rules out an unseen insertion.
+    Ok(tx
+        .get::<u64>("provisioning_link_generations", &plan.target)?
+        .unwrap_or(0)
+        == expected)
 }
 
-/// Scan storage in fixed pages, retaining only this target's bounded ownership
-/// records. Other targets cannot make this target's plan allocate their links.
-fn target_links(tx: &Tx<'_>, target: &str) -> Result<Vec<(String, Link)>> {
-    let mut result = Vec::new();
-    let mut after = None;
-    let mut scanned = 0usize;
-    loop {
-        let page = tx.scan::<Link>("provisioning_links", after.as_deref(), SNAPSHOT_PAGE)?;
-        scanned = scanned.saturating_add(page.len());
-        if scanned > MAX_SNAPSHOT_SCANNED {
-            return Err(Error::bad("SCIM link scan quota exceeded"));
-        }
-        let full = page.len() == SNAPSHOT_PAGE;
-        after = page.last().map(|(key, _)| key.clone());
-        for (key, link) in page {
-            if link.target == target {
-                result.push((key, link));
-                if result.len() > MAX_PLAN_RESOURCES {
-                    return Err(Error::bad("SCIM plan exceeds the total resource limit"));
-                }
-            }
-        }
-        if !full {
-            return Ok(result);
-        }
+fn reviewed_link(tx: &Tx<'_>, target: &str, key: &str, expected: &str) -> Result<Link> {
+    let link = tx
+        .get::<Link>("provisioning_links", key)?
+        .ok_or_else(|| Error::conflict("SCIM managed snapshot changed; create a new plan"))?;
+    if link.target != target || crate::connector_guard::hash(&link)? != expected {
+        return Err(Error::conflict(
+            "SCIM managed snapshot changed; create a new plan",
+        ));
     }
+    Ok(link)
 }
 
-fn provisioning_impact(tx: &Tx<'_>, target: &str, resources: &[Resource]) -> Result<RemovalImpact> {
-    let links: Vec<Link> = target_links(tx, target)?
-        .into_iter()
-        .map(|(_, link)| link)
+fn provisioning_impact(
+    tx: &Tx<'_>,
+    target: &str,
+    resources: &[Resource],
+    managed_links: &BTreeMap<String, String>,
+) -> Result<RemovalImpact> {
+    if managed_links.len() > MAX_PLAN_RESOURCES || resources.len() > MAX_PLAN_RESOURCES {
+        return Err(Error::bad("SCIM plan exceeds the total resource limit"));
+    }
+    let desired: BTreeMap<_, _> = resources
+        .iter()
+        .map(|resource| ((resource.kind.as_str(), resource.local_id.as_str()), resource))
         .collect();
     let mut impact = RemovalImpact::default();
     let mut active = 0;
-    for link in &links {
-        let desired = resources
-            .iter()
-            .find(|r| r.kind == link.kind && r.local_id == link.local_id)
+    let mut user_remote_ids = BTreeMap::new();
+    let mut group_keys = Vec::new();
+    for (key, expected) in managed_links {
+        let link = reviewed_link(tx, target, key, expected)?;
+        let resource = desired
+            .get(&(link.kind.as_str(), link.local_id.as_str()))
             .ok_or_else(|| {
                 Error::conflict("SCIM plan omitted a linked resource; create a new plan")
             })?;
-        if link.kind == "Users" && link.body["active"] == true {
-            active += 1;
-            if desired.body["active"] == false {
-                impact.disabled_users += 1;
+        if link.kind == "Users" {
+            if link.body["active"] == true {
+                active += 1;
+                if resource.body["active"] == false {
+                    impact.disabled_users += 1;
+                }
             }
+            // Keep the first matching link in storage-key order, matching the
+            // prior group-impact lookup even if historical data has duplicates.
+            user_remote_ids.entry(link.local_id).or_insert(link.remote_id);
         } else if link.kind == "Groups" {
-            let old = member_values(&link.body)?;
-            let desired_ids: BTreeSet<_> = desired
-                .member_ids
-                .iter()
-                .filter_map(|id| {
-                    links
-                        .iter()
-                        .find(|l| l.kind == "Users" && &l.local_id == id)
-                        .map(|l| l.remote_id.clone())
-                })
-                .collect();
-            impact.removed_memberships += old.difference(&desired_ids).count();
+            group_keys.push(key);
         }
+    }
+    // Group membership refers to user remote IDs, including links that sort
+    // after a group link. Read one bounded group body at a time.
+    for key in group_keys {
+        let expected = &managed_links[key];
+        let link = reviewed_link(tx, target, key, expected)?;
+        let resource = desired
+            .get(&(link.kind.as_str(), link.local_id.as_str()))
+            .ok_or_else(|| {
+                Error::conflict("SCIM plan omitted a linked resource; create a new plan")
+            })?;
+        let old = member_values(&link.body)?;
+        let desired_ids: BTreeSet<_> = resource
+            .member_ids
+            .iter()
+            .filter_map(|id| user_remote_ids.get(id).cloned())
+            .collect();
+        impact.removed_memberships += old.difference(&desired_ids).count();
     }
     impact.assess(active);
     Ok(impact)

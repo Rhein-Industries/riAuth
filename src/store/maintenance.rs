@@ -99,14 +99,32 @@ impl Tx<'_> {
         after: Option<&Value>,
     ) -> Result<()> {
         if bucket == "users" {
-            // User writes need not all bump the management revision. A source
-            // insertion behind a saved scan cursor must still restart it.
-            let generation = self
-                .get::<u64>("provisioning_user_generation", "all")?
-                .unwrap_or(0)
-                .checked_add(1)
-                .ok_or_else(|| Error::internal("SCIM user generation exhausted"))?;
-            self.put("provisioning_user_generation", "all", &generation)?;
+            // Authentication can rewrite factors or rehash a password without
+            // changing the outbound SCIM projection. Only source changes that
+            // could alter a plan invalidate a saved scan cursor.
+            let before = self.get::<Value>("users", id)?;
+            let changed = match (before.as_ref(), after) {
+                (None, None) => false,
+                (None, Some(_)) | (Some(_), None) => true,
+                (Some(before), Some(after)) => [
+                    "id",
+                    "username",
+                    "display_name",
+                    "email",
+                    "enabled",
+                    "admin",
+                ]
+                .iter()
+                .any(|field| before.get(*field) != after.get(*field)),
+            };
+            if changed {
+                let generation = self
+                    .get::<u64>("provisioning_user_generation", "all")?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("SCIM user generation exhausted"))?;
+                self.put("provisioning_user_generation", "all", &generation)?;
+            }
         }
         if bucket == "groups" {
             let before = self.get::<crate::model::Group>(bucket, id)?;
