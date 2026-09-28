@@ -138,8 +138,8 @@ test('consent and sensitive-action definitions edit through the canonical plan a
   for (const [index, definition] of workflows.entries()) {
     await page.goto(`${origin}/admin#/workflows/${definition.id}`);
     await expect(page.getByRole('heading', { level: 1, name: `Edit ${definition.id}` })).toBeVisible();
-    await expect(page.getByText('Saving a definition does not run it or make unsupported shapes executable.', { exact: false })).toBeVisible();
-    await expect(page.getByText('Runtime use depends on the active server-supported executor shape.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Saving a definition does not activate it or make unsupported shapes executable.', { exact: false })).toBeVisible();
+    await expect(page.getByText('The server selects only supported shapes from its runtime configuration.', { exact: false })).toBeVisible();
     await page.locator('.workflow-graph button').nth(1).click();
     const action = page.locator('.workflow-controls select').first();
     await action.selectOption(definition.category === 'consent' ? 'resume_session' : 'verify_passkey');
