@@ -378,7 +378,7 @@ mod tests {
                     tx.put("users", &user.id, &user)?;
                 }
                 let mut target = template.clone();
-                target.id = "z-target".into();
+                target.id = "a064-target".into();
                 target.username = "Target".into();
                 target.admin = false;
                 target.totp_secret = Some("configured".into());
@@ -418,6 +418,19 @@ mod tests {
                 tx.put("users", &collision.id, &collision)
             })
             .unwrap();
+        let (target_on_first_page, collision_on_second_page) = core
+            .store
+            .read(|tx| {
+                let first = tx.scan::<User>("users", None, crate::store::maintenance::PAGE)?;
+                let after = first.last().map(|(key, _)| key.as_str());
+                let second = tx.scan::<User>("users", after, crate::store::maintenance::PAGE)?;
+                Ok((
+                    first.iter().any(|(key, _)| key == "a064-target"),
+                    second.iter().any(|(key, _)| key == "zz-collision"),
+                ))
+            })
+            .unwrap();
+        assert!(target_on_first_page && collision_on_second_page);
         let before = counts();
         let collision = core.ldap_bind_target("ldap", dn, "unused").unwrap_err();
         assert_eq!(collision.status, axum::http::StatusCode::UNAUTHORIZED);
