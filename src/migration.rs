@@ -30,6 +30,11 @@ pub struct Import {
     /// Their members lose them, including in group claims.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub excluded_groups: BTreeSet<String>,
+    /// The target instance's current state: the `manifest` of an administrator's `riauth export`.
+    /// With it, accounts an earlier import created are matched by their recorded Authentik UUID,
+    /// and no username, subject or source link is moved to another account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_state: Option<Manifest>,
     #[serde(default)]
     pub totp: BTreeMap<String, PasswordReference>,
     #[serde(default)]
@@ -329,15 +334,23 @@ fn subject_source(mode: &str) -> Option<(&'static str, bool)> {
     })
 }
 
+/// Attribute recording the Authentik account a converted account came from. The converter sets
+/// it from the export's `pk` and `uuid`, never from exported attributes.
+const SOURCE_ACCOUNT: &str = "riauth.migration.authentik";
+
 /// An exported account converted under its exported values.
 struct Account {
     pk: String,
+    /// Authentik's random account UUID, the stable evidence that two exports name one account.
+    uuid: Option<String>,
+    /// Username in riAuth: the exported one, or the immutable name of the verified account.
+    name: String,
     display_name: String,
     email: Option<String>,
 }
 /// Accounts to convert, by username. riAuth never rewrites a username, name or email, so an account
 /// it cannot store unchanged is reported and left out, as are Authentik's internal service
-/// accounts, which back its own outposts.
+/// accounts, which back its own outposts, and its temporary accounts, which it deletes.
 fn accounts(p: &mut Preflight, users: &[Value]) -> Result<BTreeMap<String, Account>> {
     let mut accounts = BTreeMap::new();
     let (mut pks, mut usernames) = (BTreeSet::new(), BTreeSet::new());
@@ -351,6 +364,17 @@ fn accounts(p: &mut Preflight, users: &[Value]) -> Result<BTreeMap<String, Accou
             p.add(ItemKind::User, username, Classification::Unsupported,
                 "Authentik manages this internal service account for its own outposts; it is not converted",
                 "Deploy riAuth outposts or agents for the integrations it served; its tokens never carry over");
+            continue;
+        }
+        // Authentik deletes generated accounts once they expire or their session ends.
+        let attributes = &user["attributes"];
+        if attributes["goauthentik.io/user/generated"] == true
+            && (!attributes["goauthentik.io/user/expires"].is_null()
+                || attributes["goauthentik.io/user/delete-on-logout"] == true)
+        {
+            p.add(ItemKind::User, username, Classification::Unsupported,
+                "Authentik generated this account as temporary and deletes it when it expires or its session ends; it is not converted",
+                "None; the person signs in again through the source that created it");
             continue;
         }
         let display_name = user["name"]
@@ -376,12 +400,77 @@ fn accounts(p: &mut Preflight, users: &[Value]) -> Result<BTreeMap<String, Accou
             username.to_owned(),
             Account {
                 pk,
+                uuid: user["uuid"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(String::from),
+                name: username.to_owned(),
                 display_name,
                 email,
             },
         );
     }
     Ok(accounts)
+}
+
+/// Match converted accounts with those the target instance already holds. riAuth IDs and
+/// usernames are immutable, so an account Authentik renamed keeps its riAuth username, but only
+/// when the recorded Authentik UUID proves it is the same account. No username is ever given to
+/// another account, and an account without that evidence, or with other evidence, blocks.
+fn continuity(p: &mut Preflight, accounts: &mut BTreeMap<String, Account>, state: &Manifest) {
+    let by_id = state
+        .users
+        .iter()
+        .filter_map(|u| u.id.as_deref().map(|id| (id, u)))
+        .collect::<BTreeMap<_, _>>();
+    let holders = state
+        .users
+        .iter()
+        .map(|u| (u.username.as_str(), u.id.as_deref().unwrap_or("")))
+        .collect::<BTreeMap<_, _>>();
+    let mut blocked = Vec::new();
+    for (username, account) in accounts.iter_mut() {
+        let id = format!("authentik-{}", account.pk);
+        let Some(existing) = by_id.get(id.as_str()) else {
+            // A new account may not take a name another riAuth account holds.
+            if let Some(holder) = holders.get(username.as_str()) {
+                p.add(ItemKind::User, username, Classification::Unsupported,
+                    format!("The username already belongs to riAuth account {holder}; riAuth never gives a username to another account"),
+                    "Rename one of the accounts in Authentik before the final export, coordinating the change with every relying party that stores it")
+                    .block(format!("{username}: username already belongs to another riAuth account"));
+                blocked.push(username.clone());
+            }
+            continue;
+        };
+        let recorded = existing
+            .attributes
+            .get(SOURCE_ACCOUNT)
+            .and_then(|evidence| evidence["uuid"].as_str());
+        let verified = recorded.is_some() && recorded == account.uuid.as_deref();
+        if recorded.is_some() && !verified {
+            p.add(ItemKind::User, username, Classification::Unsupported,
+                format!("riAuth account {id} records a different Authentik account, so this export is not its source"),
+                "Convert the export of the Authentik instance this riAuth instance was migrated from")
+                .block(format!("{username}: riAuth account {id} records a different Authentik account"));
+            blocked.push(username.clone());
+        } else if existing.username != *username {
+            if verified {
+                p.add(ItemKind::User, username, Classification::Convertible,
+                    format!("Authentik renamed this account from {}; riAuth usernames are immutable, so verified account {id} keeps the username {}", existing.username, existing.username),
+                    format!("Tell the person to sign in to riAuth as {}", existing.username));
+                account.name = existing.username.clone();
+            } else {
+                p.add(ItemKind::User, username, Classification::Unsupported,
+                    format!("Authentik renamed this account from {}, but riAuth account {id} records no Authentik UUID that proves it is the same account", existing.username),
+                    "Rename it back in Authentik before the final export, or retire the riAuth account explicitly; riAuth never adopts an account by its numeric ID alone")
+                    .block(format!("{username}: rename of riAuth account {id} is not backed by a recorded Authentik UUID"));
+                blocked.push(username.clone());
+            }
+        }
+    }
+    for username in blocked {
+        accounts.remove(&username);
+    }
 }
 
 /// One exported user source connection: the owning user's ID, the source ID and the upstream
@@ -1174,7 +1263,10 @@ pub fn convert(input: Import) -> Result<Value> {
         .keys()
         .map(|id| Ok((id.as_str(), group_ancestors(&parents, id)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
-    let accounts = accounts(&mut p, users)?;
+    let mut accounts = accounts(&mut p, users)?;
+    if let Some(state) = &input.target_state {
+        continuity(&mut p, &mut accounts, state);
+    }
     let directory = Directory {
         group_names: &group_names,
         converted_groups: &converted_groups,
@@ -1184,7 +1276,10 @@ pub fn convert(input: Import) -> Result<Value> {
                 let username = field(u, "username")?;
                 Ok((
                     identifier(&u["pk"])?,
-                    (username, accounts.contains_key(username)),
+                    match accounts.get(username) {
+                        Some(account) => (account.name.as_str(), true),
+                        None => (username, false),
+                    },
                 ))
             })
             .collect::<Result<_>>()?,
@@ -1690,7 +1785,7 @@ pub fn convert(input: Import) -> Result<Value> {
                 .block(format!("Application {slug} has provisioning providers requiring separate migration"));
         }
     }
-    manifest.source_links = verify_links(
+    let mut links = verify_links(
         &mut p,
         &input,
         users,
@@ -1698,6 +1793,52 @@ pub fn convert(input: Import) -> Result<Value> {
         &applied,
         &exported_sources,
     )?;
+    // Links name accounts by their riAuth username, and an upstream identity the target already
+    // links to one account never moves to another.
+    let linked = input
+        .target_state
+        .iter()
+        .flat_map(|state| &state.source_links)
+        .map(|l| ((l.source.as_str(), l.subject.as_str()), l.username.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    links.retain_mut(|link| {
+        let exported = std::mem::take(&mut link.username);
+        link.username = accounts[&exported].name.clone();
+        let Some(owner) = linked
+            .get(&(link.source.as_str(), link.subject.as_str()))
+            .filter(|owner| **owner != link.username)
+        else {
+            return true;
+        };
+        p.add(ItemKind::SourceLink, format!("{exported}/{}", link.source), Classification::Unsupported,
+            format!("The upstream identity is already linked to riAuth account {owner}; riAuth never moves a source link to another account"),
+            "Resolve which account owns this upstream identity in Authentik before the final export")
+            .block(format!("{exported}/{}: source link belongs to another riAuth account", link.source));
+        false
+    });
+    manifest.source_links = links;
+    // Subjects the target already issued, and to which account.
+    let state = input.target_state.as_ref();
+    let issued = state
+        .iter()
+        .flat_map(|state| &state.users)
+        .flat_map(|u| {
+            let id = u.id.as_deref().unwrap_or("");
+            u.subjects
+                .iter()
+                .map(move |(cid, subject)| ((cid.as_str(), subject.as_str()), id))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let stored = state
+        .iter()
+        .flat_map(|state| &state.users)
+        .filter_map(|u| u.id.as_deref().map(|id| (id, u)))
+        .collect::<BTreeMap<_, _>>();
+    let target_clients = state
+        .iter()
+        .flat_map(|state| &state.clients)
+        .map(|c| c.client_id.as_str())
+        .collect::<BTreeSet<_>>();
     for (entries, kind, name) in [
         (&input.passwords, ItemKind::Password, "passwords"),
         (&input.totp, ItemKind::Totp, "totp"),
@@ -1716,12 +1857,17 @@ pub fn convert(input: Import) -> Result<Value> {
         let Some(account) = accounts.get(&username) else {
             continue;
         };
+        let id = format!("authentik-{}", account.pk);
         let password = input.passwords.get(&username);
         // Only a verified link lets an external account sign in without a local password.
         let external = user["type"] == "external"
-            && manifest.source_links.iter().any(|l| l.username == username);
+            && manifest
+                .source_links
+                .iter()
+                .any(|l| l.username == account.name);
+        let inactive = user["is_active"] != true;
         p.add(ItemKind::User, &username, Classification::Convertible,
-            "The local ID becomes authentik-<pk>; name, email, attributes, active state and flattened memberships are copied; email_verified starts false",
+            format!("The local ID becomes {id}; name, email, attributes, active state and flattened memberships are copied, the Authentik UUID is recorded in attribute {SOURCE_ACCOUNT}, and email_verified starts false"),
             "Review profile data and email verification");
         match password {
             Some(reference) if reference.hashed => {
@@ -1738,6 +1884,12 @@ pub fn convert(input: Import) -> Result<Value> {
                 p.add(ItemKind::Password, &username, Classification::Manual,
                     "The local password is disabled; the user signs in through the explicitly linked source",
                     "Rehearse sign-in through the linked source");
+            }
+            // Nobody signs in to an inactive account, so it keeps its identity without a credential.
+            None if inactive => {
+                p.add(ItemKind::Password, &username, Classification::Manual,
+                    "The account is inactive in Authentik, so it is kept disabled with its local password disabled",
+                    "Reactivating it needs a managed password reset or a verified source link");
             }
             None => {
                 p.add(ItemKind::Password, &username, Classification::Manual,
@@ -1787,7 +1939,7 @@ pub fn convert(input: Import) -> Result<Value> {
                 .find(|g| &g.name == name)
                 .unwrap()
                 .members
-                .insert(username.clone());
+                .insert(account.name.clone());
         }
         let mut subjects = BTreeMap::new();
         for (cid, (mode, reviewed)) in &subject_modes {
@@ -1824,19 +1976,58 @@ pub fn convert(input: Import) -> Result<Value> {
                 subjects.insert(cid.clone(), subject);
             }
         }
+        // A subject the target already issued stays with its account: this account keeps its
+        // own, even for clients this export no longer converts, and never takes another's.
+        if let Some(existing) = stored.get(id.as_str()) {
+            for (cid, previous) in &existing.subjects {
+                match subjects.get(cid).cloned() {
+                    Some(converted) if &converted != previous => {
+                        p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
+                            format!("The subject would change from {previous} to {converted} on riAuth account {id}; riAuth never moves an account to another subject"),
+                            "Keep the subject's source value in Authentik, or plan an explicit relying-party account migration")
+                            .block(format!("{username}/{cid}: subject of an existing riAuth account would change"));
+                    }
+                    None if target_clients.contains(cid.as_str()) => {
+                        subjects.insert(cid.clone(), previous.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for (cid, subject) in &subjects {
+            if let Some(owner) = issued
+                .get(&(cid.as_str(), subject.as_str()))
+                .filter(|owner| **owner != id)
+            {
+                p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
+                    format!("Subject {subject} for client {cid} belongs to riAuth account {owner}; riAuth never gives a subject to another account"),
+                    "Resolve which account owns this subject in Authentik before the final export")
+                    .block(format!("{username}/{cid}: subject belongs to another riAuth account"));
+            }
+        }
+        let mut attributes: BTreeMap<String, Value> =
+            serde_json::from_value(user["attributes"].clone())
+                .map_err(|_| Error::bad("Invalid user attributes"))?;
+        // Recorded from the export's identifiers; an exported attribute of that name is not trusted.
+        attributes.remove(SOURCE_ACCOUNT);
+        if let Some(uuid) = &account.uuid {
+            attributes.insert(
+                SOURCE_ACCOUNT.into(),
+                json!({"pk": account.pk, "uuid": uuid}),
+            );
+        }
         manifest.users.push(UserSpec {
-            password_disabled: external && password.is_none(),
+            password_disabled: (external || inactive) && password.is_none(),
             totp_ref: input.totp.get(&username).map(|t| t.reference.clone()),
             totp_version: input.totp.get(&username).map(|t| t.version.clone()),
-            id: Some(format!("authentik-{}", account.pk)),
-            username: username.clone(),
+            id: Some(id),
+            username: account.name.clone(),
             display_name: account.display_name.clone(),
             email: account.email.clone(),
             email_verified: false,
-            enabled: user["is_active"] == true,
+            enabled: !inactive,
             admin: false,
-            attributes: serde_json::from_value(user["attributes"].clone())
-                .map_err(|_| Error::bad("Invalid user attributes"))?,
+            attributes,
             subjects,
             password_ref: password.filter(|p| !p.hashed).map(|p| p.reference.clone()),
             password_hash_ref: password.filter(|p| p.hashed).map(|p| p.reference.clone()),

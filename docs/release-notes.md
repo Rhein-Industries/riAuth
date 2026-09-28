@@ -113,6 +113,14 @@
   `credential` report issuer continuity, links, and credentials that never move.
   Inventories can declare these kinds, and they can no longer be used as a
   `source_kind`.
+- Converting again into an instance that already holds imported accounts can
+  use `target_state`, an administrator's `riauth export` manifest. Each account
+  records its Authentik UUID in `riauth.migration.authentik`. An account
+  Authentik renamed keeps its immutable riAuth username only when that UUID
+  matches, and otherwise blocks. Usernames, issued subjects and source links
+  never move to another account, and issued subjects never change silently.
+  Authentik's temporary accounts are no longer converted, and inactive accounts
+  without a password are kept disabled instead of blocking.
 - Converted manifests now record the bundle's `issuer`. Planning and applying
   fail unless the instance's issuer is exactly that canonical URL, trailing
   slash included, so a manifest prepared for one instance cannot silently

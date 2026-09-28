@@ -1574,6 +1574,249 @@ fn authentik_application_bindings_convert_exactly_or_block() {
 }
 
 #[test]
+fn authentik_reimport_keeps_verified_accounts_and_never_moves_identities() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let f = Fixture::new();
+    let issuer = f.core.config.issuer.clone();
+    let user = |pk: u64, username: &str, email: &str, extra: Value| {
+        let mut user = json!({"pk":pk,"uid":format!("uid-{pk}"),"uuid":format!("uuid-{pk}"),"username":username,
+            "name":username,"email":email,"groups":["g-staff"],"attributes":{},"type":"internal","is_active":true,"roles":[]});
+        user.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        user
+    };
+    let provider = |pk: u64, cid: &str, mode: &str| {
+        json!({"pk":pk,"name":cid,"client_id":cid,"client_type":"public","grant_types":["authorization_code"],
+            "redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],
+            "property_mappings":[],"sub_mode":mode,"issuer_mode":"per_provider","include_claims_in_id_token":true})
+    };
+    let client = |cid: &str| {
+        json!({"issuer":format!("{issuer}/application/o/{cid}/"),"scopes":["openid","profile"],"settings":{},
+            "translated_mapping_ids":[],"translated_binding_ids":[],"authentication_flow_reviewed":true,"require_mfa":false})
+    };
+    let bundle = |users: Value, state: Option<&Value>| {
+        // Alice's password follows her Authentik account across the rename.
+        let passwords = users
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|u| {
+                let reference = match (u["pk"].as_u64(), u["username"].as_str()) {
+                    (Some(42), Some(name)) => (name, "env:ALICE"),
+                    (Some(43), Some(name)) => (name, "env:BOB"),
+                    _ => return None,
+                };
+                Some((
+                    reference.0.to_owned(),
+                    json!({"reference":reference.1,"version":"v1"}),
+                ))
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let mut bundle = json!({"api_version":"riauth.authentik-import/v1","issuer":issuer,"users":users,
+            "groups":[{"pk":"g-staff","name":"staff","parents":[]}],
+            "providers":[provider(1, "wiki", "hashed_user_id"), provider(2, "mail", "user_email")],
+            "applications":[{"pk":"app-wiki","slug":"wiki","provider":1,"name":"wiki"},
+                {"pk":"app-mail","slug":"mail","provider":2,"name":"mail"}],
+            "policy_bindings":[],"sources":[],"passwords":passwords,
+            "clients":{"wiki":client("wiki"),"mail":client("mail")}});
+        if let Some(state) = state {
+            bundle["target_state"] = state.clone();
+        }
+        bundle
+    };
+    let convert =
+        |input: Value| riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
+    let apply = |report: &Value| {
+        assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+        let plan = f
+            .core
+            .plan_state(
+                &f.admin,
+                serde_json::from_value(report["manifest"].clone()).unwrap(),
+            )
+            .unwrap();
+        let secrets = ["ALICE", "BOB"].map(|name| (format!("env:{name}"), PASSWORD.to_owned()));
+        f.core
+            .apply_state(
+                &f.admin,
+                riauth::state::ApplyRequest {
+                    plan,
+                    secrets: secrets.into(),
+                    run_id: None,
+                },
+            )
+            .unwrap();
+    };
+    let blocks = |report: &Value, blocker: &str| {
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(blocker))
+    };
+    let draft_user = |report: &Value, id: &str| {
+        report["draft"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["id"] == id)
+            .cloned()
+    };
+    let bob = user(43, "bob", "bob@example.test", json!({}));
+    // An inactive account keeps its identity without a credential; Authentik's temporary
+    // accounts are never converted.
+    let dave = user(45, "dave", "dave@example.test", json!({"is_active":false}));
+    let temporary = user(
+        46,
+        "ak-temp",
+        "temp@example.test",
+        json!({"attributes":{"goauthentik.io/user/generated":true,"goauthentik.io/user/expires":1893456000}}),
+    );
+    let first = convert(bundle(
+        json!([
+            user(42, "alice", "alice@example.test", json!({})),
+            bob,
+            dave,
+            temporary
+        ]),
+        None,
+    ));
+    assert_eq!(findings(&first, User, "ak-temp"), [(Unsupported, false)]);
+    assert_eq!(findings(&first, Password, "dave"), [(Manual, false)]);
+    let draft = draft_user(&first, "authentik-45").unwrap();
+    assert_eq!(
+        (&draft["enabled"], &draft["password_disabled"]),
+        (&json!(false), &json!(true))
+    );
+    assert!(draft_user(&first, "authentik-46").is_none());
+    assert_eq!(
+        draft_user(&first, "authentik-42").unwrap()["attributes"]["riauth.migration.authentik"],
+        json!({"pk":"42","uuid":"uuid-42"})
+    );
+    apply(&first);
+    let state = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+
+    // Authentik renamed Alice and gave her old name to a new account. The verified account keeps
+    // its immutable riAuth username; the new account may not take it.
+    let renamed = || user(42, "alice.smith", "alice@example.test", json!({}));
+    let report = convert(bundle(
+        json!([
+            renamed(),
+            user(44, "alice", "newcomer@example.test", json!({})),
+            bob,
+            dave
+        ]),
+        Some(&state),
+    ));
+    assert!(findings(&report, User, "alice.smith").contains(&(Convertible, false)));
+    assert_eq!(findings(&report, User, "alice"), [(Unsupported, true)]);
+    assert!(blocks(
+        &report,
+        "alice: username already belongs to another riAuth account"
+    ));
+    assert!(draft_user(&report, "authentik-44").is_none());
+    assert_eq!(
+        draft_user(&report, "authentik-42").unwrap()["username"],
+        "alice"
+    );
+    let report = convert(bundle(json!([renamed(), bob, dave]), Some(&state)));
+    let staff = report["draft"]["groups"][0]["members"].clone();
+    assert_eq!(staff, json!(["alice", "bob", "dave"]));
+    apply(&report);
+    let exported = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+    let alice = exported["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["id"] == "authentik-42")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (&alice["username"], &alice["display_name"]),
+        (&json!("alice"), &json!("alice.smith"))
+    );
+    assert_eq!(
+        alice["subjects"],
+        json!({"mail":"alice@example.test","wiki":"uid-42"})
+    );
+    assert!(f.core.login("alice".into(), PASSWORD.into(), None).is_ok());
+
+    // Without recorded evidence, or with evidence of another account, nothing is adopted.
+    let mut unproven = exported.clone();
+    let mut other = exported.clone();
+    for (state, evidence) in [
+        (&mut unproven, None),
+        (&mut other, Some(json!({"pk":"42","uuid":"uuid-elsewhere"}))),
+    ] {
+        let account = state["users"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|u| u["id"] == "authentik-42")
+            .unwrap();
+        let attributes = account["attributes"].as_object_mut().unwrap();
+        match evidence {
+            Some(evidence) => attributes.insert("riauth.migration.authentik".into(), evidence),
+            None => attributes.remove("riauth.migration.authentik"),
+        };
+    }
+    let report = convert(bundle(json!([renamed(), bob]), Some(&unproven)));
+    assert_eq!(
+        findings(&report, User, "alice.smith"),
+        [(Unsupported, true)]
+    );
+    assert!(blocks(
+        &report,
+        "alice.smith: rename of riAuth account authentik-42 is not backed by a recorded Authentik UUID"
+    ));
+    assert!(draft_user(&report, "authentik-42").is_none());
+    let report = convert(bundle(json!([renamed(), bob]), Some(&other)));
+    assert!(blocks(
+        &report,
+        "alice.smith: riAuth account authentik-42 records a different Authentik account"
+    ));
+
+    // A subject the target issued never changes or moves to another account.
+    let report = convert(bundle(
+        json!([
+            user(42, "alice.smith", "alice.new@example.test", json!({})),
+            user(43, "bob", "alice@example.test", json!({})),
+            dave
+        ]),
+        Some(&exported),
+    ));
+    assert!(blocks(
+        &report,
+        "alice.smith/mail: subject of an existing riAuth account would change"
+    ));
+    assert!(blocks(
+        &report,
+        "bob/mail: subject belongs to another riAuth account"
+    ));
+
+    // An upstream identity linked to one account never moves to another.
+    let mut linked = exported.clone();
+    linked["source_links"] = json!([{"source":"corp","username":"alice","subject":"sub-1"}]);
+    let mut moved = bundle(json!([renamed(), bob, dave]), Some(&linked));
+    moved["sources"] = json!([{"pk":"oauth-uuid","meta_model_name":"authentik_sources_oauth.oauthsource","user_matching_mode":"identifier"}]);
+    moved["source_resolutions"] = json!({"oauth-uuid":{"source":{"id":"corp","name":"Corp","issuer":"https://idp.example.test",
+        "authorization_endpoint":"https://idp.example.test/authorize","token_endpoint":"https://idp.example.test/token",
+        "client_id":"riauth","token_endpoint_auth_method":"client_secret_post","scopes":["read:user"],
+        "oauth_profile":{"userinfo_endpoint":"https://idp.example.test/me","subject_pointer":"/id"}},
+        "secret_ref":"env:SOURCE_SECRET","secret_version":"v1"}});
+    moved["user_source_connections"] =
+        json!([{"pk":1,"user":43,"source":"oauth-uuid","identifier":"sub-1"}]);
+    moved["source_links"] = json!([{"source":"corp","username":"bob","subject":"sub-1"}]);
+    let report = convert(moved);
+    assert!(findings(&report, SourceLink, "bob/corp").contains(&(Unsupported, true)));
+    assert!(blocks(
+        &report,
+        "bob/corp: source link belongs to another riAuth account"
+    ));
+    assert_eq!(report["draft"]["source_links"], json!([]));
+}
+
+#[test]
 fn authentik_manifest_plans_only_on_its_exact_target_issuer() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();
