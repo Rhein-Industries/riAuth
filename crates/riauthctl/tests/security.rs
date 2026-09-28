@@ -1165,6 +1165,14 @@ fn routine_admin_commands_use_conditional_management_routes_and_private_secrets(
         let input = input.map(|password| format!("{password}\n"));
         let output = run(&server.origin, &session, args, input.as_deref());
         assert_ok(&output);
+        if let Some(path) = args
+            .windows(2)
+            .find_map(|pair| (pair[0] == "--secret-file").then_some(pair[1]))
+        {
+            let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(response["data"]["credential_file"], path);
+            assert!(response["data"].get("client_secret").is_none());
+        }
         let printed = output_text(&output);
         for secret in [PASSWORD, FIRST_SECRET, NEXT_SECRET] {
             assert!(!printed.contains(secret), "{args:?} exposed a credential");

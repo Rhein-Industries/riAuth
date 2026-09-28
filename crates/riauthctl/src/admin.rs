@@ -545,7 +545,7 @@ fn protect_secret(
         result
             .as_object_mut()
             .context("Invalid client response")?
-            .insert("secret_file".into(), json!(path));
+            .insert("credential_file".into(), json!(path));
     }
     Ok(result)
 }
