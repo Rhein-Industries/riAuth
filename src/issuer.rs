@@ -44,7 +44,45 @@ pub fn validate(tx: &impl IssuerTx, client: &Client) -> Result<()> {
 }
 
 pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> Value {
+    let grant_available = |grant: &str| {
+        if !crate::provider::grant_enabled(client, grant) {
+            return false;
+        }
+        match grant {
+            "authorization_code" | crate::oidc::DEVICE_GRANT => !client.service,
+            "refresh_token" => !client.service && client.scopes.contains("offline_access"),
+            "client_credentials" => client.service && client.confidential(),
+            crate::exchange::TOKEN_EXCHANGE => {
+                client.confidential() && client.settings.exchange.is_some()
+            }
+            crate::jose::JWT_GRANT => {
+                client.service && !client.settings.machine_trust.is_empty()
+            }
+            _ => false,
+        }
+    };
     document["issuer"] = json!(for_client(default, client));
+    let grants: Vec<_> = document["grant_types_supported"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|grant| grant_available(grant))
+        .collect();
+    document["grant_types_supported"] = json!(grants);
+    document["response_types_supported"] = if grant_available("authorization_code") {
+        json!(["code"])
+    } else {
+        json!([])
+    };
+    document["scopes_supported"] = json!(client
+        .scopes
+        .iter()
+        .filter(|scope| scope.as_str() != "offline_access" || grant_available("refresh_token"))
+        .collect::<Vec<_>>());
+    if !grant_available(crate::oidc::DEVICE_GRANT) {
+        document.as_object_mut().unwrap().remove("device_authorization_endpoint");
+    }
     document["subject_types_supported"] = if client.settings.pairwise_sector.is_some() {
         json!(["pairwise"])
     } else {

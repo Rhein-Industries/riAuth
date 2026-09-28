@@ -654,6 +654,8 @@ impl Core {
                 || request.redirect_uri.as_deref() != Some(&code.redirect_uri)
                 || !crate::provider::redirect_matches(&client, &code.redirect_uri)
                 || !code.scopes.is_subset(&client.scopes)
+                || (code.scopes.contains("offline_access")
+                    && !crate::provider::grant_enabled(&client, "refresh_token"))
             {
                 return Err(invalid_grant());
             }
@@ -767,7 +769,10 @@ impl Core {
                 DeviceStatus::Approved(identity) => {
                     self.authorize_identity(tx, &client, identity)
                         .map_err(|_| invalid_grant())?;
-                    if !device.scopes.is_subset(&client.scopes) {
+                    if !device.scopes.is_subset(&client.scopes)
+                        || (device.scopes.contains("offline_access")
+                            && !crate::provider::grant_enabled(&client, "refresh_token"))
+                    {
                         return Err(invalid_grant());
                     }
                     let mut grant = self.new_grant(
@@ -870,7 +875,9 @@ impl Core {
         nonce: Option<String>,
     ) -> Result<Grant> {
         let at = now();
-        let offline = identity.is_some() && scopes.contains("offline_access");
+        let offline = identity.is_some()
+            && scopes.contains("offline_access")
+            && crate::provider::grant_enabled(client, "refresh_token");
         let family = Family {
             expires_at: at
                 + if offline {
@@ -1034,7 +1041,11 @@ impl Core {
                 signed
             });
         }
-        if refresh && grant.identity.is_some() && grant.scopes.contains("offline_access") {
+        if refresh
+            && grant.identity.is_some()
+            && grant.scopes.contains("offline_access")
+            && crate::provider::grant_enabled(&client, "refresh_token")
+        {
             let refresh_token = crypto::random_token("ri_refresh_");
             let mut replacement = grant.clone();
             replacement.issued_at = at;

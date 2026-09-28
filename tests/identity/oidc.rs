@@ -193,6 +193,139 @@ fn refresh_scopes_can_only_shrink_and_expiry_is_absolute() {
 }
 
 #[test]
+fn offline_access_requires_refresh_grant_for_issuance_and_discovery() {
+    let f = Fixture::new();
+    f.client("limited", false);
+    // The code predates the policy change, so redemption must enforce the live grant set.
+    let pending = f.exchange_request("limited", &f.admin, None);
+    f.core
+        .update_client(
+            &f.admin,
+            "limited",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let metadata = f.core.provider_discovery("limited").unwrap();
+    assert_eq!(metadata["grant_types_supported"], json!(["authorization_code"]));
+    assert_eq!(metadata["response_types_supported"], json!(["code"]));
+    assert!(!metadata["scopes_supported"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("offline_access")));
+    assert!(metadata.get("device_authorization_endpoint").is_none());
+    assert_eq!(
+        f.core
+            .authorization_details(f.request("limited", &crypto::random_token("")))
+            .unwrap_err()
+            .code,
+        "invalid_scope"
+    );
+
+    let before = f.snapshot().unwrap();
+    assert_eq!(f.core.token(pending).unwrap_err().code, "invalid_grant");
+    f.assert_snapshot(&before);
+
+    let verifier = crypto::random_token("");
+    let mut request = f.request("limited", &verifier);
+    request.scope = "openid".into();
+    let redirect = f.core.authorize(&f.admin, request).unwrap();
+    let code = url::Url::parse(&redirect)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let issued = f
+        .core
+        .token(TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("limited".into()),
+            code: Some(code),
+            redirect_uri: Some("http://localhost:7777/callback?existing=1".into()),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(issued.get("refresh_token").is_none());
+    let access: Grant = f
+        .core
+        .store
+        .get("access", &digest(&text(&issued, "access_token")))
+        .unwrap()
+        .unwrap();
+    let family: Family = f
+        .core
+        .store
+        .get("families", &access.family_id)
+        .unwrap()
+        .unwrap();
+    assert!(family.expires_at <= now() + f.core.config.access_token_ttl);
+}
+
+#[test]
+fn offline_access_requires_refresh_grant_for_pending_device_code() {
+    let f = Fixture::new();
+    f.client("limited", false);
+    let started = f
+        .core
+        .device_start(TokenRequest {
+            client_id: Some("limited".into()),
+            scope: Some("openid offline_access".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    f.core
+        .device_decide(&f.admin, &text(&started, "user_code"), true)
+        .unwrap();
+    f.core
+        .update_client(
+            &f.admin,
+            "limited",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code", DEVICE_GRANT]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .token(TokenRequest {
+                grant_type: DEVICE_GRANT.into(),
+                client_id: Some("limited".into()),
+                device_code: Some(text(&started, "device_code")),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_grant"
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core
+            .device_start(TokenRequest {
+                client_id: Some("limited".into()),
+                scope: Some("openid offline_access".into()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_scope"
+    );
+}
+
+#[test]
 fn device_pending_slowdown_approval_and_single_use() {
     let f = Fixture::new();
     f.client("app", false);
@@ -1524,6 +1657,47 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     );
     let plans = f.core.registration_templates(&f.admin).unwrap();
     assert!(!plans.to_string().contains(&credential));
+}
+
+#[test]
+fn offline_access_requires_refresh_grant_at_registration() {
+    use riauth::registration::{RegistrationRequest, RegistrationTemplate};
+    let f = Fixture::new();
+    let result = f
+        .core
+        .registration_template(
+            &f.admin,
+            RegistrationTemplate {
+                id: "limited".into(),
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid", "offline_access"]),
+                grant_types: strings(&["authorization_code"]),
+                auth_methods: strings(&["none"]),
+                settings: ProviderSettings::default(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                ttl: 300,
+                max_uses: 1,
+            },
+        )
+        .unwrap();
+    let credential = text(&result, "initial_access_token");
+    let mut request = RegistrationRequest {
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        token_endpoint_auth_method: Some("none".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, request.clone())
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    assert_eq!(f.core.registration_templates(&f.admin).unwrap()[0]["used"], 0);
+    request.scope = Some("openid".into());
+    let registered = f.core.dynamic_register(&credential, request).unwrap();
+    assert_eq!(registered["scope"], "openid");
 }
 
 #[test]

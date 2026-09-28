@@ -2272,6 +2272,11 @@ pub(crate) fn register_client(
         client.scopes = crate::oidc::scope_request(&scope, &client)
             .map_err(|_| metadata("Scopes are outside the template"))?;
     }
+    if client.scopes.contains("offline_access")
+        && !crate::provider::grant_enabled(&client, "refresh_token")
+    {
+        return Err(metadata("offline_access requires the refresh_token grant"));
+    }
     validate_display(&client.name).map_err(|_| metadata("Invalid client name"))?;
     authority.consume(tx)?;
     let ClientWrite { client, secret } = write_client_as(

@@ -268,6 +268,14 @@ pub fn scope_request(scope: &str, client: &Client) -> Result<BTreeSet<String>> {
             "Requested scopes are not allowed for this client",
         ));
     }
+    if scopes.contains("offline_access")
+        && !crate::provider::grant_enabled(client, "refresh_token")
+    {
+        return Err(Error::oauth(
+            "invalid_scope",
+            "offline_access requires the refresh_token grant",
+        ));
+    }
     Ok(scopes)
 }
 pub(crate) fn lookup_device(tx: &impl OidcTx, code: &str) -> Result<(String, Device)> {

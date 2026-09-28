@@ -40,9 +40,12 @@ pub fn redirect_matches(client: &Client, value: &str) -> bool {
     })
 }
 
+pub(crate) fn grant_enabled(client: &Client, grant: &str) -> bool {
+    client.settings.allowed_grants.is_empty() || client.settings.allowed_grants.contains(grant)
+}
+
 pub fn grant_allowed(client: &Client, grant: &str) -> Result<()> {
-    if !client.settings.allowed_grants.is_empty() && !client.settings.allowed_grants.contains(grant)
-    {
+    if !grant_enabled(client, grant) {
         return Err(Error::oauth(
             "unauthorized_client",
             "Grant type is disabled for this client",
