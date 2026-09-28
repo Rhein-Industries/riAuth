@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 2;
+pub const INDEX_VERSION: u32 = 3;
 pub const QUEUES: [&str; 5] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -78,6 +78,14 @@ impl Tx<'_> {
         id: &str,
         after: Option<&Value>,
     ) -> Result<()> {
+        if bucket == "groups" {
+            let before = self.get::<crate::model::Group>(bucket, id)?;
+            let after = after
+                .map(|value| serde_json::from_value::<crate::model::Group>(value.clone()))
+                .transpose()
+                .map_err(Error::internal)?;
+            self.update_group_index(id, before.as_ref(), after.as_ref())?;
+        }
         if bucket == "access_grants" {
             let before = self.get::<Value>(bucket, id)?;
             self.update_grant_index(id, before.as_ref(), after)?;
@@ -136,6 +144,53 @@ impl Tx<'_> {
             self.put("index_user_access_grants", &key, &id)?;
         }
         Ok(())
+    }
+    fn update_group_index(
+        &self,
+        id: &str,
+        before: Option<&crate::model::Group>,
+        after: Option<&crate::model::Group>,
+    ) -> Result<()> {
+        let key = crypto::digest(id);
+        if let Some(old) = before {
+            for user in &old.members {
+                if after.is_none_or(|new| new.name != old.name || !new.members.contains(user)) {
+                    self.delete(&format!("index_user_groups/{}", crypto::digest(user)), &key)?;
+                }
+            }
+        }
+        if let Some(new) = after {
+            for user in &new.members {
+                if before.is_none_or(|old| old.name != new.name || !old.members.contains(user)) {
+                    self.put(
+                        &format!("index_user_groups/{}", crypto::digest(user)),
+                        &key,
+                        &new.name,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Read only this user's durable memberships. Each storage range is bounded;
+    /// the result can still contain every group when the user belongs to all of them.
+    pub fn user_group_names(&self, user_id: &str) -> Result<BTreeSet<String>> {
+        let bucket = format!("index_user_groups/{}", crypto::digest(user_id));
+        let mut names = BTreeSet::new();
+        let mut after = None;
+        loop {
+            let page = self.scan::<String>(&bucket, after.as_deref(), PAGE)?;
+            if page.is_empty() {
+                break;
+            }
+            let full = page.len() == PAGE;
+            after = page.last().map(|(key, _)| key.clone());
+            names.extend(page.into_iter().map(|(_, name)| name));
+            if !full {
+                break;
+            }
+        }
+        Ok(names)
     }
     /// Only grants for this user are visited; revoked grants are absent from the index.
     pub fn user_access_grants<T: DeserializeOwned>(&self, user_id: &str) -> Result<Vec<T>> {
@@ -300,6 +355,7 @@ impl Tx<'_> {
             "index_queues".into(),
             "session_retention".into(),
             "index_user_access_grants".into(),
+            "index_user_groups".into(),
         ];
         for bucket in COUNTED {
             indexes.push(format!("index_expiry_{bucket}"));
@@ -332,6 +388,9 @@ impl Tx<'_> {
         }
         for (id, value) in self.list::<Value>("access_grants")? {
             self.update_grant_index(&id, None, Some(&value))?;
+        }
+        for (id, group) in self.list::<crate::model::Group>("groups")? {
+            self.update_group_index(&id, None, Some(&group))?;
         }
         self.put("meta", "index_version", &INDEX_VERSION)?;
         Ok(())

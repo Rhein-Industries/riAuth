@@ -37,6 +37,7 @@ backend_contract!(proof_account_session_request_binding);
 backend_contract!(code_binding_and_verified_replay);
 backend_contract!(refresh_rotation_and_verified_replay);
 backend_contract!(live_group_policy_revalidation);
+backend_contract!(indexed_user_group_membership);
 backend_contract!(prepared_authority_revalidation);
 #[cfg(feature = "test-support")]
 backend_contract!(prepared_deadline_revalidation);

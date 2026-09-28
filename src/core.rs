@@ -1068,12 +1068,7 @@ pub(crate) fn groups_for(tx: &Tx<'_>, uid: &str) -> Result<BTreeSet<String>> {
 }
 
 pub(crate) fn durable_groups_for(tx: &Tx<'_>, uid: &str) -> Result<BTreeSet<String>> {
-    Ok(tx
-        .list::<Group>("groups")?
-        .into_iter()
-        .filter(|(_, group)| group.members.contains(uid))
-        .map(|(_, group)| group.name)
-        .collect())
+    tx.user_group_names(uid)
 }
 /// Reject a write that would leave the instance without an enabled administrator.
 /// `user` is the record as it would be stored.

@@ -29,7 +29,7 @@ use riauth::{
     state::{ApplyRequest, Manifest},
 };
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tower::ServiceExt;
 
 #[cfg(feature = "test-support")]
@@ -90,6 +90,140 @@ fn audit_count(f: &Fixture, action: &str) -> usize {
         .iter()
         .filter(|event| event["action"] == action)
         .count()
+}
+
+/// S02: a large group directory has the same live membership and snapshot
+/// behavior on both storage backends, including the 128-row index page edge.
+pub fn indexed_user_group_membership(backend: Backend) {
+    use riauth::telemetry::ReadContext;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let mut f = backend.fixture();
+    let alice_token = f.user("alice");
+    let alice = user(&f, "alice");
+    f.core
+        .store
+        .write(|tx| {
+            for n in 0..300 {
+                let name = format!("group-{n:03}");
+                tx.put(
+                    "groups",
+                    &name,
+                    &Group {
+                        name: name.clone(),
+                        members: if n < 130 {
+                            BTreeSet::from([alice.id.clone()])
+                        } else {
+                            BTreeSet::new()
+                        },
+                    },
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let expected: Vec<_> = (0..130).map(|n| format!("group-{n:03}")).collect();
+    let unbounded = f
+        .core
+        .store
+        .telemetry()
+        .reads
+        .scans(ReadContext::Read, false)
+        .sum();
+    assert_eq!(f.core.me(&alice_token).unwrap()["groups"], json!(expected));
+    assert_eq!(
+        f.core
+            .store
+            .telemetry()
+            .reads
+            .scans(ReadContext::Read, false)
+            .sum(),
+        unbounded,
+        "me must not materialize the whole groups collection"
+    );
+
+    // An ordinary management mutation updates the index atomically and advances
+    // the management revision used by paginated inventory and user reports.
+    let revision: u64 = f.core.store.get("meta", "revision").unwrap().unwrap();
+    let store = f.core.store.clone();
+    let core = f.core.clone();
+    let admin = f.admin.clone();
+    let (committed, receiver) = mpsc::channel();
+    f.core
+        .store
+        .read(|tx| {
+            assert!(tx.user_group_names(&alice.id)?.contains("group-000"));
+            let writer = std::thread::spawn(move || {
+                core.group_member(&admin, "group-000", "alice", false)
+                    .unwrap();
+                committed.send(()).unwrap();
+            });
+            receiver.recv_timeout(Duration::from_secs(10)).unwrap();
+            assert!(tx.user_group_names(&alice.id)?.contains("group-000"));
+            writer.join().unwrap();
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        !store
+            .read(|tx| tx.user_group_names(&alice.id))
+            .unwrap()
+            .contains("group-000")
+    );
+    assert!(
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap()
+            > revision
+    );
+
+    // A replacement, a deletion, and an aborted transaction cannot leave stale
+    // membership entries even when they bypass the public group handler.
+    f.core
+        .store
+        .write(|tx| {
+            let mut group: Group = tx.get("groups", "group-001")?.unwrap();
+            group.members.clear();
+            tx.put("groups", "group-001", &group)?;
+            tx.delete("groups", "group-002")?;
+            Ok(())
+        })
+        .unwrap();
+    let aborted: riauth::error::Result<()> = f.core.store.write(|tx| {
+        let mut group: Group = tx.get("groups", "group-003")?.unwrap();
+        group.members.clear();
+        tx.put("groups", "group-003", &group)?;
+        Err(Error::bad("abort"))
+    });
+    assert!(aborted.is_err());
+    let names = f
+        .core
+        .store
+        .read(|tx| tx.user_group_names(&alice.id))
+        .unwrap();
+    assert!(!names.contains("group-001") && !names.contains("group-002"));
+    assert!(names.contains("group-003"));
+
+    // Opening an older index version rebuilds it from durable group records.
+    f.core
+        .store
+        .write(|tx| {
+            for (key, _) in tx.list::<Value>("index_user_groups")? {
+                tx.delete("index_user_groups", &key)?;
+            }
+            tx.put("meta", "index_version", &2u32)
+        })
+        .unwrap();
+    drop(store);
+    f = f.reopen_with(|_| {});
+    assert_eq!(f.core.me(&alice_token).unwrap()["groups"], json!(names));
+    assert_eq!(
+        f.core.store.get::<u32>("meta", "index_version").unwrap(),
+        Some(riauth::store::maintenance::INDEX_VERSION)
+    );
 }
 
 // Only synthetic, undelivered test messages are inspected for a proof token.
