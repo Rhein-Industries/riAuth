@@ -457,6 +457,62 @@ async fn workflow_password_reset_history_reuse_preserves_error_and_retry() {
     f.assert_http_mutation_snapshot(&snapshot);
 }
 
+#[test]
+fn legacy_exposure_mismatch_suppresses_reset_mail_but_matching_address_recovers() {
+    let mut f = Fixture::new();
+    with_mail(&mut f);
+    f.user("legacy-mismatch");
+    f.user("legacy-match");
+    verify_email(&f, "legacy-mismatch");
+    verify_email(&f, "legacy-match");
+    let mismatched = user(&f, "legacy-mismatch");
+    let matching = user(&f, "legacy-match");
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "support_credential_exposure",
+                &mismatched.id,
+                &json!({"verified_email":"old-address@example.test","actor_id":"legacy-operator","at":now()}),
+            )?;
+            tx.put(
+                "support_credential_exposure",
+                &matching.id,
+                &json!({"verified_email":matching.email,"actor_id":"legacy-operator","at":now()}),
+            )
+        })
+        .unwrap();
+
+    let before = deliveries(&f);
+    let suppressed = f.core.account_reset_request("legacy-mismatch").unwrap();
+    assert_eq!(
+        suppressed,
+        f.core.account_reset_request("missing-account").unwrap()
+    );
+    assert_eq!(suppressed, json!({"accepted":true}));
+    assert_eq!(deliveries(&f), before);
+    assert!(reset_mail(&f, "legacy-mismatch").is_empty());
+
+    assert_eq!(
+        f.core.account_reset_request("legacy-match").unwrap(),
+        suppressed
+    );
+    assert_eq!(deliveries(&f), before + 1);
+    let (_, code) = reset_mail(&f, "legacy-match").pop().unwrap();
+    let completed = f
+        .core
+        .account_complete(code, Purpose::Reset, Some(CHANGED.into()))
+        .unwrap();
+    assert_eq!(completed["completed"], true);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &matching.id)
+            .unwrap()
+            .is_none()
+    );
+}
+
 /// Recovery binds the actual mail request to one account/epoch and commits the
 /// W03 path, password change, proof consumption and revocation together.
 #[cfg(feature = "platform")]
@@ -660,7 +716,7 @@ async fn workflow_password_reset_is_account_bound_atomic_and_one_use() {
     f.core.recovery_codes(&assisted_mfa).unwrap();
     enroll_passkey(&f, &assisted_mfa);
     let assisted_before = user(&f, "reset-assisted");
-    let mut exposure = json!({"verified_email":"wrong-address@example.test","actor_id":"support-fixture","at":now()});
+    let mut exposure = json!({"verified_email":assisted_before.email,"actor_id":"support-fixture","at":now()});
     f.core
         .store
         .write(|tx| {
@@ -673,6 +729,17 @@ async fn workflow_password_reset_is_account_bound_atomic_and_one_use() {
         .unwrap();
     f.core.account_reset_request("reset-assisted").unwrap();
     let (_, assisted_code) = reset_mail(&f, "reset-assisted").pop().unwrap();
+    exposure["verified_email"] = json!("wrong-address@example.test");
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "support_credential_exposure",
+                &assisted_before.id,
+                &exposure,
+            )
+        })
+        .unwrap();
     let snapshot = f.snapshot().unwrap();
     assert!(
         f.core

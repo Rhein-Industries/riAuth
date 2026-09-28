@@ -137,8 +137,9 @@ impl CredentialExposure {
         if let Some(email) = self.stamped_email(user) {
             return Some(email.to_owned());
         }
-        if self.verified_email.is_some() && user.email_verified {
-            return user.email.clone();
+        let email = self.verified_email.as_deref()?;
+        if user.email_verified && user.email.as_deref() == Some(email) {
+            return Some(email.to_owned());
         }
         None
     }
