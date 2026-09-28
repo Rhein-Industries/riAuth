@@ -540,7 +540,8 @@ entry, and route destinations in a static graph, then validates the complete
 preview never executes a verifier or issues a session. Existing conditional
 routes retain their conditions, but the browser editor does not yet author new
 conditions, custom stages, source references, consent, or sensitive-action
-journeys. The canonical JSON is visible for review.
+journeys. Existing consent and sensitive-action definitions open read-only, with
+their canonical JSON visible for review.
 
 The same definition can be supplied in a desired-state `riauth/v1` manifest's
 `workflows` array. `POST /api/state/plan`, apply, and export use the shared

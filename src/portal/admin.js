@@ -19,6 +19,7 @@
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
   let workflowDraft = null, workflowPlan = null, workflowSelection = 0;
+  let workflowDraftGeneration = 0, workflowRouteGeneration = 0, workflowPreviewGeneration = 0;
   const operationLoads = new Set();
 
   class ApiError extends Error {
@@ -173,6 +174,7 @@
     draft = null; captureWizard = null;
     data.deliveries = []; data.deliveryLoadedAt = 0;
     workflowDraft = null; workflowPlan = null;
+    workflowDraftGeneration++;
     $("view").replaceChildren();
     $("secret-value").value = "";
     for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
@@ -1915,6 +1917,17 @@
     enrollment: ["resume_session", "verify_password", "verify_passkey", "verify_totp", "verify_email", "enroll_credential"],
     recovery: ["identify", "verify_email", "verify_totp", "verify_recovery_code", "reset_password"],
   };
+  // Stable local representation for binding a server plan to exactly the visible draft.
+  const workflowFingerprint = (definition) => JSON.stringify(definition, (_key, value) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
+  const workflowContext = () => ({ draftGeneration: workflowDraftGeneration, routeGeneration: workflowRouteGeneration,
+    previewGeneration: workflowPreviewGeneration, fingerprint: workflowFingerprint(workflowDraft),
+    account: data.me?.user?.id, route: location.hash });
+  const workflowContextCurrent = (context) => loaded && workflowDraft &&
+    context.draftGeneration === workflowDraftGeneration && context.routeGeneration === workflowRouteGeneration &&
+    context.previewGeneration === workflowPreviewGeneration && context.account === data.me?.user?.id &&
+    context.route === location.hash && context.fingerprint === workflowFingerprint(workflowDraft);
   const workflowSignals = (type) => type === "identify" ? ["completed"] : type === "enroll_credential" || type === "reset_password" ? ["completed", "failed"] : ["verified", "failed"];
   const workflowAction = (type, category) => type === "verify_email" ? { type, purpose: category === "recovery" ? "reset" : "invitation" } : type === "enroll_credential" ? { type, credential: "passkey" } : { type };
   const workflowStep = (id, action, good, attempts = 3) => ({ id, action, max_attempts: attempts,
@@ -1957,8 +1970,9 @@
   function workflowTemplates() {
     return { crumb: "New workflow", node: h("div", {}, heading("PLATFORM", "Choose a template", "Each template starts as a configured canonical definition. Validation runs before save."),
       h("div", { class: "workflow-templates" }, ["authentication", "enrollment", "recovery"].map((category) =>
-        h("button", { class: "admin-card workflow-template", type: "button", onclick: () => {
+        h("button", { class: "admin-card workflow-template", type: "button", "aria-label": `Start ${category} workflow template`, onclick: () => {
           workflowDraft = workflowTemplate(category); workflowPlan = null; workflowSelection = 0;
+          workflowDraftGeneration++;
           location.hash = hash("workflows", "draft"); render({ focus: true });
         } }, h("strong", {}, category[0].toUpperCase() + category.slice(1)),
         h("span", {}, ({ authentication: "Password, TOTP and recovery code", enrollment: "Session, passkey and new passkey", recovery: "Email proof and password reset" })[category]))))) };
@@ -1967,16 +1981,19 @@
     if (id !== "draft" && (!workflowDraft || workflowDraft.id !== id)) {
       const existing = data.workflows.find((row) => row.id === id);
       if (!existing) return missing("workflows", "Workflow");
+      if (!workflowActions[existing.category]) return workflowReadOnly(existing);
       workflowDraft = structuredClone(existing); workflowDraft.revision += 1;
-      workflowPlan = null; workflowSelection = 0;
+      workflowPlan = null; workflowSelection = 0; workflowDraftGeneration++;
     }
     if (!workflowDraft) return missing("workflows", "Workflow");
     const definition = workflowDraft;
+    if (!workflowActions[definition.category]) return workflowReadOnly(definition);
     const editingExisting = id !== "draft";
     const selected = definition.steps[workflowSelection] || definition.steps[0];
     const targetIds = [...definition.steps.map((step) => step.id), ...definition.terminals.map((terminal) => terminal.id)];
     const options = (values, selectedValue) => values.map((value) => h("option", { value, selected: value === selectedValue }, value.replaceAll("_", " ")));
-    const change = (update) => { update(); workflowPlan = null; render(); };
+    const change = (update) => { update(); workflowDraftGeneration++; workflowPlan = null; render(); };
+    const readyPlan = workflowPlan && workflowContextCurrent(workflowPlan.context) ? workflowPlan.value : null;
     const field = (label, input) => h("div", { class: "field" }, h("label", {}, label), input);
     const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
     const graph = h("div", { class: "workflow-graph", "aria-label": "Workflow route preview" },
@@ -2024,28 +2041,69 @@
           onchange: (event) => change(() => { definition.limits.max_executions = Number(event.target.value); }) }))),
       h("p", { class: "field-hint" }, `Revision ${definition.revision}. Entry: ${definition.entry}. Success: ${definition.terminals[0].outcome}.`),
       h("details", {}, h("summary", {}, "Canonical definition JSON"), h("pre", { class: "settings-json" }, JSON.stringify(definition, null, 2))),
-      workflowPlan ? h("p", { class: "notice" }, `Server validation passed. Plan ${workflowPlan.plan_id} has ${workflowPlan.changes.length} change(s) and expires in 15 minutes.`) : null,
+      readyPlan ? h("p", { class: "notice" }, `Server validation passed. Plan ${readyPlan.plan_id} has ${readyPlan.changes.length} change(s) and expires in 15 minutes.`) : null,
       status, h("div", { class: "form-actions" },
         h("button", { class: "button secondary", type: "button", onclick: async (event) => {
           event.currentTarget.disabled = true; status.hidden = true;
-          try { workflowPlan = await api("POST", "admin/workflows/plan", definition); render(); }
-          catch (error) { showError(status, error); event.currentTarget.disabled = false; }
+          workflowPlan = null;
+          workflowPreviewGeneration++;
+          const context = workflowContext();
+          const submitted = structuredClone(definition);
+          try {
+            const plan = await api("POST", "admin/workflows/plan", submitted);
+            if (!workflowContextCurrent(context)) return;
+            if (workflowFingerprint(plan?.manifest?.workflows?.[0]) !== context.fingerprint) throw invalid("The returned plan does not match this draft. Validate again.");
+            workflowPlan = { value: plan, context }; render();
+          } catch (error) {
+            if (workflowContextCurrent(context)) { showError(status, error); event.currentTarget.disabled = false; }
+          }
         } }, "Validate and preview"),
-        workflowPlan ? h("button", { class: "button primary", type: "button", onclick: async (event) => {
+        readyPlan ? h("button", { class: "button primary", type: "button", onclick: async (event) => {
+          const context = workflowPlan?.context;
+          if (!context || !workflowContextCurrent(context) || workflowPlan.value !== readyPlan ||
+              workflowFingerprint(readyPlan.manifest?.workflows?.[0]) !== context.fingerprint) {
+            workflowPlan = null; render(); toast("The workflow changed. Validate the current draft before saving."); return;
+          }
+          const savedDefinition = readyPlan.manifest.workflows[0];
           event.currentTarget.disabled = true; status.hidden = true;
           try {
-            await api("POST", "admin/workflows/apply", { plan: workflowPlan, secrets: {}, run_id: null });
-            workflowDraft = null; workflowPlan = null;
-            await saved(`Saved workflow ${definition.id}.`, hash("workflows", definition.id));
-          } catch (error) { showError(status, error); event.currentTarget.disabled = false; }
+            await api("POST", "admin/workflows/apply", { plan: readyPlan, secrets: {}, run_id: null });
+            if (workflowContextCurrent(context)) {
+              workflowDraft = null; workflowPlan = null; workflowDraftGeneration++;
+              await saved(`Saved workflow ${savedDefinition.id} revision ${savedDefinition.revision}.`, hash("workflows", savedDefinition.id));
+            } else {
+              const unsavedDraft = workflowDraft && workflowFingerprint(workflowDraft) !== workflowFingerprint(savedDefinition);
+              workflowPlan = null;
+              if (!unsavedDraft) { workflowDraft = null; workflowDraftGeneration++; }
+              else if (workflowDraft.id === savedDefinition.id && workflowDraft.revision <= savedDefinition.revision) {
+                workflowDraft.revision = savedDefinition.revision + 1; workflowDraftGeneration++;
+              }
+              await refresh();
+              toast(`Saved workflow ${savedDefinition.id} revision ${savedDefinition.revision}.${unsavedDraft ? " The current draft has unsaved changes." : ""}`);
+            }
+          } catch (error) {
+            if (workflowContextCurrent(context)) { showError(status, error); event.currentTarget.disabled = false; }
+            else toast(`Save of workflow ${savedDefinition.id} failed: ${explain(error)}`);
+          }
         } }, "Save definition") : null));
     return { crumb: editingExisting ? definition.id : "New workflow", node: h("div", {},
       heading("PLATFORM WORKFLOW", editingExisting ? `Edit ${definition.id}` : "New workflow", "Select a step in the route map, edit it, then validate the entire definition before saving."),
       h("div", { class: "workflow-editor" }, h("div", {}, graph, preview), controls)) };
   }
 
+  function workflowReadOnly(definition) {
+    return { crumb: definition.id, node: h("div", {},
+      heading("PLATFORM WORKFLOW", definition.id, "This category can be inspected here and managed through the canonical manifest API."),
+      h("div", { class: "admin-card" }, h("h2", {}, `${definition.category.replaceAll("_", " ")} workflow`),
+        h("p", { class: "field-hint" }, "The browser editor currently supports authentication, enrollment, and recovery. This definition is read-only here."),
+        h("pre", { class: "settings-json" }, JSON.stringify(definition, null, 2)))) };
+  }
+
   // ---- Wiring ------------------------------------------------------------------------------
-  window.addEventListener("hashchange", () => { if (isRoute()) render({ focus: true }); });
+  window.addEventListener("hashchange", () => {
+    workflowRouteGeneration++; workflowPlan = null;
+    if (isRoute()) render({ focus: true });
+  });
   document.querySelector(".skip-link").addEventListener("click", (event) => { event.preventDefault(); $("main").focus(); });
   $("refresh").addEventListener("click", () => refresh());
   $("gate-retry").addEventListener("click", () => refresh({ focus: true }));
