@@ -100,6 +100,9 @@ fn primary(
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,
         (password::TOTP_WORKFLOW, false) => Proof::Password,
+        (_, false) if configured_password_requires_totp(checked.definition()) == Some(true) => {
+            Proof::Password
+        }
         _ => return Err(Error::forbidden()),
     };
     if !request.requires_mfa || user.totp_secret.is_none() || at < run.step_started_at {

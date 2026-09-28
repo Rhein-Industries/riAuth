@@ -3,7 +3,7 @@
 //! The W01 definition model and W03 completion seam describe authentication,
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
-//! reauthentication for live bearer sessions, plus one configured local-password path;
+//! reauthentication for live bearer sessions, plus configured local-password paths;
 //! see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
@@ -70,21 +70,19 @@ pub struct ConfiguredWorkflow {
     pub definition: Definition,
 }
 
-/// The first configured executor path has one real local-password verifier.
-/// Keeping the accepted shape explicit prevents a validated but unwired action
-/// from being exposed as a production journey.
-pub(crate) fn supported_configured_password(definition: &Definition) -> bool {
+/// The configured executor accepts either one local-password verifier or a
+/// password followed by local TOTP. The return value says whether TOTP is
+/// required. Every other validated model shape remains unavailable to runtime.
+pub(crate) fn configured_password_requires_totp(definition: &Definition) -> Option<bool> {
     if definition.origin != Origin::Configured
         || definition.category != Category::Authentication
-        || definition.steps.len() != 1
         || definition.terminals.len() != 2
-        || definition.entry != definition.steps[0].id
+        || definition
+            .steps
+            .first()
+            .is_none_or(|step| definition.entry != step.id)
     {
-        return false;
-    }
-    let step = &definition.steps[0];
-    if !matches!(step.action, Action::VerifyPassword {}) || step.transitions.len() != 2 {
-        return false;
+        return None;
     }
     let success = definition
         .terminals
@@ -95,18 +93,43 @@ pub(crate) fn supported_configured_password(definition: &Definition) -> bool {
         .iter()
         .find(|terminal| terminal.outcome == Outcome::Denied);
     let (Some(success), Some(denied)) = (success, denied) else {
-        return false;
+        return None;
     };
-    step.transitions
-        .iter()
-        .all(|transition| transition.when.is_none())
-        && step.transitions.iter().any(|transition| {
-            transition.on == Label::fixed("verified") && transition.to == success.id
-        })
-        && step
-            .transitions
-            .iter()
-            .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
+    let routes = |step: &Step, verified: &Id| {
+        step.transitions.len() == 2
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("verified") && &transition.to == verified
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && transition.to == denied.id
+            })
+    };
+    match definition.steps.as_slice() {
+        [password]
+            if matches!(password.action, Action::VerifyPassword {})
+                && routes(password, &success.id) =>
+        {
+            Some(false)
+        }
+        [password, totp]
+            if matches!(password.action, Action::VerifyPassword {})
+                && matches!(totp.action, Action::VerifyTotp {})
+                && totp.id.as_str() == "totp"
+                && routes(password, &totp.id)
+                && routes(totp, &success.id)
+                && success.requires.len() == 1
+                && success.requires[0].len() == 2
+                && success.requires[0].contains(&Proof::Password)
+                && success.requires[0].contains(&Proof::Totp) =>
+        {
+            Some(true)
+        }
+        _ => None,
+    }
 }
 
 #[derive(JsonSchema, Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
