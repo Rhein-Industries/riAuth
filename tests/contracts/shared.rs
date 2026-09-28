@@ -22,7 +22,7 @@ use riauth::{
     crypto::{self, digest, now},
     error::Error,
     lifecycle::{Invitation, MailConfig, MailSecurity, Purpose},
-    model::{Attempts, Client, ClientPatch, Group, Session, User, UserPatch},
+    model::{Attempts, Client, ClientPatch, Group, NewUser, Session, User, UserPatch},
     offboarding::{self, ExecuteAt, Job, ScheduleRequest, Status},
     oidc::{Authorization, TokenRequest},
     signin,
@@ -2748,6 +2748,159 @@ pub fn invitation_acceptance_revalidates_creator(backend: Backend) {
             .is_ok()
     );
     assert!(f.core.me(&bob).is_ok());
+}
+
+// M03 user writer: direct mutations and invitation management share scoped
+// authority and commit their dependent credential, group and audit effects.
+pub fn user_writers_share_management_seam(backend: Backend) {
+    let mut f = backend.fixture();
+    configure_mail(&mut f);
+    f.core.create_group(&f.admin, "team").unwrap();
+    let writer = agent(
+        &f,
+        "user-writer",
+        &[
+            ("user.write", "user/managed"),
+            ("user.write", "user/pending"),
+            ("group.members", "group/team"),
+            ("group.members", "group/missing"),
+        ],
+    );
+    let new_user = |admin| NewUser {
+        username: "managed".into(),
+        password: PASSWORD.into(),
+        email: Some("managed@example.test".into()),
+        display_name: "Managed".into(),
+        admin,
+    };
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .create_user(&writer, new_user(true))
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_snapshot(&before);
+    let created = f.core.create_user(&writer, new_user(false)).unwrap();
+    let managed_id = text(&created, "id");
+    let login = text(
+        &f.core
+            .login("managed".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let initial_epoch = user(&f, "managed").epoch;
+    f.core
+        .update_user(
+            &writer,
+            "managed",
+            UserPatch {
+                display_name: Some("Managed account".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(user(&f, "managed").display_name, "Managed account");
+    assert!(f.core.me(&login).is_ok());
+    f.core
+        .update_user(
+            &writer,
+            "managed",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(!user(&f, "managed").enabled);
+    assert!(user(&f, "managed").epoch > initial_epoch);
+    assert!(f.core.me(&login).is_err());
+    assert_eq!(audit_count(&f, "user.create"), 1);
+    assert_eq!(audit_count(&f, "user.update"), 2);
+    assert!(
+        audit(&f)
+            .iter()
+            .any(|event| { event["action"] == "user.create" && event["target"] == managed_id })
+    );
+
+    let invitation = |username: &str, group: &str| Invitation {
+        username: username.into(),
+        email: format!("{username}@example.test"),
+        display_name: "Pending account".into(),
+        groups: strings(&[group]),
+    };
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .account_invite(&writer, invitation("outside", "team"))
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        f.core
+            .account_invite(&writer, invitation("pending", "missing"))
+            .unwrap_err()
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_snapshot(&before);
+
+    let pending = invitation("pending", "team");
+    let first = f.core.account_invite(&writer, pending.clone()).unwrap();
+    let pending_id = text(&first["user"], "id");
+    let first_code = mail_code_for(&f, "pending");
+    assert!(!user(&f, "pending").enabled);
+    let reissued = f.core.account_invite(&writer, pending.clone()).unwrap();
+    assert_eq!(reissued["user"]["id"], pending_id);
+    let second_code = mail_codes_for(&f, "pending")
+        .into_iter()
+        .find(|code| code != &first_code)
+        .unwrap();
+    assert_eq!(
+        f.core
+            .account_complete(first_code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .unwrap_err()
+            .code,
+        "account_code_replaced"
+    );
+    f.core
+        .account_invitation_revoke(&writer, "pending")
+        .unwrap();
+    assert_eq!(
+        f.core
+            .account_complete(second_code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .unwrap_err()
+            .code,
+        "account_code_revoked"
+    );
+    let renewed = f.core.account_invite(&writer, pending).unwrap();
+    assert_eq!(renewed["user"]["id"], pending_id);
+    let final_code = mail_codes_for(&f, "pending")
+        .into_iter()
+        .find(|code| code != &second_code && code != &first_code)
+        .unwrap();
+    assert_eq!(
+        f.core
+            .account_complete(final_code, Purpose::Invite, Some(PASSWORD.into()))
+            .unwrap()["completed"],
+        true
+    );
+    assert!(user(&f, "pending").enabled);
+    assert!(
+        f.core
+            .store
+            .get::<Group>("groups", "team")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&pending_id)
+    );
+    assert_eq!(audit_count(&f, "user.invite"), 1);
+    assert_eq!(audit_count(&f, "user.invitation.reissue"), 2);
+    assert_eq!(audit_count(&f, "user.invitation.revoke"), 1);
+    assert_eq!(audit_count(&f, "user.account.accept"), 1);
 }
 
 // RI-CRED-001/002, Q02-C02: a registration response lacking user verification

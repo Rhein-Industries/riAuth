@@ -1,10 +1,10 @@
 //! Purpose-bound account proofs and a leased, durable SMTP outbox.
 use crate::{
     agent::{Agent, Principal},
-    core::{Core, audit, make_user, user_by_name, validate_display, validate_name},
+    core::{Core, audit, user_by_name, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Group, NewUser, Session, User, UserView},
+    model::{Session, User},
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -127,10 +127,10 @@ struct Proof {
 /// The immutable user ID prevents a later account with the same username from inheriting it.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct InvitationReservation {
-    username: String,
-    created_by: String,
-    epoch: u64,
+pub(crate) struct InvitationReservation {
+    pub(crate) username: String,
+    pub(crate) created_by: String,
+    pub(crate) epoch: u64,
 }
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -170,7 +170,7 @@ pub struct Invitation {
     #[serde(default)]
     pub groups: BTreeSet<String>,
 }
-fn require_mail(core: &Core) -> Result<()> {
+pub(crate) fn require_mail(core: &Core) -> Result<()> {
     if core.config.mail.is_none() {
         return Err(Error::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -180,7 +180,7 @@ fn require_mail(core: &Core) -> Result<()> {
     }
     Ok(())
 }
-fn email(value: &str) -> Result<()> {
+pub(crate) fn email(value: &str) -> Result<()> {
     crate::core::validate_email(value)?;
     value
         .parse::<lettre::Address>()
@@ -204,6 +204,17 @@ fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
         )?;
     }
     Ok(())
+}
+/// Retire the current invitation proof while retaining its revoked outcome.
+/// A missing current proof is an idempotent no-op.
+pub(crate) fn revoke_invitation_proof(tx: &Tx<'_>, user: &User) -> Result<bool> {
+    let key = proof_key(user, Purpose::Invite);
+    let Some(hash) = tx.get::<String>("account_latest", &key)? else {
+        return Ok(false);
+    };
+    retire_proof(tx, &hash, ProofEnd::Revoked)?;
+    tx.delete("account_latest", &key)?;
+    Ok(true)
 }
 fn proof_error(reason: Option<ProofEnd>) -> Error {
     match reason {
@@ -234,7 +245,7 @@ fn proof_error(reason: Option<ProofEnd>) -> Error {
         ),
     }
 }
-fn enqueue(
+pub(crate) fn enqueue(
     core: &Core,
     tx: &Tx<'_>,
     user: &User,
@@ -360,7 +371,7 @@ fn verify_request_in(
     audit(tx, &user.id, "account.verification.request", &user.id)?;
     Ok("queued")
 }
-fn pending_invitation_reservation(
+pub(crate) fn pending_invitation_reservation(
     tx: &Tx<'_>,
     user: &User,
 ) -> Result<Option<InvitationReservation>> {
@@ -500,85 +511,15 @@ impl Core {
     }
     pub fn account_invite(&self, token: &str, input: Invitation) -> Result<Value> {
         require_mail(self)?;
-        validate_name(&input.username)?;
-        validate_display(&input.display_name)?;
-        email(&input.email)?;
         self.mutation(token, |tx| {
-            let actor =
-                self.management(tx, token, "user.write", &format!("user/{}", input.username))?;
-            for group in &input.groups {
-                actor.require("group.members", &format!("group/{group}"))?;
-                tx.get::<Group>("groups", group)?
-                    .ok_or_else(|| Error::missing("Invitation group not found"))?;
-            }
-            if let Some(id) = tx.get::<String>("usernames", &input.username)? {
-                let mut user = tx
-                    .get::<User>("users", &id)?
-                    .ok_or_else(|| Error::conflict("User already exists"))?;
-                let reservation = pending_invitation_reservation(tx, &user)?
-                    .ok_or_else(|| Error::conflict("User already exists"))?;
-                user.email = Some(input.email);
-                user.display_name = input.display_name;
-                tx.put("users", &user.id, &user)?;
-                tx.put("invitation_reservations", &user.id, &reservation)?;
-                enqueue(
-                    self,
-                    tx,
-                    &user,
-                    Purpose::Invite,
-                    input.groups,
-                    Some(actor.id.clone()),
-                )?;
-                audit(tx, &actor.id, "user.invitation.reissue", &user.id)?;
-                return Ok(json!({"user":UserView::from(&user),"delivery_queued":true}));
-            }
-            let mut user = make_user(NewUser {
-                username: input.username,
-                email: Some(input.email),
-                display_name: input.display_name,
-                password: crypto::random_token(""),
-                admin: false,
-            })?;
-            user.password_hash.clear();
-            user.enabled = false;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            tx.put(
-                "invitation_reservations",
-                &user.id,
-                &InvitationReservation {
-                    username: user.username.clone(),
-                    created_by: actor.id.clone(),
-                    epoch: user.epoch,
-                },
-            )?;
-            enqueue(
-                self,
-                tx,
-                &user,
-                Purpose::Invite,
-                input.groups,
-                Some(actor.id.clone()),
-            )?;
-            audit(tx, &actor.id, "user.invite", &user.id)?;
-            Ok(json!({"user":UserView::from(&user),"delivery_queued":true}))
+            let actor = self.principal(tx, token)?;
+            crate::management::invite_user(self, tx, &actor, input)
         })
     }
     pub fn account_invitation_revoke(&self, token: &str, username: &str) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
-            let user = user_by_name(tx, username)?;
-            if let Some(reservation) = pending_invitation_reservation(tx, &user)? {
-                tx.put("invitation_reservations", &user.id, &reservation)?;
-            }
-            if let Some(hash) =
-                tx.get::<String>("account_latest", &proof_key(&user, Purpose::Invite))?
-            {
-                retire_proof(tx, &hash, ProofEnd::Revoked)?;
-                tx.delete("account_latest", &proof_key(&user, Purpose::Invite))?;
-            }
-            audit(tx, &actor.id, "user.invitation.revoke", &user.id)?;
-            Ok(json!({"revoked":true}))
+            let actor = self.principal(tx, token)?;
+            crate::management::revoke_invitation(tx, &actor, username)
         })
     }
     pub fn account_complete(
@@ -664,23 +605,8 @@ impl Core {
                 {
                     let actor =
                         creator(tx, proof.creator.as_deref().ok_or_else(Error::forbidden)?)?;
-                    actor.require("user.write", &format!("user/{}", user.username))?;
-                    let mut groups = Vec::new();
-                    for name in &proof.groups {
-                        actor.require("group.members", &format!("group/{name}"))?;
-                        let mut group = tx
-                            .get::<Group>("groups", name)?
-                            .ok_or_else(|| Error::missing("Invitation group was removed"))?;
-                        group.members.insert(user.id.clone());
-                        groups.push(group);
-                    }
-                    for group in groups {
-                        tx.put("groups", &group.name, &group)?;
-                    }
+                    crate::management::accept_invitation(tx, &actor, &mut user, &proof.groups)?;
                     apply_password(&mut user)?;
-                    user.enabled = true;
-                    user.email_verified = true;
-                    user.epoch += 1;
                 }
                 _ => return Err(Error::forbidden()),
             }

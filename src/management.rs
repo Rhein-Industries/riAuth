@@ -8,17 +8,22 @@
 //! credential handling, dependent revocation, persistence and the direct audit
 //! record are decided here, inside the caller's transaction.
 //!
-//! Applications (OAuth/OIDC/SAML/proxy client records) and groups use this seam.
+//! Applications (OAuth/OIDC/SAML/proxy client records), users and groups use
+//! this seam.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
 use crate::{
     agent::Principal,
-    core::{audit, revoke_client_grants, validate_client, validate_display, validate_name},
+    core::{
+        Core, audit, ensure_remaining_admin, make_user, revoke_client_grants, user_by_name,
+        validate_client, validate_display, validate_email, validate_name,
+    },
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::ClientAuthMethod,
-    model::{Client, Group, ProviderSettings, User},
+    lifecycle::{Invitation, InvitationReservation, Purpose},
+    model::{Client, Group, NewUser, ProviderSettings, User, UserPatch, UserView},
     registration::{
         InitialAccess, RegistrationAuthority, RegistrationRequest, RegistrationTemplate,
     },
@@ -198,6 +203,255 @@ fn audit_group(tx: &Tx<'_>, actor: &Principal, record: GroupAudit<'_>) -> Result
     if let GroupAudit::OnChange { action, target } = record {
         audit(tx, &actor.id, action, target)?;
     }
+    Ok(())
+}
+
+/// Direct user writes from the API, CLI and browser stay inside the caller's
+/// mutation transaction. The service rechecks exact user authority before
+/// validation, persistence, revocation and audit.
+pub(crate) fn create_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    input: NewUser,
+    password_history: u32,
+) -> Result<Value> {
+    actor.require("user.write", &format!("user/{}", input.username))?;
+    if actor.agent && input.admin {
+        return Err(Error::forbidden());
+    }
+    let user = make_user(input)?;
+    if tx.get::<String>("usernames", &user.username)?.is_some() {
+        return Err(Error::conflict("Username already exists"));
+    }
+    crate::identity::password_history::record_imported_hash(
+        tx,
+        password_history,
+        &user.id,
+        "",
+        &user.password_hash,
+    )?;
+    tx.put("users", &user.id, &user)?;
+    tx.put("usernames", &user.username, &user.id)?;
+    audit(tx, &actor.id, "user.create", &user.id)?;
+    Ok(json!(UserView::from(&user)))
+}
+
+pub(crate) fn update_user(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    username: &str,
+    patch: UserPatch,
+    password_history: u32,
+) -> Result<Value> {
+    actor.require("user.write", &format!("user/{username}"))?;
+    let mut user = user_by_name(tx, username)?;
+    let previous_epoch = user.epoch;
+    if actor.agent && (user.admin || patch.admin == Some(true)) {
+        return Err(Error::forbidden());
+    }
+    if let Some(password) = patch.password {
+        if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
+            return Err(Error::conflict(
+                "Passkey-only account password recovery is an offline operator operation",
+            ));
+        }
+        let hashed = crypto::password_hash(&password)?;
+        crate::identity::password_history::accept(
+            tx,
+            password_history,
+            &user.id,
+            &user.password_hash,
+            &password,
+            &hashed,
+        )?;
+        user.password_hash = hashed;
+        user.epoch += 1;
+        tx.delete("attempts", username)?;
+    }
+    if let Some(enabled) = patch.enabled {
+        user.enabled = enabled;
+        user.epoch += 1;
+    }
+    if let Some(admin) = patch.admin {
+        user.admin = admin;
+        user.epoch += 1;
+    }
+    if let Some(email) = patch.email {
+        validate_email(&email)?;
+        if user.email.as_ref() != Some(&email) {
+            user.email_verified = false;
+        }
+        user.email = Some(email);
+    }
+    if let Some(attributes) = patch.attributes {
+        user.attributes = attributes;
+    }
+    if let Some(verified) = patch.email_verified {
+        user.email_verified = verified;
+    }
+    if let Some(subjects) = patch.subjects {
+        if user.subjects != subjects {
+            user.epoch += 1;
+        }
+        user.subjects = subjects;
+    }
+    crate::claims::validate_user(tx, &user)?;
+    if let Some(name) = patch.display_name {
+        validate_display(&name)?;
+        user.display_name = name;
+    }
+    if patch.reset_mfa {
+        if user.password_hash.is_empty() {
+            return Err(Error::conflict(
+                "Passkey-only accounts cannot lose every sign-in credential through remote MFA reset",
+            ));
+        }
+        crate::passkey::clear(tx, &user.id)?;
+        user.has_passkeys = false;
+        user.recovery_codes.clear();
+        user.totp_secret = None;
+        user.totp_pending = None;
+        user.totp_last_step = None;
+        user.epoch += 1;
+    }
+    if patch.revoke_sessions {
+        user.epoch += 1;
+    }
+    if user.enabled
+        && user.admin
+        && user.password_hash.is_empty()
+        && crate::passkey::passkey_count(tx, &user.id)? < 2
+    {
+        return Err(Error::conflict(
+            "Passkey-only administrators require two passkeys",
+        ));
+    }
+    ensure_remaining_admin(tx, &user)?;
+    tx.put("users", &user.id, &user)?;
+    if user.epoch != previous_epoch {
+        crate::logout::queue_user(tx, &user.id)?;
+    }
+    if patch.revoke_sessions {
+        crate::identity::signals::enqueue(
+            tx,
+            &user.id,
+            crate::identity::signals::SESSION_REVOKED,
+            "",
+        )?;
+    }
+    audit(tx, &actor.id, "user.update", &user.id)?;
+    Ok(json!(UserView::from(&user)))
+}
+
+/// Issue or reissue an invitation. Proof rotation and mail enqueueing are
+/// lifecycle mechanics; the authority, pending identity, reservation and
+/// enclosing audit are decided here in the caller's mutation transaction.
+pub(crate) fn invite_user(
+    core: &Core,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    input: Invitation,
+) -> Result<Value> {
+    actor.require("user.write", &format!("user/{}", input.username))?;
+    validate_name(&input.username)?;
+    validate_display(&input.display_name)?;
+    crate::lifecycle::email(&input.email)?;
+    for group in &input.groups {
+        actor.require("group.members", &format!("group/{group}"))?;
+        tx.get::<Group>("groups", group)?
+            .ok_or_else(|| Error::missing("Invitation group not found"))?;
+    }
+    if let Some(id) = tx.get::<String>("usernames", &input.username)? {
+        let mut user = tx
+            .get::<User>("users", &id)?
+            .ok_or_else(|| Error::conflict("User already exists"))?;
+        let reservation = crate::lifecycle::pending_invitation_reservation(tx, &user)?
+            .ok_or_else(|| Error::conflict("User already exists"))?;
+        user.email = Some(input.email);
+        user.display_name = input.display_name;
+        tx.put("users", &user.id, &user)?;
+        tx.put("invitation_reservations", &user.id, &reservation)?;
+        crate::lifecycle::enqueue(
+            core,
+            tx,
+            &user,
+            Purpose::Invite,
+            input.groups,
+            Some(actor.id.clone()),
+        )?;
+        audit(tx, &actor.id, "user.invitation.reissue", &user.id)?;
+        return Ok(json!({"user":UserView::from(&user),"delivery_queued":true}));
+    }
+    let mut user = make_user(NewUser {
+        username: input.username,
+        email: Some(input.email),
+        display_name: input.display_name,
+        password: crypto::random_token(""),
+        admin: false,
+    })?;
+    user.password_hash.clear();
+    user.enabled = false;
+    tx.put("users", &user.id, &user)?;
+    tx.put("usernames", &user.username, &user.id)?;
+    tx.put(
+        "invitation_reservations",
+        &user.id,
+        &InvitationReservation {
+            username: user.username.clone(),
+            created_by: actor.id.clone(),
+            epoch: user.epoch,
+        },
+    )?;
+    crate::lifecycle::enqueue(
+        core,
+        tx,
+        &user,
+        Purpose::Invite,
+        input.groups,
+        Some(actor.id.clone()),
+    )?;
+    audit(tx, &actor.id, "user.invite", &user.id)?;
+    Ok(json!({"user":UserView::from(&user),"delivery_queued":true}))
+}
+
+pub(crate) fn revoke_invitation(tx: &Tx<'_>, actor: &Principal, username: &str) -> Result<Value> {
+    actor.require("user.write", &format!("user/{username}"))?;
+    let user = user_by_name(tx, username)?;
+    if let Some(reservation) = crate::lifecycle::pending_invitation_reservation(tx, &user)? {
+        tx.put("invitation_reservations", &user.id, &reservation)?;
+    }
+    crate::lifecycle::revoke_invitation_proof(tx, &user)?;
+    audit(tx, &actor.id, "user.invitation.revoke", &user.id)?;
+    Ok(json!({"revoked":true}))
+}
+
+/// Complete the management side of an accepted invitation. The lifecycle
+/// adapter has already validated the proof and its bound identity; this
+/// service rechecks the creator's current authority in the same transaction
+/// that adds group membership and activates the account. Proof retirement,
+/// password policy and the enclosing acceptance audit remain with lifecycle.
+pub(crate) fn accept_invitation(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    user: &mut User,
+    groups: &BTreeSet<String>,
+) -> Result<()> {
+    actor.require("user.write", &format!("user/{}", user.username))?;
+    for name in groups {
+        write_group(
+            tx,
+            actor,
+            name,
+            GroupIntent::Member {
+                user_id: &user.id,
+                present: true,
+            },
+            GroupAudit::Deferred,
+        )?;
+    }
+    user.enabled = true;
+    user.email_verified = true;
+    user.epoch += 1;
     Ok(())
 }
 

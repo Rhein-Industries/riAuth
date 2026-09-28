@@ -427,117 +427,20 @@ impl Core {
     }
     pub fn create_user(&self, token: &str, input: NewUser) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor =
-                self.management(tx, token, "user.write", &format!("user/{}", input.username))?;
-            if actor.agent && input.admin {
-                return Err(Error::forbidden());
-            }
-            let user = make_user(input)?;
-            if tx.get::<String>("usernames", &user.username)?.is_some() {
-                return Err(Error::conflict("Username already exists"));
-            }
-            crate::identity::password_history::record_imported_hash(
-                tx,
-                self.config.password_history,
-                &user.id,
-                "",
-                &user.password_hash,
-            )?;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            audit(tx, &actor.id, "user.create", &user.id)?;
-            Ok(json!(UserView::from(&user)))
+            let actor = self.principal(tx, token)?;
+            crate::management::create_user(tx, &actor, input, self.config.password_history)
         })
     }
     pub fn update_user(&self, token: &str, username: &str, patch: UserPatch) -> Result<Value> {
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
-            let mut user = user_by_name(tx, username)?;
-            let previous_epoch = user.epoch;
-            if actor.agent && (user.admin || patch.admin == Some(true)) {
-                return Err(Error::forbidden());
-            }
-            if let Some(password) = patch.password {
-                if user.password_hash.is_empty()
-                    && crate::passkey::passkey_count(tx, &user.id)? > 0
-                {
-                    return Err(Error::conflict("Passkey-only account password recovery is an offline operator operation"));
-                }
-                let hashed = crypto::password_hash(&password)?;
-                crate::identity::password_history::accept(
-                    tx,
-                    self.config.password_history,
-                    &user.id,
-                    &user.password_hash,
-                    &password,
-                    &hashed,
-                )?;
-                user.password_hash = hashed;
-                user.epoch += 1;
-                tx.delete("attempts", username)?;
-            }
-            if let Some(enabled) = patch.enabled {
-                user.enabled = enabled;
-                user.epoch += 1;
-            }
-            if let Some(admin) = patch.admin {
-                user.admin = admin;
-                user.epoch += 1;
-            }
-            if let Some(email) = patch.email {
-                validate_email(&email)?;
-                if user.email.as_ref() != Some(&email) {
-                    user.email_verified = false;
-                }
-                user.email = Some(email);
-            }
-            if let Some(attributes) = patch.attributes {
-                user.attributes = attributes;
-            }
-            if let Some(verified) = patch.email_verified {
-                user.email_verified = verified;
-            }
-            if let Some(subjects) = patch.subjects {
-                if user.subjects != subjects {
-                    user.epoch += 1;
-                }
-                user.subjects = subjects;
-            }
-            crate::claims::validate_user(tx, &user)?;
-            if let Some(name) = patch.display_name {
-                validate_display(&name)?;
-                user.display_name = name;
-            }
-            if patch.reset_mfa {
-                if user.password_hash.is_empty() {
-                    return Err(Error::conflict("Passkey-only accounts cannot lose every sign-in credential through remote MFA reset"));
-                }
-                crate::passkey::clear(tx, &user.id)?;
-                user.has_passkeys = false;
-                user.recovery_codes.clear();
-                user.totp_secret = None;
-                user.totp_pending = None;
-                user.totp_last_step = None;
-                user.epoch += 1;
-            }
-            if patch.revoke_sessions {
-                user.epoch += 1;
-            }
-            if user.enabled && user.admin && user.password_hash.is_empty()
-                && crate::passkey::passkey_count(tx, &user.id)? < 2
-            {
-                return Err(Error::conflict("Passkey-only administrators require two passkeys"));
-            }
-            ensure_remaining_admin(tx, &user)?;
-            tx.put("users", &user.id, &user)?;
-            if user.epoch != previous_epoch {
-                crate::logout::queue_user(tx, &user.id)?;
-            }
-            if patch.revoke_sessions {
-                signals::enqueue(tx, &user.id, signals::SESSION_REVOKED, "")?;
-            }
-            audit(tx, &actor.id, "user.update", &user.id)?;
-            Ok(json!(UserView::from(&user)))
+            let actor = self.principal(tx, token)?;
+            crate::management::update_user(
+                tx,
+                &actor,
+                username,
+                patch,
+                self.config.password_history,
+            )
         })
     }
     pub fn list_groups(&self, token: &str) -> Result<Value> {
