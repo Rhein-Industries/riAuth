@@ -360,6 +360,44 @@ fn credential(controller: &ControllerConfig) -> Result<zeroize::Zeroizing<String
     Ok(zeroize::Zeroizing::new(token.to_owned()))
 }
 
+/// P02 scoped authority for work outside a controller job, such as offboarding
+/// deactivation delivery. The configured agent must hold live authority for the
+/// connector scope; nothing is stored.
+pub(crate) fn controller_agent(tx: &Tx<'_>, config: &Config, scope: &str) -> Result<Principal> {
+    let controller = config
+        .reconciliation_controllers
+        .get(scope)
+        .ok_or_else(Error::forbidden)?;
+    scoped_agent(tx, config, scope, &controller.agent_id)
+}
+
+/// Current controller and connector configuration binding for `scope`.
+pub(crate) fn controller_fingerprint(config: &Config, scope: &str) -> Result<String> {
+    let controller = config
+        .reconciliation_controllers
+        .get(scope)
+        .ok_or_else(Error::forbidden)?;
+    fingerprint(config, scope, controller)
+}
+
+/// Read the controller credential afresh and require that it authenticates as
+/// `actor`, the scoped agent resolved by [`controller_agent`].
+pub(crate) fn authenticate_controller(core: &Core, scope: &str, actor: &Principal) -> Result<()> {
+    let controller = core
+        .config
+        .reconciliation_controllers
+        .get(scope)
+        .ok_or_else(Error::forbidden)?;
+    let (action, resource) = action_resource(scope)?;
+    let token = credential(controller)?;
+    core.store.read(|tx| {
+        if core.management(tx, &token, action, &resource)?.id != actor.id {
+            return Err(Error::forbidden());
+        }
+        Ok(())
+    })
+}
+
 fn schedule_for(scope: &str, config: &ControllerConfig, fingerprint: &str, at: u64) -> Schedule {
     Schedule {
         scope: scope.into(),

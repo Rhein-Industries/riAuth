@@ -548,6 +548,8 @@ pub enum ProvisionCommand {
         confirm_removals: bool,
     },
     Jobs,
+    /// Per-target offboarding deactivation outcomes
+    Deactivations,
 }
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
@@ -1530,6 +1532,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Provision { command } => match command {
             ProvisionCommand::Targets=>remote.call(Method::GET,"/api/provisioning/targets",None,true).await?,
             ProvisionCommand::Jobs=>remote.call(Method::GET,"/api/provisioning/jobs",None,true).await?,
+            ProvisionCommand::Deactivations=>remote.call(Method::GET,"/api/provisioning/deactivations",None,true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
                 let plan=remote.call(Method::POST,&format!("/api/provisioning/targets/{}/plan",segment(&target)?),None,true).await?;

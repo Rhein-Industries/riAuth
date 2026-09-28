@@ -241,6 +241,10 @@ pub fn router(core: Core) -> Router {
         )
         .route("/api/provisioning/jobs", get(provisioning_jobs))
         .route(
+            "/api/provisioning/deactivations",
+            get(provisioning_deactivations),
+        )
+        .route(
             "/api/reconciliation/schedules",
             get(reconciliation_schedules),
         )
@@ -2895,6 +2899,7 @@ async fn entra_apply(
     .await
 }
 session_handler!(provisioning_jobs, provisioning_jobs);
+session_handler!(provisioning_deactivations, provisioning_deactivations);
 async fn provisioning_plan(
     State(app): State<App>,
     headers: HeaderMap,

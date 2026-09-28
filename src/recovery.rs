@@ -157,6 +157,9 @@ const RETAINED: &[&str] = &[
     "provisioning_jobs",
     "provisioning_plans",
     "offboard_jobs",
+    // Deactivation intent revalidates the account, link, target and scoped
+    // controller authority before any dispatch; delivery is idempotent.
+    "provisioning_deactivations",
     "plans",
     "directory_plans",
     "cloud_directory_plans",

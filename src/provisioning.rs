@@ -9,6 +9,7 @@ use crate::{
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
+    identity::downstream::{Link, link_key},
     model::{Group, User},
     store::Tx,
 };
@@ -22,6 +23,7 @@ use std::{
     time::Duration,
 };
 use zeroize::{Zeroize, Zeroizing};
+mod deactivation;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
@@ -220,19 +222,6 @@ struct Job {
     #[serde(default)]
     reviewed_removals: bool,
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Link {
-    target: String,
-    url: String,
-    kind: String,
-    local_id: String,
-    remote_id: String,
-    external_id: String,
-    body: Value,
-}
-fn link_key(target: &str, kind: &str, id: &str) -> String {
-    digest(&format!("{target}\0{kind}\0{id}"))
-}
 fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
@@ -273,6 +262,22 @@ fn stale_lease_settling(job: &Job, at: u64) -> bool {
     job.stale
         && job.lease.is_some()
         && job.next_attempt.saturating_add(STALE_LEASE_SETTLE_SECONDS) > at
+}
+
+/// A reviewed plan's active account must still be enabled locally when it is
+/// dispatched. Some disable paths keep the revision, and offboarding delivery
+/// does not rewrite the link, so neither fence would otherwise stop a plan made
+/// before the disable from reactivating the account downstream.
+fn resource_still_active(tx: &Tx<'_>, job: &Job) -> Result<bool> {
+    let Some(resource) = job.plan.resources.get(job.cursor) else {
+        return Ok(true);
+    };
+    if resource.kind != "Users" || resource.body["active"] != true {
+        return Ok(true);
+    }
+    Ok(tx
+        .get::<User>("users", &resource.local_id)?
+        .is_some_and(|user| user.enabled))
 }
 
 fn ensure_job_capacity(tx: &Tx<'_>, next: &Job) -> Result<()> {
@@ -356,7 +361,8 @@ impl Core {
         Ok(permitted
             && job.plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
             && self.provisioning_fingerprint_matches(&job.plan)
-            && job.plan.expires_at.saturating_add(86400) >= now())
+            && job.plan.expires_at.saturating_add(86400) >= now()
+            && resource_still_active(tx, job)?)
     }
 
     /// Controller trigger for a single configured target. The returned
@@ -935,7 +941,8 @@ impl Core {
                 || current.next_attempt <= now()
                 || current.plan.review != job.plan.review
                 || job.plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || !self.provisioning_fingerprint_matches(&job.plan) {
+                || !self.provisioning_fingerprint_matches(&job.plan)
+                || !resource_still_active(tx, job)? {
                 return Err(Error::conflict("SCIM delivery authority, lease or source changed; inspect partial results and replan"));
             }
             Ok(())
@@ -944,7 +951,23 @@ impl Core {
     fn finish_provisioning(&self, job: &mut Job, link: Option<Link>) -> Result<()> {
         self.store.write(|tx|{
             let Some(mut current)=tx.get::<Job>("provisioning_jobs",&job.plan.id)?.filter(|j|j.lease==job.lease) else{return Ok(());};
-            if let Some(link)=link {tx.put("provisioning_links",&link_key(&link.target,&link.kind,&link.local_id),&link)?;}
+            if let Some(link) = link {
+                let key = link_key(&link.target, &link.kind, &link.local_id);
+                tx.put("provisioning_links", &key, &link)?;
+                // A write dispatched before a disable can land after it. Keep
+                // deactivation intent for every active link of an inactive account.
+                if link.kind == "Users" && link.body["active"] == true {
+                    let user = tx.get::<User>("users", &link.local_id)?;
+                    if user.as_ref().is_none_or(|user| !user.enabled) {
+                        let username = user.as_ref().map_or_else(
+                            || link.body["userName"].as_str().unwrap_or_default(),
+                            |user| user.username.as_str(),
+                        );
+                        let epoch = user.as_ref().map_or(0, |user| user.epoch);
+                        crate::identity::downstream::enqueue_link(tx, &key, &link, username, epoch)?;
+                    }
+                }
+            }
             current.cursor=(current.cursor+1).min(current.plan.resources.len());current.completed=current.cursor==current.plan.resources.len();current.lease=None;current.error=None;current.next_attempt=now();current.attempts=0;
             let authority_valid = actor(tx, &current.plan.actor)
                 .and_then(|actor| {
@@ -1663,12 +1686,13 @@ fn scim_json(response: reqwest::blocking::Response) -> Result<(Value, Option<Str
     Ok((parse_scim_body(&bytes)?, etag))
 }
 pub async fn deliver(core: Core) -> Result<()> {
-    if core.config.scim_targets.is_empty() {
-        return Ok(());
-    }
     tokio::task::spawn_blocking(move || {
         crate::telemetry::in_activity(crate::telemetry::Activity::Provisioning, || {
-            core.provisioning_step()
+            if !core.config.scim_targets.is_empty() {
+                core.provisioning_step()?;
+            }
+            // Runs without targets too, so intent for a removed target is closed.
+            core.deactivation_step().map(drop)
         })
     })
     .await
@@ -1688,7 +1712,7 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
             tx.put("provisioning_jobs", &id, &job)?;
         }
     }
-    Ok(())
+    deactivation::cleanup(tx, at)
 }
 
 fn managed_equal(expected: &Value, actual: &Value) -> bool {

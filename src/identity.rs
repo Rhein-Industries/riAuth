@@ -4,6 +4,7 @@
 //! identity checks. Adapter-specific proofs and authorization remain at their
 //! existing call sites; this module has no direct dependency on Core or SSF transport.
 pub mod agent_credentials;
+pub mod downstream;
 pub mod logout_queue;
 pub(crate) mod password_history;
 pub mod persistence;
@@ -82,7 +83,8 @@ pub(crate) fn record_transition(
     Ok(())
 }
 
-/// Atomic account revocation and credential signals shared by every user writer.
+/// Atomic account revocation, credential signals and downstream deactivation
+/// intent shared by every user writer.
 fn user_security_transition(
     tx: &impl IdentityTx,
     user_id: &str,
@@ -98,6 +100,14 @@ fn user_security_transition(
         logout_queue::queue_user(tx, user_id)?;
         if disabled && before["enabled"] == true {
             signals::enqueue(tx, user_id, signals::ACCOUNT_DISABLED, "")?;
+            // Downstream intent commits with the local revocation, never after it.
+            let account = after.unwrap_or(before);
+            downstream::enqueue(
+                tx,
+                user_id,
+                account["username"].as_str().unwrap_or_default(),
+                account["epoch"].as_u64().unwrap_or(0),
+            )?;
         }
     }
     let Some(after) = after else {

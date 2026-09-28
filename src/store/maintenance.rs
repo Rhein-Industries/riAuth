@@ -3,14 +3,17 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 3;
-pub const QUEUES: [&str; 5] = [
+pub const INDEX_VERSION: u32 = 4;
+pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
     "provisioning_jobs",
     "ssf_deliveries",
     "offboard_jobs",
+    "provisioning_deactivations",
 ];
+// Outbound SCIM user links, grouped by local user for the disable transition.
+const USER_LINKS: &str = "index_user_provisioning_links";
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
 // Imported records can approach the archive's per-frame limit. The ordinary
 // maintenance PAGE would decode 128 such records before returning to rebuild.
@@ -33,6 +36,20 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
         return (
             pending,
             value["status"] == "failed",
+            due,
+            value["created_at"].as_u64().unwrap_or(0),
+        );
+    }
+    if bucket == "provisioning_deactivations" {
+        let running = value["status"] == "running";
+        let due = value["next_attempt"].as_u64().unwrap_or(0).max(if running {
+            value["lease_until"].as_u64().unwrap_or(0)
+        } else {
+            0
+        });
+        return (
+            running || value["status"] == "pending",
+            value["status"] == "failed" || value["status"] == "stale",
             due,
             value["created_at"].as_u64().unwrap_or(0),
         );
@@ -93,6 +110,10 @@ impl Tx<'_> {
             let before = self.get::<Value>(bucket, id)?;
             self.update_grant_index(id, before.as_ref(), after)?;
         }
+        if bucket == "provisioning_links" {
+            let before = self.get::<Value>(bucket, id)?;
+            self.update_link_index(id, before.as_ref(), after)?;
+        }
         if COUNTED.contains(&bucket) {
             let previous = self.get::<Value>(bucket, id)?;
             let before = previous.is_some();
@@ -145,6 +166,36 @@ impl Tx<'_> {
         }
         if let Some(key) = after.and_then(index) {
             self.put("index_user_access_grants", &key, &id)?;
+        }
+        Ok(())
+    }
+    fn update_link_index(
+        &self,
+        id: &str,
+        before: Option<&Value>,
+        after: Option<&Value>,
+    ) -> Result<()> {
+        let entry = |value: &Value| {
+            value["local_id"]
+                .as_str()
+                .filter(|_| value["kind"] == "Users")
+                .map(|user| {
+                    (
+                        format!("{USER_LINKS}/{}", crypto::digest(user)),
+                        value["target"].clone(),
+                    )
+                })
+        };
+        let old = before.and_then(entry);
+        let new = after.and_then(entry);
+        if old == new {
+            return Ok(());
+        }
+        if let Some((index, _)) = old {
+            self.delete(&index, id)?;
+        }
+        if let Some((index, target)) = new {
+            self.put(&index, id, &target)?;
         }
         Ok(())
     }
@@ -365,6 +416,7 @@ impl Tx<'_> {
             "session_retention".into(),
             "index_user_access_grants".into(),
             "index_user_groups".into(),
+            USER_LINKS.into(),
         ];
         for bucket in COUNTED {
             indexes.push(format!("index_expiry_{bucket}"));
@@ -403,6 +455,9 @@ impl Tx<'_> {
         })?;
         self.for_each_rebuild_page::<crate::model::Group>("groups", check, |id, group| {
             self.update_group_index(&id, None, Some(&group))
+        })?;
+        self.for_each_rebuild_page::<Value>("provisioning_links", check, |id, link| {
+            self.update_link_index(&id, None, Some(&link))
         })?;
         check()?;
         self.put("meta", "index_version", &INDEX_VERSION)?;
