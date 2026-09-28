@@ -164,6 +164,7 @@ impl Core {
             tx.delete("meta", "browser_setup_passkeys")?;
             crate::recovery::stamp_lineage(tx)?;
             crate::upgrade::stamp_initial(tx)?;
+            crate::edition::stamp_activation(&config, tx)?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;
         Ok(Self {
@@ -196,6 +197,7 @@ impl Core {
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
             .ok_or_else(|| Error::internal("dummy hash missing"))?;
+        store.write(|tx| crate::edition::stamp_activation(&config, tx))?;
         Ok(Self {
             config,
             store,

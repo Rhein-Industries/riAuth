@@ -7,13 +7,14 @@ use crate::{
     source::Source,
     store::{Store, Tx, maintenance::PAGE},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 mod transition;
 pub use transition::preflight;
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Target {
     Essentials,
@@ -34,6 +35,79 @@ pub const CURRENT: Target = if cfg!(feature = "platform") {
 } else {
     Target::Essentials
 };
+
+const PROVENANCE_KEY: &str = "edition_provenance";
+const PROVENANCE_VERSION: u32 = 1;
+
+/// Sticky evidence of the edition that last opened this store and the exact
+/// Platform dependencies seen during its activations. Clearing this evidence
+/// requires a reviewed migration, never a configuration change or Core open.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Provenance {
+    schema_version: u32,
+    last_activated_edition: Target,
+    platform_dependencies: BTreeMap<String, String>,
+}
+
+fn parse_provenance(value: Value) -> Result<Provenance> {
+    let record: Provenance = serde_json::from_value(value).map_err(|_| {
+        Error::bad("Stored edition provenance is malformed; explicit migration required")
+    })?;
+    if record.schema_version != PROVENANCE_VERSION {
+        return Err(Error::bad(format!(
+            "Stored edition provenance version {} is unsupported; explicit migration required",
+            record.schema_version
+        )));
+    }
+    Ok(record)
+}
+
+fn read_provenance(tx: &Tx<'_>) -> Result<Option<Provenance>> {
+    tx.get::<Value>("meta", PROVENANCE_KEY)?
+        .map(parse_provenance)
+        .transpose()
+}
+
+/// Record successful activation in the same transaction as initialization, or
+/// immediately after an existing store passes the read-only startup gates.
+pub(crate) fn stamp_activation(config: &Config, tx: &Tx<'_>) -> Result<()> {
+    let previous = read_provenance(tx)?;
+    if CURRENT == Target::Essentials
+        && previous.as_ref().is_some_and(|record| {
+            record.last_activated_edition == Target::Platform
+                || !record.platform_dependencies.is_empty()
+        })
+    {
+        return Err(Error::bad(
+            "Stored Platform edition provenance requires an explicit migration before Essentials activation",
+        ));
+    }
+    let mut next = previous.clone().unwrap_or(Provenance {
+        schema_version: PROVENANCE_VERSION,
+        last_activated_edition: CURRENT,
+        platform_dependencies: BTreeMap::new(),
+    });
+    next.last_activated_edition = CURRENT;
+    if CURRENT == Target::Platform {
+        for issue in config_blockers(config, Target::Essentials)
+            .into_iter()
+            .chain(transition::current_store_blockers(
+                tx,
+                Target::Essentials,
+                usize::MAX,
+            )?)
+        {
+            next.platform_dependencies
+                .entry(issue.resource)
+                .or_insert(issue.reason);
+        }
+    }
+    if previous.as_ref() != Some(&next) {
+        tx.put("meta", PROVENANCE_KEY, &next)?;
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Blocker {
@@ -213,6 +287,14 @@ fn config_blockers(config: &Config, target: Target) -> Vec<Blocker> {
             ));
         }
     }
+    for capability in &config.capabilities.disabled {
+        if crate::agent::PLATFORM_FEATURES.contains(&capability.as_str()) {
+            issues.push(blocker(
+                format!("config/capabilities.disabled/{capability}"),
+                format!("Disabled capability {capability} requires the Platform build"),
+            ));
+        }
+    }
     issues
 }
 
@@ -265,9 +347,6 @@ fn validate_source_for(source: &Source, target: Target) -> Result<()> {
 /// Historical Platform records are retained for an explicit migration; silently
 /// ignoring them could resurrect jobs or authority after a later upgrade.
 pub fn validate_store(store: &Store) -> Result<()> {
-    if CURRENT == Target::Platform {
-        return Ok(());
-    }
     store.read(|tx| {
         if let Some(issue) = transition::store_blockers(tx, CURRENT, 1)?
             .into_iter()

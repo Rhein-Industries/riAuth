@@ -33,6 +33,16 @@ Essentials build cannot inspect all Platform configuration. Stop writers and
 rerun the report immediately before switching, since it does not reserve the
 snapshot or perform migration or rollback.
 
+Core initialization and open persist `meta/edition_provenance`, including the
+last activated edition and the exact Platform-only configuration or record paths
+observed at Platform activation. The preflight reports that source edition and
+the retained paths. Essentials refuses a Platform source or recorded dependency
+before migration, even when current configuration or records no longer expose
+it. Platform activation only adds evidence; it never clears it or deletes the
+referenced records. Clearing the marker requires an explicit, reviewed edition
+migration after checking the referenced policy, authority, credentials and
+rollback plan. This preview does not yet provide that migration command.
+
 Both builds run `riauth`; install only one on a deployment. The local capability
 document includes `edition`, compiled features, permissions and schemas from
 that artifact. Essentials omits Platform HTTP routes, LDAP/RADIUS/proxy

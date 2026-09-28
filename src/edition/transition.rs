@@ -27,9 +27,14 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
         let mut issues = config_issues;
         let mut schema = None;
         let mut revision = None;
+        let mut last_activated_edition = None;
         if let Some(tx) = tx {
             schema = tx.get::<u32>("meta", "schema")?;
             revision = tx.get::<u64>("meta", "revision")?;
+            last_activated_edition = tx
+                .get::<Value>("meta", PROVENANCE_KEY)?
+                .and_then(|value| parse_provenance(value).ok())
+                .map(|record| record.last_activated_edition);
             match schema {
                 Some(version) if version == crate::upgrade::SCHEMA => {}
                 Some(version) => issues.push(blocker(
@@ -82,6 +87,7 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
             "issuer": config.issuer,
             "store_schema": schema,
             "store_revision": revision,
+            "last_activated_edition": last_activated_edition,
             "ready": issues.is_empty(),
             "read_only": true,
             "blockers": issues,
@@ -92,6 +98,51 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
 /// Shared by startup and the operator report. A bounded first issue keeps the
 /// normal serving gate cheap; the report enumerates every known dependency.
 pub(super) fn store_blockers(tx: &Tx<'_>, target: Target, limit: usize) -> Result<Vec<Blocker>> {
+    let mut issues = Vec::new();
+    if let Some(value) = tx.get::<Value>("meta", PROVENANCE_KEY)? {
+        match parse_provenance(value) {
+            Ok(record) if target == Target::Essentials => {
+                for (resource, reason) in record.platform_dependencies {
+                    issues.push(blocker(
+                        format!("provenance/{resource}"),
+                        format!("Recorded Platform dependency {resource}: {reason}; explicit migration required"),
+                    ));
+                    if issues.len() >= limit {
+                        return Ok(issues);
+                    }
+                }
+                if record.last_activated_edition == Target::Platform {
+                    issues.push(blocker(
+                        "meta/edition_provenance",
+                        "Platform was last activated for this store; explicit edition migration required before Essentials activation",
+                    ));
+                    if issues.len() >= limit {
+                        return Ok(issues);
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(error) => {
+                issues.push(blocker("meta/edition_provenance", error.message));
+                if issues.len() >= limit {
+                    return Ok(issues);
+                }
+            }
+        }
+    }
+    issues.extend(current_store_blockers(
+        tx,
+        target,
+        limit.saturating_sub(issues.len()),
+    )?);
+    Ok(issues)
+}
+
+pub(super) fn current_store_blockers(
+    tx: &Tx<'_>,
+    target: Target,
+    limit: usize,
+) -> Result<Vec<Blocker>> {
     if target == Target::Platform {
         return Ok(Vec::new());
     }
