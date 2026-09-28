@@ -341,15 +341,20 @@ transaction. No new session or remembered consent grant is created. Browser
 and remembered-consent adapters are not connected.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
-most 64 live attempts per request hash. Anonymous preparation can fill those
-slots under the general per-address HTTP rate limit. The cap bounds stored
-index work but does not guarantee new preparation admission across addresses.
-Saturating it cannot block a live bearer's direct no-ID decision for the same
-static URL. Signed-out no-ID denial still requires an ID while any matching
+most 64 live indexed attempts per request hash. At capacity, a new preparation
+atomically retires one still-unclaimed anonymous attempt, selected by earliest
+expiry, before admission. Account-bound and authenticated-session-bound attempts
+are never displaced. A retired ID cannot authorize or deny; its holder must
+prepare again. If every slot is claimed, admission returns a conflict. Each
+attempt otherwise expires after 600 seconds. Sustained anonymous traffic can
+still displace another signed-out caller's preparation before sign-in, so this
+bounded admission rule does not guarantee completion during a flood.
+
+Saturating the index cannot block a live bearer's direct no-ID decision for the
+same static URL. Signed-out no-ID denial still requires an ID while any matching
 preparation is live, because it has no account to bind a replay fence to.
-Legacy upgrade overflow also remains conservative until its live rows are gone.
-Each attempt expires after 600 seconds; new attempts can keep preparation
-admission full, so callers holding an ID can decide that exact preparation.
+Legacy upgrade overflow remains a conservative no-ID fence until its live rows
+are gone.
 
 ## Downstream OIDC completion
 

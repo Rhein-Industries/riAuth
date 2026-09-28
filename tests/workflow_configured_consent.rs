@@ -1,7 +1,7 @@
 #![cfg(feature = "platform")]
 mod common;
 
-use common::{Fixture, text};
+use common::{Fixture, PASSWORD, text};
 use riauth::{
     crypto::{self, digest, now},
     model::{AuthenticationTransaction, Code, Session},
@@ -513,14 +513,6 @@ fn anonymous_preparation_saturation_cannot_block_direct_account_decisions() {
             )
         })
         .collect();
-    assert_eq!(
-        f.core
-            .authorization_prepare(None, request.clone())
-            .unwrap_err()
-            .code,
-        "conflict"
-    );
-
     let mut decision = request.clone();
     decision.decision = Some("approve".into());
     for _ in 0..2 {
@@ -603,6 +595,165 @@ fn anonymous_preparation_saturation_cannot_block_direct_account_decisions() {
         f.core.store.list::<Session>("sessions").unwrap().len(),
         sessions
     );
+}
+
+#[test]
+fn saturated_anonymous_admission_retires_only_unclaimed_preparations() {
+    let mut f = Fixture::new();
+    f.core.config.workflows.insert(
+        "local-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: consent_definition(),
+        },
+    );
+    f.core.config.validate().unwrap();
+    f.client("app", false);
+    let alice = f.user("admission-alice");
+    let bob = f.user("admission-bob");
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.decision = None;
+    let claimed = text(
+        &f.core.authorization_prepare(None, request.clone()).unwrap(),
+        "transaction_id",
+    );
+    let alice_bound = text(
+        &f.core
+            .login_for(
+                "admission-alice".into(),
+                PASSWORD.into(),
+                None,
+                Some(claimed.clone()),
+            )
+            .unwrap(),
+        "session_token",
+    );
+    let anonymous: Vec<String> = (0..63)
+        .map(|_| {
+            text(
+                &f.core.authorization_prepare(None, request.clone()).unwrap(),
+                "transaction_id",
+            )
+        })
+        .collect();
+    let admitted = text(
+        &f.core.authorization_prepare(None, request.clone()).unwrap(),
+        "transaction_id",
+    );
+    let retired: Vec<_> = anonymous
+        .iter()
+        .filter(|id| {
+            f.core
+                .store
+                .get::<AuthenticationTransaction>("authentication", &digest(id))
+                .unwrap()
+                .is_none()
+        })
+        .collect();
+    assert_eq!(retired.len(), 1);
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &digest(&claimed))
+            .unwrap()
+            .is_some(),
+        "a session-claimed preparation remains protected"
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &digest(&admitted))
+            .unwrap()
+            .is_some()
+    );
+    let index: Value = f
+        .core
+        .store
+        .get("authorization_prepared", &request.request_hash().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(index["attempts"].as_object().unwrap().len(), 64);
+
+    let mut claimed_decision = request.clone();
+    claimed_decision.decision = Some("approve".into());
+    claimed_decision.transaction_id = Some(claimed.clone());
+    assert_eq!(
+        f.core
+            .authorize(&alice, claimed_decision.clone())
+            .unwrap_err()
+            .code,
+        "login_required",
+        "the proof is bound to the newly authenticated session"
+    );
+    assert_eq!(
+        f.core.authorize(&bob, claimed_decision).unwrap_err().code,
+        "login_required",
+        "another account cannot use the claimed proof"
+    );
+
+    let mut retired_decision = request.clone();
+    retired_decision.decision = Some("approve".into());
+    retired_decision.transaction_id = Some((*retired[0]).clone());
+    assert_eq!(
+        f.core
+            .authorize(&alice_bound, retired_decision.clone())
+            .unwrap_err()
+            .code,
+        "login_required"
+    );
+    assert_eq!(
+        f.core
+            .store
+            .write(|tx| f.core.authorization_denied(tx, &retired_decision, "anonymous"))
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    let mut bound_request = request.clone();
+    bound_request.transaction_id = Some(text(
+        &f.core
+            .authorization_prepare(Some(&bob), request.clone())
+            .unwrap(),
+        "transaction_id",
+    ));
+    f.core.authorization_prepare(None, request.clone()).unwrap();
+    let run = f
+        .core
+        .workflow_configured_consent_start(&bob, "local-consent", bound_request.clone())
+        .unwrap();
+    assert!(matches!(
+        f.core.workflow_cancel(&bob, &run.id).unwrap().state,
+        RunState::Cancelled {}
+    ));
+    let mut cancelled = bound_request;
+    cancelled.decision = Some("approve".into());
+    assert!(f.core.authorize(&bob, cancelled).is_err());
+    assert_eq!(
+        f.core
+            .store
+            .write(|tx| f.core.authorization_denied(tx, &request, "anonymous"))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+
+    let mut direct = request.clone();
+    direct.decision = Some("approve".into());
+    assert!(f.core.authorize(&bob, direct.clone()).unwrap().contains("code="));
+    let f = f.reopen_with(|_| {});
+    direct.transaction_id = Some(claimed);
+    assert!(
+        f.core
+            .authorize(&alice_bound, direct.clone())
+            .unwrap()
+            .contains("code="),
+        "Bob's direct decision cannot consume Alice's session-bound proof"
+    );
+    assert_eq!(
+        f.core.authorize(&alice_bound, direct).unwrap_err().code,
+        "login_required"
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
 }
 
 #[test]

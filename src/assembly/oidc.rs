@@ -213,29 +213,39 @@ fn register_preparation(tx: &Tx<'_>, request_hash: &str, key: &str, expires_at: 
     let previous = tx.get::<PreparedRequests>(PREPARED_REQUESTS, request_hash)?;
     let mut attempts = BTreeMap::new();
     let mut overflow_until = 0;
+    let mut replaceable: Option<(String, u64)> = None;
     if let Some(previous) = previous {
         if previous.attempts.len() > MAX_PREPARED_PER_REQUEST {
             return Err(Error::forbidden());
         }
         overflow_until = previous.overflow_until;
-        for (key, expiry) in previous.attempts {
-            if expiry > at
-                && tx
-                    .get::<AuthenticationTransaction>("authentication", &key)?
-                    .is_some_and(|attempt| {
-                        attempt.expires_at > at
-                            && attempt.source_stage.is_none()
-                            && attempt.request_hash == request_hash
+        for (old_key, expiry) in previous.attempts {
+            if expiry <= at {
+                continue;
+            }
+            if let Some(attempt) = live_ordinary_preparation(tx, &old_key, request_hash, at)? {
+                // A verified session or account owns its preparation. Only a
+                // still-unclaimed anonymous row may yield an admission slot.
+                if attempt.user_id.is_none()
+                    && attempt.authenticated_session.is_none()
+                    && replaceable.as_ref().is_none_or(|(candidate, candidate_expiry)| {
+                        (expiry, old_key.as_str()) < (*candidate_expiry, candidate.as_str())
                     })
-            {
-                attempts.insert(key, expiry);
+                {
+                    replaceable = Some((old_key.clone(), expiry));
+                }
+                attempts.insert(old_key, expiry);
             }
         }
     }
     if attempts.len() >= MAX_PREPARED_PER_REQUEST {
-        return Err(Error::conflict(
-            "Too many pending preparations for this request",
-        ));
+        // Replace exactly one indexed row; any legacy overflow stays marked
+        // and keeps no-ID decisions conservative until its rows are gone.
+        let (replaced, _) = replaceable.ok_or_else(|| {
+            Error::conflict("Too many pending preparations for this request")
+        })?;
+        tx.delete("authentication", &replaced)?;
+        attempts.remove(&replaced);
     }
     attempts.insert(key.to_owned(), expires_at);
     tx.put(
