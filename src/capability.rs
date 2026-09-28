@@ -443,6 +443,34 @@ fn compiled_for(name: &str, target: crate::edition::Target) -> bool {
     target == crate::edition::Target::Platform || !agent::PLATFORM_FEATURES.contains(&name)
 }
 
+/// Certificate assurance uses only public trust anchors and revocation data;
+/// discovery must not probe unrelated adapter secrets or the durable store.
+pub(crate) fn https_client_certificates_usable(config: &Config) -> bool {
+    compiled("identity.https_client_certificates")
+        && config
+            .capabilities
+            .enabled("identity.https_client_certificates")
+        && https_client_certificates_configured(config)
+}
+
+fn https_client_certificates_configured(config: &Config) -> bool {
+    #[cfg(feature = "platform")]
+    {
+        config.client_certificates.as_ref().is_some_and(|profile| {
+            profile.validate(config).is_ok()
+                && profile
+                    .material()
+                    .and_then(|material| profile.verifier(&material))
+                    .is_ok()
+        })
+    }
+    #[cfg(not(feature = "platform"))]
+    {
+        let _ = config;
+        false
+    }
+}
+
 fn catalog() -> Value {
     let compiled_features = agent::FEATURES
         .iter()
@@ -624,19 +652,7 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         "identity.oauth_sources" => facts.oauth_source,
         "identity.saml_sources" => facts.saml_source,
         "identity.source_linking" => facts.any_source,
-        "identity.https_client_certificates" => {
-            #[cfg(feature = "platform")]
-            {
-                config
-                    .client_certificates
-                    .as_ref()
-                    .is_some_and(|profile| profile.material().is_ok())
-            }
-            #[cfg(not(feature = "platform"))]
-            {
-                false
-            }
-        }
+        "identity.https_client_certificates" => https_client_certificates_configured(config),
         "identity.device_trust" => config
             .device_trust
             .as_ref()

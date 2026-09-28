@@ -47,7 +47,7 @@ impl Core {
     pub fn discovery(&self) -> Value {
         let base = self.config.issuer.trim_end_matches('/');
         let mut acr_values: Vec<&str> = crate::assurance::SUPPORTED.to_vec();
-        if self.config.client_certificates.is_some() {
+        if crate::capability::https_client_certificates_usable(&self.config) {
             acr_values.push(crate::radius::eap::CERTIFICATE_ACR);
         }
         json!({

@@ -94,6 +94,88 @@ surprise = true
 }
 
 #[tokio::test]
+async fn discovery_certificate_acr_follows_usable_trust_material() {
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (root, _) = issue("discovery root", 1, None, Kind::Ca { pathlen: 1 }, When::Valid);
+    let trust = dir.path().join("trust.pem");
+    let root_pem = root.to_pem().unwrap();
+    std::fs::write(&trust, &root_pem).unwrap();
+    let mut core = Core::initialize(
+        Config {
+            issuer: "http://localhost:9000/tenant".into(),
+            data_dir: dir.path().join("data"),
+            trusted_proxies: vec!["192.0.2.1".parse().unwrap()],
+            client_certificates: Some(riauth::mtls::ClientCertAuth {
+                trust_anchors_file: trust.clone(),
+                mode: riauth::mtls::ClientCertMode::Optional,
+                crl_file: None,
+                forwarded_header: Some("X-Client-Cert".into()),
+            }),
+            ..Config::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let assert_advertised = |core: &Core, expected: bool| {
+        let capabilities = riauth::capability::runtime(core).unwrap();
+        assert_eq!(
+            capabilities["feature_states"]["identity.https_client_certificates"]["usable"],
+            expected
+        );
+        assert_eq!(
+            core.discovery()["acr_values_supported"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == riauth::radius::eap::CERTIFICATE_ACR),
+            expected
+        );
+    };
+    assert_advertised(&core, true);
+    let router = riauth::api::router(core.clone());
+    let route_advertises = |router: axum::Router| async move {
+        let response = router
+            .oneshot(
+                Request::get("/.well-known/oauth-authorization-server/tenant")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let discovery: serde_json::Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        discovery["acr_values_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == riauth::radius::eap::CERTIFICATE_ACR)
+    };
+    assert!(route_advertises(router.clone()).await);
+
+    std::fs::write(&trust, b"invalid trust material").unwrap();
+    assert_advertised(&core, false);
+    assert!(!route_advertises(router).await);
+    std::fs::write(&trust, root_pem).unwrap();
+    assert_advertised(&core, true);
+
+    let crl = dir.path().join("invalid.crl");
+    std::fs::write(&crl, b"invalid revocation material").unwrap();
+    core.config.client_certificates.as_mut().unwrap().crl_file = Some(crl);
+    assert_advertised(&core, false);
+}
+
+#[tokio::test]
 async fn https_client_certificates_bind_chain_revocation_and_reject_forged_headers() {
     let dir = tempfile::TempDir::new().unwrap();
     let (root, root_key) = issue("root", 1, None, Kind::Ca { pathlen: 1 }, When::Valid);

@@ -211,7 +211,6 @@ pub fn router(core: Core) -> Router {
         .path()
         .trim_end_matches('/')
         .to_owned();
-    let metadata = core.discovery();
     #[cfg(feature = "platform")]
     let ssf_document = core.ssf_metadata();
     let app = App::new(core);
@@ -427,6 +426,7 @@ pub fn router(core: Core) -> Router {
     if prefix.is_empty() {
         routes
     } else {
+        let discovery_app = app.clone();
         let prefixed = Router::new()
             .route(
                 &format!("{prefix}/"),
@@ -438,8 +438,8 @@ pub fn router(core: Core) -> Router {
             .route(
                 &format!("/.well-known/oauth-authorization-server{prefix}"),
                 get(move || {
-                    let metadata = metadata.clone();
-                    async move { Json(metadata) }
+                    let app = discovery_app.clone();
+                    async move { app.run(|core| Ok(Json(core.discovery()))).await }
                 }),
             );
         #[cfg(feature = "platform")]
@@ -1172,7 +1172,7 @@ async fn discovery(
             Err(e) => return Err(e),
         }
     }
-    Ok(Json(app.core.discovery()))
+    app.run(|core| Ok(Json(core.discovery()))).await
 }
 async fn jwks(State(app): State<App>) -> Result<Json<Value>> {
     app.run(|core| core.jwks().map(Json)).await
