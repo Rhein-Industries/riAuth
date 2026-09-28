@@ -1,0 +1,6036 @@
+{
+  "schema": "riauth.roadmap.coverage/v1",
+  "task": "A01",
+  "base_revision": "96e23e2dedf84db4e39091a004cbd6591acbec97",
+  "date": "2026-09-27",
+  "backlog": {
+    "source": "User-supplied product boundaries and 94-item backlog, 2026-09-27",
+    "items": 94
+  },
+  "product_boundaries": {
+    "riAuth Essentials": "OIDC/OAuth, passkeys, complete browser self-service, compact administration, groups and claims, API/CLI, audit, backups, LDAP import, and outbound SCIM.",
+    "riAuth Platform": "Essentials plus configurable workflows, broader protocols, advanced federation, cloud connectors, device integrations, and expanded administration.",
+    "riauthctl": "Remote administration, with optional terminal USB-authenticator support separated from the server."
+  },
+  "shared_invariant": "Both server builds retain the same identity, authorization, revocation, and credential-protection semantics for shared capabilities.",
+  "labels": {
+    "preserve": "Behavior exists, is regression-tested, and meets the item; the work is to keep it intact through refactors and lift its tests into shared contracts.",
+    "extend": "A meaningful implementation exists, but the item needs more surface, interfaces, or limits removed.",
+    "build": "Little or no implementation exists; the item needs new design and code.",
+    "verify": "An implementation exists; what is missing is acceptance evidence (conformance, real peers, tenants, hardware), not code."
+  },
+  "journey_levels": {
+    "none": "Nothing usable.",
+    "module": "An endpoint, module, or API exists; no complete user or operator journey.",
+    "partial": "The journey completes, but only through some interfaces (for example terminal only) or with documented gaps.",
+    "complete-local": "The complete journey is exercised by local tests or fixtures; real-peer evidence is still separate.",
+    "process": "Process or documentation item; journey not applicable."
+  },
+  "counts": {
+    "items_by_label": {
+      "build": 38,
+      "extend": 47,
+      "preserve": 4,
+      "verify": 5
+    },
+    "items_by_journey": {
+      "complete-local": 7,
+      "module": 37,
+      "none": 26,
+      "partial": 23,
+      "process": 1
+    },
+    "capabilities_by_label": {
+      "build": 4,
+      "extend": 19,
+      "preserve": 3,
+      "verify": 5
+    }
+  },
+  "evidence_method": {
+    "inspected": "Source, tests, Cargo manifests, Dockerfile, CI and release workflows, scripts, deploy templates, and docs at the base revision; test names were extracted from #[test]/#[tokio::test] attributes",
+    "tests_run_in_this_task": [],
+    "test_catalogue": {
+      "rust_test_functions": 388,
+      "ignored_by_default": 9
+    },
+    "ci_meaning": {
+      "ci-check": "Selected by `cargo test --all-targets --features test-support,fuzzing` in the Public CI check job",
+      "ci-integration (#[ignore], external program)": "Run with --ignored in the Public CI integration job with the named external program",
+      "not-in-ci": "Present in the repository but not invoked by any workflow"
+    },
+    "not_verified": [
+      "CI pass or fail status at the base revision (no network access used)",
+      "Contents or publication state of the v0.1.1 GitHub release",
+      "Any real-peer, tenant, hardware or conformance outcome"
+    ]
+  },
+  "released_artifacts": {
+    "latest_tag": "v0.1.1 -> 5ef0261e8b6d54e3532b69041511c84d9887648a",
+    "base_is_released": false,
+    "pipeline_outputs": [
+      "riauth-linux-x86_64.tar.gz",
+      "riauth-linux-x86_64.docker.tar.gz",
+      "build-provenance.json",
+      "SHA256SUMS"
+    ],
+    "pipeline_smoke_checks": [
+      "docker run IMAGE --json capabilities",
+      "THIRD_PARTY_NOTICES.md equality in image and tarball",
+      "LICENSE equality in tarball",
+      "libssl3t64 and libudev1 copyright files present",
+      "sha256sum --check"
+    ],
+    "architectures": [
+      "linux-x86_64"
+    ],
+    "signed": false,
+    "published_assets_inspected": false
+  },
+  "suggested_first_slice": {
+    "backlog_ids": [
+      "Q02",
+      "S05"
+    ],
+    "summary": "Test-only contract harness for INV-1..INV-4 parameterized over the Store backend (redb in the check job, PostgreSQL in the integration job) before A03 moves Store::security_transition",
+    "next": "A03 cut: move per-protocol Settings out of model and Config into capability-owned sections"
+  },
+  "items": [
+    {
+      "id": "A01",
+      "title": "Inventory existing coverage",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [],
+      "label": "build",
+      "journey": "process",
+      "current_state": "Delivered by this change: this inventory plus the JSON twin. Before this change the repository had no mapping of features to tests, docs, and artifacts.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/roadmap/coverage-inventory.md",
+        "docs/roadmap/coverage-inventory.json"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Needs orchestrator review; rows reflect base 96e23e2 only"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A02",
+      "title": "Freeze the two product contracts",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No Essentials/Platform concept exists anywhere in source, docs, or Cargo features. Cargo features are only `test-support` and `fuzzing`. The capabilities list advertises every feature unconditionally.",
+      "implementation": [
+        "Cargo.toml",
+        "src/agent.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "README.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No edition definitions, defaults, or measurable targets",
+        "Edition assignments in this inventory are proposals from the backlog boundaries, not contracts"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A03",
+      "title": "Establish real module boundaries",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A01",
+        "A02",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "A single crate with 60 flat `pub mod`s. The measured module graph has cycles: `core` references 37 modules and is referenced by 43. `store` calls identity code (`core::user_security_transition`, `ssf::enqueue`). The shared model embeds protocol settings (`portal`, `saml`, `radius`, `ldap_server`), and listeners call into the HTTP assembly (`api::tls_files`, `api::browser_response`).",
+      "implementation": [
+        "src/lib.rs",
+        "src/core.rs",
+        "src/store.rs",
+        "src/model.rs",
+        "src/config.rs",
+        "src/crypto.rs",
+        "src/ldap_server.rs",
+        "src/proxy_server.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Cycles among core/store/model/config",
+        "Protocol settings types live in the shared model and config",
+        "The store-level security transition hook must keep its semantics when moved"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A04",
+      "title": "Separate riauthctl",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A03",
+        "M03"
+      ],
+      "label": "build",
+      "journey": "partial",
+      "current_state": "The CLI is compiled into the same `riauth` binary as the server. The server's dependency set includes `webauthn-authenticator-rs` (usb, ui-cli) and `rpassword`, and the server container installs `libudev1`. Local maintenance commands (`init`, `restore`, `recover-admin`, `migrate-postgres`, `import-authentik`) open storage directly in the same binary. The remote transport is already a separable asset.",
+      "implementation": [
+        "src/main.rs",
+        "src/cli.rs",
+        "src/cli/transport.rs",
+        "src/passkey.rs",
+        "Cargo.toml",
+        "Dockerfile"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cli.rs::binary_initializes_serves_and_manages_oidc_over_real_http",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cli.rs::cli_help_and_http_rejection_are_actionable",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/passkeys.md",
+        "docs/agent.md"
+      ],
+      "released_artifact_evidence": "Affects the container image contents (Dockerfile) as well as the single binary.",
+      "gaps": [
+        "No separate client crate/binary",
+        "USB/HID dependencies and libudev ship in the server image",
+        "Local maintenance is not isolated from remote administration"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A05",
+      "title": "Implement two official server builds",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A02",
+        "A03",
+        "A04"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "One release build (`cargo build --release --locked`) with no capability features. Every protocol module is compiled unconditionally.",
+      "implementation": [
+        "Cargo.toml",
+        ".github/workflows/release.yml",
+        "Dockerfile"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "Release pipeline itself (.github/workflows/release.yml, scripts/package-release.sh): linux-x86_64 tarball, docker image archive, SHA256SUMS, build-provenance.json.",
+      "gaps": [
+        "No optional dependencies or additive capability features",
+        "No second build definition"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A06",
+      "title": "Separate compiled, enabled, and configured capabilities",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A02",
+        "A05"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "`agent::capabilities()` returns a fixed feature list regardless of compilation or configuration. OIDC discovery is static except for the certificate ACR. One reusable asset: `Config` and its sections use `deny_unknown_fields`, so unknown keys are already rejected rather than ignored.",
+      "implementation": [
+        "src/agent.rs",
+        "src/oidc.rs",
+        "src/config.rs",
+        "src/api.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/rate_limits.rs::config_rejects_unknown_rate_limit_categories",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/mtls.rs::config_round_trip_keeps_client_certificates_optional",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/config.rs::password_history_defaults_to_five_within_bounds",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/api.md",
+        "docs/oidc-profiles.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Advertisement does not distinguish compiled / enabled / configured",
+        "No rejection of configuration for an unavailable module (no such state exists yet)"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A07",
+      "title": "Share the browser interfaces",
+      "priority": "P1",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A06"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Embedded portal assets (user application portal, sign-in/consent/logout interaction pages, and the admin `/events` map) with no frontend build. There is no administration UI, no capability-aware navigation, and no headless mode: portal routes are always mounted.",
+      "implementation": [
+        "src/portal.rs",
+        "src/portal/http.rs",
+        "src/portal/index.html",
+        "src/portal/signin.html",
+        "src/portal/events.html",
+        "src/api/interaction.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/portal.rs",
+          "kind": "rust-suite",
+          "test_functions": 24,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/browser_signin.rs",
+          "kind": "rust-suite",
+          "test_functions": 32,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/portal_browser.rs::portal_terminal_sign_in_access_changes_and_responsive_interactions",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/PORTAL.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No shared admin components",
+        "No capability-aware navigation",
+        "No option to omit the browser UI"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A08",
+      "title": "Make build transitions safe",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A05",
+        "A06",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "Assets exist: schema upgrade is atomic and rejects future versions, and the issuer cannot change silently across restarts. No build or edition identity is stored, so there is nothing to block an unsafe edition switch or downgrade.",
+      "implementation": [
+        "src/upgrade.rs",
+        "src/store/maintenance.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::schema_upgrade_is_atomic_preserves_credentials_and_rejects_future_versions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::storage_survives_restart_and_issuer_cannot_be_changed_silently",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No persisted build/capability identity",
+        "No downgrade or policy-weakening guard across editions"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "A09",
+      "title": "Package supported architectures",
+      "priority": "P1",
+      "phase": 1,
+      "workstream": "Architecture and separate builds",
+      "dependencies": [
+        "A04",
+        "A05",
+        "A08",
+        "Q08"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "The release workflow builds only Linux x86_64 (`test \"$(uname -m)\" = x86_64`): a native tarball plus a `docker save` image archive, SHA256SUMS, and build provenance. There is no ARM64, client-only, or maintenance artifact.",
+      "implementation": [
+        ".github/workflows/release.yml",
+        "scripts/package-release.sh",
+        "Dockerfile"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/release-notes.md",
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Release pipeline itself (.github/workflows/release.yml, scripts/package-release.sh): linux-x86_64 tarball, docker image archive, SHA256SUMS, build-provenance.json.",
+      "gaps": [
+        "No ARM64",
+        "No separate client or maintenance artifacts",
+        "Artifacts are smoke-tested only by `--json capabilities` and notice comparison"
+      ],
+      "unverified": [
+        "Whether the v0.1.1 draft release was published, and its asset contents"
+      ]
+    },
+    {
+      "id": "U01",
+      "title": "Add secure browser bootstrap",
+      "priority": "P0",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A02",
+        "Q01",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "The first administrator is created only by `riauth init` in a terminal with a password (`Core::initialize`). There is no browser bootstrap or ownership-verified setup token.",
+      "implementation": [
+        "src/cli.rs",
+        "src/core.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cli.rs::binary_initializes_serves_and_manages_oidc_over_real_http",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/getting-started.md",
+        "README.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser setup flow",
+        "No single-use ownership proof"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U02",
+      "title": "Complete invitations and email verification",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Invitation and email-verification backends exist with scoped authority, single use, and epoch binding. Acceptance and verification are CLI-only: emails carry a code and a terminal command, and there is no hosted form.",
+      "implementation": [
+        "src/lifecycle.rs",
+        "src/api.rs",
+        "src/cli.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/factors.rs::invitations_require_live_scoped_authority_are_single_use_and_cannot_replace_existing_users",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::account_verification_is_delivered_through_smtp_and_bound_to_purpose_email_and_epoch",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf.rs::invitation_completion_enqueues_the_new_credential_once",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/lifecycle.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser invitation/verification pages",
+        "Link design against mail-scanner prefetch not present (codes, not links)"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U03",
+      "title": "Complete passkey management",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "The portal lists, adds, and removes passkeys, with fresh-MFA rules and sign-out-everywhere on change. Browser passkey sign-in is discoverable and pinned. There is no rename, and cancellation and multiple-authenticator journeys are only partly covered.",
+      "implementation": [
+        "src/passkey.rs",
+        "src/portal/http.rs",
+        "src/portal/app.js",
+        "src/portal/auth.js"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/portal.rs::portal_passkey_registration_requires_fresh_mfa_rule_and_signs_out",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/portal.rs::portal_passkey_remove_requires_fresh_mfa_session",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/portal.rs::portal_passkey_list_reports_freshness_and_limits",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::passkeys_require_user_verification_origin_nonce_and_live_counter_and_revoke_cleanly",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tools/browser/signin.spec.js",
+          "kind": "playwright",
+          "ci": "not-in-ci"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/passkeys.md",
+        "docs/PORTAL.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No rename",
+        "Physical authenticators untested (soft/virtual only)"
+      ],
+      "unverified": [
+        "Results of the Playwright passkey specs (not run in CI or for this inventory)"
+      ]
+    },
+    {
+      "id": "U04",
+      "title": "Add browser password change and recovery",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The backend supports self password change (`POST /api/password`, bearer only) and email reset that preserves factors. Both are terminal-only; there is no browser page. Password history is enforced.",
+      "implementation": [
+        "src/api.rs",
+        "src/lifecycle.rs",
+        "src/password_history.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/factors.rs::email_password_reset_preserves_factors_revokes_grants_and_retries_delivery_without_exposing_tokens",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/password_history.rs::reuse_is_rejected_on_every_password_write",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::password_reset_revokes_sessions_and_grants",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/lifecycle.md",
+        "docs/enterprise/ENT-08.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser change/recovery flow",
+        "Self-service APIs require an Authorization bearer, not the SSO cookie"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U05",
+      "title": "Add browser TOTP and recovery-code management",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "TOTP enrollment and confirmation plus recovery-code rotation exist via `/api/mfa/*` (bearer) and the CLI. The portal cannot manage them (PORTAL.md: authenticator apps are managed from the terminal).",
+      "implementation": [
+        "src/authenticator.rs",
+        "src/api.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/factors.rs::totp_requires_confirmation_prevents_replay_and_satisfies_policy",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::recovery_codes_are_single_use_and_password_change_revokes_old_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/signin_core.rs::mfa_enrollment_requires_mfa_session_for_passkey_users",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/lifecycle.md",
+        "docs/PORTAL.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser enrollment, replacement, removal, or rotation"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U06",
+      "title": "Add session and consent self-service",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Session list and revoke (`/api/sessions`) and consent list exist for bearer callers and the CLI. The portal offers only sign-out of the current browser.",
+      "implementation": [
+        "src/api.rs",
+        "src/core.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/signin_core.rs::session_list_reports_browser_and_terminal_kinds",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/network.rs::consent_revocation_rejects_existing_proxy_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::consent_revocation_is_confined_to_the_users_application",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/lifecycle.md",
+        "docs/PORTAL.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser session/consent list",
+        "No browser sign-out-everywhere or consent withdrawal"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U07",
+      "title": "Complete browser device-flow approval",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "I01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The device grant is implemented and tested. `GET /device` returns JSON telling the user to run `riauth device approve`. The approval API (`/api/device/{code}`, `/api/device/decision`) is bearer-only.",
+      "implementation": [
+        "src/oidc.rs",
+        "src/api.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs::device_pending_slowdown_approval_and_single_use",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::device_denial_expiry_and_client_binding",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/oidc-profiles.md",
+        "docs/lifecycle.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser review/approve page"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U08",
+      "title": "Complete browser upstream authentication",
+      "priority": "P2",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "A07",
+        "U03",
+        "U05",
+        "I02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Source stages (ENT-11) complete an upstream login inside a browser authorization. Standalone source sign-in and explicit link/unlink remain terminal (`riauth source start/finish`).",
+      "implementation": [
+        "src/source.rs",
+        "src/source/saml.rs",
+        "src/browser.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/source_stage.rs",
+          "kind": "rust-suite",
+          "test_functions": 8,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/sources.rs::source_account_linking_requires_fresh_local_identity_and_unlink_revokes_only_its_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/source_stage.rs::local_totp_is_still_required_when_upstream_is_not_mfa",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-11.md",
+        "docs/oidc-profiles.md",
+        "docs/lifecycle.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No browser linking/unlinking",
+        "No standalone browser source login"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U09",
+      "title": "Support passkey-only administrators",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "U01",
+        "U03",
+        "M03",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "Administrators are created and recovered with passwords (`init`, `recover-admin --password-stdin`). Passkeys can be added later, but no journey or test covers a passkey-only administrator or an independent backup credential.",
+      "implementation": [
+        "src/cli.rs",
+        "src/core.rs",
+        "src/passkey.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/policy.rs::last_administrator_is_preserved",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-13.md",
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No passkey-only admin creation",
+        "Emergency recovery is password-based and requires the server stopped"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "U10",
+      "title": "Validate accessibility and mobile usability",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Complete browser account experience",
+      "dependencies": [
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "U06",
+        "U07",
+        "U08",
+        "U09"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Playwright specs run axe (WCAG 2.1 AA tags), a keyboard-only journey, a 390px viewport, and 200% text. The cargo portal browser test checks 320–1440px layout. Only existing sign-in and portal pages are covered; the U02–U09 journeys do not exist yet.",
+      "implementation": [
+        "tools/browser/signin.spec.js",
+        "tools/browser/portal.spec.js",
+        "tools/browser/playwright.config.js"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tools/browser/signin.spec.js",
+          "kind": "playwright",
+          "ci": "not-in-ci"
+        },
+        {
+          "ref": "tools/browser/portal.spec.js",
+          "kind": "playwright",
+          "ci": "not-in-ci"
+        },
+        {
+          "ref": "tests/portal_browser.rs::portal_terminal_sign_in_access_changes_and_responsive_interactions",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/PORTAL.md",
+        "docs/architecture.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "No assistive-technology (screen reader) testing",
+        "Playwright project is not invoked by CI (only hygiene and Dependabot reference tools/browser)"
+      ],
+      "unverified": [
+        "Firefox/WebKit Playwright results"
+      ]
+    },
+    {
+      "id": "M01",
+      "title": "Build the compact administration interface",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "A07",
+        "M03"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is no administration GUI. The only admin page is the read-only `/events` map. Administration is the CLI and HTTP API.",
+      "implementation": [
+        "src/portal/events.html",
+        "src/api.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/event_map.rs::portal_map_is_inline_and_makes_no_external_request",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/PORTAL.md",
+        "docs/api.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Entire compact admin UI"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "M02",
+      "title": "Add application setup wizards",
+      "priority": "P1",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "M01",
+        "I01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No setup wizard. Related assets: registration templates (`GET /api/registration`), portal launch metadata, and client create/update APIs.",
+      "implementation": [
+        "src/registration.rs",
+        "src/portal.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs::dynamic_registration_constrains_metadata_uses_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/getting-started.md",
+        "docs/oidc-profiles.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Wizards",
+        "Connection diagnostics"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "M03",
+      "title": "Use one management service everywhere",
+      "priority": "P0",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "A03",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Remote CLI commands go through HTTP to `Core`. Imperative writes share `Core::mutation` (principal, idempotency receipt, If-Match revision, audit), and desired state uses `state.rs` plan/apply. But there are several write engines (imperative, state, LDAP/cloud directory, outbound SCIM, SCIM inbound), and local CLI commands (`recover-admin`, `restore`, `init`, `migrate-postgres`) bypass the API.",
+      "implementation": [
+        "src/context.rs",
+        "src/core.rs",
+        "src/state.rs",
+        "src/api.rs",
+        "src/cli.rs",
+        "src/cli/transport.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::http_agent_mutations_are_atomic_retriable_conditional_and_attributed",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::agent_plans_are_immutable_atomic_and_idempotent",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::non_admins_cannot_manage_identities_and_views_never_return_secrets",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/agent.md",
+        "docs/api.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "No single management service; multiple plan/apply implementations",
+        "GUI does not exist, so GUI/CLI/API parity is untestable"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "M04",
+      "title": "Add delegated human administration",
+      "priority": "P2",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "M03",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "Human authority is a single `admin: bool`. Agents have scoped action/resource permissions, but the architecture guide states these do not grant administrator delegation.",
+      "implementation": [
+        "src/model.rs",
+        "src/agent.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::agent_credentials_enforce_action_resource_and_identity_boundaries",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/agent.md",
+        "docs/architecture.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Human role model (help-desk, app owner, directory operator, auditor, security admin)"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "M05",
+      "title": "Add reviewed changes and multi-party approval",
+      "priority": "P2",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "M03",
+        "M04",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Plans are immutable, actor-bound, and revision-bound. A group wipe needs a plan-ID header. PAM separates requester from approver. There is no generic multi-party approval and no author/reviewer/executor split.",
+      "implementation": [
+        "src/state.rs",
+        "src/pam.rs",
+        "src/cloud_directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::agent_plans_are_immutable_atomic_and_idempotent",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/pam.rs::unauthorized_and_concurrent_decisions_do_not_grant",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::group_wipe_requires_plan_id_header_on_http_apply",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/agent.md",
+        "docs/enterprise/ENT-01.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Multi-party approval bound to exact content",
+        "Reviewer/executor roles"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "M06",
+      "title": "Expose policy explanations and safe simulation",
+      "priority": "P2",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "M03",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "`POST /api/policy/explain` and `riauth explain` simulate a username-based decision for one client without a session proof. Device trust reports that a session is required.",
+      "implementation": [
+        "src/claims.rs",
+        "src/api.rs",
+        "src/cli.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/pam.rs::approval_grants_group_policy_until_expiry_or_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::fresh_local_verification_allows_policy_and_issuance",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-06.md",
+        "docs/oidc-profiles.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Explanations are per user and client only; no what-if for pending changes",
+        "No dedicated explain test; exercised inside PAM and device-trust tests"
+      ],
+      "unverified": [
+        "Explain output completeness across sources and ACR"
+      ]
+    },
+    {
+      "id": "M07",
+      "title": "Extend desired-state coverage",
+      "priority": "P2",
+      "phase": 2,
+      "workstream": "Administration and controlled changes",
+      "dependencies": [
+        "M03",
+        "M04",
+        "W01",
+        "P01"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "The desired-state manifest covers users, groups, clients, sources, and source_links (`api_version`, JSON Schema). Workflows, roles, connectors, PAM approvers, and listeners live only in `riauth.toml`.",
+      "implementation": [
+        "src/state.rs",
+        "src/schema.rs",
+        "src/resource.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::inventory_cursors_are_opaque_bound_and_complete",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/sources.rs::source_manifests_are_redacted_atomic_idempotent_and_permission_checked",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/agent.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Connectors, roles, workflows not manageable resources"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W01",
+      "title": "Define a typed workflow model",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "A02",
+        "A03",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No workflow model. The only configurable stage is a single optional `settings.source_stage` per client (ENT-11).",
+      "implementation": [
+        "src/source.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-11.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Typed workflow model"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W02",
+      "title": "Build the server-side workflow executor",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W01",
+        "W03",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No executor. Source-stage suspend/resume/expiry/cancel is the nearest precedent.",
+      "implementation": [
+        "src/source.rs",
+        "src/browser.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/source_stage.rs::suspend_then_resume_completes_the_original_request_and_replay_fails",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/source_stage.rs::expired_stage_is_rejected_without_a_code",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/source_stage.rs::cancel_fails_the_authorization_without_a_code",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-11.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Executor with retries, resumable state, explicit transitions"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W03",
+      "title": "Preserve authentication invariants",
+      "priority": "P0",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W01",
+        "Q01",
+        "Q02"
+      ],
+      "label": "preserve",
+      "journey": "complete-local",
+      "current_state": "The invariants already hold and are regression-tested: proofs are single-use and bound to request and session, cannot move between identical requests, and stages cannot invent assurance. The upstream account must match the bound link. Any workflow engine must keep these.",
+      "implementation": [
+        "src/signin.rs",
+        "src/browser.rs",
+        "src/session_protocol.rs",
+        "src/source.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/signin_core.rs::proof_is_single_use_and_bound_to_request_and_session",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/browser_signin.rs::proof_cannot_be_moved_between_identical_requests",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/source_stage.rs::oauth_only_stage_does_not_invent_authentication_assurance",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/source_stage.rs::upstream_account_must_match_the_bound_user_and_link_table",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::browser_reauthentication_cannot_be_moved_to_an_identical_request",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/enterprise/ENT-11.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Turn into a reusable contract suite (Q02) before any workflow work"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W04",
+      "title": "Add conditional policies and claim mappings",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W02",
+        "W03"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Per-client claim mappings, scope policies, group policy, default ACR/MFA, and required device trust exist and are rechecked at refresh, userinfo, and proxy. There is no conditional policy language (by source, freshness, or device signal combinations).",
+      "implementation": [
+        "src/claims.rs",
+        "src/assurance.rs",
+        "src/provider.rs",
+        "src/authorization.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::claim_mappings_scope_policies_and_subject_import_are_enforced",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::group_policy_is_checked_again_at_refresh_userinfo_and_proxy",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::default_assurance_and_userinfo_essential_acr_trigger_step_up_and_signed_requests_bind_semantics",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/oidc-profiles.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Conditional policies"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W05",
+      "title": "Version workflows safely",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W02",
+        "W03",
+        "W04"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No workflow versioning.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W06",
+      "title": "Add templates and a visual editor",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W01",
+        "W02",
+        "W05",
+        "M07"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No templates or visual editor.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "W07",
+      "title": "Define controlled extensions",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Configurable workflows and policies",
+      "dependencies": [
+        "W01",
+        "W03",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No extension mechanism. `unsafe_code = forbid`; no scripting runtime.",
+      "implementation": [
+        "Cargo.toml"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P01",
+      "title": "Unify reconciliation modes",
+      "priority": "P1",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "M03",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "There are four separate plan/apply engines: desired state (`state.rs`), LDAP sync (`directory.rs`), Workspace/Entra (`cloud_directory.rs`), and outbound SCIM (`provisioning.rs`). All are manual-review only; there is no guarded-automatic or automatic mode.",
+      "implementation": [
+        "src/state.rs",
+        "src/directory.rs",
+        "src/cloud_directory.rs",
+        "src/provisioning.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cloud_directory.rs::http_workspace_plan_does_not_write_until_apply",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/scim_oauth.rs::plans_supersede_pending_snapshots_and_bound_historical_links",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ldap.rs::openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/ldap.md",
+        "docs/scim.md",
+        "docs/enterprise/ENT-03.md",
+        "docs/enterprise/ENT-04.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "One engine",
+        "Automatic modes"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P02",
+      "title": "Add scoped connector controllers",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "P01",
+        "P03",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "No connector scheduler or event-driven controller; the docs tell operators to schedule plan/apply externally. There is a reusable asset: the outbound SCIM worker has durable jobs, leases across restart and nodes, and authority revalidation.",
+      "implementation": [
+        "src/provisioning.rs",
+        "src/api/server.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/scim_oauth.rs::token_endpoint_failure_retries_once_then_can_succeed",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/scim_oauth.rs::completed_job_history_is_compact_and_bounded",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md",
+        "docs/ldap.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Schedules",
+        "Event-driven jobs for inbound connectors"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P03",
+      "title": "Add removal safeguards",
+      "priority": "P0",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "P01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Cloud directories force review above thresholds (`REVIEW_DISABLE_COUNT=5`, 20%/50%) and on incomplete pagination. LDAP rejects partial or error results and makes an intentionally empty result a reviewable plan. Outbound SCIM stops an item on an ambiguous remote ID.",
+      "implementation": [
+        "src/cloud_directory.rs",
+        "src/directory.rs",
+        "src/provisioning.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cloud_directory.rs::large_partial_removal_requires_review",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::partial_pagination_does_not_deprovision_completed_removal_does",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::workspace_confirmed_empty_page_requires_review_for_full_removal",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::malformed_success_pages_fail_plan_and_apply_without_deprovisioning",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-03.md",
+        "docs/enterprise/ENT-04.md",
+        "docs/ldap.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Uniform safeguards across all engines",
+        "LDAP large-removal threshold not found"
+      ],
+      "unverified": [
+        "LDAP removal thresholds (only docs read)"
+      ]
+    },
+    {
+      "id": "P04",
+      "title": "Connect offboarding to downstream jobs",
+      "priority": "P0",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "P02",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "partial",
+      "current_state": "Scheduled offboarding durably disables the user locally and cascades revocation. It never creates downstream jobs; its result is always `downstream: local-only`.",
+      "implementation": [
+        "src/offboarding.rs",
+        "src/core.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/offboarding.rs::configured_scim_targets_are_not_called",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/offboarding.rs::overdue_job_disables_user_and_revokes_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-10.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Persist downstream delivery intent with the local revocation",
+        "Per-target outcome tracking"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P05",
+      "title": "Improve ordinary SCIM-client compatibility",
+      "priority": "P1",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "M03",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The SCIM ETag is the global configuration revision (`meta.version`), and agent mutations require If-Match of that global revision, so unrelated changes stale an ETag. The docs say incompatible clients need an adapter.",
+      "implementation": [
+        "src/scim.rs",
+        "src/context.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/http.rs::scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Resource-level versions"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P06",
+      "title": "Complete the supported SCIM contract",
+      "priority": "P1",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "A02",
+        "P05"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "SCIM Users/Groups CRUD and PATCH exist. Limits: a single `eq` filter, no enterprise/custom schema, no nested groups, no bulk/sort, and immutable names.",
+      "implementation": [
+        "src/scim.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/http.rs::scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/provisioning.rs::scim_omitted_empty_multi_value_fields_are_equal",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Supported-client contract undefined (depends on A02)",
+        "Filters, enterprise schema"
+      ],
+      "unverified": [
+        "Compatibility with any named SCIM client"
+      ]
+    },
+    {
+      "id": "P07",
+      "title": "Make large reconciliation bounded and resumable",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The limits are bounded but not resumable: outbound SCIM caps at 2,000 users and 2 MiB plans, LDAP at 2,000 users, 32 groups, and 4 MiB. Plans are whole-snapshot.",
+      "implementation": [
+        "src/provisioning.rs",
+        "src/directory.rs",
+        "src/cloud_directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/scim_oauth.rs::completed_job_history_is_compact_and_bounded",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::retry_budget_stops_calling_upstream",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md",
+        "docs/ldap.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Pagination/bounded-memory processing beyond fixed caps",
+        "Resumable reconciliation"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "P08",
+      "title": "Expose reliable delivery outcomes",
+      "priority": "P1",
+      "phase": 3,
+      "workstream": "Provisioning and lifecycle automation",
+      "dependencies": [
+        "P02",
+        "P04",
+        "P06"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Jobs persist progress and errors. An uncertain PATCH is reconciled by reading back rather than patching again. Ambiguity stops an item for review. Delivery is documented as at-least-once.",
+      "implementation": [
+        "src/provisioning.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/scim_oauth.rs::uncertain_patch_response_is_reconciled_without_a_second_patch",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/scim_oauth.rs::scim_unauthorized_acquires_once_more_then_stops",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::outbound_scim_plans_provision_groups_preserve_remote_attributes_disable_departures_and_stop_stale_jobs",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Operator reconciliation UI",
+        "Per-target outcome reporting for offboarding"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "I01",
+      "title": "Preserve and verify OAuth/OIDC capabilities",
+      "priority": "P0",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A05",
+        "A06",
+        "Q02"
+      ],
+      "label": "verify",
+      "journey": "complete-local",
+      "current_state": "Broad OAuth/OIDC coverage exists: code+PKCE, refresh rotation, device, client credentials, private_key_jwt, token exchange, DPoP, PAR/JAR/JARM, JWE, pairwise, dynamic registration, and logout variants. It has 41 tests in `tests/identity/oidc.rs` plus the browser suites. A pinned OIDF runner exists, but no results are published, and discovery is static (see A06).",
+      "implementation": [
+        "src/oidc.rs",
+        "src/jose.rs",
+        "src/dpop.rs",
+        "src/exchange.rs",
+        "src/registration.rs",
+        "src/response.rs",
+        "src/logout.rs",
+        "scripts/run-conformance.py"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs",
+          "kind": "rust-suite",
+          "test_functions": 41,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/browser_signin.rs",
+          "kind": "rust-suite",
+          "test_functions": 32,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/browser.rs::browser_terminal_login_callback_and_signed_backchannel_logout",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::concurrent_code_redemption_has_exactly_one_winner",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/oidc-profiles.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Discovery must follow enabled capabilities",
+        "Conformance results"
+      ],
+      "unverified": [
+        "OIDF conformance outcome",
+        "Behaviour with named relying parties"
+      ]
+    },
+    {
+      "id": "I02",
+      "title": "Finish federation and trust management",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A06",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "OIDC/OAuth/SAML sources pin keys and link only explicitly (never by email); unlinking revokes only the linked sessions. Browser completion is partial (U08). There is no assurance-mapping configuration and no key-rotation journey.",
+      "implementation": [
+        "src/source.rs",
+        "src/source/saml.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/sources.rs::upstream_oidc_pkce_pinned_keys_claim_validation_and_terminal_completion",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/sources.rs::oauth_only_sources_use_pinned_userinfo_and_do_not_invent_oidc_assurance_or_link_by_email",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/saml_source.rs::saml_source_signed_encrypted_terminal_linking_and_live_trust",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/saml_source.rs::saml_source_independent_xmlsec_responses",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/oidc-profiles.md",
+        "docs/saml.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Browser linking",
+        "Rotation journey",
+        "Assurance mapping"
+      ],
+      "unverified": [
+        "Real upstream IdPs"
+      ]
+    },
+    {
+      "id": "I03",
+      "title": "Complete integrated proxy behavior",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A06",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "complete-local",
+      "current_state": "Forward auth works for nginx and Traefik (real binaries in the CI integration job), and the embedded reverse proxy handles WebSocket origin checks and revocation. Routes are exact origins only; there are no path bypass or routing rules.",
+      "implementation": [
+        "src/outpost.rs",
+        "src/proxy_server.rs",
+        "deploy/nginx-forward-auth.conf",
+        "deploy/traefik-forward-auth.yml"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/outpost.rs::nginx_forward_auth_terminal_sso_headers_and_revocation",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/outpost.rs::rust_reverse_proxy_terminal_sso_headers_websocket_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/outpost_traefik.rs::traefik_forward_auth_real",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/outpost_traefik.rs::websocket_handshake_requires_allowed_origin",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/network.rs::domain_proxy_shared_session_exact_origins_public_suffix_and_live_scope_policy",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/proxy.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Bypass/routing rules",
+        "Backend isolation claims"
+      ],
+      "unverified": [
+        "Behaviour with real protected applications"
+      ]
+    },
+    {
+      "id": "I04",
+      "title": "Verify SAML, LDAP, and RADIUS profiles",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A02",
+        "A06",
+        "Q02"
+      ],
+      "label": "verify",
+      "journey": "complete-local",
+      "current_state": "SAML is checked against independent xmlsec1 (CI integration). LDAP sync runs against a real OpenLDAP (`scripts/test-ldap.sh`). RADIUS EAP-TLS is checked against the OpenSSL client. The LDAP provider and RADIUS PAP/RadSec use local fixtures. No real SP, supplicant, or NAS peer has been used.",
+      "implementation": [
+        "src/saml.rs",
+        "src/saml/wire.rs",
+        "src/saml/logout.rs",
+        "src/ldap_server.rs",
+        "src/directory.rs",
+        "src/radius.rs",
+        "src/radius/eap.rs",
+        "scripts/test-ldap.sh"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/saml.rs::saml_independent_xmlsec_sign_verify_and_decrypt",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/identity/saml_logout.rs::saml_logout_independent_xmlsec",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/ldap.rs::openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/identity/radius_eap.rs::openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/network.rs::ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/network.rs::radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/saml.md",
+        "docs/ldap.md",
+        "docs/ldap-provider.md",
+        "docs/radius.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Real peers per supported profile"
+      ],
+      "unverified": [
+        "Any named SP, LDAP client, supplicant, or NAS"
+      ]
+    },
+    {
+      "id": "I05",
+      "title": "Add direct supported Google Workspace authorization",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A06",
+        "P01",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "Workspace sync requires an operator-supplied token broker (`token_url`). There is no direct Google service-account/JWT authorization. Tests use local mocks only.",
+      "implementation": [
+        "src/cloud_directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cloud_directory.rs::workspace_links_membership_suspension_and_redaction",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::token_failure_does_not_change_users",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-03.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Direct supported authorization"
+      ],
+      "unverified": [
+        "Real Workspace tenant"
+      ]
+    },
+    {
+      "id": "I06",
+      "title": "Complete Microsoft Entra integration",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A06",
+        "P01",
+        "P03",
+        "Q01"
+      ],
+      "label": "verify",
+      "journey": "module",
+      "current_state": "Entra client_credentials (secret file reread per plan), Graph paging, membership, links, and removal review exist and are tested against local mocks only. There is no certificate credential.",
+      "implementation": [
+        "src/cloud_directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cloud_directory.rs::entra_links_membership_suspension_and_redaction",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::secret_file_is_reread_and_private",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::tenants_do_not_share_users",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-04.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Controlled-tenant validation",
+        "Certificate credentials/rotation"
+      ],
+      "unverified": [
+        "Real Entra tenant"
+      ]
+    },
+    {
+      "id": "I07",
+      "title": "Implement real device-trust integrations",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "A06",
+        "Q01",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "Device trust is a local stand-in: a locally signed JWT bound to session, epoch, and device, and it fails closed. It does not call Google Verified Access, and no managed Chrome has been tested (ENT-06).",
+      "implementation": [
+        "src/device_trust.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/device_trust.rs::trust_is_bound_to_one_session_device_and_proof_lifetime",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::forged_replayed_expired_and_mismatched_signals_are_rejected",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-06.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Vendor adapter",
+        "Provenance/freshness against managed devices"
+      ],
+      "unverified": [
+        "Any managed device"
+      ]
+    },
+    {
+      "id": "I08",
+      "title": "Ship a complete Windows login component",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "I07",
+        "Q01",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "The server-side enrollment, login, and offline-ticket protocol exists. There is no credential provider, DLL, installer, or signed updates, and nothing has been tested on Windows (ENT-13).",
+      "implementation": [
+        "src/windows_login.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/windows_login.rs::offline_ticket_respects_epoch_expiry_revoke_and_device",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/windows_login.rs::enroll_returns_the_secret_once_and_login_succeeds",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-13.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Entire Windows component"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "I09",
+      "title": "Complete temporary-access and dependent-credential lifecycle",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "M03",
+        "M04",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "PAM request, approval, expiry, and revocation exist via API/CLI without changing durable membership. Parent-owned agents are revoked on parent disable. Windows devices are revoked by the disable cascade. There is no browser request/approval UI.",
+      "implementation": [
+        "src/pam.rs",
+        "src/agent.rs",
+        "src/windows_login.rs",
+        "src/core.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/pam.rs::approval_grants_group_policy_until_expiry_or_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/pam.rs::directory_projections_stay_durable_through_grant_expiry_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/agent_parent.rs::parent_user_ownership_constrains_agents",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf.rs::reenabling_legacy_disabled_accounts_never_restores_child_credentials",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-01.md",
+        "docs/enterprise/ENT-02.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Browser request/approval",
+        "Delegated approver roles (M04)"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "I10",
+      "title": "Give every connector an operational interface",
+      "priority": "P2",
+      "phase": 3,
+      "workstream": "Protocols, connectors, and devices",
+      "dependencies": [
+        "M03",
+        "P02",
+        "P08"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Connectors have list, plan, and apply endpoints. Secret files are reread (with a rotation test), outbound SCIM exposes job history, and `doctor` and the delivery endpoints exist. There is no test-connection, no schedules, and no uniform job history or actionable error surface.",
+      "implementation": [
+        "src/api.rs",
+        "src/provisioning.rs",
+        "src/cloud_directory.rs",
+        "src/directory.rs",
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/scim_oauth.rs::secret_rotation_and_static_token_rotation_apply_on_next_acquisition",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::secret_file_is_reread_and_private",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/scim.md",
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Test connection",
+        "Uniform connector status"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S01",
+      "title": "Measure contention first",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "A03"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Telemetry already records `write_wait`, `write_hold`, `pool_wait`, signing, password, cleanup histograms, `scanned_records`, and `optimistic_conflicts`. There is no benchmark or contention-measurement harness.",
+      "implementation": [
+        "src/telemetry.rs",
+        "src/api/observability.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::metrics_distinguish_client_and_server_errors_without_unbounded_path_labels",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Measurement methodology and baseline"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S02",
+      "title": "Index and paginate expensive operations",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "S01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "There are derived indexes (per-user grants, due work, five delivery queues), maintenance pages, and opaque inventory cursors. The docs note that several logical collections are still scanned.",
+      "implementation": [
+        "src/store/maintenance.rs",
+        "src/store.rs",
+        "src/resource.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/storage.rs::maintenance_and_queue_work_is_bounded_and_indexes_commit_atomically",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/pam.rs::user_grant_index_bounds_lookup_and_rebuilds_changed_associations",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::inventory_cursors_are_opaque_bound_and_complete",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Remaining scans",
+        "List pagination on admin reads"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S03",
+      "title": "Narrow transaction contention where justified",
+      "priority": "P0",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "S01",
+        "Q02",
+        "Q05"
+      ],
+      "label": "preserve",
+      "journey": "complete-local",
+      "current_state": "Authentication prepares expensive work outside the writer and revalidates before commit (`store/prepared.rs`). Management writes deliberately serialize (PostgreSQL uses an advisory lock). Keep this until S01 justifies narrowing.",
+      "implementation": [
+        "src/store/prepared.rs",
+        "src/store.rs",
+        "src/postgres_store.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/storage.rs::prepared_authentication_does_not_hold_the_writer_and_rechecks_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/storage.rs::concurrent_prepared_writes_retry_without_lost_updates",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/storage.rs::prepared_ranges_detect_phantoms_and_include_staged_changes",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/storage.rs::prepared_authority_expiring_during_signing_is_rechecked_before_commit",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Any narrowing must be proven against Q05"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S04",
+      "title": "Add dependency-aware revisions",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "M03",
+        "Q02",
+        "Q05"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "A single global `meta.revision` guards all conditional writes and SCIM ETags. There is no dependency-aware revision.",
+      "implementation": [
+        "src/context.rs",
+        "src/scim.rs",
+        "src/state.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs::stale_plans_and_partial_secret_failures_do_not_change_configuration",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/agent.md",
+        "docs/scim.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Dependency-scoped revisions"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S05",
+      "title": "Enforce equivalent backend contracts",
+      "priority": "P0",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "A03",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "One `Store`/`Tx` API sits over `Backend::{Redb, Postgres}`. Nearly all suites use redb fixtures. PostgreSQL has one ignored integration test (atomicity, shared sessions, replay, limits, migration, fenced failover) that runs in the CI integration job via `scripts/test-postgres.sh`.",
+      "implementation": [
+        "src/store.rs",
+        "src/postgres_store.rs",
+        "scripts/test-postgres.sh"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/postgres.rs::postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failover",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/storage.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Same contract suite run against both backends"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "S06",
+      "title": "Stream and verify migrations",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Storage and scaling",
+      "dependencies": [
+        "S05",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "`migrate-postgres` requires an empty target, copies and compares every record, and keeps the source, but it materializes complete record maps in memory.",
+      "implementation": [
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/postgres.rs::postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failover",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Streaming",
+        "Interruption/retry semantics"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O01",
+      "title": "Support integrated and optional split roles",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "A03",
+        "A06",
+        "O02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "One process runs HTTP, the optional LDAP/RADIUS/proxy listeners, and all workers. There are no scoped worker or gateway roles.",
+      "implementation": [
+        "src/api/server.rs",
+        "src/ldap_server.rs",
+        "src/radius.rs",
+        "src/proxy_server.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/worker_capacity.rs",
+          "kind": "rust-suite",
+          "test_functions": 5,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Split roles"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O02",
+      "title": "Preserve single-owner embedded storage",
+      "priority": "P0",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "A03",
+        "Q01",
+        "S05"
+      ],
+      "label": "preserve",
+      "journey": "partial",
+      "current_state": "redb is owned by one process, and its file lock blocks concurrent opens. Listeners are in-process. The remote CLI uses HTTP. Multi-node deployments use PostgreSQL. Local maintenance commands open the store directly and rely on that lock.",
+      "implementation": [
+        "src/store.rs",
+        "src/cli.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::storage_survives_restart_and_issuer_cannot_be_changed_silently",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Guard remains implicit (file lock) once components split"
+      ],
+      "unverified": [
+        "No test found that asserts a second opener is refused"
+      ]
+    },
+    {
+      "id": "O03",
+      "title": "Coordinate multi-node configuration",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "O01",
+        "O02",
+        "A06",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "Nothing detects capability or configuration mismatches between nodes (no source match). The docs require operators to coordinate `riauth.toml`, trust files, and restarts. The `forward_auth` rate limit is per node.",
+      "implementation": [
+        "src/store.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/rate_limits.rs::a_full_shared_rate_table_evicts_its_oldest_window",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Mismatch detection",
+        "Shared-job/cache-freshness contract"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O04",
+      "title": "Make upgrades and rollback explicit",
+      "priority": "P0",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "A08",
+        "S05",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Schema v3 upgrades atomically and rejects future versions. The documented procedure is: stop all older writers, back up, upgrade, and roll back by restore. There is no mixed-version operation or feature activation.",
+      "implementation": [
+        "src/upgrade.rs",
+        "src/store/maintenance.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::schema_upgrade_is_atomic_preserves_credentials_and_rejects_future_versions",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::schema_migrated_restore_still_logs_in_the_same_user",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Mixed-version rules",
+        "Readiness gating on activation"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O05",
+      "title": "Bound overload and isolate background work",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "S01",
+        "P02",
+        "Q05"
+      ],
+      "label": "extend",
+      "journey": "complete-local",
+      "current_state": "The admission model is 8 worker permits, 4 credential permits, and 16 forward-auth permits, with a 2 s queue wait before 503. Probes bypass quotas. Background workers run sequential loops. Connector isolation from sign-in is not measured.",
+      "implementation": [
+        "src/api.rs",
+        "src/api/probes.rs",
+        "src/api/rates.rs",
+        "src/api/server.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/worker_capacity.rs::credential_checks_cannot_take_every_worker",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/outpost_traefik.rs::forward_auth_admission_is_separate_from_workers",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/api/probes.rs::saturated_application_or_probe_workers_do_not_disable_liveness",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::probes_bypass_application_quotas_for_root_and_path_issuers",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Background-job isolation evidence"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O06",
+      "title": "Build operational dashboards and diagnostics",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "P04",
+        "P08",
+        "O03",
+        "S01"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Available now: Prometheus metrics, `doctor`, delivery endpoints (`/api/operations/logout`, `/mail`), an alert rules template, and an alert webhook. There are no dashboards, no connector-lag or node-mismatch signals, and incomplete offboarding is not surfaced.",
+      "implementation": [
+        "src/operations.rs",
+        "src/telemetry.rs",
+        "deploy/prometheus.yml",
+        "deploy/riauth-alerts.yml"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::alert_webhook_posts_one_selected_signal_and_none_when_healthy",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::logout_network_failures_are_visible_and_clear_after_success",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/enterprise/PLATFORM-04.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Dashboards",
+        "Connector/offboarding diagnostics"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "O07",
+      "title": "Publish tested deployment configurations",
+      "priority": "P2",
+      "phase": 4,
+      "workstream": "Deployment, availability, and operations",
+      "dependencies": [
+        "O01",
+        "O03",
+        "O04",
+        "O05",
+        "R05"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Templates exist: Caddyfile, nginx and Traefik forward-auth configs, a systemd unit, Prometheus configuration and alerts, plus the Dockerfile. There is no compose, Kubernetes, or HA reference, and the templates are not tested as deployments.",
+      "implementation": [
+        "deploy/Caddyfile",
+        "deploy/riauth.service",
+        "deploy/nginx-forward-auth.conf",
+        "deploy/traefik-forward-auth.yml",
+        "Dockerfile"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/availability.md",
+        "docs/proxy.md"
+      ],
+      "released_artifact_evidence": "Repository templates only; not packaged in release artifacts.",
+      "gaps": [
+        "Tested distributed configurations"
+      ],
+      "unverified": [
+        "Whether deploy/ templates match the fixtures used by outpost tests"
+      ]
+    },
+    {
+      "id": "R01",
+      "title": "Stream authenticated backups",
+      "priority": "P1",
+      "phase": 4,
+      "workstream": "Backup and recovery",
+      "dependencies": [
+        "A03",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Backups are authenticated, encrypted v2 chunks from one snapshot. The whole ciphertext response is buffered in memory up to `MAX_BACKUP_BYTES` = 64 MiB. There is no streaming, cancellation, or progress reporting.",
+      "implementation": [
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::backup_stops_at_archive_byte_budget_with_many_bounded_pages",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::backup_rejects_oversized_plaintext_pages",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::restore_rejects_oversized_archive_before_reading_or_creating_output",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Streaming",
+        "Configurable quota",
+        "Progress/cancel"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "R02",
+      "title": "Restore directly into the selected backend",
+      "priority": "P1",
+      "phase": 4,
+      "workstream": "Backup and recovery",
+      "dependencies": [
+        "R01",
+        "R04",
+        "S05"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Restore always creates a new redb directory (`Store::open_with_key(... riauth.redb)`). PostgreSQL requires a later offline migrate.",
+      "implementation": [
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::chunked_backup_restore_preserves_user_client_and_grant",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::legacy_single_blob_backup_still_restores",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::encrypted_backup_restore_preserves_identity_keys_and_grants",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/availability.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Direct PostgreSQL restore",
+        "Pre-activation validation"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "R03",
+      "title": "Cover configuration and key custody",
+      "priority": "P1",
+      "phase": 4,
+      "workstream": "Backup and recovery",
+      "dependencies": [
+        "A02",
+        "Q01",
+        "R01"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The docs cover Vault Transit custody, database key files, secret files, and the need for separate recovery. There is no complete custody checklist tied to configuration.",
+      "implementation": [
+        "src/kms.rs",
+        "src/config.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::external_vault_signing_keeps_private_keys_out_of_storage_pins_version_and_verifies_signatures",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/kms.md",
+        "docs/operations.md",
+        "docs/testing.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Recovery inventory of external references"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "R04",
+      "title": "Define database-native recovery and restored-session policy",
+      "priority": "P0",
+      "phase": 4,
+      "workstream": "Backup and recovery",
+      "dependencies": [
+        "Q01",
+        "Q02",
+        "S05"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "Restore preserves sessions, grants, and keys (tests assert this). No policy states which sessions, proofs, grants, or revocations must be invalidated when older state is restored.",
+      "implementation": [
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::chunked_backup_restore_preserves_user_client_and_grant",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Restored-session policy",
+        "Revocation-resurrection analysis"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "R05",
+      "title": "Automate recovery drills",
+      "priority": "P1",
+      "phase": 4,
+      "workstream": "Backup and recovery",
+      "dependencies": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "I01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No automated recovery drill. The PostgreSQL failover test and restore unit tests are components of a drill, not a drill.",
+      "implementation": [
+        "scripts/test-postgres.sh"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/postgres.rs::postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failover",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/testing.md",
+        "docs/operations.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Drill harness and recorded outcomes"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "G01",
+      "title": "Add migration preflight reporting",
+      "priority": "P2",
+      "phase": 5,
+      "workstream": "Migration",
+      "dependencies": [
+        "A01",
+        "A02"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The offline Authentik converter emits `report.json` with `blockers`, `unresolved`, and `ready_for_plan`, plus a manifest when ready. It does not use an exact/convertible/manual/unsupported classification.",
+      "implementation": [
+        "src/migration.rs",
+        "src/cli.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::authentik_import_preserves_exported_subjects_and_blocks_incomplete_translation",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/migration.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Four-way classification",
+        "Non-Authentik sources"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "G02",
+      "title": "Preserve verified identity continuity",
+      "priority": "P2",
+      "phase": 5,
+      "workstream": "Migration",
+      "dependencies": [
+        "G01",
+        "Q01",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Exported subjects, Django password hashes (verified and upgraded), and TOTP settings are preserved. Groups are flattened with cycle rejection.",
+      "implementation": [
+        "src/migration.rs",
+        "src/state.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::authentik_import_preserves_exported_subjects_and_blocks_incomplete_translation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::imported_django_password_hash_is_verified_and_upgraded_without_identity_change",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/factors.rs::imported_totp_factors_preserve_settings_reject_replay_and_reconcile_without_secret_leaks",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::authentik_import_rejects_group_cycles_in_parents_arrays",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/migration.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Issuer/application continuity rehearsal"
+      ],
+      "unverified": [
+        "Against a real Authentik export"
+      ]
+    },
+    {
+      "id": "G03",
+      "title": "Convert only supported mappings and workflows",
+      "priority": "P2",
+      "phase": 5,
+      "workstream": "Migration",
+      "dependencies": [
+        "G01",
+        "W01",
+        "W05"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Property mappings and flows without a reviewed declarative translation are blockers, not silently dropped. No workflow conversion exists (W01 absent).",
+      "implementation": [
+        "src/migration.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::authentik_import_flattens_parents_arrays_and_diamonds",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/migration.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
+      "gaps": [
+        "Tested conversions catalogue"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "G04",
+      "title": "Provide re-enrollment and user communication",
+      "priority": "P2",
+      "phase": 5,
+      "workstream": "Migration",
+      "dependencies": [
+        "G01",
+        "G02",
+        "U03",
+        "U04",
+        "U05"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is no re-enrollment or user communication tooling. The docs state that passkeys, sessions, and opaque tokens do not transfer.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/migration.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "G05",
+      "title": "Rehearse staged cutover per application",
+      "priority": "P2",
+      "phase": 5,
+      "workstream": "Migration",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "R05"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is no staged-cutover harness. The testing guide lists manual checks.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/testing.md",
+        "docs/migration.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q01",
+      "title": "Define shared threat models and invariants",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is no threat-model or invariants document (no match for 'threat' in docs). Trust boundaries are scattered: proxy trust, mTLS via a trusted proxy, and ENT notes. The invariant table in this inventory is a starting point.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md",
+        "docs/operations.md",
+        "docs/enterprise/ENT-05.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Documented shared threat model"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q02",
+      "title": "Build reusable contract tests",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A01",
+        "Q01"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Tests are extensive (388 test functions, 9 ignored) with shared fixtures (`tests/common/mod.rs`, `tests/common/security.rs`). They are scenario tests bound to one `Core` over redb, not reusable contracts parameterized by backend, build, or interface.",
+      "implementation": [
+        "tests/common/mod.rs",
+        "tests/common/security.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/storage.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/signin_core.rs",
+          "kind": "rust-suite",
+          "test_functions": 28,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 16,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/testing.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Parameterized contract harness (backend × edition × interface)"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q03",
+      "title": "Run relevant conformance suites",
+      "priority": "P2",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A02",
+        "I01",
+        "I04"
+      ],
+      "label": "verify",
+      "journey": "module",
+      "current_state": "A pinned OIDF suite runner exists (`scripts/run-conformance.py`, commit 440eec8b). Independent xmlsec1 SAML tests run in CI integration. No conformance results are published and no certification is claimed.",
+      "implementation": [
+        "scripts/run-conformance.py"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/saml.rs::saml_independent_xmlsec_sign_verify_and_decrypt",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::cbc_hmac_jwe_roundtrips_with_an_independent_openssl_implementation",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/limitations.md",
+        "docs/testing.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Run and publish scoped results"
+      ],
+      "unverified": [
+        "Any OIDF run outcome"
+      ]
+    },
+    {
+      "id": "Q04",
+      "title": "Test real peers",
+      "priority": "P2",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A02",
+        "I01",
+        "I02",
+        "I03",
+        "I04",
+        "I05",
+        "I06",
+        "I07",
+        "I08",
+        "I09",
+        "I10"
+      ],
+      "label": "verify",
+      "journey": "partial",
+      "current_state": "Real peers in CI integration are PostgreSQL (replicated), OpenLDAP, nginx, Traefik v3.7.13, xmlsec1, and Chrome. There are no cloud tenants, SAML SPs, network devices, managed devices, or Windows.",
+      "implementation": [
+        ".github/workflows/ci.yml",
+        "scripts/test-ldap.sh",
+        "scripts/test-postgres.sh"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/ldap.rs::openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/outpost_traefik.rs::traefik_forward_auth_real",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/browser.rs::browser_terminal_login_callback_and_signed_backchannel_logout",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/testing.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Peer matrix per advertised integration"
+      ],
+      "unverified": [
+        "CI pass status at base 96e23e2"
+      ]
+    },
+    {
+      "id": "Q05",
+      "title": "Test replay, concurrency, and revocation",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "Q01",
+        "Q02"
+      ],
+      "label": "preserve",
+      "journey": "complete-local",
+      "current_state": "Strong existing regression coverage: code replay and concurrent redemption, refresh-family revocation, prepared-write revalidation, single-claim offboarding leases, concurrent PAM decisions, SSF deduplication, and disable-cascade non-resurrection.",
+      "implementation": [
+        "src/store/prepared.rs",
+        "src/oidc.rs",
+        "src/offboarding.rs",
+        "src/pam.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs::concurrent_code_redemption_has_exactly_one_winner",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::refresh_rotation_replay_revokes_the_entire_family",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/offboarding.rs::second_worker_claims_once_and_epoch_increments_once",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/signin_core.rs::concurrent_double_submit_converges_on_one_session",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf.rs::duplicate_set_acknowledges_without_reapplying_session_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::disable_then_enable_never_resurrects_user_or_client_tokens",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/architecture.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Keep passing through A03/A05 refactors; lift into Q02 contracts"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q06",
+      "title": "Test complete browser and authenticator journeys",
+      "priority": "P1",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "U10",
+        "Q02"
+      ],
+      "label": "extend",
+      "journey": "partial",
+      "current_state": "Playwright covers Chromium, Firefox, and WebKit, with Chromium's virtual WebAuthn authenticator and a phone viewport. The cargo browser tests use real Chrome in CI. Playwright itself is not invoked in CI, and no physical authenticators or mobile devices are used.",
+      "implementation": [
+        "tools/browser/playwright.config.js",
+        "tools/browser/signin.spec.js",
+        "tools/browser/portal.spec.js"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tools/browser/signin.spec.js",
+          "kind": "playwright",
+          "ci": "not-in-ci"
+        },
+        {
+          "ref": "tests/browser.rs::browser_terminal_login_callback_and_signed_backchannel_logout",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        },
+        {
+          "ref": "tests/portal_browser.rs::portal_terminal_sign_in_access_changes_and_responsive_interactions",
+          "kind": "rust",
+          "ci": "ci-integration (#[ignore], external program)"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/PORTAL.md",
+        "docs/passkeys.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "CI wiring for Playwright",
+        "Hardware/mobile matrix"
+      ],
+      "unverified": [
+        "Latest Playwright run results"
+      ]
+    },
+    {
+      "id": "Q07",
+      "title": "Audit dependencies and fuzz parsers",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A01",
+        "Q01"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "In place: cargo-audit 0.22.2 on both lockfiles in CI, Dependabot, a fuzz target over parsers with a seed corpus, corpus replay in `tests/fuzz_corpus.rs` (feature `fuzzing`), and bounded XML parsing tests. There is no scheduled fuzzing and no written advisory-triage record.",
+      "implementation": [
+        "fuzz/fuzz_targets/parsers.rs",
+        "src/fuzzing.rs",
+        ".github/workflows/ci.yml",
+        ".github/dependabot.yml"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/fuzz_corpus.rs::retained_parser_corpus_does_not_panic",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/saml/wire.rs::bounds_depth_before_dom_parsing",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/saml/wire.rs::rejects_retained_deep_unclosed_xml",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "CONTRIBUTING.md",
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Continuous fuzzing",
+        "Advisory triage process"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q08",
+      "title": "Test exact shipped bundles",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A05",
+        "A06",
+        "A08",
+        "S05",
+        "Q02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "Release smoke checks only `docker run ... --json capabilities`, notice equality, and copyright files. There are no edition bundles, no excluded-capability checks, and no rejection tests.",
+      "implementation": [
+        ".github/workflows/release.yml",
+        "scripts/package-release.sh"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "Release pipeline itself (.github/workflows/release.yml, scripts/package-release.sh): linux-x86_64 tarball, docker image archive, SHA256SUMS, build-provenance.json.",
+      "gaps": [
+        "Bundle tests per edition/backend/architecture"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q09",
+      "title": "Publish reproducible benchmarks",
+      "priority": "P2",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "S01",
+        "S02",
+        "S03",
+        "O05",
+        "Q08"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No benchmarks exist in the repository.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q10",
+      "title": "Gate releases on upgrade and recovery",
+      "priority": "P0",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "A09",
+        "O04",
+        "R05",
+        "Q08"
+      ],
+      "label": "build",
+      "journey": "module",
+      "current_state": "The release reuses CI and a smoke test. Upgrade/restore tests exist only as in-process tests; no installed-artifact upgrade, restore, or rollback gate exists.",
+      "implementation": [
+        ".github/workflows/release.yml"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs::schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/operations.rs::schema_migrated_restore_still_logs_in_the_same_user",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/release-notes.md"
+      ],
+      "released_artifact_evidence": "Release pipeline itself (.github/workflows/release.yml, scripts/package-release.sh): linux-x86_64 tarball, docker image archive, SHA256SUMS, build-provenance.json.",
+      "gaps": [
+        "Artifact-level gate"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "Q11",
+      "title": "Publish verifiable releases and independent review evidence",
+      "priority": "P1",
+      "phase": 1,
+      "workstream": "Security, testing, benchmarks, and releases",
+      "dependencies": [
+        "Q07",
+        "Q08",
+        "Q10"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Releases ship SHA256SUMS and `build-provenance.json` (explicitly not a cryptographic attestation), plus generated third-party notices and SECURITY.md. There is no signing, SBOM, or independent review record.",
+      "implementation": [
+        "scripts/package-release.sh",
+        "scripts/generate-third-party-notices.py"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "SECURITY.md",
+        "docs/release-notes.md",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "released_artifact_evidence": "Release pipeline itself (.github/workflows/release.yml, scripts/package-release.sh): linux-x86_64 tarball, docker image archive, SHA256SUMS, build-provenance.json.",
+      "gaps": [
+        "Signatures",
+        "SBOM",
+        "Review scope record"
+      ],
+      "unverified": [
+        "Published v0.1.1 asset set"
+      ]
+    },
+    {
+      "id": "D01",
+      "title": "Write separate Essentials and Platform guides",
+      "priority": "P1",
+      "phase": 5,
+      "workstream": "Documentation and product acceptance",
+      "dependencies": [
+        "A02",
+        "A09",
+        "U10",
+        "M02"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is a single documentation path with no edition split (editions do not exist).",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/README.md",
+        "docs/getting-started.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Edition guides"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "D02",
+      "title": "Publish a capability and compatibility matrix",
+      "priority": "P1",
+      "phase": 5,
+      "workstream": "Documentation and product acceptance",
+      "dependencies": [
+        "A02",
+        "A06",
+        "I04",
+        "Q03",
+        "Q04",
+        "Q08"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The limitations table, per-protocol guides, and `capabilities` feature names exist. There is no build-inclusion or peer matrix.",
+      "implementation": [
+        "src/agent.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/limitations.md",
+        "docs/README.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Matrix"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "D03",
+      "title": "Publish tested integration recipes",
+      "priority": "P1",
+      "phase": 5,
+      "workstream": "Documentation and product acceptance",
+      "dependencies": [
+        "M02",
+        "I10",
+        "Q04"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Guides contain configuration examples, and the nginx/Traefik forward-auth templates exist. Recipes are not tied to recorded peer runs.",
+      "implementation": [
+        "deploy/nginx-forward-auth.conf",
+        "deploy/traefik-forward-auth.yml",
+        "examples/riauth.toml"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/proxy.md",
+        "docs/saml.md",
+        "docs/oidc-profiles.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Tested recipes with expected results"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "D04",
+      "title": "Write operational and emergency runbooks",
+      "priority": "P1",
+      "phase": 5,
+      "workstream": "Documentation and product acceptance",
+      "dependencies": [
+        "U09",
+        "O06",
+        "O07",
+        "R05",
+        "G05"
+      ],
+      "label": "extend",
+      "journey": "module",
+      "current_state": "The operations guide covers TLS, probes, backup/restore, and upgrade/rollback. `recover-admin` is documented. There are no incident runbooks for lockout, connector failure, or key loss.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/operations.md",
+        "docs/availability.md",
+        "docs/enterprise/ENT-13.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Emergency runbooks"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "D05",
+      "title": "Run acceptance against category targets",
+      "priority": "P1",
+      "phase": 5,
+      "workstream": "Documentation and product acceptance",
+      "dependencies": [
+        "A02",
+        "Q03",
+        "Q04",
+        "Q06",
+        "Q08",
+        "Q09",
+        "Q10",
+        "Q11",
+        "D01",
+        "D02",
+        "D03",
+        "D04"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "There is no acceptance program against category targets (the targets come from A02).",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "All"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "X01",
+      "title": "Additional SAML profiles",
+      "priority": "P3",
+      "phase": 6,
+      "workstream": "Demand-driven extensions",
+      "dependencies": [
+        "I04",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "SOAP, artifact, ECP, and encrypted NameID are outside the SAML profile (limitations.md). Demand-driven.",
+      "implementation": [
+        "src/saml.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/limitations.md",
+        "docs/saml.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Named target required"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "X02",
+      "title": "Additional network and directory functionality",
+      "priority": "P3",
+      "phase": 6,
+      "workstream": "Demand-driven extensions",
+      "dependencies": [
+        "I04",
+        "P06",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "RADIUS accounting, CoA, PEAP, and TTLS are unsupported. The LDAP provider is read-only. SCIM has no enterprise schema. Demand-driven.",
+      "implementation": [
+        "src/radius.rs",
+        "src/ldap_server.rs",
+        "src/scim.rs"
+      ],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/limitations.md",
+        "docs/radius.md",
+        "docs/ldap-provider.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Named target required"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "X03",
+      "title": "Additional Shared Signals and provisioning directions",
+      "priority": "P3",
+      "phase": 6,
+      "workstream": "Demand-driven extensions",
+      "dependencies": [
+        "P01",
+        "P02",
+        "I05",
+        "I06",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "Only SSF signed push exists; polling, stream verification, and subject management are excluded. There are no outbound cloud-directory connectors. Demand-driven.",
+      "implementation": [
+        "src/ssf.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/ssf.rs::http_metadata_stream_and_push_routes",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/enterprise/ENT-07.md",
+        "docs/limitations.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Named target required"
+      ],
+      "unverified": []
+    },
+    {
+      "id": "X04",
+      "title": "Advanced proxy orchestration and specialized extensions",
+      "priority": "P3",
+      "phase": 6,
+      "workstream": "Demand-driven extensions",
+      "dependencies": [
+        "I03",
+        "W07",
+        "Q01"
+      ],
+      "label": "build",
+      "journey": "none",
+      "current_state": "No managed gateways or credential injection. Demand-driven.",
+      "implementation": [],
+      "tests_existing": [],
+      "tests_run_in_this_task": [],
+      "documentation": [
+        "docs/proxy.md"
+      ],
+      "released_artifact_evidence": "No released artifact applies.",
+      "gaps": [
+        "Named target required"
+      ],
+      "unverified": []
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "C01",
+      "capability": "OIDC/OAuth provider incl. advanced profiles",
+      "proposed_edition": "essentials",
+      "label": "verify",
+      "implementation": [
+        "src/oidc.rs",
+        "src/jose.rs",
+        "src/dpop.rs",
+        "src/exchange.rs",
+        "src/registration.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs",
+          "kind": "rust-suite",
+          "test_functions": 41,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/browser_signin.rs",
+          "kind": "rust-suite",
+          "test_functions": 32,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/oidc-profiles.md"
+      ],
+      "backlog_ids": [
+        "I01",
+        "A06",
+        "Q03"
+      ]
+    },
+    {
+      "id": "C02",
+      "capability": "Passkeys (browser and terminal)",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/passkey.rs",
+        "src/portal/http.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/portal.rs",
+          "kind": "rust-suite",
+          "test_functions": 24,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/factors.rs",
+          "kind": "rust-suite",
+          "test_functions": 20,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/passkeys.md"
+      ],
+      "backlog_ids": [
+        "U03",
+        "U09",
+        "A04"
+      ]
+    },
+    {
+      "id": "C03",
+      "capability": "Password, TOTP and recovery codes",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/authenticator.rs",
+        "src/signin.rs",
+        "src/password_history.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/factors.rs",
+          "kind": "rust-suite",
+          "test_functions": 20,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/password_history.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/lifecycle.md",
+        "docs/enterprise/ENT-08.md"
+      ],
+      "backlog_ids": [
+        "U04",
+        "U05"
+      ]
+    },
+    {
+      "id": "C04",
+      "capability": "Browser sign-in, SSO session, consent, RP logout",
+      "proposed_edition": "essentials",
+      "label": "preserve",
+      "implementation": [
+        "src/browser.rs",
+        "src/signin.rs",
+        "src/api/interaction.rs",
+        "src/portal/signin.js"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/signin_core.rs",
+          "kind": "rust-suite",
+          "test_functions": 28,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/browser_signin.rs",
+          "kind": "rust-suite",
+          "test_functions": 32,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/PORTAL.md",
+        "docs/architecture.md"
+      ],
+      "backlog_ids": [
+        "W03",
+        "Q05"
+      ]
+    },
+    {
+      "id": "C05",
+      "capability": "Complete browser self-service (invite, verify, recover, factors, sessions, consent, device approval)",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/lifecycle.rs",
+        "src/api.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/factors.rs",
+          "kind": "rust-suite",
+          "test_functions": 20,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/lifecycle.md"
+      ],
+      "backlog_ids": [
+        "U01",
+        "U02",
+        "U04",
+        "U05",
+        "U06",
+        "U07",
+        "U08"
+      ]
+    },
+    {
+      "id": "C06",
+      "capability": "Application portal",
+      "proposed_edition": "essentials",
+      "label": "preserve",
+      "implementation": [
+        "src/portal.rs",
+        "src/portal/http.rs",
+        "src/portal/app.js"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/portal.rs",
+          "kind": "rust-suite",
+          "test_functions": 24,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/portal_browser.rs",
+          "kind": "rust-suite",
+          "test_functions": 1,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/PORTAL.md"
+      ],
+      "backlog_ids": [
+        "A07"
+      ]
+    },
+    {
+      "id": "C07",
+      "capability": "Compact administration GUI",
+      "proposed_edition": "essentials",
+      "label": "build",
+      "implementation": [],
+      "tests_existing": [],
+      "documentation": [],
+      "backlog_ids": [
+        "M01",
+        "M02",
+        "A07"
+      ]
+    },
+    {
+      "id": "C08",
+      "capability": "Groups, claims, scope/group/assurance policy",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/claims.rs",
+        "src/assurance.rs",
+        "src/authorization.rs",
+        "src/provider.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/policy.rs",
+          "kind": "rust-suite",
+          "test_functions": 12,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/oidc-profiles.md"
+      ],
+      "backlog_ids": [
+        "W04",
+        "M06"
+      ]
+    },
+    {
+      "id": "C09",
+      "capability": "Management API/CLI, scoped agents, desired state",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/api.rs",
+        "src/agent.rs",
+        "src/state.rs",
+        "src/context.rs",
+        "src/cli.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 16,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/cli.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/agent.md",
+        "docs/api.md"
+      ],
+      "backlog_ids": [
+        "M03",
+        "M07",
+        "S04"
+      ]
+    },
+    {
+      "id": "C10",
+      "capability": "Audit review, CSV export",
+      "proposed_edition": "essentials",
+      "label": "preserve",
+      "implementation": [
+        "src/reports.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/reports.rs",
+          "kind": "rust-suite",
+          "test_functions": 12,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-09.md",
+        "docs/enterprise/ENT-15.md"
+      ],
+      "backlog_ids": [
+        "Q02"
+      ]
+    },
+    {
+      "id": "C11",
+      "capability": "Encrypted backup and restore",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/operations.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 14,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/operations.md"
+      ],
+      "backlog_ids": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05"
+      ]
+    },
+    {
+      "id": "C12",
+      "capability": "LDAP import (synchronization) and LDAP password authentication",
+      "proposed_edition": "essentials",
+      "label": "verify",
+      "implementation": [
+        "src/directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/ldap.rs",
+          "kind": "rust-suite",
+          "test_functions": 1,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/ldap.md"
+      ],
+      "backlog_ids": [
+        "I04",
+        "P01",
+        "P03"
+      ]
+    },
+    {
+      "id": "C13",
+      "capability": "Outbound SCIM provisioning",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/provisioning.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/scim_oauth.rs",
+          "kind": "rust-suite",
+          "test_functions": 13,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/scim.md",
+        "docs/enterprise/ENT-12.md"
+      ],
+      "backlog_ids": [
+        "P01",
+        "P02",
+        "P04",
+        "P08"
+      ]
+    },
+    {
+      "id": "C14",
+      "capability": "Storage: redb and PostgreSQL",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/store.rs",
+        "src/postgres_store.rs",
+        "src/upgrade.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/storage.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/postgres.rs",
+          "kind": "rust-suite",
+          "test_functions": 1,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/availability.md"
+      ],
+      "backlog_ids": [
+        "S05",
+        "S06",
+        "O02",
+        "O04"
+      ]
+    },
+    {
+      "id": "C15",
+      "capability": "Operations: probes, metrics, native TLS, alerts, rate limits",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/api/probes.rs",
+        "src/api/observability.rs",
+        "src/telemetry.rs",
+        "src/api/rates.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 14,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/rate_limits.rs",
+          "kind": "rust-suite",
+          "test_functions": 10,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/worker_capacity.rs",
+          "kind": "rust-suite",
+          "test_functions": 5,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/operations.md",
+        "docs/enterprise/PLATFORM-04.md"
+      ],
+      "backlog_ids": [
+        "O05",
+        "O06"
+      ]
+    },
+    {
+      "id": "C16",
+      "capability": "Authentik migration",
+      "proposed_edition": "essentials",
+      "label": "extend",
+      "implementation": [
+        "src/migration.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 16,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/migration.md"
+      ],
+      "backlog_ids": [
+        "G01",
+        "G02",
+        "G03"
+      ]
+    },
+    {
+      "id": "C17",
+      "capability": "Configurable workflows (today: one source stage)",
+      "proposed_edition": "platform",
+      "label": "build",
+      "implementation": [
+        "src/source.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/source_stage.rs",
+          "kind": "rust-suite",
+          "test_functions": 8,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-11.md"
+      ],
+      "backlog_ids": [
+        "W01",
+        "W02",
+        "W05",
+        "W06",
+        "W07"
+      ]
+    },
+    {
+      "id": "C18",
+      "capability": "SAML IdP, SAML source and SAML logout",
+      "proposed_edition": "platform",
+      "label": "verify",
+      "implementation": [
+        "src/saml.rs",
+        "src/saml/wire.rs",
+        "src/saml/logout.rs",
+        "src/source/saml.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/saml.rs",
+          "kind": "rust-suite",
+          "test_functions": 14,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/saml_logout.rs",
+          "kind": "rust-suite",
+          "test_functions": 3,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/saml_source.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/saml.md"
+      ],
+      "backlog_ids": [
+        "I04",
+        "X01"
+      ]
+    },
+    {
+      "id": "C19",
+      "capability": "LDAP provider (read-only listener)",
+      "proposed_edition": "platform",
+      "label": "verify",
+      "implementation": [
+        "src/ldap_server.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/network.rs",
+          "kind": "rust-suite",
+          "test_functions": 4,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/ldap-provider.md"
+      ],
+      "backlog_ids": [
+        "I04",
+        "X02"
+      ]
+    },
+    {
+      "id": "C20",
+      "capability": "RADIUS PAP, RadSec, EAP-TLS",
+      "proposed_edition": "platform",
+      "label": "verify",
+      "implementation": [
+        "src/radius.rs",
+        "src/radius/eap.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/network.rs",
+          "kind": "rust-suite",
+          "test_functions": 4,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/identity/radius_eap.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/radius.md"
+      ],
+      "backlog_ids": [
+        "I04",
+        "X02"
+      ]
+    },
+    {
+      "id": "C21",
+      "capability": "Inbound SCIM server",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/scim.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/http.rs",
+          "kind": "rust-suite",
+          "test_functions": 8,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/scim.md"
+      ],
+      "backlog_ids": [
+        "P05",
+        "P06"
+      ]
+    },
+    {
+      "id": "C22",
+      "capability": "Shared Signals push (transmitter and receiver)",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/ssf.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/ssf.rs",
+          "kind": "rust-suite",
+          "test_functions": 20,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-07.md"
+      ],
+      "backlog_ids": [
+        "X03"
+      ]
+    },
+    {
+      "id": "C23",
+      "capability": "Forward auth and embedded reverse proxy",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/outpost.rs",
+        "src/proxy_server.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/outpost.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/outpost_traefik.rs",
+          "kind": "rust-suite",
+          "test_functions": 13,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/proxy.md"
+      ],
+      "backlog_ids": [
+        "I03",
+        "X04"
+      ]
+    },
+    {
+      "id": "C24",
+      "capability": "Upstream federation sources and explicit linking",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/source.rs",
+        "src/source/saml.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/identity/sources.rs",
+          "kind": "rust-suite",
+          "test_functions": 4,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/source_stage.rs",
+          "kind": "rust-suite",
+          "test_functions": 8,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/oidc-profiles.md",
+        "docs/enterprise/ENT-11.md"
+      ],
+      "backlog_ids": [
+        "I02",
+        "U08"
+      ]
+    },
+    {
+      "id": "C25",
+      "capability": "Cloud directories: Google Workspace, Microsoft Entra ID",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/cloud_directory.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cloud_directory.rs",
+          "kind": "rust-suite",
+          "test_functions": 16,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-03.md",
+        "docs/enterprise/ENT-04.md"
+      ],
+      "backlog_ids": [
+        "I05",
+        "I06",
+        "P03"
+      ]
+    },
+    {
+      "id": "C26",
+      "capability": "Device integrations: device trust, Windows login protocol, HTTPS client certificates",
+      "proposed_edition": "platform",
+      "label": "build",
+      "implementation": [
+        "src/device_trust.rs",
+        "src/windows_login.rs",
+        "src/mtls.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/device_trust.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/windows_login.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/mtls.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-05.md",
+        "docs/enterprise/ENT-06.md",
+        "docs/enterprise/ENT-13.md"
+      ],
+      "backlog_ids": [
+        "I07",
+        "I08"
+      ]
+    },
+    {
+      "id": "C27",
+      "capability": "Temporary access, parent-owned agents, scheduled offboarding",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/pam.rs",
+        "src/agent.rs",
+        "src/offboarding.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/pam.rs",
+          "kind": "rust-suite",
+          "test_functions": 5,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/agent_parent.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/offboarding.rs",
+          "kind": "rust-suite",
+          "test_functions": 13,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-01.md",
+        "docs/enterprise/ENT-02.md",
+        "docs/enterprise/ENT-10.md"
+      ],
+      "backlog_ids": [
+        "I09",
+        "P04"
+      ]
+    },
+    {
+      "id": "C28",
+      "capability": "Expanded administration: delegated roles, reviewed changes, event map, external signing",
+      "proposed_edition": "platform",
+      "label": "extend",
+      "implementation": [
+        "src/event_map.rs",
+        "src/kms.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/event_map.rs",
+          "kind": "rust-suite",
+          "test_functions": 7,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/enterprise/ENT-14.md",
+        "docs/kms.md"
+      ],
+      "backlog_ids": [
+        "M04",
+        "M05",
+        "M06"
+      ]
+    },
+    {
+      "id": "C29",
+      "capability": "riauthctl remote administration client",
+      "proposed_edition": "riauthctl",
+      "label": "build",
+      "implementation": [
+        "src/cli.rs",
+        "src/cli/transport.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/cli.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/agent.md",
+        "docs/architecture.md"
+      ],
+      "backlog_ids": [
+        "A04"
+      ]
+    },
+    {
+      "id": "C30",
+      "capability": "Optional terminal USB authenticator",
+      "proposed_edition": "riauthctl",
+      "label": "extend",
+      "implementation": [
+        "src/passkey.rs"
+      ],
+      "tests_existing": [],
+      "documentation": [
+        "docs/passkeys.md"
+      ],
+      "backlog_ids": [
+        "A04"
+      ]
+    },
+    {
+      "id": "C31",
+      "capability": "Local maintenance (init, restore, recover-admin, migrate-postgres, import)",
+      "proposed_edition": "server-maintenance (both builds)",
+      "label": "extend",
+      "implementation": [
+        "src/cli.rs",
+        "src/operations.rs",
+        "src/migration.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/operations.rs",
+          "kind": "rust-suite",
+          "test_functions": 14,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/cli.rs",
+          "kind": "rust-suite",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
+        }
+      ],
+      "documentation": [
+        "docs/operations.md",
+        "docs/migration.md"
+      ],
+      "backlog_ids": [
+        "A04",
+        "U01",
+        "R02"
+      ]
+    }
+  ],
+  "invariants_to_preserve": [
+    {
+      "id": "INV-1",
+      "invariant": "Disabling a user durably revokes child agents, Windows devices and tickets, queues RP logout and SSF; re-enable never restores them",
+      "location": "src/store.rs + src/core.rs (security_transition hook)",
+      "tests_existing": [
+        {
+          "ref": "tests/ssf.rs::disable_entry_points_revoke_dependents_and_enqueue_exactly_once",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf.rs::reenabling_legacy_disabled_accounts_never_restores_child_credentials",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::disable_then_enable_never_resurrects_user_or_client_tokens",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-2",
+      "invariant": "Authentication proofs are single-use and bound to the request and session",
+      "location": "src/signin.rs, src/browser.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/signin_core.rs::proof_is_single_use_and_bound_to_request_and_session",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/browser_signin.rs::proof_cannot_be_moved_between_identical_requests",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-3",
+      "invariant": "One-time codes and tokens have exactly one winner; replay revokes the family",
+      "location": "src/oidc.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/identity/oidc.rs::concurrent_code_redemption_has_exactly_one_winner",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/oidc.rs::refresh_rotation_replay_revokes_the_entire_family",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-4",
+      "invariant": "Prepared authentication revalidates revocation and authority before commit",
+      "location": "src/store/prepared.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/storage.rs::prepared_authentication_does_not_hold_the_writer_and_rechecks_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/storage.rs::prepared_authority_expiring_during_signing_is_rechecked_before_commit",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-5",
+      "invariant": "Agents cannot create or modify administrators; the last administrator is preserved",
+      "location": "src/core.rs, src/agent.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/identity/policy.rs::last_administrator_is_preserved",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/operations.rs::agent_credentials_enforce_action_resource_and_identity_boundaries",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-6",
+      "invariant": "Upstream identities never link by email or username; linking is explicit",
+      "location": "src/source.rs, src/cloud_directory.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/identity/sources.rs::oauth_only_sources_use_pinned_userinfo_and_do_not_invent_oidc_assurance_or_link_by_email",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/cloud_directory.rs::unrelated_usernames_and_administrators_are_not_linked",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-7",
+      "invariant": "Temporary grants never change durable membership",
+      "location": "src/pam.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/pam.rs::directory_projections_stay_durable_through_grant_expiry_and_revocation",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-8",
+      "invariant": "Policy is re-evaluated at refresh, userinfo and proxy, not only at issuance",
+      "location": "src/claims.rs, src/outpost.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/identity/policy.rs::group_policy_is_checked_again_at_refresh_userinfo_and_proxy",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/identity/policy.rs::updated_default_acr_rejects_userinfo_introspection_and_proxy_consistently",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-9",
+      "invariant": "Configuration rejects unknown keys (no silently ignored configuration)",
+      "location": "src/config.rs (deny_unknown_fields)",
+      "tests_existing": [
+        {
+          "ref": "tests/rate_limits.rs::config_rejects_unknown_rate_limit_categories",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    },
+    {
+      "id": "INV-10",
+      "invariant": "Schema upgrades are atomic and future schema versions are refused",
+      "location": "src/upgrade.rs",
+      "tests_existing": [
+        {
+          "ref": "tests/identity/operations.rs::schema_upgrade_is_atomic_preserves_credentials_and_rejects_future_versions",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ]
+    }
+  ],
+  "dependency_map": {
+    "current_module_graph": {
+      "agent": {
+        "out": 6,
+        "in": 15,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "schema",
+          "store"
+        ]
+      },
+      "api": {
+        "out": 38,
+        "in": 4,
+        "references": [
+          "agent",
+          "browser",
+          "claims",
+          "config",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "event_map",
+          "keyring",
+          "ldap_server",
+          "lifecycle",
+          "logout",
+          "model",
+          "mtls",
+          "offboarding",
+          "oidc",
+          "operations",
+          "outpost",
+          "pam",
+          "portal",
+          "provisioning",
+          "proxy_server",
+          "radius",
+          "registration",
+          "reports",
+          "response",
+          "saml",
+          "schema",
+          "scim",
+          "session_protocol",
+          "signin",
+          "source",
+          "ssf",
+          "state",
+          "store",
+          "telemetry",
+          "windows_login"
+        ]
+      },
+      "assurance": {
+        "out": 4,
+        "in": 8,
+        "references": [
+          "error",
+          "model",
+          "oidc",
+          "radius"
+        ]
+      },
+      "authenticator": {
+        "out": 3,
+        "in": 4,
+        "references": [
+          "crypto",
+          "error",
+          "model"
+        ]
+      },
+      "authorization": {
+        "out": 7,
+        "in": 4,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "model",
+          "oidc",
+          "store"
+        ]
+      },
+      "browser": {
+        "out": 16,
+        "in": 7,
+        "references": [
+          "assurance",
+          "authorization",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "oidc",
+          "outpost",
+          "response",
+          "saml",
+          "signin",
+          "source",
+          "ssf",
+          "store"
+        ]
+      },
+      "claims": {
+        "out": 6,
+        "in": 12,
+        "references": [
+          "core",
+          "crypto",
+          "device_trust",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "cli": {
+        "out": 19,
+        "in": 0,
+        "references": [
+          "agent",
+          "api",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "jose",
+          "lifecycle",
+          "migration",
+          "model",
+          "oidc",
+          "operations",
+          "passkey",
+          "postgres_store",
+          "registration",
+          "saml",
+          "schema",
+          "source",
+          "state"
+        ]
+      },
+      "cloud_directory": {
+        "out": 8,
+        "in": 3,
+        "references": [
+          "agent",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "store"
+        ]
+      },
+      "config": {
+        "out": 12,
+        "in": 21,
+        "references": [
+          "cloud_directory",
+          "core",
+          "device_trust",
+          "directory",
+          "kms",
+          "ldap_server",
+          "lifecycle",
+          "mtls",
+          "postgres_store",
+          "provisioning",
+          "proxy_server",
+          "radius"
+        ]
+      },
+      "context": {
+        "out": 4,
+        "in": 8,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "store"
+        ]
+      },
+      "core": {
+        "out": 37,
+        "in": 43,
+        "references": [
+          "agent",
+          "authorization",
+          "browser",
+          "claims",
+          "cloud_directory",
+          "config",
+          "context",
+          "crypto",
+          "device_trust",
+          "directory",
+          "error",
+          "issuer",
+          "jose",
+          "keyring",
+          "lifecycle",
+          "logout",
+          "model",
+          "mtls",
+          "offboarding",
+          "oidc",
+          "outpost",
+          "pam",
+          "passkey",
+          "password_history",
+          "portal",
+          "provider",
+          "provisioning",
+          "radius",
+          "saml",
+          "session_protocol",
+          "signin",
+          "source",
+          "ssf",
+          "state",
+          "store",
+          "upgrade",
+          "windows_login"
+        ]
+      },
+      "crypto": {
+        "out": 5,
+        "in": 46,
+        "references": [
+          "authenticator",
+          "config",
+          "error",
+          "jose",
+          "kms"
+        ]
+      },
+      "device_trust": {
+        "out": 6,
+        "in": 4,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "jose",
+          "model",
+          "store"
+        ]
+      },
+      "directory": {
+        "out": 10,
+        "in": 3,
+        "references": [
+          "agent",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "oidc",
+          "source",
+          "store"
+        ]
+      },
+      "dpop": {
+        "out": 6,
+        "in": 3,
+        "references": [
+          "crypto",
+          "error",
+          "jose",
+          "model",
+          "oidc",
+          "store"
+        ]
+      },
+      "encryption": {
+        "out": 2,
+        "in": 1,
+        "references": [
+          "crypto",
+          "error"
+        ]
+      },
+      "error": {
+        "out": 0,
+        "in": 55,
+        "references": []
+      },
+      "event_map": {
+        "out": 4,
+        "in": 1,
+        "references": [
+          "core",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "exchange": {
+        "out": 11,
+        "in": 3,
+        "references": [
+          "core",
+          "crypto",
+          "dpop",
+          "error",
+          "issuer",
+          "jose",
+          "model",
+          "oidc",
+          "provider",
+          "resource",
+          "store"
+        ]
+      },
+      "fuzzing": {
+        "out": 4,
+        "in": 0,
+        "references": [
+          "dpop",
+          "jose",
+          "radius",
+          "saml"
+        ]
+      },
+      "issuer": {
+        "out": 5,
+        "in": 9,
+        "references": [
+          "config",
+          "core",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "jose": {
+        "out": 3,
+        "in": 15,
+        "references": [
+          "crypto",
+          "error",
+          "store"
+        ]
+      },
+      "keyring": {
+        "out": 6,
+        "in": 7,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "store"
+        ]
+      },
+      "kms": {
+        "out": 5,
+        "in": 2,
+        "references": [
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "jose"
+        ]
+      },
+      "ldap_server": {
+        "out": 7,
+        "in": 3,
+        "references": [
+          "api",
+          "assurance",
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "lifecycle": {
+        "out": 9,
+        "in": 5,
+        "references": [
+          "agent",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "password_history",
+          "store"
+        ]
+      },
+      "logout": {
+        "out": 10,
+        "in": 20,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "keyring",
+          "model",
+          "saml",
+          "session_protocol",
+          "ssf",
+          "store"
+        ]
+      },
+      "migration": {
+        "out": 9,
+        "in": 2,
+        "references": [
+          "claims",
+          "config",
+          "crypto",
+          "error",
+          "model",
+          "portal",
+          "provider",
+          "source",
+          "state"
+        ]
+      },
+      "model": {
+        "out": 12,
+        "in": 48,
+        "references": [
+          "assurance",
+          "authenticator",
+          "claims",
+          "encryption",
+          "exchange",
+          "jose",
+          "ldap_server",
+          "outpost",
+          "portal",
+          "radius",
+          "saml",
+          "source"
+        ]
+      },
+      "mtls": {
+        "out": 8,
+        "in": 4,
+        "references": [
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "oidc",
+          "store"
+        ]
+      },
+      "offboarding": {
+        "out": 7,
+        "in": 2,
+        "references": [
+          "agent",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "store"
+        ]
+      },
+      "oidc": {
+        "out": 21,
+        "in": 15,
+        "references": [
+          "assurance",
+          "authorization",
+          "claims",
+          "core",
+          "crypto",
+          "device_trust",
+          "dpop",
+          "error",
+          "exchange",
+          "issuer",
+          "jose",
+          "keyring",
+          "logout",
+          "model",
+          "provider",
+          "radius",
+          "resource",
+          "response",
+          "session_protocol",
+          "source",
+          "store"
+        ]
+      },
+      "operations": {
+        "out": 10,
+        "in": 2,
+        "references": [
+          "claims",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "postgres_store",
+          "store",
+          "upgrade"
+        ]
+      },
+      "outpost": {
+        "out": 11,
+        "in": 5,
+        "references": [
+          "browser",
+          "claims",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "model",
+          "oidc",
+          "provider",
+          "store"
+        ]
+      },
+      "pam": {
+        "out": 5,
+        "in": 2,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "passkey": {
+        "out": 9,
+        "in": 3,
+        "references": [
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "oidc",
+          "signin",
+          "store"
+        ]
+      },
+      "password_history": {
+        "out": 3,
+        "in": 4,
+        "references": [
+          "crypto",
+          "error",
+          "store"
+        ]
+      },
+      "portal": {
+        "out": 16,
+        "in": 4,
+        "references": [
+          "api",
+          "assurance",
+          "browser",
+          "claims",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "passkey",
+          "provider",
+          "saml",
+          "signin",
+          "ssf",
+          "store"
+        ]
+      },
+      "postgres_store": {
+        "out": 3,
+        "in": 4,
+        "references": [
+          "config",
+          "error",
+          "telemetry"
+        ]
+      },
+      "provider": {
+        "out": 10,
+        "in": 7,
+        "references": [
+          "assurance",
+          "claims",
+          "core",
+          "error",
+          "exchange",
+          "jose",
+          "model",
+          "oidc",
+          "radius",
+          "resource"
+        ]
+      },
+      "provisioning": {
+        "out": 8,
+        "in": 4,
+        "references": [
+          "agent",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "scim",
+          "store"
+        ]
+      },
+      "proxy_server": {
+        "out": 6,
+        "in": 2,
+        "references": [
+          "api",
+          "config",
+          "core",
+          "error",
+          "model",
+          "outpost"
+        ]
+      },
+      "radius": {
+        "out": 9,
+        "in": 9,
+        "references": [
+          "assurance",
+          "claims",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "ssf",
+          "store"
+        ]
+      },
+      "registration": {
+        "out": 8,
+        "in": 3,
+        "references": [
+          "agent",
+          "core",
+          "crypto",
+          "error",
+          "jose",
+          "model",
+          "oidc",
+          "store"
+        ]
+      },
+      "reports": {
+        "out": 5,
+        "in": 1,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "resource": {
+        "out": 2,
+        "in": 3,
+        "references": [
+          "error",
+          "model"
+        ]
+      },
+      "response": {
+        "out": 7,
+        "in": 5,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "keyring",
+          "model",
+          "store"
+        ]
+      },
+      "saml": {
+        "out": 17,
+        "in": 10,
+        "references": [
+          "assurance",
+          "browser",
+          "claims",
+          "config",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "keyring",
+          "logout",
+          "model",
+          "response",
+          "session_protocol",
+          "signin",
+          "source",
+          "ssf",
+          "store"
+        ]
+      },
+      "schema": {
+        "out": 16,
+        "in": 3,
+        "references": [
+          "agent",
+          "authenticator",
+          "cloud_directory",
+          "directory",
+          "error",
+          "keyring",
+          "lifecycle",
+          "migration",
+          "model",
+          "mtls",
+          "provisioning",
+          "radius",
+          "registration",
+          "source",
+          "state",
+          "windows_login"
+        ]
+      },
+      "scim": {
+        "out": 8,
+        "in": 2,
+        "references": [
+          "agent",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "password_history",
+          "store"
+        ]
+      },
+      "session_protocol": {
+        "out": 12,
+        "in": 5,
+        "references": [
+          "browser",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "logout",
+          "model",
+          "saml",
+          "signin",
+          "ssf",
+          "store"
+        ]
+      },
+      "signin": {
+        "out": 8,
+        "in": 7,
+        "references": [
+          "browser",
+          "core",
+          "crypto",
+          "error",
+          "logout",
+          "model",
+          "ssf",
+          "store"
+        ]
+      },
+      "source": {
+        "out": 17,
+        "in": 11,
+        "references": [
+          "agent",
+          "authorization",
+          "config",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "issuer",
+          "jose",
+          "logout",
+          "model",
+          "oidc",
+          "response",
+          "saml",
+          "ssf",
+          "state",
+          "store"
+        ]
+      },
+      "ssf": {
+        "out": 9,
+        "in": 11,
+        "references": [
+          "agent",
+          "core",
+          "crypto",
+          "error",
+          "jose",
+          "logout",
+          "model",
+          "provider",
+          "store"
+        ]
+      },
+      "state": {
+        "out": 13,
+        "in": 6,
+        "references": [
+          "agent",
+          "authenticator",
+          "claims",
+          "context",
+          "core",
+          "crypto",
+          "error",
+          "jose",
+          "logout",
+          "model",
+          "password_history",
+          "source",
+          "store"
+        ]
+      },
+      "store": {
+        "out": 10,
+        "in": 42,
+        "references": [
+          "agent",
+          "config",
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "postgres_store",
+          "ssf",
+          "telemetry",
+          "upgrade"
+        ]
+      },
+      "telemetry": {
+        "out": 0,
+        "in": 3,
+        "references": []
+      },
+      "upgrade": {
+        "out": 4,
+        "in": 3,
+        "references": [
+          "crypto",
+          "error",
+          "model",
+          "store"
+        ]
+      },
+      "windows_login": {
+        "out": 5,
+        "in": 3,
+        "references": [
+          "core",
+          "crypto",
+          "error",
+          "model",
+          "store"
+        ]
+      }
+    },
+    "verified_coupling": [
+      {
+        "edge": "store -> core, ssf",
+        "where": "src/store.rs security_transition calls crate::core::user_security_transition and crate::ssf::enqueue",
+        "impact": "Storage layer carries identity revocation semantics (INV-1); A03 must relocate without changing them"
+      },
+      {
+        "edge": "model -> portal, saml, radius, ldap_server",
+        "where": "src/model.rs client settings embed crate::portal::Settings, crate::saml::Settings, crate::radius::Settings, crate::ldap_server::Settings",
+        "impact": "Shared model cannot compile without protocol adapters; blocks A05 feature gating"
+      },
+      {
+        "edge": "config -> cloud_directory, directory, provisioning, radius, ldap_server, proxy_server, kms, mtls, device_trust, lifecycle, postgres_store",
+        "where": "src/config.rs Config struct",
+        "impact": "Config aggregates every module; A06 needs per-capability sections that can be rejected when not compiled"
+      },
+      {
+        "edge": "ldap_server, proxy_server, portal -> api",
+        "where": "crate::api::tls_files and crate::api::browser_response",
+        "impact": "Protocol listeners depend on HTTP server assembly"
+      },
+      {
+        "edge": "crypto -> config, kms, authenticator, jose",
+        "where": "src/crypto.rs",
+        "impact": "Crypto primitives depend on configuration and the Vault signer"
+      },
+      {
+        "edge": "core <-> 37 modules",
+        "where": "src/core.rs (out 37, in 43)",
+        "impact": "God module; identity core boundary must be carved out of it"
+      },
+      {
+        "edge": "cli -> api, core, operations, postgres_store, migration, passkey",
+        "where": "src/cli.rs",
+        "impact": "Client links server code; A04 needs the remote/local split first"
+      },
+      {
+        "edge": "server binary -> webauthn-authenticator-rs (usb, ui-cli), rpassword; image -> libudev1",
+        "where": "Cargo.toml, Dockerfile",
+        "impact": "Server ships terminal/USB dependencies"
+      }
+    ],
+    "roadmap_critical_path": [
+      "A01",
+      "A02",
+      "A03",
+      "M03",
+      "A04",
+      "A05",
+      "A06",
+      "A07",
+      "U03",
+      "U08",
+      "U10",
+      "Q06",
+      "D05"
+    ],
+    "foundation_order": [
+      "A01",
+      "Q01",
+      "A02",
+      "Q02",
+      "A03",
+      "M03",
+      "A04",
+      "A05",
+      "A06",
+      "S05",
+      "A08",
+      "Q08"
+    ]
+  }
+}
