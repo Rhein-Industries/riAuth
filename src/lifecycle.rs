@@ -800,6 +800,16 @@ impl Core {
         })
     }
     fn claim_mail(&self) -> Result<Vec<Delivery>> {
+        // The due index changes atomically with the outbox. Skip an idle snapshot;
+        // later enqueues wait for the next poll. A positive hint must be rechecked
+        // under the writer, including proof validity, expiry and the current lease.
+        if self
+            .store
+            .read(|tx| tx.due::<Delivery>("mail_deliveries", now(), 1))?
+            .is_empty()
+        {
+            return Ok(Vec::new());
+        }
         self.store.write(|tx| {
             let mut ready = Vec::new();
             for (id, mut delivery) in tx.due::<Delivery>("mail_deliveries", now(), 32)? {
