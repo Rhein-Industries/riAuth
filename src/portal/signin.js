@@ -27,7 +27,7 @@
   const noun = page?.kind === "logout" ? "sign-out request" : "sign-in request";
   // `generation` discards state fetched while a user action was in flight.
   let state = null, current = "loading", generation = 0, acting = 0, loading = false, again = false, leaving = false;
-  let pollTimer, messageAction = null, flow = null, flowKey = null;
+  let pollTimer, messageAction = null, flow = null, flowKey = null, passkeyAttempt = 0;
 
   const app = () => state?.application?.name || "the application";
   // Polling continues while the request can still change: open screens, and a request only
@@ -120,6 +120,7 @@
   function render(next) {
     const previous = state;
     state = next;
+    if (next.status !== "authenticate") { void flow?.cancel(); $("signin-passkey-cancel").hidden = true; }
     if (next.status === "complete" || next.status === "done") { proceed(next); return; }
     if (next.status === "unavailable") unavailable(next);
     else if (next.kind === "logout") logout(next);
@@ -166,10 +167,13 @@
     $("signin-cancel").textContent = `Cancel and return to ${app()}`;
     const key = `${next.pinned}:${next.session_ref}`;
     if (flowKey !== key) {
+      void flow?.cancel(); passkeyAttempt += 1;
+      $("signin-passkey-cancel").hidden = true;
       flowKey = key;
       flow = RiAuth.passkeyFlow(
         () => RiAuth.post(`${page.api}/passkey/start`, {}, { retry: true }),
-        (credential, started) => RiAuth.post(`${page.api}/passkey/finish`, { ceremony: started.ceremony, credential }));
+        (credential, started) => RiAuth.post(`${page.api}/passkey/finish`, { ceremony: started.ceremony, credential }), false,
+        (started) => RiAuth.post(`${page.api}/passkey/cancel`, { ceremony: started.ceremony }));
     }
     if (changed) clearError("signin-error");
     terminal("signin-authenticate", "signin-cancel");
@@ -255,6 +259,7 @@
       try { next = await request(); } catch (error) { failure = error; }
       acting -= 1; generation += 1;
       if (next) { render(next); return; }
+      if (!failure) { schedule(); return; }
       if (failure.code === "invalid_credentials") {
         $("signin-otp").value = "";
         for (const field of FIELDS) $(field).setAttribute("aria-invalid", "true");
@@ -279,24 +284,45 @@
   }
   $("signin-form").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (acting) return;
     const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = code($("signin-otp").value);
     if (!username || !password) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
     if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {
+      await cancelPasskey();
       const next = await RiAuth.post(`${page.api}/password`, { username, password, otp });
       $("signin-otp").value = "";
       return next;
     }, "Couldn't sign in. Try again.");
   });
   for (const field of FIELDS) $(field).addEventListener("input", () => $(field).removeAttribute("aria-invalid"));
-  $("signin-passkey").addEventListener("click", () => act($("signin-passkey"), "signin-error", () => flow(), "Couldn't sign in with your passkey. Try again or use your password."));
+  $("signin-passkey").addEventListener("click", () => {
+    if (acting) return;
+    const attempt = ++passkeyAttempt;
+    $("signin-passkey-cancel").hidden = false;
+    act($("signin-passkey"), "signin-error", async () => {
+      try { const next = await flow(); return attempt === passkeyAttempt ? next : null; }
+      catch (error) { if (attempt !== passkeyAttempt) return null; throw error; }
+    }, "Couldn't sign in with your passkey. Try again or use your password.");
+  });
+  async function cancelPasskey() {
+    if (flow?.finishing) { showError("signin-error", "Finishing sign-in. Please wait."); return false; }
+    passkeyAttempt += 1;
+    await flow?.cancel();
+    $("signin-passkey-cancel").hidden = true;
+    return true;
+  }
+  $("signin-passkey-cancel").addEventListener("click", async () => {
+    if (await cancelPasskey()) { clearError("signin-error"); $("signin-passkey").focus(); }
+  });
   // Another account: this browser signs out (a terminal session is only unmapped, F25).
   RiAuth.guard($("signin-switch"), () => act($("signin-switch"), "signin-error", async () => {
+    if (!(await cancelPasskey())) return null;
     await RiAuth.post("api/portal/sign-out", { scope: "browser" }).catch((error) => { if (error.status !== 401) throw error; });
     return RiAuth.get(`${page.api}/state`);
   }, "Couldn't switch accounts. Try again."));
-  RiAuth.guard($("signin-cancel"), () => decide($("signin-cancel"), false, "signin-error"));
+  RiAuth.guard($("signin-cancel"), async () => { if (await cancelPasskey()) decide($("signin-cancel"), false, "signin-error"); });
   RiAuth.guard($("consent-allow"), () => decide($("consent-allow"), true, "consent-error"));
   RiAuth.guard($("consent-deny"), () => decide($("consent-deny"), false, "consent-error"));
   RiAuth.guard($("logout-confirm"), () => decide($("logout-confirm"), true, "logout-error"));

@@ -280,9 +280,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/clients/{id}/rotate-secret", post(rotate_client_secret))
         .route("/api/mfa/enroll", post(mfa_begin))
         .route("/api/passkeys", get(passkeys))
-        .route("/api/passkeys/{id}", axum::routing::delete(passkey_remove))
+        .route("/api/passkeys/{id}", axum::routing::delete(passkey_remove).patch(passkey_rename))
         .route("/api/passkey/registration/start", post(passkey_register_start))
         .route("/api/passkey/registration/finish", post(passkey_register_finish))
+        .route("/api/passkey/registration/cancel", post(passkey_register_cancel))
         .route("/api/passkey/authentication/start", post(passkey_login_start))
         .route("/api/passkey/authentication/finish", post(passkey_login_finish))
         .route("/api/mfa/confirm", post(mfa_confirm))
@@ -555,7 +556,9 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         p if interaction(p) && p.ends_with("/state") => ("browser_state", 1200),
         p if interaction(p) && p.ends_with("/password") => ("login", 20),
         p if interaction(p)
-            && (p.ends_with("/passkey/start") || p.ends_with("/passkey/finish")) =>
+            && (p.ends_with("/passkey/start")
+                || p.ends_with("/passkey/finish")
+                || p.ends_with("/passkey/cancel")) =>
         {
             ("passkey", 30)
         }
@@ -1230,6 +1233,11 @@ struct PasskeyProof {
     ceremony: String,
     response: Value,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCeremony {
+    ceremony: String,
+}
 async fn passkeys(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.passkeys(&token).map(Json)).await
@@ -1251,6 +1259,28 @@ async fn passkey_register_start(
     let token = bearer(&headers)?;
     app.run(move |core| core.passkey_register_start(&token, input.name).map(Json))
         .await
+}
+async fn passkey_rename(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.passkey_rename(&token, &id, input.name).map(Json))
+        .await
+}
+async fn passkey_register_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCeremony>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.passkey_register_cancel(&token, &input.ceremony)
+            .map(Json)
+    })
+    .await
 }
 async fn passkey_register_finish(
     State(app): State<App>,

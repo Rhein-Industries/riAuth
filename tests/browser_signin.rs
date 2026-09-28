@@ -1698,6 +1698,76 @@ async fn passkey_interaction_sign_in_pinned_and_discoverable() {
 }
 
 #[tokio::test]
+async fn passkey_interaction_cancel_is_bound_and_single_use() {
+    let f = Fixture::new();
+    let app = setup(&f);
+    let alice = f.user("alice");
+    let (mut authenticator, _) = enroll(&f, &alice);
+    let sso = browser(&f, "alice");
+    let verifier = crypto::random_token("");
+    let mut request = f.request("app", &verifier);
+    request.prompt = Some("login consent".into());
+    let i = start(&f, &app, &request, Some(&sso)).await;
+    let started = call(
+        &app,
+        post(&i.path("/passkey/start"), &i.cookies(Some(&sso)), json!({})),
+    )
+    .await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    let proof = authenticator
+        .do_authentication(
+            origin(),
+            serde_json::from_value(started.body["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let body = json!({"ceremony": started.body["ceremony"]});
+    let wrong = [("riauth_return", "wrong"), ("riauth_sso", sso.as_str())];
+    assert_eq!(
+        call(&app, post(&i.path("/passkey/cancel"), &wrong, body.clone()))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    let cancelled = call(
+        &app,
+        post(
+            &i.path("/passkey/cancel"),
+            &i.cookies(Some(&sso)),
+            body.clone(),
+        ),
+    )
+    .await;
+    assert_eq!(cancelled.status, StatusCode::OK, "{}", cancelled.text);
+    assert_eq!(cancelled.body["cancelled"], true);
+    assert_eq!(
+        call(
+            &app,
+            post(&i.path("/passkey/cancel"), &i.cookies(Some(&sso)), body)
+        )
+        .await
+        .status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            post(
+                &i.path("/passkey/finish"),
+                &i.cookies(Some(&sso)),
+                json!({"ceremony":started.body["ceremony"],"credential":proof}),
+            ),
+        )
+        .await
+        .status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        session(&f, &sid(&f, &sso)).identity.user_id,
+        user_id(&f, "alice")
+    );
+}
+
+#[tokio::test]
 async fn unavailable_state_for_policy_denied_and_unsatisfiable_acr() {
     let f = Fixture::new();
     let app = setup(&f);

@@ -4,7 +4,7 @@
   const { base } = RiAuth;
   const state = { data: null, favorites: new Set(), view: "grid", section: "all", loading: false, generation: 0, request: null };
   // Passkey flows keep cancelled options for WebKit's gesture rule; `retry` runs after re-authentication.
-  const security = { flows: {}, retry: null };
+  const security = { flows: {}, retry: null, data: null, action: null, generation: 0, busy: false };
   const MFA_HINT = "Sign in with your passkey or authenticator code to change your passkeys.";
   const FRESH_HINT = "Confirm it's you to change your passkeys.";
   const TERMINAL_HINT = "This browser uses your terminal's sign-in. Sign in here to change your passkeys.";
@@ -67,10 +67,15 @@
     clearTimeout(expiryTimer);
   }
   function resetFlows() {
+    for (const flow of Object.values(security.flows)) if (typeof flow === "function") void flow.cancel();
     const finish = (credential, started) => RiAuth.post("api/portal/login/passkey/finish", { ceremony: started.ceremony, credential });
     const start = (reauthenticate) => () => RiAuth.post("api/portal/login/passkey/start", { reauthenticate }, { retry: true });
-    security.flows = { signIn: RiAuth.passkeyFlow(start(false), finish), reauth: RiAuth.passkeyFlow(start(true), finish), add: null, name: null };
-    security.retry = null;
+    const cancel = (started) => RiAuth.post("api/portal/login/passkey/cancel", { ceremony: started.ceremony });
+    security.flows = { signIn: RiAuth.passkeyFlow(start(false), finish, false, cancel), reauth: RiAuth.passkeyFlow(start(true), finish, false, cancel), add: null, name: null };
+    security.retry = null; security.data = null; security.action = null; security.generation += 1;
+    security.busy = false; security.committing = false; security.run = null;
+    $("passkey-action").hidden = true; $("passkey-rename").value = "";
+    $("passkey-login-cancel").hidden = true;
   }
   function stopRequest() {
     state.request = null; clearTimeout(pollTimer);
@@ -86,6 +91,7 @@
       const data = await api("");
       if (generation !== state.generation) return;
       const changedUser = state.data?.user.id !== data.user.id;
+      if (changedUser && $("security-dialog").open) $("security-dialog").close();
       state.data = data;
       if (changedUser) { loadPreferences(); state.section = "all"; $("search").value = ""; resetFlows(); }
       const accessible = new Set(data.apps.map((app) => app.id));
@@ -220,6 +226,8 @@
   window.addEventListener("pageshow", (event) => { if (event.persisted) { clearIdentity(); screen("loading"); refresh(); } });
 
   $("start-login").addEventListener("click", async () => {
+    if (!(await security.flows.signIn.cancel())) return;
+    $("passkey-login-cancel").hidden = true;
     $("start-login").disabled = true;
     try {
       const request = await api("/sign-in", "POST");
@@ -299,6 +307,8 @@
       clearAuthError();
       if (!username || !password) { showError("auth-error", "Enter your username and password."); return; }
       try {
+        if (!(await security.flows.signIn.cancel())) { showError("auth-error", "Finishing passkey sign-in. Please wait."); return; }
+        $("passkey-login-cancel").hidden = true;
         await RiAuth.post("api/portal/login/password", { username, password, otp: code($("login-otp").value), reauthenticate: false });
         await signedIn();
       } catch (error) {
@@ -313,40 +323,78 @@
   });
   for (const id of ["login-username", "login-password", "login-otp"]) $(id).addEventListener("input", () => $(id).removeAttribute("aria-invalid"));
   $("passkey-login").addEventListener("click", () => RiAuth.inFlight($("passkey-login"), async () => {
+    const generation = state.generation;
     clearAuthError();
-    try { await security.flows.signIn(); await signedIn(); }
-    catch (error) { showError("auth-error", describe(error, "Couldn't sign in with your passkey. Try again or use your password.")); }
+    $("passkey-login-cancel").hidden = false;
+    try { await security.flows.signIn(); if (generation === state.generation) await signedIn(); else await refresh(); }
+    catch (error) { if (generation === state.generation) showError("auth-error", describe(error, "Couldn't sign in with your passkey. Try again or use your password.")); }
   }));
+  $("passkey-login-cancel").addEventListener("click", async () => {
+    if (security.flows.signIn.finishing) { showError("auth-error", "Finishing sign-in. Please wait."); return; }
+    state.generation += 1;
+    await security.flows.signIn.cancel();
+    $("passkey-login-cancel").hidden = true;
+    clearAuthError(); $("passkey-login").focus();
+  });
 
-  // Passkeys and security. Adding or removing a passkey ends every session.
+  // Passkey management stays bound to the account and dialog that opened the action.
   function securityStatus(message) { $("security-status").textContent = message; }
   function showReauth(hint) {
     $("reauth-hint").textContent = hint; $("reauth-panel").hidden = false; $("reauth-error").hidden = true;
-    $("reauth-passkey").hidden = !RiAuth.passkeysAvailable();
+    $("reauth-passkey").hidden = !RiAuth.passkeysAvailable() || security.data?.passkeys.length === 0;
+    $("reauth-form").hidden = security.data?.password_available === false;
   }
   function hideReauth() {
     $("reauth-panel").hidden = true; $("reauth-password").value = ""; $("reauth-otp").value = "";
   }
+  function securityControls() {
+    const data = security.data, pending = !!security.action;
+    $("passkey-form").hidden = !data || pending || !RiAuth.passkeysAvailable() || data.passkeys.length >= data.limit;
+    for (const button of $("passkey-list").querySelectorAll("button")) button.disabled = security.busy || button.dataset.unavailable === "true";
+    for (const id of ["add-passkey", "passkey-action-confirm", "reauth-passkey", "reauth-confirm"]) $(id).disabled = security.busy;
+    $("passkey-name").disabled = $("passkey-rename").disabled = security.busy;
+    $("passkey-cancel").hidden = !pending && !security.busy && !security.flows.add && !security.retry;
+  }
+  function verificationHint() {
+    return security.data?.terminal ? TERMINAL_HINT : security.data?.fresh === false ? FRESH_HINT : MFA_HINT;
+  }
+  function canChange(kind) {
+    const data = security.data;
+    return data && data.fresh && !data.terminal && data[kind === "add" ? "can_register" : kind === "rename" ? "can_rename" : "can_remove"];
+  }
   async function loadPasskeys() {
+    const generation = security.generation, user = state.data?.user.id;
     securityStatus("Loading your passkeys…");
     try {
       const data = await RiAuth.get("api/portal/passkeys");
+      if (generation !== security.generation || state.data?.user.id !== user || !$("security-dialog").open) return;
+      if (data.user_id !== user) { $("security-dialog").close(); await refresh(); return; }
+      security.data = data;
       const rows = data.passkeys.map((passkey) => {
-        const row = element("li", "passkey-row"), text = element("div", "passkey-text");
+        const row = element("li", "passkey-row"), text = element("div", "passkey-text"), actions = element("div", "passkey-actions");
         text.append(element("strong", "", passkey.name), element("span", "", `Added ${new Date(passkey.created_at * 1000).toLocaleDateString()}`));
+        const rename = element("button", "button secondary", "Rename");
+        rename.type = "button"; rename.setAttribute("aria-label", `Rename ${passkey.name}`);
+        rename.addEventListener("click", () => selectPasskey("rename", passkey));
         const remove = element("button", "button secondary", "Remove");
-        remove.type = "button"; remove.disabled = !data.can_remove; remove.setAttribute("aria-label", `Remove ${passkey.name}`);
-        remove.addEventListener("click", () => removePasskey(remove, passkey.id));
-        row.append(text, remove); return row;
+        remove.type = "button"; remove.dataset.unavailable = String(passkey.removable === false);
+        remove.setAttribute("aria-label", `Remove ${passkey.name}`);
+        remove.addEventListener("click", () => selectPasskey("remove", passkey));
+        if (passkey.removable === false) text.append(element("span", "", "Add another passkey before removing this one."));
+        actions.append(rename, remove); row.append(text, actions); return row;
       });
       $("passkey-list").replaceChildren(...rows);
-      $("passkey-form").hidden = data.passkeys.length >= data.limit;
-      securityStatus(data.passkeys.length ? `${data.passkeys.length} of ${data.limit} passkeys.` : "You have no passkeys yet.");
+      $("passkey-only-hint").hidden = !data.passkey_only;
+      $("passkey-unavailable").hidden = RiAuth.passkeysAvailable();
+      $("add-passkey").textContent = data.passkeys.length ? "Add another passkey" : "Add a passkey";
+      securityStatus(data.passkeys.length ? `${data.passkeys.length} of ${data.limit} passkeys.${data.passkeys.length >= data.limit ? " Remove a passkey before adding another." : ""}` : "You have no passkeys yet.");
       if (data.terminal) showReauth(TERMINAL_HINT);
       else if (!data.fresh) showReauth(FRESH_HINT);
-      else if (data.passkeys.length ? !data.can_remove : !data.can_register) showReauth(MFA_HINT);
+      else if (data.passkeys.length ? !data.can_rename : !data.can_register) showReauth(MFA_HINT);
       else hideReauth();
+      securityControls();
     } catch (error) {
+      if (generation !== security.generation) return;
       if (error.status === 401) { refresh(); return; }
       securityStatus(describe(error, "Couldn't load your passkeys. Close this dialog and try again."));
     }
@@ -354,9 +402,10 @@
   async function openSecurity(hint) {
     if (!state.data) return;
     if (!$("security-dialog").open) $("security-dialog").showModal();
+    $("security-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
     if (!$("passkey-name").value) $("passkey-name").value = navigator.userAgentData?.platform || "This device";
-    await loadPasskeys();
-    if (hint) showReauth(hint);
+    securityControls(); await loadPasskeys();
+    if (hint && $("security-dialog").open) showReauth(hint);
   }
   function factorChanged(message) {
     state.generation += 1; $("security-dialog").close();
@@ -369,63 +418,129 @@
     if (error.code === "reauthentication_required" || error.code === "mfa_required") {
       security.retry = retry; showReauth(error.code === "mfa_required" ? MFA_HINT : FRESH_HINT); return;
     }
-    if (error.status === 401) { refresh(); return; }
-    if (error.name === "InvalidStateError") { securityStatus("This device already has a passkey for your account."); return; }
-    if (error.name === "NotAllowedError" || error.name === "AbortError") { securityStatus("Adding the passkey was cancelled or timed out. Select Add a passkey to try again."); return; }
+    if (error.status === 401 || ["account_changed", "account_mismatch"].includes(error.code)) { refresh(); return; }
+    if (error.name === "InvalidStateError") { securityStatus("This device already has a passkey for your account. Choose another device or security key."); return; }
+    if (error.name === "NotAllowedError" || error.name === "AbortError") { securityStatus("Adding the passkey was cancelled or timed out. Select the add button to try again, or Cancel change."); return; }
     securityStatus(describe(error, error.description || "Couldn't change your passkeys. Try again."));
   }
-  function addPasskey() {
-    return RiAuth.inFlight($("add-passkey"), async () => {
-      const name = $("passkey-name").value.trim();
-      if (!name) { securityStatus("Enter a name for this passkey."); $("passkey-name").focus(); return; }
-      if (security.flows.name !== name) {
-        security.flows.name = name;
-        security.flows.add = RiAuth.passkeyFlow(
-          () => RiAuth.post("api/portal/passkeys/registration/start", { name }, { retry: true }),
-          (credential, started) => RiAuth.post("api/portal/passkeys/registration/finish", { ceremony: started.ceremony, credential }), true);
-      }
-      try { await security.flows.add(); factorChanged("Passkey added. Sign in with it to continue."); }
-      catch (error) { securityError(error, addPasskey); }
-    });
+  async function cancelChange() {
+    if (security.committing || security.flows.add?.finishing || security.flows.reauth?.finishing) {
+      securityStatus("Finishing your change. Please wait."); return false;
+    }
+    security.generation += 1;
+    const add = security.flows.add, reauth = security.flows.reauth;
+    security.flows.add = null; security.flows.name = null; security.retry = null; security.action = null;
+    security.busy = false; security.run = null;
+    $("passkey-action").hidden = true; $("passkey-rename").value = ""; hideReauth();
+    securityControls();
+    await Promise.all([add?.cancel(), reauth?.cancel()]);
+    return true;
   }
-  function removePasskey(button, id) {
-    return RiAuth.inFlight(button, async () => {
-      try { await RiAuth.post(`api/portal/passkeys/${encodeURIComponent(id)}/remove`, {}); factorChanged("Passkey removed. Sign in again."); }
-      catch (error) { securityError(error, () => removePasskey(button, id)); }
-    });
+  function selectPasskey(kind, passkey) {
+    if (security.busy) return;
+    void security.flows.add?.cancel(); security.flows.add = null; security.flows.name = null;
+    security.retry = null; security.action = { kind, passkey };
+    $("passkey-action").hidden = false;
+    $("passkey-action-title").textContent = kind === "rename" ? `Rename ${passkey.name}` : `Remove ${passkey.name}?`;
+    $("passkey-action-description").textContent = kind === "rename" ? "Choose a name that helps you recognize this device or security key." : "This passkey will stop working for this account and all your sessions will end. Make sure you have another way to sign in.";
+    $("passkey-rename-field").hidden = kind !== "rename";
+    $("passkey-rename").value = kind === "rename" ? passkey.name : "";
+    $("passkey-action-confirm").textContent = kind === "rename" ? "Save name" : "Remove passkey";
+    securityControls();
+    $(kind === "rename" ? "passkey-rename" : "passkey-action-title").focus();
+  }
+  async function changePasskey(kind) {
+    if (security.busy || !state.data || !security.data) return;
+    const action = security.action;
+    const name = $(kind === "rename" ? "passkey-rename" : "passkey-name").value.trim();
+    if (kind !== "remove" && !name) {
+      securityStatus("Enter a name for this passkey."); $(kind === "rename" ? "passkey-rename" : "passkey-name").focus(); return;
+    }
+    if (kind !== "add" && (!action || action.kind !== kind)) return;
+    if (!canChange(kind)) {
+      security.retry = () => changePasskey(kind); showReauth(verificationHint()); securityControls(); return;
+    }
+    const generation = security.generation, user = state.data.user.id, run = {};
+    const current = () => generation === security.generation && user === state.data?.user.id;
+    security.run = run; security.busy = true; securityControls();
+    try {
+      if (kind === "add") {
+        if (security.flows.name !== name) {
+          await security.flows.add?.cancel();
+          if (!current()) return;
+          security.flows.name = name;
+          security.flows.add = RiAuth.passkeyFlow(
+            () => RiAuth.post("api/portal/passkeys/registration/start", { name, expected_user_id: user }, { retry: true }),
+            (credential, started) => RiAuth.post("api/portal/passkeys/registration/finish", { ceremony: started.ceremony, credential }), true,
+            (started) => RiAuth.post("api/portal/passkeys/registration/cancel", { ceremony: started.ceremony }));
+        }
+        await security.flows.add();
+        if (current()) factorChanged("Passkey added. Sign in with it to continue."); else await refresh();
+      } else {
+        security.committing = true;
+        await RiAuth.post(`api/portal/passkeys/${encodeURIComponent(action.passkey.id)}/${kind}`, kind === "rename" ? { name } : {});
+        if (!current()) { await refresh(); return; }
+        if (kind === "remove") factorChanged("Passkey removed. Sign in again.");
+        else {
+          security.action = null; $("passkey-action").hidden = true; $("passkey-rename").value = "";
+          await loadPasskeys(); securityStatus("Passkey renamed.");
+        }
+      }
+    } catch (error) { if (current()) securityError(error, () => changePasskey(kind)); }
+    finally {
+      if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
+    }
   }
   async function reauthenticated() {
-    hideReauth(); await refresh();
-    if (!state.data) return;
+    hideReauth();
+    await refresh();
+    if (!state.data || !$("security-dialog").open) return;
     await loadPasskeys();
     const retry = security.retry; security.retry = null;
     if (retry) await retry();
   }
   function reauthError(error) {
     if (error.code === "no_passkey") { showError("reauth-error", "Your account has no passkey yet. Confirm with your password and authenticator code."); return; }
+    if (["account_changed", "account_mismatch"].includes(error.code) || error.status === 401) { refresh(); return; }
     showError("reauth-error", describe(error, error.description || "Couldn't confirm it's you. Try again."));
   }
-  $("reauth-passkey").addEventListener("click", () => RiAuth.inFlight($("reauth-passkey"), async () => {
-    $("reauth-error").hidden = true;
-    try { await security.flows.reauth(); await reauthenticated(); } catch (error) { reauthError(error); }
-  }));
+  async function reauthenticate(password = null) {
+    if (security.busy || !state.data) return;
+    const generation = security.generation, user = state.data.user.id, username = state.data.user.username, run = {};
+    security.run = run; security.busy = true; securityControls(); $("reauth-error").hidden = true;
+    try {
+      if (password !== null) {
+        security.committing = true;
+        await security.flows.reauth.cancel();
+        await RiAuth.post("api/portal/login/password", { username, password, otp: code($("reauth-otp").value), reauthenticate: true });
+      } else await security.flows.reauth();
+      if (generation !== security.generation || user !== state.data?.user.id) { await refresh(); return; }
+      security.busy = false; security.committing = false; security.run = null;
+      await reauthenticated();
+    } catch (error) { if (generation === security.generation) reauthError(error); }
+    finally {
+      $("reauth-password").value = ""; $("reauth-otp").value = "";
+      if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
+    }
+  }
+  $("reauth-passkey").addEventListener("click", () => reauthenticate());
   $("reauth-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    RiAuth.inFlight($("reauth-confirm"), async () => {
-      const password = $("reauth-password").value;
-      $("reauth-error").hidden = true;
-      if (!password || !state.data) { showError("reauth-error", "Enter your password."); return; }
-      try {
-        await RiAuth.post("api/portal/login/password", { username: state.data.user.username, password, otp: code($("reauth-otp").value), reauthenticate: true });
-        await reauthenticated();
-      } catch (error) { $("reauth-password").value = ""; $("reauth-otp").value = ""; reauthError(error); }
-    });
+    const password = $("reauth-password").value;
+    if (!password) { showError("reauth-error", "Enter your password."); return; }
+    reauthenticate(password);
   });
-  $("passkey-form").addEventListener("submit", (event) => { event.preventDefault(); addPasskey(); });
+  $("passkey-form").addEventListener("submit", (event) => { event.preventDefault(); changePasskey("add"); });
+  $("passkey-action").addEventListener("submit", (event) => { event.preventDefault(); if (security.action) changePasskey(security.action.kind); });
+  $("passkey-cancel").addEventListener("click", async () => {
+    if (await cancelChange()) { await loadPasskeys(); securityStatus("Change cancelled."); }
+  });
   $("account-security").addEventListener("click", () => openSecurity());
-  $("security-close").addEventListener("click", () => $("security-dialog").close());
+  async function closeSecurity() { if (await cancelChange()) $("security-dialog").close(); }
+  $("security-close").addEventListener("click", closeSecurity);
+  $("security-dialog").addEventListener("cancel", (event) => { event.preventDefault(); closeSecurity(); });
   $("security-dialog").addEventListener("close", () => {
-    hideReauth(); security.retry = null;
+    void cancelChange();
     if (!$("account").hidden) $("account-security").focus();
   });
   $("mfa-action").addEventListener("click", () => {

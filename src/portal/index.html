@@ -66,6 +66,7 @@
       <section class="auth-layout" id="auth" hidden><div class="auth-panel"><span class="auth-emblem"><svg class="icon"><use href="#i-shield"/></svg></span><p class="eyebrow">WELCOME TO YOUR WORKSPACE</p><h1>Your apps.<br>One place to start.</h1><p class="auth-description" id="auth-description">Sign in to see the applications available to you. Your workspace is ready when you are.</p>
         <p id="auth-error" class="form-error" role="alert" tabindex="-1" hidden></p>
         <button class="button primary" id="passkey-login" type="button" hidden>Sign in with a passkey</button>
+        <button class="text-button" id="passkey-login-cancel" type="button" hidden>Cancel passkey sign-in</button>
         <p class="divider" id="auth-divider" hidden><span>or</span></p>
         <form id="password-form" novalidate>
           <div class="field"><label for="login-username">Username</label><input id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
@@ -82,6 +83,9 @@
 <dialog id="security-dialog" class="security" aria-labelledby="security-title">
   <h2 id="security-title">Passkeys</h2>
   <p class="field-hint">Sign in without a password. Adding or removing a passkey signs you out everywhere.</p>
+  <p class="account-line" id="security-account"></p>
+  <p class="notice" id="passkey-unavailable" hidden>This browser cannot use passkeys. Open this page in a browser that supports passkeys over a secure connection.</p>
+  <p class="field-hint" id="passkey-only-hint" hidden>This account uses passkeys only. Keep at least one passkey, and add another device or security key before removing your last one.</p>
   <ul class="passkey-list" id="passkey-list"></ul>
   <p class="field-hint" id="security-status" role="status"></p>
   <div id="reauth-panel" hidden>
@@ -95,9 +99,17 @@
     </form>
   </div>
   <form id="passkey-form" novalidate>
-    <div class="field"><label for="passkey-name">Passkey name</label><input id="passkey-name" autocomplete="off" maxlength="200" required></div>
+    <div class="field"><label for="passkey-name">Passkey name</label><input id="passkey-name" autocomplete="off" maxlength="200" aria-describedby="passkey-add-hint" required></div>
+    <p class="field-hint" id="passkey-add-hint">Choose this device, another device or a security key in your browser's passkey prompt.</p>
     <button class="button primary" id="add-passkey" type="submit">Add a passkey</button>
   </form>
+  <form id="passkey-action" novalidate hidden>
+    <h3 id="passkey-action-title" tabindex="-1"></h3>
+    <p class="field-hint" id="passkey-action-description"></p>
+    <div class="field" id="passkey-rename-field" hidden><label for="passkey-rename">New passkey name</label><input id="passkey-rename" autocomplete="off" maxlength="200" required></div>
+    <button class="button primary" id="passkey-action-confirm" type="submit"></button>
+  </form>
+  <button class="button secondary" id="passkey-cancel" type="button" hidden>Cancel change</button>
   <p class="field-hint">Authenticator apps and recovery codes are managed from your terminal: <code>riauth mfa enroll</code>, <code>riauth mfa recovery-codes --out FILE</code>.</p>
   <button class="button secondary" id="security-close" type="button">Close</button>
 </dialog>

@@ -98,9 +98,10 @@
     return Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null && value !== undefined));
   }
   const descriptors = (list) => (list || []).map((c) => ({ type: c.type, id: bytes(c.id) }));
-  async function passkeyGet(publicKey) {
+  async function passkeyGet(publicKey, signal) {
     const o = options(publicKey);
-    const credential = await navigator.credentials.get({ publicKey: { ...o, challenge: bytes(o.challenge), allowCredentials: descriptors(o.allowCredentials) } });
+    const credential = await navigator.credentials.get({ signal, publicKey: { ...o, challenge: bytes(o.challenge), allowCredentials: descriptors(o.allowCredentials) } });
+    if (!credential) throw new DOMException("Passkey prompt cancelled", "NotAllowedError");
     const r = credential.response;
     return {
       id: credential.id, rawId: text(credential.rawId), type: credential.type,
@@ -108,9 +109,10 @@
       clientExtensionResults: {}
     };
   }
-  async function passkeyCreate(publicKey) {
+  async function passkeyCreate(publicKey, signal) {
     const o = options(publicKey);
-    const credential = await navigator.credentials.create({ publicKey: { ...o, challenge: bytes(o.challenge), user: { ...o.user, id: bytes(o.user.id) }, excludeCredentials: descriptors(o.excludeCredentials) } });
+    const credential = await navigator.credentials.create({ signal, publicKey: { ...o, challenge: bytes(o.challenge), user: { ...o.user, id: bytes(o.user.id) }, excludeCredentials: descriptors(o.excludeCredentials) } });
+    if (!credential) throw new DOMException("Passkey prompt cancelled", "NotAllowedError");
     const r = credential.response;
     return {
       id: credential.id, rawId: text(credential.rawId), type: credential.type,
@@ -121,18 +123,49 @@
   // WebKit only calls WebAuthn from a fresh user gesture. After a cancelled prompt the
   // unused options are kept, so the next click reaches WebAuthn without a fetch first.
   // start() resolves to {ceremony, public_key, expires_in}; finish(credential, started).
-  function passkeyFlow(start, finish, create = false) {
-    let kept = null;
-    return async () => {
+  function passkeyFlow(start, finish, create = false, cancel = async () => {}) {
+    let kept = null, active = null, generation = 0;
+    // Explicit cancellation also consumes the server ceremony. Native prompt dismissal
+    // retains unused options for a direct WebKit retry, until the user leaves this flow.
+    const discard = (started) => Promise.resolve(cancel(started)).catch(() => {});
+    const flow = async () => {
+      if (active) throw new DOMException("A passkey prompt is already open", "InvalidStateError");
+      const run = { generation, controller: new AbortController(), started: null, finishing: false };
+      active = run;
       let started = kept && Date.now() - kept.at < 240000 ? kept.started : null;
       const at = started ? kept.at : Date.now();
+      if (kept && !started) void discard(kept.started);
       kept = null;
-      if (!started) started = await start();
-      let credential;
-      try { credential = await (create ? passkeyCreate : passkeyGet)(started.public_key); }
-      catch (error) { if (error?.name === "NotAllowedError") kept = { started, at }; throw error; }
-      return finish(credential, started);
+      try {
+        if (!started) started = await start();
+        run.started = started;
+        if (run.generation !== generation) {
+          await discard(started);
+          throw new DOMException("Passkey prompt cancelled", "AbortError");
+        }
+        const credential = await (create ? passkeyCreate : passkeyGet)(started.public_key, run.controller.signal);
+        if (run.generation !== generation) throw new DOMException("Passkey prompt cancelled", "AbortError");
+        run.finishing = true;
+        return await finish(credential, started);
+      } catch (error) {
+        if (error?.name === "NotAllowedError" && run.generation === generation && !run.finishing) kept = { started, at };
+        else if (started && run.generation === generation && !run.finishing) await discard(started);
+        throw error;
+      } finally { if (active === run) active = null; }
     };
+    flow.cancel = async () => {
+      // A submitted verification can already have committed. Its caller must wait for
+      // the result instead of presenting an untrue cancellation success.
+      if (active?.finishing) return false;
+      generation += 1;
+      const started = kept?.started || (!active?.finishing && active?.started);
+      kept = null;
+      active?.controller.abort();
+      if (started) await discard(started);
+      return true;
+    };
+    Object.defineProperty(flow, "finishing", { get: () => active?.finishing === true });
+    return flow;
   }
   const passkeysAvailable = () => "PublicKeyCredential" in window && isSecureContext;
   const shellQuote = (s) => `'${s.replaceAll("'", "'\\''")}'`;

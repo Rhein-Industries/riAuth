@@ -42,6 +42,10 @@ pub(super) fn routes() -> Router<App> {
             "/oauth/resume/{id}/passkey/finish",
             post(passkey_finish::<false>),
         )
+        .route(
+            "/oauth/resume/{id}/passkey/cancel",
+            post(passkey_cancel::<false>),
+        )
         .route("/oauth/resume/{id}/decision", post(decision::<false>))
         .route("/saml/resume/{id}/state", get(state::<true>))
         .route("/saml/resume/{id}/password", post(password::<true>))
@@ -52,6 +56,10 @@ pub(super) fn routes() -> Router<App> {
         .route(
             "/saml/resume/{id}/passkey/finish",
             post(passkey_finish::<true>),
+        )
+        .route(
+            "/saml/resume/{id}/passkey/cancel",
+            post(passkey_cancel::<true>),
         )
         .route("/saml/resume/{id}/decision", post(decision::<true>))
         .route("/oauth/logout/resume/{id}/state", get(logout_state))
@@ -184,6 +192,26 @@ async fn passkey_finish<const SAML: bool>(
         } else {
             core.authorize_passkey_finish(&id, binding, sso, ceremony, response)?
         })
+    })
+    .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCancel {
+    ceremony: String,
+}
+async fn passkey_cancel<const SAML: bool>(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<PasskeyCancel>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run(move |core| {
+        let binding = binding(core, &headers, SAML, &id);
+        let interaction = format!("{}:{id}", if SAML { "saml" } else { "oidc" });
+        core.browser_passkey_cancel(&input.ceremony, &interaction, binding)
+            .map(Json)
     })
     .await
 }

@@ -402,16 +402,30 @@ impl Core {
         sso: Option<&str>,
         reauthenticate: bool,
     ) -> Result<BrowserReply> {
-        let pin = self.portal_pin(sso, reauthenticate)?;
+        let session = if reauthenticate {
+            Some(
+                self.store
+                    .read(|tx| self.portal_session(tx, sso).map(|(_, session)| session))?,
+            )
+        } else {
+            None
+        };
         let binding = crypto::random_token("ri_passkey_bind_");
-        let body = self.browser_passkey_start(pin.as_deref(), "portal", &digest(&binding))?;
+        let body = self.browser_passkey_start_for_session(
+            session
+                .as_ref()
+                .map(|session| session.identity.user_id.as_str()),
+            "portal",
+            &digest(&binding),
+            session.as_ref().map(|session| session.id.clone()),
+        )?;
         Ok(reply(
             body,
             vec![self.browser_cookie("riauth_passkey", &binding, &self.portal_passkey_path(), 300)],
         ))
     }
 
-    /// A pinned ceremony lists only the pinned user's keys, so finish needs no pin of its own.
+    /// Re-authentication also checks that the initiating browser session is still current.
     pub fn portal_passkey_finish(
         &self,
         sso: Option<&str>,
@@ -419,9 +433,38 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
-        let staged = self.browser_passkey_finish(ceremony, response, "portal", binding, None)?;
-        let clear = self.browser_cookie("riauth_passkey", "", &self.portal_passkey_path(), 0);
-        self.portal_attach(&staged, sso, None, vec![clear])
+        self.store.write(|tx| {
+            let session = self.browser_session(tx, sso)?;
+            let staged = match self.browser_passkey_finish_in(
+                tx,
+                ceremony,
+                response,
+                crate::passkey::BrowserPasskeyContext {
+                    interaction: "portal",
+                    binding,
+                    pinned_user: None,
+                    session_id: session.as_ref().map(|session| session.id.as_str()),
+                },
+            )? {
+                Ok(staged) => staged,
+                Err(error) => return Ok(Err(error)),
+            };
+            // The session binding check, ceremony consumption and attachment share a
+            // transaction, so concurrent sign-out or account switching cannot revive it.
+            let attached = match self.attach_browser_login(tx, &staged, sso, None)? {
+                Ok(attached) => attached,
+                Err(error) => return Ok(Err(error)),
+            };
+            let mut cookies = attached.cookies;
+            cookies.push(self.browser_cookie("riauth_passkey", "", &self.portal_passkey_path(), 0));
+            Ok(Ok(reply(json!({"status":"signed_in"}), cookies)))
+        })?
+    }
+
+    pub fn portal_passkey_cancel(&self, binding: Option<&str>, ceremony: &str) -> Result<Value> {
+        // Leave the short-lived cookie alone: a delayed cancellation response must not
+        // clear the binding of a ceremony started in another tab in the meantime.
+        self.browser_passkey_cancel(ceremony, "portal", binding)
     }
 
     /// `terminal`: this browser shares a terminal session, so it must sign in here before
@@ -429,26 +472,50 @@ impl Core {
     pub fn portal_passkeys(&self, sso: Option<&str>) -> Result<Value> {
         self.store.read(|tx| {
             let (user, session) = self.portal_session(tx, sso)?;
-            let passkeys = crate::passkey::passkey_list_in(tx, &user.id)?;
+            let mut passkeys = crate::passkey::passkey_list_in(tx, &user.id)?;
+            let password_available = !user.password_hash.is_empty();
+            let removable = password_available || passkeys.len() > 1;
+            for passkey in &mut passkeys {
+                passkey["removable"] = json!(removable);
+            }
             let terminal = bearer_backed(tx, &session)?;
             let (factor, mfa) = (
                 user.totp_secret.is_some() || user.has_passkeys,
                 session.identity.mfa,
             );
             Ok(json!({
+                "user_id": user.id,
                 "can_register": !terminal && passkeys.len() < PASSKEY_LIMIT && (!factor || mfa),
                 "passkeys": passkeys,
                 "fresh": now().saturating_sub(session.identity.auth_time) <= FRESH_SECONDS,
                 "terminal": terminal,
-                "mfa": mfa, "can_remove": !terminal && mfa, "limit": PASSKEY_LIMIT
+                "mfa": mfa, "can_remove": !terminal && mfa, "limit": PASSKEY_LIMIT,
+                "can_rename": !terminal && mfa,
+                "password_available": password_available, "passkey_only": !password_available
             }))
         })
     }
 
     /// Enrollment from the browser asks for a discoverable (resident) credential.
     pub fn portal_passkey_register_start(&self, sso: Option<&str>, name: String) -> Result<Value> {
+        self.portal_passkey_register_start_bound(sso, name, None)
+    }
+
+    pub(crate) fn portal_passkey_register_start_bound(
+        &self,
+        sso: Option<&str>,
+        name: String,
+        expected_user_id: Option<&str>,
+    ) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.portal_factor_session(tx, sso)?;
+            if expected_user_id.is_some_and(|expected| expected != user.id) {
+                return Err(Error::new(
+                    axum::http::StatusCode::CONFLICT,
+                    "account_mismatch",
+                    "Your signed-in account changed. Reload before adding a passkey.",
+                ));
+            }
             self.passkey_register_start_in(tx, &user, &session, name, true)
         })
     }
@@ -478,6 +545,29 @@ impl Core {
             let (user, session) = self.portal_factor_session(tx, sso)?;
             let removed = self.passkey_remove_in(tx, user, &session, id)?;
             self.portal_factor_changed(tx, sso, removed)
+        })
+    }
+
+    pub fn portal_passkey_register_cancel(
+        &self,
+        sso: Option<&str>,
+        ceremony: &str,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_session(tx, sso)?;
+            self.passkey_register_cancel_in(tx, &user, &session, ceremony)
+        })
+    }
+
+    pub fn portal_passkey_rename(
+        &self,
+        sso: Option<&str>,
+        id: &str,
+        name: String,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_factor_session(tx, sso)?;
+            self.passkey_rename_in(tx, &user, &session, id, name)
         })
     }
 

@@ -100,6 +100,10 @@ pub fn routes() -> Router<App> {
             "/api/portal/login/passkey/finish",
             post(passkey_login_finish),
         )
+        .route(
+            "/api/portal/login/passkey/cancel",
+            post(passkey_login_cancel),
+        )
         .route("/api/portal/passkeys", get(passkeys))
         .route(
             "/api/portal/passkeys/registration/start",
@@ -109,6 +113,11 @@ pub fn routes() -> Router<App> {
             "/api/portal/passkeys/registration/finish",
             post(passkey_register_finish),
         )
+        .route(
+            "/api/portal/passkeys/registration/cancel",
+            post(passkey_register_cancel),
+        )
+        .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
         .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
         .route("/api/device/browser/{code}", get(device_browser_details))
         .route("/api/device/browser/decision", post(device_browser_decide))
@@ -424,6 +433,23 @@ struct PasskeyProof {
     ceremony: String,
     credential: Value,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCeremony {
+    ceremony: String,
+}
+async fn passkey_login_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCeremony>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run(move |core| {
+        core.portal_passkey_cancel(cookie(&headers, "riauth_passkey"), &input.ceremony)
+            .map(Json)
+    })
+    .await
+}
 async fn passkey_login_finish(
     State(app): State<App>,
     headers: HeaderMap,
@@ -453,16 +479,26 @@ async fn passkeys(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
 struct PasskeyName {
     name: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyRegistration {
+    name: String,
+    expected_user_id: String,
+}
 async fn passkey_register_start(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(input): Json<PasskeyName>,
+    Json(input): Json<PasskeyRegistration>,
 ) -> Result<Json<Value>> {
     browser_write_guard(&app, &headers)?;
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| {
-        core.portal_passkey_register_start(sso.as_deref(), input.name)
-            .map(Json)
+        core.portal_passkey_register_start_bound(
+            sso.as_deref(),
+            input.name,
+            Some(&input.expected_user_id),
+        )
+        .map(Json)
     })
     .await
 }
@@ -481,6 +517,33 @@ async fn passkey_register_finish(
             &input.ceremony,
             response,
         )?)
+    })
+    .await
+}
+async fn passkey_register_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCeremony>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_passkey_register_cancel(sso.as_deref(), &input.ceremony)
+            .map(Json)
+    })
+    .await
+}
+async fn passkey_rename(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_passkey_rename(sso.as_deref(), &id, input.name)
+            .map(Json)
     })
     .await
 }

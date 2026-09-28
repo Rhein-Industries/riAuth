@@ -43,9 +43,19 @@ struct Authentication {
     /// Digest of the browser binding that started the ceremony.
     #[serde(default)]
     binding_hash: Option<String>,
+    /// Portal re-authentication must finish in the session that requested it.
+    #[serde(default)]
+    session_id: Option<String>,
     /// Usernameless state; the credential names its user.
     #[serde(default)]
     discoverable: Option<DiscoverableAuthentication>,
+}
+
+pub(crate) struct BrowserPasskeyContext<'a> {
+    pub interaction: &'a str,
+    pub binding: Option<&'a str>,
+    pub pinned_user: Option<&'a str>,
+    pub session_id: Option<&'a str>,
 }
 
 fn webauthn(core: &Core) -> Result<Webauthn> {
@@ -107,6 +117,21 @@ fn unknown_passkey() -> Error {
     )
 }
 
+fn require_fresh_factor(user: &User, session: &Session) -> Result<()> {
+    if now().saturating_sub(session.identity.auth_time) > FRESH_SECONDS {
+        return Err(reauthentication_required());
+    }
+    require_factor_session(user, session)
+}
+
+fn validate_passkey_name(name: &str) -> Result<()> {
+    validate_display(name)?;
+    if name.trim().is_empty() {
+        return Err(Error::bad("Passkey name must not be blank"));
+    }
+    Ok(())
+}
+
 impl Core {
     pub fn passkeys(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
@@ -131,11 +156,8 @@ impl Core {
         name: String,
         resident: bool,
     ) -> Result<Value> {
-        validate_display(&name)?;
-        if now().saturating_sub(session.identity.auth_time) > FRESH_SECONDS {
-            return Err(reauthentication_required());
-        }
-        require_factor_session(user, session)?;
+        validate_passkey_name(&name)?;
+        require_fresh_factor(user, session)?;
         let keys = user_keys(tx, &user.id)?;
         if keys.len() >= 16 {
             return Err(Error::conflict("At most sixteen passkeys can be enrolled"));
@@ -193,10 +215,15 @@ impl Core {
                     && p.identity.epoch == user.epoch
             })
             .ok_or_else(Error::unauthorized)?;
-        if user_keys(tx, &user.id)?.len() >= 16 {
-            return Err(Error::conflict("Passkey limit reached"));
-        }
         tx.delete("passkey_registration", &digest(ceremony))?;
+        // A ceremony does not extend the authorization that started it. Commit its
+        // consumption even when freshness or the factor requirement changed meanwhile.
+        if let Err(error) = require_fresh_factor(&user, session) {
+            return Ok(Err(error));
+        }
+        if user_keys(tx, &user.id)?.len() >= 16 {
+            return Ok(Err(Error::conflict("Passkey limit reached")));
+        }
         let key = match webauthn(self)?.finish_passkey_registration(&response, &pending.state) {
             Ok(key) => key,
             Err(_) => return Ok(Err(Error::bad("Passkey registration verification failed"))),
@@ -223,6 +250,55 @@ impl Core {
             json!({"passkey":view(&credential),"sessions_revoked":true,"instruction":"Log in with the new passkey"}),
         ))
     }
+    pub fn passkey_register_cancel(&self, token: &str, ceremony: &str) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            self.passkey_register_cancel_in(tx, &user, &session, ceremony)
+        })
+    }
+    pub(crate) fn passkey_register_cancel_in(
+        &self,
+        tx: &Tx<'_>,
+        user: &User,
+        session: &Session,
+        ceremony: &str,
+    ) -> Result<Value> {
+        let key = digest(ceremony);
+        tx.get::<Registration>("passkey_registration", &key)?
+            .filter(|pending| {
+                pending.identity.user_id == user.id
+                    && pending.identity.session_id == session.id
+                    && pending.identity.epoch == user.epoch
+            })
+            .ok_or_else(Error::unauthorized)?;
+        tx.delete("passkey_registration", &key)?;
+        Ok(json!({"cancelled":true}))
+    }
+    pub fn passkey_rename(&self, token: &str, id: &str, name: String) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            self.passkey_rename_in(tx, &user, &session, id, name)
+        })
+    }
+    pub(crate) fn passkey_rename_in(
+        &self,
+        tx: &Tx<'_>,
+        user: &User,
+        session: &Session,
+        id: &str,
+        name: String,
+    ) -> Result<Value> {
+        require_fresh_factor(user, session)?;
+        validate_passkey_name(&name)?;
+        let mut credential = tx
+            .get::<Credential>("passkeys", id)?
+            .filter(|credential| credential.user_id == user.id)
+            .ok_or_else(|| Error::missing("Passkey not found"))?;
+        credential.name = name;
+        tx.put("passkeys", id, &credential)?;
+        audit(tx, &user.id, "passkey.rename", id)?;
+        Ok(json!({"passkey":view(&credential),"renamed":true,"sessions_revoked":false}))
+    }
     pub fn passkey_remove(&self, token: &str, id: &str) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
@@ -236,10 +312,7 @@ impl Core {
         session: &Session,
         id: &str,
     ) -> Result<Value> {
-        if now().saturating_sub(session.identity.auth_time) > FRESH_SECONDS {
-            return Err(reauthentication_required());
-        }
-        require_factor_session(&user, session)?;
+        require_fresh_factor(&user, session)?;
         let credential = tx
             .get::<Credential>("passkeys", id)?
             .filter(|c| c.user_id == user.id)
@@ -320,6 +393,7 @@ impl Core {
                     transaction,
                     interaction: None,
                     binding_hash: None,
+                    session_id: None,
                     discoverable: None,
                 },
             )?;
@@ -382,6 +456,15 @@ impl Core {
         interaction: &str,
         binding_hash: &str,
     ) -> Result<Value> {
+        self.browser_passkey_start_for_session(pinned_user, interaction, binding_hash, None)
+    }
+    pub(crate) fn browser_passkey_start_for_session(
+        &self,
+        pinned_user: Option<&str>,
+        interaction: &str,
+        binding_hash: &str,
+        session_id: Option<String>,
+    ) -> Result<Value> {
         self.store.write(|tx| {
             let webauthn = webauthn(self)?;
             let mut record = Authentication {
@@ -392,6 +475,7 @@ impl Core {
                 transaction: None,
                 interaction: Some(interaction.into()),
                 binding_hash: Some(binding_hash.into()),
+                session_id,
                 discoverable: None,
             };
             let challenge = if let Some(uid) = pinned_user {
@@ -438,108 +522,152 @@ impl Core {
         pinned_user: Option<&str>,
     ) -> Result<String> {
         self.store.write(|tx| {
+            self.browser_passkey_finish_in(
+                tx,
+                ceremony,
+                response,
+                BrowserPasskeyContext {
+                    interaction,
+                    binding,
+                    pinned_user,
+                    session_id: None,
+                },
+            )
+        })?
+    }
+    pub(crate) fn browser_passkey_finish_in(
+        &self,
+        tx: &Tx<'_>,
+        ceremony: &str,
+        response: PublicKeyCredential,
+        context: BrowserPasskeyContext<'_>,
+    ) -> Result<Result<String>> {
+        let key = digest(ceremony);
+        let pending = tx
+            .get::<Authentication>("passkey_authentication", &key)?
+            .ok_or_else(Error::unauthorized)?;
+        tx.delete("passkey_authentication", &key)?;
+        let verified = (|| {
+            let bound = context
+                .binding
+                .zip(pending.binding_hash.as_deref())
+                .is_some_and(|(binding, hash)| crypto::constant_eq(&digest(binding), hash));
+            if pending.expires_at <= now()
+                || pending.interaction.as_deref() != Some(context.interaction)
+                || !bound
+                || pending
+                    .session_id
+                    .as_deref()
+                    .is_some_and(|id| Some(id) != context.session_id)
+            {
+                return Err(Error::unauthorized());
+            }
+            let webauthn = webauthn(self)?;
+            let (user, result) = if let Some(state) = pending.discoverable.clone() {
+                let (user_handle, raw) = webauthn
+                    .identify_discoverable_authentication(&response)
+                    .map_err(|_| invalid_credentials())?;
+                let credential = tx
+                    .get::<Credential>("passkeys", &credential_key(raw))?
+                    .ok_or_else(unknown_passkey)?;
+                if handle(&credential.user_id) != user_handle {
+                    return Err(invalid_credentials());
+                }
+                let user = tx
+                    .get::<User>("users", &credential.user_id)?
+                    .filter(|u| u.enabled)
+                    .ok_or_else(invalid_credentials)?;
+                let result = webauthn
+                    .finish_discoverable_authentication(
+                        &response,
+                        state,
+                        &[DiscoverableKey::from(&credential.key)],
+                    )
+                    .map_err(|_| invalid_credentials())?;
+                (user, result)
+            } else {
+                let user = tx
+                    .get::<User>(
+                        "users",
+                        pending.user_id.as_deref().ok_or_else(invalid_credentials)?,
+                    )?
+                    .filter(|u| u.enabled && u.epoch == pending.epoch)
+                    .ok_or_else(invalid_credentials)?;
+                if response
+                    .get_user_unique_id()
+                    .is_some_and(|id| id != handle(&user.id).as_bytes())
+                {
+                    return Err(invalid_credentials());
+                }
+                let result = webauthn
+                    .finish_passkey_authentication(
+                        &response,
+                        pending.state.as_ref().ok_or_else(invalid_credentials)?,
+                    )
+                    .map_err(|_| invalid_credentials())?;
+                (user, result)
+            };
+            if !result.user_verified() || context.pinned_user.is_some_and(|pin| pin != user.id) {
+                return Err(invalid_credentials());
+            }
+            let mut credential = tx
+                .get::<Credential>("passkeys", &credential_id(result.cred_id()))?
+                .filter(|c| c.user_id == user.id)
+                .ok_or_else(invalid_credentials)?;
+            if (result.counter() != 0 || credential.counter != 0)
+                && result.counter() <= credential.counter
+            {
+                return Err(invalid_credentials());
+            }
+            credential.counter = result.counter();
+            credential
+                .key
+                .update_credential(&result)
+                .ok_or_else(invalid_credentials)?;
+            Ok((user, credential))
+        })();
+        let (user, credential) = match verified {
+            Ok(verified) => verified,
+            Err(error) if error.status.is_server_error() => return Err(error),
+            Err(error) => {
+                audit(tx, "anonymous", "passkey.login_failed", "passkey")?;
+                return Ok(Err(error));
+            }
+        };
+        tx.put("passkeys", &credential.id, &credential)?;
+        let identity = Identity {
+            user_id: user.id.clone(),
+            epoch: user.epoch,
+            mfa: true,
+            auth_time: now(),
+            session_id: String::new(),
+            amr: vec!["webauthn".into(), "mfa".into()],
+            source: None,
+        };
+        let staged =
+            self.stage_browser_login(tx, identity, now() + self.config.session_ttl, "passkey")?;
+        audit(tx, &user.id, "passkey.login", &credential.id)?;
+        Ok(Ok(staged))
+    }
+    pub(crate) fn browser_passkey_cancel(
+        &self,
+        ceremony: &str,
+        interaction: &str,
+        binding: Option<&str>,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
             let key = digest(ceremony);
-            let pending = tx
-                .get::<Authentication>("passkey_authentication", &key)?
+            tx.get::<Authentication>("passkey_authentication", &key)?
+                .filter(|pending| {
+                    pending.interaction.as_deref() == Some(interaction)
+                        && binding.zip(pending.binding_hash.as_deref()).is_some_and(
+                            |(binding, hash)| crypto::constant_eq(&digest(binding), hash),
+                        )
+                })
                 .ok_or_else(Error::unauthorized)?;
             tx.delete("passkey_authentication", &key)?;
-            let verified = (|| {
-                let bound = binding
-                    .zip(pending.binding_hash.as_deref())
-                    .is_some_and(|(binding, hash)| crypto::constant_eq(&digest(binding), hash));
-                if pending.expires_at <= now()
-                    || pending.interaction.as_deref() != Some(interaction)
-                    || !bound
-                {
-                    return Err(Error::unauthorized());
-                }
-                let webauthn = webauthn(self)?;
-                let (user, result) = if let Some(state) = pending.discoverable.clone() {
-                    let (user_handle, raw) = webauthn
-                        .identify_discoverable_authentication(&response)
-                        .map_err(|_| invalid_credentials())?;
-                    let credential = tx
-                        .get::<Credential>("passkeys", &credential_key(raw))?
-                        .ok_or_else(unknown_passkey)?;
-                    if handle(&credential.user_id) != user_handle {
-                        return Err(invalid_credentials());
-                    }
-                    let user = tx
-                        .get::<User>("users", &credential.user_id)?
-                        .filter(|u| u.enabled)
-                        .ok_or_else(invalid_credentials)?;
-                    let result = webauthn
-                        .finish_discoverable_authentication(
-                            &response,
-                            state,
-                            &[DiscoverableKey::from(&credential.key)],
-                        )
-                        .map_err(|_| invalid_credentials())?;
-                    (user, result)
-                } else {
-                    let user = tx
-                        .get::<User>(
-                            "users",
-                            pending.user_id.as_deref().ok_or_else(invalid_credentials)?,
-                        )?
-                        .filter(|u| u.enabled && u.epoch == pending.epoch)
-                        .ok_or_else(invalid_credentials)?;
-                    if response
-                        .get_user_unique_id()
-                        .is_some_and(|id| id != handle(&user.id).as_bytes())
-                    {
-                        return Err(invalid_credentials());
-                    }
-                    let result = webauthn
-                        .finish_passkey_authentication(
-                            &response,
-                            pending.state.as_ref().ok_or_else(invalid_credentials)?,
-                        )
-                        .map_err(|_| invalid_credentials())?;
-                    (user, result)
-                };
-                if !result.user_verified() || pinned_user.is_some_and(|pin| pin != user.id) {
-                    return Err(invalid_credentials());
-                }
-                let mut credential = tx
-                    .get::<Credential>("passkeys", &credential_id(result.cred_id()))?
-                    .filter(|c| c.user_id == user.id)
-                    .ok_or_else(invalid_credentials)?;
-                if (result.counter() != 0 || credential.counter != 0)
-                    && result.counter() <= credential.counter
-                {
-                    return Err(invalid_credentials());
-                }
-                credential.counter = result.counter();
-                credential
-                    .key
-                    .update_credential(&result)
-                    .ok_or_else(invalid_credentials)?;
-                Ok((user, credential))
-            })();
-            let (user, credential) = match verified {
-                Ok(verified) => verified,
-                Err(error) if error.status.is_server_error() => return Err(error),
-                Err(error) => {
-                    audit(tx, "anonymous", "passkey.login_failed", "passkey")?;
-                    return Ok(Err(error));
-                }
-            };
-            tx.put("passkeys", &credential.id, &credential)?;
-            let identity = Identity {
-                user_id: user.id.clone(),
-                epoch: user.epoch,
-                mfa: true,
-                auth_time: now(),
-                session_id: String::new(),
-                amr: vec!["webauthn".into(), "mfa".into()],
-                source: None,
-            };
-            let staged =
-                self.stage_browser_login(tx, identity, now() + self.config.session_ttl, "passkey")?;
-            audit(tx, &user.id, "passkey.login", &credential.id)?;
-            Ok(Ok(staged))
-        })?
+            Ok(json!({"cancelled":true}))
+        })
     }
 }
 pub(crate) fn passkey_list_in(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {

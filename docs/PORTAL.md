@@ -43,12 +43,13 @@ Some applications require MFA. After a password-only sign-in the catalogue shows
 
 ## Passkeys and security
 
-Signed-in users open **Passkeys and security** from the account menu. The dialog lists the account's passkeys (name and date added), adds one with a chosen name, and removes one.
+Signed-in users open **Passkeys and security** from the account menu. The dialog lists the account's passkeys (name and date added), adds another authenticator with a chosen name, renames a passkey, and removes one after confirmation. Closing the dialog or selecting Cancel before verification is submitted discards a pending enrollment without changing the account.
 
 - Up to sixteen passkeys per account. The browser is asked for a discoverable (resident) passkey with user verification.
-- Adding or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your passkeys." and offers **Use your passkey** or password plus code.
+- Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your passkeys." and offers **Use your passkey** or password plus code.
 - The first passkey of an account with no other factor needs only a recent sign-in.
-- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot add or remove passkeys: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
+- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change passkeys: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
+- A passkey-only account cannot remove its last passkey. It can add a backup authenticator first. Renaming leaves the credential and active sessions intact.
 - **Adding or removing a passkey signs the account out everywhere**, including terminal sessions and application grants. The page returns to sign-in with "Passkey added. Sign in with it to continue." or "Passkey removed. Sign in again."
 - Authenticator apps and recovery codes are managed from the terminal: `riauth mfa enroll`, `riauth mfa recovery-codes --out FILE`.
 
