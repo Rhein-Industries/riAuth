@@ -287,16 +287,9 @@ impl Core {
             let (_, matches, upgraded) = verified.as_ref().unwrap();
             let password_ok = *matches && user.as_ref().is_some_and(|u| !u.password_hash.is_empty());
             let mut valid = password_ok && user.as_ref().is_some_and(|u| u.enabled);
-            if let Some(u) = user.as_mut().filter(|_| valid)
-                && let Some(secret) = &u.totp_secret {
-                    if let Some(code) = otp.as_deref().filter(|c| c.starts_with("ri_recovery_")) {
-                        valid = crate::authenticator::consume_recovery_code(u, code);
-                    } else {
-                        let step = crypto::totp_step_with(secret, &u.username, otp.as_deref().unwrap_or(""), at, u.totp_last_step, &u.totp_settings)?;
-                        valid = step.is_some();
-                        if valid { u.totp_last_step = step; }
-                    }
-                }
+            if let Some(u) = user.as_mut().filter(|_| valid) {
+                valid = crate::authenticator::consume_password_factor(u, otp.as_deref(), at)?;
+            }
             if !valid {
                 attempts.failures += 1;
                 if attempts.failures >= 5 { attempts.locked_until = at + 900; }
@@ -720,30 +713,78 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<Value> {
-        // Refuse before the login below verifies anything: a directory would check the
-        // password, and a local hash must never be planted on a directory account.
-        let username = self.store.read(|tx| {
+        let current = zeroize::Zeroizing::new(current);
+        let password = zeroize::Zeroizing::new(password);
+        let otp = otp.map(zeroize::Zeroizing::new);
+        if current.len() > 1024 || otp.as_ref().is_some_and(|code| code.len() > 128) {
+            return Err(Error::bad("Password or code is too long"));
+        }
+        // Pin this request before hashing. No verification session or factor
+        // consumption may survive independently of the credential mutation.
+        let (pinned, pinned_session) = self.store.read(|tx| {
             let (user, session) = self.session(tx, token)?;
             crate::password::require_local(tx, &user)?;
-            // The login verifies a TOTP or recovery code when TOTP is enrolled.
+            // Enrolled TOTP will be proved by this request inside the writer.
             crate::password::require_fresh_mfa(&user, &session, user.totp_secret.is_some())?;
-            Ok(user.username)
+            crate::password::unlocked(tx, &user)??;
+            Ok((user, session))
         })?;
         let new_hash = crypto::password_hash(&password)?;
-        let fresh = self.login(username, current, otp)?;
-        let reauth = fresh["session_token"]
-            .as_str()
-            .ok_or_else(|| Error::internal("Missing reauthentication token"))?
-            .to_owned();
-        let result = self.store.write(|tx| {
+        let password_ok = {
+            let _timer = self.store.telemetry().password.timer();
+            crypto::password_matches(&current, &pinned.password_hash)
+        };
+        self.store.write(|tx| {
             let (mut user, session) = self.session(tx, token)?;
-            let (verified, proof) = self.session(tx, &reauth)?;
-            if verified.id != user.id {
+            if user.id != pinned.id
+                || user.epoch != pinned.epoch
+                || user.username != pinned.username
+                || user.password_hash != pinned.password_hash
+                || session.id != pinned_session.id
+                || session.identity.session_id != session.id
+                || session.token_hash != digest(token)
+            {
                 return Err(Error::forbidden());
             }
             crate::password::require_local(tx, &user)?;
-            // A passkey cannot be presented here: it needs this session's recent passkey sign-in.
-            crate::password::require_fresh_mfa(&user, &session, proof.identity.mfa)?;
+            let factor_required = user.totp_secret.is_some();
+            // A passkey-only MFA requirement still needs this session's fresh
+            // passkey assurance. A submitted recovery code keeps its existing
+            // password-change permission and cannot upgrade the stored session.
+            crate::password::require_fresh_mfa(&user, &session, factor_required)?;
+            if let Err(locked) = crate::password::unlocked(tx, &user)? {
+                return Ok(Err(locked));
+            }
+            let at = now();
+            if !password_ok
+                || !crate::authenticator::consume_password_factor(
+                    &mut user,
+                    otp.as_deref().map(String::as_str),
+                    at,
+                )?
+            {
+                let mut attempts = tx
+                    .get::<Attempts>("attempts", &user.username)?
+                    .unwrap_or_default();
+                if at.saturating_sub(attempts.window_start) >= 900 {
+                    attempts = Attempts {
+                        window_start: at,
+                        ..Default::default()
+                    };
+                }
+                attempts.failures += 1;
+                if attempts.failures >= 5 {
+                    attempts.locked_until = at + 900;
+                }
+                tx.put("attempts", &user.username, &attempts)?;
+                audit(tx, "anonymous", "login.failed", &user.username)?;
+                // Failed verification commits only the shared guessing budget.
+                return Ok(Err(Error::new(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_credentials",
+                    "Invalid username, password, or one-time code",
+                )));
+            }
             crate::password::replace(
                 tx,
                 self.config.password_history,
@@ -751,12 +792,14 @@ impl Core {
                 &password,
                 new_hash,
             )?;
-            Ok(json!({"changed": true, "sessions_revoked": true}))
-        });
-        if result.is_err() {
-            let _ = self.logout(&reauth);
-        }
-        result
+            // History checks may take time. Expiry or freshness failure rolls
+            // the factor, password, epoch and revocation writes back together.
+            if session.expires_at <= now() {
+                return Err(Error::unauthorized());
+            }
+            crate::password::require_fresh_mfa(&user, &session, factor_required)?;
+            Ok(Ok(json!({"changed": true, "sessions_revoked": true})))
+        })?
     }
     pub fn audit_events(&self, token: &str, limit: usize) -> Result<Value> {
         self.store.read(|tx| {

@@ -124,6 +124,35 @@ pub(crate) fn consume_recovery_code(user: &mut User, code: &str) -> bool {
         && user.recovery_codes.remove(&digest(code))
 }
 
+/// Ordinary password sign-in and a password mutation use the same factor
+/// verifier and account-wide replay state. The caller persists the changed
+/// user only with the operation it authorizes; this never creates an identity.
+pub(crate) fn consume_password_factor(
+    user: &mut User,
+    code: Option<&str>,
+    at: u64,
+) -> Result<bool> {
+    let Some(secret) = &user.totp_secret else {
+        return Ok(true);
+    };
+    if let Some(code) = code.filter(|code| code.starts_with("ri_recovery_")) {
+        return Ok(consume_recovery_code(user, code));
+    }
+    let step = crypto::totp_step_with(
+        secret,
+        &user.username,
+        code.unwrap_or(""),
+        at,
+        user.totp_last_step,
+        &user.totp_settings,
+    )?;
+    if let Some(step) = step {
+        user.totp_last_step = Some(step);
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn no_pending() -> Error {
     Error::new(
         StatusCode::BAD_REQUEST,

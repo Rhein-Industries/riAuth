@@ -21,6 +21,15 @@ Only an enabled account with a local password can change or reset it here. An ac
 
 **Change.** Signed-in users open **Sign-in and security** in the applications portal and choose **Change password**. The form asks for the current password again. A browser that signed in by terminal approval must sign in here first. When the account has TOTP or a passkey, the browser session must also be an MFA sign-in (passkey, or password plus code) from the last five minutes; the dialog offers that confirmation. A wrong current password counts toward the same lockout as sign-in: five failures in fifteen minutes pause password checks for fifteen minutes. `riauth passwd` applies the same account and MFA rules; there a TOTP or recovery code comes from `RIAUTH_OTP`. Passkey-only accounts have no local password to change.
 
+For the bearer password-change API used by `riauth passwd`, password verification
+is bound to the original account, session, credential hash and epoch. The writer
+rechecks live authority and consumes a submitted TOTP or recovery code in the
+same transaction as password history, replacement, epoch advancement and
+revocation. A history rejection leaves the factor unspent for a valid retry;
+successful consumption is shared with ordinary sign-in's replay protection.
+No intermediate login or session is created. Essentials and Platform use the
+same verifier and mutation path.
+
 **Reset.** **Forgot your password?** on the portal and on application sign-in pages opens `/account/reset`. Enter a username and the server answers the same way for every name; an eligible account (enabled, verified email, local password) receives a link that expires after 30 minutes. The code is in the link's fragment, so opening or scanning the link spends nothing. The page removes it from the address bar and sends it only with the new password. A newer request replaces the previous link; a password change, email change or another reset invalidates it. Each link works once.
 
 Both journeys keep the account's passkeys, authenticator app and recovery codes. They sign the account out everywhere, including this browser, and end its application grants; a reset clears a password lockout. Neither signs the browser in. The next password sign-in still needs the authenticator or recovery code when TOTP is enrolled, and applications and changes that require MFA still need a passkey or code. Resetting a password never removes or bypasses a factor.

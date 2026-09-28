@@ -1197,6 +1197,152 @@ fn browser_change_failures_lock_password_sign_in() {
     assert!(signed_in(&f, &web));
 }
 
+/// A signed-in mutation must never consume a factor or mint a verification
+/// session before the password write succeeds. Both editions use this path.
+#[test]
+fn password_change_factor_consumption_is_atomic_and_replay_safe() {
+    for recovery in [true, false] {
+        let f = Fixture::new();
+        let initial = f.user("atomic-change");
+        let (totp, bearer) = enroll_totp(&f, &initial, "atomic-change");
+        let codes = f.core.recovery_codes(&bearer).unwrap()["recovery_codes"].clone();
+        let factor = if recovery {
+            codes[0].as_str().unwrap().to_owned()
+        } else {
+            // The login above spent the current step. A real code for the next
+            // accepted skew step is unspent and avoids waiting for the clock.
+            totp.generate(now() + 30).to_string()
+        };
+        let before = user(&f, "atomic-change");
+        let session_id: String = f
+            .core
+            .store
+            .get("session_tokens", &digest(&bearer))
+            .unwrap()
+            .unwrap();
+        let session: Session = f.core.store.get("sessions", &session_id).unwrap().unwrap();
+        let change = |current: &str, password: &str| {
+            f.core.change_password(
+                &bearer,
+                current.into(),
+                password.into(),
+                Some(factor.clone()),
+            )
+        };
+
+        // No stale session may consume the submitted code or change a password.
+        let mut revoked = session.clone();
+        revoked.revoked = true;
+        f.core
+            .store
+            .write(|tx| tx.put("sessions", &session_id, &revoked))
+            .unwrap();
+        let snapshot = f.snapshot().unwrap();
+        assert!(change(PASSWORD, CHANGED).is_err());
+        f.assert_snapshot(&snapshot);
+        f.core
+            .store
+            .write(|tx| tx.put("sessions", &session_id, &session))
+            .unwrap();
+
+        // Wrong primary proof counts against ordinary sign-in's shared lockout
+        // without spending a correct second factor.
+        let failed = change("incorrect-current-password", CHANGED).unwrap_err();
+        assert_eq!(failed.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(failed.code, "invalid_credentials");
+        let attempts: Attempts = f
+            .core
+            .store
+            .get("attempts", "atomic-change")
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempts.failures, 1);
+        assert_eq!(
+            user(&f, "atomic-change").recovery_codes,
+            before.recovery_codes
+        );
+        assert_eq!(
+            user(&f, "atomic-change").totp_last_step,
+            before.totp_last_step
+        );
+
+        // The factor verifies, then password history rejects the mutation. The
+        // entire durable state, including replay/lockout/session records, rolls back.
+        let snapshot = f.snapshot().unwrap();
+        let reused = change(PASSWORD, PASSWORD).unwrap_err();
+        assert_eq!(reused.status, StatusCode::BAD_REQUEST);
+        assert_eq!(reused.message, "Password was used recently");
+        f.assert_snapshot(&snapshot);
+        assert!(f.core.me(&bearer).is_ok());
+        let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+        let tokens = f.core.store.list::<Value>("session_tokens").unwrap();
+        let staged = f.core.store.list::<Value>("browser_logins").unwrap();
+        let logins = audits(&f, "login.succeeded");
+
+        // The unspent proof can be retried; competing requests can commit only
+        // once, and the mutation never mints an attachable verification session.
+        let results = std::thread::scope(|scope| {
+            let a = scope.spawn(|| change(PASSWORD, CHANGED));
+            let b = scope.spawn(|| change(PASSWORD, CHANGED));
+            [a.join().unwrap(), b.join().unwrap()]
+        });
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            results.into_iter().find_map(Result::ok).unwrap(),
+            json!({"changed":true,"sessions_revoked":true})
+        );
+        let after = user(&f, "atomic-change");
+        assert_eq!(after.epoch, before.epoch + 1);
+        assert!(riauth::crypto::password_matches(
+            CHANGED,
+            &after.password_hash
+        ));
+        assert_eq!(after.totp_secret, before.totp_secret);
+        if recovery {
+            let mut expected = before.recovery_codes.clone();
+            assert!(expected.remove(&digest(&factor)));
+            assert_eq!(after.recovery_codes, expected);
+            assert_eq!(after.totp_last_step, before.totp_last_step);
+        } else {
+            assert!(after.totp_last_step > before.totp_last_step);
+            assert_eq!(after.recovery_codes, before.recovery_codes);
+        }
+        assert!(f.core.me(&bearer).is_err());
+        assert!(
+            f.core
+                .store
+                .get::<Attempts>("attempts", "atomic-change")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            f.core.store.list::<Session>("sessions").unwrap().len(),
+            sessions
+        );
+        assert_eq!(
+            f.core.store.list::<Value>("session_tokens").unwrap(),
+            tokens
+        );
+        assert_eq!(
+            f.core.store.list::<Value>("browser_logins").unwrap(),
+            staged
+        );
+        assert_eq!(audits(&f, "login.succeeded"), logins);
+        assert_eq!(audits(&f, "user.password.change"), 1);
+        let snapshot = f.snapshot().unwrap();
+        assert!(change(PASSWORD, CHANGED).is_err());
+        f.assert_snapshot(&snapshot);
+
+        // Ordinary sign-in observes the same spent TOTP/recovery proof.
+        let replay = f
+            .core
+            .login("atomic-change".into(), CHANGED.into(), Some(factor))
+            .unwrap_err();
+        assert_eq!(replay.code, "invalid_credentials");
+        assert_eq!(user(&f, "atomic-change").epoch, after.epoch);
+    }
+}
+
 /// RI-CRED-002: with a factor enrolled, the change also needs this session's MFA from
 /// the last five minutes, in the browser and on the bearer API alike.
 #[tokio::test]
