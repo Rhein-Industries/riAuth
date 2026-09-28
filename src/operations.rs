@@ -342,6 +342,8 @@ fn restore_v1(
     let records = backup.records;
     commit_restore(
         backup.config,
+        // v1 does not authenticate its creation time.
+        None,
         output,
         database_key_file,
         move |tx| {
@@ -357,6 +359,7 @@ fn restore_v1(
 
 struct ChunkedBackup {
     config: Config,
+    created_at: u64,
     record_count: u64,
 }
 
@@ -375,6 +378,7 @@ fn restore_v2(
     let key = *key;
     commit_restore(
         loaded.config,
+        Some(loaded.created_at),
         output,
         database_key_file,
         move |tx| {
@@ -472,12 +476,16 @@ fn load_chunked(envelope: &Value, key: &[u8; 32]) -> Result<ChunkedBackup> {
     }
     Ok(ChunkedBackup {
         config: manifest.config,
+        created_at: manifest.created_at,
         record_count: manifest.record_count,
     })
 }
 
+/// Every restore format must call this: it applies the restored-state policy
+/// (`crate::recovery`) in the same transaction as the import.
 fn commit_restore(
     mut config: Config,
+    snapshot_created_at: Option<u64>,
     output: &Path,
     database_key_file: Option<PathBuf>,
     import: impl FnOnce(&crate::store::Tx<'_>) -> Result<()>,
@@ -500,9 +508,17 @@ fn commit_restore(
     let data_dir = output.join("data");
     private_dir(&data_dir).map_err(Error::internal)?;
     let store = Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?;
-    store.write(|tx| {
+    let recovery = store.write(|tx| {
         check()?;
         import(tx)?;
+        check()?;
+        // Invalidation and the serving gate must commit with the imported state.
+        let recovery = crate::recovery::invalidate(
+            tx,
+            crate::recovery::Cause::BackupRestore,
+            snapshot_created_at,
+            None,
+        )?;
         check()?;
         tx.rebuild_indexes_checked(&check)?;
         check()?;
@@ -528,7 +544,7 @@ fn commit_restore(
             return Err(Error::bad("Backup has no enabled administrator"));
         }
         check()?;
-        Ok(())
+        Ok(recovery)
     })?;
     drop(store);
     config.data_dir = "data".into();
@@ -547,7 +563,9 @@ fn commit_restore(
     let core = Core::open(config)?;
     core.jwks()?;
     Ok(
-        json!({"restored": true, "verified": true, "config": config_path, "issuer": core.config.issuer, "encrypted_at_rest": core.config.database_key_file.is_some()}),
+        json!({"restored": true, "verified": true, "config": config_path, "issuer": core.config.issuer, "encrypted_at_rest": core.config.database_key_file.is_some(),
+            "serving_allowed": false, "recovery": recovery,
+            "next": "Reconcile or rotate the listed persistent credentials, then run `riauth recovery complete --recovery-id <recovery.id> --persistent-credentials-reconciled`"}),
     )
 }
 
@@ -587,7 +605,9 @@ pub fn migrate_postgres(
         .transpose()?;
     let store = Store::open_postgres(target.clone(), target_key)?;
     store.write(|tx| {
-        let existing = tx.snapshot()?;
+        let mut existing = tx.snapshot()?;
+        // Opening the target records its lineage; that alone is not a mismatch.
+        existing.remove("meta/storage_lineage");
         if !existing.is_empty() {
             if existing == snapshot {
                 return Ok(());

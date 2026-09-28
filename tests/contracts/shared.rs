@@ -3144,3 +3144,154 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
     f.assert_snapshot(&after_revoke);
     assert_eq!(audit_count(&f, "cloud_directory.apply"), 1);
 }
+
+// R04, RI-STORE-004, Q02-C10: older database state returned by a database-native
+// restore (PostgreSQL database clone, copied redb file). PostgreSQL detects the
+// new database lineage when it opens; redb has no lineage and relies on the
+// operator's `recovery invalidate`. Both must end in the same security state.
+pub fn database_native_restore_policy(backend: Backend) {
+    use riauth::recovery;
+    let f = backend.fixture();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let tokens = f.tokens("app", &alice, None);
+    let pending_code = f.exchange_request("app", &alice, None);
+    let before = user(&f, "alice");
+    let keys = f.core.jwks().unwrap();
+    let revision: u64 = f.core.store.get("meta", "revision").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            tx.put("assertion_replays", "restore-contract", &json!(now() + 600))?;
+            let mut enrolling = before.clone();
+            enrolling.totp_pending = Some(("restored-enrollment".into(), now() + 600));
+            tx.put("users", &enrolling.id, &enrolling)
+        })
+        .unwrap();
+    let f = f.restored_copy();
+    let detected = f.core.store.read(recovery::pending).unwrap();
+    assert_eq!(
+        detected.as_ref().map(|r| r.cause),
+        (f.core.store.backend() == "postgresql").then_some(recovery::Cause::StorageLineageChanged)
+    );
+    if detected.is_some() {
+        // Opening the copy already applied the policy, before any operator step.
+        assert!(f.core.me(&alice).is_err());
+        assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+        assert_eq!(user(&f, "alice").epoch, before.epoch + recovery::STRIDE);
+        assert!(f.core.store.ready().is_err());
+    }
+    // A second store handle means another server may still be writing: redb's
+    // file lock refuses it, PostgreSQL recovery refuses while it is connected.
+    let config = f.core.config.clone();
+    if f.core.store.backend() == "postgresql" {
+        let other = Core::open(config.clone()).unwrap();
+        let error = recovery::invalidate_restored(&other.store).unwrap_err();
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        drop(other);
+    } else {
+        assert!(Core::open(config.clone()).is_err());
+    }
+    // A closed client's backend leaves pg_stat_activity asynchronously.
+    let mut attempts = 0;
+    let applied = loop {
+        match recovery::invalidate_restored(&f.core.store) {
+            Err(error) if error.status == StatusCode::CONFLICT && attempts < 50 => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            result => break result.unwrap(),
+        }
+    };
+    assert_eq!(applied.cause, recovery::Cause::DatabaseRestore);
+    let snapshot = f.snapshot().unwrap();
+    for bucket in recovery::INVALIDATED {
+        let prefix = format!("{bucket}/");
+        assert!(
+            !snapshot.keys().any(|key| key.starts_with(&prefix)),
+            "{bucket} survived recovery"
+        );
+    }
+    assert!(snapshot.contains_key("assertion_replays/restore-contract"));
+    let restored = user(&f, "alice");
+    assert_eq!(restored.id, before.id);
+    assert!(restored.totp_pending.is_none());
+    assert_eq!(restored.subjects, before.subjects);
+    assert!(restored.epoch >= before.epoch + recovery::STRIDE);
+    assert!(
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap()
+            >= revision + recovery::STRIDE
+    );
+    assert_eq!(f.core.jwks().unwrap(), keys);
+    assert!(f.core.me(&alice).is_err());
+    assert!(f.core.me(&f.admin).is_err());
+    assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
+    assert!(f.core.token(refresh("app", &tokens)).is_err());
+    assert!(f.core.token(pending_code).is_err());
+    assert!(f.core.store.ready().is_err());
+    // Reopening neither re-applies the policy nor clears the gate.
+    let at_rest = f.snapshot().unwrap();
+    let f = f.reopen_with(|_| {});
+    f.assert_snapshot(&at_rest);
+    assert!(f.core.store.ready().is_err());
+    // New authentication works; traffic needs the operator's attestation.
+    let session = text(
+        &f.core.login("alice".into(), PASSWORD.into(), None).unwrap(),
+        "session_token",
+    );
+    assert_eq!(f.core.me(&session).unwrap()["user"]["id"], before.id);
+    assert!(recovery::complete(&f.core.store, &applied.id, false).is_err());
+    assert!(f.core.store.ready().is_err());
+    if let Some(superseded) = &detected {
+        assert!(recovery::complete(&f.core.store, &superseded.id, true).is_err());
+    }
+    let completed = recovery::complete(&f.core.store, &applied.id, true).unwrap();
+    assert_eq!(completed.id, applied.id);
+    f.core.store.ready().unwrap();
+    assert!(recovery::complete(&f.core.store, &applied.id, true).is_err());
+    let fresh = f.tokens("app", &session, None);
+    assert!(f.core.userinfo(&text(&fresh, "access_token")).is_ok());
+}
+
+// R04, RI-STORE-004: `riauth recovery status` inspects without opening. A missing
+// store stays missing and reports not serving; an existing store, including one
+// with a pending gate, is byte-for-byte (redb) or record-for-record unchanged.
+pub fn recovery_status_never_creates_or_writes_a_store(backend: Backend) {
+    use riauth::recovery;
+    let empty = backend.uninitialized();
+    for _ in 0..2 {
+        let status = recovery::inspect(&empty.config).unwrap();
+        assert_eq!(status["initialized"], false);
+        assert_eq!(status["serving_allowed"], false);
+        assert!(status["pending"].is_null());
+        assert!(empty.untouched());
+    }
+    drop(empty);
+    let f = backend.fixture();
+    let applied = recovery::invalidate_restored(&f.core.store).unwrap();
+    let at_rest = f.snapshot().unwrap();
+    let f = f.reopen_with(|config| {
+        let file = config.data_dir.join("riauth.redb");
+        let bytes = config
+            .postgres
+            .is_none()
+            .then(|| std::fs::read(&file).unwrap());
+        let status = recovery::inspect(config).unwrap();
+        assert_eq!(status["initialized"], true);
+        assert_eq!(status["serving_allowed"], false);
+        assert_eq!(status["pending"]["id"], json!(applied.id));
+        if let Some(bytes) = bytes {
+            assert_eq!(std::fs::read(&file).unwrap(), bytes);
+        }
+    });
+    f.assert_snapshot(&at_rest);
+    recovery::complete(&f.core.store, &applied.id, true).unwrap();
+    let f = f.reopen_with(|config| {
+        assert_eq!(recovery::inspect(config).unwrap()["serving_allowed"], true);
+    });
+    f.core.store.ready().unwrap();
+}

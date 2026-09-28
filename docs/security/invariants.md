@@ -20,7 +20,7 @@ future authorized work, not implemented tests or claims of passing coverage.
 | Workflows | RI-WF-001–002 | Embedded source stages exist; general configurable workflows are intended policy. |
 | Proxies | RI-PROXY-001–002 | Forward auth and embedded proxy exist; deployment header trust remains an external dependency. |
 | Devices and certificates | RI-DEV-001–003 | Server protocols exist; real device agents/peers are not established here. |
-| Storage, secret custody, backups and rollback | RI-STORE-001–004 | Store/backup checks exist; cross-snapshot anti-rollback is not implemented. |
+| Storage, secret custody, backups and rollback | RI-STORE-001–004 | Store/backup checks and restored-state invalidation with an operator-attested serving gate exist; no external freshness witness. |
 | Shared core and compiled/runtime boundaries | RI-DIST-001–003 | Distribution separation and transitions remain intended policy. |
 
 There are 35 IDs. The named regressions provide partial evidence, not a count of
@@ -829,7 +829,7 @@ signatures. Unix mode checks are not proof of Windows ACLs.
 `non_admins_cannot_manage_identities_and_views_never_return_secrets`;
 [reports](../../tests/reports.rs) `password_change_audit_has_no_hash_and_secrets_stay_out`;
 [operations](../../tests/identity/operations.rs)
-`encrypted_backup_restore_preserves_identity_keys_and_grants` and
+`encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants` and
 `external_vault_signing_keeps_private_keys_out_of_storage_pins_version_and_verifies_signatures`;
 [SCIM OAuth](../../tests/scim_oauth.rs) secret/cache regressions.
 
@@ -850,17 +850,17 @@ credentials/files/services remain visible recovery prerequisites.
 **Observed enforcement.** [Operations](../../src/operations.rs) `backup`,
 `load_chunked`, `restore_v1`, `restore_v2`, `commit_restore` validate v1/v2 format,
 v2 chunk sequence/digests/count, issuer/schema, enabled administrator and signing
-key, then rebuild indexes and open the restored core. Limits are 64 MiB archive
+key, apply the RI-STORE-004 policy, then rebuild indexes and open the restored core. Limits are 64 MiB archive
 and 8 MiB new plaintext pages. Restore yields redb even from PostgreSQL. It does
 not restore external Vault custody, secret files or prove full application login.
 
 **Existing regressions.** [Operations](../../tests/operations.rs)
-`chunked_backup_restore_preserves_user_client_and_grant`,
+`chunked_backup_restore_preserves_identity_and_invalidates_grants`,
 `legacy_single_blob_backup_still_restores`,
 `restore_rejects_oversized_archive_before_reading_or_creating_output`,
 `schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes`;
 [identity operations](../../tests/identity/operations.rs)
-`encrypted_backup_restore_preserves_identity_keys_and_grants`.
+`encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants`.
 
 **Missing coverage / later contract.** Q02-C10 tests wrong key/issuer/schema,
 tamper/reorder/truncation/duplicates, private output and external prerequisites.
@@ -879,28 +879,52 @@ An authenticated old archive must not be advertised as preserving revocations or
 consumptions made afterward. A continuity exception requires an explicit reviewed
 policy and equivalent evidence; it cannot silently restore pre-incident access.
 
-**Observed limit.** [Operations](../../src/operations.rs) imports all snapshot
-records without checking an external monotonic epoch/revocation ledger. Older
-unexpired authority/one-use state can therefore return to its earlier state.
-This is a source-supported recovery effect, not a Q01 reproduced exploit.
-[Operations guidance](../operations.md#upgrade-and-rollback) requires stopping
-writers and a compatible pre-upgrade restore; this alone does not reconcile
-post-snapshot security changes.
+**Observed enforcement (R04).** [Recovery](../../src/recovery.rs) `invalidate`
+runs inside the restore import transaction (`commit_restore`), on a PostgreSQL
+store whose recorded cluster/database/table lineage changed (`verify_lineage`),
+and through offline `riauth recovery invalidate --database-restored`
+(`invalidate_restored`, refused while other riAuth PostgreSQL clients are
+connected). It deletes restored sessions, grants, families, one-time codes,
+pending proofs, proof mail and consents; clears pending MFA enrollment secrets
+(`users[*].totp_pending`); ends RP sessions (paged, rows kept for signing-key
+retention) and queues back-channel logout; revokes temporary access and denies pending requests; advances every
+account epoch and `meta/revision` by 2^32; keeps replay caches, identities,
+subjects and keys. `meta/recovery` then blocks `serve` and readiness until
+`recovery complete --recovery-id <id> --persistent-credentials-reconciled` records the operator's
+attestation that listed persistent credentials were reconciled or rotated.
+`recovery status` inspects without opening: it never creates, formats, migrates
+or recovers a store and reports a missing one as not serving. The
+policy and PostgreSQL boundary are in [restored-state recovery](../recovery.md).
 
-**Existing evidence.** [Identity operations](../../tests/identity/operations.rs)
-`encrypted_backup_restore_preserves_identity_keys_and_grants` intentionally
-accepts a pre-backup access token after restore. [Operations](../../tests/operations.rs)
-`chunked_backup_restore_preserves_user_client_and_grant` compares preserved state.
-Neither tests revocation/consumption after backup followed by an older restore.
+**Observed limit.** No external monotonic epoch/revocation ledger exists.
+Restored persistent credentials (disabled accounts, changed passwords, used
+recovery codes, removed passkeys/bindings, rotated agent/client/source secrets,
+retired signing keys) return to snapshot state; the gate lists them but cannot
+verify reconciliation. Physical/PITR restores of the same PostgreSQL cluster,
+asynchronous promotions and copied redb files are undetected and depend on the
+operator command. Replay entries accepted only on the lost timeline, offline JWT
+or RP/SP sessions, Windows offline tickets and remote job effects are outside the
+policy.
 
-**Missing coverage / later contract.** Q05-R08 backs up before disable,
-credential rotation, proof consumption and remote acceptance, then restores after
-each; record resurrected local authority/replayed work subject to expiry. Q02-C10
-then enforces A02's proposed default invalidation/reconciliation, preserving user
-IDs and subjects. Include client/agent/device credentials, password/TOTP/recovery
-state, mail proofs, receipts and jobs in the policy review: invalidating sessions
-alone cannot prove newer security state is preserved. No such recovery mechanism
-or anti-rollback guarantee is claimed to exist in the baseline.
+**Existing evidence.** [Recovery](../../tests/recovery.rs)
+`restore_invalidates_restored_sessions_proofs_and_grants_but_preserves_identity`,
+`older_restore_cannot_resurrect_post_snapshot_revocations_or_consumption`,
+`serve_refuses_unreconciled_restored_state_before_listening`,
+`in_place_recovery_matches_restore_policy_and_keeps_history`,
+`recovery_ends_every_rp_session_page_and_clears_pending_mfa_enrollment`,
+`every_storage_collection_has_a_restore_classification`; shared contract
+`database_native_restore_policy` on redb, encrypted redb and isolated PostgreSQL
+(database clone lineage detection and connected-client refusal), and
+`recovery_status_never_creates_or_writes_a_store` on the same four modes.
+[Operations](../../tests/operations.rs)
+`chunked_backup_restore_preserves_identity_and_invalidates_grants` compares the
+restored snapshot against the policy.
+
+**Missing coverage / later contract.** Q05-R08 still interrupts restore/policy
+writes and races recovery with running nodes. Q02-C10 extends the restore matrix
+to TOTP/recovery-code consumption, agents, devices, receipts and remote jobs, and
+to R01/R02 readers. A continuity exception, automatic credential reconciliation
+from an external audit ledger, and SAML SP logout fan-out are not implemented.
 
 ## Product and runtime boundaries
 
@@ -977,7 +1001,7 @@ compatibility metadata/transition gates are not identified in the baseline.
 
 **Existing regressions.** [Identity operations](../../tests/identity/operations.rs)
 `schema_upgrade_is_atomic_preserves_credentials_and_rejects_future_versions`,
-`encrypted_backup_restore_preserves_identity_keys_and_grants`;
+`encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants`;
 [operations](../../tests/operations.rs) legacy backup/schema tests. These cannot
 establish two-build downgrade safety.
 

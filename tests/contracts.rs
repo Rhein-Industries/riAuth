@@ -61,3 +61,5 @@ backend_contract!(offboard_intent_durable_cancel);
 #[cfg(feature = "test-support")]
 backend_contract!(offboard_retry_rechecks_authority);
 backend_contract!(cloud_snapshot_apply_atomic_retry);
+backend_contract!(database_native_restore_policy);
+backend_contract!(recovery_status_never_creates_or_writes_a_store);

@@ -43,7 +43,7 @@ The local test harness creates isolated primary/standby data directories, restri
 CARGO=cargo PG_BIN=/path/to/postgresql/bin scripts/test-postgres.sh
 ```
 
-The fixture measures a disposable local failover and does not set an RTO or RPO for a deployment. Rehearse network partitions, failback, backup restore and infrastructure upgrades under the intended load and topology.
+A database-native restore, PITR or asynchronous promotion that may have lost commits is older state: stop every node, then run `riauth recovery invalidate --database-restored` before serving. riAuth detects a logical restore into another cluster, database or table on open, but cannot detect a physical restore of the same cluster ([restored-state recovery](recovery.md)). The fixture measures a disposable local failover and does not set an RTO or RPO for a deployment. Rehearse network partitions, failback, backup restore and infrastructure upgrades under the intended load and topology.
 
 The multi-node fixture covers the shared storage and protocol cases above. Newer
 enterprise features also require their own multi-node acceptance: a single-process

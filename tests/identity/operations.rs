@@ -299,7 +299,7 @@ fn claim_mappings_scope_policies_and_subject_import_are_enforced() {
 }
 
 #[test]
-fn encrypted_backup_restore_preserves_identity_keys_and_grants() {
+fn encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants() {
     let f = Fixture::new();
     f.client("app", false);
     let alice = f.user("alice");
@@ -332,14 +332,47 @@ fn encrypted_backup_restore_preserves_identity_keys_and_grants() {
     let config = Config::load(&output.join("riauth.toml")).unwrap();
     let restored = Core::open(config.clone()).unwrap();
     assert_eq!(restored.jwks().unwrap(), f.core.jwks().unwrap());
-    assert_eq!(
-        restored.userinfo(&text(&tokens, "access_token")).unwrap(),
-        expected
+    // R04: the restored grant is invalidated; the identity and subject continue.
+    assert!(restored.userinfo(&text(&tokens, "access_token")).is_err());
+    assert!(restored.doctor(&f.admin).is_err());
+    let alice = text(
+        &restored
+            .login("alice".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
     );
+    let verifier = crypto::random_token("");
+    let redirect = restored
+        .authorize(&alice, f.request("app", &verifier))
+        .unwrap();
+    let code = url::Url::parse(&redirect)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let fresh = restored
+        .token(riauth::oidc::TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("app".into()),
+            code: Some(code),
+            redirect_uri: Some("http://localhost:7777/callback?existing=1".into()),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap();
     assert_eq!(
-        restored.doctor(&f.admin).unwrap()["encrypted_at_rest"],
-        true
+        restored.userinfo(&text(&fresh, "access_token")).unwrap()["sub"],
+        expected["sub"]
     );
+    let admin = text(
+        &restored
+            .login("admin".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert_eq!(restored.doctor(&admin).unwrap()["encrypted_at_rest"], true);
     let bytes = std::fs::read(output.join("data/riauth.redb")).unwrap();
     for marker in [
         b"PRIVATE KEY".as_slice(),

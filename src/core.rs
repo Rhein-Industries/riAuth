@@ -142,6 +142,7 @@ impl Core {
             tx.put("users", &user.id, &user)?;
             tx.put("usernames", &user.username, &user.id)?;
             tx.delete("meta", "browser_setup")?;
+            crate::recovery::stamp_lineage(tx)?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;
         Ok(Self {
@@ -166,6 +167,7 @@ impl Core {
             ));
         }
         crate::upgrade::migrate(&store)?;
+        crate::recovery::verify_lineage(&store)?;
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
             .ok_or_else(|| Error::internal("dummy hash missing"))?;

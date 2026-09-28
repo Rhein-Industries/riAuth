@@ -460,6 +460,40 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         ))["verified"],
         true
     );
+    // R04: the restored configuration waits for a bound, attested completion.
+    let restored_config = restored.join("riauth.toml");
+    let status = success(invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &["recovery", "status"],
+        None,
+    ));
+    assert_eq!(status["serving_allowed"], false);
+    assert_eq!(status["pending"]["cause"], "backup_restore");
+    let id = status["pending"]["id"].as_str().unwrap().to_owned();
+    let unattested = invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &["recovery", "complete", "--recovery-id", &id],
+        None,
+    );
+    assert!(!unattested.status.success());
+    let completed = success(invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &[
+            "recovery",
+            "complete",
+            "--recovery-id",
+            &id,
+            "--persistent-credentials-reconciled",
+        ],
+        None,
+    ));
+    assert_eq!(completed["serving_allowed"], true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

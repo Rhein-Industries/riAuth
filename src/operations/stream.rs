@@ -657,6 +657,7 @@ pub fn restore_stream(
     let cancel = options.cancel;
     commit_restore(
         verified.config,
+        Some(verified.created_at),
         output,
         database_key_file,
         |tx| {

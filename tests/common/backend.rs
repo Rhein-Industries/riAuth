@@ -43,16 +43,91 @@ impl BackendFixture {
             _database: self._database,
         }
     }
+
+    /// A database-native restore of this instance's current state: PostgreSQL
+    /// clones the database (a new database OID; `TEMPLATE` keeps relation OIDs);
+    /// redb copies the closed file. The copy is opened; the original is discarded.
+    pub fn restored_copy(self) -> Self {
+        let Self {
+            fixture: Fixture { _dir, core, admin },
+            _database,
+        } = self;
+        let mut config = core.config.clone();
+        drop(core);
+        let database = match (&mut config.postgres, _database) {
+            (Some(postgres), Some(mut original)) => {
+                let copy = original.clone_database();
+                let file = _dir.path().join("restored-connection");
+                riauth::config::write_private(&file, copy.connection.as_bytes(), false).unwrap();
+                postgres.connection_file = file;
+                drop(original);
+                Some(copy)
+            }
+            (None, None) => {
+                let data = _dir.path().join("restored-data");
+                riauth::config::private_dir(&data).unwrap();
+                std::fs::copy(
+                    config.data_dir.join("riauth.redb"),
+                    data.join("riauth.redb"),
+                )
+                .unwrap();
+                config.data_dir = data;
+                None
+            }
+            _ => unreachable!("fixture backend and database disagree"),
+        };
+        Self {
+            fixture: Fixture {
+                _dir,
+                core: Core::open(config).unwrap(),
+                admin,
+            },
+            _database: database,
+        }
+    }
+}
+
+/// Configuration for a store that was never initialized: no redb file, or an
+/// empty disposable PostgreSQL database.
+pub struct EmptyStore {
+    _dir: tempfile::TempDir,
+    pub config: Config,
+    database: Option<DisposableDatabase>,
+}
+
+impl EmptyStore {
+    /// Nothing exists yet at the configured location: no data directory, or no
+    /// riAuth schema in the database.
+    pub fn untouched(&self) -> bool {
+        match &self.database {
+            None => !self.config.data_dir.exists(),
+            Some(database) => database
+                .connection
+                .parse::<postgres::Config>()
+                .unwrap()
+                .connect(NoTls)
+                .unwrap()
+                .query_one(
+                    "SELECT NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'riauth_store')",
+                    &[],
+                )
+                .unwrap()
+                .get(0),
+        }
+    }
 }
 
 impl Backend {
-    pub fn fixture(self) -> BackendFixture {
-        if matches!(self, Self::Redb) {
-            return BackendFixture {
-                fixture: Fixture::new(),
-                _database: None,
-            };
+    pub fn uninitialized(self) -> EmptyStore {
+        let (_dir, config, database) = self.empty();
+        EmptyStore {
+            _dir,
+            config,
+            database,
         }
+    }
+
+    fn empty(self) -> (tempfile::TempDir, Config, Option<DisposableDatabase>) {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config {
             data_dir: dir.path().join("data"),
@@ -79,6 +154,17 @@ impl Backend {
         } else {
             None
         };
+        (dir, config, database)
+    }
+
+    pub fn fixture(self) -> BackendFixture {
+        if matches!(self, Self::Redb) {
+            return BackendFixture {
+                fixture: Fixture::new(),
+                _database: None,
+            };
+        }
+        let (dir, config, database) = self.empty();
         let core = Core::initialize(
             config,
             NewUser {
@@ -162,6 +248,35 @@ impl DisposableDatabase {
             ),
             control,
             name,
+        }
+    }
+}
+
+impl DisposableDatabase {
+    /// Requires that no connection to this database remains open.
+    fn clone_database(&mut self) -> Self {
+        let name = format!("riauth_contract_{}", uuid::Uuid::new_v4().simple());
+        self.control
+            .batch_execute(&format!("CREATE DATABASE {name} TEMPLATE {}", self.name))
+            .unwrap();
+        let config: postgres::Config = self.connection.parse().unwrap();
+        let connection = format!(
+            "host=127.0.0.1 port={} dbname={name} user=riauth_test sslmode=disable",
+            config.get_ports()[0]
+        );
+        let root = PathBuf::from(std::env::var_os("RIAUTH_TEST_CONTRACT_PG_ROOT").unwrap());
+        let control: postgres::Config = riauth::config::read_private_secret(
+            &root.canonicalize().unwrap().join("connection"),
+            16384,
+        )
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+        Self {
+            control: control.connect(NoTls).unwrap(),
+            name,
+            connection,
         }
     }
 }

@@ -2924,7 +2924,7 @@
       ],
       "tests_existing": [
         {
-          "ref": "tests/operations.rs::chunked_backup_restore_preserves_user_client_and_grant",
+          "ref": "tests/operations.rs::chunked_backup_restore_preserves_identity_and_invalidates_grants",
           "kind": "rust",
           "ci": "ci-check"
         },
@@ -2934,7 +2934,7 @@
           "ci": "ci-check"
         },
         {
-          "ref": "tests/identity/operations.rs::encrypted_backup_restore_preserves_identity_keys_and_grants",
+          "ref": "tests/identity/operations.rs::encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants",
           "kind": "rust",
           "ci": "ci-check"
         }
@@ -3007,7 +3007,7 @@
       ],
       "tests_existing": [
         {
-          "ref": "tests/operations.rs::chunked_backup_restore_preserves_user_client_and_grant",
+          "ref": "tests/operations.rs::chunked_backup_restore_preserves_identity_and_invalidates_grants",
           "kind": "rust",
           "ci": "ci-check"
         }

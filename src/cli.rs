@@ -5,6 +5,7 @@ use transport::{Remote, SavedSession};
 
 use crate::{
     config::{Config, private_dir, validate_server_url, write_private},
+    core::Core,
     crypto,
     model::*,
     oidc::DEVICE_GRANT,
@@ -440,6 +441,33 @@ pub enum Command {
     },
     /// Recover an administrator offline; requires local database access and a stopped server
     RecoverAdmin(local::RecoverAdminArgs),
+    /// Restored-state policy; offline, with every server stopped (docs/recovery.md)
+    Recovery {
+        #[command(subcommand)]
+        command: RecoveryCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RecoveryCommand {
+    /// Show the serving gate, pending reconciliation and PostgreSQL lineage (read-only)
+    Status,
+    /// Apply the restored-state policy after a database-native restore
+    /// (PostgreSQL PITR, base backup or dump, or a copied redb file)
+    Invalidate {
+        /// Confirm that older database state may now be in use
+        #[arg(long, required = true)]
+        database_restored: bool,
+    },
+    /// Reopen the serving gate after reconciling restored persistent credentials
+    Complete {
+        /// The pending recovery `id` that was reviewed, from `recovery status`
+        #[arg(long)]
+        recovery_id: String,
+        /// Confirm that listed persistent credentials were reconciled or rotated
+        #[arg(long)]
+        persistent_credentials_reconciled: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1228,6 +1256,42 @@ pub async fn run(cli: Cli) -> Result<()> {
             let config = Config::load(&cli.config)?;
             return crate::bootstrap::serve(config).await;
         }
+        Command::Recovery { command } => {
+            let config = Config::load(&cli.config)?;
+            enum Action {
+                Status,
+                Invalidate,
+                Complete(String, bool),
+            }
+            let action = match command {
+                RecoveryCommand::Status => Action::Status,
+                RecoveryCommand::Invalidate { .. } => Action::Invalidate,
+                RecoveryCommand::Complete {
+                    recovery_id,
+                    persistent_credentials_reconciled,
+                } => Action::Complete(recovery_id.clone(), *persistent_credentials_reconciled),
+            };
+            let value = tokio::task::spawn_blocking(move || -> Result<Value> {
+                Ok(match action {
+                    // Opening a store could create, migrate or apply a lineage recovery.
+                    Action::Status => crate::recovery::inspect(&config)?,
+                    Action::Invalidate => json!({
+                        "invalidated": crate::recovery::invalidate_restored(&Core::open(config)?.store)?,
+                        "serving_allowed": false,
+                    }),
+                    Action::Complete(id, attested) => {
+                        let store = Core::open(config)?.store;
+                        json!({
+                            "completed": crate::recovery::complete(&store, &id, attested)?,
+                            "serving_allowed": crate::recovery::require_serving(&store).is_ok(),
+                        })
+                    }
+                })
+            })
+            .await??;
+            emit_local(&cli, &value)?;
+            return Ok(());
+        }
         Command::Pkce => {
             let verifier = crypto::random_token("");
             emit_local(
@@ -1921,7 +1985,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?
         }
-        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init(..) | Command::PrepareSetup(..) | Command::MigratePostgres(..) | Command::Serve | Command::Pkce | Command::RecoverAdmin(..) | Command::ImportAuthentik(..) | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen(..) | Command::Restore(..) => {
+        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init(..) | Command::PrepareSetup(..) | Command::MigratePostgres(..) | Command::Serve | Command::Pkce | Command::RecoverAdmin(..) | Command::Recovery { .. } | Command::ImportAuthentik(..) | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen(..) | Command::Restore(..) => {
             unreachable!()
         }
     };

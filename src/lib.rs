@@ -45,6 +45,7 @@ pub mod postgres_store;
 pub mod provider;
 pub mod provisioning;
 pub mod radius;
+pub mod recovery;
 pub mod registration;
 pub mod reports;
 pub mod resource;

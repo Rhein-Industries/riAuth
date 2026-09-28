@@ -38,6 +38,8 @@ dependencies, lockfiles and the Q01 documents are unchanged.
 | `offboard_intent_durable_cancel` | RI-CON-004, RI-MGT-004, RI-STORE-001 / C06/C08: a scoped actor creates one durable scheduled intent that survives reopening; duplicate/denied calls add no job or audit; cancellation and its exact retry do not disable the user or execute the job. |
 | `offboard_retry_rechecks_authority` | RI-CON-004, RI-MGT-004, RI-STORE-001 / C06/C08: an injected precommit failure keeps the user live and records a durable retry without execution audit; a second worker cannot claim the live lease; revoking the creator before commit gives one terminal job failure and one matching audit, with credential/session state intact. Requires `test-support`. |
 | `cloud_snapshot_apply_atomic_retry` | RI-CON-001/002, RI-MGT-004, RI-STORE-001 / C06/C08: a real loopback Workspace feed creates one durable reviewed plan; wrong actor, malformed/partial/changed snapshots and reduced user authority cannot apply it; reduced authority denies before a fetch, added authority invalidates the review, and a second-entry local collision rolls back the first staged account with no partial user/index/binding/audit mutation; restored authority applies once and an exact retry makes no network call or state change. |
+| `database_native_restore_policy` | RI-STORE-004, RI-SES-004 / C10: a database-native copy (PostgreSQL template clone, copied redb file) holding live sessions, grants and a pending code is recovered: PostgreSQL detects the changed lineage on open, a second connected handle cannot run recovery, and the operator command gives the same end state on every mode. No restored session/grant/code works, epochs and revision advance by the stride, replay records, IDs and JWKS persist, reopening changes nothing, readiness waits for the attestation and new sign-in works. |
+| `recovery_status_never_creates_or_writes_a_store` | RI-STORE-004 / C10: `recovery status` on a never-initialized store reports not serving and leaves no redb file or PostgreSQL schema; on a store with a pending gate it reports the gate and leaves every record (and the redb file bytes) unchanged. |
 | `indexed_user_group_membership` | RI-STORE-001 / C08: group membership index pages preserve ordered results across more than one page, mutations, rollback, reopen/rebuild and snapshot interleaving on each backend mode. |
 
 Snapshot comparisons include metadata, revision, indexes, queues, replay records,
@@ -62,6 +64,12 @@ the rejection snapshot. A terminal offboarding failure intentionally changes
 its job, audit and indexes and advances revision by exactly one; the contract
 checks that account, session and unrelated records do not change.
 
+The database-native restore contract states one observed backend difference:
+only PostgreSQL has a storage lineage, so only there does opening the copy apply
+the policy before the operator command, and only there can a second store handle
+open while recovery runs (redb's file lock refuses it). The final security
+state after `recovery invalidate` is the same oracle on all four modes.
+
 ## Run
 
 From the repository root, ordinary tests need no external services:
@@ -70,8 +78,8 @@ From the repository root, ordinary tests need no external services:
 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=target CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked --features test-support --test contracts
 ```
 
-This selects 56 redb cases and explicitly ignores 56 PostgreSQL cases. Without
-`test-support`, five clock/deadline bodies are absent: 46 run and 46 are ignored.
+This selects 60 redb cases and explicitly ignores 60 PostgreSQL cases. Without
+`test-support`, five clock/deadline bodies are absent: 50 run and 50 are ignored.
 A PostgreSQL skip is not backend evidence.
 
 Install/use local PostgreSQL programs (`initdb`, `pg_ctl`) and run:
@@ -81,7 +89,7 @@ CARGO_PROFILE_DEV_DEBUG=0 bash scripts/test-contracts-postgres.sh
 ```
 
 The script creates a fresh loopback-only cluster under `target/`, a private
-connection file and a marker, then runs the 56 ignored PostgreSQL cases with
+connection file and a marker, then runs the 60 ignored PostgreSQL cases with
 `CARGO_BUILD_JOBS=2`. Each fixture creates its own empty database. Before any
 database creation/drop, the fixture checks the actual server data directory
 against the cluster's `primary` directory, rather than trusting only an environment
@@ -113,7 +121,7 @@ acceptance.
 | C07 workflow/device | No shared body. | Required stages, device/certificate/peer binding and future adapters. |
 | C08 transaction/audit | Four-mode atomicity, HTTP receipts, plan rollback, prepared checks, cloud staged-write rollback and offboarding fault/audit cases. | All writers, signer faults, actual interleavings and transport parity. |
 | C09 secrets | Selected plan/export/audit redaction. | Errors, logs, metrics, ordinary CLI and custody modes. |
-| C10 recovery | No shared restore/rollback body. | Archive integrity, old-state policy and external dependencies. |
+| C10 recovery | Database-native restore policy and read-only recovery status on four backend modes; restore-path policy in `tests/recovery.rs` (redb output only). | Archive integrity matrix, factor/agent/device/receipt/job reconciliation, interrupted recovery and external dependencies. |
 | C11 build/runtime | No two-build claim. | Compiled product boundaries and transition matrix. |
 
 Exact resolved-secret byte approval and cached-result resource authorization

@@ -62,6 +62,15 @@ impl crate::identity::persistence::IdentityTx for Tx<'_> {
         Tx::list(self, bucket)
     }
 
+    fn scan<T: DeserializeOwned>(
+        &self,
+        bucket: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(String, T)>> {
+        Tx::scan(self, bucket, after, limit)
+    }
+
     fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
         Tx::put(self, bucket, key, value)
     }
@@ -137,7 +146,7 @@ impl Store {
         if self.get::<u32>("meta", "schema")? != Some(crate::upgrade::SCHEMA) {
             return Err(Error::internal("Storage schema is not ready"));
         }
-        Ok(())
+        crate::recovery::require_serving(self)
     }
     pub fn shared_rate_limit(
         &self,
@@ -274,6 +283,123 @@ impl Store {
             key: key.map(Arc::new),
             telemetry: Arc::default(),
         })
+    }
+    /// Read the configured store without creating, formatting or writing it.
+    /// `f` receives `None` when no riAuth store exists at that location. The
+    /// encryption format is checked as on open.
+    pub fn inspect<T>(
+        config: &crate::config::Config,
+        f: impl FnOnce(&'static str, Option<&Tx<'_>>) -> Result<T>,
+    ) -> Result<T> {
+        let key = config
+            .database_key_file
+            .as_deref()
+            .map(crypto::read_key)
+            .transpose()?;
+        let expected = if key.is_some() {
+            "aes256gcm-v1"
+        } else {
+            "plain-v1"
+        };
+        let mismatch =
+            || Error::bad("Database encryption configuration does not match its storage format");
+        let telemetry = Arc::new(crate::telemetry::Telemetry::default());
+        let tx = |transaction| Tx {
+            transaction,
+            key: key.as_deref(),
+            changes: RefCell::default(),
+            security_events: RefCell::default(),
+            telemetry: &telemetry,
+            prepared: RefCell::default(),
+        };
+        if let Some(pg) = &config.postgres {
+            use crate::postgres_store::unavailable;
+            let pool = crate::postgres_store::Pool::with_telemetry(pg.clone(), telemetry.clone());
+            let mut connection = pool.get()?;
+            let mut transaction = connection
+                .build_transaction()
+                .isolation_level(postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .map_err(unavailable)?;
+            let row = transaction
+                .query_one(
+                    "SELECT to_regclass('riauth_store.records_v1') IS NOT NULL, to_regclass('riauth_store.storage_format') IS NOT NULL",
+                    &[],
+                )
+                .map_err(unavailable)?;
+            if !row.get::<_, bool>(0) {
+                return f("postgresql", None);
+            }
+            let encoding = if row.get::<_, bool>(1) {
+                transaction
+                    .query_opt(
+                        "SELECT encoding FROM riauth_store.storage_format WHERE singleton",
+                        &[],
+                    )
+                    .map_err(unavailable)?
+                    .map(|row| row.get::<_, String>(0))
+            } else {
+                None
+            };
+            match encoding {
+                Some(encoding) if encoding != expected => return Err(mismatch()),
+                Some(_) => {}
+                None => {
+                    let empty: bool = transaction
+                        .query_one(
+                            "SELECT NOT EXISTS (SELECT 1 FROM riauth_store.records_v1)",
+                            &[],
+                        )
+                        .map_err(unavailable)?
+                        .get(0);
+                    if !empty {
+                        return Err(Error::bad("Missing database storage format"));
+                    }
+                    return f("postgresql", None);
+                }
+            }
+            return f(
+                "postgresql",
+                Some(&tx(Transaction::Postgres(RefCell::new(transaction), false))),
+            );
+        }
+        let path = config.data_dir.join("riauth.redb");
+        if !path.try_exists().map_err(Error::internal)? {
+            return f("redb", None);
+        }
+        // Read-only: never repairs, formats or re-permissions the file.
+        let db = redb::ReadOnlyDatabase::open(&path).map_err(|error| match error {
+            redb::DatabaseError::RepairAborted => Error::conflict(
+                "The redb store was not closed cleanly; open it with riauth to repair it first",
+            ),
+            error => Error::internal(error),
+        })?;
+        let transaction = db.begin_read().map_err(Error::internal)?;
+        let encoding = match transaction.open_table(FORMAT) {
+            Ok(table) => table
+                .get("encoding")
+                .map_err(Error::internal)?
+                .map(|value| value.value().to_owned()),
+            Err(redb::TableError::TableDoesNotExist(_)) => None,
+            Err(error) => return Err(Error::internal(error)),
+        };
+        let empty = match transaction.open_table(RECORDS) {
+            Ok(table) => table.is_empty().map_err(Error::internal)?,
+            Err(redb::TableError::TableDoesNotExist(_)) => return f("redb", None),
+            Err(error) => return Err(Error::internal(error)),
+        };
+        match encoding {
+            Some(encoding) if encoding != expected => return Err(mismatch()),
+            // Open would stamp a plaintext format on existing records.
+            None if key.is_some() && !empty => {
+                return Err(Error::bad(
+                    "Use encrypted backup/restore to convert a plaintext database",
+                ));
+            }
+            _ => {}
+        }
+        f("redb", Some(&tx(Transaction::Read(&transaction))))
     }
     fn key(&self) -> Option<&[u8; 32]> {
         self.key.as_ref().map(|k| &***k)
@@ -918,6 +1044,102 @@ impl Tx<'_> {
             })
             .collect()
         })
+    }
+    /// Read only the next record key in storage order. Recovery uses this to
+    /// discover collections without materializing an unbounded record value.
+    pub(crate) fn snapshot_next_key(&self, after: Option<&str>) -> Result<Option<String>> {
+        if let Transaction::Postgres(transaction, _) = &self.transaction {
+            let rows = if let Some(after) = after {
+                transaction.borrow_mut().query(
+                    "SELECT key FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT 1",
+                    &[&after.as_bytes()],
+                )
+            } else {
+                transaction.borrow_mut().query(
+                    "SELECT key FROM riauth_store.records_v1 ORDER BY key LIMIT 1",
+                    &[],
+                )
+            }
+            .map_err(crate::postgres_store::unavailable)?;
+            return rows
+                .into_iter()
+                .next()
+                .map(|row| String::from_utf8(row.get(0)).map_err(Error::internal))
+                .transpose();
+        }
+        if matches!(&self.transaction, Transaction::Prepared(_)) {
+            return Err(Error::internal(
+                "Recovery collection scan requires a storage transaction",
+            ));
+        }
+        read_table!(self, table, {
+            let start = after.map(|key| format!("{key}\0")).unwrap_or_default();
+            let mut entries = table.range(start.as_str()..).map_err(Error::internal)?;
+            entries
+                .next()
+                .map(|entry| {
+                    let (key, _) = entry.map_err(Error::internal)?;
+                    Ok(key.value().to_owned())
+                })
+                .transpose()
+        })
+    }
+    /// PostgreSQL identity of this record table; `None` on redb. A physical copy
+    /// or PITR of the same cluster keeps every value, so this detects only
+    /// logical restores into another cluster, database or table.
+    pub(crate) fn postgres_lineage(&self) -> Result<Option<crate::recovery::Lineage>> {
+        use crate::postgres_store::unavailable;
+        let Transaction::Postgres(transaction, _) = &self.transaction else {
+            return Ok(None);
+        };
+        let mut transaction = transaction.borrow_mut();
+        let row = transaction
+            .query_one(
+                "SELECT (SELECT oid FROM pg_database WHERE datname = current_database()), 'riauth_store.records_v1'::regclass::oid",
+                &[],
+            )
+            .map_err(unavailable)?;
+        let (database_oid, records_oid): (u32, u32) = (row.get(0), row.get(1));
+        // Managed services may revoke or omit pg_control_system(); record it as unavailable.
+        let mut probe = transaction.transaction().map_err(unavailable)?;
+        let system_identifier = match probe.query_one(
+            "SELECT system_identifier::text FROM pg_control_system()",
+            &[],
+        ) {
+            Ok(row) => {
+                let value: String = row.get(0);
+                probe.commit().map_err(unavailable)?;
+                Some(value)
+            }
+            // Any server-reported refusal; a lost connection still fails below.
+            Err(error) if error.code().is_some() => {
+                probe.rollback().map_err(unavailable)?;
+                None
+            }
+            Err(error) => return Err(unavailable(error)),
+        };
+        Ok(Some(crate::recovery::Lineage {
+            system_identifier,
+            database_oid,
+            records_oid,
+        }))
+    }
+    /// Other riAuth sessions connected to this database; `None` on redb, whose file
+    /// lock already excludes a concurrent server.
+    pub(crate) fn postgres_other_clients(&self) -> Result<Option<i64>> {
+        let Transaction::Postgres(transaction, _) = &self.transaction else {
+            return Ok(None);
+        };
+        Ok(Some(
+            transaction
+                .borrow_mut()
+                .query_one(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'riauth' AND pid <> pg_backend_pid()",
+                    &[],
+                )
+                .map_err(crate::postgres_store::unavailable)?
+                .get(0),
+        ))
     }
     /// One page of the whole keyspace, strictly after `after`. The sum of
     /// stored key and value bytes never exceeds `max_raw_bytes`; an oversized

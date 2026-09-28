@@ -15,6 +15,21 @@
   A manifest that bumps `secret_version` without `secret_ref` now reports the
   missing reference before a missing `client.rotate` permission.
 
+# Unreleased restored-state policy (R04)
+
+- `restore`, a PostgreSQL store whose lineage changed, and the new offline
+  `riauth recovery invalidate --database-restored` apply one policy. It deletes
+  restored sessions, grants, pending proofs and consents, queues RP back-channel
+  logout, revokes temporary access, and advances account epochs and the
+  configuration revision. Identities, subjects and keys are kept.
+- A restored store does not serve or report ready until
+  `riauth recovery complete --recovery-id <id> --persistent-credentials-reconciled` records that
+  restored persistent credentials were reconciled. See [recovery](recovery.md).
+- R04 does not change the backup formats or logical storage schema 3. Restore
+  accepts v1 and v2 archives and the opt-in `riauth.backup/v3` stream produced
+  by `Core::backup_stream`; the server and CLI still create v2 archives.
+  Restores and rollbacks now sign every user out.
+
 # Unreleased dependency refresh
 
 - Updated direct Rust dependencies to their current stable releases, including

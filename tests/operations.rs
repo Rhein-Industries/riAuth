@@ -314,6 +314,13 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
         riauth::config::Config::load(&output.join("riauth.toml")).unwrap(),
     )
     .unwrap();
+    assert!(restored.store.ready().is_err());
+    let pending = restored
+        .store
+        .read(riauth::recovery::pending)
+        .unwrap()
+        .unwrap();
+    riauth::recovery::complete(&restored.store, &pending.id, true).unwrap();
     restored.store.ready().unwrap();
     assert_eq!(
         restored
@@ -322,7 +329,14 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
             .unwrap(),
         1
     );
-    assert!(restored.me(&f.admin).is_ok());
+    let admin = common::text(
+        &restored
+            .login("admin".into(), common::PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert!(restored.me(&f.admin).is_err());
+    assert!(restored.me(&admin).is_ok());
 }
 
 #[test]
@@ -412,48 +426,81 @@ impl GrantFixture {
         }
     }
 
+    /// R04: identity, clients and keys continue; restored sessions and grants do not.
     fn assert_restored(
         &self,
         restored: &riauth::core::Core,
         before: &std::collections::BTreeMap<String, serde_json::Value>,
     ) {
+        use riauth::recovery::{self, Class};
+        let class = |key: &str| recovery::classify(key.split('/').next().unwrap());
         let after = restored.store.read(|tx| tx.snapshot()).unwrap();
         let mut missing = Vec::new();
         let mut extra = Vec::new();
         let mut changed = Vec::new();
         for (key, value) in before {
             match after.get(key) {
-                None => missing.push(key.clone()),
-                Some(other) if other != value => changed.push(key.clone()),
+                None if class(key) != Some(Class::Invalidated) => missing.push(key.clone()),
+                None => {}
+                Some(other) if key.starts_with("users/") => {
+                    let mut expected = value.clone();
+                    expected["epoch"] =
+                        serde_json::json!(value["epoch"].as_u64().unwrap() + recovery::STRIDE);
+                    if *other != expected {
+                        changed.push(key.clone());
+                    }
+                }
+                Some(other)
+                    if other != value
+                        && key != "meta/revision"
+                        && class(key) != Some(Class::LoggedOut) =>
+                {
+                    changed.push(key.clone())
+                }
                 _ => {}
             }
         }
         for key in after.keys() {
-            if !before.contains_key(key) {
+            if !before.contains_key(key)
+                && !(key.starts_with("index_")
+                    || key.starts_with("audit/")
+                    || key == "meta/recovery")
+            {
                 extra.push(key.clone());
             }
         }
         assert!(
-            missing.is_empty()
-                && changed.is_empty()
-                && extra.iter().all(|key| key.starts_with("index_")),
+            missing.is_empty() && changed.is_empty() && extra.is_empty(),
             "missing={missing:?} extra={extra:?} changed={changed:?}"
         );
-        assert_eq!(restored.userinfo(&self.access).unwrap(), self.userinfo);
-        assert_eq!(
-            restored
-                .get_resource(&self.fixture.admin, "client", "app")
+        assert!(restored.userinfo(&self.access).is_err());
+        assert!(restored.me(&self.alice).is_err());
+        assert!(restored.me(&self.fixture.admin).is_err());
+        let admin = common::text(
+            &restored
+                .login("admin".into(), common::PASSWORD.into(), None)
                 .unwrap(),
+            "session_token",
+        );
+        assert_eq!(
+            restored.get_resource(&admin, "client", "app").unwrap(),
             self.client
         );
         assert_eq!(
-            restored
-                .get_resource(&self.fixture.admin, "user", "alice")
-                .unwrap(),
+            restored.get_resource(&admin, "user", "alice").unwrap(),
             self.user
         );
-        assert!(restored.me(&self.alice).is_ok());
-        assert!(restored.me(&self.fixture.admin).is_ok());
+        let alice = common::text(
+            &restored
+                .login("alice".into(), common::PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        assert_eq!(
+            restored.me(&alice).unwrap()["user"]["id"],
+            self.userinfo["sub"]
+        );
+        assert!(restored.store.ready().is_err());
     }
 }
 
@@ -471,7 +518,7 @@ fn write_backup(
 }
 
 #[test]
-fn chunked_backup_restore_preserves_user_client_and_grant() {
+fn chunked_backup_restore_preserves_identity_and_invalidates_grants() {
     let seed = GrantFixture::new();
     seed.fixture
         .core

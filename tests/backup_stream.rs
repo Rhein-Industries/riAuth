@@ -18,7 +18,6 @@ struct Seed {
     fixture: Fixture,
     alice: String,
     access: String,
-    userinfo: Value,
 }
 
 impl Seed {
@@ -29,7 +28,6 @@ impl Seed {
         let alice = fixture.user("alice");
         let tokens = fixture.tokens("app", &alice, None);
         let access = common::text(&tokens, "access_token");
-        let userinfo = fixture.core.userinfo(&access).unwrap();
         let payload = "p".repeat(2048);
         fixture
             .core
@@ -49,7 +47,6 @@ impl Seed {
             fixture,
             alice,
             access,
-            userinfo,
         }
     }
 
@@ -73,22 +70,30 @@ impl Seed {
         )
         .unwrap();
         let after = restored.store.read(|tx| tx.snapshot()).unwrap();
-        let missing: Vec<_> = before.keys().filter(|k| !after.contains_key(*k)).collect();
-        let changed: Vec<_> = before
-            .iter()
-            .filter(|(k, v)| after.get(*k).is_some_and(|other| other != *v))
-            .map(|(k, _)| k)
-            .collect();
-        let extra: Vec<_> = after.keys().filter(|k| !before.contains_key(*k)).collect();
-        assert!(
-            missing.is_empty()
-                && changed.is_empty()
-                && extra.iter().all(|k| k.starts_with("index_")),
-            "missing={missing:?} extra={extra:?} changed={changed:?}"
-        );
-        assert_eq!(restored.userinfo(&self.access).unwrap(), self.userinfo);
-        assert!(restored.me(&self.alice).is_ok());
-        assert!(restored.me(&self.fixture.admin).is_ok());
+        for (key, value) in before {
+            if key.starts_with("clients/")
+                || key.starts_with("groups/")
+                || key.starts_with("usernames/")
+                || key == "meta/keys"
+                || key == "meta/issuer"
+            {
+                assert_eq!(after.get(key), Some(value), "restored {key} changed");
+            }
+            if key.starts_with("users/") {
+                let restored_user = after.get(key).expect("restored user missing");
+                for field in ["id", "username", "subjects", "pairwise_seed", "password_hash"] {
+                    assert_eq!(restored_user.get(field), value.get(field), "restored {key}/{field} changed");
+                }
+                assert_eq!(
+                    restored_user["epoch"].as_u64().unwrap(),
+                    value["epoch"].as_u64().unwrap() + riauth::recovery::STRIDE,
+                );
+            }
+        }
+        assert!(restored.userinfo(&self.access).is_err());
+        assert!(restored.me(&self.alice).is_err());
+        assert!(restored.me(&self.fixture.admin).is_err());
+        assert!(restored.store.ready().is_err());
     }
 }
 
@@ -138,7 +143,7 @@ fn rejects(directory: &Path, name: &str, bytes: &[u8], key: &Path) -> riauth::er
 }
 
 #[test]
-fn stream_backup_restores_the_same_state_as_the_v2_path() {
+fn stream_backup_restores_identity_with_the_same_recovery_policy_as_v2() {
     let seed = Seed::new(600);
     let before = seed.snapshot();
     let key = riauth::crypto::random_token("");
@@ -190,6 +195,8 @@ fn stream_backup_restores_the_same_state_as_the_v2_path() {
     )
     .unwrap();
     assert_eq!(result["verified"], true);
+    assert_eq!(result["serving_allowed"], false);
+    assert!(result["recovery"]["snapshot_created_at"].is_number());
     for phase in [Phase::Verify, Phase::Import] {
         let last = phases.iter().rfind(|p| p.phase == phase).unwrap();
         assert_eq!((last.records, last.bytes), (summary.records, summary.bytes));
