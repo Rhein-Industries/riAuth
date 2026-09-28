@@ -645,30 +645,33 @@ impl Drop for Servers {
     }
 }
 async fn tls_config(config: &Listener) -> anyhow::Result<Arc<rustls::ServerConfig>> {
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
     let config = config.clone();
-    tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-        let mut roots = rustls::RootCertStore::empty();
-        for cert in CertificateDer::pem_file_iter(config.client_ca_file.unwrap())? {
-            roots.add(cert?)?;
-        }
-        let verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
-            Arc::new(roots),
-            provider.clone(),
-        )
-        .build()?;
-        let certs = CertificateDer::pem_file_iter(config.tls_cert_file.unwrap())?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        let key = PrivateKeyDer::from_pem_file(config.tls_key_file.unwrap())?;
-        Ok(Arc::new(
-            rustls::ServerConfig::builder_with_provider(provider)
-                .with_safe_default_protocol_versions()?
-                .with_client_cert_verifier(verifier)
-                .with_single_cert(certs, key)?,
-        ))
-    })
-    .await?
+    tokio::task::spawn_blocking(move || tls_material(&config)).await?
+}
+
+/// Build the same TLS verifier and server identity used by the live RadSec
+/// listener. Capability preflight must reject material that cannot be served.
+pub(crate) fn tls_material(config: &Listener) -> anyhow::Result<Arc<rustls::ServerConfig>> {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in CertificateDer::pem_file_iter(config.client_ca_file.as_ref().unwrap())? {
+        roots.add(cert?)?;
+    }
+    let verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
+        Arc::new(roots),
+        provider.clone(),
+    )
+    .build()?;
+    let certs = CertificateDer::pem_file_iter(config.tls_cert_file.as_ref().unwrap())?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let key = PrivateKeyDer::from_pem_file(config.tls_key_file.as_ref().unwrap())?;
+    Ok(Arc::new(
+        rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()?
+            .with_client_cert_verifier(verifier)
+            .with_single_cert(certs, key)?,
+    ))
 }
 enum Bound {
     Udp(UdpSocket),

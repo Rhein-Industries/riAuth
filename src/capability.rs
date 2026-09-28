@@ -45,7 +45,7 @@ pub(crate) fn validate_config_for(
     Ok(())
 }
 
-/// Retained policies, proxy routes, and EAP listener bindings are active
+/// Retained policies, proxy routes, and RADIUS listener bindings are active
 /// dependencies even when their clients are disabled. Run before workers.
 pub fn validate_store(config: &Config, store: &Store) -> Result<()> {
     store.read(|tx| validate_store_tx_for(config, crate::edition::CURRENT, tx))
@@ -74,32 +74,19 @@ pub(crate) fn validate_store_tx_for(
             }
         }
         for (listener_id, listener) in &config.radius_listeners {
-            if listener.eap_tls.is_none() {
-                continue;
-            }
-            radius_eap_material_ready(listener).map_err(|error| {
-                Error::bad(format!(
-                    "RADIUS EAP-TLS listener {listener_id:?} has unusable verifier or NAS material: {}",
-                    error.message
-                ))
-            })?;
-            let mut eligible = false;
+            validate_radius_listener_material(listener_id, listener)?;
+            let mut eap_eligible = false;
             for (nas_id, nas) in &listener.nas {
                 let client = tx.get::<Client>("clients", &nas.client_id)?;
-                if let Some(client) = &client {
-                    let ready = radius_eap_client_eligible(client);
-                    if client.settings.radius.as_ref().is_some_and(|radius| radius.eap_tls)
-                        && !ready
-                    {
-                        return Err(Error::bad(format!(
-                            "RADIUS EAP-TLS listener {listener_id:?} NAS {nas_id:?} requires an enabled, eligible client {:?}",
-                            nas.client_id
-                        )));
-                    }
-                    eligible |= ready;
+                if !client.as_ref().is_some_and(radius_client_eligible) {
+                    return Err(Error::bad(format!(
+                        "RADIUS listener {listener_id:?} NAS {nas_id:?} requires an enabled, eligible RADIUS client {:?}",
+                        nas.client_id
+                    )));
                 }
+                eap_eligible |= client.as_ref().is_some_and(radius_eap_client_eligible);
             }
-            if !eligible {
+            if listener.eap_tls.is_some() && !eap_eligible {
                 return Err(Error::bad(format!(
                     "RADIUS EAP-TLS listener {listener_id:?} has no NAS with an enabled, eligible EAP-TLS client"
                 )));
@@ -151,9 +138,7 @@ pub(crate) fn validate_client_policy(
     }
     #[cfg(feature = "platform")]
     for (listener_id, listener) in &config.radius_listeners {
-        if listener.eap_tls.is_none()
-            || !listener.nas.values().any(|nas| nas.client_id == client.id)
-        {
+        if !listener.nas.values().any(|nas| nas.client_id == client.id) {
             continue;
         }
         let declared = client
@@ -169,42 +154,82 @@ pub(crate) fn validate_client_policy(
                 client.id
             )));
         }
-        if declared {
-            radius_eap_material_ready(listener).map_err(|error| {
-                Error::bad(format!(
-                    "RADIUS EAP-TLS listener {listener_id:?} has unusable verifier or NAS material: {}",
-                    error.message
-                ))
-            })?;
+        if !radius_client_eligible(client) {
+            return Err(Error::bad(format!(
+                "RADIUS listener {listener_id:?} requires client {:?} to remain enabled with a valid RADIUS policy",
+                client.id
+            )));
         }
+        validate_radius_listener_material(listener_id, listener)?;
     }
     Ok(())
 }
 
 #[cfg(feature = "platform")]
-fn radius_eap_client_eligible(client: &Client) -> bool {
+fn radius_client_eligible(client: &Client) -> bool {
     client.enabled
         && client
             .settings
             .radius
             .as_ref()
-            .is_some_and(|radius| radius.eap_tls && radius.validate(client).is_ok())
+            .is_some_and(|radius| radius.validate(client).is_ok())
+}
+
+#[cfg(feature = "platform")]
+fn radius_eap_client_eligible(client: &Client) -> bool {
+    radius_client_eligible(client)
+        && client
+            .settings
+            .radius
+            .as_ref()
+            .is_some_and(|radius| radius.eap_tls)
+}
+
+#[cfg(feature = "platform")]
+fn radius_transport_material_ready(listener: &crate::radius::Listener) -> Result<()> {
+    listener.validate()?;
+    match &listener.transport {
+        crate::radius::Transport::Udp => {
+            for nas in listener.nas.values() {
+                crate::radius::secret(nas, false)?;
+            }
+        }
+        crate::radius::Transport::Tls => {
+            crate::radius::tls_material(listener)
+                .map_err(|error| Error::bad(format!("RadSec TLS material is unusable: {error}")))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(feature = "platform")]
 fn radius_eap_material_ready(listener: &crate::radius::Listener) -> Result<()> {
-    listener.validate()?;
+    radius_transport_material_ready(listener)?;
     let verifier = listener
         .eap_tls
         .as_ref()
         .ok_or_else(|| Error::bad("RADIUS listener has no EAP-TLS certificate verifier"))?;
     verifier.verifier_ready()?;
-    if listener.transport == crate::radius::Transport::Udp {
-        for nas in listener.nas.values() {
-            crate::radius::secret(nas, false)?;
-        }
-    }
     Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn validate_radius_listener_material(id: &str, listener: &crate::radius::Listener) -> Result<()> {
+    if listener.eap_tls.is_some() {
+        radius_eap_material_ready(listener).map_err(|error| {
+            Error::bad(format!(
+                "RADIUS EAP-TLS listener {id:?} has unusable verifier or NAS material: {}",
+                error.message
+            ))
+        })
+    } else {
+        radius_transport_material_ready(listener).map_err(|error| {
+            Error::bad(format!(
+                "RADIUS listener {id:?} has unusable transport or NAS material: {}",
+                error.message
+            ))
+        })
+    }
 }
 
 #[cfg(feature = "platform")]
@@ -323,9 +348,9 @@ struct Facts {
     saml_encryption: bool,
     radius_clients: BTreeSet<String>,
     #[cfg(feature = "platform")]
-    radius_eap_declared_clients: BTreeSet<String>,
-    #[cfg(feature = "platform")]
     radius_eap_clients: BTreeSet<String>,
+    radius_pap_ready: bool,
+    radius_radsec_ready: bool,
     radius_eap_ready: bool,
     ldap_clients: BTreeSet<String>,
     proxy_clients: BTreeMap<String, ProxyClient>,
@@ -346,15 +371,6 @@ impl Facts {
     fn read(tx: &Tx<'_>) -> Result<Self> {
         let mut facts = Self::default();
         for (_, client) in tx.list::<Client>("clients")? {
-            #[cfg(feature = "platform")]
-            if client
-                .settings
-                .radius
-                .as_ref()
-                .is_some_and(|radius| radius.eap_tls)
-            {
-                facts.radius_eap_declared_clients.insert(client.id.clone());
-            }
             if !client.enabled {
                 continue;
             }
@@ -365,12 +381,12 @@ impl Facts {
                 facts.saml_encryption |= saml.encryption_certificate_pem.is_some();
             }
             if let Some(radius) = &client.settings.radius {
-                facts.radius_clients.insert(client.id.clone());
-                #[cfg(not(feature = "platform"))]
-                let _ = radius;
-                #[cfg(feature = "platform")]
-                if radius.eap_tls && radius.validate(&client).is_ok() {
-                    facts.radius_eap_clients.insert(client.id.clone());
+                if radius.validate(&client).is_ok() {
+                    facts.radius_clients.insert(client.id.clone());
+                    #[cfg(feature = "platform")]
+                    if radius.eap_tls {
+                        facts.radius_eap_clients.insert(client.id.clone());
+                    }
                 }
             }
             if client.settings.ldap.is_some() {
@@ -451,19 +467,8 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
                         })
                 })
         }
-        "radius.pap" => config.radius_listeners.values().any(|listener| {
-            listener
-                .nas
-                .values()
-                .any(|nas| facts.radius_clients.contains(&nas.client_id))
-        }),
-        "radius.radsec" => config.radius_listeners.values().any(|listener| {
-            listener.transport == crate::radius::Transport::Tls
-                && listener
-                    .nas
-                    .values()
-                    .any(|nas| facts.radius_clients.contains(&nas.client_id))
-        }),
+        "radius.pap" => facts.radius_pap_ready,
+        "radius.radsec" => facts.radius_radsec_ready,
         "radius.eap_tls" | "agents.certificate_bindings" => facts.radius_eap_ready,
         "saml.idp_signed_browser_sso" => facts.saml_client,
         "saml.sp_initiated_logout" | "saml.logout_fanout" => facts.saml_logout_client,
@@ -506,7 +511,11 @@ pub fn runtime(core: &Core) -> Result<Value> {
     #[cfg(feature = "platform")]
     let facts = {
         let mut facts = facts;
-        facts.radius_eap_ready = radius_eap_configured(&core.config, &facts);
+        (
+            facts.radius_pap_ready,
+            facts.radius_radsec_ready,
+            facts.radius_eap_ready,
+        ) = radius_configured(&core.config, &facts);
         facts
     };
     let mut document = catalog();
@@ -546,27 +555,37 @@ pub fn runtime(core: &Core) -> Result<Value> {
 }
 
 #[cfg(feature = "platform")]
-fn radius_eap_configured(config: &Config, facts: &Facts) -> bool {
-    let mut any_eap_listener = false;
+fn radius_configured(config: &Config, facts: &Facts) -> (bool, bool, bool) {
+    let mut pap = false;
+    let mut radsec = false;
+    let mut eap_listeners = false;
+    let mut eap_ready = true;
     for listener in config.radius_listeners.values() {
-        if listener.eap_tls.is_none() {
-            continue;
-        }
-        any_eap_listener = true;
-        if radius_eap_material_ready(listener).is_err()
-            || !listener
+        let material_ready = if listener.eap_tls.is_some() {
+            radius_eap_material_ready(listener).is_ok()
+        } else {
+            radius_transport_material_ready(listener).is_ok()
+        };
+        let ready = material_ready
+            && listener
                 .nas
                 .values()
-                .any(|nas| facts.radius_eap_clients.contains(&nas.client_id))
-            || listener.nas.values().any(|nas| {
-                facts.radius_eap_declared_clients.contains(&nas.client_id)
-                    && !facts.radius_eap_clients.contains(&nas.client_id)
-            })
-        {
-            return false;
+                .all(|nas| facts.radius_clients.contains(&nas.client_id))
+            && (listener.eap_tls.is_none()
+                || listener
+                    .nas
+                    .values()
+                    .any(|nas| facts.radius_eap_clients.contains(&nas.client_id)));
+        if listener.eap_tls.is_some() {
+            eap_listeners = true;
+            eap_ready &= ready;
+        }
+        if ready {
+            pap = true;
+            radsec |= listener.transport == crate::radius::Transport::Tls;
         }
     }
-    any_eap_listener
+    (pap, radsec, eap_listeners && eap_ready)
 }
 
 #[cfg(all(test, feature = "platform"))]

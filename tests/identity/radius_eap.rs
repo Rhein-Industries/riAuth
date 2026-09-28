@@ -533,7 +533,7 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
         .nas.get_mut("nas").unwrap().client_id = "pap-client".into();
     let states = riauth::capability::runtime(&wrong_nas).unwrap();
     assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
-    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
     assert!(riauth::capability::validate_store(&wrong_nas.config, &wrong_nas.store)
         .unwrap_err().message.contains("no NAS"));
 
@@ -570,6 +570,242 @@ fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
         Err(error) => error,
     };
     assert!(error.message.contains("RADIUS EAP-TLS listener"));
+}
+
+#[test]
+fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut core = Core::initialize(
+        Config {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: "radius-capability-password".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core
+        .login("admin".into(), "radius-capability-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.create_client(
+        &admin,
+        NewClient {
+            client_id: "network".into(),
+            name: "Network".into(),
+            confidential: false,
+            redirect_uris: vec![],
+            scopes: strings(&["openid", "radius"]),
+            allowed_groups: BTreeSet::new(),
+            require_mfa: false,
+            service: false,
+            settings: ProviderSettings {
+                radius: Some(Settings {
+                    eap_tls: false,
+                    reply: vec![],
+                }),
+                ..Default::default()
+            },
+        },
+    )
+    .unwrap();
+
+    let secret_file = dir.path().join("radius.secret");
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+    let (ca, ca_key) = cert("RADIUS private CA", 10, None);
+    let (server, server_key) = cert("localhost", 11, Some((&ca, &ca_key)));
+    let ca_file = dir.path().join("ca.pem");
+    let cert_file = dir.path().join("server.pem");
+    let key_file = dir.path().join("server.key");
+    std::fs::write(&ca_file, ca.to_pem().unwrap()).unwrap();
+    std::fs::write(&cert_file, server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &key_file,
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    let peer = "127.0.0.1".parse().unwrap();
+    core.config.radius_listeners.insert(
+        "udp".into(),
+        Listener {
+            eap_tls: None,
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer,
+                    client_id: "network".into(),
+                    shared_secret_file: Some(secret_file.clone()),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    core.config.radius_listeners.insert(
+        "tls".into(),
+        Listener {
+            eap_tls: None,
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Tls,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer,
+                    client_id: "network".into(),
+                    shared_secret_file: None,
+                    certificate_sha256: Some(URL_SAFE_NO_PAD.encode([42u8; 32])),
+                },
+            )]
+            .into(),
+            tls_cert_file: Some(cert_file),
+            tls_key_file: Some(key_file.clone()),
+            client_ca_file: Some(ca_file),
+        },
+    );
+    riauth::capability::validate_store(&core.config, &core.store).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+
+    let mut tls_only = core.clone();
+    tls_only.config.radius_listeners.remove("udp");
+    let states = riauth::capability::runtime(&tls_only).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    let mut udp_only = core.clone();
+    udp_only.config.radius_listeners.remove("tls");
+    assert_eq!(
+        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.radsec"]["usable"],
+        false
+    );
+
+    std::fs::remove_file(&secret_file).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    assert_eq!(
+        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.pap"]["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("NAS material")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                name: Some("Still network".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("NAS material")
+    );
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+
+    std::fs::remove_file(&key_file).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("TLS material")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                name: Some("Still network".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("TLS material")
+    );
+    riauth::config::write_private(
+        &key_file,
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("requires client")
+    );
+    assert!(
+        core.update_client(&admin, "network", ClientPatch {
+            scopes: Some(strings(&["openid"])),
+            ..Default::default()
+        })
+        .unwrap_err()
+        .message
+        .contains("requires client")
+    );
+    assert!(
+        core.store
+            .read(|tx| tx.get::<Client>("clients", "network"))
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+
+    let mut missing_client = core.clone();
+    missing_client.config.radius_listeners.get_mut("tls").unwrap()
+        .nas.get_mut("nas").unwrap().client_id = "missing".into();
+    assert_eq!(
+        riauth::capability::runtime(&missing_client).unwrap()["feature_states"]["radius.radsec"]
+            ["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&missing_client.config, &missing_client.store)
+            .unwrap_err()
+            .message
+            .contains("eligible RADIUS client")
+    );
+
+    std::fs::remove_file(&key_file).unwrap();
+    let config = core.config.clone();
+    drop(missing_client);
+    drop(udp_only);
+    drop(tls_only);
+    drop(core);
+    let error = match Core::open(config) {
+        Ok(_) => panic!("unusable RadSec material must block startup"),
+        Err(error) => error,
+    };
+    assert!(error.message.contains("TLS material"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
