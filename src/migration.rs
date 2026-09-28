@@ -584,6 +584,117 @@ fn verify_links(
     Ok(carried)
 }
 
+/// Access an application's enabled Authentik bindings grant, kept only where riAuth expresses it
+/// exactly. Authentik admits a user when any (in `all` mode, every) enabled binding passes, and
+/// everyone when none is enabled; a group binding passes for members of the group and of every
+/// group below it, which flattened memberships give riAuth's any-of `allowed_groups`. riAuth ANDs
+/// its access conditions, so a binding left out can only narrow access, never broaden it. Returns
+/// the allowed groups and the bindings classified here.
+fn application_access(
+    p: &mut Preflight,
+    cid: &str,
+    application: &Value,
+    bindings: &[Value],
+    group_names: &BTreeMap<String, String>,
+    converted_groups: &BTreeSet<String>,
+    resolution: &ClientResolution,
+) -> Result<(BTreeSet<String>, Vec<String>)> {
+    let (mut allowed, mut handled) = (BTreeSet::new(), Vec::new());
+    // Bindings target the application's policy binding model.
+    let Ok(key) = identifier(&application["pbm_uuid"]).or_else(|_| identifier(&application["pk"]))
+    else {
+        return Ok((allowed, handled));
+    };
+    let mut enabled = Vec::new();
+    for binding in bindings {
+        if identifier(&binding["target"]).ok().as_ref() != Some(&key) {
+            continue;
+        }
+        let id = identifier(&binding["pk"])?;
+        handled.push(id.clone());
+        if binding["enabled"] == false {
+            p.add(ItemKind::PolicyBinding, &id, Classification::Exact,
+                "The binding is disabled, so Authentik admits and refuses no one through it; it is not converted",
+                "None");
+        } else {
+            enabled.push((id, binding));
+        }
+    }
+    let exact_group = |binding: &Value| {
+        !binding["group"].is_null()
+            && binding["policy"].is_null()
+            && binding["user"].is_null()
+            && binding["negate"] != true
+            && binding["expiring"] != true
+    };
+    let groups = enabled.iter().filter(|(_, b)| exact_group(b)).count();
+    // In `all` mode a single group is one required condition; several are not any-of groups.
+    let combined = match application["policy_engine_mode"].as_str() {
+        Some("any") => Ok(()),
+        Some("all") if groups <= 1 => Ok(()),
+        Some("all") => Err("In all mode a user needs every bound group, which any-of allowed groups cannot express".to_owned()),
+        None if enabled.len() <= 1 => Ok(()),
+        None => Err("The export has no policy_engine_mode, so several bindings cannot be combined".to_owned()),
+        Some(other) => Err(format!("Policy engine mode {other} is not recognized")),
+    };
+    for (id, binding) in &enabled {
+        let reason = if !binding["policy"].is_null() {
+            "Policy bindings are never executed or assumed equivalent".to_owned()
+        } else if !exact_group(binding) {
+            if binding["negate"] == true {
+                "Negated bindings are not converted into allowed groups".to_owned()
+            } else if binding["expiring"] == true {
+                "Expiring bindings are not converted, because an allowed group would outlive the expiry".to_owned()
+            } else {
+                "User bindings are not converted into allowed groups".to_owned()
+            }
+        } else {
+            let group = identifier(&binding["group"])?;
+            let name = group_names
+                .get(&group)
+                .ok_or_else(|| Error::bad("Policy binding references an unexported group"))?;
+            if !converted_groups.contains(&group) {
+                format!("Group {name} is not converted, so this restriction cannot be kept")
+            } else if let Err(reason) = &combined {
+                reason.clone()
+            } else {
+                allowed.insert(name.clone());
+                p.add(ItemKind::PolicyBinding, id, Classification::Convertible,
+                    format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
+                    "Review the client's converted allowed groups");
+                continue;
+            }
+        };
+        let item = p.add(ItemKind::PolicyBinding, id, Classification::Manual, reason,
+            "Translate it into reviewed settings.policy rules and list its ID in translated_binding_ids; converted allowed groups still apply, so access can only narrow");
+        if !resolution.translated_binding_ids.contains(id) {
+            item.block(format!(
+                "{cid}: application binding {id} cannot be converted exactly and needs a reviewed translation"
+            ));
+        }
+    }
+    // Authentik restricted the application, so a client that admits everyone would broaden access.
+    let access = &resolution.settings.policy.access;
+    if !enabled.is_empty()
+        && allowed.is_empty()
+        && [
+            &access.all_groups,
+            &access.any_groups,
+            &access.denied_groups,
+            &access.users,
+            &access.denied_users,
+        ]
+        .iter()
+        .all(|set| set.is_empty())
+    {
+        p.add(ItemKind::Application, application["slug"].as_str().unwrap_or(cid), Classification::Manual,
+            "Authentik admits only users its enabled bindings pass, but the converted client would admit every user",
+            "Add the reviewed restriction to settings.policy, or remove bindings that admitted every user in Authentik before the final export")
+            .block(format!("{cid}: converted client would admit every user its Authentik bindings restricted"));
+    }
+    Ok((allowed, handled))
+}
+
 /// Whether relying parties keep the issuer Authentik published for a provider. Authentik derives it
 /// from its base URL: `application/o/<slug>/` below it in `per_provider` mode, and the base URL
 /// itself in `global` mode. The host is not in the export, so the reviewed issuer supplies it.
@@ -881,6 +992,7 @@ pub fn convert(input: Import) -> Result<Value> {
     let mut client_issuers = Vec::new();
     let mut exported_subjects = BTreeMap::<String, Vec<String>>::new();
     let mut resolved_bindings = BTreeSet::new();
+    let mut handled_bindings = BTreeSet::new();
     for provider in providers {
         let cid = field(provider, "client_id")?.to_owned();
         // Without a reviewed resolution the export is still classified item by item against an
@@ -988,6 +1100,22 @@ pub fn convert(input: Import) -> Result<Value> {
         }
         let application = associated.first().copied();
         let slug = application.and_then(|a| a["slug"].as_str()).unwrap_or(&cid);
+        let allowed_groups = match (reviewed, application) {
+            (Some(_), Some(application)) => {
+                let (allowed, classified) = application_access(
+                    &mut p,
+                    &cid,
+                    application,
+                    bindings,
+                    &group_names,
+                    &converted_groups,
+                    resolution,
+                )?;
+                handled_bindings.extend(classified);
+                allowed
+            }
+            _ => BTreeSet::new(),
+        };
         if settings.app.is_none()
             && let Some(application) = application
         {
@@ -1197,7 +1325,7 @@ pub fn convert(input: Import) -> Result<Value> {
             secret_hash: confidential.then(|| "import".into()),
             redirect_uris: redirects.clone(),
             scopes: resolution.scopes.clone(),
-            allowed_groups: BTreeSet::new(),
+            allowed_groups: allowed_groups.clone(),
             require_mfa: resolution.require_mfa,
             enabled: true,
             service: false,
@@ -1259,7 +1387,7 @@ pub fn convert(input: Import) -> Result<Value> {
             enabled: true,
             redirect_uris: redirects,
             scopes: resolution.scopes.clone(),
-            allowed_groups: BTreeSet::new(),
+            allowed_groups,
             require_mfa: resolution.require_mfa,
             settings,
             secret_ref: resolution.secret_ref.clone(),
@@ -1308,6 +1436,10 @@ pub fn convert(input: Import) -> Result<Value> {
         .collect::<Result<BTreeSet<_>>>()?;
     let binding_blocker = "Every exported policy binding must be inventoried and translated; unresolved or extra binding IDs remain";
     for binding in exported_bindings.union(&resolved_bindings) {
+        // Application bindings of converted clients were classified with their application.
+        if handled_bindings.contains(binding) {
+            continue;
+        }
         if !exported_bindings.contains(binding) {
             p.add(
                 ItemKind::PolicyBinding,

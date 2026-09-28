@@ -1253,6 +1253,165 @@ fn authentik_preflight_keeps_or_blocks_each_exported_issuer() {
 }
 
 #[test]
+fn authentik_group_bindings_become_allowed_groups_without_broadening_access() {
+    use riauth::migration::{Classification::*, ItemKind::*};
+    let f = Fixture::new();
+    let issuer = f.core.config.issuer.clone();
+    let user = |pk: u64, username: &str, groups: &[&str]| {
+        json!({"pk":pk,"uid":format!("uid-{pk}"),"username":username,"name":username,"groups":groups,
+            "attributes":{},"type":"internal","is_active":true,"roles":[]})
+    };
+    let provider = |pk: u64, cid: &str| {
+        json!({"pk":pk,"name":cid,"client_id":cid,"client_type":"public","grant_types":["authorization_code"],
+            "redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],
+            "property_mappings":[],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true})
+    };
+    let application = |pk: u64, slug: &str, mode: &str| json!({"pk":format!("app-{slug}"),"slug":slug,"provider":pk,"name":slug,"policy_engine_mode":mode});
+    let client = |slug: &str, translated: &[&str]| {
+        json!({"issuer":format!("{issuer}/application/o/{slug}/"),"scopes":["openid","profile"],"settings":{},
+            "translated_mapping_ids":[],"translated_binding_ids":translated,"authentication_flow_reviewed":true,"require_mfa":false})
+    };
+    let binding = |pk: &str, slug: &str, fields: Value| {
+        let mut binding = json!({"pk":pk,"target":format!("app-{slug}"),"policy":null,"group":null,"user":null,
+            "negate":false,"enabled":true,"order":0});
+        binding
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        binding
+    };
+    let input = json!({"api_version":"riauth.authentik-import/v1","issuer":issuer,
+        "users":[user(1, "alice", &["g-eng"]), user(2, "bob", &["g-ops"])],
+        "groups":[{"pk":"g-staff","name":"staff","parents":[]},{"pk":"g-eng","name":"engineering","parents":["g-staff"]},
+            {"pk":"g-ops","name":"ops","parents":[]},{"pk":"g-admins","name":"authentik Admins","parents":[]}],
+        "excluded_groups":["g-admins"],
+        "providers":[provider(1, "wiki"), provider(2, "vault"), provider(3, "chat"), provider(4, "docs")],
+        "applications":[application(1, "wiki", "any"), application(2, "vault", "all"),
+            application(3, "chat", "any"), application(4, "docs", "any")],
+        "policy_bindings":[
+            // A group binding keeps its meaning as an allowed group; a disabled one did nothing.
+            binding("wiki-staff", "wiki", json!({"group":"g-staff"})),
+            binding("wiki-ops-off", "wiki", json!({"group":"g-ops","enabled":false})),
+            // In all mode a user needed both groups, which any-of allowed groups cannot express.
+            binding("vault-staff", "vault", json!({"group":"g-staff"})),
+            binding("vault-ops", "vault", json!({"group":"g-ops"})),
+            // A reviewed expression binding that restricts nothing would admit every user.
+            binding("chat-expression", "chat", json!({"policy":"policy-uuid"})),
+            // Expiring, negated, user and excluded-group bindings are never converted.
+            binding("docs-expiring", "docs", json!({"group":"g-staff","expiring":true,"expires":"2030-01-01T00:00:00Z"})),
+            binding("docs-negated", "docs", json!({"group":"g-ops","negate":true})),
+            binding("docs-user", "docs", json!({"user":1})),
+            binding("docs-admins", "docs", json!({"group":"g-admins"}))],
+        "sources":[],
+        "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"v1"},"bob":{"reference":"env:BOB_PASSWORD","version":"v1"}},
+        "clients":{"wiki":client("wiki", &[]),"vault":client("vault", &[]),"chat":client("chat", &["chat-expression"]),
+            "docs":client("docs", &[])}});
+    let convert = |input: &Value| {
+        riauth::migration::convert(serde_json::from_value(input.clone()).unwrap()).unwrap()
+    };
+    let report = convert(&input);
+    assert_eq!(report["ready_for_plan"], false);
+    for (kind, id, expected) in [
+        (PolicyBinding, "wiki-staff", vec![(Convertible, false)]),
+        (PolicyBinding, "wiki-ops-off", vec![(Exact, false)]),
+        (PolicyBinding, "vault-staff", vec![(Manual, true)]),
+        (PolicyBinding, "vault-ops", vec![(Manual, true)]),
+        (
+            Application,
+            "vault",
+            vec![(Convertible, false), (Manual, true)],
+        ),
+        (PolicyBinding, "chat-expression", vec![(Manual, false)]),
+        (
+            Application,
+            "chat",
+            vec![(Convertible, false), (Manual, true)],
+        ),
+        (PolicyBinding, "docs-expiring", vec![(Manual, true)]),
+        (PolicyBinding, "docs-negated", vec![(Manual, true)]),
+        (PolicyBinding, "docs-user", vec![(Manual, true)]),
+        (PolicyBinding, "docs-admins", vec![(Manual, true)]),
+        (
+            Application,
+            "docs",
+            vec![(Convertible, false), (Manual, true)],
+        ),
+    ] {
+        assert_eq!(findings(&report, kind, id), expected, "{kind:?} {id}");
+    }
+    for blocker in [
+        "vault: application binding vault-staff cannot be converted exactly and needs a reviewed translation",
+        "chat: converted client would admit every user its Authentik bindings restricted",
+        "docs: application binding docs-admins cannot be converted exactly and needs a reviewed translation",
+    ] {
+        assert!(
+            report["blockers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(blocker)),
+            "{blocker}: {}",
+            report["blockers"]
+        );
+    }
+    let allowed = report["draft"]["clients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["client_id"].as_str().unwrap().to_owned(),
+                c["allowed_groups"].clone(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(allowed["wiki"], json!(["staff"]));
+    for cid in ["vault", "chat", "docs"] {
+        assert_eq!(allowed[cid], json!([]), "{cid}");
+    }
+
+    // The exact binding plans and applies: a member of a group below staff keeps access, and
+    // a non-member is refused, as in Authentik.
+    let mut ready = input.clone();
+    ready["providers"] = json!([provider(1, "wiki")]);
+    ready["applications"] = json!([application(1, "wiki", "any")]);
+    ready["clients"] = json!({"wiki":client("wiki", &[])});
+    ready["policy_bindings"] = json!(input["policy_bindings"].as_array().unwrap()[..2]);
+    let report = convert(&ready);
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    let manifest = serde_json::from_value(report["manifest"].clone()).unwrap();
+    let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+    f.core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan,
+                secrets: [
+                    ("env:ALICE_PASSWORD".into(), PASSWORD.into()),
+                    ("env:BOB_PASSWORD".into(), PASSWORD.into()),
+                ]
+                .into(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    for (username, admitted) in [("alice", true), ("bob", false)] {
+        let login = f
+            .core
+            .login(username.into(), PASSWORD.into(), None)
+            .unwrap();
+        let mut request = f.request("wiki", &crypto::random_token(""));
+        request.scope = "openid profile".into();
+        assert_eq!(
+            f.core
+                .authorize(&text(&login, "session_token"), request)
+                .is_ok(),
+            admitted,
+            "{username}"
+        );
+    }
+}
+
+#[test]
 fn authentik_manifest_plans_only_on_its_exact_target_issuer() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();
