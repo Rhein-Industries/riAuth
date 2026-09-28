@@ -126,9 +126,21 @@ fn scope(kind: &str) -> &'static str {
     if kind == "Users" { "user" } else { "group" }
 }
 fn owned(tx: &Tx<'_>, actor: &Principal, kind: &str, id: &str) -> Result<Record> {
-    tx.get::<Record>(bucket(kind)?, id)?
+    let record = tx.get::<Record>(bucket(kind)?, id)?
         .filter(|r| !r.deleted && r.owner == actor.id)
-        .ok_or_else(|| Error::missing("SCIM resource not found"))
+        .ok_or_else(|| Error::missing("SCIM resource not found"))?;
+    record_binding(kind, &record)?;
+    Ok(record)
+}
+
+fn record_binding(kind: &str, record: &Record) -> Result<()> {
+    if record.kind != kind
+        || kind == "Groups"
+            && (record.local_id.is_empty() || record.local_id != name(record))
+    {
+        return Err(Error::conflict("SCIM resource identity does not match its local record"));
+    }
+    Ok(())
 }
 
 /// Track effective changes made outside inbound SCIM as part of the same
@@ -181,9 +193,10 @@ pub(crate) fn record_transition(
             }
             let users = tx.list::<Record>("scim_users")?;
             for (id, mut group) in tx.list::<Record>("scim_groups")? {
-                if group.deleted || group.local_id != key {
+                if group.deleted || group.local_id != key && name(&group) != key {
                     continue;
                 }
+                record_binding("Groups", &group)?;
                 let mut visible_change = false;
                 for (user_id, mut user) in users.iter().cloned() {
                     if user.deleted || user.owner != group.owner {
@@ -991,6 +1004,7 @@ impl Projection {
 
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
+        record_binding(&record.kind, record)?;
         let mut value = record.data.clone();
         value["id"] = json!(id);
         value.as_object_mut().unwrap().remove("password");
@@ -1010,15 +1024,17 @@ impl Core {
                 );
             }
             let groups = crate::core::durable_groups_for(tx, &user.id)?;
-            value["groups"] = json!(
-                tx.list::<Record>("scim_groups")?
-                    .into_iter()
-                    .filter(|(_, g)| !g.deleted
-                        && g.owner == record.owner
-                        && groups.contains(&g.local_id))
-                    .map(|(id, g)| json!({"value":id,"display":name(&g)}))
-                    .collect::<Vec<_>>()
-            );
+            let mut visible_groups = Vec::new();
+            for (id, group) in tx.list::<Record>("scim_groups")? {
+                if !group.deleted
+                    && group.owner == record.owner
+                    && groups.contains(&group.local_id)
+                {
+                    record_binding("Groups", &group)?;
+                    visible_groups.push(json!({"value":id,"display":name(&group)}));
+                }
+            }
+            value["groups"] = json!(visible_groups);
         } else {
             let group = tx
                 .get::<Group>("groups", &record.local_id)?
@@ -1149,10 +1165,11 @@ impl Core {
                 let last_page = records.len() < 128;
                 after = Some(records.last().unwrap().0.clone());
                 for (id, record) in records {
-                    if record.deleted
-                        || record.owner != actor.id
-                        || require(&actor, &record, "read").is_err()
-                    {
+                    if record.deleted || record.owner != actor.id {
+                        continue;
+                    }
+                    record_binding(kind, &record)?;
+                    if require(&actor, &record, "read").is_err() {
                         continue;
                     }
                     if filter.is_none() && sort.is_none() {

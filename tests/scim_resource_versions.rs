@@ -330,6 +330,50 @@ async fn scim_group_metadata_update_fails_closed_on_broken_management_identity()
 }
 
 #[tokio::test]
+async fn scim_group_record_cannot_point_at_another_local_group() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-group-record-binding".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["group.read", "group.write", "group.members"]
+            .map(|action| Permission { action: action.into(), resource: "*".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({"schemas":[scim::GROUP],"displayName":"bound-group","members":[]});
+    let (status, Some(version), created) = request(
+        &app, Method::POST, "/scim/v2/Groups", &token, None, None, Some(&input),
+    ).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let id = text(&created, "id");
+    f.core.create_group(&f.admin, "foreign-group").unwrap();
+
+    f.core.store.write(|tx| {
+        let mut record: Value = tx.get("scim_groups", &id)?.unwrap();
+        record["local_id"] = json!("foreign-group");
+        tx.put("scim_groups", &id, &record)
+    }).unwrap();
+    let before = f.snapshot().unwrap();
+    assert!(f.core.scim_get(&token, "Groups", &id).is_err());
+    assert!(f.core.scim_list(&token, "Groups", scim::Query::default()).is_err());
+
+    let path = format!("/scim/v2/Groups/{id}");
+    let patch = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"tag"}]});
+    let (status, _, _) = request(
+        &app, Method::PATCH, &path, &token, Some(&version), None, Some(&patch),
+    ).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&before);
+    let (status, _, _) = request(
+        &app, Method::DELETE, &path, &token, Some(&version), None, None,
+    ).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    f.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test]
 async fn scim_group_create_keeps_the_scim_membership_authority_requirement() {
     let f = Fixture::new();
     let agent = f.core.create_agent(&f.admin, NewAgent {
