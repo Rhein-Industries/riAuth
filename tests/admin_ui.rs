@@ -1,0 +1,424 @@
+mod common;
+
+use axum::{
+    body::Body,
+    http::{HeaderMap, Request, StatusCode},
+};
+use common::Fixture;
+use http_body_util::BodyExt;
+use riauth::core::Core;
+use serde_json::{Value, json};
+use tower::ServiceExt;
+
+fn sso_cookie(core: &Core, session: &str) -> String {
+    let request = core.portal_sign_in().unwrap();
+    core.portal_decide(session, request.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = request.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let response = core
+        .portal_poll(request.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    response
+        .cookies
+        .iter()
+        .find(|cookie| cookie.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_owned()
+}
+
+fn origin(core: &Core) -> String {
+    url::Url::parse(&core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization()
+}
+
+#[derive(Default)]
+struct Call<'a> {
+    method: &'a str,
+    cookie: Option<&'a str>,
+    bearer: Option<&'a str>,
+    portal: bool,
+    origin: Option<&'a str>,
+    revision: Option<u64>,
+    body: Option<Value>,
+}
+
+async fn send(app: &axum::Router, uri: &str, call: Call<'_>) -> (StatusCode, HeaderMap, Value) {
+    let mut request = Request::builder()
+        .method(if call.method.is_empty() {
+            "GET"
+        } else {
+            call.method
+        })
+        .uri(uri);
+    if let Some(cookie) = call.cookie {
+        request = request.header("cookie", format!("riauth_sso={cookie}"));
+    }
+    if let Some(token) = call.bearer {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    if call.portal {
+        request = request.header("x-riauth-portal", "1");
+    }
+    if let Some(origin) = call.origin {
+        request = request.header("origin", origin);
+    }
+    if let Some(revision) = call.revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    let body = match call.body {
+        Some(body) => {
+            request = request.header("content-type", "application/json");
+            Body::from(body.to_string())
+        }
+        None => Body::empty(),
+    };
+    let response = app
+        .clone()
+        .oneshot(request.body(body).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into()));
+    (status, headers, value)
+}
+
+#[tokio::test]
+async fn page_is_self_contained() {
+    let fixture = Fixture::new();
+    let app = riauth::api::router(fixture.core.clone());
+    let (status, headers, page) = send(&app, "/admin", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let csp = headers["content-security-policy"].to_str().unwrap();
+    assert!(csp.contains("script-src 'self'") && csp.contains("frame-ancestors 'none'"));
+    let page = page.as_str().unwrap();
+    assert!(page.contains("portal/assets/admin.js") && !page.contains("__BASE__"));
+    for asset in ["/portal/assets/admin.js", "/portal/assets/admin.css"] {
+        let (status, _, body) = send(&app, asset, Call::default()).await;
+        assert_eq!(status, StatusCode::OK, "{asset}");
+        // Nothing is fetched from elsewhere: the only URLs are the SVG namespace and an
+        // example placeholder.
+        let body = body
+            .as_str()
+            .unwrap()
+            .replace("http://www.w3.org/2000/svg", "")
+            .replace("https://app.example.com/", "");
+        assert!(
+            !body.contains("http://") && !body.contains("https://"),
+            "{asset}"
+        );
+        assert!(
+            !body.contains("url(") && !body.contains("@import"),
+            "{asset}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn reads_require_an_administrator_browser_session_and_the_portal_header() {
+    let fixture = Fixture::new();
+    let user = fixture.user("ada");
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let member = sso_cookie(&fixture.core, &user);
+    let app = riauth::api::router(fixture.core.clone());
+    for (cookie, portal, status) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some("ri_sso_unknown"), true, StatusCode::UNAUTHORIZED),
+        (Some(admin.as_str()), false, StatusCode::FORBIDDEN),
+        (Some(member.as_str()), true, StatusCode::FORBIDDEN),
+    ] {
+        for path in [
+            "/api/admin/session",
+            "/api/admin/users",
+            "/api/admin/access/requests",
+        ] {
+            let call = Call {
+                cookie,
+                portal,
+                ..Default::default()
+            };
+            let (got, _, body) = send(&app, path, call).await;
+            assert_eq!(got, status, "{path}: {body}");
+        }
+    }
+    let call = Call {
+        cookie: Some(&admin),
+        portal: true,
+        ..Default::default()
+    };
+    let (status, _, session) = send(&app, "/api/admin/session", call).await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    assert_eq!(session["user"]["username"], "admin");
+    assert!(session["revision"].is_u64());
+    assert!(session.get("password_hash").is_none());
+}
+
+#[tokio::test]
+async fn browser_credential_cannot_be_presented_as_a_bearer_token() {
+    let fixture = Fixture::new();
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let app = riauth::api::router(fixture.core.clone());
+    for token in [format!("browser-session {admin}"), admin.clone()] {
+        let call = Call {
+            bearer: Some(&token),
+            ..Default::default()
+        };
+        let (status, _, body) = send(&app, "/api/users", call).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn writes_use_the_management_path_and_guards() {
+    let fixture = Fixture::new();
+    let user = fixture.user("ada");
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let member = sso_cookie(&fixture.core, &user);
+    let app = riauth::api::router(fixture.core.clone());
+    let origin = origin(&fixture.core);
+    let new_user = json!({"username": "grace", "password": "correct horse battery staple 42", "display_name": "Grace"});
+    // Cross-site shapes and non-administrators change nothing.
+    for (cookie, portal, sent_origin, status) in [
+        (Some(admin.as_str()), true, None, StatusCode::FORBIDDEN),
+        (
+            Some(admin.as_str()),
+            false,
+            Some(origin.as_str()),
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            Some(admin.as_str()),
+            true,
+            Some("https://evil.example"),
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            Some(member.as_str()),
+            true,
+            Some(origin.as_str()),
+            StatusCode::FORBIDDEN,
+        ),
+        (None, true, Some(origin.as_str()), StatusCode::UNAUTHORIZED),
+    ] {
+        let call = Call {
+            method: "POST",
+            cookie,
+            portal,
+            origin: sent_origin,
+            body: Some(new_user.clone()),
+            ..Default::default()
+        };
+        let (got, _, body) = send(&app, "/api/admin/users", call).await;
+        assert_eq!(got, status, "{body}");
+    }
+    assert!(
+        !fixture
+            .core
+            .list_users(&fixture.admin)
+            .unwrap()
+            .to_string()
+            .contains("grace")
+    );
+
+    let write = |method, body| Call {
+        method,
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        body,
+        ..Default::default()
+    };
+    let (status, _, created) = send(&app, "/api/admin/users", write("POST", Some(new_user))).await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert!(created.get("password_hash").is_none());
+    // Validation is the management API's own.
+    let (status, _, body) = send(
+        &app,
+        "/api/admin/users",
+        write(
+            "POST",
+            Some(json!({"username": "bad name!", "password": "x"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let (status, _, body) = send(
+        &app,
+        "/api/admin/groups",
+        write("POST", Some(json!({"name": "engineering"}))),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _, body) = send(
+        &app,
+        "/api/admin/groups/engineering/members/grace",
+        write("PUT", None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The audit actor is the administrator, as for the bearer API.
+    let admin_id = fixture.core.me(&fixture.admin).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let events = fixture.core.audit_events(&fixture.admin, 20).unwrap();
+    for action in ["user.create", "group.create", "group.member.add"] {
+        let event = events
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["action"] == action)
+            .unwrap();
+        assert_eq!(event["actor"], admin_id.as_str(), "{action}");
+    }
+
+    // A stale If-Match revision is rejected without a change.
+    let session = Call {
+        cookie: Some(&admin),
+        portal: true,
+        ..Default::default()
+    };
+    let revision = send(&app, "/api/admin/session", session).await.2["revision"]
+        .as_u64()
+        .unwrap();
+    let stale = Call {
+        revision: Some(revision - 1),
+        ..write("PATCH", Some(json!({"display_name": "Stale"})))
+    };
+    let (status, _, body) = send(&app, "/api/admin/users/grace", stale).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    let current = Call {
+        revision: Some(revision),
+        ..write("PATCH", Some(json!({"display_name": "Grace Hopper"})))
+    };
+    let (status, _, body) = send(&app, "/api/admin/users/grace", current).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["display_name"], "Grace Hopper");
+}
+
+#[tokio::test]
+async fn application_presentation_keeps_the_other_settings() {
+    let fixture = Fixture::new();
+    fixture.client("code", true);
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let app = riauth::api::router(fixture.core.clone());
+    let origin = origin(&fixture.core);
+    let read = Call {
+        cookie: Some(&admin),
+        portal: true,
+        ..Default::default()
+    };
+    let (_, _, clients) = send(&app, "/api/admin/clients", read).await;
+    let before = clients
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["client_id"] == "code")
+        .unwrap()
+        .clone();
+    let mut settings = before["settings"].clone();
+    settings["app"] = json!({"description": "Code review", "category": "Engineering", "launch_url": "https://code.example.com/", "icon": "code", "accent": "violet", "hidden": false, "launch_scopes": []});
+    let patch = Call {
+        method: "PATCH",
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        body: Some(json!({"settings": settings})),
+        ..Default::default()
+    };
+    let (status, _, after) = send(&app, "/api/admin/clients/code", patch).await;
+    assert_eq!(status, StatusCode::OK, "{after}");
+    assert_eq!(
+        after["settings"]["app"]["launch_url"],
+        "https://code.example.com/"
+    );
+    let mut rest = after["settings"].clone();
+    rest.as_object_mut().unwrap().remove("app");
+    assert_eq!(rest, before["settings"]);
+    // Rotation returns the new secret once, through the same authorization.
+    let rotate = Call {
+        method: "POST",
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        ..Default::default()
+    };
+    let (status, _, body) = send(&app, "/api/admin/clients/code/rotate-secret", rotate).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["client_secret"]
+            .as_str()
+            .unwrap()
+            .starts_with("ri_client_")
+    );
+}
+
+#[tokio::test]
+async fn a_changed_email_cannot_be_marked_verified() {
+    let fixture = Fixture::new();
+    fixture.user("ada");
+    fixture
+        .core
+        .update_user(
+            &fixture.admin,
+            "ada",
+            riauth::model::UserPatch {
+                email_verified: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let app = riauth::api::router(fixture.core.clone());
+    let origin = origin(&fixture.core);
+    let stored = |core: &Core| {
+        let users = core.list_users(&fixture.admin).unwrap();
+        let ada = users
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["username"] == "ada")
+            .unwrap()
+            .clone();
+        (ada["email"].clone(), ada["email_verified"].clone())
+    };
+    let patch = |body| Call {
+        method: "PATCH",
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        body: Some(body),
+        ..Default::default()
+    };
+    let body = json!({"email": "ada@new.example", "email_verified": true});
+    let (status, _, reply) = send(&app, "/api/admin/users/ada", patch(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    assert_eq!(
+        stored(&fixture.core),
+        (json!("ada@example.test"), json!(true))
+    );
+    let body = json!({"email": "ada@new.example"});
+    let (status, _, reply) = send(&app, "/api/admin/users/ada", patch(body)).await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_eq!(
+        stored(&fixture.core),
+        (json!("ada@new.example"), json!(false))
+    );
+}

@@ -132,6 +132,9 @@ impl Core {
             self.principal(tx, token)?;
             return Err(Error::forbidden());
         }
+        if let Some(cookie) = crate::agent::browser_cookie(token) {
+            return Ok(self.browser_user(tx, cookie)?.0);
+        }
         Ok(self.session(tx, token)?.0)
     }
     fn read_access(&self, tx: &Tx<'_>, token: &str, resource: &str) -> Result<()> {
@@ -139,7 +142,7 @@ impl Core {
             self.management(tx, token, "access.read", resource)?;
             return Ok(());
         }
-        self.session(tx, token)?;
+        self.end_user(tx, token)?;
         Ok(())
     }
     pub fn request_access(&self, token: &str, input: NewAccessRequest) -> Result<Value> {

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Administration · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/admin.css">
+  <script src="__BASE__portal/assets/admin.js" defer></script>
+</head>
+<body class="admin">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+  <symbol id="i-app" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.7"/><rect x="14" y="3" width="7" height="7" rx="1.7"/><rect x="3" y="14" width="7" height="7" rx="1.7"/><rect x="14" y="14" width="7" height="7" rx="1.7"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+  <symbol id="i-group" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9.5" r="2.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M15.5 14.6c2.8-.3 5 1.2 6 4.4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8.5 12 2.3 2.3 4.7-4.6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-6v6h6M4 14a8 8 0 0 0 14 4l3-3m0 6v-6h-6"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M10 4H5v16h5M10 12h11m-4-4 4 4-4 4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a5 5 0 1 1 0-10 7 7 0 0 1 13 2 4 4 0 0 1-1 8Z"/></symbol>
+</defs></svg>
+<div class="shell">
+  <aside class="sidebar" aria-label="Administration">
+    <a class="brand" href="#/applications" aria-label="riAuth administration home"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true"><span>ri<span class="brand-light">Auth</span><small>ADMINISTRATION</small></span></a>
+    <p class="nav-label">MANAGE</p>
+    <nav aria-label="Sections" id="nav">
+      <a class="nav-item" href="#/applications" data-section="applications"><svg class="icon"><use href="#i-app"/></svg><span>Applications</span><span class="nav-count" id="count-applications">—</span></a>
+      <a class="nav-item" href="#/people" data-section="people"><svg class="icon"><use href="#i-person"/></svg><span>People</span><span class="nav-count" id="count-people">—</span></a>
+      <a class="nav-item" href="#/groups" data-section="groups"><svg class="icon"><use href="#i-group"/></svg><span>Groups</span><span class="nav-count" id="count-groups">—</span></a>
+      <a class="nav-item" href="#/security" data-section="security"><svg class="icon"><use href="#i-shield"/></svg><span>Security</span><span class="nav-count" id="count-security" title="Access requests waiting for review">—</span></a>
+    </nav>
+    <div class="sidebar-bottom">
+      <a class="admin-apps-link" href="__BASE__apps">Your applications</a>
+      <div class="account" id="account" role="group" aria-label="Signed-in administrator" hidden><span class="avatar" id="avatar"> </span><div class="account-text"><strong id="account-name"></strong><span id="account-detail"></span></div><button class="icon-button" id="sign-out" type="button" aria-label="Sign out" title="Sign out"><svg class="icon"><use href="#i-logout"/></svg></button></div>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><nav class="breadcrumb" aria-label="Breadcrumb" id="breadcrumb"><span>Administration</span></nav><div class="topbar-actions"><span class="connection" id="connection"><span class="status-dot"></span><span id="connection-label">Connecting</span></span><button class="icon-button" id="refresh" type="button" aria-label="Refresh" title="Refresh"><svg class="icon"><use href="#i-refresh"/></svg></button></div></header>
+    <main id="main" tabindex="-1">
+      <div id="view" hidden></div>
+      <section class="loading-state" id="loading" aria-label="Loading" aria-busy="true"><div class="skeleton skeleton-heading"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-toolbar"></div><p>Loading administration…</p></section>
+      <section class="empty-state gate" id="gate" hidden><span class="empty-icon"><svg class="icon" id="gate-icon"><use href="#i-lock"/></svg></span><h1 id="gate-title" tabindex="-1"></h1><p id="gate-text"></p><div class="gate-actions"><a class="button primary" id="gate-link" href="__BASE__apps"></a><button class="button secondary" id="gate-retry" type="button">Try again</button></div></section>
+      <noscript><div class="auth-panel"><h1>JavaScript is needed for administration</h1><p>Enable JavaScript and reload this page, or administer riAuth with its CLI and HTTP API.</p></div></noscript>
+    </main>
+  </div>
+</div>
+<dialog id="confirm-dialog" class="security admin-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+  <h2 id="confirm-title"></h2>
+  <p class="field-hint" id="confirm-text"></p>
+  <form id="confirm-form" method="dialog" novalidate>
+    <div class="field" id="confirm-field" hidden><label for="confirm-input" id="confirm-label"></label><input id="confirm-input" autocomplete="new-password" maxlength="1024"></div>
+    <p id="confirm-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+    <div class="dialog-actions"><button class="button secondary" id="confirm-cancel" type="button">Cancel</button><button class="button primary" id="confirm-ok" type="submit"></button></div>
+  </form>
+</dialog>
+<dialog id="secret-dialog" class="security admin-dialog" aria-labelledby="secret-title">
+  <h2 id="secret-title">Copy the client secret now</h2>
+  <p class="field-hint">riAuth stores only a hash. This is the only time the secret is shown; closing this dialog discards it.</p>
+  <div class="field"><label for="secret-value">Client secret for <span id="secret-client"></span></label><input id="secret-value" readonly spellcheck="false" autocomplete="off"></div>
+  <div class="dialog-actions"><button class="button secondary" id="secret-copy" type="button"><svg class="icon"><use href="#i-copy"/></svg>Copy</button><button class="button primary" id="secret-close" type="button">I've stored it</button></div>
+</dialog>
+<div class="toast" role="status" id="toast" hidden></div>
+<div class="sr-only" role="status" aria-live="polite" id="announcement"></div>
+</body>
+</html>

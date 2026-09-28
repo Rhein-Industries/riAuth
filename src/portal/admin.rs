@@ -1,0 +1,269 @@
+//! Compact browser administration: `/admin` and its same-origin JSON routes.
+//!
+//! Every route authenticates the administrator's browser session (SSO cookie) as a management
+//! credential and calls the same `Core` methods as the bearer API, so authorization,
+//! validation, If-Match revisions, idempotency receipts and audit are shared. Reads require
+//! the portal header; writes also pass `browser_write_guard`.
+use super::http::{browser_write_guard, portal_html};
+use crate::{
+    agent::browser_credential,
+    api::{App, sso_cookie},
+    error::{Error, Result},
+    model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
+};
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    response::Response,
+    routing::{get, patch, post, put},
+};
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+pub fn routes() -> Router<App> {
+    Router::new()
+        .route("/admin", get(page))
+        .route("/admin/", get(page))
+        .route(
+            "/portal/assets/admin.css",
+            get(|| async {
+                (
+                    [("content-type", "text/css; charset=utf-8")],
+                    include_str!("admin.css"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/admin.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("admin.js"),
+                )
+            }),
+        )
+        .route("/api/admin/session", get(session))
+        .route("/api/admin/users", get(users).post(create_user))
+        .route("/api/admin/users/{username}", patch(update_user))
+        .route("/api/admin/groups", get(groups).post(create_group))
+        .route(
+            "/api/admin/groups/{name}/members/{username}",
+            put(add_member).delete(remove_member),
+        )
+        .route("/api/admin/clients", get(clients).post(create_client))
+        .route("/api/admin/clients/{id}", patch(update_client))
+        .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
+        .route("/api/admin/access/requests", get(access_requests))
+        .route("/api/admin/access/requests/{id}/approve", post(approve))
+        .route("/api/admin/access/requests/{id}/deny", post(deny))
+        .route("/api/admin/access/grants", get(access_grants))
+        .route("/api/admin/access/grants/{id}/revoke", post(revoke_grant))
+        .route("/api/admin/audit", get(audit))
+}
+
+async fn page(State(app): State<App>) -> Response {
+    portal_html(include_str!("admin.html"), &app, true)
+}
+
+/// A read carries the portal header, which a cross-site page cannot add without a CORS
+/// preflight that riAuth never grants, and any Fetch Metadata must say same-origin.
+fn reader(app: &App, headers: &HeaderMap) -> Result<String> {
+    let fetch_site = headers.get_all("sec-fetch-site");
+    if headers.get_all("x-riauth-portal").iter().count() != 1
+        || headers.get("x-riauth-portal").and_then(|h| h.to_str().ok()) != Some("1")
+        || fetch_site.iter().count() > 1
+        || fetch_site
+            .iter()
+            .next()
+            .is_some_and(|h| h.to_str().ok() != Some("same-origin"))
+    {
+        return Err(Error::forbidden());
+    }
+    credential(app, headers)
+}
+
+fn writer(app: &App, headers: &HeaderMap) -> Result<String> {
+    browser_write_guard(app, headers)?;
+    credential(app, headers)
+}
+
+fn credential(app: &App, headers: &HeaderMap) -> Result<String> {
+    sso_cookie(app, headers)
+        .map(browser_credential)
+        .ok_or_else(Error::unauthorized)
+}
+
+/// The signed-in administrator and the configuration revision edits send as If-Match.
+async fn session(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    let cookie = sso_cookie(&app, &headers).unwrap_or_default().to_owned();
+    app.run(move |core| {
+        core.store.read(|tx| {
+            let (user, session) = core.browser_user(tx, &cookie)?;
+            core.management(tx, &token, "state.read", "state/revision")?;
+            Ok(Json(json!({
+                "user": UserView::from(&user),
+                "mfa": session.identity.mfa,
+                "expires_at": session.expires_at,
+                "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+            })))
+        })
+    })
+    .await
+}
+
+macro_rules! read {
+    ($name:ident, $method:ident) => {
+        async fn $name(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+            let token = reader(&app, &headers)?;
+            app.run(move |core| core.$method(&token).map(Json)).await
+        }
+    };
+}
+read!(users, list_users);
+read!(groups, list_groups);
+read!(clients, list_clients);
+
+/// Access review is limited to administrators here; `pam` still decides who may approve.
+macro_rules! access_read {
+    ($name:ident, $method:ident) => {
+        async fn $name(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+            let token = reader(&app, &headers)?;
+            app.run(move |core| {
+                core.store.read(|tx| core.principal(tx, &token).map(drop))?;
+                core.$method(&token).map(Json)
+            })
+            .await
+        }
+    };
+}
+access_read!(access_requests, list_access_requests);
+access_read!(access_grants, list_access_grants);
+
+macro_rules! decide {
+    ($name:ident, |$core:ident, $token:ident, $id:ident| $call:expr) => {
+        async fn $name(
+            State(app): State<App>,
+            headers: HeaderMap,
+            Path($id): Path<String>,
+        ) -> Result<Json<Value>> {
+            let $token = writer(&app, &headers)?;
+            app.run(move |$core| {
+                $core
+                    .store
+                    .read(|tx| $core.principal(tx, &$token).map(drop))?;
+                $call.map(Json)
+            })
+            .await
+        }
+    };
+}
+decide!(approve, |core, token, id| core
+    .decide_access(&token, &id, true));
+decide!(deny, |core, token, id| core
+    .decide_access(&token, &id, false));
+decide!(revoke_grant, |core, token, id| core
+    .revoke_access(&token, &id));
+decide!(rotate_secret, |core, token, id| core
+    .rotate_client_secret(&token, &id));
+
+#[derive(Deserialize)]
+struct AuditQuery {
+    limit: Option<usize>,
+}
+async fn audit(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| {
+        core.audit_events(&token, query.limit.unwrap_or(50).min(200))
+            .map(Json)
+    })
+    .await
+}
+
+async fn create_user(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<NewUser>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.create_user(&token, input).map(Json))
+        .await
+}
+async fn update_user(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Json(input): Json<UserPatch>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    // Core clears verification when the address changes; a browser edit cannot restore it in
+    // the same write, so a new address is always confirmed by its owner.
+    if input.email.is_some() && input.email_verified == Some(true) {
+        return Err(Error::bad(
+            "A changed email address is saved unverified; it cannot be marked verified in the same change",
+        ));
+    }
+    app.run(move |core| core.update_user(&token, &username, input).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewGroup {
+    name: String,
+}
+async fn create_group(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<NewGroup>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.create_group(&token, &input.name).map(Json))
+        .await
+}
+async fn add_member(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((group, username)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.group_member(&token, &group, &username, true).map(Json))
+        .await
+}
+async fn remove_member(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((group, username)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.group_member(&token, &group, &username, false)
+            .map(Json)
+    })
+    .await
+}
+
+async fn create_client(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<NewClient>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.create_client(&token, input).map(Json))
+        .await
+}
+async fn update_client(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<ClientPatch>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.update_client(&token, &id, input).map(Json))
+        .await
+}

@@ -1,4 +1,5 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
+pub mod admin;
 pub mod http;
 
 use crate::{

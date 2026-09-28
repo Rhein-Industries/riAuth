@@ -105,6 +105,19 @@ Icons: `app`, `code`, `chart`, `files`, `messages`, `book`, `cloud`, `terminal`,
 
 Authentik imports map application names, descriptions, category groups and explicit launch URLs onto providers. Reviewed `settings.app` takes precedence. Hidden markers are preserved. Unsafe or templated URLs require an explicit replacement, and multiple applications sharing one provider produce an import blocker. These fields follow the [Authentik application model](https://docs.goauthentik.io/add-secure-apps/applications/); arbitrary Authentik policy expressions still require typed translations.
 
+## Administration
+
+`<issuer>/admin` is a compact administration page for administrators who are signed in to the portal. Like the portal, it is embedded in the binary and makes no external requests. It has four sections:
+
+- **Applications**: list, create (web application with a secret, browser or mobile app with PKCE, or service), and edit name, enabled state, MFA requirement, allowed groups, redirect URIs, scopes and the portal presentation (`settings.app`). **Rotate secret** shows a new client secret once. Saving presentation fields sends the complete current settings, so other protocol settings are kept; they are shown read-only and still change through the CLI or manifests.
+- **People**: list, create with an initial password, and edit display name, email, verification, enabled state and administrator role. A changed email address is always saved unverified; the admin routes refuse to mark it verified in the same change. Service applications take API scopes only, without groups or MFA. **Set a new password**, **Reset MFA** and **Sign out everywhere** each ask for confirmation and sign the person out everywhere.
+- **Groups**: list, create, and add or remove members. Each group lists the applications limited to it and any active temporary access.
+- **Security**: temporary access requests waiting for review (approve or deny), active temporary access (revoke), administrators without MFA, and the 50 most recent audit events, with a link to the event map.
+
+The page calls same-origin `/api/admin/*` routes. They authenticate the browser session and run the same management methods, agent-style permission checks, validation, idempotency receipts and audit as the bearer API. They are not a second management service. Access decisions still require a configured approver for the group. Reads require `X-Riauth-Portal: 1`. Writes also pass the portal write guard (exact `Origin`, the portal header, and same-origin Fetch Metadata). The browser credential is never accepted in an `Authorization` header.
+
+Every edit sends the configuration revision it was made against as `If-Match`, plus one `Idempotency-Key` per attempt. A change made elsewhere in the meantime rejects the edit with a prompt to reload, and a submission retried after a dropped connection is applied at most once. Signed-out browsers see a sign-in prompt, and signed-in non-administrators see "Administrator access required". Navigation uses `#/section/item` links, focuses each view's heading, supports `/` to search lists and collapses tables into labelled rows on narrow screens.
+
 ## Administrator event map
 
 `/events` serves a separate static page whose data requires an administrator who is already signed in. It is not an application in the catalogue, and the launcher does not link to it. The page draws counts from `GET /api/audit/map` on a schematic grid embedded in the binary. It does not load map tiles, fonts or locations from the internet. The HTML shell is public. `GET /api/audit/map` returns 401 without a session and 403 to a normal user; an administrator's SSO cookie or an authorized audit bearer can read the aggregates. Coordinates must already exist in the stored event/user data: the page does not locate users from IP addresses. See [ENT-14](enterprise/ENT-14.md).

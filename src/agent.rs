@@ -2,13 +2,28 @@ use crate::{
     core::{Core, audit, user_by_name, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::User,
+    model::{Session, User},
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use crate::identity::agent_credentials::{Agent, Permission};
+
+/// Prefix of the management credential for a browser session: the SSO cookie value follows.
+/// `api::bearer` rejects whitespace, so an Authorization header can never carry one; only the
+/// same-origin administration routes (`portal::admin`) build it, behind the browser guards.
+const BROWSER_SESSION: &str = "browser-session ";
+
+/// The management credential `principal` accepts for this browser session cookie.
+pub(crate) fn browser_credential(cookie: &str) -> String {
+    format!("{BROWSER_SESSION}{cookie}")
+}
+
+/// The SSO cookie of a browser management credential.
+pub(crate) fn browser_cookie(token: &str) -> Option<&str> {
+    token.strip_prefix(BROWSER_SESSION)
+}
 
 pub const ACTIONS: &[(&str, &str)] = &[
     ("ldap.search", "client"),
@@ -122,13 +137,27 @@ impl Core {
                 permissions: agent.permissions,
             })
         } else {
-            let user = self.admin(tx, token)?;
+            let user = match browser_cookie(token) {
+                Some(cookie) => self.browser_user(tx, cookie)?.0,
+                None => self.session(tx, token)?.0,
+            };
+            if !user.admin {
+                return Err(Error::forbidden());
+            }
             Ok(Principal {
                 id: user.id,
                 agent: false,
                 permissions: vec![],
             })
         }
+    }
+    /// The user and session behind a browser SSO cookie, with the same session and identity
+    /// checks as a bearer session.
+    pub(crate) fn browser_user(&self, tx: &Tx<'_>, cookie: &str) -> Result<(User, Session)> {
+        let session = self
+            .browser_session(tx, Some(cookie))?
+            .ok_or_else(Error::unauthorized)?;
+        Ok((self.identity_user(tx, &session.identity)?, session))
     }
     pub(crate) fn management(
         &self,

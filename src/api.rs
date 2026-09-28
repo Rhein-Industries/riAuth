@@ -171,6 +171,7 @@ pub fn router(core: Core) -> Router {
     let routes = Router::new()
         .route("/", get(crate::portal::http::root))
         .merge(crate::portal::http::routes())
+        .merge(crate::portal::admin::routes())
         .merge(crate::bootstrap::closed_routes())
         .merge(interaction::routes())
         .merge(workflow::routes())
