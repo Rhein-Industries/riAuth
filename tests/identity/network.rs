@@ -87,7 +87,11 @@ fn consent_revocation_rejects_existing_proxy_sessions() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
-    use ldap3::{LdapConn, LdapConnSettings, Scope, SearchEntry, controls::PagedResults};
+    use ldap3::{
+        LdapConn, LdapConnSettings, Scope, SearchEntry,
+        controls::PagedResults,
+        exop::{WhoAmI, WhoAmIResp},
+    };
     use openssl::{
         asn1::Asn1Time,
         ec::{EcGroup, EcKey},
@@ -204,6 +208,8 @@ async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
         let bind_dn = "cn=riauth-agent,dc=riauth,dc=test";
         let mut raw = LdapConn::new(&ldap_url).unwrap();
         assert_eq!(raw.simple_bind(bind_dn, &agent).unwrap().rc, 13);
+        let (who, _) = raw.extended(WhoAmI).unwrap().success().unwrap();
+        assert_eq!(who.parse::<WhoAmIResp>().authzid, "");
         let (root, _) = raw
             .search(
                 "",
@@ -253,6 +259,8 @@ async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
             .unwrap()
             .success()
             .unwrap();
+        let (who, _) = ldap.extended(WhoAmI).unwrap().success().unwrap();
+        assert_eq!(who.parse::<WhoAmIResp>().authzid, format!("dn:{bind_dn}"));
         let (rows, done) = ldap
             .with_controls(PagedResults {
                 size: 1,
@@ -331,6 +339,11 @@ async fn ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation() {
         .unwrap()
         .success()
         .unwrap();
+        let (who, _) = ldap.extended(WhoAmI).unwrap().success().unwrap();
+        assert_eq!(
+            who.parse::<WhoAmIResp>().authzid,
+            "dn:uid=ldap-alice,ou=users,dc=riauth,dc=test"
+        );
         let (rows, _) = ldap
             .search(base, Scope::Subtree, "(uid=*)", vec!["uid"])
             .unwrap()
