@@ -6,6 +6,7 @@ use common::{backend::Backend, text};
 use riauth::{
     agent::{NewAgent, Permission},
     scim::{self, Query},
+    telemetry::ReadContext,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -444,15 +445,83 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
         group_page["Resources"][0]["members"][0]["value"],
         expected[128]
     );
+    let scans = &f.core.store.telemetry().reads;
+    let before_unbounded = scans.scans(ReadContext::Read, false).count();
+    let before_bounded = scans.scans(ReadContext::Read, true);
+    let (before_count, before_rows) = (before_bounded.count(), before_bounded.sum());
     assert_eq!(
         group_page["Resources"][0],
         f.core.scim_get(&owner, "Groups", &group_id).unwrap()
     );
+    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
+    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 2);
+    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 130);
 }
 
 #[test]
 fn redb_scim_user_pages_cross_store_scan_boundary() {
     scim_user_pages_cross_store_scan_boundary(Backend::Redb);
+}
+
+#[test]
+fn redb_scim_user_get_pages_related_groups() {
+    let f = Backend::Redb.fixture();
+    let owner = agent(&f, "get-paged-relations-owner");
+    let user = f.core.scim_write(
+        &owner,
+        "Users",
+        None,
+        json!({"schemas":[scim::USER],"userName":"get-paged-relations-user"}),
+        false,
+    ).unwrap();
+    let user_id = text(&user, "id");
+    let mut groups = Vec::new();
+    for index in 0..130 {
+        let name = format!("get-paged-group-{index:03}");
+        let group = f.core.scim_write(
+            &owner,
+            "Groups",
+            None,
+            json!({"schemas":[scim::GROUP],"displayName":name}),
+            false,
+        ).unwrap();
+        groups.push((text(&group, "id"), name));
+    }
+    groups.sort_by(|left, right| left.0.cmp(&right.0));
+    for index in [0, 128] {
+        f.core.group_member(&f.admin, &groups[index].1, "get-paged-relations-user", true).unwrap();
+    }
+    let listed = list(&f, &owner, "Users", 1, 1)["Resources"][0].clone();
+    assert_eq!(
+        listed["groups"].as_array().unwrap().iter().map(|group| text(group, "value")).collect::<Vec<_>>(),
+        vec![groups[0].0.clone(), groups[128].0.clone()]
+    );
+
+    let scans = &f.core.store.telemetry().reads;
+    let before_unbounded = scans.scans(ReadContext::Read, false).count();
+    let before_bounded = scans.scans(ReadContext::Read, true);
+    let (before_count, before_rows) = (before_bounded.count(), before_bounded.sum());
+    let fetched = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    assert_eq!(fetched, listed);
+    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
+    // One two-row durable-membership index page plus two SCIM Group pages.
+    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 3);
+    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 132);
+
+    let before_bounded = scans.scans(ReadContext::Read, true);
+    let (before_count, before_rows) = (before_bounded.count(), before_bounded.sum());
+    let (projected, version, location) = f.core.scim_get_projected(
+        &owner,
+        "Users",
+        &user_id,
+        scim::ProjectionQuery::default(),
+    ).unwrap();
+    assert_eq!(projected, listed);
+    assert_eq!(version, text(&listed["meta"], "version"));
+    assert_eq!(location, text(&listed["meta"], "location"));
+    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
+    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 3);
+    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 132);
 }
 
 #[test]

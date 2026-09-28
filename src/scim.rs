@@ -1064,14 +1064,14 @@ fn scim_filter_view(tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
     Ok(value)
 }
 
-// Resolve only the memberships needed by this list page. The opposite bucket
-// is read once, in key order, so each array matches the ordering used by GET
-// and its resource ETag. The map retains only edges for selected resources.
+// Resolve only the memberships needed by selected resources. The opposite
+// bucket is read once, in key order, so each array matches the resource ETag.
+// The map retains only edges for those resources.
 fn scim_page_relations(
     tx: &Tx<'_>,
     kind: &str,
     owner: &str,
-    page: &[(String, Record)],
+    page: &[(&str, &Record)],
 ) -> Result<Vec<Vec<Value>>> {
     let mut targets: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (index, (_, record)) in page.iter().enumerate() {
@@ -1132,6 +1132,11 @@ fn scim_page_relations(
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
         self.scim_view_with_relations(tx, id, record, None)
+    }
+
+    fn scim_read_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
+        let mut relations = scim_page_relations(tx, &record.kind, &record.owner, &[(id, record)])?;
+        self.scim_view_with_relations(tx, id, record, Some(relations.pop().unwrap()))
     }
 
     fn scim_view_with_relations(
@@ -1257,7 +1262,7 @@ impl Core {
             let actor = self.principal(tx, token)?;
             let record = owned(tx, &actor, kind, id)?;
             require(&actor, &record, "read")?;
-            self.scim_view(tx, id, &record)
+            self.scim_read_view(tx, id, &record)
         })
     }
     pub fn scim_get_projected(
@@ -1276,7 +1281,7 @@ impl Core {
                 query.attributes.as_deref(),
                 query.excluded_attributes.as_deref(),
             )?;
-            let full = self.scim_view(tx, id, &record)?;
+            let full = self.scim_read_view(tx, id, &record)?;
             let version = full["meta"]["version"].as_str().unwrap_or("").to_owned();
             let location = full["meta"]["location"].as_str().unwrap_or("").to_owned();
             Ok((projection.apply(kind, full), version, location))
@@ -1390,7 +1395,11 @@ impl Core {
                     .map(|candidate| (candidate.id, candidate.record))
                     .collect();
             }
-            let relations = scim_page_relations(tx, kind, &actor.id, &page_records)?;
+            let selected = page_records
+                .iter()
+                .map(|(id, record)| (id.as_str(), record))
+                .collect::<Vec<_>>();
+            let relations = scim_page_relations(tx, kind, &actor.id, &selected)?;
             let page: Vec<_> = page_records
                 .into_iter()
                 .zip(relations)
