@@ -6,6 +6,7 @@ mod claims;
 mod device_trust;
 #[cfg(feature = "platform")]
 mod event_map;
+mod exchange;
 mod issuer;
 mod keyring;
 mod oidc;

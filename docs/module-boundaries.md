@@ -730,3 +730,28 @@ guards authorization against direct storage and Core references.
 Twenty-five protocol files still name storage, including browser, exchange,
 source, SAML and SSF. Management and API files still reference Core/storage,
 and independently compiled crate contracts remain A03 work.
+
+## Wave 18: exchange grant-chain boundary
+
+[Exchange](../src/exchange.rs) now owns the recursive grant-chain check and
+bilateral exchange policy behind an `ExchangeTx` read port. The concrete
+[exchange assembly](../src/assembly/exchange.rs) supplies access-token records,
+enabled clients and local grant validation from the same transaction and Core
+instance. The token-exchange and machine-grant method bodies moved intact to
+assembly, keeping their prepared write, assertion replay consumption, DPoP
+binding, issuance and audit ordering. The model remains the owner of exchange
+policy and grant record types; the protocol's public re-exports remain.
+
+The source scan covers 152 Rust files before and 153 after this cut and guards
+exchange against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 18 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 25 | 24 |
+| `protocol -> Core` | 28 | 27 |
+| `server_assembly -> protocol` | 10 | 11 |
+| `server_assembly -> storage` | 10 | 11 |
+
+Twenty-four protocol files still name storage, including browser, source,
+SAML, SSF and credential adapters. Management and API files still reference
+Core/storage, and independently compiled crate contracts remain A03 work.
