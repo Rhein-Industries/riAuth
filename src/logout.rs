@@ -269,8 +269,14 @@ pub async fn deliver(core: Core) -> Result<()> {
             .map_err(Error::internal)?
         });
     }
+    // A failed finish must not detach other blocking finishes and free the
+    // background pass's capacity while those operations are still running.
+    let mut outcome = Ok(());
     while let Some(result) = jobs.join_next().await {
-        result.map_err(Error::internal)??;
+        let result = result.map_err(Error::internal).and_then(|result| result);
+        if outcome.is_ok() {
+            outcome = result;
+        }
     }
-    Ok(())
+    outcome
 }

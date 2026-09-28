@@ -8,6 +8,7 @@ pub mod application_setup;
 pub mod assurance;
 pub mod authenticator;
 pub mod authorization;
+mod background;
 pub mod bootstrap;
 pub mod browser;
 pub mod capability;

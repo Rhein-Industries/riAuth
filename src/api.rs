@@ -1882,9 +1882,8 @@ async fn end_session_response(
             core.end_session(request, sso.as_deref(), bearer.as_deref())
         })
         .await?;
-    if let Err(error) = crate::logout::deliver((*app.core).clone()).await {
-        tracing::warn!(%error, "Logout delivery remains queued");
-    }
+    // Revocation and the durable outbox committed together. Only the bounded
+    // background worker dispatches remote logout; slow RPs never hold this reply.
     if value["interaction_required"] == true {
         if html && let Some(path) = value["resume_uri"].as_str() {
             let cookies = value["set_cookie"].as_str().map(String::from);

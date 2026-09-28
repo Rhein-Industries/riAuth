@@ -338,6 +338,7 @@ impl Reads {
 
 #[derive(Default)]
 pub struct Telemetry {
+    pub(crate) background: crate::background::Stats,
     pub write_wait: Histogram,
     pub write_hold: Histogram,
     pub pool_wait: Histogram,
@@ -404,12 +405,14 @@ impl Telemetry {
     }
     pub fn snapshot(&self) -> Value {
         json!({"write_wait":self.write_wait.snapshot(),"write_hold":self.write_hold.snapshot(),"pool_wait":self.pool_wait.snapshot(),"signing":self.signing.snapshot(),"password":self.password.snapshot(),"cleanup":self.cleanup.snapshot(),"signing_errors":self.signing_errors.load(Relaxed),"cleanup_errors":self.cleanup_errors.load(Relaxed),"alert_delivery_errors":self.alert_delivery_errors.load(Relaxed),"scanned_records":self.scanned_records.load(Relaxed),"optimistic_conflicts":self.optimistic_conflicts.load(Relaxed),
+            "background":self.background.snapshot(),
             "writer":{"waiters":self.write_waiters.snapshot(),"commit":self.commit.snapshot(),"wait_by_activity":self.activity_write_wait.snapshot(),"hold_by_activity":self.activity_write_hold.snapshot()},
             "pool":{"capacity":self.pool_capacity.load(Relaxed),"waiters":self.pool_waiters.snapshot(),"in_use":self.pool_in_use.snapshot(),"hold":self.pool_hold.snapshot(),"wait_by_activity":self.activity_pool_wait.snapshot(),"hold_by_activity":self.activity_pool_hold.snapshot(),"connect":self.pool_connect.snapshot(),"connect_errors":self.pool_connect_errors.load(Relaxed),"timeouts":self.pool_timeouts.load(Relaxed),"discarded":self.pool_discarded.load(Relaxed)},
             "reads":self.reads.snapshot(),"snapshot_records":self.snapshot_records.load(Relaxed),
             "prepared":{"attempts":self.prepared_attempts.load(Relaxed),"prepare":self.prepared_prepare.snapshot(),"validate":self.prepared_validate.snapshot(),"validated_records":self.prepared_validated_records.load(Relaxed),"expired":self.prepared_expired.load(Relaxed),"exhausted":self.prepared_exhausted.load(Relaxed)}})
     }
     pub fn render(&self, output: &mut String) {
+        self.background.render(output);
         for (name, histogram) in [
             ("storage_write_wait", &self.write_wait),
             ("storage_write_hold", &self.write_hold),

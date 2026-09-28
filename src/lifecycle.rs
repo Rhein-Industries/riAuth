@@ -834,23 +834,31 @@ pub async fn deliver(core: Core) -> Result<()> {
     })
     .await
     .map_err(Error::internal)??;
+    // Build the complete bounded batch before spawning any child work, so a
+    // malformed message cannot detach sends/finishes from this pass.
+    let messages = pending
+        .into_iter()
+        .map(|delivery| {
+            let message = Message::builder()
+                .from(config.from.parse::<Mailbox>().map_err(Error::internal)?)
+                .to(delivery
+                    .recipient
+                    .parse::<Mailbox>()
+                    .map_err(Error::internal)?)
+                .subject(&delivery.subject)
+                .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                .body(
+                    delivery
+                        .body
+                        .clone()
+                        .ok_or_else(|| Error::internal("Missing delivery body"))?,
+                )
+                .map_err(Error::internal)?;
+            Ok((delivery, message))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut jobs = tokio::task::JoinSet::new();
-    for delivery in pending {
-        let message = Message::builder()
-            .from(config.from.parse::<Mailbox>().map_err(Error::internal)?)
-            .to(delivery
-                .recipient
-                .parse::<Mailbox>()
-                .map_err(Error::internal)?)
-            .subject(&delivery.subject)
-            .header(lettre::message::header::ContentType::TEXT_PLAIN)
-            .body(
-                delivery
-                    .body
-                    .clone()
-                    .ok_or_else(|| Error::internal("Missing delivery body"))?,
-            )
-            .map_err(Error::internal)?;
+    for (delivery, message) in messages {
         let transport = transport.clone();
         let core = core.clone();
         jobs.spawn(async move {
@@ -866,10 +874,14 @@ pub async fn deliver(core: Core) -> Result<()> {
             .map_err(Error::internal)?
         });
     }
+    let mut outcome = Ok(());
     while let Some(result) = jobs.join_next().await {
-        result.map_err(Error::internal)??;
+        let result = result.map_err(Error::internal).and_then(|result| result);
+        if outcome.is_ok() {
+            outcome = result;
+        }
     }
-    Ok(())
+    outcome
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (key, proof) in tx.maintenance_page::<Proof>("account_proofs")? {

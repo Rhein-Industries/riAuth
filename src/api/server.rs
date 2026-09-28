@@ -36,70 +36,51 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
     let _radius_servers = crate::radius::start(core.clone()).await?;
     #[cfg(feature = "platform")]
     let _proxy_servers = crate::proxy_server::start(core.clone()).await?;
-    let maintenance_core = core.clone();
-    let delivery_core = core.clone();
-    let mail_core = core.clone();
-    let provisioning_core = core.clone();
+    use crate::background::{Background, Job};
+    let background = Arc::new(Background::new(core.store.clone())?);
     let reconciliation_core = core.clone();
-    let reconciliation_worker = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
-        loop {
-            interval.tick().await;
-            let core = reconciliation_core.clone();
-            match tokio::task::spawn_blocking(move || core.reconciliation_process()).await {
-                Ok(Ok(_)) => {}
-                other => tracing::warn!(?other, "Reconciliation controller unavailable; retrying"),
-            }
-        }
-    });
-    let provisioning_worker = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(250));
-        loop {
-            interval.tick().await;
-            if crate::provisioning::deliver(provisioning_core.clone())
+    let reconciliation_worker = background.spawn(Job::Reconciliation, move || {
+        let core = reconciliation_core.clone();
+        async move {
+            tokio::task::spawn_blocking(move || core.reconciliation_process().map(drop))
                 .await
-                .is_err()
-            {
-                tracing::warn!("Provisioning worker unavailable; retrying");
-            }
+                .map_err(Error::internal)?
         }
     });
-    let mail_worker = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
-        loop {
-            interval.tick().await;
-            if crate::lifecycle::deliver(mail_core.clone()).await.is_err() {
-                tracing::warn!("Account email delivery failed; retrying");
-            }
-        }
+    let provisioning_core = core.clone();
+    let provisioning_worker = background.spawn(Job::Provisioning, move || {
+        crate::provisioning::deliver(provisioning_core.clone())
     });
-    let delivery_worker = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(2));
-        loop {
-            interval.tick().await;
-            if let Err(error) = crate::logout::deliver(delivery_core.clone()).await {
-                tracing::warn!(%error, "Logout delivery failed; retrying");
-            }
+    let mail_core = core.clone();
+    let mail_worker = background.spawn(Job::Mail, move || {
+        crate::lifecycle::deliver(mail_core.clone())
+    });
+    let delivery_core = core.clone();
+    let delivery_worker = background.spawn(Job::Delivery, move || {
+        let core = delivery_core.clone();
+        async move {
+            let logout = crate::logout::deliver(core.clone()).await;
             #[cfg(feature = "platform")]
-            if let Err(error) = crate::ssf::deliver(delivery_core.clone()).await {
-                tracing::warn!(%error, "SSF delivery failed; retrying");
-            }
+            let ssf = crate::ssf::deliver(core).await;
+            logout?;
+            #[cfg(feature = "platform")]
+            ssf?;
+            Ok(())
         }
     });
-    let maintenance = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
-        loop {
-            interval.tick().await;
-            let core = maintenance_core.clone();
-            match tokio::task::spawn_blocking(move || core.cleanup()).await {
-                Ok(Ok(())) => {}
-                other => tracing::error!(?other, "database maintenance failed"),
-            }
-            let core = maintenance_core.clone();
-            if let Err(error) = crate::operations::dispatch_alerts(&core).await {
-                tracing::warn!(%error, "alert webhook dispatch failed");
-            }
+    let maintenance_core = core.clone();
+    let maintenance = background.spawn(Job::Maintenance, move || {
+        let core = maintenance_core.clone();
+        async move {
+            tokio::task::spawn_blocking(move || core.cleanup())
+                .await
+                .map_err(Error::internal)?
         }
+    });
+    // Slow alert receivers cannot hold up local scheduled revocation/cleanup.
+    let alerts = background.spawn(Job::Alerts, move || {
+        let core = core.clone();
+        async move { crate::operations::dispatch_alerts(&core).await.map(drop) }
     });
     Ok(Workers {
         #[cfg(feature = "platform")]
@@ -110,6 +91,7 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
         _proxy: _proxy_servers,
         _tasks: AbortTasks(vec![
             maintenance,
+            alerts,
             delivery_worker,
             mail_worker,
             provisioning_worker,

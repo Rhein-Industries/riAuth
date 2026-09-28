@@ -152,7 +152,7 @@ Backup frequency determines your recovery point. Restore, service restart, DNS/p
 
 Use `/livez` for process liveness and `/readyz` for traffic readiness. Both are nested under a path-based issuer and bypass application quotas. Liveness performs no database work. Readiness verifies the storage schema, checks that PostgreSQL is writable, and rejects saturated application workers. Storage checks have separate bounded concurrency and a two-second response deadline; an outstanding database call keeps its permit until it ends. `/healthz` is a compatibility alias for readiness. A database outage should remove traffic through readiness rather than trigger a liveness restart loop.
 
-HTTP handlers admit blocking crypto/database work through eight application workers, waiting up to two seconds for one; probes, background workers and protocol listeners have their own execution paths. Network limits are applied per effective client address; account failures additionally lock an existing username for 15 minutes after five failures. See [rate limits and admission](#rate-limits-and-admission). The maintenance loop runs about once per minute and removes expired protocol records in bounded pages; backlogs can take multiple passes. Audit retention is 90 days. Cleanup also removes retained PAM records and processes up to eight due offboarding jobs per pass; PAM access expires at the grant deadline independently of cleanup. Scheduled offboarding disables access in riAuth and queues RP logout; downstream SCIM deactivation remains unimplemented ([offboarding contract](enterprise/ENT-10.md)).
+HTTP handlers admit blocking crypto/database work through eight application workers, waiting up to two seconds for one; probes, background workers and protocol listeners have their own execution paths. Network limits are applied per effective client address; account failures additionally lock an existing username for 15 minutes after five failures. See [rate limits and admission](#rate-limits-and-admission). The maintenance loop runs about once per minute and removes expired protocol records in bounded pages; backlogs can take multiple passes. Audit retention is 90 days. Cleanup also removes retained PAM records and processes up to eight due offboarding jobs per pass; PAM access expires at the grant deadline independently of cleanup. Scheduled offboarding commits local revocation, RP logout and durable downstream SCIM deactivation intent together ([offboarding contract](enterprise/ENT-10.md)); remote delivery runs separately.
 
 Logout delivery uses signed, audience-bound events, bounded concurrent requests, certificate verification, a five-second timeout and no redirects. Failures retry with increasing delay for up to 24 hours; delivery records remain seven days. Inspect `riauth deliveries` with the corresponding permission. The RP must verify signatures/claims, target `sid`, and reject repeated `jti` values. Outbox delivery does not invalidate an RP that ignores logout events.
 
@@ -172,6 +172,68 @@ Runtime histograms cover writer wait/hold time, PostgreSQL pool waits, signing, 
 **Contention measurements.** Writer wait and hold are also reported per activity in `riauth_storage_activity_write_wait_seconds` and `riauth_storage_activity_write_hold_seconds`: `foreground` is request work (HTTP, LDAP, RADIUS, CLI), while `maintenance` (cleanup passes, including due offboarding jobs, and alert checks), `provisioning`, `mail`, `logout_delivery` and `ssf_delivery` are the background workers. `logout_delivery` also covers the delivery attempt an end-session request makes before it responds. Logout polling first reads at most one due-index entry without taking the writer; if work is due, it re-reads and claims the queue in a write transaction. An enqueue committed after an empty probe is picked up by a later delivery pass. SSF still takes the writer on every pass, even when nothing is due. `riauth_storage_write_waiters` and `_peak` count callers in this process queued for the writer; with PostgreSQL the advisory writer lock is shared by every node, so one node's wait includes other nodes' holds. PostgreSQL writer wait starts after the pool checkout. Pool metrics report checkout wait (including any new connection's setup) and connection hold time (the whole transaction, including a writer's lock wait) per activity, connections in use (and peak) against `riauth_storage_pool_capacity`, connection setup time and errors, checkout timeouts (`storage_busy`) and discarded closed connections. `riauth_storage_scan_rows` records how many records each range scan materialized, labelled by where it ran (`read`, `writer`, or `prepared` outside the writer) and whether the caller bounded it; point reads, bytes read and whole-keyspace snapshot records have their own counters. Optimistic preparation reports attempts, callback time outside the writer, validation time under it, records re-checked, expired authority and exhausted retries. Admission reports queue time, rejections, blocking work time and available permits for the `workers`, `credentials` and `forward` pools. The JSON `metrics` response carries the same values under `admission` and `runtime`. A labelled series appears after its first observation, and peaks are since process start. The added measurements are relaxed atomic counters and take no locks. [Testing](testing.md#contention-characterization) describes a local characterization workload.
 
 Group writes maintain an encrypted per-user membership index in the same transaction as the group record. Session, authorization and directory membership reads use ordered 128-row index pages for that user, rather than reading every group. Opening a store with an older index version rebuilds the index from durable groups under the writer; allow time for this one-time pass when the group directory is large. A user who belongs to many groups still has to materialize every membership in the response. Temporary access grants remain separate and are evaluated at their live expiry time.
+
+## Background capacity and overload
+
+Both editions run scheduled work on three dedicated Tokio runtimes. Each has
+one async thread, the blocking-thread cap shown below, and a matching limit on
+admitted passes. Foreground sign-in, session revocation and probes retain their
+existing runtime and admission pools.
+
+| Lane | Passes / blocking threads | Work |
+| --- | --- | --- |
+| `connectors` | 2 | Reconciliation; provisioning plus offboarding deactivation |
+| `delivery` | 2 | Mail; logout followed by SSF (Platform); alert webhooks |
+| `maintenance` | 1 | Cleanup, including scheduled local offboarding |
+
+Each worker admits at most one pass at a time. There is no in-memory waiting
+queue: a busy lane defers the pass before it claims durable work. Existing
+outboxes, job leases, retry limits, removal review and authorization checks
+remain authoritative. Mail and logout each retain their 16-item batch bound and
+drain all child finishes before releasing the pass, including after an error.
+Alert dispatch runs independently of maintenance, so a slow webhook cannot
+hold up the next scheduled local revocation pass. Logout still precedes SSF
+within a delivery pass.
+
+A 60-second deadline bounds the scheduler's wait. It reports
+`background_timeout`; it does **not** cancel a transaction, classify a remote
+outcome, expire a lease or release capacity. The running pass keeps its job and
+lane slots until all work finishes. Later ticks report `background_overloaded`
+without starting a replacement. Completed late work retains its normal durable
+result. A process stop leaves interrupted work to its existing lease/restart
+recovery; delivery remains at least once.
+
+Worker retries use the existing cadence: provisioning 250 ms, logout/SSF 2 s,
+mail and reconciliation 5 s, maintenance and alerts 60 s. Missed ticks are
+skipped rather than replayed in a burst. These intervals are admission retry
+hints, not promises of downstream completion, and do not override durable job
+backoff. Warnings include the finite `job`, `lane`, error `code` and
+`retry_after_ms`; unchanged admission errors are logged once until recovery.
+
+Authenticated JSON metrics expose this policy and each worker's `active`,
+`finished`, `failed`, `deferred`, `timeouts` and `retry_after_ms` under
+`runtime.background`. Prometheus exposes `riauth_background_active`,
+`riauth_background_finished_total`, `riauth_background_failed_total`,
+`riauth_background_deferred_total`, `riauth_background_timeouts_total`,
+`riauth_background_retry_after_seconds` (job/lane labels) and
+`riauth_background_capacity` (lane label). `finished` counts all terminated
+passes, including failures; it is not a remote delivery outcome. Rising
+timeouts/deferred counts with occupied slots identify the lane to investigate.
+Check its connector timeout, network dependency and storage contention; do not
+force a second claim or infer successful delivery from a runtime timeout.
+
+OIDC end-session commits local revocation and its outbox before replying. It
+now leaves back-channel dispatch to the durable worker, rather than waiting for
+an inline network attempt; under normal capacity the next delivery tick is
+within two seconds. Embedded users of `api::router` must run a delivery worker
+(the production `serve` and bootstrap handoff do so).
+
+This is process-local runtime isolation, not a latency or resource reservation
+for the whole deployment. Storage locks/connections, CPU and memory remain
+shared; synchronous connector calls are not forcibly interrupted. Manual
+connector API calls still use foreground admission. Per-target fairness,
+reserved storage capacity, cross-node quotas, hard process isolation and
+production load/latency characterization remain O05 follow-up work.
 
 ## Rate limits and admission
 
