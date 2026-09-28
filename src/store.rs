@@ -90,6 +90,7 @@ macro_rules! read_table {
 }
 
 impl Store {
+    #[cfg(feature = "platform")]
     pub(crate) fn encrypted_at_rest(&self) -> bool {
         self.key.is_some()
     }

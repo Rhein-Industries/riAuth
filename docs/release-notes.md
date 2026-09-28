@@ -30,6 +30,9 @@
   one revision, with edition-aware capability discovery and pre-serving rejection
   of unsupported configuration and retained Platform state. See [server editions](editions.md)
   for commands and remaining assembly limits.
+- Essentials now omits the SAML, RADIUS, proxy/outpost, client-certificate,
+  SSF transport, event-map and workflow runtime implementations at compile time.
+  The temporary-access administration routes and browser controls are Platform-only.
 
 # Unreleased management changes
 

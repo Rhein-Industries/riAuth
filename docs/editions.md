@@ -19,8 +19,14 @@ document includes `edition` and lists only features, permissions, and schemas
 exposed by that artifact. Essentials omits Platform HTTP routes, LDAP/RADIUS/proxy
 listeners and SSF delivery, rejects Platform configuration fields and client/source
 settings, and refuses to open stores containing known retained Platform resources or
-authority. The LDAP protocol dependency and embedded proxy's direct Hyper
-dependencies are optional under `platform`. Shared source federation using ordinary
+authority. Essentials also omits the temporary-access admin API and controls and
+the event-map page. SAML and upstream SAML, RADIUS/EAP, embedded proxy and outpost,
+client-certificate login, SSF transport, event-map, and workflow runtime modules
+are compiled only with `platform`. Their persisted configuration shapes remain
+shared so Essentials can reject incompatible stores and settings. `risaml`,
+`roxmltree`, `flate2`, `ldap3_proto`, `md-5`, `psl`, the direct `sha1` and
+`x509-parser` dependencies, and the proxy's direct Hyper dependencies are
+optional under `platform`. Shared source federation using ordinary
 OIDC/OAuth, LDAP synchronization/password authentication, outbound SCIM, PostgreSQL,
 and advanced OIDC profiles remain available in both.
 
@@ -39,10 +45,12 @@ The release smoke gate extracts the named native archives, reloads the saved
 images, checks public Platform route presence, Essentials agent issuance
 boundaries, and a stored Platform agent downgrade refusal on both artifact types.
 
-This is the first A05 assembly slice. Other Platform implementation modules are
-still linked into the Essentials binary because shared models and request paths
-refer to them; their HTTP entry points and configuration are disabled. Complete
-module extraction, configured/enabled/usable capability state, all durable
+This remains a partial A05 assembly. Other Platform implementation modules,
+including cloud directory connectors, device integrations, temporary access and
+offboarding engines, and external signing, still compile in Essentials because
+shared models and request paths refer to them; their exposed routes and
+configuration are disabled. Complete module extraction,
+configured/enabled/usable capability state, all durable
 reference checks for downgrade, native ARM64 release evidence, and broader
 packaged integration gates remain A05/A06/A09/Q08 work. A capability name in
 this preview means the artifact exposes that operation; it does not assert that

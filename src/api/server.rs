@@ -63,10 +63,9 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
             if let Err(error) = crate::logout::deliver(delivery_core.clone()).await {
                 tracing::warn!(%error, "Logout delivery failed; retrying");
             }
-            if cfg!(feature = "platform") {
-                if let Err(error) = crate::ssf::deliver(delivery_core.clone()).await {
-                    tracing::warn!(%error, "SSF delivery failed; retrying");
-                }
+            #[cfg(feature = "platform")]
+            if let Err(error) = crate::ssf::deliver(delivery_core.clone()).await {
+                tracing::warn!(%error, "SSF delivery failed; retrying");
             }
         }
     });

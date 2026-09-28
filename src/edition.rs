@@ -129,6 +129,26 @@ pub fn validate_store(store: &Store) -> Result<()> {
                 ));
             }
         }
+        // Certificate-authenticated identities carry Platform authority even if
+        // their binding index was removed. Reject those shared session rows too.
+        let mut after = None;
+        loop {
+            let page = tx.scan::<crate::model::Session>("sessions", after.as_deref(), 256)?;
+            if page.is_empty() {
+                break;
+            }
+            for (_, session) in &page {
+                if session.identity.amr.iter().any(|method| method == "cert")
+                    || (session.identity.source.is_none()
+                        && session.identity.amr.iter().any(|method| method == "x509"))
+                {
+                    return Err(Error::bad(
+                        "Stored certificate-authenticated session requires the Platform build",
+                    ));
+                }
+            }
+            after = page.last().map(|(key, _)| key.clone());
+        }
         // Audited against recovery::{INVALIDATED, REPLAY_CACHES, RECONCILE,
         // RETAINED}: include persistent bindings and pending authority alike.
         for bucket in [

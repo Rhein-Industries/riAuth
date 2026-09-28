@@ -9,7 +9,7 @@ use crate::{
     core::{Core, Delivery, audit, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{AuthenticationTransaction, Identity, Session, User},
+    model::{AuthenticationTransaction, Client, Identity, Session, User},
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -24,6 +24,32 @@ pub const TERMINAL_WARN_SECONDS: u64 = 240;
 pub const STAGED_SECONDS: u64 = 120;
 /// A rotated SSO mapping remains readable, never authenticating, for this long.
 pub const ROTATION_GRACE_SECONDS: u64 = 60;
+
+/// A terminal approval must use a recent sign-in; unknown upstream auth time is exempt.
+pub(crate) fn stale(identity: &Identity, limit: u64) -> bool {
+    identity.auth_time != 0 && now().saturating_sub(identity.auth_time) > limit
+}
+
+/// A staged login that falls short of a client's assurance is never attached.
+pub(crate) fn insufficient_error(client: &Client, user: Option<&User>, identity: &Identity) -> Error {
+    let (code, text) = if identity.mfa {
+        (
+            "unmet_authentication_requirements",
+            "does not accept this sign-in method.",
+        )
+    } else if user.is_some_and(|u| u.totp_secret.is_some() || u.has_passkeys) {
+        (
+            "unmet_authentication_requirements",
+            "requires a passkey or an authenticator code.",
+        )
+    } else {
+        (
+            "mfa_setup_required",
+            "requires a passkey or an authenticator code. Add a passkey in your applications portal first.",
+        )
+    };
+    Error::new(StatusCode::FORBIDDEN, code, format!("{} {text}", client.name))
+}
 
 /// A verified credential waiting for attach. It is not a session: it is never listed,
 /// cannot be revoked and authenticates nothing.

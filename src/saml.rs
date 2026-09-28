@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use webauthn_rs::prelude::PublicKeyCredential;
 use wire::{ASSERTION, DSIG, METADATA, POST, PROTOCOL, REDIRECT, RSA256};
+use crate::signin::{insufficient_error, stale};
 
 pub use crate::model::client_settings::saml::{Attribute, NameIdFormat, Settings};
 
@@ -354,38 +355,6 @@ fn consented(tx: &Tx<'_>, client: &Client, identity: &Identity) -> Result<bool> 
     Ok(tx
         .get::<Consent>("saml_consents", &consent_key(identity, client))?
         .is_some_and(|c| c.expires_at > now() && c.fingerprint == fingerprint))
-}
-/// F13: terminal approval needs a recent sign-in. `auth_time` 0 (upstream OAuth) is exempt.
-pub(crate) fn stale(identity: &Identity, limit: u64) -> bool {
-    identity.auth_time != 0 && now().saturating_sub(identity.auth_time) > limit
-}
-/// F8: a staged login that falls short of this client is never attached.
-pub(crate) fn insufficient_error(
-    client: &Client,
-    user: Option<&User>,
-    identity: &Identity,
-) -> Error {
-    let (code, text) = if identity.mfa {
-        (
-            "unmet_authentication_requirements",
-            "does not accept this sign-in method.",
-        )
-    } else if user.is_some_and(|u| u.totp_secret.is_some() || u.has_passkeys) {
-        (
-            "unmet_authentication_requirements",
-            "requires a passkey or an authenticator code.",
-        )
-    } else {
-        (
-            "mfa_setup_required",
-            "requires a passkey or an authenticator code. Add a passkey in your applications portal first.",
-        )
-    };
-    Error::new(
-        StatusCode::FORBIDDEN,
-        code,
-        format!("{} {text}", client.name),
-    )
 }
 fn unavailable(mut state: Value, error: &str, message: Option<String>) -> Result<Value> {
     state["status"] = json!("unavailable");

@@ -1,7 +1,6 @@
 //! HTTPS client-certificate login. Anonymous handshakes stay allowed.
 //! Enrollment is an explicit fingerprint and/or SAN binding, not "any cert from this CA".
 use crate::{
-    config::Config,
     core::{Core, audit, user_by_name, validate_email, validate_name},
     crypto::{self, digest, id, now},
     error::{Error, Result},
@@ -16,95 +15,11 @@ use std::{
     collections::BTreeSet,
     io::Read,
     net::IpAddr,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 
-/// `required` does not turn client certificates on for the whole listener.
-/// Both modes use rustls 0.23 `WebPkiClientVerifier::allow_unauthenticated`,
-/// so password and browser logins still connect. The certificate login route
-/// rejects a missing certificate in either mode.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ClientCertMode {
-    #[default]
-    Optional,
-    Required,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ClientCertAuth {
-    pub trust_anchors_file: PathBuf,
-    #[serde(default)]
-    pub mode: ClientCertMode,
-    #[serde(default)]
-    pub crl_file: Option<PathBuf>,
-    /// PEM client certificate header. Ignored unless the immediate peer is in `trusted_proxies`.
-    #[serde(default)]
-    pub forwarded_header: Option<String>,
-}
-
-impl ClientCertAuth {
-    pub fn validate(&self, config: &Config) -> Result<()> {
-        if self.trust_anchors_file.as_os_str().is_empty()
-            || self
-                .crl_file
-                .as_ref()
-                .is_some_and(|path| path.as_os_str().is_empty())
-        {
-            return Err(Error::bad("Client certificate trust files must be set"));
-        }
-        if let Some(header) = &self.forwarded_header {
-            validate_header_name(header)?;
-            if config.trusted_proxies.is_empty() {
-                return Err(Error::bad(
-                    "forwarded_header requires at least one trusted proxy address",
-                ));
-            }
-        }
-        if config.tls_cert_file.is_none() && self.forwarded_header.is_none() {
-            return Err(Error::bad(
-                "Client certificate authentication without native TLS requires forwarded_header",
-            ));
-        }
-        Ok(())
-    }
-}
-
-fn validate_header_name(name: &str) -> Result<()> {
-    if !(1..=64).contains(&name.len())
-        || !name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-        || name.starts_with('-')
-        || name.ends_with('-')
-    {
-        return Err(Error::bad("forwarded_header must be one HTTP header token"));
-    }
-    if matches!(
-        name.to_ascii_lowercase().as_str(),
-        "authorization"
-            | "cookie"
-            | "host"
-            | "content-type"
-            | "content-length"
-            | "x-forwarded-for"
-            | "forwarded"
-            | "connection"
-            | "transfer-encoding"
-    ) {
-        return Err(Error::bad(
-            "forwarded_header cannot replace an existing request header",
-        ));
-    }
-    Ok(())
-}
-
-#[derive(Clone, Debug)]
-pub struct TlsClientCerts {
-    pub ders: Vec<Vec<u8>>,
-}
+pub use crate::mtls_config::{ClientCertAuth, ClientCertMode, TlsClientCerts};
 
 pub(crate) struct Material {
     roots: Vec<CertificateDer<'static>>,

@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
 
 mod essentials;
+#[cfg(feature = "platform")]
 pub(crate) mod evidence;
+#[cfg(feature = "platform")]
 pub mod executor;
 mod validate;
 

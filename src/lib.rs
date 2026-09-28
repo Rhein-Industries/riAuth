@@ -24,6 +24,7 @@ pub mod dpop;
 pub mod edition;
 pub mod encryption;
 pub mod error;
+#[cfg(feature = "platform")]
 pub mod event_map;
 pub mod exchange;
 pub mod identity;
@@ -42,10 +43,19 @@ pub mod logout;
 pub(crate) mod management;
 pub mod migration;
 pub mod model;
+#[cfg(feature = "platform")]
 pub mod mtls;
+#[cfg(not(feature = "platform"))]
+#[path = "mtls_essentials.rs"]
+pub mod mtls;
+mod mtls_config;
 pub mod offboarding;
 pub mod oidc;
 pub mod operations;
+#[cfg(feature = "platform")]
+pub mod outpost;
+#[cfg(not(feature = "platform"))]
+#[path = "outpost_essentials.rs"]
 pub mod outpost;
 pub mod pam;
 pub mod passkey;
@@ -55,18 +65,32 @@ pub mod postgres_store;
 pub mod provider;
 pub mod provisioning;
 mod proxy_listener;
+#[cfg(feature = "platform")]
 pub mod radius;
+#[cfg(not(feature = "platform"))]
+#[path = "radius_essentials.rs"]
+pub mod radius;
+mod radius_eap_types;
+mod radius_listener;
 pub mod recovery;
 pub mod registration;
 pub mod reports;
 pub mod resource;
 pub mod response;
+#[cfg(feature = "platform")]
+pub mod saml;
+#[cfg(not(feature = "platform"))]
+#[path = "saml_essentials.rs"]
 pub mod saml;
 pub mod schema;
 pub mod scim;
 pub mod session_protocol;
 pub mod signin;
 pub mod source;
+#[cfg(feature = "platform")]
+pub mod ssf;
+#[cfg(not(feature = "platform"))]
+#[path = "ssf_essentials.rs"]
 pub mod ssf;
 pub mod state;
 pub mod store;

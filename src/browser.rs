@@ -7,7 +7,7 @@ use crate::{
     error::{Error, Result},
     model::{Client, Identity, Session, User},
     oidc::{Authorization, needs_reauthentication, validate_authorization},
-    saml::{insufficient_error, stale},
+    signin::{insufficient_error, stale},
     signin::{self, FRESH_SECONDS, TERMINAL_WARN_SECONDS, account_json},
     store::Tx,
 };

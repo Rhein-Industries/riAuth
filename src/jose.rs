@@ -130,6 +130,7 @@ impl PublicJwks {
 
     /// Verify a SET's signature without claim validation, only to select the
     /// RFC 8935 delivery error after normal stream validation has failed.
+    #[cfg(feature = "platform")]
     pub(crate) fn verify_set_signature(&self, token: &str) -> bool {
         let Ok(header) = jsonwebtoken::decode_header(token) else {
             return false;

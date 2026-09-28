@@ -51,9 +51,11 @@ pub fn schema(name: &str) -> Result<Value> {
         return Err(Error::missing("Unknown schema; see capabilities.schemas"));
     }
     Ok(match name {
+        #[cfg(feature = "platform")]
         "radius-certificate" => json!(schemars::schema_for!(crate::radius::eap::CertificateInput)),
         "windows-device" => json!(schemars::schema_for!(crate::windows_login::EnrollDevice)),
         "windows-login" => json!(schemars::schema_for!(crate::windows_login::WindowsLogin)),
+        #[cfg(feature = "platform")]
         "client-certificate" => json!(schemars::schema_for!(crate::mtls::BindInput)),
         "directory-plan" => json!(schemars::schema_for!(crate::directory::Plan)),
         "cloud-directory-plan" => json!(schemars::schema_for!(crate::cloud_directory::Plan)),

@@ -1,4 +1,9 @@
 //! Upstream federation with explicit account linking and terminal completion.
+mod saml_types;
+#[cfg(feature = "platform")]
+pub mod saml;
+#[cfg(not(feature = "platform"))]
+#[path = "source/saml_essentials.rs"]
 pub mod saml;
 pub use crate::model::federation::SourceIdentity;
 use crate::{

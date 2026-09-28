@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 pub fn routes() -> Router<App> {
-    Router::new()
+    let routes = Router::new()
         .route("/admin", get(page))
         .route("/admin/", get(page))
         .route(
@@ -73,12 +73,20 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/clients/{id}/explain", post(explain))
         // Not under /clients/{id}: a client may be called "check".
         .route("/api/admin/client-checks", post(check_client))
+        .route("/api/admin/audit", get(audit));
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(access_routes());
+    routes
+}
+
+#[cfg(feature = "platform")]
+fn access_routes() -> Router<App> {
+    Router::new()
         .route("/api/admin/access/requests", get(access_requests))
         .route("/api/admin/access/requests/{id}/approve", post(approve))
         .route("/api/admin/access/requests/{id}/deny", post(deny))
         .route("/api/admin/access/grants", get(access_grants))
         .route("/api/admin/access/grants/{id}/revoke", post(revoke_grant))
-        .route("/api/admin/audit", get(audit))
 }
 
 async fn page(State(app): State<App>) -> Response {
@@ -124,6 +132,7 @@ async fn session(State(app): State<App>, headers: HeaderMap) -> Result<Json<Valu
             Ok(Json(json!({
                 "user": UserView::from(&user),
                 "mfa": session.identity.mfa,
+                "edition": crate::edition::NAME,
                 "expires_at": session.expires_at,
                 "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
             })))
@@ -145,6 +154,7 @@ read!(groups, list_groups);
 read!(clients, list_clients);
 
 /// Access review is limited to administrators here; `pam` still decides who may approve.
+#[cfg(feature = "platform")]
 macro_rules! access_read {
     ($name:ident, $method:ident) => {
         async fn $name(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
@@ -157,7 +167,9 @@ macro_rules! access_read {
         }
     };
 }
+#[cfg(feature = "platform")]
 access_read!(access_requests, list_access_requests);
+#[cfg(feature = "platform")]
 access_read!(access_grants, list_access_grants);
 
 macro_rules! decide {
@@ -178,10 +190,13 @@ macro_rules! decide {
         }
     };
 }
+#[cfg(feature = "platform")]
 decide!(approve, |core, token, id| core
     .decide_access(&token, &id, true));
+#[cfg(feature = "platform")]
 decide!(deny, |core, token, id| core
     .decide_access(&token, &id, false));
+#[cfg(feature = "platform")]
 decide!(revoke_grant, |core, token, id| core
     .revoke_access(&token, &id));
 decide!(rotate_secret, |core, token, id| core

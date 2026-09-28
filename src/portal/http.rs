@@ -18,7 +18,7 @@ use std::time::Instant;
 pub(crate) struct BrowserError;
 
 pub fn routes() -> Router<App> {
-    Router::new()
+    let routes = Router::new()
         .route("/apps", get(page))
         .route("/apps/", get(page))
         .route("/apps/launch", get(launch))
@@ -81,26 +81,6 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
-        .route("/events", get(events_page))
-        .route("/events/", get(events_page))
-        .route(
-            "/portal/assets/map.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("map.css"),
-                )
-            }),
-        )
-        .route(
-            "/portal/assets/map.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("map.js"),
-                )
-            }),
-        )
         .route("/api/portal", get(catalogue))
         .route("/api/portal/account/accept", post(account_accept))
         .route("/api/portal/account/verify", post(account_verify))
@@ -147,7 +127,35 @@ pub fn routes() -> Router<App> {
         .merge(super::mfa::routes())
         .route("/api/device/browser/{code}", get(device_browser_details))
         .route("/api/device/browser/decision", post(device_browser_decide))
-        .merge(super::self_service::http::routes())
+        .merge(super::self_service::http::routes());
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(event_map_routes());
+    routes
+}
+
+#[cfg(feature = "platform")]
+fn event_map_routes() -> Router<App> {
+    Router::new()
+        .route("/events", get(events_page))
+        .route("/events/", get(events_page))
+        .route(
+            "/portal/assets/map.css",
+            get(|| async {
+                (
+                    [("content-type", "text/css; charset=utf-8")],
+                    include_str!("map.css"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/map.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("map.js"),
+                )
+            }),
+        )
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -305,6 +313,7 @@ pub(crate) fn placeholder_sso(app: &App, response: &mut Response) {
     }
 }
 
+#[cfg(feature = "platform")]
 async fn events_page(State(app): State<App>) -> Response {
     portal_html(include_str!("events.html"), &app, true)
 }

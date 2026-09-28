@@ -14,7 +14,20 @@ import urllib.request
 
 
 PASSWORD = "a05-artifact-smoke-password"
-PLATFORM_ROUTES = ("/scim/v2/ServiceProviderConfig", "/.well-known/ssf-configuration")
+PLATFORM_ROUTES = (
+    ("/scim/v2/ServiceProviderConfig", 200),
+    ("/.well-known/ssf-configuration", 200),
+    ("/events", 200),
+    ("/api/admin/access/requests", 403),
+    ("/api/admin/access/grants", 403),
+)
+SHARED_ROUTES = (
+    ("/portal/assets/admin.js", 200),
+    ("/api/admin/clients/smoke/diagnostics", 403),
+    ("/api/admin/client-checks", 405),
+    ("/api/portal/password", 405),
+    ("/api/portal/account/reset", 405),
+)
 
 
 def run(*args, input=None, timeout=30):
@@ -66,8 +79,11 @@ def capabilities(binary, edition):
 
 
 def check_routes(base, edition):
-    expected = 404 if edition == "essentials" else 200
-    for route in PLATFORM_ROUTES:
+    for route, expected in SHARED_ROUTES:
+        actual, _ = request(base, route)
+        assert actual == expected, f"{edition} {route}: expected {expected}, got {actual}"
+    for route, platform_status in PLATFORM_ROUTES:
+        expected = 404 if edition == "essentials" else platform_status
         actual, _ = request(base, route)
         assert actual == expected, f"{edition} {route}: expected {expected}, got {actual}"
 
