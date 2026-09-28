@@ -59,6 +59,8 @@ enum Mode {
     MissingLastPage,
     ChangedTotal,
     InvalidTotal,
+    EntraNested,
+    FailSecondMember,
 }
 
 struct State {
@@ -280,8 +282,19 @@ fn dispatch(state: &State, request: &Incoming) -> (u16, String) {
         return (401, json!({"error": "unauthorized"}).to_string());
     }
     let page = page_index(&url);
-    if path.contains("/members") {
-        return members(state, page);
+    if state.kind == "entra"
+        && path.starts_with("/v1.0/")
+        && (request.headers.get("consistencylevel").map(String::as_str) != Some("eventual")
+            || page == 0
+                && !url
+                    .query_pairs()
+                    .any(|(key, value)| key == "$count" && value == "true"))
+    {
+        return (400, json!({"error": "advanced_query_required"}).to_string());
+    }
+    if path.contains("/transitiveMembers") || path.contains("/members") {
+        let transitive = path.contains("/transitiveMembers");
+        return members(state, page, transitive);
     }
     if path.contains("/groups") {
         if *state.mode.lock().unwrap() == Mode::MissingGroups {
@@ -370,10 +383,16 @@ fn users(state: &State, page: usize) -> (u16, String) {
     let base = state.base.lock().unwrap().clone();
     if mode == Mode::EvilNext && page == 0 {
         let shown: Vec<_> = people.into_iter().take(1).collect();
-        return (
-            200,
-            render_users(state.kind, &shown, Some(format!("{base}/evil"))),
-        );
+        let mut body: Value = serde_json::from_str(&render_users(
+            state.kind,
+            &shown,
+            Some(format!("{base}/evil")),
+        ))
+        .unwrap();
+        if state.kind == "entra" {
+            body["@odata.count"] = json!(shown.len());
+        }
+        return (200, body.to_string());
     }
     let (shown, more) = split_page(&people, page);
     let next = if !more {
@@ -400,6 +419,9 @@ fn users(state: &State, page: usize) -> (u16, String) {
         shown
     };
     let mut body: Value = serde_json::from_str(&render_users(state.kind, &shown, next)).unwrap();
+    if state.kind == "entra" && page == 0 {
+        body["@odata.count"] = json!(people.len());
+    }
     if matches!(
         mode,
         Mode::MissingLastPage | Mode::ChangedTotal | Mode::InvalidTotal
@@ -467,13 +489,16 @@ fn groups(state: &State) -> (u16, String) {
     } else {
         (
             200,
-            json!({"value": [{"id": "staff-gid", "displayName": "Staff", "mail": "staff@example.test"}]}).to_string(),
+            json!({"@odata.count": 1, "value": [{"id": "staff-gid", "displayName": "Staff", "mail": "staff@example.test"}]}).to_string(),
         )
     }
 }
 
-fn members(state: &State, page: usize) -> (u16, String) {
+fn members(state: &State, page: usize, transitive: bool) -> (u16, String) {
     let mode = *state.mode.lock().unwrap();
+    if mode == Mode::FailSecondMember && page >= 1 {
+        return (500, json!({"error": "member_page_failed"}).to_string());
+    }
     if mode == Mode::MissingMembers {
         return (200, "{}".into());
     }
@@ -486,7 +511,16 @@ fn members(state: &State, page: usize) -> (u16, String) {
         return (200, json!({(collection): null}).to_string());
     }
     let people = state.people.lock().unwrap().clone();
-    let staff: Vec<_> = people.into_iter().filter(|person| person.staff).collect();
+    let staff: Vec<_> = people
+        .into_iter()
+        .filter(|person| {
+            person.staff
+                && !(state.kind == "entra"
+                    && mode == Mode::EntraNested
+                    && !transitive
+                    && person.id == "ext-bob")
+        })
+        .collect();
     let (shown, more) = split_page(&staff, page);
     let mut rows: Vec<_> = shown
         .iter()
@@ -501,6 +535,9 @@ fn members(state: &State, page: usize) -> (u16, String) {
     if page == 0 && state.kind == "workspace" {
         rows.push(json!({"id": "nested", "type": "GROUP"}));
     }
+    if page == 0 && state.kind == "entra" && mode == Mode::EntraNested {
+        rows.push(json!({"id": "nested", "@odata.type": "#microsoft.graph.group"}));
+    }
     if mode == Mode::MemberWithoutId && page == 0 {
         rows[0].as_object_mut().unwrap().remove("id");
     }
@@ -513,9 +550,12 @@ fn members(state: &State, page: usize) -> (u16, String) {
     } else {
         let base = state.base.lock().unwrap().clone();
         let mut body = json!({"value": rows});
+        if transitive && page == 0 {
+            body["@odata.count"] = json!(staff.len() + usize::from(mode == Mode::EntraNested));
+        }
         if more && mode != Mode::TruncatedMembers {
             body["@odata.nextLink"] = json!(format!(
-                "{base}/v1.0/groups/staff-gid/members?$skiptoken=members-2"
+                "{base}/v1.0/groups/staff-gid/transitiveMembers?$skiptoken=members-2"
             ));
         }
         (200, body.to_string())
@@ -775,7 +815,7 @@ fn exercise(kind: &'static str) {
                 .lock()
                 .unwrap()
                 .iter()
-                .any(|path| path.ends_with("/groups/staff-gid/members"))
+                .any(|path| path.contains("/groups/staff-gid/transitiveMembers?"))
         );
     }
     assert!(
@@ -940,6 +980,69 @@ fn workspace_links_membership_suspension_and_redaction() {
 #[test]
 fn entra_links_membership_suspension_and_redaction() {
     exercise("entra");
+}
+
+#[test]
+fn entra_transitive_membership_requires_complete_graph_pages() {
+    let directory = serve(
+        "entra",
+        vec![
+            person("ext-alice", "alice@example.test", "Alice", true),
+            person("ext-bob", "bob@example.test", "Bob", true),
+        ],
+        SECRET,
+    );
+    *directory.state.mode.lock().unwrap() = Mode::EntraNested;
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "entra", "corp", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+
+    let plan = fixture
+        .core
+        .cloud_plan(&fixture.admin, "entra", "corp")
+        .unwrap();
+    assert_eq!(plan["entries"][0]["external_id"], "ext-alice");
+    fixture
+        .core
+        .cloud_apply(&fixture.admin, "entra", plan["id"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(group_members(&fixture, "staff").len(), 2);
+    let paths = directory.state.paths.lock().unwrap().clone();
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.contains("/transitiveMembers?$skiptoken=members-2"))
+    );
+    assert!(!paths.iter().any(|path| path.contains("/staff-gid/members")));
+
+    let reviewed = fixture
+        .core
+        .cloud_plan(&fixture.admin, "entra", "corp")
+        .unwrap();
+    let before = group_members(&fixture, "staff");
+    *directory.state.mode.lock().unwrap() = Mode::FailSecondMember;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "entra", "corp")
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    assert!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "entra", reviewed["id"].as_str().unwrap())
+            .is_err()
+    );
+    assert_eq!(group_members(&fixture, "staff"), before);
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan_get(&fixture.admin, "entra", reviewed["id"].as_str().unwrap())
+            .unwrap()["applied"],
+        false
+    );
 }
 
 #[test]
@@ -1481,6 +1584,16 @@ fn a_single_missing_group_member_requires_review_even_with_successful_pages() {
         let before = group_members(&fixture, "staff");
         assert_eq!(before.len(), 2);
         *directory.state.mode.lock().unwrap() = Mode::TruncatedMembers;
+        if kind == "entra" {
+            assert!(
+                fixture
+                    .core
+                    .cloud_plan(&fixture.admin, kind, "corp")
+                    .is_err()
+            );
+            assert_eq!(group_members(&fixture, "staff"), before);
+            continue;
+        }
         let plan = fixture
             .core
             .cloud_plan(&fixture.admin, kind, "corp")
@@ -1838,6 +1951,9 @@ fn directory_urls_reject_non_loopback_http() {
         username_prefix: String::new(),
     };
     assert!(entra.validate().is_ok());
+    let mut unstable_id = entra.clone();
+    unstable_id.attributes.external_id = "mail".into();
+    assert!(unstable_id.validate().is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -213,6 +213,11 @@ impl EntraDirectory {
         validate_scope(&self.scope, true)?;
         validate_groups(&self.groups)?;
         validate_attributes(&self.attributes)?;
+        // Group membership returns Graph object IDs. A mutable profile field
+        // cannot be joined to those IDs or safely used as a binding key.
+        if self.attributes.external_id != "id" {
+            return Err(Error::bad("Entra external id must be the Graph object id"));
+        }
         validate_prefix(&self.username_prefix)
     }
 }
@@ -370,11 +375,21 @@ fn read_body(response: reqwest::blocking::Response) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn get_json(http: &reqwest::blocking::Client, token: &str, url: &Url) -> Result<Value> {
-    let response = http
+fn get_json(
+    http: &reqwest::blocking::Client,
+    token: &str,
+    url: &Url,
+    graph_count: bool,
+) -> Result<Value> {
+    let mut request = http
         .get(url.clone())
         .bearer_auth(token)
-        .header("accept", "application/json")
+        .header("accept", "application/json");
+    if graph_count {
+        // Graph does not carry this advanced-query header into nextLink requests.
+        request = request.header("ConsistencyLevel", "eventual");
+    }
+    let response = request
         .send()
         .map_err(|_| unavailable("Cloud directory request failed"))?;
     if !response.status().is_success() {
@@ -408,6 +423,9 @@ fn paginate(
     mut next_page: impl FnMut(&Value, &Url) -> Result<Option<Url>>,
 ) -> Result<Vec<Value>> {
     let collection_path = first.path().to_owned();
+    // Require Graph's count for users, groups, and members so a lost nextLink
+    // fails before a short response can drive removals.
+    let graph_count = provider == Provider::Entra;
     let mut url = first;
     let mut items = Vec::new();
     let mut pages = Pagination::new(MAX_PAGES, MAX_OBJECTS);
@@ -417,7 +435,7 @@ fn paginate(
         if started.elapsed() > SYNC_BUDGET {
             return Err(unavailable("Cloud directory sync exceeded its time limit"));
         }
-        let body = get_json(http, token, &url)?;
+        let body = get_json(http, token, &url, graph_count)?;
         if started.elapsed() > SYNC_BUDGET {
             return Err(unavailable("Cloud directory sync exceeded its time limit"));
         }
@@ -430,6 +448,11 @@ fn paginate(
         };
         if object.contains_key("error") {
             return Err(unavailable("Cloud directory returned an unreadable page"));
+        }
+        if graph_count && page_index == 0 && !object.contains_key("@odata.count") {
+            return Err(unavailable(
+                "Cloud directory returned an incomplete Graph count",
+            ));
         }
         let workspace_kind = || {
             let expected = format!("directory#{collection}");
@@ -663,7 +686,11 @@ impl Settings {
             endpoint(
                 &self.base_url,
                 &["v1.0", "users"],
-                &[("$select", select.as_str()), ("$top", "200")],
+                &[
+                    ("$select", select.as_str()),
+                    ("$top", "200"),
+                    ("$count", "true"),
+                ],
             )?
         };
         let user_endpoint = users_url.clone();
@@ -715,7 +742,11 @@ impl Settings {
             endpoint(
                 &self.base_url,
                 &["v1.0", "groups"],
-                &[("$select", "id,displayName,mail"), ("$top", "200")],
+                &[
+                    ("$select", "id,displayName,mail"),
+                    ("$top", "200"),
+                    ("$count", "true"),
+                ],
             )?
         };
         let group_endpoint = groups_url.clone();
@@ -775,8 +806,8 @@ impl Settings {
             } else {
                 endpoint(
                     &self.base_url,
-                    &["v1.0", "groups", upstream_id, "members"],
-                    &[],
+                    &["v1.0", "groups", upstream_id, "transitiveMembers"],
+                    &[("$count", "true")],
                 )?
             };
             let member_endpoint = members_url.clone();
@@ -820,13 +851,19 @@ impl Settings {
                 {
                     continue;
                 }
-                if self.kind == "entra"
-                    && value
-                        .get("@odata.type")
-                        .and_then(Value::as_str)
-                        .is_some_and(|kind| !kind.to_ascii_lowercase().contains("user"))
-                {
-                    continue;
+                if self.kind == "entra" {
+                    match value.get("@odata.type").and_then(Value::as_str) {
+                        Some("#microsoft.graph.user") => {}
+                        Some(
+                            "#microsoft.graph.group"
+                            | "#microsoft.graph.device"
+                            | "#microsoft.graph.servicePrincipal"
+                            | "#microsoft.graph.orgContact",
+                        ) => continue,
+                        _ => {
+                            return Err(unavailable("Cloud directory returned an unreadable page"));
+                        }
+                    }
                 }
                 ids.insert(id);
             }
