@@ -1,7 +1,6 @@
 //! Explicit-origin HTTP reverse proxy with live identity checks and bounded WebSocket sessions.
 use crate::{
     api::App,
-    core::Core,
     error::{Error, Result},
     outpost::Settings,
 };
@@ -19,8 +18,15 @@ use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{sync::Semaphore, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
+pub use crate::assembly::proxy_start as start;
 pub use crate::proxy_listener::{Listener, Target};
 use crate::proxy_listener::{authority, origin};
+
+pub(crate) trait ProxyPort: Send + Sync + 'static {
+    fn listeners(&self) -> &BTreeMap<String, Listener>;
+    fn app(&self) -> App;
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease;
+}
 
 #[derive(Clone)]
 struct Route {
@@ -37,7 +43,7 @@ struct Runtime {
     timeout: Duration,
     stop: CancellationToken,
 }
-fn internal_peer() -> std::net::IpAddr {
+pub(crate) fn internal_peer() -> std::net::IpAddr {
     std::net::Ipv4Addr::LOCALHOST.into()
 }
 fn single<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
@@ -522,7 +528,7 @@ async fn handle(
 }
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
-    tasks: Vec<JoinHandle<()>>,
+    pub(crate) tasks: Vec<JoinHandle<()>>,
     leases: Vec<crate::capability::ListenerLease>,
     stop: CancellationToken,
 }
@@ -545,11 +551,7 @@ async fn tls(config: &Listener) -> Result<Option<axum_server::tls_rustls::Rustls
         _ => Ok(None),
     }
 }
-pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
-    // This Core is private to the embedded proxy. No management/API router uses its local trust marker.
-    if !core.config.trusted_proxies.contains(&internal_peer()) {
-        core.config.trusted_proxies.push(internal_peer());
-    }
+pub(crate) async fn start_with_port<P: ProxyPort>(port: P) -> anyhow::Result<Servers> {
     let stop = CancellationToken::new();
     let mut servers = Servers {
         addresses: vec![],
@@ -557,7 +559,7 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
         leases: vec![],
         stop: stop.clone(),
     };
-    for (id, config) in &core.config.proxy_listeners {
+    for (id, config) in port.listeners() {
         config.validate()?;
         let mut routes = BTreeMap::new();
         for (external, target) in &config.routes {
@@ -588,7 +590,7 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
             );
         }
         let runtime = Runtime {
-            app: App::new(core.clone()),
+            app: port.app(),
             routes,
             slots: Arc::new(Semaphore::new(256)),
             body_limit: config.max_body_bytes,
@@ -598,7 +600,7 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
         let router = Router::new().fallback(any(handle)).with_state(runtime);
         let listener = tokio::net::TcpListener::bind(config.listen).await?;
         servers.addresses.push(listener.local_addr()?);
-        let lease = core.runtime.bind_proxy(id, config);
+        let lease = port.bind_listener(id, config);
         let worker_lease = lease.clone();
         servers.leases.push(lease);
         if let Some(tls) = tls(config).await? {
@@ -646,125 +648,4 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
         }
     }
     Ok(servers)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        capability,
-        config::Config,
-        model::{NewClient, NewUser, ProviderSettings},
-    };
-    use std::collections::BTreeSet;
-
-    fn state(core: &Core) -> serde_json::Value {
-        capability::runtime(core).unwrap()["feature_states"]["proxy.reverse_proxy"].clone()
-    }
-
-    #[tokio::test]
-    async fn proxy_readiness_requires_each_bound_worker_and_its_original_config() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut core = Core::initialize(
-            Config {
-                data_dir: dir.path().into(),
-                ..Default::default()
-            },
-            NewUser {
-                username: "admin".into(),
-                password: "proxy-readiness-password".into(),
-                email: None,
-                display_name: "Administrator".into(),
-                admin: true,
-            },
-        )
-        .unwrap();
-        let token = core
-            .login("admin".into(), "proxy-readiness-password".into(), None)
-            .unwrap()["session_token"]
-            .as_str()
-            .unwrap()
-            .to_owned();
-        let settings = Settings {
-            domain: None,
-            external_origin: "https://app.example.com".into(),
-            session_ttl: 3600,
-        };
-        core.create_client(
-            &token,
-            NewClient {
-                client_id: "proxy-app".into(),
-                name: "Proxy app".into(),
-                confidential: false,
-                redirect_uris: vec![settings.callback("proxy-app")],
-                scopes: BTreeSet::from(["openid".into(), "profile".into()]),
-                allowed_groups: BTreeSet::new(),
-                require_mfa: false,
-                service: false,
-                settings: ProviderSettings {
-                    proxy: Some(settings),
-                    ..Default::default()
-                },
-            },
-        )
-        .unwrap();
-        let listener = Listener {
-            listen: "127.0.0.1:0".parse().unwrap(),
-            tls_cert_file: None,
-            tls_key_file: None,
-            routes: BTreeMap::from([(
-                "https://app.example.com".into(),
-                Target {
-                    client_id: "proxy-app".into(),
-                    upstream: "http://127.0.0.1:9001".into(),
-                    ca_file: None,
-                    allow_plain_http: false,
-                },
-            )]),
-            max_body_bytes: 1024,
-            upstream_timeout_seconds: 30,
-        };
-        core.config
-            .proxy_listeners
-            .insert("a".into(), listener.clone());
-        core.config.proxy_listeners.insert("b".into(), listener);
-        assert_eq!(state(&core)["configured"], true);
-        assert_eq!(state(&core)["runtime_ready"], false);
-        assert_eq!(state(&core)["usable"], false);
-
-        let mut servers = start(core.clone()).await.unwrap();
-        assert_eq!(servers.addresses.len(), 2);
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while state(&core)["runtime_ready"] != true {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
-        assert_eq!(state(&core)["usable"], true);
-
-        let mut changed = core.clone();
-        changed
-            .config
-            .proxy_listeners
-            .get_mut("b")
-            .unwrap()
-            .max_body_bytes += 1;
-        assert_eq!(state(&changed)["configured"], true);
-        assert_eq!(state(&changed)["runtime_ready"], false);
-
-        // The first listener's worker exits while the owner and second worker remain.
-        let first_worker = servers.tasks.remove(0);
-        first_worker.abort();
-        let _ = first_worker.await;
-        assert_eq!(state(&core)["runtime_ready"], false);
-        let mut second_only = core.clone();
-        second_only.config.proxy_listeners.remove("a");
-        assert_eq!(state(&second_only)["runtime_ready"], true);
-        assert_eq!(state(&second_only)["usable"], true);
-
-        drop(servers);
-        assert_eq!(state(&second_only)["runtime_ready"], false);
-        assert_eq!(state(&second_only)["usable"], false);
-    }
 }

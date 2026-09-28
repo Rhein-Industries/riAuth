@@ -1,13 +1,38 @@
 //! Concrete proxy profile and outpost ingress rate limiting over storage.
 
 use crate::{
+    api::App,
     core::Core,
     error::{Error, Result},
     model::Client,
     outpost::Settings,
+    proxy_server::{self, Listener},
 };
 use axum::http::StatusCode;
-use std::net::IpAddr;
+use std::{collections::BTreeMap, net::IpAddr};
+
+pub async fn proxy_start(mut core: Core) -> anyhow::Result<proxy_server::Servers> {
+    // This Core is private to the embedded proxy. No management/API router uses its local trust marker.
+    let peer = proxy_server::internal_peer();
+    if !core.config.trusted_proxies.contains(&peer) {
+        core.config.trusted_proxies.push(peer);
+    }
+    proxy_server::start_with_port(core).await
+}
+
+impl proxy_server::ProxyPort for Core {
+    fn listeners(&self) -> &BTreeMap<String, Listener> {
+        &self.config.proxy_listeners
+    }
+
+    fn app(&self) -> App {
+        App::new(self.clone())
+    }
+
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease {
+        self.runtime.bind_proxy(id, listener)
+    }
+}
 
 impl Core {
     pub(crate) fn proxy_profile(&self, id: &str, external: &str) -> Result<Settings> {
@@ -40,3 +65,7 @@ impl Core {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "proxy_server_tests.rs"]
+mod tests;

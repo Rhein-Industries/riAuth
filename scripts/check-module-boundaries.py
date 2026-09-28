@@ -288,6 +288,10 @@ def main() -> None:
             refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/proxy_server.rs: proxy transport refers directly to storage")
+        if path == SRC / "proxy_server.rs" and (
+            "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/proxy_server.rs: proxy transport refers directly to Core")
         if path == SRC / "windows_login.rs" and (
             "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
         ):
