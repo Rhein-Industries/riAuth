@@ -20,6 +20,8 @@
 //! scoped receipts replay an exact decision after device-code redemption.
 //! Portal terminal decisions bind a displayed code to the original browser
 //! delivery cookie; the same writer owns start, one-time poll and cancellation.
+//! Platform temporary-access requests, decisions and revocations use live
+//! human-session authority, scoped receipts and the management revision.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
@@ -30,6 +32,8 @@ mod client_creation;
 mod client_policy;
 mod client_status;
 mod memberships;
+#[cfg(feature = "platform")]
+mod pam;
 mod portal_approvals;
 mod sessions;
 mod source_links;
@@ -37,6 +41,8 @@ pub(crate) use consents::{
     ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
 };
 pub(crate) use devices::{DeviceDecisionAuthority, decide_device, device_approval_policy};
+#[cfg(feature = "platform")]
+pub(crate) use pam::{decide_access, request_access, revoke_access, validate_access_request};
 pub(crate) use portal_approvals::{
     PortalPollOutcome, cancel_portal_sign_in, decide_portal_sign_in, poll_portal_sign_in,
     start_portal_sign_in,

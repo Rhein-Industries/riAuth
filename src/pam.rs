@@ -7,6 +7,8 @@ use crate::{
 pub use crate::assembly::{pam_cleanup as cleanup, pam_extra_groups as extra_groups};
 pub use crate::pam_types::{AccessGrant, AccessRequest, NewAccessRequest};
 
+pub(crate) const RETAIN_SECONDS: u64 = 7 * 86_400;
+
 fn validate_reason(reason: &str) -> Result<()> {
     let length = reason.chars().count();
     if !(1..=280).contains(&length) || reason.chars().any(char::is_control) {
