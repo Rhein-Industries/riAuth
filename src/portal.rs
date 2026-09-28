@@ -75,12 +75,12 @@ pub(crate) struct Pending {
     pub(crate) id: String,
     pub(crate) code: String,
     pub(crate) binding_hash: String,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
     pub(crate) session_id: Option<String>,
     pub(crate) denied: bool,
     /// Shown to the approving terminal.
     #[serde(default)]
-    requested_from: Option<Value>,
+    pub(crate) requested_from: Option<Value>,
 }
 
 impl Core {
@@ -192,22 +192,20 @@ impl Core {
     }
 
     pub fn portal_sign_in(&self) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            cleanup(tx, now())?;
-            if tx.list::<Pending>("portal_requests")?.len() >= 1000 {
-                return Err(Error::conflict("Too many pending portal sign-ins; try again shortly"));
-            }
-            let binding = crypto::random_token("ri_portal_");
-            let code = loop {
-                let code = crypto::user_code();
-                if tx.get::<String>("portal_codes", &digest(&crypto::normalize_code(&code)?))?.is_none() { break code; }
-            };
-            let pending = Pending { id:crypto::id(),code,binding_hash:digest(&binding),expires_at:now()+600,session_id:None,denied:false,requested_from:crate::context::requester() };
-            tx.put("portal_codes", &digest(&crypto::normalize_code(&pending.code)?), &pending.id)?;
-            tx.put("portal_requests", &pending.id, &pending)?;
-            Ok(BrowserReply { form_post:false, location:None, refresh:None,
-                cookies:vec![self.browser_cookie("riauth_portal", &binding, &self.portal_poll_path(&pending.id), 600)],
-                body:json!({"id":pending.id,"code":pending.code,"expires_at":pending.expires_at,"issuer":self.config.issuer}) })
+        let started = self
+            .store
+            .write(crate::management::start_portal_sign_in)?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            cookies: vec![self.browser_cookie(
+                "riauth_portal",
+                &started.binding,
+                &self.portal_poll_path(&started.id),
+                600,
+            )],
+            body: json!({"id":started.id,"code":started.code,"expires_at":started.expires_at,"issuer":self.config.issuer}),
         })
     }
 
@@ -241,48 +239,28 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let pending = tx
-                .get::<Pending>("portal_requests", id)?
-                .filter(|p| p.expires_at > now())
-                .ok_or_else(|| Error::missing("Sign-in expired; start again"))?;
-            if !binding.is_some_and(|b| crypto::constant_eq(&digest(b), &pending.binding_hash)) {
-                return Err(Error::unauthorized());
+        let outcome = self.store.write(|tx| {
+            crate::management::poll_portal_sign_in(self, tx, id, binding, sso)
+        })?;
+        let mut cookies = vec![];
+        let status = match outcome {
+            crate::management::PortalPollOutcome::Pending => "pending",
+            crate::management::PortalPollOutcome::Approved(sso_cookies) => {
+                cookies.push(self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0));
+                cookies.extend(sso_cookies);
+                "approved"
             }
-            let mut reply = BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                cookies: vec![],
-                body: json!({"status":"pending"}),
-            };
-            if pending.denied || pending.session_id.is_some() {
-                reply.cookies.push(self.browser_cookie(
-                    "riauth_portal",
-                    "",
-                    &self.portal_poll_path(id),
-                    0,
-                ));
-                if let Some(sid) = &pending.session_id {
-                    let approver = tx
-                        .get::<Session>("sessions", sid)?
-                        .ok_or_else(Error::unauthorized)?
-                        .identity
-                        .user_id;
-                    reply
-                        .cookies
-                        .extend(self.point_browser(tx, sso, sid, &approver)?);
-                    reply.body = json!({"status":"approved"});
-                } else {
-                    reply.body = json!({"status":"denied"});
-                }
-                tx.delete(
-                    "portal_codes",
-                    &digest(&crypto::normalize_code(&pending.code)?),
-                )?;
-                tx.delete("portal_requests", id)?;
+            crate::management::PortalPollOutcome::Denied => {
+                cookies.push(self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0));
+                "denied"
             }
-            Ok(reply)
+        };
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            cookies,
+            body: json!({"status":status}),
         })
     }
 
@@ -291,30 +269,14 @@ impl Core {
     }
 
     pub fn portal_cancel(&self, id: &str, binding: Option<&str>) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let pending = tx
-                .get::<Pending>("portal_requests", id)?
-                .ok_or_else(|| Error::missing("Sign-in request ended"))?;
-            if !binding.is_some_and(|b| crypto::constant_eq(&digest(b), &pending.binding_hash)) {
-                return Err(Error::unauthorized());
-            }
-            tx.delete("portal_requests", id)?;
-            tx.delete(
-                "portal_codes",
-                &digest(&crypto::normalize_code(&pending.code)?),
-            )?;
-            Ok(BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                body: json!({"cancelled":true}),
-                cookies: vec![self.browser_cookie(
-                    "riauth_portal",
-                    "",
-                    &self.portal_poll_path(id),
-                    0,
-                )],
-            })
+        self.store
+            .write(|tx| crate::management::cancel_portal_sign_in(tx, id, binding))?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            body: json!({"cancelled":true}),
+            cookies: vec![self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0)],
         })
     }
 

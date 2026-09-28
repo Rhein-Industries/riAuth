@@ -1,4 +1,4 @@
-//! Terminal approval or denial of a browser-bound portal sign-in request.
+//! Transaction writers for browser-bound portal sign-in requests.
 
 use crate::{
     core::{Core, audit},
@@ -121,6 +121,122 @@ fn validate_binding(pending: &Pending, code_hash: &str) -> Result<()> {
         return Err(Error::conflict("Sign-in request binding changed"));
     }
     Ok(())
+}
+
+pub(crate) struct PortalStart {
+    pub(crate) id: String,
+    pub(crate) code: String,
+    pub(crate) binding: String,
+    pub(crate) expires_at: u64,
+}
+
+pub(crate) enum PortalPollOutcome {
+    Pending,
+    Approved(Vec<String>),
+    Denied,
+}
+
+/// Anonymous start has no existing browser proof to authorize receipt replay.
+/// Every call gets a new binding whose plaintext is disclosed only in its cookie.
+pub(crate) fn start_portal_sign_in(tx: &Tx<'_>) -> Result<PortalStart> {
+    crate::portal::cleanup(tx, now())?;
+    if tx.list::<Pending>("portal_requests")?.len() >= 1000 {
+        return Err(Error::conflict(
+            "Too many pending portal sign-ins; try again shortly",
+        ));
+    }
+    let binding = crypto::random_token("ri_portal_");
+    let code = loop {
+        let code = crypto::user_code();
+        if tx
+            .get::<String>("portal_codes", &digest(&crypto::normalize_code(&code)?))?
+            .is_none()
+        {
+            break code;
+        }
+    };
+    let pending = Pending {
+        id: crypto::id(),
+        code,
+        binding_hash: digest(&binding),
+        expires_at: now() + 600,
+        session_id: None,
+        denied: false,
+        requested_from: crate::context::requester(),
+    };
+    tx.put(
+        "portal_codes",
+        &digest(&crypto::normalize_code(&pending.code)?),
+        &pending.id,
+    )?;
+    tx.put("portal_requests", &pending.id, &pending)?;
+    Ok(PortalStart {
+        id: pending.id,
+        code: pending.code,
+        binding,
+        expires_at: pending.expires_at,
+    })
+}
+
+fn require_original_browser(pending: &Pending, binding: Option<&str>) -> Result<()> {
+    if !binding.is_some_and(|value| crypto::constant_eq(&digest(value), &pending.binding_hash)) {
+        return Err(Error::unauthorized());
+    }
+    Ok(())
+}
+
+fn request_code_hash(tx: &Tx<'_>, pending: &Pending) -> Result<String> {
+    let code_hash = digest(&crypto::normalize_code(&pending.code)?);
+    validate_binding(pending, &code_hash)?;
+    if tx.get::<String>("portal_codes", &code_hash)?.as_deref() != Some(pending.id.as_str()) {
+        return Err(Error::conflict("Sign-in request binding changed"));
+    }
+    Ok(code_hash)
+}
+
+/// A pending poll is read-only. The decided poll is a one-time credential
+/// delivery: browser proof, session attachment, displaced-session revocation
+/// and request consumption share this transaction. It cannot use a receipt.
+pub(crate) fn poll_portal_sign_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    id: &str,
+    binding: Option<&str>,
+    sso: Option<&str>,
+) -> Result<PortalPollOutcome> {
+    let pending = tx
+        .get::<Pending>("portal_requests", id)?
+        .filter(|pending| pending.expires_at > now())
+        .ok_or_else(|| Error::missing("Sign-in expired; start again"))?;
+    require_original_browser(&pending, binding)?;
+    let code_hash = request_code_hash(tx, &pending)?;
+    let outcome = if let Some(sid) = &pending.session_id {
+        let approver = tx
+            .get::<Session>("sessions", sid)?
+            .ok_or_else(Error::unauthorized)?
+            .identity
+            .user_id;
+        PortalPollOutcome::Approved(core.point_browser(tx, sso, sid, &approver)?)
+    } else if pending.denied {
+        PortalPollOutcome::Denied
+    } else {
+        return Ok(PortalPollOutcome::Pending);
+    };
+    tx.delete("portal_codes", &code_hash)?;
+    tx.delete("portal_requests", id)?;
+    Ok(outcome)
+}
+
+/// Only the browser holding this request's cookie may cancel it. Cancellation
+/// consumes the request without issuing a session or replayable receipt.
+pub(crate) fn cancel_portal_sign_in(tx: &Tx<'_>, id: &str, binding: Option<&str>) -> Result<()> {
+    let pending = tx
+        .get::<Pending>("portal_requests", id)?
+        .ok_or_else(|| Error::missing("Sign-in request ended"))?;
+    require_original_browser(&pending, binding)?;
+    let code_hash = request_code_hash(tx, &pending)?;
+    tx.delete("portal_requests", id)?;
+    tx.delete("portal_codes", &code_hash)
 }
 
 /// The approving terminal supplies only its live bearer session and displayed

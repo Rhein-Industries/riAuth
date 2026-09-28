@@ -59,6 +59,156 @@ fn poll(id: &str, binding: &str, origin: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn start(origin: &str, key: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/portal/sign-in")
+        .header("origin", origin)
+        .header("x-riauth-portal", "1")
+        .header("sec-fetch-site", "same-origin")
+        .header("idempotency-key", key)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn cancel(id: &str, binding: &str, origin: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(format!("/api/portal/sign-in/{id}/cancel"))
+        .header("cookie", format!("riauth_portal={binding}"))
+        .header("origin", origin)
+        .header("x-riauth-portal", "1")
+        .header("sec-fetch-site", "same-origin")
+        .body(Body::empty())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn portal_request_writer_keeps_browser_proof_and_one_time_delivery() {
+    let f = Fixture::new();
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let app = riauth::api::router(f.core.clone());
+    // There is no caller proof before start, so a repeated anonymous key gets
+    // its own browser binding rather than disclosing the first cookie again.
+    let first = send(&app, start(&origin, "anonymous-start")).await;
+    let second = send(&app, start(&origin, "anonymous-start")).await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(second.0, StatusCode::OK);
+    let first_id = first.2["id"].as_str().unwrap();
+    let first_code = first.2["code"].as_str().unwrap();
+    let first_binding = cookie(&first.1, "riauth_portal");
+    let second_id = second.2["id"].as_str().unwrap();
+    let second_code = second.2["code"].as_str().unwrap();
+    let second_binding = cookie(&second.1, "riauth_portal");
+    assert_ne!(first_id, second_id);
+    assert_ne!(first_binding, second_binding);
+    assert!(!first.2.to_string().contains(&first_binding));
+    assert!(first.1[0].contains(&format!("Path=/api/portal/sign-in/{first_id};")));
+    assert_eq!(
+        send(&app, poll(first_id, &second_binding, &origin)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, cancel(first_id, &second_binding, &origin))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, poll(first_id, &first_binding, &origin)).await.2,
+        json!({"status":"pending"})
+    );
+    assert_eq!(
+        send(&app, decision(&f.admin, first_code, true, "first-delivery"))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let delivered = send(&app, poll(first_id, &first_binding, &origin)).await;
+    assert_eq!(delivered.0, StatusCode::OK);
+    assert_eq!(delivered.2, json!({"status":"approved"}));
+    let sso = cookie(&delivered.1, "riauth_sso");
+    assert_eq!(
+        f.core.portal_security(Some(&sso)).unwrap()["user"]["username"],
+        "admin"
+    );
+    assert!(f.core.me(&f.admin).is_ok());
+    assert_eq!(
+        send(&app, poll(first_id, &first_binding, &origin)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(&app, cancel(first_id, &first_binding, &origin))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+
+    assert_eq!(
+        send(&app, cancel(second_id, &first_binding, &origin))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, poll(second_id, &second_binding, &origin))
+            .await
+            .2,
+        json!({"status":"pending"})
+    );
+    let cancelled = send(&app, cancel(second_id, &second_binding, &origin)).await;
+    assert_eq!(cancelled.0, StatusCode::OK);
+    assert_eq!(cancelled.2, json!({"cancelled":true}));
+    assert!(cancelled.1[0].starts_with("riauth_portal=;"));
+    assert_eq!(
+        send(&app, cancel(second_id, &second_binding, &origin))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert!(f.core.portal_request(&f.admin, second_code).is_err());
+
+    let expired = send(&app, start(&origin, "expiring-start")).await;
+    let expired_id = expired.2["id"].as_str().unwrap();
+    let expired_binding = cookie(&expired.1, "riauth_portal");
+    f.core
+        .store
+        .write(|tx| {
+            let mut pending: Value = tx.get("portal_requests", expired_id)?.unwrap();
+            pending["expires_at"] = json!(now() - 1);
+            tx.put("portal_requests", expired_id, &pending)
+        })
+        .unwrap();
+    assert_eq!(
+        send(&app, poll(expired_id, &expired_binding, &origin))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cancellation can still remove a request whose TTL elapsed before cleanup.
+    assert_eq!(
+        send(&app, cancel(expired_id, &expired_binding, &origin))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "portal.sign_in.approve" && event["target"] == first_id
+            )
+            .count(),
+        1
+    );
+}
+
 #[tokio::test]
 async fn terminal_decision_receipt_stays_bound_to_original_browser_request() {
     let f = Fixture::new();
