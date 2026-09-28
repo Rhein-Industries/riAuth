@@ -261,10 +261,9 @@ impl Action {
             Action::Identify {} => fixed(&[COMPLETED]),
             Action::RequestConsent {} => fixed(&[GRANTED, DENIED]),
             Action::EnrollCredential { .. }
+            | Action::ReplaceTotp {}
             | Action::RemovePasskey {}
-            | Action::ResetPassword {} => {
-                fixed(&[COMPLETED, FAILED])
-            }
+            | Action::ResetPassword {} => fixed(&[COMPLETED, FAILED]),
             Action::Custom { outputs, .. } => {
                 let mut signals = outputs.clone();
                 signals.push(Label::fixed(FAILED));
@@ -289,6 +288,7 @@ impl Action {
             Action::VerifySource { .. } if signal == VERIFIED => Some(Proof::Source),
             Action::RequestConsent {} if signal == GRANTED => Some(Proof::Consent),
             Action::EnrollCredential { .. } if signal == COMPLETED => Some(Proof::Enrolled),
+            Action::ReplaceTotp {} if signal == COMPLETED => Some(Proof::Enrolled),
             Action::RemovePasskey {} if signal == COMPLETED => Some(Proof::PasskeyRemoved),
             Action::ResetPassword {} if signal == COMPLETED => Some(Proof::PasswordReset),
             _ => None,
@@ -306,6 +306,7 @@ impl Action {
             Action::VerifySource { .. } => "verify_source",
             Action::RequestConsent {} => "request_consent",
             Action::EnrollCredential { .. } => "enroll_credential",
+            Action::ReplaceTotp {} => "replace_totp",
             Action::RemovePasskey {} => "remove_passkey",
             Action::ResetPassword {} => "reset_password",
             Action::Custom { .. } => "custom",
@@ -345,6 +346,7 @@ impl Category {
                         | VerifyPasskey {}
                         | VerifyTotp {}
                         | EnrollCredential { .. }
+                        | ReplaceTotp {}
                         | VerifyEmail {
                             purpose: EmailPurpose::Invitation
                         }
@@ -410,6 +412,12 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
             (!reverified && !invited).then_some(
                 "a session with fresh password or passkey verification, or an invitation for a first passkey or password",
             )
+        }
+        Action::ReplaceTotp {}
+            if held & mask(&[Proof::Session, Proof::Passkey])
+                != mask(&[Proof::Session, Proof::Passkey]) =>
+        {
+            Some("a live session and fresh verified passkey")
         }
         Action::RemovePasskey {}
             if held & mask(&[Proof::Session, Proof::Passkey])

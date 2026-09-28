@@ -296,11 +296,34 @@ pub(crate) fn totp_confirm_in(
 #[cfg(feature = "platform")]
 pub(crate) fn commit_workflow_totp_in(
     tx: &impl AuthenticatorTx,
-    mut user: User,
+    user: User,
     secret: &str,
     code: &str,
 ) -> Result<()> {
-    if user.totp_secret.is_some() || user.totp_pending.is_some() || !user.has_passkeys {
+    commit_workflow_totp_change_in(tx, user, secret, code, false)
+}
+
+/// Replaces the old factor only in the final workflow writer, after bound UV
+/// and new-code proof. The old secret and recovery codes remain until commit.
+#[cfg(feature = "platform")]
+pub(crate) fn commit_workflow_totp_replacement_in(
+    tx: &impl AuthenticatorTx,
+    user: User,
+    secret: &str,
+    code: &str,
+) -> Result<()> {
+    commit_workflow_totp_change_in(tx, user, secret, code, true)
+}
+
+#[cfg(feature = "platform")]
+fn commit_workflow_totp_change_in(
+    tx: &impl AuthenticatorTx,
+    mut user: User,
+    secret: &str,
+    code: &str,
+    replace: bool,
+) -> Result<()> {
+    if user.totp_secret.is_some() != replace || user.totp_pending.is_some() || !user.has_passkeys {
         return Err(Error::forbidden());
     }
     let step = crypto::totp_step(secret, &user.username, code, now(), None)?
@@ -314,7 +337,15 @@ pub(crate) fn commit_workflow_totp_in(
     tx.put_user(&user.id, &user)?;
     tx.delete_enrollment(&user.id)?;
     tx.queue_user_revocation(&user.id)?;
-    tx.audit_factor(&user.id, "mfa.enabled", &user.id)
+    tx.audit_factor(
+        &user.id,
+        if replace {
+            "mfa.replace"
+        } else {
+            "mfa.enabled"
+        },
+        &user.id,
+    )
 }
 
 /// Abandons this session's pending enrollment. An enabled app is untouched.

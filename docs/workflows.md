@@ -7,12 +7,13 @@ configured OIDC consent, for a live bearer session.
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
-issues a new session. Connected credential mutations cover passkey and TOTP
-enrollment authorized by a fresh existing-passkey proof, passkey removal,
-mail-proven password recovery, and first-password or first-passkey invitation
-acceptance. Their real verifiers finalize the credential, proof consumption and
-epoch change atomically. Ordinary sign-in, other enrollment, browser consent
-and source-stage paths are unchanged; browser recovery and invitation acceptance
+issues a new session. Connected credential mutations cover passkey enrollment,
+passkey removal, TOTP enrollment and TOTP replacement authorized by a fresh
+existing-passkey proof, mail-proven password recovery, and first-password or
+first-passkey invitation acceptance. Their real verifiers finalize the credential,
+proof consumption and epoch change atomically. Ordinary sign-in, other enrollment,
+browser consent and source-stage paths are unchanged; browser recovery and
+invitation acceptance
 keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -23,8 +24,9 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
-It supports two configured enrollment shapes: a live session and fresh verified
-existing passkey followed by passkey registration or a new TOTP secret.
+It supports three configured enrollment shapes: a live session and fresh verified
+existing passkey followed by passkey registration, a new TOTP secret or TOTP
+replacement.
 It also supports one configured recovery shape: explicit reset-mail verification
 and password reset in the same transaction, plus one configured sensitive action:
 removal of an exact passkey after a live session and fresh verified passkey proof.
@@ -77,7 +79,8 @@ selects active definitions from `config.toml`, not this persisted authoring stor
 * **Steps** run one built-in action. The action set is closed: `identify`,
   `resume_session`, `verify_password`, `verify_passkey`, `verify_totp`,
   `verify_recovery_code`, `verify_email` (`reset` or `invitation` purpose),
-  `verify_source`, `request_consent`, `enroll_credential`, `remove_passkey`,
+  `verify_source`, `request_consent`, `enroll_credential`, `replace_totp`,
+  `remove_passkey`,
   `reset_password` and,
   for Platform only, `custom`. Each category permits a fixed subset.
 * **Transitions** route a step's signals (`verified`/`failed`,
@@ -130,7 +133,7 @@ success terminal satisfies, for every arriving set:
 | Outcome | Minimum proofs (category floor) |
 | --- | --- |
 | `authenticated` | `password`, `passkey` or `source` |
-| `enrolled` | `enrolled`. `enroll_credential` needs `session` plus `password` or `passkey`, or `invitation` for a first passkey or password |
+| `enrolled` | `enrolled`. `enroll_credential` needs `session` plus `password` or `passkey`, or `invitation` for a first passkey or password; `replace_totp` needs `session` plus `passkey` |
 | `recovered` | `password_reset`, which needs `reset_email` first |
 | `consent_granted` | `session` and `consent` |
 | `action_authorized` | `session` and `password` or `passkey` |
@@ -508,6 +511,30 @@ the workflow receipts in the same transaction that finalizes the run. No new
 session or recovery codes are issued. This shape does not replace an existing
 TOTP app or enroll the first authenticator for an account without a passkey.
 
+## Configured TOTP replacement
+
+Platform accepts one separate exact `enrollment` shape for an account with an
+existing TOTP factor and passkey. It has the same limits, proof requirements,
+transitions and cancellable `session → passkey → enroll` steps as configured
+TOTP enrollment, except the final action is `replace_totp`. Config, start and
+resume reject other replacement shapes; Essentials excludes this action.
+
+Start with `POST /api/workflows/configured/{workflow}` and a live bearer, then
+complete the run's signed UV passkey endpoints. Call
+`POST /api/workflows/{id}/totp-replacement/start` to receive the run-owned new
+secret and `otpauth_uri` once. Confirm a new code with `{"code":"..."}` at
+`POST /api/workflows/{id}/totp-replacement`. Resume reveals progress, never
+the secret. The old TOTP factor and recovery codes remain valid while the run
+is pending; cancellation, denial and expiry discard the new secret.
+
+The final writer rechecks the bound account, live session, request, run, fresh
+passkey receipt and new code. In one transaction it replaces the secret,
+records the confirming time step as spent, clears old recovery codes, advances
+the account epoch, queues revocation, audits the replacement, consumes receipts
+and finalizes the run. It issues no session or new recovery codes. The
+enrollment endpoint cannot confirm a replacement run, and the replacement
+endpoint cannot confirm an enrollment run.
+
 ## Configured passkey removal
 
 Platform accepts one exact `sensitive_action` definition with the steps
@@ -808,11 +835,11 @@ These are not implemented or established by this slice:
   association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey and TOTP enrollment, passkey removal, mail-proven password
-  reset and invitation first-password/first-passkey enrollment: session-authorized
-  first-passkey enrollment through password/TOTP, TOTP enrollment without an
-  existing passkey and other initial credential paths remain blocked pending
-  their real adapters.
+  authorized passkey and TOTP enrollment, TOTP replacement, passkey removal,
+  mail-proven password reset and invitation first-password/first-passkey
+  enrollment: session-authorized first-passkey enrollment through password/TOTP,
+  TOTP enrollment without an existing passkey and other initial credential paths
+  remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,
