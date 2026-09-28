@@ -780,7 +780,7 @@
         h("p", { class: `test-result ${report.allowed ? "ok" : "bad"}` }, report.allowed ? `${username} can sign in.` : `${username} is refused:`),
         reasons.length ? h("ul", { class: "plain-list" }, [...new Set(reasons)].map((r) => h("li", {}, `${username} ${REASONS[r] || r.replaceAll("_", " ")}.`))) : null,
         report.allowed ? h("details", {}, h("summary", {}, "Claims the app would receive"), h("pre", { class: "settings-json" }, JSON.stringify(report.id_token_identity_claims, null, 2))) : null);
-    }, { 403: "Testing needs permission to read both the application and the person." }, "Testing…");
+    }, { 403: "Testing needs permission to read the application, person, and policy groups." }, "Testing…");
     return client.service ? null : card("Test a sign-in", h("p", { class: "field-hint" }, "Simulates this application's policy for one person. No token is issued and nothing is recorded as a sign-in."), form, result);
   }
 

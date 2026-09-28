@@ -277,7 +277,8 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/entra-directories/{id}/plan` | Entra sync plan; no account writes |
 | GET | `/api/entra-directory-plans/{id}` | Caller-bound Entra plan |
 | POST | `/api/entra-directory-plans/{id}/apply` | Apply one reviewed Entra plan; high-impact removals need plan-ID confirmation header |
-| POST | `/api/policy/explain` | `client_id`, `username`, scope array, optional assumed `mfa`; read-only simulation |
+| POST | `/api/policy/explain` | `client_id`, `username`, scope array, optional assumed `mfa`; read-only explanation with projected claims |
+| POST | `/api/policy/simulate` | Read-only policy what-if for one `client_id`, `username`, `scope` array and required `assurance` (`password`, `mfa`, `federated`, `certificate`). Optional `group: {name, member}` changes one assumed membership; optional `source` assumes a verified configured source. Returns `decision` (`allow`, `deny`, `needs_live_proof`), reason codes, configuration `revision`, and `dependency_revision`; no claims or credentials. |
 | GET, POST | `/api/agents` | Human administrator: list/create scoped agents. Optional `parent` is an enabled non-administrator username |
 | DELETE | `/api/agents/{id}` | Human administrator: revoke credential |
 | GET, POST | `/api/windows-devices` | `device.enroll`: list devices, or enroll/rotate one. Secret and optional offline ticket are returned once. See [enterprise/ENT-13.md](enterprise/ENT-13.md) |
@@ -336,6 +337,11 @@ Workspace and Entra plans expose `removal_impact` with `disabled_users`, `missin
 Provider settings include explicit grant lists, lifetimes, native profile, exact origins, post-logout/back-channel URLs, mappings, claim placement and policy. Use the generated `provider`, `client-create`, `client-update`, `user-create`, `user-update`, `manifest` and `apply` schemas rather than inferring fields from examples.
 
 Direct administrative resource writes support `Idempotency-Key` and `If-Match: "<revision>"`; agent mutations require the latter. Successful results and their receipt commit in one transaction. Identical authenticated retries return the original result for 24 hours. Reusing a key for a different request fails. Plan/apply uses its own immutable-plan identity and preconditions. Direct client writes and plan/apply share one application write path for authorization, validation, type immutability and grant revocation. A record change needs `client.write`; a secret or authentication-settings change also needs `client.rotate`. `rotate-secret` needs only `client.rotate` and does not revalidate unrelated client configuration; a manifest must still hold `client.write` for every client it names. A settings change cannot turn a confidential client (shared secret or `private_key_jwt`) into a public one, or the reverse; create a new client instead. `X-riAuth-Run-ID` supplies correlation; the server creates `X-Request-ID` and records redacted mutation details.
+
+### Policy simulation
+
+Policy simulation uses the same management principal as other reads. It requires `client.read` and `user.read` on the named records, `group.read` on the changed group and every group used by the evaluated policy, and `source.read` on an assumed source. The older explanation also requires group read rights for policy decisions and projected group claims. The new response omits profile, group lists, claims, secrets and source metadata. `revision` is the configuration revision; `dependency_revision` fingerprints the request, policy, relevant observed memberships, user state, source availability and device-trust result in one read snapshot. Neither value is an apply receipt or authorization proof. A source is assumed to have been verified, but no link or login is verified. Fresh authentication proofs and approved device state return `needs_live_proof` unless another policy check already denies the request. Use `riauth simulate <client-id> <username> --with-group <name> --assurance mfa` (or `--without-group`, `--source`, `--scope`); `riauth schema policy-simulation` describes the API body.
+
 
 ## Inbound SCIM
 

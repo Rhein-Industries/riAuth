@@ -342,6 +342,21 @@ pub enum Command {
         #[arg(long)]
         mfa: bool,
     },
+    /// Simulate one policy request with optional group and verified-source assumptions
+    Simulate {
+        client_id: String,
+        username: String,
+        #[arg(long, default_value = "openid profile", value_delimiter = ' ')]
+        scope: Vec<String>,
+        #[arg(long, conflicts_with = "without_group")]
+        with_group: Option<String>,
+        #[arg(long, conflicts_with = "with_group")]
+        without_group: Option<String>,
+        #[arg(long, help = "Assume this source was verified; use federated or mfa assurance")]
+        source: Option<String>,
+        #[arg(long, default_value = "password", value_parser = ["password", "mfa", "federated", "certificate"])]
+        assurance: String,
+    },
     /// Manage scoped machine credentials
     Agent {
         #[command(subcommand)]
@@ -1445,6 +1460,11 @@ pub async fn run(cli: Cli) -> Result<()> {
         },
         Command::Revision => remote.call(Method::GET, "/api/state/revision", None, true).await?,
         Command::Explain { client_id, username, scope, mfa } => remote.call(Method::POST, "/api/policy/explain", Some(json!({"client_id": client_id, "username": username, "scope": scope, "mfa": mfa})), true).await?,
+        Command::Simulate { client_id, username, scope, with_group, without_group, source, assurance } => {
+            let group = with_group.map(|name| json!({"name": name, "member": true}))
+                .or_else(|| without_group.map(|name| json!({"name": name, "member": false})));
+            remote.call(Method::POST, "/api/policy/simulate", Some(json!({"client_id": client_id, "username": username, "scope": scope, "group": group, "source": source, "assurance": assurance})), true).await?
+        },
         Command::Inventory { kind, after, limit, filter } => {
             let query = serde_urlencoded::to_string([("limit", Some(limit.to_string())), ("after", after), ("filter", filter)].into_iter().filter_map(|(k, v)| v.map(|v| (k, v))).collect::<Vec<_>>())?;
             remote.call(Method::GET, &format!("/api/inventory/{kind}?{query}"), None, true).await?

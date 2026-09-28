@@ -29,6 +29,7 @@ pub const NAMES: &[&str] = &[
     "client-update",
     "cli-result",
     "workflow",
+    "policy-simulation",
 ];
 const PLATFORM_NAMES: &[&str] = &[
     "radius-certificate",
@@ -87,6 +88,7 @@ pub fn schema(name: &str) -> Result<Value> {
         "client-create" => json!(schemars::schema_for!(crate::model::NewClient)),
         "client-update" => json!(schemars::schema_for!(crate::model::ClientPatch)),
         "workflow" => json!(schemars::schema_for!(crate::workflow::Definition)),
+        "policy-simulation" => json!(schemars::schema_for!(crate::claims::Simulation)),
         "cli-result" => {
             json!({"$schema": "https://json-schema.org/draft/2020-12/schema", "oneOf": [
                 {"type": "object", "required": ["schema_version", "ok", "data"], "additionalProperties": false, "properties": {"schema_version": {"const": "riauth.cli/v1"}, "ok": {"const": true}, "data": {}}},

@@ -392,6 +392,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/state/revision", get(revision))
         .route("/api/schema/{name}", get(schema))
         .route("/api/policy/explain", post(explain))
+        .route("/api/policy/simulate", post(simulate_policy))
         .route("/api/state/plans/{id}", get(plan_status))
         .route("/api/operations/logout", get(logout_deliveries))
         .route("/api/operations/doctor", get(doctor))
@@ -2507,6 +2508,16 @@ async fn explain(
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
     app.run(move |core| core.explain(&token, input).map(Json))
+        .await
+}
+
+async fn simulate_policy(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<crate::claims::Simulation>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.simulate_policy(&token, input).map(Json))
         .await
 }
 

@@ -6,9 +6,9 @@ use crate::{
     error::{Error, Result},
     model::{Client, Identity, Session, User},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Read-only facts needed by claim policy and subject validation.
 pub trait ClaimsTx {
@@ -546,21 +546,89 @@ pub struct Explain {
     #[serde(default)]
     pub mfa: bool,
 }
-/// Build the dry-run response after assembly has authorized and loaded its records.
-pub(crate) fn explain_decision(
-    tx: &impl ClaimsTx,
-    input: &Explain,
+
+/// A policy-only what-if. Source verification and assurance are explicit
+/// assumptions; neither is evidence that can be exchanged for a session.
+#[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Simulation {
+    pub client_id: String,
+    pub username: String,
+    pub scope: BTreeSet<String>,
+    pub group: Option<SimulatedGroup>,
+    pub source: Option<String>,
+    pub assurance: AssuranceLevel,
+}
+
+#[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SimulatedGroup {
+    pub name: String,
+    pub member: bool,
+}
+
+fn rule_groups(rule: &Rule, names: &mut BTreeSet<String>) {
+    names.extend(rule.all_groups.iter().cloned());
+    names.extend(rule.any_groups.iter().cloned());
+    names.extend(rule.denied_groups.iter().cloned());
+}
+
+fn predicate_groups(predicate: &Predicate, names: &mut BTreeSet<String>) {
+    match predicate {
+        Predicate::GroupMember { group } => {
+            names.insert(group.clone());
+        }
+        Predicate::All { of } | Predicate::Any { of } => {
+            for child in of {
+                predicate_groups(child, names);
+            }
+        }
+        Predicate::Not { condition } => predicate_groups(condition, names),
+        _ => {}
+    }
+}
+
+/// The membership facts observable from a decision. A scoped caller must be
+/// able to read each one before either explanation path evaluates the policy.
+pub(crate) fn decision_groups(client: &Client, scopes: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut names = client.allowed_groups.clone();
+    rule_groups(&client.settings.policy.access, &mut names);
+    for scope in scopes {
+        if let Some(rule) = client.settings.policy.scopes.get(scope) {
+            rule_groups(rule, &mut names);
+        }
+    }
+    if let Some(policy) = client.settings.policy.conditional() {
+        for predicate in policy.access.iter().chain(
+            scopes
+                .iter()
+                .filter_map(|scope| policy.scopes.get(scope))
+                .flatten(),
+        ) {
+            predicate_groups(predicate, &mut names);
+        }
+    }
+    names
+}
+
+pub(crate) fn maps_groups(client: &Client, scopes: &BTreeSet<String>) -> bool {
+    scopes.contains("groups")
+        || client.settings.groups_in_profile && scopes.contains("profile")
+        || client
+            .settings
+            .claim_mappings
+            .iter()
+            .any(|mapping| scopes.contains(&mapping.scope) && mapping.source == ClaimSource::Groups)
+}
+
+fn ordinary_reasons(
     client: &Client,
     user: &User,
-    device_reason: impl FnOnce() -> Result<Option<&'static str>>,
-) -> Result<Value> {
-    let groups = tx.groups_for(&user.id)?;
-    let mut reasons = rule_reasons(
-        &client.settings.policy.access,
-        &user.username,
-        &groups,
-        input.mfa,
-    );
+    scopes: &BTreeSet<String>,
+    groups: &BTreeSet<String>,
+    mfa: bool,
+) -> Vec<&'static str> {
+    let mut reasons = rule_reasons(&client.settings.policy.access, &user.username, groups, mfa);
     if !client.enabled {
         reasons.push("client_disabled");
     }
@@ -570,15 +638,196 @@ pub(crate) fn explain_decision(
     if client.service {
         reasons.push("service_client_has_no_user_identity");
     }
-    if !input.scope.is_subset(&client.scopes) {
+    if !scopes.is_subset(&client.scopes) {
         reasons.push("unregistered_scope");
     }
-    if !client.allowed_groups.is_empty() && client.allowed_groups.is_disjoint(&groups) {
+    if !client.allowed_groups.is_empty() && client.allowed_groups.is_disjoint(groups) {
         reasons.push("no_matching_client_group");
     }
-    if client.require_mfa && !input.mfa {
+    if client.require_mfa && !mfa {
         reasons.push("mfa_required");
     }
+    reasons
+}
+
+fn simulated_predicate(
+    predicate: &Predicate,
+    client: &Client,
+    groups: &BTreeSet<String>,
+    source: Option<&str>,
+    assurance: AssuranceLevel,
+) -> Option<bool> {
+    match predicate {
+        Predicate::Application { id } => Some(client.id == *id),
+        Predicate::GroupMember { group } => Some(groups.contains(group)),
+        Predicate::VerifiedSource { source: expected } => Some(source == Some(expected.as_str())),
+        Predicate::Assurance { level } => Some(*level == assurance),
+        // A hypothetical level or source does not prove a fresh authentication
+        // event or a device bound to a live session.
+        Predicate::ProofFresh { .. } | Predicate::ApprovedDevice { .. } => None,
+        Predicate::All { of } => {
+            let mut unknown = false;
+            for child in of {
+                match simulated_predicate(child, client, groups, source, assurance) {
+                    Some(false) => return Some(false),
+                    None => unknown = true,
+                    Some(true) => {}
+                }
+            }
+            (!unknown).then_some(true)
+        }
+        Predicate::Any { of } => {
+            let mut unknown = false;
+            for child in of {
+                match simulated_predicate(child, client, groups, source, assurance) {
+                    Some(true) => return Some(true),
+                    None => unknown = true,
+                    Some(false) => {}
+                }
+            }
+            if unknown { None } else { Some(false) }
+        }
+        Predicate::Not { condition } => {
+            simulated_predicate(condition, client, groups, source, assurance).map(|value| !value)
+        }
+    }
+}
+
+fn conditional_reasons(
+    predicates: &[Predicate],
+    client: &Client,
+    groups: &BTreeSet<String>,
+    source: Option<&str>,
+    assurance: AssuranceLevel,
+) -> Vec<&'static str> {
+    let mut denied = false;
+    let mut unknown = false;
+    for predicate in predicates {
+        match simulated_predicate(predicate, client, groups, source, assurance) {
+            Some(false) => denied = true,
+            None => unknown = true,
+            Some(true) => {}
+        }
+    }
+    if denied {
+        vec!["conditional_policy_denied"]
+    } else if unknown {
+        vec!["conditional_policy_requires_live_proof"]
+    } else {
+        vec![]
+    }
+}
+
+/// Evaluate only policy inputs represented by the request and snapshot. A
+/// `needs_live_proof` result can never be treated as an authorization.
+pub(crate) fn simulate_decision(
+    input: &Simulation,
+    client: &Client,
+    user: &User,
+    groups: &BTreeSet<String>,
+    source_enabled: bool,
+    device_reason: Option<&'static str>,
+) -> Value {
+    let mfa = input.assurance == AssuranceLevel::Mfa;
+    let source = input.source.as_deref().filter(|_| source_enabled);
+    let mut reasons = ordinary_reasons(client, user, &input.scope, groups, mfa);
+    if input.source.is_some() && !source_enabled {
+        reasons.push("source_disabled");
+    }
+    let acr = match input.assurance {
+        AssuranceLevel::Password => crate::assurance::PASSWORD,
+        AssuranceLevel::Mfa => crate::assurance::MFA,
+        AssuranceLevel::Federated => crate::assurance::FEDERATED,
+        AssuranceLevel::Certificate => crate::radius::eap::CERTIFICATE_ACR,
+    };
+    if !client.settings.default_acr_values.is_empty()
+        && !client
+            .settings
+            .default_acr_values
+            .iter()
+            .any(|value| value == acr)
+    {
+        reasons.push("assurance_not_accepted");
+    }
+    if let Some(reason) = device_reason {
+        reasons.push(reason);
+    }
+    let mut scope_decisions = BTreeMap::new();
+    for scope in &input.scope {
+        let mut scope_reasons = client
+            .settings
+            .policy
+            .scopes
+            .get(scope)
+            .map(|rule| rule_reasons(rule, &user.username, groups, mfa))
+            .unwrap_or_default();
+        if let Some(predicates) = client
+            .settings
+            .policy
+            .conditional()
+            .and_then(|policy| policy.scopes.get(scope))
+        {
+            scope_reasons.extend(conditional_reasons(
+                predicates,
+                client,
+                groups,
+                source,
+                input.assurance,
+            ));
+        }
+        scope_decisions.insert(scope, scope_reasons);
+    }
+    if let Some(policy) = client.settings.policy.conditional() {
+        reasons.extend(conditional_reasons(
+            &policy.access,
+            client,
+            groups,
+            source,
+            input.assurance,
+        ));
+    }
+    let mut unknown = reasons.contains(&"conditional_policy_requires_live_proof")
+        || reasons.contains(&"device_trust_session_required");
+    let mut denied = reasons.iter().any(|reason| {
+        *reason != "conditional_policy_requires_live_proof"
+            && *reason != "device_trust_session_required"
+    });
+    for scope_reasons in scope_decisions.values() {
+        unknown |= scope_reasons.contains(&"conditional_policy_requires_live_proof");
+        denied |= scope_reasons
+            .iter()
+            .any(|reason| *reason != "conditional_policy_requires_live_proof");
+    }
+    let decision = if denied {
+        "deny"
+    } else if unknown {
+        "needs_live_proof"
+    } else {
+        "allow"
+    };
+    json!({
+        "simulation": true,
+        "policy_only": true,
+        "token_issued": false,
+        "decision": decision,
+        "would_allow": if decision == "needs_live_proof" { Value::Null } else { json!(decision == "allow") },
+        "reasons": reasons,
+        "scope_decisions": scope_decisions,
+        "assurance_assumed": input.assurance,
+        "source_assumed_verified": source.is_some(),
+    })
+}
+
+/// Build the dry-run response after assembly has authorized and loaded its records.
+pub(crate) fn explain_decision(
+    tx: &impl ClaimsTx,
+    input: &Explain,
+    client: &Client,
+    user: &User,
+    device_reason: impl FnOnce() -> Result<Option<&'static str>>,
+) -> Result<Value> {
+    let groups = tx.groups_for(&user.id)?;
+    let mut reasons = ordinary_reasons(client, user, &input.scope, &groups, input.mfa);
     if let Some(reason) = device_reason()? {
         reasons.push(reason);
     }
