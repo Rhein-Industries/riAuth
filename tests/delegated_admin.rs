@@ -421,6 +421,7 @@ async fn directory_audit_and_security_grants_remain_scoped_after_write_and_revoc
         },
         username_prefix: String::new(),
         scope: String::new(),
+        direct_auth: None,
     };
     f.core
         .config
