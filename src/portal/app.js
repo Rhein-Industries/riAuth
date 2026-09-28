@@ -2,7 +2,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const { base } = RiAuth;
-  const state = { data: null, favorites: new Set(), view: "grid", section: "all", loading: false, generation: 0, request: null };
+  const state = { data: null, favorites: new Set(), view: "grid", section: "all", loading: false, generation: 0, request: null,
+    verificationMessage: null, verificationRequested: false, verificationNeedsRelogin: false };
   // Passkey flows keep cancelled options for WebKit's gesture rule; `retry` runs after re-authentication.
   const security = { flows: {}, retry: null, data: null, action: null, generation: 0, busy: false };
   const MFA_HINT = "Sign in with your passkey or authenticator code to change your passkeys.";
@@ -53,6 +54,7 @@
     // Signed-out refreshes (for example on focus after a cancelled passkey prompt) keep the flows.
     if (state.data) resetFlows();
     state.data = null; state.favorites.clear(); state.section = "all";
+    state.verificationMessage = null; state.verificationRequested = false; state.verificationNeedsRelogin = false;
     $("apps").replaceChildren(); $("account-name").textContent = ""; $("account-username").textContent = "";
     $("avatar").textContent = ""; $("avatar").removeAttribute("title"); $("account").removeAttribute("aria-label");
     $("welcome").textContent = "Everything you need, one sign-in away."; $("access-count").textContent = "";
@@ -62,7 +64,7 @@
     $("search").value = ""; $("category").replaceChildren(new Option("All categories", ""));
     $("nav-all").classList.add("active"); $("nav-all").setAttribute("aria-current", "page");
     $("nav-favorites").classList.remove("active"); $("nav-favorites").removeAttribute("aria-current");
-    $("mfa-notice").hidden = true; $("passkey-list").replaceChildren();
+    $("mfa-notice").hidden = true; $("verification-notice").hidden = true; $("passkey-list").replaceChildren();
     if ($("security-dialog").open) $("security-dialog").close();
     clearTimeout(expiryTimer);
   }
@@ -83,6 +85,20 @@
     $("login-command").textContent = ""; $("user-code").textContent = "";
   }
 
+  function renderVerificationNotice() {
+    const user = state.data?.user;
+    $("verification-notice").hidden = !user || user.email_verified !== false;
+    if (!user || user.email_verified !== false) return;
+    $("verification-notice-text").textContent = state.verificationMessage || (user.has_email
+      ? "Your email address is not verified. Send a one-use link to the address on your account."
+      : "Your account has no email address. Ask your administrator to add one before verifying it.");
+    $("verification-action").hidden = !user.has_email || state.verificationNeedsRelogin;
+    $("verification-action").textContent = state.verificationRequested ? "Resend verification email" : "Send verification email";
+    const showRelogin = user.has_email && state.verificationNeedsRelogin;
+    if (showRelogin && $("verification-relogin").hidden) RiAuth.arm();
+    $("verification-relogin").hidden = !showRelogin;
+  }
+
   async function refresh() {
     if (state.loading) { state.refreshAgain = true; return; }
     state.loading = true; const generation = state.generation;
@@ -93,7 +109,10 @@
       const changedUser = state.data?.user.id !== data.user.id;
       if (changedUser && $("security-dialog").open) $("security-dialog").close();
       state.data = data;
-      if (changedUser) { loadPreferences(); state.section = "all"; $("search").value = ""; resetFlows(); }
+      if (changedUser) {
+        loadPreferences(); state.section = "all"; $("search").value = ""; resetFlows();
+        state.verificationMessage = null; state.verificationRequested = false; state.verificationNeedsRelogin = false;
+      }
       const accessible = new Set(data.apps.map((app) => app.id));
       state.favorites = new Set([...state.favorites].filter((id) => accessible.has(id)));
       savePreferences(); stopRequest();
@@ -106,6 +125,7 @@
       $("avatar").textContent = (data.user.display_name.trim().split(/\s+/).map((part) => Array.from(part)[0]).filter(Boolean).slice(0, 2).join("") || "U").toLocaleUpperCase();
       $("welcome").textContent = `Welcome back, ${data.user.display_name}. Find your next starting point.`;
       $("access-count").textContent = `${data.apps.length} ${data.apps.length === 1 ? "app" : "apps"} available`;
+      renderVerificationNotice();
       // A password-only session cannot see applications that require MFA.
       $("mfa-notice").hidden = data.mfa !== false;
       $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey under Passkeys and security.";
@@ -267,6 +287,53 @@
     try { await navigator.clipboard.writeText($("login-command").textContent); toast("Sign-in command copied."); }
     catch { const selection = window.getSelection(), range = document.createRange(); range.selectNodeContents($("login-command")); selection.removeAllRanges(); selection.addRange(range); toast("Select and copy the command with your keyboard."); }
   });
+  RiAuth.guard($("verification-action"), () => {
+    const user = state.data?.user;
+    if (!user || user.email_verified || !user.has_email) return;
+    RiAuth.inFlight($("verification-action"), async () => {
+      try {
+        const result = await RiAuth.post("api/portal/account/verify-request", {});
+        if (state.data?.user.id !== user.id) return;
+        state.verificationNeedsRelogin = false;
+        if (result.status === "already_verified") {
+          await refresh();
+          return;
+        }
+        state.verificationRequested = true;
+        state.verificationMessage = result.status === "queued"
+          ? "Verification email queued. Check your inbox for a one-use link."
+          : "A verification email was requested recently. Check your inbox; try again later.";
+      } catch (error) {
+        if (state.data?.user.id !== user.id) return;
+        if (error.status === 401) { await refresh(); return; }
+        if (error.code === "reauthentication_required" || error.status === 403) {
+          state.verificationNeedsRelogin = true;
+          state.verificationMessage = "Sign in again to request a verification link. This confirms it is still you.";
+        } else if (error.code === "delivery_unavailable") {
+          state.verificationMessage = "Email delivery is unavailable. Contact your administrator and try again later.";
+        } else if (error.status === 429) {
+          state.verificationMessage = "Too many requests from your network. Try again in a minute.";
+        } else {
+          state.verificationMessage = "Could not request a verification email. Check your connection and try again.";
+        }
+      }
+      renderVerificationNotice();
+    });
+  });
+  RiAuth.guard($("verification-relogin"), () => RiAuth.inFlight($("verification-relogin"), async () => {
+    const username = state.data?.user.username;
+    if (!username) return;
+    try {
+      await RiAuth.post("api/portal/sign-out", { scope: "browser" });
+      state.generation += 1; clearIdentity(); stopRequest(); screen("auth"); connection("Not signed in");
+      $("auth-description").textContent = "Sign in again, then request a new verification link.";
+      $("login-username").value = username;
+      ($("passkey-login").hidden ? $("login-password") : $("passkey-login")).focus();
+    } catch {
+      state.verificationMessage = "Could not start a fresh sign-in. Try again or use Sign out, then sign in.";
+      renderVerificationNotice();
+    }
+  }));
   RiAuth.guard($("sign-out"), async () => {
     $("sign-out").disabled = true; state.generation += 1;
     try {

@@ -167,7 +167,8 @@ impl Core {
                 }));
             }
             apps.sort_by(|a,b| a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase()).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
-            Ok(json!({"user":{"id":user.id,"username":user.username,"display_name":user.display_name},"apps":apps,"expires_at":session.expires_at,"mfa":session.identity.mfa,
+            Ok(json!({"user":{"id":user.id,"username":user.username,"display_name":user.display_name,
+                "email_verified":user.email_verified,"has_email":user.email.is_some()},"apps":apps,"expires_at":session.expires_at,"mfa":session.identity.mfa,
                 "mfa_available":user.totp_secret.is_some() || user.has_passkeys}))
         })
     }
@@ -572,7 +573,7 @@ impl Core {
     }
 
     /// The browser session behind the SSO cookie, never a bearer token, and its user.
-    fn portal_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
+    pub(crate) fn portal_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
         let session = self
             .browser_session(tx, sso)?
             .ok_or_else(Error::unauthorized)?;

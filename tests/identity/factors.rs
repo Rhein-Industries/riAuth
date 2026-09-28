@@ -808,10 +808,19 @@ fn invitations_require_live_scoped_authority_are_single_use_and_cannot_replace_e
         groups: strings(&["invited"]),
     };
     f.core.account_invite(&token, input.clone()).unwrap();
-    assert!(f.core.account_invite(&token, input).is_err());
+    let first_code = mail_code(&f.core);
     let user = f.core.get_resource(&f.admin, "user", "newcomer").unwrap();
     assert_eq!(user["enabled"], false);
+    let pending_id = user["id"].clone();
+    let renewed = f.core.account_invite(&token, input).unwrap();
+    assert_eq!(renewed["user"]["id"], pending_id);
     let code = mail_code(&f.core);
+    assert_ne!(code, first_code);
+    assert!(
+        f.core
+            .account_complete(first_code, Purpose::Invite, Some(PASSWORD.into()))
+            .is_err()
+    );
     f.core
         .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
         .unwrap();

@@ -1,6 +1,7 @@
 use crate::{
     api::{App, browser_response, cookie, credential_floor, sso_cookie},
     error::{Error, Result},
+    lifecycle::Purpose,
 };
 use axum::{
     Json, Router,
@@ -32,6 +33,8 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
+        .route("/account/accept", get(account_page))
+        .route("/account/verify", get(account_page))
         .route(
             "/portal/assets/app.css",
             get(|| async {
@@ -68,6 +71,15 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
+        .route(
+            "/portal/assets/account.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("account.js"),
+                )
+            }),
+        )
         .route("/events", get(events_page))
         .route("/events/", get(events_page))
         .route(
@@ -89,6 +101,12 @@ pub fn routes() -> Router<App> {
             }),
         )
         .route("/api/portal", get(catalogue))
+        .route("/api/portal/account/accept", post(account_accept))
+        .route("/api/portal/account/verify", post(account_verify))
+        .route(
+            "/api/portal/account/verify-request",
+            post(account_verify_request),
+        )
         .route("/api/portal/sign-in", post(start))
         .route("/api/portal/sign-in/{id}", post(poll))
         .route("/api/portal/sign-in/{id}/cancel", post(cancel))
@@ -153,6 +171,53 @@ async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
         placeholder_sso(&app, &mut response);
     }
     response
+}
+
+/// Opening an email link only serves the page. Its one-time proof stays in the
+/// fragment, which is never sent with this GET, and is spent only by a user POST.
+async fn account_page(State(app): State<App>) -> Response {
+    portal_html(include_str!("account.html"), &app, true)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccountCompletion {
+    token: String,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+async fn account_accept(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Invite, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+async fn account_verify(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Verify, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+async fn account_verify_request(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| core.portal_verify_request(sso.as_deref()).map(Json))
+        .await
 }
 
 /// How long a placeholder SSO cookie lasts if no sign-in replaces it.

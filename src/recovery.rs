@@ -93,6 +93,8 @@ pub const INVALIDATED: &[&str] = &[
 /// Entries accepted only on the lost timeline are absent and cannot be rebuilt;
 /// each artifact's own lifetime is the remaining bound.
 pub const REPLAY_CACHES: &[&str] = &[
+    // Used/revoked account-proof tombstones preserve useful replay outcomes.
+    "account_proof_outcomes",
     "assertion_replays",
     "dpop_replays",
     "saml_replays",
@@ -124,6 +126,7 @@ const RETAINED: &[&str] = &[
     "meta",
     "users",
     "usernames",
+    "invitation_reservations",
     "groups",
     "sources",
     "saml_subjects",
@@ -312,7 +315,17 @@ pub(crate) fn invalidate(
             let epoch = user["epoch"]
                 .as_u64()
                 .ok_or_else(|| Error::internal("User record has no epoch"))?;
-            user["epoch"] = Value::from(epoch.saturating_add(STRIDE));
+            let new_epoch = epoch.saturating_add(STRIDE);
+            crate::lifecycle::rebase_invitation_reservation(
+                tx,
+                &id,
+                user["username"]
+                    .as_str()
+                    .ok_or_else(|| Error::internal("User record has no username"))?,
+                epoch,
+                new_epoch,
+            )?;
+            user["epoch"] = Value::from(new_epoch);
             // A restored enrollment secret could confirm TOTP for its remaining window.
             if user
                 .get("totp_pending")

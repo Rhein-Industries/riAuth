@@ -1,15 +1,14 @@
 # Account email and recovery
 
-The account workflow stays in the CLI. The SMTP service sends fixed-purpose messages containing a one-use code and a terminal command. It does not host verification or password-reset forms.
+Invitation acceptance and email verification have browser pages. The SMTP service sends fixed-purpose messages with a one-use code, a browser link for those two journeys, and a terminal command. Password reset remains in the CLI.
 
 ## What still needs the terminal
 
-Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, give consent and confirm RP sign-out. Everything below still needs the `riauth` CLI:
+Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, give consent, confirm RP sign-out, accept an invitation and verify an email address. The CLI remains available for invitation acceptance and verification. These tasks still need the `riauth` CLI:
 
 | Task | Command |
 | --- | --- |
 | Request and complete a password reset | `riauth account reset-request NAME`, `riauth account reset --token-stdin` |
-| Accept an invitation, verify an email address | `riauth account accept --token-stdin`, `riauth account verify --token-stdin` |
 | Change your own password | `riauth passwd` |
 | Enroll TOTP, rotate recovery codes | `riauth mfa enroll`, `riauth mfa confirm`, `riauth mfa recovery-codes --out FILE` |
 | List or revoke your sessions and remembered consent | `riauth session list`, `riauth session revoke ID`, `riauth consents` |
@@ -17,7 +16,7 @@ Browsers can sign in (passkey, or password with an optional TOTP or recovery cod
 | Sign in with or link an upstream source | `riauth source start ID --out FILE`, `riauth source finish --file FILE` |
 | Administration | every `user`, `group`, `client` and other management command |
 
-A user without a terminal therefore cannot recover a forgotten password alone; an administrator can set a new one with `riauth user passwd NAME`, which signs the user out everywhere, clears a lockout and keeps their factors. Such users should enroll passkeys in the portal rather than TOTP. Emails still point to the CLI. Decide whether terminal-only recovery meets your users' needs before deployment; see [current limitations](limitations.md).
+A user without a terminal therefore cannot recover a forgotten password alone; an administrator can set a new one with `riauth user passwd NAME`, which signs the user out everywhere, clears a lockout and keeps their factors. Such users should enroll passkeys in the portal rather than TOTP. Decide whether terminal-only recovery meets your users' needs before deployment; see [current limitations](limitations.md).
 
 Configure delivery in `riauth.toml`:
 
@@ -50,13 +49,17 @@ An invitation file follows `riauth schema invitation`. From the repository root,
 {"username":"alice","email":"alice@example.com","display_name":"Alice","groups":["engineering"]}
 ```
 
-Invitations create disabled, non-administrator accounts. Acceptance through `riauth account accept --token-stdin` sets a password, verifies the delivered email address, enables the account and adds the approved groups. Existing accounts cannot be replaced. The invitation creator must still be an enabled administrator or an active agent with the required `user.write` and `group.members` permissions when acceptance occurs. An agent attached to a parent user also requires that parent to remain enabled and non-administrative. Cancellation invalidates the invitation; the reserved account stays disabled.
+Invitations create disabled, non-administrator accounts. Acceptance through the emailed browser link or `riauth account accept --token-stdin` sets a password, verifies the delivered email address, enables the account and adds the approved groups. Existing unrelated or accepted accounts cannot be replaced. An authorized administrator or agent can issue a new invitation for the same still-pending username, including after expiry or cancellation; this preserves the reserved user ID and invalidates any earlier code. The invitation creator must still be an enabled administrator or an active agent with the required `user.write` and `group.members` permissions when acceptance occurs. An agent attached to a parent user also requires that parent to remain enabled and non-administrative. Cancellation invalidates the invitation; the reserved account stays disabled.
+
+The browser links put the code in a URL fragment, which is not sent with the GET request. Opening or scanning a link only renders the page. The page removes the fragment from the address bar and sends the code to a same-origin POST endpoint only when the person explicitly accepts the invitation or verifies the address. The server performs the same one-time validation as the CLI. Expired, revoked, replaced and already-used links have distinct responses; request a new link or contact the invitation administrator when needed. Verification does not create a session or change MFA factors; invitation acceptance requires a fresh sign-in afterward.
+
+Signed-in users with an unverified address can request or renew the verification email in the applications portal. The request requires authentication within the last five minutes; the portal offers a fresh sign-in when needed. It reports whether delivery was queued, a recent request is still cooling down, or the address is already verified. Queued means the request entered the delivery outbox; it does not confirm arrival. Opening the resulting link never consumes the proof; only the explicit verification POST does.
 
 Verification codes last 24 hours, reset codes 30 minutes and invitations seven days. They are hashed in the proof store and bound to purpose, user ID, current email address and credential version. A reset is available only to enabled accounts with a verified email and an existing local password. Upstream-only accounts are not silently converted into password accounts. Reset requests return the same accepted response for unknown or ineligible accounts, and are throttled by account and network origin. A password reset revokes sessions and grants, clears password lockout, and preserves every enrolled MFA factor.
 
 Password reset and invitation acceptance participate in the configured [password history](enterprise/ENT-08.md): `password_history = 5` by default, `0` disables checking, and at most 24 hashes are retained per user. A reused password fails without consuming a successful account transition. Imported hashes are retained for later plaintext comparisons; an imported hash alone cannot be checked for reuse without its plaintext.
 
-Interactive completion prompts for the new password. Automation supplies `RIAUTH_EMAIL_TOKEN` and `RIAUTH_PASSWORD` through its secret mechanism; codes and passwords are not command-line arguments. Tokens are never returned by management or delivery-status endpoints. Pending email bodies necessarily contain the code until delivery; configure database encryption to protect the durable outbox at rest. Delivery removes its body; expired or superseded messages are redacted during maintenance.
+Interactive CLI completion prompts for the new password. Automation supplies `RIAUTH_EMAIL_TOKEN` and `RIAUTH_PASSWORD` through its secret mechanism; codes and passwords are not command-line arguments. Tokens are never returned by management or delivery-status endpoints. Pending email bodies necessarily contain the code until delivery; configure database encryption to protect the durable outbox at rest. Delivery removes its body; expired or superseded messages are redacted during maintenance.
 
 For later departures, [scheduled offboarding](enterprise/ENT-10.md) persists a job and revokes access locally when maintenance reaches its absolute execution time. Its timezone field is an audit label, not a conversion rule. Outbound SCIM deactivation requires a separate reviewed provisioning plan.
 

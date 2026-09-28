@@ -4,9 +4,10 @@ use crate::{
     core::{Core, audit, make_user, user_by_name, validate_display, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Group, NewUser, User, UserView},
+    model::{Group, NewUser, Session, User, UserView},
     store::Tx,
 };
+use axum::http::StatusCode;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -122,6 +123,29 @@ struct Proof {
     groups: BTreeSet<String>,
     creator: Option<String>,
 }
+/// A disabled invited account remains identifiable after its proof expires or is revoked.
+/// The immutable user ID prevents a later account with the same username from inheriting it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InvitationReservation {
+    username: String,
+    created_by: String,
+    epoch: u64,
+}
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ProofEnd {
+    Used,
+    Revoked,
+    Replaced,
+    Expired,
+}
+#[derive(Serialize, Deserialize)]
+struct ProofOutcome {
+    purpose: Purpose,
+    reason: ProofEnd,
+    retain_until: u64,
+}
 #[derive(Clone, Serialize, Deserialize)]
 struct Delivery {
     id: String,
@@ -166,6 +190,50 @@ fn email(value: &str) -> Result<()> {
 fn proof_key(user: &User, purpose: Purpose) -> String {
     format!("{}:{}", user.id, purpose.name())
 }
+fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
+    if let Some(proof) = tx.get::<Proof>("account_proofs", hash)? {
+        tx.delete("account_proofs", hash)?;
+        tx.put(
+            "account_proof_outcomes",
+            hash,
+            &ProofOutcome {
+                purpose: proof.purpose,
+                reason,
+                retain_until: proof.expires_at.max(now()).saturating_add(8 * 86400),
+            },
+        )?;
+    }
+    Ok(())
+}
+fn proof_error(reason: Option<ProofEnd>) -> Error {
+    match reason {
+        Some(ProofEnd::Expired) => Error::new(
+            StatusCode::GONE,
+            "account_code_expired",
+            "Account link expired; request a new one",
+        ),
+        Some(ProofEnd::Revoked) => Error::new(
+            StatusCode::GONE,
+            "account_code_revoked",
+            "Invitation was revoked; contact your administrator",
+        ),
+        Some(ProofEnd::Replaced) => Error::new(
+            StatusCode::GONE,
+            "account_code_replaced",
+            "Account link was replaced by a newer one",
+        ),
+        Some(ProofEnd::Used) => Error::new(
+            StatusCode::GONE,
+            "account_code_used",
+            "Account link was already used",
+        ),
+        None => Error::new(
+            StatusCode::BAD_REQUEST,
+            "account_code_invalid",
+            "Invalid account link",
+        ),
+    }
+}
 fn enqueue(
     core: &Core,
     tx: &Tx<'_>,
@@ -181,7 +249,15 @@ fn enqueue(
     email(recipient)?;
     let key = proof_key(user, purpose);
     if let Some(old) = tx.get::<String>("account_latest", &key)? {
-        tx.delete("account_proofs", &old)?;
+        let reason = if tx
+            .get::<Proof>("account_proofs", &old)?
+            .is_some_and(|proof| proof.expires_at <= now())
+        {
+            ProofEnd::Expired
+        } else {
+            ProofEnd::Replaced
+        };
+        retire_proof(tx, &old, reason)?;
     }
     let token = zeroize::Zeroizing::new(crypto::random_token("ri_mail_"));
     let hash = digest(&token);
@@ -210,8 +286,17 @@ fn enqueue(
         Purpose::Reset => "Reset your riAuth password",
         Purpose::Invite => "Your riAuth account invitation",
     };
+    let browser_link = match purpose {
+        Purpose::Invite | Purpose::Verify => format!(
+            "Open in your browser: {}/account/{}#token={}\n\n",
+            core.config.issuer.trim_end_matches('/'),
+            purpose.name(),
+            token.as_str()
+        ),
+        Purpose::Reset => String::new(),
+    };
     let body = format!(
-        "{subject}\n\nServer: {}\nAccount: {}\n\nRun: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. A password reset keeps your enrolled MFA factors. If you did not request this message, ignore it.\n",
+        "{subject}\n\nServer: {}\nAccount: {}\n\n{browser_link}Run: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. A password reset keeps your enrolled MFA factors. If you did not request this message, ignore it.\n",
         core.config.issuer,
         user.username,
         core.config.issuer,
@@ -257,6 +342,95 @@ fn request_allowed(tx: &Tx<'_>, username: &str, purpose: Purpose) -> Result<bool
     tx.put("mail_limits", &key, &(start, count + 1, now()))?;
     Ok(true)
 }
+fn verify_request_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    user: &User,
+    session: &Session,
+) -> Result<&'static str> {
+    if now().saturating_sub(session.identity.auth_time) > 300 {
+        return Err(Error::forbidden());
+    }
+    let allowed = request_allowed(tx, &user.username, Purpose::Verify)?;
+    if user.email_verified {
+        return Ok("already_verified");
+    }
+    if !allowed {
+        return Ok("cooldown");
+    }
+    enqueue(core, tx, user, Purpose::Verify, BTreeSet::new(), None)?;
+    audit(tx, &user.id, "account.verification.request", &user.id)?;
+    Ok("queued")
+}
+fn pending_invitation_reservation(
+    tx: &Tx<'_>,
+    user: &User,
+) -> Result<Option<InvitationReservation>> {
+    if user.enabled
+        || user.admin
+        || !user.password_hash.is_empty()
+        || user.email_verified
+        || user.has_passkeys
+        || user.totp_secret.is_some()
+        || user.totp_pending.is_some()
+        || !user.recovery_codes.is_empty()
+    {
+        return Ok(None);
+    }
+    if let Some(reservation) =
+        tx.get::<InvitationReservation>("invitation_reservations", &user.id)?
+    {
+        return Ok((reservation.username == user.username
+            && reservation.epoch == user.epoch
+            && !reservation.created_by.is_empty())
+        .then_some(reservation));
+    }
+    // Legacy invitations predate the durable reservation. A still-stored proof,
+    // including one past expiry, can establish their provenance for migration.
+    let Some(hash) = tx.get::<String>("account_latest", &proof_key(user, Purpose::Invite))? else {
+        return Ok(None);
+    };
+    let Some(proof) = tx.get::<Proof>("account_proofs", &hash)? else {
+        return Ok(None);
+    };
+    if proof.purpose != Purpose::Invite
+        || proof.user_id != user.id
+        || proof.epoch != user.epoch
+        || user.email.as_deref() != Some(proof.email.as_str())
+    {
+        return Ok(None);
+    }
+    Ok(proof
+        .creator
+        .filter(|creator| !creator.is_empty())
+        .map(|created_by| InvitationReservation {
+            username: user.username.clone(),
+            created_by,
+            epoch: user.epoch,
+        }))
+}
+
+/// Recovery advances account epochs to revoke restored authority. Keep the
+/// durable provenance of a still-pending invitation bound to that same account
+/// so an authorized administrator can reissue it after restore. An already
+/// mismatched reservation remains mismatched and cannot be revived.
+pub(crate) fn rebase_invitation_reservation(
+    tx: &Tx<'_>,
+    user_id: &str,
+    username: &str,
+    old_epoch: u64,
+    new_epoch: u64,
+) -> Result<()> {
+    if let Some(mut reservation) =
+        tx.get::<InvitationReservation>("invitation_reservations", user_id)?
+        && reservation.username == username
+        && reservation.epoch == old_epoch
+    {
+        reservation.epoch = new_epoch;
+        tx.put("invitation_reservations", user_id, &reservation)?;
+    }
+    Ok(())
+}
 fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
@@ -286,14 +460,23 @@ impl Core {
         require_mail(self)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
-            if now().saturating_sub(session.identity.auth_time) > 300 {
-                return Err(Error::forbidden());
-            }
-            if request_allowed(tx, &user.username, Purpose::Verify)? && !user.email_verified {
-                enqueue(self, tx, &user, Purpose::Verify, BTreeSet::new(), None)?;
-                audit(tx, &user.id, "account.verification.request", &user.id)?;
-            }
+            verify_request_in(self, tx, &user, &session)?;
             Ok(json!({"accepted":true}))
+        })
+    }
+    pub fn portal_verify_request(&self, sso: Option<&str>) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_session(tx, sso)?;
+            require_mail(self)?;
+            if now().saturating_sub(session.identity.auth_time) > 300 {
+                return Err(Error::new(
+                    StatusCode::FORBIDDEN,
+                    "reauthentication_required",
+                    "Sign in again before requesting a verification email",
+                ));
+            }
+            let status = verify_request_in(self, tx, &user, &session)?;
+            Ok(json!({"accepted":true,"status":status}))
         })
     }
     pub fn account_reset_request(&self, username: &str) -> Result<Value> {
@@ -328,8 +511,26 @@ impl Core {
                 tx.get::<Group>("groups", group)?
                     .ok_or_else(|| Error::missing("Invitation group not found"))?;
             }
-            if tx.get::<String>("usernames", &input.username)?.is_some() {
-                return Err(Error::conflict("User already exists"));
+            if let Some(id) = tx.get::<String>("usernames", &input.username)? {
+                let mut user = tx
+                    .get::<User>("users", &id)?
+                    .ok_or_else(|| Error::conflict("User already exists"))?;
+                let reservation = pending_invitation_reservation(tx, &user)?
+                    .ok_or_else(|| Error::conflict("User already exists"))?;
+                user.email = Some(input.email);
+                user.display_name = input.display_name;
+                tx.put("users", &user.id, &user)?;
+                tx.put("invitation_reservations", &user.id, &reservation)?;
+                enqueue(
+                    self,
+                    tx,
+                    &user,
+                    Purpose::Invite,
+                    input.groups,
+                    Some(actor.id.clone()),
+                )?;
+                audit(tx, &actor.id, "user.invitation.reissue", &user.id)?;
+                return Ok(json!({"user":UserView::from(&user),"delivery_queued":true}));
             }
             let mut user = make_user(NewUser {
                 username: input.username,
@@ -342,6 +543,15 @@ impl Core {
             user.enabled = false;
             tx.put("users", &user.id, &user)?;
             tx.put("usernames", &user.username, &user.id)?;
+            tx.put(
+                "invitation_reservations",
+                &user.id,
+                &InvitationReservation {
+                    username: user.username.clone(),
+                    created_by: actor.id.clone(),
+                    epoch: user.epoch,
+                },
+            )?;
             enqueue(
                 self,
                 tx,
@@ -358,10 +568,14 @@ impl Core {
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
             let user = user_by_name(tx, username)?;
+            if let Some(reservation) = pending_invitation_reservation(tx, &user)? {
+                tx.put("invitation_reservations", &user.id, &reservation)?;
+            }
             if let Some(hash) =
                 tx.get::<String>("account_latest", &proof_key(&user, Purpose::Invite))?
             {
-                tx.delete("account_proofs", &hash)?;
+                retire_proof(tx, &hash, ProofEnd::Revoked)?;
+                tx.delete("account_latest", &proof_key(&user, Purpose::Invite))?;
             }
             audit(tx, &actor.id, "user.invitation.revoke", &user.id)?;
             Ok(json!({"revoked":true}))
@@ -375,7 +589,7 @@ impl Core {
     ) -> Result<Value> {
         let token = zeroize::Zeroizing::new(token);
         if !token.starts_with("ri_mail_") || token.len() > 128 {
-            return Err(Error::bad("Invalid account code"));
+            return Err(proof_error(None));
         }
         let password = password.map(zeroize::Zeroizing::new);
         let password_hash = match purpose {
@@ -392,14 +606,32 @@ impl Core {
         };
         self.store.write(|tx| {
             let hash = digest(&token);
-            let proof = tx
-                .get::<Proof>("account_proofs", &hash)?
-                .filter(|p| p.expires_at > now() && p.purpose == purpose)
-                .ok_or_else(|| Error::bad("Account code expired, consumed or invalid"))?;
+            let proof = match tx.get::<Proof>("account_proofs", &hash)? {
+                Some(proof) if proof.purpose != purpose => return Err(proof_error(None)),
+                Some(proof) if proof.expires_at <= now() => {
+                    return Err(proof_error(Some(ProofEnd::Expired)));
+                }
+                Some(proof) => proof,
+                None => {
+                    let reason = tx
+                        .get::<ProofOutcome>("account_proof_outcomes", &hash)?
+                        .filter(|outcome| {
+                            outcome.purpose == purpose && outcome.retain_until > now()
+                        })
+                        .map(|outcome| outcome.reason);
+                    return Err(proof_error(reason));
+                }
+            };
             let mut user = tx
                 .get::<User>("users", &proof.user_id)?
                 .filter(|u| u.epoch == proof.epoch && u.email.as_deref() == Some(&proof.email))
-                .ok_or_else(|| Error::bad("Account changed; request a new code"))?;
+                .ok_or_else(|| {
+                    Error::new(
+                        StatusCode::CONFLICT,
+                        "account_changed",
+                        "Account changed; request a new link",
+                    )
+                })?;
             let apply_password = |user: &mut User| -> Result<()> {
                 let hashed = password_hash
                     .clone()
@@ -451,9 +683,12 @@ impl Core {
                 }
                 _ => return Err(Error::forbidden()),
             }
-            tx.delete("account_proofs", &hash)?;
+            retire_proof(tx, &hash, ProofEnd::Used)?;
             tx.delete("account_latest", &proof_key(&user, purpose))?;
             tx.put("users", &user.id, &user)?;
+            if purpose == Purpose::Invite {
+                tx.delete("invitation_reservations", &user.id)?;
+            }
             if purpose != Purpose::Verify {
                 tx.delete("attempts", &user.username)?;
                 crate::logout::queue_user(tx, &user.id)?;
@@ -574,7 +809,12 @@ pub async fn deliver(core: Core) -> Result<()> {
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (key, proof) in tx.maintenance_page::<Proof>("account_proofs")? {
         if proof.expires_at <= at {
-            tx.delete("account_proofs", &key)?;
+            retire_proof(tx, &key, ProofEnd::Expired)?;
+        }
+    }
+    for (key, outcome) in tx.maintenance_page::<ProofOutcome>("account_proof_outcomes")? {
+        if outcome.retain_until <= at {
+            tx.delete("account_proof_outcomes", &key)?;
         }
     }
     for (key, hash) in tx.maintenance_page::<String>("account_latest")? {

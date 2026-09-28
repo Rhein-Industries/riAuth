@@ -2364,20 +2364,33 @@ pub fn invitation_acceptance_revalidates_creator(backend: Backend) {
     let pending_user = user(&f, "pending");
     assert!(!pending_user.enabled);
     assert!(pending_user.password_hash.is_empty());
-    let before_duplicate = f.snapshot().unwrap();
-    assert!(f.core.account_invite(&inviter, pending).is_err());
+    let renewed = f.core.account_invite(&inviter, pending).unwrap();
+    assert_eq!(renewed["user"]["id"], pending_user.id);
+    assert_eq!(audit_count(&f, "user.invitation.reissue"), 1);
+    let renewed_code = mail_codes_for(&f, "pending")
+        .into_iter()
+        .find(|renewed| renewed != &code)
+        .unwrap();
+    let after_reissue = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .unwrap_err()
+            .code,
+        "account_code_replaced"
+    );
     assert!(
         f.core
-            .account_complete(code.clone(), Purpose::Verify, None)
+            .account_complete(renewed_code.clone(), Purpose::Verify, None)
             .is_err()
     );
-    f.assert_snapshot(&before_duplicate);
+    f.assert_snapshot(&after_reissue);
 
     f.core.revoke_agent(&f.admin, "inviter").unwrap();
     let before_rejected_acceptance = f.snapshot().unwrap();
     assert!(
         f.core
-            .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .account_complete(renewed_code.clone(), Purpose::Invite, Some(PASSWORD.into()))
             .is_err()
     );
     f.assert_snapshot(&before_rejected_acceptance);
