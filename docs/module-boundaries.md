@@ -503,3 +503,39 @@ The shared model no longer imports protocol code directly. Protocol and
 management modules still use concrete storage and Core operations, and the
 server/API/client contracts remain intra-crate. A03 acceptance still needs
 those boundaries and reviewed distribution assembly parity.
+
+## Wave 11: client trust persistence ports
+
+[JOSE](../src/jose.rs) now consumes a client or machine assertion through an
+`AssertionTx` port. [Server assembly](../src/assembly.rs) maps its two methods
+to the existing `assertion_replays` lookup and write on the caller's `Tx`.
+The same namespace, issuer/JTI digest, lifetime checks, expiry comparison and
+transaction remain in use, so a failed token or grant operation still rolls
+back replay consumption. The DPoP replay port and its separate bucket are
+unchanged.
+
+[Issuer validation](../src/issuer.rs) now asks an `IssuerTx` port for the
+primary issuer and whether another client claims an issuer. Its URL checks,
+uniqueness rule and error order are unchanged. The concrete adapter and the
+existing `Core::provider_discovery` and `Core::discover_provider_path` methods
+live in [issuer assembly](../src/assembly/issuer.rs). Protocol code still
+builds the discovery fields and matches provider paths; assembly performs the
+same client reads in the same order. No persisted record or public response
+shape changed.
+
+The source scan covers 113 Rust files before and 114 after this cut. It now
+guards JOSE and issuer against direct storage references, and issuer against
+direct Core references.
+
+| Explicit source edge | Before | Wave 11 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 32 | 30 |
+| `protocol -> Core` | 33 | 32 |
+| `server_assembly -> protocol` | 1 | 2 |
+| `server_assembly -> storage` | 1 | 2 |
+| `storage -> identity` | 0 | 0 |
+
+Thirty protocol files still name storage directly. Management still owns
+concrete Core/storage operations, and API/server and client still couple to
+Core. These ports are intra-crate seams; separate crate contracts and reviewed
+Essentials/Platform assembly parity remain A03 work.

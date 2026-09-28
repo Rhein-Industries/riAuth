@@ -4,7 +4,6 @@ pub use crate::model::jwk::{PublicJwk, PublicJwks};
 use crate::{
     crypto::{digest, now},
     error::{Error, Result},
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
@@ -13,6 +12,12 @@ use std::collections::BTreeSet;
 
 pub const ASSERTION_TYPE: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 pub const JWT_GRANT: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+
+/// Assertion replay state in the transaction that consumes the assertion.
+pub trait AssertionTx {
+    fn assertion_replay_expiry(&self, assertion_id: &str) -> Result<Option<u64>>;
+    fn record_assertion_replay(&self, assertion_id: &str, expires_at: u64) -> Result<()>;
+}
 
 impl PublicJwk {
     pub fn algorithm(&self) -> Result<Algorithm> {
@@ -282,7 +287,7 @@ mod signed_claim_tests {
 }
 
 /// Consume a short-lived assertion inside the same transaction as its result.
-pub fn consume_assertion(tx: &Tx<'_>, claims: &Value, namespace: &str) -> Result<()> {
+pub fn consume_assertion(tx: &impl AssertionTx, claims: &Value, namespace: &str) -> Result<()> {
     let at = now();
     let iat = claims["iat"]
         .as_u64()
@@ -300,11 +305,8 @@ pub fn consume_assertion(tx: &Tx<'_>, claims: &Value, namespace: &str) -> Result
         ));
     }
     let key = digest(&format!("{namespace}\0{}\0{jti}", claims["iss"]));
-    if tx
-        .get::<u64>("assertion_replays", &key)?
-        .is_some_and(|e| e > at)
-    {
+    if tx.assertion_replay_expiry(&key)?.is_some_and(|e| e > at) {
         return Err(Error::bad("Assertion already used"));
     }
-    tx.put("assertion_replays", &key, &exp)
+    tx.record_assertion_replay(&key, exp)
 }

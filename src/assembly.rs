@@ -1,5 +1,7 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
+mod issuer;
+
 use crate::{
     config::Config,
     crypto,
@@ -112,5 +114,15 @@ impl DpopTx for Tx<'_> {
 
     fn record_replay(&self, proof_id: &str, expires_at: u64) -> Result<()> {
         self.put("dpop_replays", proof_id, &expires_at)
+    }
+}
+
+impl crate::jose::AssertionTx for Tx<'_> {
+    fn assertion_replay_expiry(&self, assertion_id: &str) -> Result<Option<u64>> {
+        self.get("assertion_replays", assertion_id)
+    }
+
+    fn record_assertion_replay(&self, assertion_id: &str, expires_at: u64) -> Result<()> {
+        self.put("assertion_replays", assertion_id, &expires_at)
     }
 }
