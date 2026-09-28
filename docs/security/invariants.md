@@ -94,7 +94,7 @@ hashes, lockout, TOTP replay state and recovery-code digests; nested results com
 spent factors even after a rejected transaction. [Passkeys](../../src/passkey.rs)
 `browser_passkey_finish` verifies current credential ownership and increasing
 nonzero counters (zero-counter credentials remain supported).
-[Crypto](../../src/crypto.rs) and [history](../../src/password_history.rs)
+[Crypto](../../src/crypto.rs) and [history](../../src/identity/password_history.rs)
 handle hashing, imported hashes, upgrades and reuse.
 
 **Existing regressions.** [Factors](../../tests/identity/factors.rs)
