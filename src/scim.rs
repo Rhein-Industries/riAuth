@@ -1190,6 +1190,11 @@ impl Core {
             } else {
                 normalize(input)?
             };
+            if kind == "Users" && !patch {
+                if let Some(value) = data.get("name").cloned() {
+                    data["name"] = Value::Object(name_fields(&value)?);
+                }
+            }
             let schema = if kind == "Users" { USER } else { GROUP };
             if !data["schemas"]
                 .as_array()
@@ -1785,6 +1790,113 @@ fn patch_multi_selected(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum NamePath {
+    Whole,
+    Sub(&'static str),
+}
+
+fn name_path(kind: &str, path: &str) -> Result<Option<NamePath>> {
+    let prefix = format!("{USER}:");
+    let path = if path.get(..prefix.len()).is_some_and(|head| head.eq_ignore_ascii_case(&prefix)) {
+        &path[prefix.len()..]
+    } else if path.contains(':') {
+        return Err(Error::oauth("invalidPath", "Unsupported PATCH schema path"));
+    } else {
+        path
+    };
+    let found = if path.eq_ignore_ascii_case("name") {
+        Some(NamePath::Whole)
+    } else if let Some((root, sub)) = path.split_once('.') {
+        if root.eq_ignore_ascii_case("name") {
+            let sub = match sub.to_ascii_lowercase().as_str() {
+                "formatted" => "formatted",
+                "givenname" => "givenName",
+                "familyname" => "familyName",
+                _ => return Err(Error::oauth("invalidPath", "Unsupported name sub-attribute")),
+            };
+            Some(NamePath::Sub(sub))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if found.is_some() && kind != "Users" {
+        return Err(Error::oauth("invalidPath", "Name is not a Group attribute"));
+    }
+    Ok(found)
+}
+
+fn name_text(value: &Value) -> Result<()> {
+    let text = value.as_str().ok_or_else(|| Error::bad("Name sub-attribute must be a string"))?;
+    if text.is_empty() || text.len() > 200 || text.chars().any(char::is_control) {
+        return Err(Error::bad("Name sub-attribute must be 1–200 bytes without control characters"));
+    }
+    Ok(())
+}
+
+fn name_fields(value: &Value) -> Result<Map<String, Value>> {
+    let source = value.as_object().ok_or_else(|| Error::bad("name must be a complex object"))?;
+    let mut fields = Map::new();
+    for (key, value) in source {
+        let canonical = match key.to_ascii_lowercase().as_str() {
+            "formatted" => "formatted",
+            "givenname" => "givenName",
+            "familyname" => "familyName",
+            _ => return Err(Error::bad("Unsupported name sub-attribute")),
+        };
+        name_text(value)?;
+        if fields.insert(canonical.to_owned(), value.clone()).is_some() {
+            return Err(Error::bad("Duplicate name sub-attribute"));
+        }
+    }
+    Ok(fields)
+}
+
+fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) -> Result<()> {
+    if operation == "remove" {
+        match path {
+            NamePath::Whole => {
+                if data.get("name").is_none_or(Value::is_null) {
+                    return Err(Error::oauth("noTarget", "Name path is not assigned"));
+                }
+                data.as_object_mut().unwrap().remove("name");
+            }
+            NamePath::Sub(sub) => {
+                let mut fields = data.get("name").filter(|value| !value.is_null())
+                    .map(name_fields).transpose()?
+                    .ok_or_else(|| Error::oauth("noTarget", "Name path is not assigned"))?;
+                if fields.remove(sub).is_none() {
+                    return Err(Error::oauth("noTarget", "Name path is not assigned"));
+                }
+                if fields.is_empty() {
+                    data.as_object_mut().unwrap().remove("name");
+                } else {
+                    data["name"] = Value::Object(fields);
+                }
+            }
+        }
+        return Ok(());
+    }
+    let updates = match path {
+        NamePath::Whole => {
+            let fields = name_fields(value)?;
+            if fields.is_empty() { return Err(Error::bad("name PATCH value needs a sub-attribute")); }
+            fields
+        }
+        NamePath::Sub(sub) => {
+            name_text(value)?;
+            Map::from_iter([(sub.to_owned(), value.clone())])
+        }
+    };
+    let mut fields = data.get("name").filter(|value| !value.is_null())
+        .map(name_fields).transpose()?.unwrap_or_default();
+    fields.extend(updates);
+    data["name"] = Value::Object(fields);
+    Ok(())
+}
+
 fn patch_resource(old: &Value, input: Value) -> Result<Value> {
     if input["schemas"] != json!([PATCH]) {
         return Err(Error::bad("Invalid SCIM patch schema"));
@@ -1802,7 +1914,7 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
         }
         if op["path"].is_null() {
             if operation == "remove" {
-                return Err(Error::bad("remove requires a path"));
+                return Err(Error::oauth("noTarget", "remove requires a path"));
             }
             let value = normalize(op["value"].clone())?;
             for (key, value) in value.as_object().unwrap() {
@@ -1817,6 +1929,11 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
                         email_changed = true;
                     }
                     patch_multi_root(&mut data, key, &operation, value)?;
+                } else if key == "name" {
+                    if old["schemas"] != json!([USER]) {
+                        return Err(Error::oauth("invalidPath", "Name is not a Group attribute"));
+                    }
+                    patch_name(&mut data, NamePath::Whole, &operation, value)?;
                 } else {
                     data[key] = value.clone();
                 }
@@ -1843,6 +1960,14 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
             }
             patch_multi_selected(&mut data, field, &filter, sub, &operation, &op["value"])?;
             continue;
+        }
+        let kind = if old["schemas"] == json!([USER]) { "Users" } else { "Groups" };
+        if let Some(name_path) = name_path(kind, path)? {
+            patch_name(&mut data, name_path, &operation, &op["value"])?;
+            continue;
+        }
+        if path.contains('.') {
+            return Err(Error::oauth("invalidPath", "Unsupported PATCH complex path"));
         }
         let canonical = normalize(json!({path:op["value"]}))?;
         let (path, value) = canonical.as_object().unwrap().iter().next().unwrap();
