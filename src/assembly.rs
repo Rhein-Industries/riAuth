@@ -11,6 +11,8 @@ mod issuer;
 mod keyring;
 mod oidc;
 mod response;
+#[cfg(feature = "platform")]
+mod saml;
 mod session_protocol;
 #[cfg(feature = "platform")]
 mod ssf;

@@ -261,6 +261,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: exchange refers directly to storage or Core")
         if source_module == "ssf" and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: SSF refers directly to storage or Core")
+        if path == SRC / "saml.rs" and refs & (STORAGE | {"core"}):
+            errors.append("src/saml.rs: SAML browser SSO refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -400,6 +402,12 @@ def main() -> None:
             "ssf_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "ssf"
+            ),
+            "saml_browser_storage_reference_files": int(
+                bool(references(SRC / "saml.rs") & STORAGE)
+            ),
+            "saml_browser_core_reference_files": int(
+                "core" in references(SRC / "saml.rs")
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

@@ -781,3 +781,29 @@ against direct storage and Core references.
 Twenty-three protocol files still name storage, including browser, source,
 SAML and credential adapters. Management and API files still reference
 Core/storage, and independently compiled crate contracts remain A03 work.
+
+## Wave 20: SAML browser SSO transaction boundary
+
+[SAML browser SSO](../src/saml.rs) now reads pending requests, one-use codes,
+consents, signing keys and cleanup pages through `SamlTx`. The concrete
+[Platform assembly](../src/assembly/saml.rs) maps those operations to the same
+collections and keeps the existing `Core` request, decision, response,
+revocation and signing method bodies. The exact client-configuration
+fingerprint, browser binding, request replay check, proof consumption and
+response signing order remain in their original transactions. The Essentials
+SAML stub is unchanged.
+
+The scan covers 159 Rust files before and 160 after this cut. It guards
+`src/saml.rs` against direct storage and Core references; the separate SAML
+logout adapter is still a direct-coupling gap.
+
+| Explicit source edge | Before | Wave 20 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 23 | 22 |
+| `protocol -> Core` | 26 | 25 |
+| `server_assembly -> protocol` | 12 | 13 |
+| `server_assembly -> storage` | 12 | 13 |
+
+Twenty-two protocol files still name storage, including SAML logout, browser,
+source and credential adapters. Management and API contracts still refer to
+Core/storage, and independently compiled crate contracts remain A03 work.
