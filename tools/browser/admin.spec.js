@@ -133,3 +133,34 @@ test('a refresh keeps the fields typed on the open step', async ({ page }) => {
   await expect(page.locator('.wizard-form[data-before]')).toHaveCount(0);
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Unsaved name');
 });
+
+test('an idle tab checks the account on focus before showing a one-time secret', async ({ page, context }) => {
+  const focus = () => page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const secretField = () => page.locator('.connection-facts code', { hasText: /^ri_client_/ });
+  await portalSignIn(page, fixture.admin);
+  const secret = await createWebApp(page, 'Idle one', 'https://idle-one.example.com/callback');
+  // The same administrator returning sees the secret again.
+  await focus();
+  await expect(secretField()).toBeVisible();
+  await expect(secretField()).toHaveText(secret);
+
+  // Another administrator signs in from a second tab; this tab is idle, never refreshed.
+  const idle = { username: 'idle-admin', password: 'idle tab fixture administrator 2026' };
+  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...idle, admin: true } });
+  expect(created.ok()).toBe(true);
+  const other = await context.newPage();
+  await portalSignOut(other);
+  await portalSignIn(other, idle);
+  // Hold the session check: the secret is covered before riAuth answers.
+  let release;
+  const held = new Promise((done) => { release = done; });
+  await page.route('**/api/admin/session', async (route) => { await held; await route.continue(); });
+  await focus();
+  await expect(page.locator('#view')).toBeHidden();
+  await expect(secretField()).toBeHidden();
+  release();
+  await expect(stepTitle(page)).toHaveText('Step 1 of 6: Application');
+  await expect(page.locator('#account-detail')).toContainText('idle-admin');
+  await page.unroute('**/api/admin/session');
+  await secretGone(page, secret);
+});

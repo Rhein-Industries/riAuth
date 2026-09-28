@@ -14,6 +14,7 @@
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
   let captureWizard = null; // reads the open wizard step's unsaved fields into the draft
+  let verifying = false, focusCheck = 0; // a one-time secret stays covered while verifying
 
   class ApiError extends Error {
     constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -163,7 +164,7 @@
   // them. Every session or account transition drops them, the views that rendered them and
   // any open secret or confirmation dialog, so a later account in this tab can't see them.
   function forget() {
-    draft = null; captureWizard = null;
+    draft = null; captureWizard = null; verifying = false;
     $("view").replaceChildren();
     $("secret-value").value = "";
     for (const id of ["secret-dialog", "confirm-dialog"]) if ($(id).open) $(id).close();
@@ -199,6 +200,7 @@
       ]);
       if (run !== generation) return;
       if (draft && draft.owner !== me.user.id) forget();
+      verifying = false; focusCheck += 1;
       Object.assign(data, { me, revision: me.revision, clients, users, groups, requests, grants, audit });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -271,7 +273,7 @@
     else crumbs[0] = h("strong", { "aria-current": "page" }, SECTIONS[section]);
     $("breadcrumb").replaceChildren(h("span", {}, "Administration"), icon("chevron"), ...crumbs);
     document.title = `${content.crumb || SECTIONS[section]} · riAuth administration`;
-    screen("view");
+    if (!verifying) screen("view");
     if (options.focus) { const heading = view.querySelector("h1"); if (heading) heading.focus(); announce(document.title); }
   }
 
@@ -1387,10 +1389,27 @@
       if (error.status === 401) gate("signin"); else toast(explain(error));
     } finally { $("sign-out").disabled = false; }
   });
-  // A session that ends in another tab shows the sign-in state on return.
+  // A session that ends, or becomes another account, in another tab is noticed on return. A
+  // one-time secret on screen is covered before the check, and shown again only to the
+  // administrator who created it; another administrator gets a fresh page without it.
   window.addEventListener("focus", async () => {
     if (!loaded) return;
-    try { await api("GET", "admin/session"); } catch (error) { if (error.status === 401 || error.status === 403) refresh(); }
+    const run = ++focusCheck;
+    const owner = data.me && data.me.user ? data.me.user.id : null;
+    verifying = Boolean(draft && draft.created && draft.created.secret);
+    if (verifying) screen("loading");
+    let me = null, failure = null;
+    try { me = await api("GET", "admin/session"); } catch (error) { failure = error; }
+    if (run !== focusCheck) return;
+    const covered = verifying;
+    verifying = false;
+    if (failure && (failure.status === 401 || failure.status === 403)) { refresh(); return; }
+    if (me && me.user.id !== owner) { forget(); loaded = false; refresh({ focus: true }); return; }
+    if (!covered) return;
+    if (me) { screen("view"); return; }
+    // Unconfirmed: keep the secret covered; Refresh checks the session again.
+    verifying = true;
+    connection("Offline"); toast("Couldn't confirm your session. Refresh to show this page again.");
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
