@@ -368,6 +368,13 @@ pub enum Command {
     },
     /// Run the identity service with native TLS or a configured TLS reverse proxy
     Serve,
+    /// Provision a single-use browser setup proof in a private operator file (local, offline)
+    PrepareSetup {
+        #[arg(long)]
+        proof_file: PathBuf,
+        #[arg(long, default_value_t = 900)]
+        expires_in: u64,
+    },
     /// Check the connected instance
     Status,
     /// Authenticate and save a private CLI session
@@ -1374,8 +1381,21 @@ pub async fn run(cli: Cli) -> Result<()> {
         }
         Command::Serve => {
             let config = Config::load(&cli.config)?;
-            let core = tokio::task::spawn_blocking(move || Core::open(config)).await??;
-            return crate::api::serve(core).await;
+            return crate::bootstrap::serve(config).await;
+        }
+        Command::PrepareSetup {
+            proof_file,
+            expires_in,
+        } => {
+            let config = Config::load(&cli.config)?;
+            let path = proof_file.clone();
+            let ttl = *expires_in;
+            let result = tokio::task::spawn_blocking(move || {
+                crate::bootstrap::Bootstrap::prepare(config, &path, ttl)
+            })
+            .await??;
+            emit_local(&cli, &result)?;
+            return Ok(());
         }
         Command::RecoverAdmin {
             username,
@@ -2086,7 +2106,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?
         }
-        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
+        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::PrepareSetup { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
             unreachable!()
         }
     };

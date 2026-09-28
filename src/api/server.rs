@@ -7,13 +7,24 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::server::TlsStream;
 use tower::Layer;
 
-pub async fn serve(core: Core) -> anyhow::Result<()> {
-    let tls = tls_configuration(&core.config).await?;
-    let listener = tokio::net::TcpListener::bind(core.config.listen).await?;
+struct AbortTasks(Vec<tokio::task::JoinHandle<()>>);
+impl Drop for AbortTasks {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
+        }
+    }
+}
+struct Workers {
+    _ldap: crate::ldap_server::Servers,
+    _radius: crate::radius::Servers,
+    _proxy: crate::proxy_server::Servers,
+    _tasks: AbortTasks,
+}
+async fn start_workers(core: Core) -> anyhow::Result<Workers> {
     let _ldap_servers = crate::ldap_server::start(core.clone()).await?;
     let _radius_servers = crate::radius::start(core.clone()).await?;
     let _proxy_servers = crate::proxy_server::start(core.clone()).await?;
-    tracing::info!(listen = %listener.local_addr()?, issuer = %core.config.issuer, "riAuth listening");
     let maintenance_core = core.clone();
     let delivery_core = core.clone();
     let mail_core = core.clone();
@@ -66,8 +77,46 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
             }
         }
     });
+    Ok(Workers {
+        _ldap: _ldap_servers,
+        _radius: _radius_servers,
+        _proxy: _proxy_servers,
+        _tasks: AbortTasks(vec![
+            maintenance,
+            delivery_worker,
+            mail_worker,
+            provisioning_worker,
+        ]),
+    })
+}
+
+pub async fn serve(core: Core) -> anyhow::Result<()> {
+    let config = core.config.clone();
+    let _workers = start_workers(core.clone()).await?;
+    serve_http(config, router(core)).await
+}
+
+pub(crate) async fn serve_bootstrap(setup: crate::bootstrap::Bootstrap) -> anyhow::Result<()> {
+    let config = setup.config.clone();
+    let (signal, ready) = tokio::sync::oneshot::channel();
+    let routes = crate::bootstrap::router_with_signal(setup, Some(signal));
+    let serving = serve_http(config, routes);
+    tokio::pin!(serving);
+    tokio::select! {
+        result = &mut serving => result,
+        core = ready => {
+            let _workers = start_workers(core.map_err(|_| anyhow::anyhow!("Setup runtime closed"))?).await?;
+            serving.await
+        }
+    }
+}
+
+async fn serve_http(config: crate::config::Config, routes: axum::Router) -> anyhow::Result<()> {
+    let tls = tls_configuration(&config).await?;
+    let listener = tokio::net::TcpListener::bind(config.listen).await?;
+    tracing::info!(listen = %listener.local_addr()?, issuer = %config.issuer, "riAuth listening");
     let tls_worker = if let Some(tls) = tls.clone() {
-        let config = core.config.clone();
+        let config = config.clone();
         Some(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             interval.tick().await;
@@ -84,6 +133,7 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
     } else {
         None
     };
+    let _tls_worker = AbortTasks(tls_worker.into_iter().collect());
     let result = if let Some(tls) = tls {
         let handle = axum_server::Handle::new();
         let signal = handle.clone();
@@ -91,27 +141,19 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
             shutdown().await;
             signal.graceful_shutdown(Some(Duration::from_secs(30)));
         });
-        let result = into_rustls_server(listener.into_std()?, tls)?
+        let _shutdown_worker = AbortTasks(vec![shutdown_worker]);
+        into_rustls_server(listener.into_std()?, tls)?
             .handle(handle)
-            .serve(router(core).into_make_service_with_connect_info::<SocketAddr>())
-            .await;
-        shutdown_worker.abort();
-        result
+            .serve(routes.into_make_service_with_connect_info::<SocketAddr>())
+            .await
     } else {
         axum::serve(
             listener,
-            router(core).into_make_service_with_connect_info::<SocketAddr>(),
+            routes.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .with_graceful_shutdown(shutdown())
         .await
     };
-    maintenance.abort();
-    delivery_worker.abort();
-    mail_worker.abort();
-    provisioning_worker.abort();
-    if let Some(worker) = tls_worker {
-        worker.abort();
-    }
     result?;
     Ok(())
 }

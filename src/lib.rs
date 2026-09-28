@@ -4,6 +4,7 @@ pub mod api;
 pub mod assurance;
 pub mod authenticator;
 pub mod authorization;
+pub mod bootstrap;
 pub mod browser;
 pub mod claims;
 pub mod cli;

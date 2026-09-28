@@ -176,7 +176,17 @@ pub(crate) fn standalone_page(
     text: &str,
     link: Option<(&str, &str)>,
 ) -> Response {
-    let css = format!("{}portal/assets/app.css", app.core.cookie_path());
+    standalone_page_at(&app.core.cookie_path(), status, title, text, link)
+}
+
+pub(crate) fn standalone_page_at(
+    base: &str,
+    status: StatusCode,
+    title: &str,
+    text: &str,
+    link: Option<(&str, &str)>,
+) -> Response {
+    let css = format!("{base}portal/assets/app.css");
     let link = link
         .map(|(href, label)| {
             format!(
@@ -211,7 +221,11 @@ fn escape(value: &str) -> String {
 /// sent by cross-site forms; no portal endpoint opts into credentialed CORS. Browsers
 /// that send Fetch Metadata must also report a same-origin request.
 pub(crate) fn browser_write_guard(app: &App, headers: &HeaderMap) -> Result<()> {
-    let origin = url::Url::parse(&app.core.config.issuer)
+    browser_write_guard_for(&app.core.config.issuer, headers)
+}
+
+pub(crate) fn browser_write_guard_for(issuer: &str, headers: &HeaderMap) -> Result<()> {
+    let origin = url::Url::parse(issuer)
         .map_err(Error::internal)?
         .origin()
         .ascii_serialization();

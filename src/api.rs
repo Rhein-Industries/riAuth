@@ -1,4 +1,5 @@
 mod server;
+pub(crate) use server::serve_bootstrap;
 pub(crate) use server::tls_files;
 pub use server::{into_rustls_server, serve, tls_configuration};
 
@@ -169,6 +170,7 @@ pub fn router(core: Core) -> Router {
     let routes = Router::new()
         .route("/", get(crate::portal::http::root))
         .merge(crate::portal::http::routes())
+        .merge(crate::bootstrap::closed_routes())
         .merge(interaction::routes())
         .route("/scim/v2/ServiceProviderConfig", get(||async{crate::scim::response(crate::scim::metadata("ServiceProviderConfig"),StatusCode::OK)}))
         .route("/scim/v2/ResourceTypes", get(||async{crate::scim::response(crate::scim::metadata("ResourceTypes"),StatusCode::OK)}))

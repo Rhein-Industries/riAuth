@@ -94,6 +94,16 @@ impl Core {
         config.validate().map_err(Error::internal)?;
         crate::config::private_dir(&config.data_dir).map_err(Error::internal)?;
         let store = Store::from_config(&config)?;
+        Self::initialize_store(config, store, input, |_| Ok(()))
+    }
+
+    /// All first-administrator paths use the same transaction and credential policy.
+    pub(crate) fn initialize_store(
+        config: Config,
+        store: Store,
+        input: NewUser,
+        ownership: impl FnOnce(&Tx<'_>) -> Result<()>,
+    ) -> Result<Self> {
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
@@ -105,6 +115,7 @@ impl Core {
             if tx.get::<u32>("meta", "schema")?.is_some() {
                 return Err(Error::conflict("Instance already initialized"));
             }
+            ownership(tx)?;
             tx.put("meta", "schema", &crate::upgrade::SCHEMA)?;
             tx.put(
                 "meta",
@@ -130,6 +141,7 @@ impl Core {
             )?;
             tx.put("users", &user.id, &user)?;
             tx.put("usernames", &user.username, &user.id)?;
+            tx.delete("meta", "browser_setup")?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;
         Ok(Self {
@@ -144,6 +156,10 @@ impl Core {
             return Err(Error::missing("Database missing; run riauth init"));
         }
         let store = Store::from_config(&config)?;
+        Self::open_store(config, store)
+    }
+
+    pub(crate) fn open_store(config: Config, store: Store) -> Result<Self> {
         if store.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer) {
             return Err(Error::bad(
                 "Configured issuer does not match the initialized instance",
