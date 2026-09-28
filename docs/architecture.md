@@ -26,6 +26,9 @@ places protocol setting data in the shared client model, and keeps parent-owned
 agent, Windows and RP logout persistence with the shared identity effects. An
 identity transaction port removes the identity-to-storage source edge, and
 management mutation checks now live in Core rather than request context. The
+shared model owns public JWK record data used by SSF streams and providers;
+JOSE retains key validation and token verification. The direct
+identity-to-JOSE reference is gone, while a transitive source cycle remains. The
 same note records the remaining Core, storage, protocol, API and client coupling.
 
 ## Entry points and request handling

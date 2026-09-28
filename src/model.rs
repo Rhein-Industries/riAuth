@@ -1,4 +1,5 @@
 pub mod client_settings;
+pub mod jwk;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -103,7 +104,7 @@ pub struct ProviderSettings {
     pub resources: BTreeMap<String, BTreeSet<String>>,
     pub issuer: Option<String>,
     pub token_endpoint_auth_method: Option<crate::jose::ClientAuthMethod>,
-    pub jwks: Option<crate::jose::PublicJwks>,
+    pub jwks: Option<jwk::PublicJwks>,
     pub machine_trust: Vec<crate::jose::MachineTrust>,
     pub exchange: Option<crate::exchange::ExchangePolicy>,
     pub exchange_from: BTreeSet<String>,

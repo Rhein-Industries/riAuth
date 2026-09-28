@@ -123,6 +123,14 @@ fn identity_effects_rollback_preview_and_retry_with_the_storage_transaction() {
             let f = fixture(encrypted);
             let session = f.user("alice");
             security::subscribe(&f, "alice");
+            let stream: riauth::identity::signals::Stream = f
+                .core
+                .store
+                .get("ssf_streams", "watch-alice")
+                .unwrap()
+                .unwrap();
+            stream.jwks.validate().unwrap();
+            let stream_bytes = serde_json::to_vec(&stream).unwrap();
             let _children = security::Dependents::create(&f, "alice");
             let device = f
                 .core
@@ -232,6 +240,13 @@ fn identity_effects_rollback_preview_and_retry_with_the_storage_transaction() {
                 .store
                 .read(|tx| assert_effects(tx, &user, deleted))
                 .unwrap();
+            let restored: riauth::ssf::Stream = f
+                .core
+                .store
+                .get("ssf_streams", "watch-alice")
+                .unwrap()
+                .unwrap();
+            assert_eq!(serde_json::to_vec(&restored).unwrap(), stream_bytes);
             assert!(f.core.windows_ticket_redeem(&ticket).is_err());
             assert!(
                 f.core

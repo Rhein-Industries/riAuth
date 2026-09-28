@@ -7,7 +7,7 @@ use super::persistence::IdentityTx;
 use crate::{
     crypto::{self, now},
     error::Result,
-    jose::PublicJwks,
+    model::jwk::PublicJwks,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

@@ -71,8 +71,9 @@ This is an intra-crate boundary, not complete A03 acceptance. Storage still know
 which records receive hooks and depends on shared identity semantics, configuration,
 crypto, audit projections and backend modules. Identity effects still call the
 existing agent, Windows and RP logout persistence helpers; those modules also
-contain Core methods, so transitive cycles remain. Signal persistence still uses
-the existing SSF-shaped records and JOSE key type. Core still assembles adapter
+contain Core methods, so transitive cycles remain. At this first-cut handoff,
+signal persistence still used the existing SSF-shaped records and JOSE key type.
+Core still assembles adapter
 validation and protocol cleanup. None of these facts establishes an independently
 compilable identity/storage crate or distribution parity.
 
@@ -297,3 +298,44 @@ Protocol adapters, API/server handlers and the CLI still reach Core and storage.
 The checker guards explicit crate-root references; it does not establish
 acyclicity, independent crates, a standalone client, or Essentials/Platform
 assembly parity. Those are remaining A03 integration gates.
+
+## Wave 5: shared JWK record data
+
+[model/jwk.rs](../src/model/jwk.rs) is the canonical data-only home for
+`PublicJwk` and `PublicJwks`. Their fields, order, Serde attributes and schema
+derives moved intact. [JOSE](../src/jose.rs) re-exports both old public paths
+and retains the one implementation of key validation, decoding and JWT/SET
+verification. The persisted [SSF Stream](../src/identity/signals.rs) and
+`ProviderSettings.jwks` name the shared types directly. SSF authorization,
+delivery, account-transition ordering, stored buckets and schema versions did
+not move.
+
+The wave 5 graph at `target/riwork/A03-wave5-graph.json` scans 83 Rust source
+files with the same explicit crate-root method. Its checker now forbids direct
+identity references to protocol modules and reports zero such files. The
+before graph and exact path delta are retained alongside it in
+`target/riwork/A03-wave5-before-graph.json` and `A03-wave5-edges.json`.
+
+| Explicit source edge | Wave 4 files | Wave 5 files |
+| --- | ---: | ---: |
+| `identity -> protocol` | 1 | 0 |
+| `identity -> model` | 2 | 3 |
+| `protocol -> model` | 35 | 36 |
+| `model -> protocol` | 1 | 1 |
+| `storage -> identity` | 1 | 1 |
+
+```mermaid
+flowchart LR
+  Identity["Shared identity effects"] --> Model["Shared model"]
+  Model --> Protocol["Protocol adapters including JOSE"]
+  Protocol --> Storage["Storage"]
+  Storage --> Identity
+```
+
+The direct `identity -> JOSE` reference is gone. The transitive
+`identity -> model -> JOSE -> storage -> identity` source cycle remains because
+the model still embeds other JOSE types, JOSE imports `store::Tx`, and storage
+calls `identity::record_transition`. The source scanner does not trace `super`
+imports, macro expansion, trait dispatch or field access. This cut therefore
+does not establish independent crates, an API or management engine contract,
+standalone client build, or Essentials/Platform assembly parity.

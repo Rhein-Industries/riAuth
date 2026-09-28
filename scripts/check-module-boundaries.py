@@ -30,7 +30,7 @@ PROTOCOL = {
     "portal", "provider", "proxy_server", "radius", "response", "saml",
     "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
 }
-IDENTITY_ALLOWED = {"crypto", "error", "jose", "model", "identity"}
+IDENTITY_ALLOWED = {"crypto", "error", "model", "identity"}
 STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf"}
 MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost"}
 CONTEXT_FORBIDDEN = {"core"}
@@ -115,7 +115,10 @@ def main() -> None:
             if target in module_groups:
                 edges[(source_group, module_groups[target])].add(path.relative_to(ROOT).as_posix())
         if source_group == "identity":
-            forbidden = refs - IDENTITY_ALLOWED
+            protocol_refs = refs & PROTOCOL
+            if protocol_refs:
+                errors.append(f"{path.relative_to(ROOT)}: identity refers to protocol {sorted(protocol_refs)}")
+            forbidden = refs - IDENTITY_ALLOWED - PROTOCOL
             if forbidden:
                 errors.append(f"{path.relative_to(ROOT)}: identity refers to {sorted(forbidden)}")
             if re.search(r"\bimpl\s+Core\b", path.read_text()):
@@ -142,6 +145,10 @@ def main() -> None:
             ),
             "identity_storage_reference_files": sum(
                 "store" in references(path)
+                for path in paths if group(root_module(path)) == "identity"
+            ),
+            "identity_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
                 for path in paths if group(root_module(path)) == "identity"
             ),
             "storage_adapter_reference_files": sum(
