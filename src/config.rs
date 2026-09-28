@@ -44,6 +44,10 @@ pub struct Config {
     /// Instance-wide desired-state controller policy. Omitted means manual-review.
     #[serde(default)]
     pub state_reconciliation_mode: crate::connector_guard::ReconciliationMode,
+    /// Scoped controllers. Keys are ldap/<id>, workspace/<id>, entra/<id>, or scim/<id>.
+    /// The cursor and each execution job are persisted in the database.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reconciliation_controllers: BTreeMap<String, crate::reconciliation::ControllerConfig>,
     #[serde(default)]
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
@@ -163,6 +167,7 @@ impl Default for Config {
             scim_targets: Default::default(),
             scim_reconciliation_modes: BTreeMap::new(),
             state_reconciliation_mode: Default::default(),
+            reconciliation_controllers: BTreeMap::new(),
             signers: Default::default(),
             postgres: None,
             mail: None,
@@ -279,6 +284,12 @@ impl Config {
             if !self.scim_targets.contains_key(id) {
                 bail!("SCIM reconciliation mode references an unconfigured target {id}");
             }
+        }
+        if self.reconciliation_controllers.len() > 96 {
+            bail!("Configure at most 96 reconciliation controllers");
+        }
+        for (scope, controller) in &self.reconciliation_controllers {
+            crate::reconciliation::validate_controller(self, scope, controller)?;
         }
         if self.signers.len() > 32 {
             bail!("Configure at most 32 external signing key versions");
@@ -426,6 +437,14 @@ impl Config {
                         *file = path.parent().unwrap_or(Path::new(".")).join(&*file);
                     }
                 }
+            }
+        }
+        for controller in value.reconciliation_controllers.values_mut() {
+            if controller.credential_file.is_relative() {
+                controller.credential_file = path
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .join(&controller.credential_file);
             }
         }
         for directory in value.directories.values_mut() {

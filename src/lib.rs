@@ -72,6 +72,7 @@ pub mod radius;
 pub mod radius;
 mod radius_eap_types;
 mod radius_listener;
+pub mod reconciliation;
 pub mod recovery;
 pub mod registration;
 pub mod reports;

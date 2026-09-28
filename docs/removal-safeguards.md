@@ -5,14 +5,15 @@ desired state share the plan guard in `connector_guard`. The remote connectors
 also use its bounded pagination checks. Apply uses common eligibility,
 authority binding and recomputed removal-impact checks.
 Outbound SCIM, LDAP, Workspace, Entra and desired state have explicit
-controller modes. No scheduler is installed by these modes.
+controller modes. A mode alone does not install a schedule; an explicit scoped
+controller declaration does.
 
 `[ldap_reconciliation_modes]`, `[workspace_reconciliation_modes]`,
 `[entra_reconciliation_modes]` and `[scim_reconciliation_modes]` map configured
 connector IDs to `manual-review`, `guarded-automatic` or `automatic`. Omitted
 entries are manual. Unknown values and references to absent connectors reject
 configuration. `Core::directory_reconcile` and `Core::cloud_reconcile` are
-controller triggers for a scoped caller; P02 can schedule them later. They
+controller triggers for a scoped caller and can run from a P02 durable job. They
 return `awaiting_review` with the exact plan or `applied` after the existing
 local apply transaction. A still-bound pending plan retains its ID. A mode,
 revision, authority or source change requires a new plan; a controller trigger
@@ -20,6 +21,35 @@ supersedes the previous unapplied plan for that connector and actor. Automatic
 mode still stops at the fixed P03 review floor, and guarded automatic stops at
 any removal. SCIM's `queued` decision reports a durable job, not remote
 completion.
+
+Configure an independent controller for each connector that should run on a
+schedule or accept source events. The credential file must be private and contain
+the current `ri_agent_` token for the named agent. That agent needs the connector's
+scoped `directory.sync` or `provisioner.sync` permission and any additional
+permissions required by its existing apply path. Credential rotation changes the
+file contents; no bearer token is stored in the database. For example:
+
+```toml
+[reconciliation_controllers."scim/payroll"]
+agent_id = "payroll_controller"
+credential_file = "secrets/payroll-controller-token"
+interval_seconds = 3600
+```
+
+Keys may also be `ldap/<id>`, `workspace/<id>`, or `entra/<id>`; interval bounds
+are 60–86400 seconds. Schedule cursors and jobs survive restart. The worker
+claims one due job at a time with a lease and at most four attempts. It checks
+the current controller/connector config, the agent's live scoped authority and
+the current credential before invoking the P01 plan/apply path. The event
+endpoint is `POST /api/reconciliation/{kind}/{id}/events` with
+`{"event_id":"stable-source-event-id"}` and that agent's bearer token. Repeating
+an event ID returns the same retained job. Scoped status is available at
+`GET /api/reconciliation/schedules` and `GET /api/reconciliation/jobs`.
+Controller outcomes distinguish `local_applied`, `downstream_queued`,
+`pending_prior_delivery`, and `none` for review. The SCIM delivery worker owns
+remote delivery and its separate job status; a controller's completed queue
+decision never means the target received a change. Desired-state scheduling
+still requires a durable, authorized manifest source.
 
 Desired-state plans include the same exact review binding and a recomputed
 removal impact. `state_reconciliation_mode` defaults to manual review.

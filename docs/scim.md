@@ -52,8 +52,8 @@ job), or `in_progress`; queued work is not reported as delivered. If an old
 leased job becomes stale, it returns `awaiting_prior_delivery` with a current
 plan until the in-flight request settles, so replacement delivery cannot race it.
 The trigger is available to server-side callers through
-`Core::provisioning_reconcile`; P02
-scheduling and a remote trigger endpoint are separate work. Unknown modes and
+`Core::provisioning_reconcile`. A configured P02 controller can schedule it or
+queue a source event through the reconciliation API. Unknown modes and
 policies for unconfigured targets are rejected at configuration validation.
 Changing a mode invalidates pending plans and stales queued jobs before another
 remote dispatch.

@@ -233,6 +233,15 @@ pub fn router(core: Core) -> Router {
             post(provisioning_apply),
         )
         .route("/api/provisioning/jobs", get(provisioning_jobs))
+        .route(
+            "/api/reconciliation/schedules",
+            get(reconciliation_schedules),
+        )
+        .route("/api/reconciliation/jobs", get(reconciliation_jobs))
+        .route(
+            "/api/reconciliation/{kind}/{id}/events",
+            post(reconciliation_event),
+        )
         .route("/api/directories", get(directories))
         .route("/api/directories/{id}/plan", post(directory_plan))
         .route("/api/directory-plans/{id}", get(directory_plan_get))
@@ -2698,6 +2707,21 @@ async fn mail_deliveries(State(app): State<App>, headers: HeaderMap) -> Result<J
 }
 
 session_handler!(provisioning_targets, provisioning_targets);
+session_handler!(reconciliation_schedules, reconciliation_schedules);
+session_handler!(reconciliation_jobs, reconciliation_jobs);
+async fn reconciliation_event(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, id)): Path<(String, String)>,
+    Json(input): Json<crate::reconciliation::EventTrigger>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.reconciliation_event(&token, &kind, &id, input)
+            .map(Json)
+    })
+    .await
+}
 session_handler!(directories, directories);
 async fn directory_plan(
     State(app): State<App>,

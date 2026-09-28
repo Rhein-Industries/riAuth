@@ -35,6 +35,18 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
     let delivery_core = core.clone();
     let mail_core = core.clone();
     let provisioning_core = core.clone();
+    let reconciliation_core = core.clone();
+    let reconciliation_worker = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            let core = reconciliation_core.clone();
+            match tokio::task::spawn_blocking(move || core.reconciliation_process()).await {
+                Ok(Ok(_)) => {}
+                other => tracing::warn!(?other, "Reconciliation controller unavailable; retrying"),
+            }
+        }
+    });
     let provisioning_worker = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         loop {
@@ -96,6 +108,7 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
             delivery_worker,
             mail_worker,
             provisioning_worker,
+            reconciliation_worker,
         ]),
     })
 }
