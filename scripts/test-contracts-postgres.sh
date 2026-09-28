@@ -25,6 +25,6 @@ printf 'host=127.0.0.1 port=%s dbname=postgres user=riauth_test sslmode=disable\
 chmod 600 "$riauth_pg_test/connection"
 printf 'riauth disposable contract cluster\n' >"$riauth_pg_test/marker"
 cd "$riauth_repo"
-CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR="$riauth_repo/target" \
+CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$riauth_repo/target}" \
   RIAUTH_TEST_CONTRACT_PG_ROOT="$riauth_pg_test" \
   "$riauth_cargo" test --locked --features test-support --test contracts -- --ignored "$riauth_filter" --test-threads=2 --nocapture

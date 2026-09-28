@@ -2625,6 +2625,185 @@ pub fn verification_proof_binding_and_replay(backend: Backend) {
     });
 }
 
+/// Real initial-credential proofs cross the workflow completion writer once.
+#[cfg(feature = "platform")]
+pub fn invitation_passkey_bound_competing_completion(backend: Backend) {
+    use std::sync::Barrier;
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+    let mut f = backend.fixture();
+    configure_mail(&mut f);
+    for name in ["invited", "other"] {
+        f.core
+            .account_invite(
+                &f.admin,
+                Invitation {
+                    username: name.into(),
+                    email: format!("{name}@example.test"),
+                    display_name: name.into(),
+                    groups: BTreeSet::new(),
+                },
+            )
+            .unwrap();
+    }
+    let code = mail_code_for(&f, "invited");
+    let other = mail_code_for(&f, "other");
+    let before = user(&f, "invited");
+    let sessions = f.core.store.list::<Value>("sessions").unwrap();
+    let start = |token: &str| {
+        f.core
+            .account_invitation_passkey_start(token.into(), "First passkey".into())
+            .unwrap()
+    };
+    let response = |challenge: &Value| {
+        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        // This fixture has no resident storage. Only the client's resident-key
+        // preference is relaxed; the server still requires user verification.
+        let mut options = challenge["public_key"].clone();
+        options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+        authenticator
+            .do_registration(
+                "http://localhost:9000".parse().unwrap(),
+                serde_json::from_value(options).unwrap(),
+            )
+            .unwrap()
+    };
+    let replaced = start(&code);
+    let replaced_proof = response(&replaced);
+    let other_challenge = start(&other);
+    let challenge = start(&code);
+    let ceremony = text(&challenge, "ceremony");
+    let proof = response(&challenge);
+    let replaced_ceremony = text(&replaced, "ceremony");
+    let other_ceremony = text(&other_challenge, "ceremony");
+
+    // Neither another account nor a previous request for this same account can
+    // consume the current invitation, registration, or any workflow evidence.
+    let pending = f.snapshot().unwrap();
+    for (token, request, credential) in [
+        (&other, &ceremony, &proof),
+        (&code, &other_ceremony, &proof),
+        (&code, &replaced_ceremony, &replaced_proof),
+        (&f.admin, &ceremony, &proof),
+    ] {
+        assert!(
+            f.core
+                .account_invitation_passkey_finish(token.clone(), request, credential.clone())
+                .is_err()
+        );
+        f.assert_snapshot(&pending);
+    }
+    assert!(
+        f.core
+            .passkey_register_finish(&f.admin, &ceremony, proof.clone())
+            .is_err()
+    );
+    f.assert_snapshot(&pending);
+
+    // Keep the disposable database's administrative connection on this thread;
+    // competing callers share only Core and its real two-connection PG pool.
+    let core = &f.core;
+    let finish = || core.account_invitation_passkey_finish(code.clone(), &ceremony, proof.clone());
+    let gate = Barrier::new(2);
+    let results = std::thread::scope(|scope| {
+        let complete = || {
+            gate.wait();
+            finish()
+        };
+        let a = scope.spawn(complete);
+        let b = scope.spawn(complete);
+        [a.join().unwrap(), b.join().unwrap()]
+    });
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    for result in results {
+        match result {
+            Ok(value) => assert_eq!(value, json!({"completed":true,"login_required":true})),
+            Err(error) => assert_eq!(error.code, "account_code_used"),
+        }
+    }
+
+    let after = user(&f, "invited");
+    assert!(after.enabled && after.email_verified && after.has_passkeys && !after.admin);
+    assert!(after.password_hash.is_empty());
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.epoch, before.epoch + 1);
+    assert_eq!(f.core.store.list::<Value>("sessions").unwrap(), sessions);
+    assert_eq!(audit_count(&f, "user.account.accept"), 1);
+    assert_eq!(audit_count(&f, "passkey.enroll"), 1);
+    for (bucket, key) in [
+        ("invitation_passkey_registration", digest(&code)),
+        ("account_proofs", digest(&code)),
+        ("account_latest", format!("{}:accept", before.id)),
+        ("invitation_reservations", before.id.clone()),
+    ] {
+        assert!(f.core.store.get::<Value>(bucket, &key).unwrap().is_none());
+    }
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("account_proof_outcomes", &digest(&code))
+            .unwrap()
+            .unwrap()["reason"],
+        "used"
+    );
+    assert!(!user(&f, "other").enabled);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("account_proofs", &digest(&other))
+            .unwrap()
+            .is_some()
+    );
+    let keys = f.core.store.list::<Value>("passkeys").unwrap();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].1["user_id"], before.id);
+    let runs = f.core.store.list::<Value>("workflow_runs").unwrap();
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0].1;
+    let request = format!("accept:{}:{}", digest(&code), digest(&ceremony));
+    assert_eq!(
+        run["record"]["binding"]["workflow"],
+        "essentials-invitation"
+    );
+    assert_eq!(run["record"]["account"], before.id);
+    assert_eq!(run["record"]["account_epoch"], before.epoch);
+    assert!(run["record"]["session"].is_null());
+    assert_eq!(run["record"]["request"], request);
+    assert_eq!(run["record"]["state"]["outcome"], "enrolled");
+    assert_eq!(run["credential_mutation"]["from_epoch"], before.epoch);
+    assert_eq!(run["credential_mutation"]["to_epoch"], after.epoch);
+    assert_eq!(run["credential_mutation"]["credential"], keys[0].0);
+    assert_eq!(run["credential_mutation"]["invitation_request"], request);
+    let receipts = f.core.store.list::<Value>("workflow_evidence").unwrap();
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(
+        receipts
+            .iter()
+            .map(|(_, receipt)| text(receipt, "proof"))
+            .collect::<BTreeSet<_>>(),
+        strings(&["invitation", "enrolled"])
+    );
+    for (_, receipt) in receipts {
+        assert_eq!(receipt["consumed"], true);
+        assert_eq!(receipt["account"], before.id);
+        assert_eq!(receipt["account_epoch"], before.epoch);
+        assert_eq!(receipt["request"], request);
+        assert_eq!(receipt["run"], runs[0].0);
+        assert_eq!(receipt["binding"], run["record"]["binding"]);
+        assert!(receipt["session"].is_null());
+    }
+    let completed = f.snapshot().unwrap();
+    assert_eq!(finish().unwrap_err().code, "account_code_used");
+    assert_eq!(
+        f.core
+            .account_complete(code.clone(), Purpose::Invite, Some(PASSWORD.into()))
+            .unwrap_err()
+            .code,
+        "account_code_used"
+    );
+    f.assert_snapshot(&completed);
+}
+
 // RI-CRED-003, RI-MGT-004, RI-STORE-001, Q02-C02/C04: invitation completion
 // rechecks the creator's live authority before it changes a user or group.
 pub fn invitation_acceptance_revalidates_creator(backend: Backend) {

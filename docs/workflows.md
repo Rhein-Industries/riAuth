@@ -6,12 +6,12 @@ password, passkey and OIDC/SAML source reauthentication for a live bearer sessio
 Password and source paths require TOTP or a one-time recovery code when enrolled. All use the existing
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
-issues a new session. Other built-in
-verifier actions remain unconnected except passkey enrollment authorized by a
-fresh existing-passkey proof, password recovery and first-password invitation
-acceptance through the existing mail verifier. They finalize the credential and
-epoch change atomically. Ordinary sign-in, other enrollment, consent and
-source-stage paths are unchanged; browser recovery and invitation acceptance
+issues a new session. Connected credential mutations cover passkey enrollment
+authorized by a fresh existing-passkey proof, mail-proven password recovery,
+and first-password or first-passkey invitation acceptance. Their real verifiers
+finalize the credential, proof consumption and epoch change atomically.
+Ordinary sign-in, other enrollment, consent and source-stage paths are unchanged;
+browser recovery and invitation acceptance
 keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -145,12 +145,14 @@ proof, stale success evidence, and evidence reused from another run. Trusted
 account and request facts then apply the floor and `requires` again. They also require a
 passkey, TOTP or recovery code for authentication when the account has TOTP or
 the request requires MFA, and for sensitive actions and session-based enrollment
-when the account has TOTP. Definitions cannot relax these rules. The seam
-currently **rejects `enrolled` and `recovered` completion**, even with otherwise
-valid receipts. Those actions can increment the account epoch, and passkey
-enrollment can revoke the session. W02 must provide one atomic protocol that
-binds the pre-mutation evidence at epoch E to the actual mutation and final
-state at E+1 before either outcome can succeed.
+when the account has TOTP. Definitions cannot relax these rules. Stored receipts
+alone cannot authorize `enrolled` or `recovered` completion. Supported adapters
+also supply a private in-memory capability from the real verifier: existing-passkey
+authorized passkey enrollment, mail-proven password recovery, and invitation
+first-password or first-passkey enrollment. The completion writer binds evidence
+at epoch E to the actual credential mutation at E+1, rechecks live authority, and
+commits revocation, receipt consumption and the final run state together.
+Credential mutations without such an adapter remain blocked.
 
 A `denied` terminal still needs an active run and a valid recorded path with
 matching historical evidence provenance, bindings and step attempts. An earlier
@@ -387,10 +389,11 @@ the credential and epoch transition; its successful view reports `enrolled`
 and `credential_epoch`. Previous sessions cannot resume or reuse the result.
 Sign in again after enrollment.
 
-This slice supports adding a passkey after verification of an existing passkey.
-First-passkey enrollment through password/TOTP, invitation passkey enrollment
-and other credential mutations still require their own bound adapters.
-Persisted mutation receipts alone cannot enable any of those success outcomes.
+This session-bound adapter supports adding a passkey after verification of an
+existing passkey. Invitation first-passkey enrollment uses the separate mail-bound
+adapter below. First-passkey enrollment through a password/TOTP session and
+other credential mutations still require their own bound adapters. Persisted
+mutation receipts alone cannot enable those success outcomes.
 
 ## Password recovery finalization
 
@@ -426,9 +429,9 @@ longer matches.
 
 On Platform, the existing browser/CLI invitation acceptance enrolls a first
 password through the server-owned `platform-invitation-password-enrollment`
-workflow. The shipped invitation passkey definition remains unchanged. Only the
-existing mail verifier can create the in-memory mutation capability; the caller
-cannot select an account, workflow signal, or receipt.
+workflow. Both editions share the invitation authority and initial-credential
+writer. Only the existing mail verifier can create the in-memory mutation
+capability; the caller cannot select an account, workflow signal, or receipt.
 
 The capability pins the exact invitation proof, current request index, immutable
 account ID, email, epoch, pending reservation and M04 support-exposure record.
@@ -449,9 +452,38 @@ replace independent recovery or clear that privilege boundary.
 
 Scanner-safe GET/HEAD, explicit POST, used-link errors and the existing
 `completed`/`login_required` response remain unchanged. No login, session, cookie
-or OIDC code is minted. Essentials keeps its ordinary invitation path. This
-adapter covers first-password invitations only; invitation passkeys and other
-initial factor enrollment still need their real bound adapters.
+or OIDC code is minted. Essentials uses the same invitation checks and atomic
+credential writer without persisting Platform workflow runs or receipts.
+
+## Invitation passkey enrollment
+
+Both editions expose the [invitation passkey API](passkeys.md#first-passkey-from-an-invitation).
+`POST /api/account/accept/passkey/start` binds a WebAuthn registration to the
+invitation token and a separate, server-generated ceremony. The matching
+`/finish` requires both handles and a real authenticator response; `/cancel`
+requires both handles. Neither accepts a caller-selected account or session.
+The verifier checks challenge, origin, RP ID and user verification. Starting again
+replaces the previous ceremony; invalid authenticator responses spend only their
+correctly bound registration attempt. Cancellation leaves the invitation available
+for another start. Each ceremony lasts at most two minutes.
+
+The same invitation authority and credential writer described above recheck the
+account, email, epoch, pending reservation, exposure marker and inviter's live
+user/group permissions. Invitation revocation, reissue or acceptance invalidates
+the pending registration. The passkey write, account activation, group membership,
+E-to-E+1, proof/index/reservation retirement and revocation commit atomically.
+M04 exposure and independent human elevation provenance remain protected.
+
+On Platform this adapter completes the shipped `essentials-invitation` definition.
+Its invitation and enrollment receipts bind to the immutable account at epoch E,
+run/version and a request containing the digests of both the invitation token and
+the registration ceremony, with no authenticated session. Receipt consumption and
+`enrolled` completion share the credential writer transaction. Competing submissions
+produce one success and one used-link error; replay cannot create a second
+credential or run. Essentials enforces the same credential transaction without
+workflow records. Success returns `{"completed":true,"login_required":true}`;
+the recipient signs in separately. The existing browser invitation page still
+offers password acceptance; the passkey endpoints are for authenticator clients.
 
 ## Source reauthentication
 
@@ -607,8 +639,9 @@ These are not implemented or established by this slice:
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
   authorized passkey enrollment, mail-proven password reset and invitation
-  first-password enrollment: first-passkey/TOTP enrollment, invitation passkeys
-  and other initial credential paths remain blocked pending their real adapters.
+  first-password/first-passkey enrollment: session-authorized first-passkey
+  enrollment through password/TOTP, TOTP enrollment and other initial credential
+  paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Configured enrollment, recovery, other authentication chains,
@@ -623,8 +656,14 @@ These are not implemented or established by this slice:
   The source reauthentication request now pins and rechecks its source fingerprint
   and the receipt's explicit account link; broader dependency/approval binding remains.
 * End-to-end invariant and race tests for the remaining verifier integrations
-  and both durable backends. The focused source regression exercises the signed
-  OIDC callback, binding and authority changes, rollback on stale evidence, and
+  across both durable backends. The shared
+  [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)
+  exercises real WebAuthn registration, wrong-account and superseded-request
+  rejection, competing completions, consumed bound receipts and replay on plaintext
+  and encrypted redb/PostgreSQL. Its concurrent callers run within one process;
+  it does not establish multi-process or failover behavior. The focused source
+  regression exercises the signed OIDC callback, binding and authority changes,
+  rollback on stale evidence, and
   competing completion writers on the local store. The focused passkey regression
   uses signed WebAuthn credentials to exercise session/request/run/attempt
   isolation, revoked authority, retries and competing completion writers.
@@ -643,6 +682,6 @@ These are not implemented or established by this slice:
   The passkey/source OIDC contract additionally checks actual UV/trusted-source
   assurance, rejection of untrusted upstream MFA, mandatory local factors and
   source-link revocation, with complete transaction rollback snapshots.
-  PostgreSQL has not been exercised for this executor slice.
+  Those other workflow executor paths still lack shared PostgreSQL evidence.
 * Management API, desired-state, storage, versioned approval, editor, templates,
   and product capability reporting or gating.

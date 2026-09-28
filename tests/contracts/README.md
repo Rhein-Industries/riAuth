@@ -33,6 +33,7 @@ also exercise the R02 production path; dependencies and lockfiles are unchanged.
 | `account_proof_supersession_and_expiry` | RI-CRED-003, RI-SES-003/005 / C02/C03: reset request throttling leaves the current proof intact; a later request replaces that proof; the superseded code cannot change a credential; the current code resets once and revokes its old session; an exact-deadline code cannot mutate the user or audit. Requires `test-support`. |
 | `verification_proof_binding_and_replay` | RI-CRED-002/003 / C02: a stale session cannot request verification; wrong-purpose and old-email codes leave state unchanged; a current code verifies only its bound account/email once, while the other account remains unverified. Requires `test-support`. |
 | `invitation_acceptance_revalidates_creator` | RI-CRED-003, RI-MGT-004, RI-STORE-001 / C02/C04: authorized reissue keeps the pending user ID and invalidates the previous code; wrong-purpose requests are atomic; revoking a scoped creator blocks acceptance without enabling the pending user or adding group membership; an administrator's separate invitation succeeds once, with one acceptance audit. |
+| `invitation_passkey_bound_competing_completion` | RI-CRED-002/003, RI-SES-003, RI-WF-002, RI-STORE-001 / C02/C03/C07/C08: Platform invitation completion with a real user-verified WebAuthn credential; wrong account, bearer, ordinary session enrollment and superseded ceremony reject without changing records; two concurrent callers produce one credential, one E-to-E+1 transition, one completed run and two consumed account/request/run-bound receipts, with no session issuance; passkey and password replay leave the full store unchanged. |
 | `passkey_registration_requires_user_verification` | RI-CRED-001/002 / C02: an unverified authenticator's response consumes only its registration ceremony; it cannot enroll a key, change the user or revoke sessions; a verified response enrolls once and revokes the old account session. |
 | `passkey_management_requires_fresh_mfa` | RI-CRED-002, RI-SES-005 / C02: password-only sessions cannot enroll or remove after a passkey exists; a previously sufficient MFA session becomes too old at 301 seconds without mutating state; an expired login ceremony cannot mint a session; fresh passkey MFA permits one removal and revokes account sessions. Requires `test-support`. |
 | `offboard_intent_durable_cancel` | RI-CON-004, RI-MGT-004, RI-STORE-001 / C06/C08: a scoped actor creates one durable scheduled intent that survives reopening; duplicate/denied calls add no job or audit; cancellation and its exact retry do not disable the user or execute the job. |
@@ -81,9 +82,9 @@ From the repository root, ordinary tests need no external services:
 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=target CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked --features test-support --test contracts
 ```
 
-This selects 60 redb cases and explicitly ignores 60 PostgreSQL cases. Without
-`test-support`, five clock/deadline bodies are absent: 50 run and 50 are ignored.
-A PostgreSQL skip is not backend evidence.
+This selects the redb cases and explicitly ignores PostgreSQL cases. The
+clock/deadline bodies require `test-support`. A PostgreSQL skip is not backend
+evidence.
 
 Install/use local PostgreSQL programs (`initdb`, `pg_ctl`) and run:
 
@@ -92,13 +93,28 @@ CARGO_PROFILE_DEV_DEBUG=0 bash scripts/test-contracts-postgres.sh
 ```
 
 The script creates a fresh loopback-only cluster under `target/`, a private
-connection file and a marker, then runs the 60 ignored PostgreSQL cases with
-`CARGO_BUILD_JOBS=2`. Each fixture creates its own empty database. Before any
-database creation/drop, the fixture checks the actual server data directory
+connection file and a marker, then runs the ignored PostgreSQL cases selected
+by its optional first argument with `CARGO_BUILD_JOBS=2`. Each fixture creates
+its own empty database. Before any database creation/drop, the fixture checks
+the actual server data directory
 against the cluster's `primary` directory, rather than trusting only an environment
 variable or marker. Pools close before their database is dropped; the script stops
 and removes only its own cluster. Do not supply a production connection. There is
-no automatic redb fallback if PostgreSQL setup or a contract fails.
+no automatic redb fallback if PostgreSQL setup or a contract fails. The script
+honors a supplied `CARGO_TARGET_DIR`; its disposable cluster stays under the
+source checkout's `target/` regardless of the Cargo artifact directory.
+
+The W03 invitation workflow contract can be run alone in the default Platform
+build. Set `CARGO_TARGET_DIR` to a shared artifact directory when needed; both
+commands below retain it:
+
+```sh
+CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked --features test-support --test contracts invitation_passkey_bound_competing_completion -- --test-threads=2
+CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 bash scripts/test-contracts-postgres.sh invitation_passkey_bound_competing_completion
+```
+
+Each command runs the same body twice, once per plaintext/encrypted mode. The
+PostgreSQL cases count as evidence only when explicitly run through the script.
 
 The public check job's existing all-target test command includes ordinary cases;
 the integration job invokes this script separately from replication/failover.
@@ -121,7 +137,7 @@ acceptance.
 | C04 management parity | Selected direct core, HTTP, plan/receipt and scoped creator checks; application writes share one seam across HTTP, CLI (`tests/cli.rs`) and plan apply, with the browser cookie boundary refused. Inbound SCIM User and Group create/update/delete commit through shared writers. Focused redb regressions in `tests/cli.rs`, `tests/group_management.rs` and `tests/scim_resource_versions.rs` cross HTTP API, CLI and SCIM with scoped authority, receipt replay, resource ETags, fail-closed identity checks, one audit per mutation, live group membership and durable downstream deactivation intent. | Other user and group operations, directory, invitation and dynamic-registration writers; full actor/role/retry and backend matrix. |
 | C05 policy consumers | Group policy at selected online consumers. | PAM, client/resource/ACR/device/source/consent and wider adapters. |
 | C06 connector/jobs | One Workspace plan/apply and local offboarding intent, retry and authority paths on four backend modes. | Entra, LDAP, SCIM/provisioning, other offboarding states, malformed/large/empty snapshots, remote partial completion and worker crash/recovery. |
-| C07 workflow/device | No shared body. | Required stages, device/certificate/peer binding and future adapters. |
+| C07 workflow/device | Invitation passkey workflow account/request binding, competing completion and replay on four backend modes. | Other workflow adapters, required stages, device/certificate/peer binding and multi-process races. |
 | C08 transaction/audit | Four-mode atomicity, HTTP receipts, plan rollback, prepared checks, cloud staged-write rollback and offboarding fault/audit cases. | All writers, signer faults, actual interleavings and transport parity. |
 | C09 secrets | Selected plan/export/audit redaction. | Errors, logs, metrics, ordinary CLI and custody modes. |
 | C10 recovery | Database-native restore policy and read-only recovery status on four backend modes; restore-path policy in `tests/recovery.rs` (redb output only). | Archive integrity matrix, factor/agent/device/receipt/job reconciliation, interrupted recovery and external dependencies. |
