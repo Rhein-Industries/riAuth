@@ -319,6 +319,51 @@ fn proof_error(reason: Option<ProofEnd>) -> Error {
         ),
     }
 }
+
+fn completion_proof(tx: &Tx<'_>, hash: &str, purpose: Purpose, at: u64) -> Result<Proof> {
+    match tx.get::<Proof>("account_proofs", hash)? {
+        Some(proof) if proof.purpose != purpose => Err(proof_error(None)),
+        Some(proof) if proof.expires_at <= at => Err(proof_error(Some(ProofEnd::Expired))),
+        Some(proof) => Ok(proof),
+        None => {
+            let reason = tx
+                .get::<ProofOutcome>("account_proof_outcomes", hash)?
+                .filter(|outcome| outcome.purpose == purpose && outcome.retain_until > at)
+                .map(|outcome| outcome.reason);
+            Err(proof_error(reason))
+        }
+    }
+}
+
+fn completion_user(tx: &Tx<'_>, proof: &Proof) -> Result<User> {
+    let user = tx
+        .get::<User>("users", &proof.user_id)?
+        .filter(|user| user.epoch == proof.epoch)
+        .ok_or_else(|| {
+            Error::new(
+                StatusCode::CONFLICT,
+                "account_changed",
+                "Account changed; request a new link",
+            )
+        })?;
+    let address_matches = if proof.purpose == Purpose::Reset {
+        match crate::delegation::credential_exposure(tx, &user.id)? {
+            Some(exposure) => exposure.allows_recovery(&user, &proof.email),
+            None => user.email.as_deref() == Some(proof.email.as_str()),
+        }
+    } else {
+        user.email.as_deref() == Some(proof.email.as_str())
+    };
+    if !address_matches {
+        return Err(Error::new(
+            StatusCode::CONFLICT,
+            "account_changed",
+            "Account changed; request a new link",
+        ));
+    }
+    Ok(user)
+}
+
 pub(crate) fn enqueue(
     core: &Core,
     tx: &Tx<'_>,
@@ -780,10 +825,27 @@ impl Core {
             return Err(proof_error(None));
         }
         let password = password.map(zeroize::Zeroizing::new);
-        let password_hash = match purpose {
+        match purpose {
             Purpose::Verify if password.is_some() => {
                 return Err(Error::bad("Verification does not accept a password"));
             }
+            Purpose::Verify => {}
+            _ if password.is_none() => return Err(Error::bad("New password required")),
+            _ => {}
+        }
+        let hash = digest(&token);
+        // Reject missing, spent, expired or unbound proofs before Argon2. This
+        // read is only an admission check: the writer rechecks the same facts
+        // after hashing, so a concurrent replacement cannot authorize a reset.
+        self.store.read(|tx| {
+            let proof = completion_proof(tx, &hash, purpose, now())?;
+            completion_user(tx, &proof)?;
+            if purpose == Purpose::Reset {
+                reset_authority(tx, &hash, &proof, now())?;
+            }
+            Ok(())
+        })?;
+        let password_hash = match purpose {
             Purpose::Verify => None,
             _ => Some(crypto::password_hash(
                 password
@@ -793,48 +855,8 @@ impl Core {
             )?),
         };
         self.store.write(|tx| {
-            let hash = digest(&token);
-            let proof = match tx.get::<Proof>("account_proofs", &hash)? {
-                Some(proof) if proof.purpose != purpose => return Err(proof_error(None)),
-                Some(proof) if proof.expires_at <= now() => {
-                    return Err(proof_error(Some(ProofEnd::Expired)));
-                }
-                Some(proof) => proof,
-                None => {
-                    let reason = tx
-                        .get::<ProofOutcome>("account_proof_outcomes", &hash)?
-                        .filter(|outcome| {
-                            outcome.purpose == purpose && outcome.retain_until > now()
-                        })
-                        .map(|outcome| outcome.reason);
-                    return Err(proof_error(reason));
-                }
-            };
-            let mut user = tx
-                .get::<User>("users", &proof.user_id)?
-                .filter(|u| u.epoch == proof.epoch)
-                .ok_or_else(|| {
-                    Error::new(
-                        StatusCode::CONFLICT,
-                        "account_changed",
-                        "Account changed; request a new link",
-                    )
-                })?;
-            let address_matches = if purpose == Purpose::Reset {
-                match crate::delegation::credential_exposure(tx, &user.id)? {
-                    Some(exposure) => exposure.allows_recovery(&user, &proof.email),
-                    None => user.email.as_deref() == Some(proof.email.as_str()),
-                }
-            } else {
-                user.email.as_deref() == Some(proof.email.as_str())
-            };
-            if !address_matches {
-                return Err(Error::new(
-                    StatusCode::CONFLICT,
-                    "account_changed",
-                    "Account changed; request a new link",
-                ));
-            }
+            let proof = completion_proof(tx, &hash, purpose, now())?;
+            let mut user = completion_user(tx, &proof)?;
             #[cfg(not(feature = "platform"))]
             let apply_password = |user: &mut User| -> Result<()> {
                 let hashed = password_hash

@@ -900,6 +900,11 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         | "/api/windows-devices/login"
         | "/api/windows-devices/tickets/redeem"
         | "/api/windows-devices/offline/verify" => ("login", 20),
+        path if path.starts_with("/api/workflows/configured/")
+            && path.ends_with("/password-reset") =>
+        {
+            ("account", 10)
+        }
         path if path.starts_with("/api/workflows/") && path.ends_with("/password") => ("login", 20),
         path if path.starts_with("/api/passkey/") => ("passkey", 30),
         path if path.starts_with("/api/account/") || path.starts_with("/api/portal/account/") => {

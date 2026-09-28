@@ -116,6 +116,18 @@ async fn configured_mail_reset_consumes_exact_proof_once_and_revokes_sessions() 
         .account_reset_request("configured-reset-owner")
         .unwrap();
     let code = reset_mail(&f);
+    assert_eq!(
+        f.core
+            .account_complete_configured_reset(
+                "mail-password-reset",
+                "ri_mail_unknown".into(),
+                "short".into(),
+            )
+            .unwrap_err()
+            .code,
+        "account_code_invalid",
+        "an unknown proof must fail before password hashing"
+    );
     let hash = digest(&code);
     let request_key = format!("{}:reset", before.id);
     let pointer: String = f
@@ -128,11 +140,13 @@ async fn configured_mail_reset_consumes_exact_proof_once_and_revokes_sessions() 
         .store
         .write(|tx| tx.put("account_latest", &request_key, &"retired"))
         .unwrap();
-    assert!(
+    assert_eq!(
         f.core
-            .account_complete_configured_reset("mail-password-reset", code.clone(), CHANGED.into())
-            .is_err(),
-        "a replaced recovery request cannot mint a configured run"
+            .account_complete_configured_reset("mail-password-reset", code.clone(), "short".into())
+            .unwrap_err()
+            .code,
+        "access_denied",
+        "a replaced recovery request must fail before password hashing"
     );
     f.core
         .store
@@ -145,10 +159,13 @@ async fn configured_mail_reset_consumes_exact_proof_once_and_revokes_sessions() 
         .store
         .write(|tx| tx.put("account_proofs", &hash, &expired))
         .unwrap();
-    assert!(
+    assert_eq!(
         f.core
-            .account_complete_configured_reset("mail-password-reset", code.clone(), CHANGED.into())
-            .is_err()
+            .account_complete_configured_reset("mail-password-reset", code.clone(), "short".into())
+            .unwrap_err()
+            .code,
+        "account_code_expired",
+        "an expired proof must fail before password hashing"
     );
     f.core
         .store

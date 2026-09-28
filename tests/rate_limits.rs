@@ -78,6 +78,19 @@ async fn browser_login_endpoints_share_the_login_bucket() {
     assert!(!limited(&router, "POST", "/api/login", "198.51.100.8").await);
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn configured_mail_reset_shares_the_account_bucket() {
+    let (_f, router) = router(&[]);
+    let reset = "/api/workflows/configured/mail-password-reset/password-reset";
+    exhaust(&router, &[("POST", reset)], 9, CLIENT).await;
+    assert!(!limited(&router, "POST", "/api/account/complete", CLIENT).await);
+    assert!(limited(&router, "POST", reset, CLIENT).await);
+    assert!(limited(&router, "POST", "/api/portal/account/reset", CLIENT).await);
+    assert!(!limited(&router, "POST", "/api/workflows/run/password", CLIENT).await);
+    assert!(!limited(&router, "GET", "/api/portal", CLIENT).await);
+}
+
 #[tokio::test]
 async fn interaction_state_has_its_own_bucket() {
     let (_f, router) = router(&[]);

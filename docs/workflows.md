@@ -519,6 +519,9 @@ or created. The existing mail verifier, password policy and atomic mutation
 writer perform all three steps in one submission. A replaced, retired or expired
 mail proof cannot start the run, and a failed password policy check rolls it
 back for retry. Completion consumes the proof once and revokes old sessions.
+The anonymous submission shares the account rate bucket (10 per minute by
+default). A read-only proof check precedes password hashing; the writer checks
+the proof again before consuming it.
 There is no separately cancellable active run between requests; replacing or
 retiring the mail proof cancels its authority before submission. The existing
 browser/CLI reset endpoints continue to use the shipped workflow, and
