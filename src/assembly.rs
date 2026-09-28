@@ -12,6 +12,8 @@ mod keyring;
 mod oidc;
 mod response;
 mod session_protocol;
+#[cfg(feature = "platform")]
+mod ssf;
 
 use crate::{
     config::Config,

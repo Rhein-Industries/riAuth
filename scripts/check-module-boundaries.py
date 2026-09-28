@@ -259,6 +259,8 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: authorization refers directly to storage or Core")
         if source_module == "exchange" and refs & (STORAGE | {"core"}):
             errors.append(f"{path.relative_to(ROOT)}: exchange refers directly to storage or Core")
+        if source_module == "ssf" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: SSF refers directly to storage or Core")
         if source_group == "model" and refs & PROTOCOL:
             errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
@@ -390,6 +392,14 @@ def main() -> None:
             "exchange_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "exchange"
+            ),
+            "ssf_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "ssf"
+            ),
+            "ssf_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "ssf"
             ),
             "model_protocol_reference_files": sum(
                 bool(references(path) & PROTOCOL)

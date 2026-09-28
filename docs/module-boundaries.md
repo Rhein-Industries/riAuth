@@ -755,3 +755,29 @@ exchange against direct storage and Core references.
 Twenty-four protocol files still name storage, including browser, source,
 SAML, SSF and credential adapters. Management and API files still reference
 Core/storage, and independently compiled crate contracts remain A03 work.
+
+## Wave 19: SSF delivery and revocation boundary
+
+[SSF](../src/ssf.rs) now keeps inbound SET verification, last-administrator
+protection, session revocation decisions, delivery claiming, retry settlement
+and expiry cleanup behind an `SsfTx` port. The concrete
+[Platform assembly](../src/assembly/ssf.rs) maps those operations to the same
+records, logout queue, signing key and audit function in the caller's
+transaction. Existing `Core` SSF methods and caller authorization moved to
+assembly; stream and delivery records remain in identity signals. The
+Platform-only assembly gate leaves the Essentials stub and its stored-state
+preflight intact.
+
+The scan covers 154 Rust files before and 155 after this cut and guards SSF
+against direct storage and Core references.
+
+| Explicit source edge | Before | Wave 19 |
+| --- | ---: | ---: |
+| `protocol -> storage` | 24 | 23 |
+| `protocol -> Core` | 27 | 26 |
+| `server_assembly -> protocol` | 11 | 12 |
+| `server_assembly -> storage` | 11 | 12 |
+
+Twenty-three protocol files still name storage, including browser, source,
+SAML and credential adapters. Management and API files still reference
+Core/storage, and independently compiled crate contracts remain A03 work.
