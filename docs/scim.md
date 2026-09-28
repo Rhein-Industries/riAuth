@@ -1,6 +1,6 @@
 # SCIM directory provisioning
 
-The inbound SCIM base is `/scim/v2`. `Users` and `Groups` support GET/POST/PUT/PATCH/DELETE, filtered list queries and POST `.search`. Metadata is available at `ServiceProviderConfig`, `ResourceTypes`, and `Schemas`. Responses use `application/scim+json`, SCIM errors, resource locations and revision ETags.
+The inbound SCIM base is `/scim/v2`. `Users` and `Groups` support GET/POST/PUT/PATCH/DELETE, filtered list queries and POST `.search`. Metadata is available at `ServiceProviderConfig`, `ResourceTypes`, and `Schemas`. Responses use `application/scim+json`, SCIM errors, resource locations and resource ETags.
 
 Use a dedicated agent with `user.read`, `user.write`, `group.read`, `group.write` and `group.members` permissions for its allowed names. Each provisioning operator owns the records it creates; another operator cannot take ownership, even through a matching username or external ID. Operator credential rotation preserves ownership. Provisioning never creates or modifies human administrators. Run these examples from the repository root, where `deployment-private/` is ignored by Git, or from a private operator directory outside the checkout.
 
@@ -11,11 +11,14 @@ riauth agent create directory --ttl 86400 \
   --permission 'group.read=*' --permission 'group.write=*' \
   --permission 'group.members=*' --out deployment-private/directory-agent.json
 riauth --agent-file deployment-private/directory-agent.json scim Users --filter 'userName eq "alice"'
-riauth --agent-file deployment-private/directory-agent.json --if-revision 12 --idempotency-key directory-create-alice \
+riauth --agent-file deployment-private/directory-agent.json --idempotency-key directory-create-alice \
   scim Users --method POST --file deployment-private/alice.scim.json
+riauth --agent-file deployment-private/directory-agent.json scim Users --id RESOURCE_ID
+riauth --agent-file deployment-private/directory-agent.json --idempotency-key directory-update-alice \
+  scim Users --id RESOURCE_ID --method PATCH --if-version '"RESOURCE_ETAG"' --file deployment-private/alice.patch.json
 ```
 
-Agent mutations require `If-Match` with the current configuration revision, returned as the resource ETag or by `riauth revision`. Idempotency keys permit exact retries without duplicate creation. An unrelated configuration change can stale an ETag; fetch the current state and reconcile again. Integrations unable to supply these headers need an adapter. Operators must not reuse one provisioning credential across unrelated directories.
+For agent credentials, PUT/PATCH/DELETE require `If-Match` with the target resource's exact quoted `meta.version` (also returned in the HTTP `ETag` header). POST creates a new resource without `If-Match`. A stale version returns HTTP 412, while a missing version on an agent update or delete returns HTTP 428. The version changes when the effective User or Group changes, including direct changes to its projected fields or durable membership; unrelated management writes leave it stable. Idempotency keys permit exact retries without duplicate creation or a second update, including when the first update changed the ETag. `riauth revision` and `--if-revision` apply to management API writes, not inbound SCIM. Operators must not reuse one provisioning credential across unrelated directories.
 
 Supported user attributes are `userName`, `externalId`, `displayName`, `name`, `active`, `emails` and write-only `password`; `groups` is read-only. A newly provisioned account without a password has local password authentication disabled. Link it to an upstream source through a reviewed `source_links` manifest using the exact upstream subject, or establish credentials through the account lifecycle. Email addresses start unverified.
 

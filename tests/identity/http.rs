@@ -292,12 +292,6 @@ async fn scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessi
         .unwrap();
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(rejected.headers()["content-type"], "application/scim+json");
-    let rev = f
-        .core
-        .store
-        .get::<u64>("meta", "revision")
-        .unwrap()
-        .unwrap();
     let input = json!({"schemas":[riauth::scim::USER],"userName":"scim-alice","externalId":"directory-42","displayName":"Directory Alice","password":PASSWORD,"active":true,"emails":[{"value":"scim-alice@example.test","primary":true}]});
     let mut created = Value::Null;
     for _ in 0..2 {
@@ -308,7 +302,6 @@ async fn scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessi
                     .method("POST")
                     .uri("/scim/v2/Users")
                     .header("authorization", format!("Bearer {credential}"))
-                    .header("if-match", format!("\"{rev}\""))
                     .header("idempotency-key", "scim-create-42")
                     .header("content-type", "application/scim+json")
                     .body(Body::from(input.to_string()))

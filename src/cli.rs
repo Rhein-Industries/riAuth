@@ -166,6 +166,9 @@ pub enum Command {
         resource: String,
         #[arg(long)]
         id: Option<String>,
+        /// Resource ETag returned by SCIM GET/POST, including its quotes
+        #[arg(long)]
+        if_version: Option<String>,
         #[arg(long,default_value="GET",value_parser=["GET","POST","PUT","PATCH","DELETE"])]
         method: String,
         #[arg(long)]
@@ -1412,7 +1415,10 @@ pub async fn run(cli: Cli) -> Result<()> {
                 if response.status().is_success(){json!({"content_type":"text/plain; version=0.0.4","metrics":response.text().await?})}else{response_json(response).await?}
             } else {remote.call(Method::GET, "/api/operations/metrics", None, true).await?}
         },
-        Command::Scim { resource,id,method,file,filter,start_index,count } => {
+        Command::Scim { resource,id,if_version,method,file,filter,start_index,count } => {
+            if remote.if_revision.is_some() {
+                bail!("SCIM uses resource ETags; use --if-version for PUT, PATCH, or DELETE");
+            }
             let mut path=format!("/scim/v2/{resource}");
             if let Some(id)=id {path.push('/');path.push_str(segment(&id)?);}
             let mut query=url::form_urlencoded::Serializer::new(String::new());
@@ -1421,7 +1427,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             if let Some(count)=count {query.append_pair("count",&count.to_string());}
             let query=query.finish();if !query.is_empty(){path.push('?');path.push_str(&query);}
             let body=file.map(|f| ->Result<Value>{Ok(serde_json::from_slice(&fs::read(f)?)?)}).transpose()?;
-            remote.call(Method::from_bytes(method.as_bytes())?,&path,body,true).await?
+            remote.call_with_if_match(Method::from_bytes(method.as_bytes())?,&path,body,true,if_version.as_deref()).await?
         },
         Command::Revision => remote.call(Method::GET, "/api/state/revision", None, true).await?,
         Command::Explain { client_id, username, scope, mfa } => remote.call(Method::POST, "/api/policy/explain", Some(json!({"client_id": client_id, "username": username, "scope": scope, "mfa": mfa})), true).await?,

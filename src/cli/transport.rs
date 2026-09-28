@@ -167,6 +167,32 @@ impl Remote {
         authenticated: bool,
         reviewed_plan: Option<&str>,
     ) -> Result<Value> {
+        self.call_with_review_and_match(method, path, body, authenticated, reviewed_plan, None).await
+    }
+    pub(super) async fn call_with_if_match(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        authenticated: bool,
+        version: Option<&str>,
+    ) -> Result<Value> {
+        if let Some(version) = version {
+            if version.len() < 3 || version.len() > 258 || !version.starts_with('"') || !version.ends_with('"') {
+                bail!("--if-version must be the quoted SCIM meta.version value");
+            }
+        }
+        self.call_with_review_and_match(method, path, body, authenticated, None, version).await
+    }
+    async fn call_with_review_and_match(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        authenticated: bool,
+        reviewed_plan: Option<&str>,
+        version: Option<&str>,
+    ) -> Result<Value> {
         let mutation = method != Method::GET
             && (path.starts_with("/api/") || path.starts_with("/scim/"))
             && !path.starts_with("/api/state/");
@@ -189,7 +215,9 @@ impl Remote {
             if let Some(key) = &self.idempotency_key {
                 req = req.header("idempotency-key", key);
             }
-            if let Some(revision) = self.if_revision {
+            if let Some(version) = version {
+                req = req.header("if-match", version);
+            } else if let Some(revision) = self.if_revision {
                 req = req.header("if-match", format!("\"{revision}\""));
             }
         }
