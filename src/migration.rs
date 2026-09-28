@@ -100,6 +100,8 @@ pub enum ItemKind {
     Logout,
     Application,
     Manifest,
+    /// A declared inventory element of a source-native type with no riAuth kind; see `source_kind`.
+    SourceNative,
 }
 /// One preflight finding. It never contains credential values.
 #[derive(
@@ -107,6 +109,9 @@ pub enum ItemKind {
 )]
 pub struct Finding {
     pub kind: ItemKind,
+    /// The source system's own element type, set only for `source_native` findings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
     /// Exported identifier, scoped as `client/item` where needed.
     pub id: String,
     pub classification: Classification,
@@ -132,6 +137,7 @@ impl Preflight {
     ) -> &mut Finding {
         self.items.push(Finding {
             kind,
+            source_kind: None,
             id: id.into(),
             classification,
             blocking: false,
@@ -140,6 +146,36 @@ impl Preflight {
             blocker: None,
         });
         self.items.last_mut().unwrap()
+    }
+    /// Sorted findings, the sorted distinct blockers, and a count per classification plus `blocking`.
+    fn finish(self) -> (Vec<Finding>, Vec<String>, BTreeMap<&'static str, usize>) {
+        let mut items = self.items;
+        items.sort();
+        items.dedup();
+        let mut blockers = items
+            .iter()
+            .filter_map(|i| i.blocker.clone())
+            .collect::<Vec<_>>();
+        blockers.sort();
+        blockers.dedup();
+        let mut summary = BTreeMap::from([
+            ("exact", 0),
+            ("convertible", 0),
+            ("manual", 0),
+            ("unsupported", 0),
+        ]);
+        for item in &items {
+            *summary
+                .entry(match item.classification {
+                    Classification::Exact => "exact",
+                    Classification::Convertible => "convertible",
+                    Classification::Manual => "manual",
+                    Classification::Unsupported => "unsupported",
+                })
+                .or_default() += 1;
+        }
+        summary.insert("blocking", items.iter().filter(|i| i.blocking).count());
+        (items, blockers, summary)
     }
 }
 impl Finding {
@@ -277,7 +313,7 @@ fn subject_source(mode: &str) -> Option<&'static str> {
 }
 
 pub fn convert(input: Import) -> Result<Value> {
-    if input.api_version != "riauth.authentik-import/v1" {
+    if input.api_version != AUTHENTIK_FORMAT {
         return Err(Error::bad("Unsupported Authentik import format"));
     }
     validate_server_url(&input.issuer).map_err(|_| Error::bad("Invalid target issuer"))?;
@@ -1050,37 +1086,332 @@ pub fn convert(input: Import) -> Result<Value> {
         )
         .block(error.message);
     }
-    let mut items = p.items;
-    items.sort();
-    items.dedup();
-    let mut blockers = items
-        .iter()
-        .filter_map(|i| i.blocker.clone())
-        .collect::<Vec<_>>();
-    blockers.sort();
-    blockers.dedup();
-    let mut summary = BTreeMap::from([
-        ("exact", 0),
-        ("convertible", 0),
-        ("manual", 0),
-        ("unsupported", 0),
-    ]);
-    for item in &items {
-        *summary
-            .entry(match item.classification {
-                Classification::Exact => "exact",
-                Classification::Convertible => "convertible",
-                Classification::Manual => "manual",
-                Classification::Unsupported => "unsupported",
-            })
-            .or_default() += 1;
-    }
-    summary.insert("blocking", items.iter().filter(|i| i.blocking).count());
+    let (items, blockers, summary) = p.finish();
     Ok(
         json!({"api_version": "riauth.migration-report/v1", "ready_for_plan": blockers.is_empty(), "issuer": input.issuer, "blockers": blockers,
         "summary": summary, "items": items,
         "manifest": if blockers.is_empty() { json!(manifest) } else { Value::Null }, "draft": manifest,
         "reauthentication_required": true, "old_tokens_and_sessions_imported": false, "signing_keys_imported": false, "administrators_imported": false,
         "source_fingerprint": crypto::digest(&serde_json::to_string(&input).map_err(Error::internal)?)}),
+    )
+}
+
+pub const AUTHENTIK_FORMAT: &str = "riauth.authentik-import/v1";
+pub const INVENTORY_FORMAT: &str = "riauth.migration-inventory/v1";
+
+/// Declared inventory of a source system that has no export converter. It carries no
+/// configuration or credential values and can never produce a manifest.
+#[derive(schemars::JsonSchema, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Inventory {
+    pub api_version: String,
+    /// Lowercase source system name, such as `keycloak`, `okta`, `active-directory` or `entra-id`.
+    pub system: String,
+    /// Every configuration element to account for. `id` is the source identifier, or `*` for all
+    /// elements of that kind.
+    pub elements: Vec<InventoryElement>,
+}
+#[derive(schemars::JsonSchema, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InventoryElement {
+    /// riAuth finding kind. Set exactly one of `kind` and `source_kind`.
+    #[serde(default)]
+    pub kind: Option<ItemKind>,
+    /// The source system's own element type when no riAuth kind fits, such as a Keycloak `realm`
+    /// or `role`: 1-64 lowercase letters, digits, hyphens or underscores, starting with a letter.
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    pub id: String,
+}
+
+/// riAuth adapter that can take over part of a declared source system.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Route {
+    /// Authentik has an export converter; an inventory is the wrong input.
+    Authentik,
+    /// A configured riAuth LDAP directory (docs/ldap.md).
+    Ldap,
+    /// `riauth directory workspace` or `riauth directory entra`, with its guide.
+    Cloud(&'static str, &'static str),
+    None,
+}
+fn route(system: &str) -> Route {
+    match system {
+        "authentik" => Route::Authentik,
+        "ldap" | "openldap" | "active-directory" => Route::Ldap,
+        "google-workspace" => Route::Cloud("workspace", "docs/enterprise/ENT-03.md"),
+        "entra-id" => Route::Cloud("entra", "docs/enterprise/ENT-04.md"),
+        _ => Route::None,
+    }
+}
+fn kind_name(kind: ItemKind) -> String {
+    serde_json::to_value(kind)
+        .ok()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_default()
+}
+/// Remediation for an element that no riAuth adapter takes over.
+fn rebuild_action(kind: ItemKind) -> &'static str {
+    match kind {
+        ItemKind::User => {
+            "Recreate the account through a reviewed riauth/v1 manifest or a riAuth directory; no local ID, subject or credential carries over"
+        }
+        ItemKind::Password => {
+            "Have the user set a new password through a managed reset; this system's hashes are not converted"
+        }
+        ItemKind::Totp => "Have the user enroll a new TOTP factor in riAuth",
+        ItemKind::Passkey => "Have the user add a passkey in the riAuth portal after signing in",
+        ItemKind::Session => {
+            "Users sign in again; plan relying-party sessions and offline token validators"
+        }
+        ItemKind::Subject => {
+            "Record each relying party's subject contract; riAuth never derives another issuer's subjects, and a changed subject needs an explicit relying-party account migration"
+        }
+        ItemKind::Group => {
+            "Recreate the group and its memberships in a reviewed manifest or through a riAuth directory"
+        }
+        ItemKind::Source => {
+            "Configure a reviewed riAuth source (riauth --json schema source) and explicit source links, or retire the sign-in method"
+        }
+        ItemKind::AuthenticationFlow | ItemKind::PropertyMapping | ItemKind::PolicyBinding => {
+            "Translate it by hand into reviewed declarative riAuth settings; scripts and expressions are never executed"
+        }
+        ItemKind::Federation => {
+            "Translate the trust into pinned machine_trust, exchange and token_managers settings"
+        }
+        ItemKind::SigningKey => {
+            "Import a reviewed key with riauth keys import, or have relying parties accept riAuth's JWKS"
+        }
+        ItemKind::EncryptionKey => {
+            "Configure the relying party's reviewed public encryption key in riAuth"
+        }
+        ItemKind::ClientSecret => {
+            "Reference the existing secret privately in a reviewed client, or coordinate a new secret with the relying party"
+        }
+        _ => {
+            "Recreate it as a reviewed riAuth client in a riauth/v1 manifest and rehearse it with its relying party"
+        }
+    }
+}
+/// Resolve an element to its finding kind and, for a source-native element, its validated type.
+fn element_kind(element: &InventoryElement) -> Result<(ItemKind, Option<&str>)> {
+    match (element.kind, element.source_kind.as_deref()) {
+        (Some(ItemKind::Manifest), None) => {
+            Err(Error::bad("An inventory cannot declare a manifest element"))
+        }
+        (Some(ItemKind::SourceNative), None) => Err(Error::bad(
+            "Declare a source-native element with source_kind instead of kind",
+        )),
+        (Some(kind), None) => Ok((kind, None)),
+        (None, Some(native)) => {
+            let bytes = native.as_bytes();
+            if bytes.is_empty()
+                || bytes.len() > 64
+                || !bytes[0].is_ascii_lowercase()
+                || !bytes.iter().all(|&b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
+                })
+            {
+                return Err(Error::bad(
+                    "source_kind must be 1-64 lowercase letters, digits, hyphens or underscores, starting with a letter",
+                ));
+            }
+            // A type riAuth already names must use `kind`, so directory routes are never bypassed.
+            if serde_json::from_value::<ItemKind>(json!(native.replace('-', "_"))).is_ok() {
+                return Err(Error::bad(
+                    "A source_kind that matches a riAuth finding kind must be declared with kind",
+                ));
+            }
+            Ok((ItemKind::SourceNative, Some(native)))
+        }
+        _ => Err(Error::bad(
+            "Each inventory element needs exactly one of kind or source_kind",
+        )),
+    }
+}
+fn classify_element(
+    p: &mut Preflight,
+    system: &str,
+    route: Route,
+    kind: ItemKind,
+    source_kind: Option<&str>,
+    id: &str,
+) {
+    let label = format!(
+        "{} {id}",
+        source_kind.map_or_else(|| kind_name(kind), String::from)
+    );
+    if let (Some(native), false) = (source_kind, route == Route::Authentik) {
+        let finding = p.add(kind, id, Classification::Unsupported,
+            format!("{system} {native} elements have no riAuth equivalent kind and no converter"),
+            "Rebuild what it provides as reviewed riAuth configuration and rehearse it, or retire it before cutover");
+        finding.source_kind = Some(native.to_owned());
+        finding.block(format!(
+            "{system} {label}: no riAuth converter; rebuild or retire it"
+        ));
+        return;
+    }
+    let unsupported = |p: &mut Preflight| {
+        let reason = match route {
+            Route::Ldap => format!(
+                "riAuth's LDAP directory imports only users, group memberships and password checks, and no converter reads {system} exports for anything else"
+            ),
+            Route::Cloud(command, _) => format!(
+                "riauth directory {command} imports only users and mapped group memberships, and no converter reads {system} exports for anything else"
+            ),
+            _ => format!(
+                "No riAuth converter reads {system} exports, so this element is not carried over"
+            ),
+        };
+        p.add(
+            kind,
+            id,
+            Classification::Unsupported,
+            reason,
+            rebuild_action(kind),
+        )
+        .block(format!(
+            "{system} {label}: no riAuth converter; rebuild or retire it"
+        ));
+    };
+    match (route, kind) {
+        (Route::Authentik, _) => {
+            p.add(kind, id, Classification::Manual,
+                "Authentik configuration is classified from its API export bundle, not from an inventory",
+                format!("Build a {AUTHENTIK_FORMAT} bundle (docs/migration.md) and run the preflight on it"))
+                .block(format!("{system} {label}: use the {AUTHENTIK_FORMAT} export bundle"));
+            p.items.last_mut().unwrap().source_kind = source_kind.map(String::from);
+        }
+        (Route::Ldap, ItemKind::User) => {
+            p.add(kind, id, Classification::Manual,
+                "Directory entries are imported by a configured riAuth LDAP directory, not by this file; its id_attribute becomes the stable identity",
+                "Configure [directories.<name>] in riauth.toml (docs/ldap.md, including its size limits) and review riauth directory plan; accounts are never adopted by DN or email")
+                .block(format!("{system} {label}: import through a riAuth LDAP directory and review its plan"));
+        }
+        (Route::Ldap, ItemKind::Group) => {
+            p.add(kind, id, Classification::Manual,
+                "Memberships are imported into existing riAuth groups through per-group user filters; nested groups need explicit filters",
+                "Create the riAuth group, set its group_user_filters entry and review the directory plan")
+                .block(format!("{system} {label}: map the group through a riAuth LDAP directory and review its plan"));
+        }
+        (Route::Ldap, ItemKind::Password) => {
+            p.add(kind, id, Classification::Manual,
+                "Directory passwords are not copied; riAuth checks them with an LDAP bind at each login",
+                "Keep the directory reachable from every riAuth node; an outage never falls back to a local password")
+                .block(format!("{system} {label}: keep password checks on the directory through a riAuth LDAP directory"));
+        }
+        (Route::Cloud(command, guide), ItemKind::User | ItemKind::Group) => {
+            p.add(kind, id, Classification::Manual,
+                format!("{system} users and the memberships of mapped groups are imported by riauth directory {command}, not by this file; the upstream object ID becomes the stable link"),
+                format!("Configure the directory in riauth.toml ({guide}) and review riauth directory {command} plan after creating the local groups; accounts are never adopted by email or username"))
+                .block(format!("{system} {label}: import through riauth directory {command} and review its plan"));
+        }
+        (Route::Cloud(..), ItemKind::Password) => {
+            p.add(kind, id, Classification::Unsupported,
+                format!("{system} passwords are neither exported nor checked by riAuth; its directory import does not enable password sign-in"),
+                "Configure explicit source links to a reviewed upstream source, or have users set a riAuth password")
+                .block(format!("{system} {label}: choose a riAuth sign-in method for imported accounts"));
+        }
+        _ => unsupported(p),
+    }
+}
+/// Classify a declared inventory. Every element blocks, and the report never contains a manifest.
+pub fn inventory(input: Inventory) -> Result<Value> {
+    if input.api_version != INVENTORY_FORMAT {
+        return Err(Error::bad("Unsupported migration inventory format"));
+    }
+    let system = input.system.as_str();
+    if system.is_empty()
+        || system.len() > 64
+        || !system
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(Error::bad(
+            "Inventory system must be 1-64 lowercase letters, digits or hyphens",
+        ));
+    }
+    if input.elements.is_empty() {
+        return Err(Error::bad("Declare at least one inventory element"));
+    }
+    let route = route(system);
+    let mut p = Preflight::default();
+    let mut declared = BTreeSet::new();
+    for element in &input.elements {
+        let (kind, source_kind) = element_kind(element)?;
+        if element.id.is_empty()
+            || element.id.len() > 256
+            || element.id.chars().any(char::is_control)
+        {
+            return Err(Error::bad(
+                "Inventory element IDs must be 1-256 characters without control characters",
+            ));
+        }
+        if !declared.insert((kind, source_kind, element.id.as_str())) {
+            return Err(Error::bad("Duplicate inventory element"));
+        }
+        classify_element(&mut p, system, route, kind, source_kind, &element.id);
+    }
+    let action = match route {
+        Route::Authentik => format!("Preflight a {AUTHENTIK_FORMAT} bundle instead"),
+        Route::Ldap => "Configure a riAuth LDAP directory for the listed users, groups and password checks; its reviewed plan replaces a manifest".into(),
+        Route::Cloud(command, _) => format!("Configure riauth directory {command} for the listed users and groups; its reviewed plan replaces a manifest"),
+        Route::None => "Rebuild the listed configuration as reviewed riAuth configuration and rehearse every application; retire what is not rebuilt".into(),
+    };
+    p.add(
+        ItemKind::Manifest,
+        "manifest",
+        Classification::Unsupported,
+        format!("{INVENTORY_FORMAT} only declares what {system} contains; no converter reads its exports"),
+        action,
+    )
+    .block(format!("{system}: an inventory cannot produce an applicable manifest"));
+    let (items, blockers, summary) = p.finish();
+    Ok(
+        json!({"api_version": "riauth.migration-report/v1", "ready_for_plan": false,
+        "source": {"system": system, "format": INVENTORY_FORMAT, "converter": Value::Null},
+        "blockers": blockers, "summary": summary, "items": items, "manifest": Value::Null}),
+    )
+}
+/// Parse a typed migration input. Deserialization errors can quote input values, such as a
+/// misplaced secret, so only the location is reported.
+fn parse<T: serde::de::DeserializeOwned>(input: &[u8], what: &str, schema: &str) -> Result<T> {
+    serde_json::from_slice(input).map_err(|error| {
+        Error::bad(format!(
+            "Invalid {what} at line {} column {}; check it against riauth --json schema {schema}",
+            error.line(),
+            error.column()
+        ))
+    })
+}
+/// Source-aware preflight: dispatch on `api_version` and return the classified findings only.
+/// It never returns a manifest or draft; `import-authentik --out` is the only manifest writer.
+pub fn preflight(input: &[u8]) -> Result<Value> {
+    let value: Value = serde_json::from_slice(input).map_err(|error| {
+        Error::bad(format!(
+            "Migration input is not JSON at line {} column {}",
+            error.line(),
+            error.column()
+        ))
+    })?;
+    let report = match value["api_version"].as_str() {
+        Some(AUTHENTIK_FORMAT) => {
+            let mut report = convert(parse(input, "Authentik import bundle", "authentik-import")?)?;
+            report["source"] = json!({"system": "authentik", "format": AUTHENTIK_FORMAT, "converter": "authentik"});
+            report
+        }
+        Some(INVENTORY_FORMAT) => {
+            inventory(parse(input, "migration inventory", "migration-inventory")?)?
+        }
+        _ => {
+            return Err(Error::bad(format!(
+                "Unsupported migration input; api_version must be {AUTHENTIK_FORMAT} or {INVENTORY_FORMAT}"
+            )));
+        }
+    };
+    Ok(
+        json!({"api_version": report["api_version"], "source": report["source"],
+        "ready_for_plan": report["ready_for_plan"], "summary": report["summary"],
+        "blockers": report["blockers"], "items": report["items"]}),
     )
 }

@@ -249,6 +249,12 @@ pub enum Command {
         #[arg(long, conflicts_with = "out")]
         preflight: bool,
     },
+    /// Classify an Authentik export bundle or a declared inventory of another source system; writes nothing
+    MigrationPreflight {
+        /// riauth.authentik-import/v1 bundle or riauth.migration-inventory/v1 inventory
+        #[arg(long)]
+        file: PathBuf,
+    },
     /// Change your own password with current-password and MFA verification
     Passwd {
         #[arg(long)]
@@ -1276,6 +1282,10 @@ pub async fn run(cli: Cli) -> Result<()> {
             )?;
             return Ok(());
         }
+        Command::MigrationPreflight { file } => {
+            emit_local(&cli, &crate::migration::preflight(&fs::read(file)?)?)?;
+            return Ok(());
+        }
         Command::Schema { name } => {
             emit_local(&cli, &crate::schema::schema(name)?)?;
             return Ok(());
@@ -2106,7 +2116,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?
         }
-        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::PrepareSetup { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
+        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::PrepareSetup { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
             unreachable!()
         }
     };

@@ -1080,6 +1080,409 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
         oauth.reason.contains("email_link")
             && oauth.action.contains("never links accounts by email")
     );
+
+    // The source-aware entry point returns the same findings for the same stale and mismatched
+    // resolutions, and never a manifest or draft.
+    let entry = riauth::migration::preflight(&serde_json::to_vec(&input).unwrap()).unwrap();
+    assert_eq!(entry["source"]["converter"], "authentik");
+    for field in [
+        "api_version",
+        "ready_for_plan",
+        "blockers",
+        "summary",
+        "items",
+    ] {
+        assert_eq!(entry[field], report[field], "{field}");
+    }
+    assert!(entry.get("manifest").is_none() && entry.get("draft").is_none());
+    assert!(!entry.to_string().contains(secret));
+}
+
+#[test]
+fn migration_inventory_classifies_every_declared_element_and_never_yields_a_manifest() {
+    use riauth::migration::{Classification::*, Finding, ItemKind, ItemKind::*};
+    let kinds = [
+        User,
+        Password,
+        Totp,
+        Passkey,
+        Session,
+        Subject,
+        Group,
+        Source,
+        Provider,
+        AuthenticationFlow,
+        PropertyMapping,
+        PolicyBinding,
+        Federation,
+        SigningKey,
+        EncryptionKey,
+        ClientSecret,
+        Grant,
+        TokenLifetime,
+        RedirectUri,
+        Logout,
+        Application,
+    ];
+    let inventory = |system: &str| {
+        let elements = kinds
+            .iter()
+            .flat_map(|kind| {
+                [
+                    json!({"kind": kind, "id": "*"}),
+                    json!({"kind": kind, "id": "grafana"}),
+                ]
+            })
+            .collect::<Vec<_>>();
+        json!({"api_version": "riauth.migration-inventory/v1", "system": system, "elements": elements})
+    };
+    // Directory systems keep users, groups and (for LDAP) password checks on riAuth's live
+    // directory adapters; nothing else, and nothing from other systems, has a route.
+    let routed = |system: &str, kind: ItemKind| match (system, kind) {
+        ("authentik", _) => Some(Manual),
+        ("active-directory", User | Group | Password) => Some(Manual),
+        ("entra-id", User | Group) => Some(Manual),
+        _ => None,
+    };
+    for system in [
+        "keycloak",
+        "okta",
+        "active-directory",
+        "entra-id",
+        "authentik",
+    ] {
+        let input = inventory(system);
+        let report =
+            riauth::migration::inventory(serde_json::from_value(input.clone()).unwrap()).unwrap();
+        assert_eq!(report["ready_for_plan"], false, "{system}");
+        assert!(report["manifest"].is_null(), "{system}");
+        assert!(report.get("draft").is_none(), "{system}");
+        assert_eq!(report["source"]["system"], system);
+        assert!(report["source"]["converter"].is_null());
+        let items: Vec<Finding> = serde_json::from_value(report["items"].clone()).unwrap();
+        // One finding per declared element, plus the manifest finding; every one blocks.
+        assert_eq!(items.len(), kinds.len() * 2 + 1, "{system}");
+        let mut blockers = items
+            .iter()
+            .map(|i| {
+                assert!(
+                    i.blocking && !i.reason.is_empty() && !i.action.is_empty(),
+                    "{i:?}"
+                );
+                i.blocker.clone().unwrap()
+            })
+            .collect::<Vec<_>>();
+        blockers.sort();
+        blockers.dedup();
+        assert_eq!(json!(blockers), report["blockers"], "{system}");
+        assert_eq!(report["summary"]["blocking"], items.len());
+        for (class, name) in [
+            (Exact, "exact"),
+            (Convertible, "convertible"),
+            (Manual, "manual"),
+            (Unsupported, "unsupported"),
+        ] {
+            assert_eq!(
+                report["summary"][name],
+                items.iter().filter(|i| i.classification == class).count(),
+                "{system} {name}"
+            );
+        }
+        for element in input["elements"].as_array().unwrap() {
+            let kind: ItemKind = serde_json::from_value(element["kind"].clone()).unwrap();
+            let id = element["id"].as_str().unwrap();
+            let found = items
+                .iter()
+                .filter(|i| i.kind == kind && i.id == id)
+                .collect::<Vec<_>>();
+            assert_eq!(found.len(), 1, "{system} {kind:?} {id}");
+            assert_eq!(
+                found[0].classification,
+                routed(system, kind).unwrap_or(Unsupported),
+                "{system} {kind:?} {id}"
+            );
+        }
+        let manifest = items.iter().find(|i| i.kind == Manifest).unwrap();
+        assert_eq!(
+            (manifest.id.as_str(), manifest.classification),
+            ("manifest", Unsupported)
+        );
+        assert_eq!(
+            manifest.blocker.as_deref(),
+            Some(format!("{system}: an inventory cannot produce an applicable manifest").as_str())
+        );
+        // The entry point dispatches on api_version and returns the same findings.
+        let entry = riauth::migration::preflight(&serde_json::to_vec(&input).unwrap()).unwrap();
+        for field in [
+            "api_version",
+            "source",
+            "ready_for_plan",
+            "blockers",
+            "summary",
+            "items",
+        ] {
+            assert_eq!(entry[field], report[field], "{system} {field}");
+        }
+        assert!(entry.get("manifest").is_none());
+    }
+    let ldap = riauth::migration::inventory(serde_json::from_value(inventory("openldap")).unwrap())
+        .unwrap();
+    let action = |kind: &str| {
+        ldap["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["kind"] == kind && i["id"] == "*")
+            .unwrap()["action"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert!(
+        action("user").contains("docs/ldap.md")
+            && action("user").contains("never adopted by DN or email")
+    );
+    assert!(action("password").contains("never falls back to a local password"));
+
+    // Unknown formats, unsupported shapes and anything carrying extra data are rejected outright.
+    let secret = "inventory-secret-must-not-appear";
+    let base = json!({"api_version": "riauth.migration-inventory/v1", "system": "keycloak",
+        "elements": [{"kind": "provider", "id": "grafana"}]});
+    let with = |patch: Value| {
+        let mut input = base.clone();
+        for (k, v) in patch.as_object().unwrap() {
+            input[k] = v.clone();
+        }
+        input
+    };
+    for (input, message) in [
+        (
+            with(json!({"api_version": "riauth.keycloak-import/v1"})),
+            "Unsupported migration input",
+        ),
+        (
+            json!({"system": "keycloak", "elements": []}),
+            "Unsupported migration input",
+        ),
+        (
+            with(json!({"client_secret": secret})),
+            "Invalid migration inventory",
+        ),
+        (
+            with(json!({"elements": [{"kind": secret, "id": "grafana"}]})),
+            "Invalid migration inventory",
+        ),
+        (
+            with(json!({"elements": [{"kind": "provider", "id": "grafana", "secret": secret}]})),
+            "Invalid migration inventory",
+        ),
+        (
+            with(json!({"elements": []})),
+            "Declare at least one inventory element",
+        ),
+        (
+            with(json!({"elements": [{"kind": "manifest", "id": "manifest"}]})),
+            "cannot declare a manifest",
+        ),
+        (
+            with(json!({"elements": [{"kind": "user", "id": "*"}, {"kind": "user", "id": "*"}]})),
+            "Duplicate inventory element",
+        ),
+        (
+            with(json!({"elements": [{"kind": "user", "id": ""}]})),
+            "Inventory element IDs",
+        ),
+        (
+            with(json!({"elements": [{"kind": "user", "id": "a\nb"}]})),
+            "Inventory element IDs",
+        ),
+        (with(json!({"system": "Keycloak"})), "Inventory system"),
+        (with(json!({"system": ""})), "Inventory system"),
+        // An inventory cannot stand in for the Authentik bundle and vice versa.
+        (
+            with(json!({"api_version": "riauth.authentik-import/v1"})),
+            "Invalid Authentik import bundle",
+        ),
+        // A misplaced secret in a typed Authentik field is not quoted back.
+        (
+            json!({"api_version": "riauth.authentik-import/v1", "issuer": "https://id.example.test",
+                "users": [], "groups": [], "providers": [], "applications": [], "policy_bindings": [],
+                "sources": [], "clients": {}, "passwords": {"alice": secret}}),
+            "Invalid Authentik import bundle at line 1",
+        ),
+    ] {
+        let error = riauth::migration::preflight(&serde_json::to_vec(&input).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{input}: {error}");
+        assert!(!error.contains(secret), "{error}");
+    }
+    let error = riauth::migration::preflight(b"not json")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("Migration input is not JSON at line 1"),
+        "{error}"
+    );
+}
+
+#[test]
+fn migration_inventory_classifies_source_native_kinds_as_unsupported() {
+    use riauth::migration::{Classification::*, Finding, ItemKind::*};
+    let inventory = |system: &str, elements: Value| json!({"api_version": "riauth.migration-inventory/v1", "system": system, "elements": elements});
+    // `admin` is declared as both a realm and a role; uniqueness is by type and ID together.
+    let keycloak = inventory(
+        "keycloak",
+        json!([
+            {"source_kind": "realm", "id": "master"},
+            {"source_kind": "realm", "id": "admin"},
+            {"source_kind": "role", "id": "admin"},
+            {"source_kind": "client-scope", "id": "profile"},
+            {"source_kind": "required_action", "id": "*"},
+            {"kind": "provider", "id": "grafana"}
+        ]),
+    );
+    let report =
+        riauth::migration::inventory(serde_json::from_value(keycloak.clone()).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    assert!(report["manifest"].is_null());
+    let items: Vec<Finding> = serde_json::from_value(report["items"].clone()).unwrap();
+    assert_eq!(items.len(), 7);
+    assert!(items.iter().all(|i| i.blocking && i.blocker.is_some()));
+    for element in keycloak["elements"].as_array().unwrap() {
+        let id = element["id"].as_str().unwrap();
+        let found = items
+            .iter()
+            .filter(|i| {
+                i.id == id
+                    && match element["source_kind"].as_str() {
+                        Some(native) => {
+                            i.kind == SourceNative && i.source_kind.as_deref() == Some(native)
+                        }
+                        None => i.kind == Provider && i.source_kind.is_none(),
+                    }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(found.len(), 1, "{element}");
+        assert_eq!(found[0].classification, Unsupported, "{element}");
+    }
+    let role = items
+        .iter()
+        .find(|i| i.source_kind.as_deref() == Some("role"))
+        .unwrap();
+    assert_eq!(
+        role.blocker.as_deref(),
+        Some("keycloak role admin: no riAuth converter; rebuild or retire it")
+    );
+    assert!(role.reason.contains("keycloak role elements") && role.action.contains("retire it"));
+    // Only source-native findings carry the field, so Authentik reports are unchanged.
+    let serialized = report["items"].as_array().unwrap();
+    assert_eq!(
+        serialized
+            .iter()
+            .filter(|i| i.get("source_kind").is_some())
+            .count(),
+        5
+    );
+    assert_eq!(
+        serialized
+            .iter()
+            .find(|i| i["kind"] == "source_native")
+            .unwrap()["kind"],
+        "source_native"
+    );
+
+    // Directory routes never apply to a source-native type; Authentik still points at the bundle.
+    for (system, expected) in [
+        ("active-directory", Unsupported),
+        ("entra-id", Unsupported),
+        ("authentik", Manual),
+    ] {
+        let report = riauth::migration::inventory(
+            serde_json::from_value(inventory(
+                system,
+                json!([{"source_kind": "gpo", "id": "default"}]),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let item = &report["items"].as_array().unwrap()[1];
+        assert_eq!(
+            (item["kind"].as_str(), item["source_kind"].as_str()),
+            (Some("source_native"), Some("gpo"))
+        );
+        assert_eq!(item["classification"], json!(expected), "{system}");
+        assert_eq!(item["blocking"], true);
+    }
+
+    let secret = "native-kind-secret";
+    for (elements, message) in [
+        (
+            json!([{"source_kind": "role", "id": "admin"}, {"source_kind": "role", "id": "admin"}]),
+            "Duplicate inventory element",
+        ),
+        (
+            json!([{"kind": "provider", "source_kind": "client", "id": "a"}]),
+            "exactly one of kind or source_kind",
+        ),
+        (json!([{"id": "a"}]), "exactly one of kind or source_kind"),
+        (
+            json!([{"kind": "source_native", "id": "a"}]),
+            "with source_kind instead of kind",
+        ),
+        (
+            json!([{"source_kind": "user", "id": "a"}]),
+            "must be declared with kind",
+        ),
+        (
+            json!([{"source_kind": "authentication-flow", "id": "a"}]),
+            "must be declared with kind",
+        ),
+        (
+            json!([{"source_kind": "manifest", "id": "a"}]),
+            "must be declared with kind",
+        ),
+        (
+            json!([{"source_kind": "Realm", "id": "a"}]),
+            "source_kind must be",
+        ),
+        (
+            json!([{"source_kind": "1realm", "id": "a"}]),
+            "source_kind must be",
+        ),
+        (
+            json!([{"source_kind": "", "id": "a"}]),
+            "source_kind must be",
+        ),
+        (
+            json!([{"source_kind": "r".repeat(65), "id": "a"}]),
+            "source_kind must be",
+        ),
+        (
+            json!([{"source_kind": format!("role:{secret}"), "id": "a"}]),
+            "source_kind must be",
+        ),
+        (
+            json!([{"source_kind": "role", "id": "a", "secret": secret}]),
+            "Invalid migration inventory",
+        ),
+        (
+            json!([{"source_kind": 7, "id": secret}]),
+            "Invalid migration inventory",
+        ),
+        // `kind` stays the closed riAuth taxonomy.
+        (
+            json!([{"kind": "realm", "id": "master"}]),
+            "Invalid migration inventory",
+        ),
+    ] {
+        let input = inventory("keycloak", elements);
+        let error = riauth::migration::preflight(&serde_json::to_vec(&input).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(message), "{input}: {error}");
+        assert!(!error.contains(secret), "{error}");
+    }
 }
 
 #[test]

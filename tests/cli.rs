@@ -607,3 +607,159 @@ fn import_authentik_preflight_classifies_without_writing_files() {
     assert!(!both.status.success());
     assert!(!dir.path().join("again").exists());
 }
+
+#[test]
+fn migration_preflight_is_source_aware_and_rejects_without_writing() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let write = |name: &str, value: Value| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, value.to_string()).unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let run = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let bundle = write(
+        "authentik.json",
+        json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+            "users":[{"pk":1,"uid":"a","username":"alice","name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],"sources":[],"passwords":{},"clients":{}}),
+    );
+    let inventory = write(
+        "keycloak.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak",
+            "elements":[{"kind":"user","id":"*"},{"kind":"provider","id":"grafana"}]}),
+    );
+    let secret = "cli-inventory-secret";
+    let smuggled = write(
+        "smuggled.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak",
+            "elements":[{"kind":"provider","id":"grafana"}],"client_secret":secret}),
+    );
+    let unknown = write(
+        "unknown.json",
+        json!({"api_version":"riauth.keycloak-import/v1","realm":"master"}),
+    );
+    let entries = || std::fs::read_dir(dir.path()).unwrap().count();
+    let before = entries();
+
+    // The Authentik bundle reports exactly what import-authentik --preflight reports.
+    let authentik = success(run(&["migration-preflight", "--file", &bundle]));
+    let legacy = success(run(&["import-authentik", "--file", &bundle, "--preflight"]));
+    for field in ["ready_for_plan", "summary", "blockers", "items"] {
+        assert_eq!(authentik[field], legacy[field], "{field}");
+    }
+    assert_eq!(authentik["source"]["converter"], "authentik");
+    assert!(authentik.get("manifest").is_none());
+
+    // Another named system is inventoried item by item, and always blocks.
+    let keycloak = success(run(&["migration-preflight", "--file", &inventory]));
+    assert_eq!(keycloak["ready_for_plan"], false);
+    assert_eq!(keycloak["source"]["system"], "keycloak");
+    assert_eq!(keycloak["summary"]["unsupported"], 3);
+    assert_eq!(keycloak["summary"]["blocking"], 3);
+    assert!(keycloak.get("manifest").is_none());
+    assert_eq!(entries(), before, "preflight wrote files");
+
+    // Rejected inputs fail without creating the requested output file or echoing values.
+    for file in [&smuggled, &unknown] {
+        let output = run(&[
+            "--output-file",
+            "rejected.json",
+            "migration-preflight",
+            "--file",
+            file,
+        ]);
+        assert!(!output.status.success());
+        assert!(!dir.path().join("rejected.json").exists());
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!text.contains(secret) && !text.contains("master"), "{text}");
+    }
+    assert_eq!(entries(), before);
+
+    let schema = success(run(&["schema", "migration-inventory"]));
+    assert!(schema["properties"]["elements"].is_object(), "{schema}");
+}
+
+#[test]
+fn migration_preflight_classifies_keycloak_native_kinds_without_leaking() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let run = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let write = |name: &str, value: Value| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, value.to_string()).unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let secret = "keycloak-client-secret-sentinel";
+    let realm = write(
+        "keycloak.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak","elements":[
+            {"source_kind":"realm","id":"master"},
+            {"source_kind":"role","id":"realm-admin"},
+            {"kind":"provider","id":"grafana"}]}),
+    );
+    let entries = || std::fs::read_dir(dir.path()).unwrap().count();
+    let before = entries();
+    let output = run(&["migration-preflight", "--file", &realm]);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let data = success(output);
+    assert_eq!(data["ready_for_plan"], false);
+    assert!(data.get("manifest").is_none());
+    assert_eq!(data["summary"]["unsupported"], 4);
+    assert_eq!(data["summary"]["blocking"], 4);
+    let items = data["items"].as_array().unwrap();
+    for (native, id) in [("realm", "master"), ("role", "realm-admin")] {
+        let item = items
+            .iter()
+            .find(|i| i["source_kind"] == native && i["id"] == id)
+            .unwrap_or_else(|| panic!("{native} {id} has no finding"));
+        assert_eq!(item["kind"], "source_native");
+        assert_eq!(item["classification"], "unsupported");
+        assert_eq!(item["blocking"], true);
+        assert_eq!(
+            item["blocker"],
+            format!("keycloak {native} {id}: no riAuth converter; rebuild or retire it")
+        );
+    }
+    assert!(!stdout.contains(secret));
+    assert_eq!(entries(), before, "preflight wrote files");
+
+    // Secret-bearing native elements are rejected without output or echo.
+    for (name, element) in [
+        (
+            "extra.json",
+            json!({"source_kind":"client","id":"grafana","secret":secret}),
+        ),
+        (
+            "kind.json",
+            json!({"source_kind":format!("client:{secret}"),"id":"grafana"}),
+        ),
+        ("typed.json", json!({"source_kind":["realm"],"id":secret})),
+    ] {
+        let file = write(
+            name,
+            json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak","elements":[element]}),
+        );
+        let output = run(&[
+            "--output-file",
+            "rejected.json",
+            "migration-preflight",
+            "--file",
+            &file,
+        ]);
+        assert!(!output.status.success(), "{name}");
+        assert!(!dir.path().join("rejected.json").exists(), "{name}");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!text.contains(secret), "{name}: {text}");
+    }
+}

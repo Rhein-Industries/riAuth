@@ -21,7 +21,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Configuration example](../examples/riauth.toml) | Base configuration; optional feature blocks are in their guides |
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
-| [Migration](migration.md) | General Authentik import, continuity, cutover and rollback guidance |
+| [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |
 | [Release compatibility](release-notes.md) | Behaviour changes, schema and backup compatibility, artifacts and rollback |
 | [Testing](testing.md) | Local checks and deployment validation |
 | [Q07 parser assurance](q07-parser-assurance.md) | Bounded parser/dependency checks, a local SCIM parser repair, and remaining assurance work |

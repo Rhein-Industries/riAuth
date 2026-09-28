@@ -7,7 +7,7 @@ For a new instance without Authentik data, follow [getting started](getting-star
 | Stage | Review before continuing |
 | --- | --- |
 | Export | Confirm every Authentik collection is complete and record the current application, issuer and subject contracts. |
-| Convert | Run `import-authentik --preflight`, then `import-authentik --out`; review every classified item and resolve every blocker in the private report. A draft is not an applicable manifest. |
+| Convert | Run `import-authentik --preflight`, then `import-authentik --out`; review every classified item and resolve every blocker in the private report. A draft is not an applicable manifest. For other source systems, see [other source systems](#other-source-systems). |
 | Plan and apply | Review the manifest and redacted plan against a disposable riAuth instance before applying to the intended instance. |
 | Rehearse | Test each application, factor, logout and rollback path with its real peer. Record the result and rollback owner in your deployment inventory. |
 
@@ -45,7 +45,8 @@ The importer carries over exact redirects, supported grant permissions, token li
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `user`, `password`, `totp`, `passkey`, `session`, `subject`, `group`, `source`, `provider`, `authentication_flow`, `property_mapping`, `policy_binding`, `federation`, `signing_key`, `encryption_key`, `client_secret`, `grant`, `token_lifetime`, `redirect_uri`, `logout`, `application` or `manifest` |
+| `kind` | `user`, `password`, `totp`, `passkey`, `session`, `subject`, `group`, `source`, `provider`, `authentication_flow`, `property_mapping`, `policy_binding`, `federation`, `signing_key`, `encryption_key`, `client_secret`, `grant`, `token_lifetime`, `redirect_uri`, `logout`, `application`, `manifest` or, in an inventory report only, `source_native` |
+| `source_kind` | Present only on `source_native` findings: the source system's own element type, such as a Keycloak `realm` |
 | `id` | Exported identifier (username, group name, source/binding pk, client ID or application slug), scoped as `client/item` for mappings, redirects and federation, and `username/client` for subjects. `*` covers every user. |
 | `classification` | `exact`, `convertible`, `manual` or `unsupported` (below) |
 | `blocking`, `blocker` | Whether this item keeps `ready_for_plan` false, and its entry in `blockers` |
@@ -59,6 +60,50 @@ The importer carries over exact redirects, supported grant permissions, token li
 A provider without a `clients` entry is still classified item by item, as if its review were empty. Its provider finding, authentication flow, and any exported mappings, federation, encryption key or confidential client secret block, while intrinsic items such as strict redirects, grants and the subject mode keep their normal classification. Its application is classified from the export but blocks until the provider is reviewed. Every application that shares a provider also gets its own blocking finding. Duplicate subjects are checked for every exported provider. No client, and no per-client subject, is converted from an unreviewed provider. A `clients` or `source_resolutions` entry that names nothing in the export blocks and is not applied, including any binding IDs it translates.
 
 Classifications describe what the converter does with the export. They are not evidence that an application, factor or credential works after cutover. Password hashes and TOTP secrets are referenced but never read during conversion. Their formats are checked only when the plan is applied. Items never contain credential values. Findings are sorted by kind and identifier. `blockers` keeps its earlier messages, with three changes: source blockers name the source family and the adapter it needs; rejected or stale resolutions add their own blockers; and an unreviewed provider also reports its review-dependent blockers. Treat the report as private: it contains usernames, email addresses and redirect URIs.
+
+## Other source systems
+
+`riauth migration-preflight --file <input>` is the source-aware entry point. It reads `api_version` and never writes a report or manifest; `--output-file` captures its output privately.
+
+- For a `riauth.authentik-import/v1` bundle it prints the same `ready_for_plan`, `summary`, `blockers` and `items` as `import-authentik --preflight`, plus `source`.
+- For a `riauth.migration-inventory/v1` inventory it classifies a declared list of another system's configuration.
+- Any other `api_version` is rejected.
+
+The Authentik bundle is the only export format riAuth converts. No other identity system has a named export contract here, so an inventory is a checklist, not an import: it declares what the source contains and carries no configuration or credential values. `riauth --json schema migration-inventory` describes it:
+
+```json
+{"api_version": "riauth.migration-inventory/v1", "system": "keycloak",
+ "elements": [{"kind": "user", "id": "*"}, {"kind": "provider", "id": "grafana"},
+              {"source_kind": "realm", "id": "master"}, {"source_kind": "role", "id": "realm-admin"}]}
+```
+
+`system` is a lowercase name (letters, digits, hyphens). Each element has an `id` from the source, or `*` for every element of that type, and exactly one of:
+
+- `kind`: a finding kind from the table above, other than `manifest` and `source_native`.
+- `source_kind`: the source's own type when no finding kind fits, such as a Keycloak `realm` or `role`, or an Okta `authorization-server`. It is 1–64 lowercase letters, digits, hyphens or underscores, starting with a letter. A type that matches a finding kind (hyphens read as underscores) must use `kind`, so it cannot bypass a directory route.
+
+A source-native element becomes a `source_native` finding that keeps its `source_kind`. It is unsupported and blocking, with the action to rebuild what it provides as reviewed riAuth configuration or retire it; for `authentik` it points to the export bundle like every other element. Uniqueness covers the type and the ID together, so a realm and a role can share an ID.
+
+Every declared element gets exactly one finding, and every finding blocks. The report also has a blocking `manifest` finding, `ready_for_plan` is always false, and no manifest is ever produced. `source` names the system and format, with `converter` null.
+
+| `system` | Elements with a riAuth route (manual, blocking) | Everything else |
+| --- | --- | --- |
+| `ldap`, `openldap`, `active-directory` | `user`, `group`: import through a configured [LDAP directory](ldap.md) and review its plan. `password`: not copied; checked by an LDAP bind at each login. | unsupported, blocking |
+| `google-workspace`, `entra-id` | `user`, `group`: import through `riauth directory workspace` or `riauth directory entra` ([Workspace](enterprise/ENT-03.md), [Entra](enterprise/ENT-04.md)) and review the plan. | unsupported, blocking. `password` is unsupported, because these imports do not enable password sign-in. |
+| `authentik` | Every element is manual and blocking: build the export bundle instead. | — |
+| Any other name, such as `keycloak`, `okta` or `auth0` | None | unsupported, blocking, with a per-kind rebuild action |
+
+A route is remediation, not conversion. The directory plans are the reviewed preflight for directory data, and nothing in an inventory establishes identity continuity. Subjects, local IDs, password hashes, factors and sessions from these systems are not carried over. Accounts are never linked by email, username or DN.
+
+An inventory is rejected, and nothing is written, when it:
+
+- has an unknown field
+- has an invalid `system`, `kind` or `source_kind`, an empty or overlong ID, or an ID with control characters
+- has an element with both or neither of `kind` and `source_kind`
+- has a duplicate element, or declares a `manifest` or `source_native` element through `kind`
+- has no elements
+
+Rejections never quote input values. A malformed bundle or inventory is reported by line and column only.
 
 ## Identity continuity
 
