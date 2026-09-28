@@ -2633,9 +2633,13 @@ async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged(
             },
         )
         .unwrap();
-    f.core.deactivation_step().unwrap();
+    let queued = delivery(&f.core, "payroll", &alice);
+    assert!(!f.core.deactivation_step().unwrap());
     let row = delivery(&f.core, "payroll", &alice);
-    assert!(row["hold"].is_string());
+    // O05 refuses the same-target claim before changing the queued row. The
+    // reviewed worker keeps its permit throughout OAuth and durable settlement.
+    assert_eq!(row, queued);
+    assert_eq!(row["attempts"], 0);
     let before = f.snapshot().unwrap();
     assert_eq!(
         p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap_err().code,
@@ -2646,7 +2650,17 @@ async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged(
     let owned: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
     // Another claimant quarantines the expired attempt without stealing it;
     // stop/resolve/replacement and retention must not erase its settlement pin.
+    // The frozen O05 due cursor first wraps past the artificially earlier expiry.
     f.core.provisioning_step().unwrap();
+    f.core.provisioning_step().unwrap();
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
     f.core.provisioning_stop(&f.admin, &id).unwrap();
     let pending: Value = f.core.store.get("provisioning_jobs", &id).unwrap().unwrap();
     assert_eq!(pending["lease"], owned["lease"]);
@@ -2706,6 +2720,11 @@ async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged(
             .unwrap()["delivery_state"],
         "failed"
     );
+    // With the acknowledged worker's permit released, the worker can record
+    // the controller hold that makes this pending row dismissible.
+    assert!(!f.core.deactivation_step().unwrap());
+    let row = delivery(&f.core, "payroll", &alice);
+    assert_eq!(row["hold"], "awaiting_controller");
     let dismissed = p08_dismiss(&f, &f.admin, &row, "OPS-71").unwrap();
     assert_eq!(dismissed["status"], "dismissed");
     assert_ne!(dismissed["delivery_state"], "succeeded");
@@ -2800,6 +2819,9 @@ async fn p08_deactivation_delayed_auth_retry_retains_the_final_attempt_pin() {
             tx.put(downstream::BUCKET, &id, &row)
         })
         .unwrap();
+    // The accepted due cursor may wrap once before visiting the simulated past
+    // expiry; neither pass can acquire the busy target or release its pin.
+    assert!(!f.core.deactivation_step().unwrap());
     assert!(!f.core.deactivation_step().unwrap());
     let held = delivery(&f.core, TARGET, &alice);
     assert_eq!(held["status"], "failed");
