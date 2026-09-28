@@ -144,6 +144,7 @@ pub fn routes() -> Router<App> {
         )
         .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
         .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
+        .merge(super::mfa::routes())
         .route("/api/device/browser/{code}", get(device_browser_details))
         .route("/api/device/browser/decision", post(device_browser_decide))
         .merge(super::self_service::http::routes())

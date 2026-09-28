@@ -128,8 +128,50 @@
     </form>
     <button class="button secondary" id="passkey-cancel" type="button" hidden>Cancel change</button>
   </section>
-  <p class="field-hint">Authenticator apps and recovery codes are managed from your terminal: <code>riauth mfa enroll</code>, <code>riauth mfa recovery-codes --out FILE</code>.</p>
+  <section class="security-section" id="totp-section" aria-labelledby="totp-title" hidden>
+    <h3 id="totp-title">Authenticator app</h3>
+    <p class="field-hint" id="totp-summary"></p>
+    <div class="security-actions">
+      <button class="button secondary" id="totp-setup" type="button">Set up an authenticator app</button>
+      <button class="button secondary" id="totp-replace" type="button" hidden>Replace app</button>
+      <button class="button secondary" id="totp-remove" type="button" hidden>Remove app</button>
+    </div>
+    <form id="totp-enroll" novalidate hidden>
+      <h4 id="totp-enroll-title" tabindex="-1"></h4>
+      <ol class="steps"><li>Scan the QR code with your authenticator app, or enter the setup key.</li><li>Enter the code the app shows for this account.</li></ol>
+      <div class="totp-qr" id="totp-qr"></div>
+      <p class="field-hint" id="totp-key-label">Setup key</p>
+      <div class="command-box"><code id="totp-key" aria-labelledby="totp-key-label"></code><button class="icon-button" id="totp-copy-key" type="button" aria-label="Copy setup key" title="Copy setup key"><svg class="icon"><use href="#i-copy"/></svg></button></div>
+      <p class="field-hint" id="totp-key-details"></p>
+      <p class="field-hint"><a class="text-button" id="totp-open" href="#">Open in an authenticator app on this device</a></p>
+      <div class="field"><label for="totp-code">Code from your app</label><input id="totp-code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="12" aria-describedby="totp-error" required></div>
+      <p id="totp-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      <button class="button primary" id="totp-confirm" type="submit">Verify and turn on</button>
+      <button class="button secondary" id="totp-enroll-cancel" type="button">Cancel setup</button>
+    </form>
+  </section>
+  <section class="security-section" id="recovery-section" aria-labelledby="recovery-title" hidden>
+    <h3 id="recovery-title">Recovery codes</h3>
+    <p class="field-hint" id="recovery-summary"></p>
+    <div class="security-actions"><button class="button secondary" id="recovery-rotate" type="button">Create new recovery codes</button></div>
+  </section>
+  <form id="factor-confirm" novalidate hidden>
+    <h3 id="factor-confirm-title" tabindex="-1"></h3>
+    <p class="field-hint" id="factor-confirm-description"></p>
+    <button class="button primary" id="factor-confirm-submit" type="submit"></button>
+    <button class="button secondary" id="factor-confirm-cancel" type="button">Keep things as they are</button>
+  </form>
+  <p class="field-hint" id="factor-status" role="status"></p>
   <button class="button secondary" id="security-close" type="button">Close</button>
+</dialog>
+<dialog id="codes-dialog" class="security" aria-labelledby="codes-title" aria-describedby="codes-description">
+  <h2 id="codes-title" tabindex="-1"></h2>
+  <p class="field-hint" id="codes-description"></p>
+  <ol class="code-list" id="codes-list"></ol>
+  <div class="security-actions"><button class="button secondary" id="codes-copy" type="button">Copy codes</button><button class="button secondary" id="codes-download" type="button">Download</button></div>
+  <label class="checkbox"><input type="checkbox" id="codes-saved"> I saved these codes somewhere safe</label>
+  <p class="field-hint" id="codes-status" role="status"></p>
+  <button class="button primary" id="codes-done" type="button">Done</button>
 </dialog>
 <div class="toast" role="status" id="toast" hidden></div>
 <div class="sr-only" role="status" aria-live="polite" id="announcement"></div>

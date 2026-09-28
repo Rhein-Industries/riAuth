@@ -4,11 +4,10 @@ Invitation acceptance, email verification, password reset and password change ha
 
 ## What still needs the terminal
 
-Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, give consent, confirm RP sign-out, accept an invitation, verify an email address, change a password and reset a forgotten one. The CLI remains available for these journeys (`riauth account accept|verify|reset --token-stdin`, `riauth account reset-request NAME`, `riauth passwd`). These tasks still need the `riauth` CLI:
+Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, set up, replace and remove an authenticator app, create recovery codes, give consent, confirm RP sign-out, accept an invitation, verify an email address, change a password and reset a forgotten one. The CLI remains available for these journeys (`riauth account accept|verify|reset --token-stdin`, `riauth account reset-request NAME`, `riauth passwd`, `riauth mfa enroll|replace|confirm|remove`, `riauth mfa recovery-codes --out FILE`). These tasks still need the `riauth` CLI:
 
 | Task | Command |
 | --- | --- |
-| Enroll TOTP, rotate recovery codes | `riauth mfa enroll`, `riauth mfa confirm`, `riauth mfa recovery-codes --out FILE` |
 | List or revoke your sessions and remembered consent | `riauth session list`, `riauth session revoke ID`, `riauth consents` |
 | Approve a device-flow login | `riauth device approve CODE` |
 | Sign in with or link an upstream source | `riauth source start ID --out FILE`, `riauth source finish --file FILE` |

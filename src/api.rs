@@ -290,6 +290,8 @@ pub fn router(core: Core) -> Router {
             post(passkey_login_finish),
         )
         .route("/api/mfa/confirm", post(mfa_confirm))
+        .route("/api/mfa/replace", post(mfa_replace))
+        .route("/api/mfa/remove", post(mfa_remove))
         .route("/api/mfa/recovery-codes", post(recovery_codes))
         .route("/api/password", post(change_password))
         .route("/api/device/{code}", get(device_details))
@@ -724,9 +726,12 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
             ("source_callback", 30)
         }
         "/api/portal/login/password" => ("login", 20),
+        "/api/portal/mfa/totp/confirm" => ("mfa", 10),
         p if p.starts_with("/api/portal/login/passkey/")
             || p == "/api/portal/passkeys"
-            || p.starts_with("/api/portal/passkeys/") =>
+            || p.starts_with("/api/portal/passkeys/")
+            || p == "/api/portal/mfa"
+            || p.starts_with("/api/portal/mfa/") =>
         {
             ("passkey", 30)
         }
@@ -1652,6 +1657,8 @@ session_handler!(offboard_jobs, offboard_list);
 session_handler!(groups, list_groups);
 session_handler!(clients, list_clients);
 session_handler!(mfa_begin, mfa_begin);
+session_handler!(mfa_replace, mfa_replace);
+session_handler!(mfa_remove, mfa_remove);
 session_handler!(rotate_key, rotate_key);
 async fn userinfo(
     State(app): State<App>,

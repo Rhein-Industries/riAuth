@@ -689,56 +689,43 @@ impl Core {
             Ok(json!({"client_id": cid, "client_secret": written.secret}))
         })
     }
+    /// Starts TOTP enrollment for this session (`authenticator::totp_start_in`).
     pub fn mfa_begin(&self, token: &str) -> Result<Value> {
+        self.mfa_start(token, false)
+    }
+    /// Starts replacing the enabled authenticator app; `mfa_confirm` finishes it.
+    pub fn mfa_replace(&self, token: &str) -> Result<Value> {
+        self.mfa_start(token, true)
+    }
+    fn mfa_start(&self, token: &str, replace: bool) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, session) = self.session(tx, token)?;
-            if session.identity.auth_time + crate::signin::FRESH_SECONDS < now() { return Err(crate::signin::reauthentication_required()); }
-            require_factor_session(&user, &session)?;
-            if user.totp_secret.is_some() { return Err(Error::conflict("MFA already enabled")); }
-            user.totp_settings = Default::default();
-            let secret = crypto::totp_secret();
-            let uri = crypto::totp(&secret, &user.username)?
-                .to_url()
-                .map_err(Error::internal)?;
-            user.totp_pending = Some((secret.clone(), now() + 600));
-            tx.put("users", &user.id, &user)?;
-            audit(tx, &user.id, "mfa.enroll.begin", &user.id)?;
-            Ok(json!({"secret": secret, "otpauth_uri": uri, "expires_in": 600, "instruction": "Store the secret in an authenticator and run riauth mfa confirm"}))
+            let (user, session) = self.session(tx, token)?;
+            let mut started = self.totp_start_in(tx, user, &session, replace)?;
+            started["instruction"] =
+                json!("Store the secret in an authenticator and run riauth mfa confirm");
+            Ok(started)
         })
     }
+    /// Confirms the enrollment this session started; recovery codes are rotated separately.
     pub fn mfa_confirm(&self, token: &str, code: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, _) = self.session(tx, token)?;
-            let (secret, expires) = user.totp_pending.clone().ok_or_else(|| Error::bad("No pending MFA enrollment"))?;
-            if expires <= now() { return Err(Error::bad("Enrollment expired")); }
-            let step = crypto::totp_step(&secret, &user.username, code, now(), None)?.ok_or_else(|| Error::bad("Invalid one-time code"))?;
-            user.totp_secret = Some(secret);
-            user.recovery_codes.clear();
-            user.totp_pending = None;
-            user.totp_last_step = Some(step);
-            user.epoch += 1;
-            tx.put("users", &user.id, &user)?;
-            crate::logout::queue_user(tx, &user.id)?;
-            audit(tx, &user.id, "mfa.enabled", &user.id)?;
-            Ok(json!({"mfa_enabled": true, "instruction": "All sessions revoked. Log in with a fresh one-time code."}))
+            let (user, session) = self.session(tx, token)?;
+            let mut confirmed = self.totp_confirm_in(tx, user, &session, code, false)?;
+            confirmed["instruction"] =
+                json!("All sessions revoked. Log in with a fresh one-time code.");
+            Ok(confirmed)
+        })
+    }
+    pub fn mfa_remove(&self, token: &str) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            self.totp_remove_in(tx, user, &session)
         })
     }
     pub fn recovery_codes(&self, token: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, session) = self.session(tx, token)?;
-            if !session.identity.mfa
-                || user.totp_secret.is_none()
-                || session.identity.auth_time + 300 < now()
-            {
-                return Err(Error::forbidden());
-            }
-            let codes: Vec<_> = (0..10)
-                .map(|_| crypto::random_token("ri_recovery_"))
-                .collect();
-            user.recovery_codes = codes.iter().map(|c| digest(c)).collect();
-            tx.put("users", &user.id, &user)?;
-            audit(tx, &user.id, "mfa.recovery_codes.rotate", &user.id)?;
-            Ok(json!({"recovery_codes": codes, "single_use": true}))
+            let (user, session) = self.session(tx, token)?;
+            self.recovery_codes_in(tx, user, &session)
         })
     }
     pub fn change_password(
@@ -842,6 +829,8 @@ impl Core {
             .write(|tx| crate::session_protocol::cleanup(tx, at))?;
         self.store.write(|tx| crate::source::cleanup(tx, at))?;
         self.store.write(|tx| crate::passkey::cleanup(tx, at))?;
+        self.store
+            .write(|tx| crate::authenticator::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::identity::windows_credentials::cleanup(tx, at))?;
         self.store.write(|tx| crate::lifecycle::cleanup(tx, at))?;

@@ -1,6 +1,7 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
 pub mod admin;
 pub mod http;
+mod mfa;
 pub mod self_service;
 
 use crate::{
@@ -652,7 +653,7 @@ impl Core {
             return Err(Error::new(
                 axum::http::StatusCode::FORBIDDEN,
                 "reauthentication_required",
-                "This browser uses your terminal's sign-in. Sign in here before changing your password or passkeys.",
+                "This browser uses your terminal's sign-in. Sign in here before changing your password, passkeys or authenticator app.",
             ));
         }
         Ok((user, session))

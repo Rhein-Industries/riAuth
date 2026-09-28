@@ -39,7 +39,7 @@ Buttons that act on a decision (**Sign out**, and on an application's page **All
 Some applications require MFA. After a password-only sign-in the catalogue shows a notice instead of silently hiding them:
 
 - If the account has TOTP or a passkey: "Some applications need your passkey or authenticator code." with **Sign in with your passkey**, which re-authenticates the same account.
-- Otherwise: "Some applications need extra verification. Add a passkey under Sign-in and security." with a button that opens that dialog.
+- Otherwise: "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security." with a button that opens that dialog.
 
 ## Sign-in and security
 
@@ -63,10 +63,21 @@ The **Passkeys** section lists the account's passkeys (name and date added), add
 - Up to sixteen passkeys per account. The browser is asked for a discoverable (resident) passkey with user verification.
 - Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your password or passkeys." (or "…your passkeys." when the password can already be changed) and offers **Use your passkey** or password plus code.
 - The first passkey of an account with no other factor needs only a recent sign-in.
-- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change its password or passkeys: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your password or passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
+- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change its password, passkeys, authenticator app or recovery codes: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your password or passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
 - A passkey-only account cannot remove its last passkey. It can add a backup authenticator first. Renaming leaves the credential and active sessions intact.
 - **Adding or removing a passkey signs the account out everywhere**, including terminal sessions and application grants. The page returns to sign-in with "Passkey added. Sign in with it to continue." or "Passkey removed. Sign in again."
-- Authenticator apps and recovery codes are managed from the terminal: `riauth mfa enroll`, `riauth mfa recovery-codes --out FILE`.
+
+### Authenticator app and recovery codes
+
+The same dialog sets up, replaces and removes an authenticator app (TOTP) and creates recovery codes. Every change follows the passkey rules above: a sign-in within the last five minutes, a passkey or code sign-in once the account has any factor, and this browser's own session rather than a terminal approval. When a check fails, the dialog asks the user to confirm it's them and then retries the change.
+
+- **Set up** shows a QR code of the `otpauth://` URI, the setup key as text with a copy button for manual entry, its parameters (time-based, 6 digits, 30 seconds, SHA1) and an **Open in an authenticator app on this device** link. Nothing changes until a current code from the app is entered: an unconfirmed setup is not a factor, and **Cancel setup** or closing the dialog discards it. The pending setup belongs to the browser session that started it and expires after ten minutes.
+- **Verify and turn on** enables the app, signs the account out everywhere, including terminal sessions and application grants, and shows ten new recovery codes once. The code that confirmed the app cannot be used to sign in.
+- **Replace app** sets up a new secret while the current app and recovery codes keep working. Verifying the new app retires the old secret and every old recovery code, signs out everywhere and shows ten new codes.
+- **Remove app**, after a confirmation step, removes the app, its recovery codes and any pending setup and signs out everywhere. Applications that require MFA then need a passkey.
+- **Create new recovery codes**, after a confirmation step, replaces all ten codes; the previous codes stop working immediately. Other sessions stay signed in, because rotation adds no new way in. The section shows how many unused codes remain.
+
+Recovery codes appear in their own dialog with **Copy codes** and **Download** (a text file generated in the page). Done needs the "I saved these codes somewhere safe" confirmation. Setup keys and codes are never written to browser storage and are cleared from the page when their step ends; the status endpoint reports only whether an app is set up and how many codes remain.
 
 See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
 

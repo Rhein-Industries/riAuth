@@ -145,7 +145,7 @@ fn unknown_passkey() -> Error {
     )
 }
 
-fn require_fresh_factor(user: &User, session: &Session) -> Result<()> {
+pub(crate) fn require_fresh_factor(user: &User, session: &Session) -> Result<()> {
     if now().saturating_sub(session.identity.auth_time) > FRESH_SECONDS {
         return Err(reauthentication_required());
     }

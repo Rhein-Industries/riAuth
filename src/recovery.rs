@@ -76,6 +76,7 @@ pub const INVALIDATED: &[&str] = &[
     "passkey_authentication",
     "passkey_registration",
     "admin_passkey_registration",
+    "totp_enrollments",
     "device_challenges",
     "radius_requests",
     "source_logins",

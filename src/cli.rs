@@ -938,10 +938,14 @@ pub enum MfaCommand {
         out: PathBuf,
     },
     Enroll,
+    /// Start replacing your authenticator app after a recent MFA login; finish with `mfa confirm`
+    Replace,
     Confirm {
         #[arg(long)]
         code_stdin: bool,
     },
+    /// Remove your authenticator app and recovery codes after a recent MFA login; signs out everywhere
+    Remove,
 }
 #[derive(Args)]
 pub struct ClientAuth {
@@ -1874,6 +1878,18 @@ pub async fn run(cli: Cli) -> Result<()> {
                 remote
                     .call(Method::POST, "/api/mfa/enroll", None, true)
                     .await?
+            }
+            MfaCommand::Replace => {
+                remote
+                    .call(Method::POST, "/api/mfa/replace", None, true)
+                    .await?
+            }
+            MfaCommand::Remove => {
+                let output = remote
+                    .call(Method::POST, "/api/mfa/remove", None, true)
+                    .await?;
+                fs::remove_file(&remote.session_file)?;
+                output
             }
             MfaCommand::Confirm { code_stdin } => {
                 let code = read_secret(code_stdin, "RIAUTH_OTP", Some("One-time code: "))?;

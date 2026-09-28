@@ -16,6 +16,8 @@
     if (kind === "fresh") return `Confirm it's you to change ${what}.`;
     return `Sign in with your passkey or authenticator code to change ${what}.`;
   }
+  // Authenticator app state. A setup key or recovery code lives only in the DOM of its step.
+  const factor = { data: null, enrollment: null, action: null, codes: null };
   let pollTimer, expiryTimer, toastTimer;
   const icons = new Set(["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"]);
   const accents = new Set(["violet", "blue", "teal", "amber", "rose", "slate"]);
@@ -86,6 +88,7 @@
     $("passkey-action").hidden = true; $("passkey-rename").value = "";
     $("passkey-login-cancel").hidden = true;
     closePassword();
+    factor.data = null; factor.enrollment = null; factor.action = null; clearEnrollment(); renderFactor();
   }
   function stopRequest() {
     state.request = null; clearTimeout(pollTimer);
@@ -136,7 +139,7 @@
       renderVerificationNotice();
       // A password-only session cannot see applications that require MFA.
       $("mfa-notice").hidden = data.mfa !== false;
-      $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey under Sign-in and security.";
+      $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security.";
       $("mfa-action").textContent = data.mfa_available ? "Sign in with your passkey" : "Sign-in and security";
       clearAuthError();
       const category = changedUser ? "" : $("category").value;
@@ -429,9 +432,9 @@
     for (const button of $("passkey-list").querySelectorAll("button")) button.disabled = security.busy || button.dataset.unavailable === "true";
     for (const id of ["add-passkey", "passkey-action-confirm", "reauth-passkey", "reauth-confirm", "password-change-start", "password-change-submit", "password-change-cancel", "password-current", "password-new", "password-confirm"]) $(id).disabled = security.busy;
     $("passkey-name").disabled = $("passkey-rename").disabled = security.busy;
-    // A password verification waits in the shared panel; Cancel change belongs to passkeys.
-    $("passkey-cancel").hidden = !pending && !security.busy && !security.flows.add && (!security.retry || security.retry === openPassword);
-    renderPassword();
+    // Password and authenticator verifications wait in the shared panel; Cancel change belongs to passkeys.
+    $("passkey-cancel").hidden = !pending && !security.busy && !security.flows.add && (!security.retry || security.retry === openPassword || security.retry.factor === true);
+    renderPassword(); renderFactor();
   }
   function verificationHint(what) {
     return hint(security.data?.terminal ? "terminal" : security.data?.fresh === false ? "fresh" : "mfa", what);
@@ -482,7 +485,7 @@
     if (!$("security-dialog").open) $("security-dialog").showModal();
     $("security-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
     if (!$("passkey-name").value) $("passkey-name").value = navigator.userAgentData?.platform || "This device";
-    securityControls(); await loadPasskeys();
+    securityControls(); await Promise.all([loadPasskeys(), loadFactor()]);
     if (kind && $("security-dialog").open) showReauth(hint(kind));
   }
   function factorChanged(message) {
@@ -506,12 +509,14 @@
       securityStatus("Finishing your change. Please wait."); return false;
     }
     security.generation += 1;
-    const add = security.flows.add, reauth = security.flows.reauth;
+    const add = security.flows.add, reauth = security.flows.reauth, enrolling = !!factor.enrollment;
     security.flows.add = null; security.flows.name = null; security.retry = null; security.action = null;
     security.busy = false; security.run = null;
+    factor.enrollment = null; factor.action = null; clearEnrollment();
     $("passkey-action").hidden = true; $("passkey-rename").value = ""; hideReauth(); closePassword();
     securityControls();
-    await Promise.all([add?.cancel(), reauth?.cancel()]);
+    // A setup key shown in this dialog is gone once it closes, so its enrollment goes too.
+    await Promise.all([add?.cancel(), reauth?.cancel(), enrolling && RiAuth.post("api/portal/mfa/totp/cancel", {}).catch(() => {})]);
     return true;
   }
   function selectPasskey(kind, passkey) {
@@ -646,7 +651,7 @@
     hideReauth();
     await refresh();
     if (!state.data || !$("security-dialog").open) return;
-    await loadPasskeys();
+    await Promise.all([loadPasskeys(), loadFactor()]);
     const retry = security.retry; security.retry = null;
     if (retry) await retry();
   }
@@ -689,8 +694,230 @@
   window.addEventListener("pagehide", clearPassword);
   $("passkey-action").addEventListener("submit", (event) => { event.preventDefault(); if (security.action) changePasskey(security.action.kind); });
   $("passkey-cancel").addEventListener("click", async () => {
-    if (await cancelChange()) { await loadPasskeys(); securityStatus("Change cancelled."); }
+    if (await cancelChange()) { await Promise.all([loadPasskeys(), loadFactor()]); securityStatus("Change cancelled."); }
   });
+
+  // Authenticator app (TOTP) and recovery codes. Every change runs for the account and dialog
+  // that started it; enabling, replacing and removing end every session, this one included.
+  function factorStatus(message) { $("factor-status").textContent = message; }
+  function factorReady() {
+    const data = factor.data;
+    return !!data && data.fresh && !data.terminal && (!data.factor || data.mfa);
+  }
+  function factorHint(what) {
+    return hint(factor.data?.terminal ? "terminal" : factor.data?.fresh === false ? "fresh" : "mfa", what);
+  }
+  function renderFactor() {
+    const data = factor.data, enabled = data?.totp_enabled === true, idle = !factor.enrollment && !factor.action;
+    $("totp-section").hidden = !data; $("recovery-section").hidden = !enabled;
+    $("totp-enroll").hidden = !factor.enrollment; $("factor-confirm").hidden = !factor.action;
+    if (!data) return;
+    $("totp-summary").textContent = enabled
+      ? "On. After your password, enter the 6-digit code your authenticator app shows."
+      : "Off. Use an authenticator app on your phone or computer for 6-digit sign-in codes after your password.";
+    $("totp-setup").hidden = enabled || !idle;
+    $("totp-replace").hidden = $("totp-remove").hidden = !enabled || !idle;
+    $("recovery-rotate").hidden = !idle;
+    const left = data.recovery_codes_remaining;
+    $("recovery-summary").textContent = left > 0
+      ? `${left} of ${data.recovery_codes_total} recovery codes left. Each one signs you in once instead of an app code.${left <= 3 ? " Create new codes soon." : ""}`
+      : "You have no recovery codes. Create a set so you can still sign in if you lose your authenticator app.";
+    for (const id of ["totp-setup", "totp-replace", "totp-remove", "recovery-rotate", "totp-code", "totp-confirm", "totp-enroll-cancel", "totp-copy-key", "factor-confirm-submit", "factor-confirm-cancel"]) $(id).disabled = security.busy;
+  }
+  async function loadFactor() {
+    const generation = security.generation, user = state.data?.user.id;
+    try {
+      const data = await RiAuth.get("api/portal/mfa");
+      if (generation !== security.generation || state.data?.user.id !== user || !$("security-dialog").open) return;
+      if (data.user_id !== user) { $("security-dialog").close(); await refresh(); return; }
+      factor.data = data; renderFactor();
+    } catch (error) {
+      if (generation !== security.generation) return;
+      if (error.status === 401) { refresh(); return; }
+      factorStatus(describe(error, "Couldn't load your authenticator app settings. Close this dialog and try again."));
+    }
+  }
+  // The retry waits in the shared panel; the factor's own cancel buttons drop it.
+  function needProof(retry, text) {
+    retry.factor = true; security.retry = retry; showReauth(text); securityControls();
+    ($("reauth-passkey").hidden ? $("reauth-password") : $("reauth-passkey")).focus();
+  }
+  function dropProof() {
+    if (security.retry?.factor) { security.retry = null; hideReauth(); securityControls(); }
+  }
+  function factorError(error, retry, what) {
+    if (error.code === "reauthentication_required" || error.code === "mfa_required") {
+      needProof(retry, hint(error.code === "mfa_required" ? "mfa" : factor.data?.terminal ? "terminal" : "fresh", what)); return;
+    }
+    if (error.status === 401 || error.code === "account_mismatch") { refresh(); return; }
+    if (error.status === 409) void loadFactor();
+    factorStatus(describe(error, error.description || "Couldn't change your authenticator app. Try again."));
+  }
+  // `commit` marks a request that changes credentials: the dialog stays until it settles.
+  async function factorRun(commit, retry, work, what = "your authenticator app") {
+    if (security.busy || !state.data || !factor.data) return;
+    if (!factorReady()) { needProof(retry, factorHint(what)); return; }
+    const generation = security.generation, user = state.data.user.id, run = {};
+    const current = () => generation === security.generation && user === state.data?.user.id;
+    security.run = run; security.busy = true; security.committing = commit; securityControls(); factorStatus("");
+    try { await work(user, current); }
+    catch (error) { if (current()) factorError(error, retry, what); }
+    finally {
+      if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
+    }
+  }
+  function clearEnrollment() {
+    $("totp-qr").replaceChildren(); $("totp-key").textContent = ""; $("totp-key-details").textContent = "";
+    $("totp-code").value = ""; $("totp-open").removeAttribute("href"); $("totp-error").hidden = true;
+  }
+  function endEnrollment() { factor.enrollment = null; clearEnrollment(); renderFactor(); }
+  function showEnrollment(started, replace) {
+    factor.enrollment = { replace, digits: Number(started.digits) || 6, secret: String(started.secret || "") };
+    const size = Number(started.qr?.size);
+    if (Number.isInteger(size) && size > 0 && typeof started.qr.path === "string") {
+      const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg"), path = document.createElementNS(ns, "path");
+      svg.setAttribute("viewBox", `-4 -4 ${size + 8} ${size + 8}`); svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", "QR code of your setup key. The same key is shown as text below.");
+      path.setAttribute("d", started.qr.path); svg.append(path); $("totp-qr").replaceChildren(svg);
+    } else $("totp-qr").replaceChildren();
+    $("totp-key").textContent = factor.enrollment.secret.replace(/(.{4})(?=.)/g, "$1 ");
+    $("totp-key-details").textContent = `Time-based, ${factor.enrollment.digits} digits, new code every ${Number(started.period) || 30} seconds (${started.algorithm || "SHA1"}). Spaces in the key are optional.`;
+    const uri = typeof started.otpauth_uri === "string" && started.otpauth_uri.startsWith("otpauth://totp/") ? started.otpauth_uri : null;
+    $("totp-open").parentElement.hidden = !uri;
+    if (uri) $("totp-open").href = uri;
+    $("totp-enroll-title").textContent = replace ? "Replace your authenticator app" : "Set up your authenticator app";
+    $("totp-confirm").textContent = replace ? "Verify and replace" : "Verify and turn on";
+    $("totp-code").removeAttribute("aria-invalid"); $("totp-error").hidden = true;
+    factorStatus(replace ? "Your current app keeps working until the new one is verified." : "");
+    renderFactor(); $("totp-enroll-title").focus();
+  }
+  function startTotp(replace) {
+    return factorRun(false, () => startTotp(replace), async (user, current) => {
+      const started = await RiAuth.post("api/portal/mfa/totp/start", { expected_user_id: user, replace });
+      if (current()) showEnrollment(started, replace);
+      else await RiAuth.post("api/portal/mfa/totp/cancel", {}).catch(() => {});
+    });
+  }
+  function confirmTotp() {
+    const enrollment = factor.enrollment;
+    if (!enrollment || security.busy) return;
+    const code = $("totp-code").value.replace(/\s+/g, "");
+    if (!new RegExp(`^\\d{${enrollment.digits}}$`).test(code)) {
+      $("totp-code").setAttribute("aria-invalid", "true");
+      showError("totp-error", `Enter the ${enrollment.digits}-digit code your authenticator app shows.`); return;
+    }
+    return factorRun(true, () => confirmTotp(), async (user) => {
+      const username = state.data.user.username;
+      let result;
+      try { result = await RiAuth.post("api/portal/mfa/totp/confirm", { expected_user_id: user, code }); }
+      catch (error) {
+        if (error.code === "invalid_code") {
+          $("totp-code").value = ""; $("totp-code").setAttribute("aria-invalid", "true");
+          showError("totp-error", "That code didn't match. Enter the newest code from your app."); return;
+        }
+        if (["enrollment_expired", "enrollment_not_found"].includes(error.code)) {
+          endEnrollment(); factorStatus("This setup ended before it was verified. Start again for a new setup key."); void loadFactor(); return;
+        }
+        throw error;
+      }
+      const replaced = result.status === "replaced";
+      endEnrollment();
+      factorChanged(replaced ? "Authenticator app replaced. Sign in with a code from your new app." : "Authenticator app turned on. Sign in with your password and a code from it.");
+      showCodes(result.recovery_codes, replaced ? "replaced" : "enabled", username);
+    });
+  }
+  function askFactor(kind) {
+    if (security.busy || !factor.data) return;
+    const remove = kind === "remove";
+    factor.action = kind; RiAuth.arm();
+    $("factor-confirm-title").textContent = remove ? "Remove your authenticator app?" : "Create new recovery codes?";
+    $("factor-confirm-description").textContent = remove
+      ? "Codes from the app and your recovery codes will stop working, and you'll be signed out everywhere. Applications that need extra verification will then need a passkey."
+      : "Your current recovery codes stop working as soon as the new ones are created.";
+    $("factor-confirm-submit").textContent = remove ? "Remove authenticator app" : "Create new codes";
+    factorStatus(""); renderFactor(); $("factor-confirm-title").focus();
+  }
+  function runFactorAction() {
+    const kind = factor.action;
+    if (!kind) return;
+    return factorRun(true, () => runFactorAction(), async (user) => {
+      const username = state.data.user.username;
+      if (kind === "remove") {
+        await RiAuth.post("api/portal/mfa/totp/remove", { expected_user_id: user });
+        factor.action = null; factorChanged("Authenticator app removed. Sign in again.");
+        return;
+      }
+      const result = await RiAuth.post("api/portal/mfa/recovery-codes", { expected_user_id: user });
+      factor.action = null; renderFactor();
+      // The previous codes are already void; this response is the only copy of the new ones.
+      showCodes(result.recovery_codes, "rotated", username);
+      void loadFactor();
+    }, kind === "remove" ? "your authenticator app" : "your recovery codes");
+  }
+  function showCodes(codes, kind, username) {
+    const list = Array.isArray(codes) ? codes.filter((code) => typeof code === "string") : [];
+    factor.codes = { list, username };
+    $("codes-title").textContent = kind === "rotated" ? "Save your new recovery codes" : kind === "replaced" ? "Authenticator app replaced" : "Authenticator app turned on";
+    $("codes-description").textContent = `${kind === "rotated" ? "Your previous recovery codes no longer work." : kind === "replaced" ? "Your old app and recovery codes no longer work, and you're signed out everywhere." : "You're signed out everywhere. Sign in again with your password and a code from your app."} Save these recovery codes somewhere safe, like a password manager. Each one signs you in once if you can't use your authenticator app. They won't be shown again.`;
+    $("codes-list").replaceChildren(...list.map((code) => element("li", "", code)));
+    $("codes-saved").checked = false; $("codes-status").textContent = "";
+    if (!$("codes-dialog").open) $("codes-dialog").showModal();
+    RiAuth.arm(); $("codes-title").focus();
+  }
+  function closeCodes() {
+    factor.codes = null; $("codes-list").replaceChildren(); $("codes-saved").checked = false; $("codes-status").textContent = "";
+    if ($("codes-dialog").open) $("codes-dialog").close();
+    if ($("security-dialog").open) $("recovery-rotate").focus();
+  }
+  async function copyText(text, target, status, done, fallback) {
+    try { await navigator.clipboard.writeText(text); status(done); }
+    catch {
+      const selection = window.getSelection(), range = document.createRange();
+      range.selectNodeContents(target); selection.removeAllRanges(); selection.addRange(range); status(fallback);
+    }
+  }
+  $("totp-setup").addEventListener("click", () => startTotp(false));
+  $("totp-replace").addEventListener("click", () => startTotp(true));
+  $("totp-remove").addEventListener("click", () => askFactor("remove"));
+  $("recovery-rotate").addEventListener("click", () => askFactor("rotate"));
+  $("totp-enroll").addEventListener("submit", (event) => { event.preventDefault(); confirmTotp(); });
+  $("totp-code").addEventListener("input", () => $("totp-code").removeAttribute("aria-invalid"));
+  $("totp-copy-key").addEventListener("click", () => {
+    if (factor.enrollment) void copyText(factor.enrollment.secret, $("totp-key"), factorStatus, "Setup key copied.", "Select the key and copy it with your keyboard.");
+  });
+  $("totp-enroll-cancel").addEventListener("click", async () => {
+    if (security.busy || !factor.enrollment) return;
+    endEnrollment(); dropProof(); factorStatus("Setup cancelled.");
+    ($("totp-setup").hidden ? $("totp-replace") : $("totp-setup")).focus();
+    try { await RiAuth.post("api/portal/mfa/totp/cancel", {}); } catch { /* It expires on its own. */ }
+  });
+  $("factor-confirm").addEventListener("submit", (event) => event.preventDefault());
+  RiAuth.guard($("factor-confirm-submit"), (event) => { event.preventDefault(); runFactorAction(); });
+  $("factor-confirm-cancel").addEventListener("click", () => {
+    const kind = factor.action; factor.action = null; dropProof(); renderFactor();
+    (kind === "remove" ? $("totp-remove") : $("recovery-rotate")).focus();
+  });
+  $("codes-copy").addEventListener("click", () => {
+    if (factor.codes) void copyText(factor.codes.list.join("\n"), $("codes-list"), (message) => { $("codes-status").textContent = message; }, "Recovery codes copied.", "Select the codes and copy them with your keyboard.");
+  });
+  $("codes-download").addEventListener("click", () => {
+    if (!factor.codes) return;
+    const heading = `riAuth recovery codes${factor.codes.username ? ` for ${factor.codes.username}` : ""} at ${location.host}`;
+    const url = URL.createObjectURL(new Blob([`${heading}\nEach code signs you in once.\n\n${factor.codes.list.join("\n")}\n`], { type: "text/plain;charset=utf-8" }));
+    const link = element("a"); link.href = url; link.download = "riauth-recovery-codes.txt";
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  RiAuth.guard($("codes-done"), () => {
+    if ($("codes-saved").checked) { closeCodes(); return; }
+    $("codes-status").textContent = "Save the codes, then confirm that you saved them."; $("codes-saved").focus();
+  });
+  $("codes-dialog").addEventListener("cancel", (event) => {
+    if (!factor.codes || $("codes-saved").checked) return;
+    event.preventDefault();
+    $("codes-status").textContent = "Save your recovery codes before closing. They won't be shown again."; $("codes-saved").focus();
+  });
+  $("codes-dialog").addEventListener("close", () => { if (factor.codes) closeCodes(); });
   $("account-security").addEventListener("click", () => openSecurity());
   async function closeSecurity() { if (await cancelChange()) $("security-dialog").close(); }
   $("security-close").addEventListener("click", closeSecurity);

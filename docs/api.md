@@ -19,6 +19,12 @@ Responses are JSON, protocol redirects, signed/encrypted JWTs, protocol form/ifr
 | POST | `/api/portal/passkeys/registration/start` | SSO of a browser-owned session (a terminal-shared browser gets 403 `reauthentication_required`), signed in within five minutes, factor rule; `{"name"}`; resident key and user verification required |
 | POST | `/api/portal/passkeys/registration/finish` | Same browser-owned session; `{"ceremony","credential"}`; 200 `{"status":"enrolled","passkey",…,"sessions_revoked":true}` and the SSO cookie is cleared |
 | POST | `/api/portal/passkeys/{id}/remove` | SSO of a browser-owned session, signed in within five minutes, factor rule; `{}`; 200 `{"removed":true,"sessions_revoked":true}` and the SSO cookie is cleared |
+| GET | `/api/portal/mfa` | SSO; `{"user_id","totp_enabled","enrollment_pending","recovery_codes_remaining","recovery_codes_total":10,"fresh","terminal","mfa","factor"}`. Never a secret or code; `enrollment_pending` covers only this session's unexpired setup |
+| POST | `/api/portal/mfa/totp/start` | SSO of a browser-owned session, signed in within five minutes, factor rule; `{"expected_user_id","replace":bool}`; 200 `{"secret","otpauth_uri","qr":{"size","path"},"expires_in":600,"algorithm","digits","period","replace"}`. `qr.path` is SVG path data in module units. The pending secret is bound to this session and the account's credential version; an enabled app keeps working until confirmation. 409 `account_mismatch` for another signed-in account, 409 `conflict` when `replace` does not match whether an app is enabled |
+| POST | `/api/portal/mfa/totp/confirm` | Same session, freshness and factor rule; `{"expected_user_id","code"}`; 200 `{"status":"enabled"\|"replaced","recovery_codes":[…ten],"single_use":true,"sessions_revoked":true}` and the SSO cookie is cleared. Replacement retires the old secret and recovery codes. 400 `invalid_code`, `enrollment_expired` or `enrollment_not_found` |
+| POST | `/api/portal/mfa/totp/cancel` | SSO; `{}`; discards this session's pending setup; `{"cancelled":bool}` |
+| POST | `/api/portal/mfa/totp/remove` | Browser-owned session, freshness and factor rule; `{"expected_user_id"}`; removes the app, its recovery codes and any pending setup; 200 `{"removed":true,"sessions_revoked":true}` and the SSO cookie is cleared |
+| POST | `/api/portal/mfa/recovery-codes` | Browser-owned session, freshness and factor rule, app enabled (else 409); `{"expected_user_id"}`; 200 `{"recovery_codes":[…ten],"single_use":true}`. Earlier codes stop working; sessions continue |
 | POST | `/api/portal/password` | SSO of a browser-owned session; `{"current_password","password"}`. Local password accounts only (409 `password_unavailable`). With TOTP or a passkey enrolled: factor rule and a sign-in within five minutes. A wrong current password is 403 `invalid_current_password`, answered no sooner than one second after the request started, and counts toward the sign-in lockout (then 429 `rate_limited`). 200 `{"changed":true,"sessions_revoked":true}` and the SSO cookie is cleared; factors are kept |
 | GET | `/account/accept`, `/account/verify`, `/account/reset` | Account pages. An emailed link carries its one-use code in the fragment, which this GET never sends; `/account/reset` without a code asks for a reset link |
 | POST | `/api/portal/account/accept`, `/api/portal/account/verify` | `{"token","password"}` (accept) or `{"token"}` (verify); one-use invitation or verification proof; see [lifecycle](lifecycle.md) |
@@ -165,12 +171,13 @@ Errors keep the `{"error","error_description"}` shape.
 | `unknown_passkey` | 401 | The discoverable credential is not registered |
 | `invalid_token` | 401 | Missing or wrong binding cookie, or a required SSO session is missing |
 | `access_denied` | 403 | Write guard, policy, untrusted forward-auth peer |
-| `account_mismatch` | 403 | The verified user differs from the pinned account |
+| `account_mismatch` | 403 | The verified user differs from the pinned account (409 for a factor change whose `expected_user_id` is not the signed-in account) |
 | `unmet_authentication_requirements` | 403 | The sign-in does not meet the client's MFA or ACR requirement and the user has a factor |
 | `mfa_setup_required` | 403 | Same, and the user has neither TOTP nor a passkey |
-| `mfa_required` | 403 | Adding or removing a factor, or changing the password, from a non-MFA session when the account already has TOTP or a passkey |
-| `reauthentication_required` | 403 | Adding or removing a factor from a session signed in more than 300 s ago (bearer and portal), changing the password of an account with a factor from such a session, or either from a browser that shares a terminal session (portal) |
+| `mfa_required` | 403 | Changing a factor (including TOTP confirmation, replacement and recovery-code rotation), or changing the password, from a non-MFA session when the account already has TOTP or a passkey |
+| `reauthentication_required` | 403 | Changing a factor from a session signed in more than 300 s ago (bearer and portal), changing the password of an account with a factor from such a session, or either from a browser that shares a terminal session (portal) |
 | `invalid_current_password` | 403 | Portal password change with a wrong current password; counts toward the sign-in lockout |
+| `invalid_code`, `enrollment_expired`, `enrollment_not_found` | 400 | TOTP confirmation with a wrong code, an expired setup, or no setup started by this session for the account's current credential version (cancelled, replaced by a newer start, or cleared by a restore) |
 | `session_mismatch` | 403 | A sign-out decision for another live session |
 | `interaction_expired` | 404 | The pending request, SAML request or confirmation is missing or expired |
 | `request_decided` | 409 | Already decided, or waiting on a source stage |
@@ -195,9 +202,11 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |
 | DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent |
 | POST | `/api/password` | Current password, new `password`, optional `otp`; local password accounts only (409 `password_unavailable`, checked before the password); an account whose only factor is a passkey needs an MFA session from the last five minutes; invalidate old sessions/grants |
-| POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); return pending enrollment secret/URI |
-| POST | `/api/mfa/confirm` | `code`; enable factor and invalidate sessions |
-| POST | `/api/mfa/recovery-codes` | Recent MFA session; rotate ten single-use recovery codes |
+| POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); 409 when an app is enabled; return the pending secret/URI, bound to this session |
+| POST | `/api/mfa/replace` | Same rules; start replacing the enabled app, which keeps working until `mfa/confirm` |
+| POST | `/api/mfa/confirm` | `code`; the session that started the setup, with the same freshness and factor rule; enable or replace the factor, clear recovery codes and invalidate sessions. 400 `invalid_code`, `enrollment_expired` or `enrollment_not_found` |
+| POST | `/api/mfa/remove` | Same rules; remove the app and its recovery codes and invalidate sessions |
+| POST | `/api/mfa/recovery-codes` | App enabled (else 409), recent MFA session; replace all recovery codes with ten single-use ones; sessions continue |
 | GET | `/api/passkeys` | Current user's registered passkeys |
 | DELETE | `/api/passkeys/{id}` | Recent end-user session and the factor rule; remove own passkey and invalidate credentials |
 | POST | `/api/passkey/registration/start`, `/api/passkey/registration/finish` | Recent-session registration and the factor rule; server-side one-use ceremony |
@@ -340,7 +349,7 @@ Blocking work has eight worker slots; a request waits up to two seconds for one,
 | Category | Limit | Routes |
 | --- | ---: | --- |
 | `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/portal/password`, `/api/source-login/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
-| `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, interaction `…/passkey/start` and `…/finish` |
+| `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, `/api/portal/mfa*` except TOTP confirmation, interaction `…/passkey/start` and `…/finish` |
 | `browser_state` | 1200 | interaction `…/state` |
 | `browser_decision` | 60 | interaction `…/decision` |
 | `forward_auth` | 6000 | `/outpost/{id}/auth`, `/outpost/{id}/traefik`; always counted in memory, per node |
@@ -348,7 +357,7 @@ Blocking work has eight worker slots; a request waits up to two seconds for one,
 | `portal_start` | 10 | `/api/portal/sign-in` |
 | `portal_approve` | 20 | `/api/portal/requests/{code}` |
 | `account` | 10 | `/api/account/*`, `/api/portal/account/*` |
-| `mfa` | 10 | `/api/mfa/confirm` |
+| `mfa` | 10 | `/api/mfa/confirm`, `/api/portal/mfa/totp/confirm` |
 | `device_start` | 30 | `/oauth/device/code` |
 | `device_verify` | 20 | `/api/device/*`, `/api/authorization/*` |
 | `source_start`, `source_callback` | 30 each | source starts; upstream callbacks and stage handling |
