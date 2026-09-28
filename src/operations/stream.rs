@@ -18,7 +18,7 @@
 //! measured separately. The v1/v2 JSON envelopes are unchanged;
 //! `operations::restore` selects this reader by its magic.
 
-use super::{commit_restore, decode_key, schema_supported, split_record_key};
+use super::{RestoreTarget, commit_restore, decode_key, schema_supported, split_record_key};
 use crate::{
     config::Config,
     core::Core,
@@ -630,6 +630,24 @@ pub fn restore_stream(
     key_file: &Path,
     output: &Path,
     database_key_file: Option<PathBuf>,
+    options: StreamOptions<'_>,
+) -> Result<Value> {
+    restore_stream_into(
+        backup_file,
+        key_file,
+        output,
+        database_key_file,
+        RestoreTarget::Redb,
+        options,
+    )
+}
+
+pub fn restore_stream_into(
+    backup_file: &Path,
+    key_file: &Path,
+    output: &Path,
+    database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
     mut options: StreamOptions<'_>,
 ) -> Result<Value> {
     options.limits.validate()?;
@@ -660,6 +678,7 @@ pub fn restore_stream(
         Some(verified.created_at),
         output,
         database_key_file,
+        target,
         |tx| {
             let imported = scan(
                 open(backup_file)?,

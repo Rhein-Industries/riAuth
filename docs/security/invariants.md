@@ -848,11 +848,15 @@ new instance while preserving supported identities/keys. Missing external keys,
 credentials/files/services remain visible recovery prerequisites.
 
 **Observed enforcement.** [Operations](../../src/operations.rs) `backup`,
-`load_chunked`, `restore_v1`, `restore_v2`, `commit_restore` validate v1/v2 format,
-v2 chunk sequence/digests/count, issuer/schema, enabled administrator and signing
-key, apply the RI-STORE-004 policy, then rebuild indexes and open the restored core. Limits are 64 MiB archive
-and 8 MiB new plaintext pages. Restore yields redb even from PostgreSQL. It does
-not restore external Vault custody, secret files or prove full application login.
+`load_chunked`, `restore_v1`, `restore_v2`, `commit_restore`, and the [v3 stream
+reader](../../src/operations/stream.rs) authenticate v1/v2/v3 archives and validate
+issuer/schema, signing keys, user/client state and an enabled administrator with
+a username binding. They apply the RI-STORE-004 policy and rebuild indexes in
+the import transaction. Restore targets a new redb directory or an empty isolated
+PostgreSQL database, then reopens it and checks the recovery gate before writing
+the usable configuration. Default v2 archives have a 64 MiB limit and new
+plaintext pages have an 8 MiB limit; v3 streams have a 4 GiB quota. Restore does
+not restore external Vault custody or secret files, or prove full application login.
 
 **Existing regressions.** [Operations](../../tests/operations.rs)
 `chunked_backup_restore_preserves_identity_and_invalidates_grants`,
@@ -860,13 +864,17 @@ not restore external Vault custody, secret files or prove full application login
 `restore_rejects_oversized_archive_before_reading_or_creating_output`,
 `schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes`;
 [identity operations](../../tests/identity/operations.rs)
-`encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants`.
+`encrypted_backup_restore_preserves_identity_and_keys_and_invalidates_grants`;
+[shared contracts](../../tests/contracts/shared.rs)
+`direct_restore_selected_backend`, `direct_restore_failure_preserves_original`,
+and `direct_restore_postgres_archive_into_redb`.
 
-**Missing coverage / later contract.** Q02-C10 tests wrong key/issuer/schema,
-tamper/reorder/truncation/duplicates, private output and external prerequisites.
-Q05-R08 interrupts restore or backup writes and verifies no partial instance is
-served or mistaken for success. RTO/RPO and real application recovery need separate
-deployment evidence; existing `verified` output is a scoped local check.
+**Remaining coverage.** Q02-C10 still needs a complete external prerequisite
+inventory and a deployment rehearsal with real administrator credentials and
+applications. Q05-R08 covers interrupted restore and backup writes; broader
+failure injection and operational cleanup need separate deployment evidence.
+RTO/RPO and real application recovery need separate deployment evidence;
+`verified` is a scoped local check.
 
 ### RI-STORE-004: restore rollback cannot be mistaken for current revocation state
 

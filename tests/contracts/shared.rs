@@ -92,6 +92,293 @@ fn audit_count(f: &Fixture, action: &str) -> usize {
         .count()
 }
 
+/// R02: both the v2 envelope and R01 stream import directly into either
+/// selected backend with the same identity continuity and R04 serving gate.
+pub fn direct_restore_selected_backend(backend: Backend) {
+    use riauth::{
+        operations::{self, RestoreTarget, stream::StreamOptions},
+        recovery::{self, STRIDE},
+    };
+
+    let source = Fixture::new();
+    source.client("app", false);
+    let old_alice = source.user("alice");
+    let old_access = text(&source.tokens("app", &old_alice, None), "access_token");
+    let before = source.snapshot().unwrap();
+    let source_keys = source.core.jwks().unwrap();
+    let key = crypto::random_token("");
+    let dir = tempfile::tempdir().unwrap();
+    let key_file = dir.path().join("backup.key");
+    write_private(&key_file, key.as_bytes(), false).unwrap();
+
+    for stream in [false, true] {
+        let target = backend.uninitialized();
+        assert!(target.untouched());
+        let selected = target
+            .config
+            .postgres
+            .clone()
+            .map(RestoreTarget::Postgres)
+            .unwrap_or(RestoreTarget::Redb);
+        let archive = dir
+            .path()
+            .join(if stream { "backup.v3" } else { "backup.v2" });
+        if stream {
+            let mut file = std::fs::File::create(&archive).unwrap();
+            source
+                .core
+                .backup_stream(&source.admin, &key, &mut file, StreamOptions::default())
+                .unwrap();
+        } else {
+            let backup = source.core.backup(&source.admin, &key).unwrap();
+            std::fs::write(&archive, serde_json::to_vec(&backup).unwrap()).unwrap();
+        }
+        let output = target.config.data_dir.clone();
+        let result = operations::restore_into(
+            &archive,
+            &key_file,
+            &output,
+            target.config.database_key_file.clone(),
+            selected,
+        )
+        .unwrap();
+        assert_eq!(result["restored"], true);
+        assert_eq!(result["verified"], true);
+        assert_eq!(result["serving_allowed"], false);
+        assert_eq!(
+            result["storage"],
+            if target.config.postgres.is_some() {
+                "postgresql"
+            } else {
+                "redb"
+            }
+        );
+        let restored =
+            Core::open(riauth::config::Config::load(&output.join("riauth.toml")).unwrap()).unwrap();
+        assert_eq!(
+            restored.store.backend(),
+            result["storage"].as_str().unwrap()
+        );
+        assert_eq!(restored.jwks().unwrap(), source_keys);
+        let after = restored.store.read(|tx| tx.snapshot()).unwrap();
+        for name in [
+            "meta/issuer",
+            "meta/keys",
+            "clients/app",
+            "usernames/admin",
+            "usernames/alice",
+        ] {
+            assert_eq!(after.get(name), before.get(name), "{name} changed");
+        }
+        let alice_id = before["usernames/alice"].as_str().unwrap();
+        let alice_key = format!("users/{alice_id}");
+        for field in [
+            "id",
+            "username",
+            "password_hash",
+            "subjects",
+            "pairwise_seed",
+            "enabled",
+        ] {
+            assert_eq!(
+                after[&alice_key][field], before[&alice_key][field],
+                "{field} changed"
+            );
+        }
+        assert_eq!(
+            after[&alice_key]["epoch"].as_u64().unwrap(),
+            before[&alice_key]["epoch"].as_u64().unwrap() + STRIDE
+        );
+        assert!(restored.store.ready().is_err());
+        assert!(restored.me(&old_alice).is_err());
+        assert!(restored.me(&source.admin).is_err());
+        assert!(restored.userinfo(&old_access).is_err());
+        let admin = text(
+            &restored
+                .login("admin".into(), PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        assert!(restored.get_resource(&admin, "client", "app").is_ok());
+        assert!(
+            restored
+                .login("alice".into(), "wrong-password".into(), None)
+                .is_err()
+        );
+        let alice = text(
+            &restored
+                .login("alice".into(), PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        let verifier = crypto::random_token("");
+        assert!(
+            restored
+                .authorize(&old_alice, source.request("app", &verifier))
+                .is_err()
+        );
+        let callback = restored
+            .authorize(&alice, source.request("app", &verifier))
+            .unwrap();
+        let code = url::Url::parse(&callback)
+            .unwrap()
+            .query_pairs()
+            .find(|(name, _)| name == "code")
+            .unwrap()
+            .1
+            .into_owned();
+        assert!(
+            restored
+                .token(TokenRequest {
+                    grant_type: "authorization_code".into(),
+                    client_id: Some("app".into()),
+                    code: Some(code),
+                    redirect_uri: Some("http://localhost:7777/callback?existing=1".into()),
+                    code_verifier: Some(verifier),
+                    ..Default::default()
+                })
+                .is_ok()
+        );
+        let pending = restored.store.read(recovery::pending).unwrap().unwrap();
+        assert_eq!(pending.id, result["recovery"]["id"]);
+        assert!(recovery::complete(&restored.store, &pending.id, false).is_err());
+        assert!(restored.store.ready().is_err());
+        assert_eq!(source.snapshot().unwrap(), before);
+    }
+}
+
+/// Authentication failures leave the selected target untouched; an occupied
+/// target cannot be reused even when the archive and key are valid.
+pub fn direct_restore_failure_preserves_original(backend: Backend) {
+    use riauth::operations::{self, RestoreTarget, stream::StreamOptions};
+
+    let source = Fixture::new();
+    let before = source.snapshot().unwrap();
+    let key = crypto::random_token("");
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("backup.v3");
+    let mut file = std::fs::File::create(&archive).unwrap();
+    source
+        .core
+        .backup_stream(&source.admin, &key, &mut file, StreamOptions::default())
+        .unwrap();
+    drop(file);
+    let key_file = dir.path().join("backup.key");
+    write_private(&key_file, key.as_bytes(), false).unwrap();
+    let wrong_key = dir.path().join("wrong.key");
+    write_private(&wrong_key, crypto::random_token("").as_bytes(), false).unwrap();
+
+    let empty = backend.uninitialized();
+    let selected = empty
+        .config
+        .postgres
+        .clone()
+        .map(RestoreTarget::Postgres)
+        .unwrap_or(RestoreTarget::Redb);
+    let output = empty.config.data_dir.clone();
+    assert!(
+        operations::restore_into(
+            &archive,
+            &wrong_key,
+            &output,
+            empty.config.database_key_file.clone(),
+            selected.clone()
+        )
+        .is_err()
+    );
+    assert!(empty.untouched());
+    assert!(!output.exists());
+    let mut corrupt = std::fs::read(&archive).unwrap();
+    *corrupt.last_mut().unwrap() ^= 1;
+    let corrupt_archive = dir.path().join("corrupt.v3");
+    std::fs::write(&corrupt_archive, corrupt).unwrap();
+    assert!(
+        operations::restore_into(
+            &corrupt_archive,
+            &key_file,
+            &output,
+            empty.config.database_key_file.clone(),
+            selected
+        )
+        .is_err()
+    );
+    assert!(empty.untouched());
+    assert!(!output.exists());
+
+    let occupied = backend.fixture();
+    let occupied_before = occupied.snapshot().unwrap();
+    let selected = occupied
+        .core
+        .config
+        .postgres
+        .clone()
+        .map(RestoreTarget::Postgres)
+        .unwrap_or(RestoreTarget::Redb);
+    let output = if occupied.core.config.postgres.is_some() {
+        dir.path().join("occupied-output")
+    } else {
+        occupied.core.config.data_dir.clone()
+    };
+    let error = operations::restore_into(
+        &archive,
+        &key_file,
+        &output,
+        occupied.core.config.database_key_file.clone(),
+        selected,
+    )
+    .unwrap_err();
+    assert_eq!(error.status, StatusCode::CONFLICT, "{}", error.message);
+    assert!(!output.join("riauth.toml").exists());
+    assert_eq!(occupied.snapshot().unwrap(), occupied_before);
+    assert_eq!(source.snapshot().unwrap(), before);
+}
+
+/// A PostgreSQL archive carries a source lineage marker. A direct redb
+/// restore drops that marker while keeping the identity and recovery policy.
+pub fn direct_restore_postgres_archive_into_redb() {
+    use riauth::{
+        operations::{self, RestoreTarget, stream::StreamOptions},
+        recovery::STRIDE,
+    };
+
+    let source = Backend::Postgres.fixture();
+    let old_admin = source.admin.clone();
+    let before = source.snapshot().unwrap();
+    assert!(before.contains_key("meta/storage_lineage"));
+    let key = crypto::random_token("");
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("postgres.v3");
+    let key_file = dir.path().join("backup.key");
+    write_private(&key_file, key.as_bytes(), false).unwrap();
+    source
+        .core
+        .backup_stream(
+            &source.admin,
+            &key,
+            &mut std::fs::File::create(&archive).unwrap(),
+            StreamOptions::default(),
+        )
+        .unwrap();
+    let output = dir.path().join("redb-restore");
+    let result =
+        operations::restore_into(&archive, &key_file, &output, None, RestoreTarget::Redb).unwrap();
+    assert_eq!(result["storage"], "redb");
+    let restored =
+        Core::open(riauth::config::Config::load(&output.join("riauth.toml")).unwrap()).unwrap();
+    let after = restored.store.read(|tx| tx.snapshot()).unwrap();
+    assert!(!after.contains_key("meta/storage_lineage"));
+    assert_eq!(after.get("meta/keys"), before.get("meta/keys"));
+    let admin_id = before["usernames/admin"].as_str().unwrap();
+    let admin_key = format!("users/{admin_id}");
+    assert_eq!(
+        after[&admin_key]["epoch"].as_u64().unwrap(),
+        before[&admin_key]["epoch"].as_u64().unwrap() + STRIDE
+    );
+    assert!(restored.me(&old_admin).is_err());
+    assert!(restored.store.ready().is_err());
+    assert_eq!(source.snapshot().unwrap(), before);
+}
+
 /// S02: a large group directory has the same live membership and snapshot
 /// behavior on both storage backends, including the 128-row index page edge.
 pub fn indexed_user_group_membership(backend: Backend) {

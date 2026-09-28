@@ -62,4 +62,11 @@ backend_contract!(offboard_intent_durable_cancel);
 backend_contract!(offboard_retry_rechecks_authority);
 backend_contract!(cloud_snapshot_apply_atomic_retry);
 backend_contract!(database_native_restore_policy);
+backend_contract!(direct_restore_selected_backend);
+backend_contract!(direct_restore_failure_preserves_original);
+#[test]
+#[ignore = "requires an isolated cluster; use scripts/test-contracts-postgres.sh"]
+fn direct_restore_postgres_archive_into_redb() {
+    shared::direct_restore_postgres_archive_into_redb();
+}
 backend_contract!(recovery_status_never_creates_or_writes_a_store);

@@ -9,8 +9,8 @@ storage and custody configuration, never the expected security outcome.
 These slices follow the reviewed A01 INV-1–INV-4 recommendation and the Q01
 [invariant catalog](../../docs/security/invariants.md). They exercise the current
 single server implementation. It does not establish Essentials/Platform,
-architecture, interface or released-artifact parity. Production behavior,
-dependencies, lockfiles and the Q01 documents are unchanged.
+architecture, interface or released-artifact parity. The direct restore contracts
+also exercise the R02 production path; dependencies and lockfiles are unchanged.
 
 | Shared contract | Q01 / Q02 coverage and persisted-state oracle |
 | --- | --- |
@@ -39,6 +39,9 @@ dependencies, lockfiles and the Q01 documents are unchanged.
 | `offboard_retry_rechecks_authority` | RI-CON-004, RI-MGT-004, RI-STORE-001 / C06/C08: an injected precommit failure keeps the user live and records a durable retry without execution audit; a second worker cannot claim the live lease; revoking the creator before commit gives one terminal job failure and one matching audit, with credential/session state intact. Requires `test-support`. |
 | `cloud_snapshot_apply_atomic_retry` | RI-CON-001/002, RI-MGT-004, RI-STORE-001 / C06/C08: a real loopback Workspace feed creates one durable reviewed plan; wrong actor, malformed/partial/changed snapshots and reduced user authority cannot apply it; reduced authority denies before a fetch, added authority invalidates the review, and a second-entry local collision rolls back the first staged account with no partial user/index/binding/audit mutation; restored authority applies once and an exact retry makes no network call or state change. |
 | `database_native_restore_policy` | RI-STORE-004, RI-SES-004 / C10: a database-native copy (PostgreSQL template clone, copied redb file) holding live sessions, grants and a pending code is recovered: PostgreSQL detects the changed lineage on open, a second connected handle cannot run recovery, and the operator command gives the same end state on every mode. No restored session/grant/code works, epochs and revision advance by the stride, replay records, IDs and JWKS persist, reopening changes nothing, readiness waits for the attestation and new sign-in works. |
+| `direct_restore_selected_backend` | RI-STORE-003/004 / R02: v2 and v3 archives import into new plaintext or encrypted redb and PostgreSQL targets; identity, credentials, issuer, clients and JWKS continue, old sessions and grants fail, administrator and application login work, and the serving gate waits for reconciliation. |
+| `direct_restore_failure_preserves_original` | RI-STORE-003 / R02: wrong keys and tampered v3 archives leave a fresh target untouched; an occupied target rejects a valid archive without changing its records or publishing a restored configuration. |
+| `direct_restore_postgres_archive_into_redb` | RI-STORE-003/004 / R02: a PostgreSQL source archive imports into redb without carrying the old database lineage, while identity and restored-state invalidation remain intact. Requires the disposable PostgreSQL cluster. |
 | `recovery_status_never_creates_or_writes_a_store` | RI-STORE-004 / C10: `recovery status` on a never-initialized store reports not serving and leaves no redb file or PostgreSQL schema; on a store with a pending gate it reports the gate and leaves every record (and the redb file bytes) unchanged. |
 | `indexed_user_group_membership` | RI-STORE-001 / C08: group membership index pages preserve ordered results across more than one page, mutations, rollback, reopen/rebuild and snapshot interleaving on each backend mode. |
 

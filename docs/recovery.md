@@ -166,10 +166,10 @@ data from before that stamp cannot be detected.
 
 ## Integration notes
 
-Every restore reader must call `commit_restore` in [`operations.rs`](../src/operations.rs),
-or `crate::recovery::invalidate` inside its import transaction followed by
-`rebuild_indexes`. This includes a future streaming format (R01) and a direct restore
-into PostgreSQL (R02). New storage collections must be added to a class in
+Every restore reader calls `commit_restore` in [`operations.rs`](../src/operations.rs),
+which applies `crate::recovery::invalidate`, rebuilds indexes, and stamps the
+selected PostgreSQL target's lineage inside its import transaction. This covers
+v1/v2 envelopes and v3 streams for redb and PostgreSQL. New storage collections must be added to a class in
 `src/recovery.rs`. The `every_storage_collection_has_a_restore_classification` test
 enforces this.
 

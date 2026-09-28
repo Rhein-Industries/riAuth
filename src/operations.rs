@@ -278,18 +278,43 @@ fn decode_key(encoded: &str) -> Result<zeroize::Zeroizing<[u8; 32]>> {
     ))
 }
 
+/// The offline destination for an authenticated backup. PostgreSQL must be a
+/// dedicated, empty database; restore never replaces records in an existing one.
+#[derive(Clone)]
+pub enum RestoreTarget {
+    Redb,
+    Postgres(crate::postgres_store::PostgresConfig),
+}
+
 pub fn restore(
     backup_file: &Path,
     key_file: &Path,
     output: &Path,
     database_key_file: Option<PathBuf>,
 ) -> Result<Value> {
+    restore_into(
+        backup_file,
+        key_file,
+        output,
+        database_key_file,
+        RestoreTarget::Redb,
+    )
+}
+
+pub fn restore_into(
+    backup_file: &Path,
+    key_file: &Path,
+    output: &Path,
+    database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
+) -> Result<Value> {
     if stream::is_stream_archive(backup_file)? {
-        return stream::restore_stream(
+        return stream::restore_stream_into(
             backup_file,
             key_file,
             output,
             database_key_file,
+            target,
             stream::StreamOptions::default(),
         );
     }
@@ -312,8 +337,8 @@ pub fn restore(
     }
     let key = crypto::read_key(key_file)?;
     match version {
-        BACKUP_V1 => restore_v1(&envelope, &key, output, database_key_file),
-        _ => restore_v2(&envelope, &key, output, database_key_file),
+        BACKUP_V1 => restore_v1(&envelope, &key, output, database_key_file, target),
+        _ => restore_v2(&envelope, &key, output, database_key_file, target),
     }
 }
 
@@ -322,6 +347,7 @@ fn restore_v1(
     key: &[u8; 32],
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
 ) -> Result<Value> {
     let ciphertext = URL_SAFE_NO_PAD
         .decode(
@@ -346,6 +372,7 @@ fn restore_v1(
         None,
         output,
         database_key_file,
+        target,
         move |tx| {
             for (name, value) in records {
                 let (bucket, id) = split_record_key(&name)?;
@@ -368,6 +395,7 @@ fn restore_v2(
     key: &[u8; 32],
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
 ) -> Result<Value> {
     if envelope["encrypted"] != true {
         return Err(Error::bad("Unsupported backup format"));
@@ -381,6 +409,7 @@ fn restore_v2(
         Some(loaded.created_at),
         output,
         database_key_file,
+        target,
         move |tx| {
             let mut imported = 0u64;
             for (index, encoded) in chunks[..chunks.len() - 1].iter().enumerate() {
@@ -488,12 +517,10 @@ fn commit_restore(
     snapshot_created_at: Option<u64>,
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
     import: impl FnOnce(&crate::store::Tx<'_>) -> Result<()>,
     check: impl Fn() -> Result<()>,
 ) -> Result<Value> {
-    config
-        .validate()
-        .map_err(|_| Error::bad("Invalid backup configuration"))?;
     let database_key_file = database_key_file
         .map(|p| p.canonicalize().map_err(Error::internal))
         .transpose()?;
@@ -501,15 +528,75 @@ fn commit_restore(
         .as_deref()
         .map(crypto::read_key)
         .transpose()?;
+    config.data_dir = "data".into();
+    config.postgres = match target {
+        RestoreTarget::Redb => None,
+        RestoreTarget::Postgres(mut postgres) => {
+            // Public API callers may pass relative files. Persist absolute
+            // references so the output config opens the database we inspected.
+            postgres.connection_file = postgres
+                .connection_file
+                .canonicalize()
+                .map_err(Error::internal)?;
+            postgres.ca_file = postgres
+                .ca_file
+                .map(|path| path.canonicalize().map_err(Error::internal))
+                .transpose()?;
+            Some(postgres)
+        }
+    };
+    config.database_key_file = database_key_file;
+    config
+        .validate()
+        .map_err(|_| Error::bad("Invalid backup configuration"))?;
+    let config_bytes = toml::to_string_pretty(&config).map_err(Error::internal)?;
     check()?;
-    std::fs::create_dir(output)
-        .map_err(|e| Error::bad(format!("Restore requires a new output directory: {e}")))?;
+    if config.postgres.is_some() {
+        // Read-only preflight keeps an occupied target and the output directory
+        // untouched. The writer repeats this check under PostgreSQL's lock.
+        Store::inspect(&config, |_, tx| {
+            if tx
+                .map(|tx| tx.snapshot_next_key(None))
+                .transpose()?
+                .flatten()
+                .is_some()
+            {
+                return Err(Error::conflict(
+                    "Restore requires an empty PostgreSQL target",
+                ));
+            }
+            Ok(())
+        })?;
+    }
+    std::fs::create_dir(output).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            Error::conflict("Restore requires a new output directory")
+        } else {
+            Error::bad(format!("Restore requires a new output directory: {error}"))
+        }
+    })?;
     private_dir(output).map_err(Error::internal)?;
-    let data_dir = output.join("data");
-    private_dir(&data_dir).map_err(Error::internal)?;
-    let store = Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?;
+    let store = if let Some(postgres) = &config.postgres {
+        Store::open_postgres(postgres.clone(), storage_key)?
+    } else {
+        let data_dir = output.join("data");
+        private_dir(&data_dir).map_err(Error::internal)?;
+        Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?
+    };
     let recovery = store.write(|tx| {
         check()?;
+        if config.postgres.is_some() {
+            if tx.snapshot_next_key(None)?.is_some() {
+                return Err(Error::conflict(
+                    "Restore requires an empty PostgreSQL target",
+                ));
+            }
+            if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+                return Err(Error::conflict(
+                    "Stop every riAuth process connected to the PostgreSQL target before restore",
+                ));
+            }
+        }
         import(tx)?;
         check()?;
         // Invalidation and the serving gate must commit with the imported state.
@@ -522,7 +609,13 @@ fn commit_restore(
         check()?;
         tx.rebuild_indexes_checked(&check)?;
         check()?;
-        keys(tx)?.active.jwk()?;
+        if tx.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer)
+            || !schema_supported(tx.get::<Value>("meta", "schema")?.as_ref())
+            || tx.get::<String>("meta", "dummy_hash")?.is_none()
+        {
+            return Err(Error::bad("Backup state is incomplete"));
+        }
+        crate::keyring::public_keys(tx)?;
         let mut after = None;
         let mut enabled_administrator = false;
         loop {
@@ -535,7 +628,10 @@ fn commit_restore(
             }
             for (id, user) in users {
                 check()?;
-                enabled_administrator |= user.admin && user.enabled;
+                if user.admin && user.enabled {
+                    enabled_administrator |=
+                        tx.get::<String>("usernames", &user.username)? == Some(user.id.clone());
+                }
                 crate::claims::validate_user_checked(tx, &user, &check)?;
                 after = Some(id);
             }
@@ -543,27 +639,51 @@ fn commit_restore(
         if !enabled_administrator {
             return Err(Error::bad("Backup has no enabled administrator"));
         }
+        let mut after = None;
+        loop {
+            check()?;
+            let clients = tx.scan::<Client>("clients", after.as_deref(), 1)?;
+            let Some((id, client)) = clients.into_iter().next() else {
+                break;
+            };
+            crate::core::validate_client(tx, &client)?;
+            after = Some(id);
+        }
+        // A copied PostgreSQL lineage belongs to the source. Stamp a new
+        // PostgreSQL target, or remove it when the target is redb.
+        if config.postgres.is_some() {
+            crate::recovery::stamp_lineage(tx)?;
+        } else {
+            tx.delete("meta", "storage_lineage")?;
+        }
         check()?;
         Ok(recovery)
     })?;
     drop(store);
-    config.data_dir = "data".into();
-    config.postgres = None;
-    config.database_key_file = database_key_file;
-    let config_path = output.join("riauth.toml");
-    write_private(
-        &config_path,
-        toml::to_string_pretty(&config)
-            .map_err(Error::internal)?
-            .as_bytes(),
-        false,
-    )
-    .map_err(Error::internal)?;
-    let config = Config::load(&config_path).map_err(Error::internal)?;
+    // Reopen from the exact configuration that will be published. A failed
+    // schema upgrade or key check leaves only a private candidate, not the
+    // configuration an operator would use to activate the restored instance.
+    let candidate_path = output.join(".riauth.restore-pending.toml");
+    write_private(&candidate_path, config_bytes.as_bytes(), false).map_err(Error::internal)?;
+    let config = Config::load(&candidate_path).map_err(Error::internal)?;
     let core = Core::open(config)?;
     core.jwks()?;
+    if core.store.get::<u32>("meta", "schema")? != Some(crate::upgrade::SCHEMA)
+        || core
+            .store
+            .read(crate::recovery::pending)?
+            .as_ref()
+            .map(|pending| pending.id.as_str())
+            != Some(recovery.id.as_str())
+    {
+        return Err(Error::internal("Restored storage verification failed"));
+    }
+    let config_path = output.join("riauth.toml");
+    write_private(&config_path, config_bytes.as_bytes(), false).map_err(Error::internal)?;
+    let _ = std::fs::remove_file(candidate_path);
     Ok(
         json!({"restored": true, "verified": true, "config": config_path, "issuer": core.config.issuer, "encrypted_at_rest": core.config.database_key_file.is_some(),
+            "storage": core.store.backend(),
             "serving_allowed": false, "recovery": recovery,
             "next": "Reconcile or rotate the listed persistent credentials, then run `riauth recovery complete --recovery-id <recovery.id> --persistent-credentials-reconciled`"}),
     )

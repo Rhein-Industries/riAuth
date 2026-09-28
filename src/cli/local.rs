@@ -51,6 +51,9 @@ pub struct RestoreArgs {
     pub out: PathBuf,
     #[arg(long)]
     pub database_key_file: Option<PathBuf>,
+    /// Restore directly into an empty, isolated PostgreSQL database
+    #[arg(long)]
+    pub postgres_config: Option<PathBuf>,
 }
 
 #[derive(Args, Clone)]
@@ -237,8 +240,21 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
             key_file,
             out,
             database_key_file,
+            postgres_config,
         }) => {
-            let value = crate::operations::restore(&backup, &key_file, &out, database_key_file)?;
+            let target = postgres_config
+                .as_deref()
+                .map(crate::postgres_store::PostgresConfig::load)
+                .transpose()?
+                .map(crate::operations::RestoreTarget::Postgres)
+                .unwrap_or(crate::operations::RestoreTarget::Redb);
+            let value = crate::operations::restore_into(
+                &backup,
+                &key_file,
+                &out,
+                database_key_file,
+                target,
+            )?;
             emit_local(&options, &value)?;
         }
         LocalCommand::MigratePostgres(MigratePostgresArgs {
