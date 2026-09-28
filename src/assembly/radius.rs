@@ -1,4 +1,4 @@
-//! RADIUS client, identity, replay and close operations over concrete storage.
+//! RADIUS client, identity, certificate, replay and close storage operations.
 
 use crate::{
     core::{Core, audit},
@@ -9,6 +9,7 @@ use crate::{
     store::Tx,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Cached {
@@ -18,6 +19,25 @@ struct Cached {
     attributes_fingerprint: Option<String>,
     response: Option<Vec<u8>>,
     identity: Option<Identity>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct Certificate {
+    id: String,
+    username: String,
+    user_id: String,
+    listener: String,
+    fingerprint: String,
+    expires_at: u64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct IdentityBinding {
+    certificate_key: String,
+    certificate_id: String,
+    listener: String,
+    profile_fingerprint: String,
+    expires_at: u64,
 }
 
 fn close(tx: &Tx<'_>, identity: Option<&Identity>) -> Result<()> {
@@ -281,6 +301,209 @@ impl Core {
             if cached.expires_at < at {
                 close(tx, cached.identity.as_ref())?;
                 tx.delete("radius_requests", &id)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn radius_eap_authorize_bind(
+        &self,
+        token: &str,
+        username: &str,
+        listener: &str,
+    ) -> Result<()> {
+        self.store.read(|tx| {
+            let actor =
+                self.management(tx, token, "certificate.write", &format!("user/{username}"))?;
+            actor.require("radius.enroll", &format!("radius/{listener}"))?;
+            let user = crate::core::user_by_name(tx, username)?;
+            if actor.agent && user.admin {
+                return Err(Error::forbidden());
+            }
+            Ok(())
+        })
+    }
+
+    pub(crate) fn radius_eap_bind_commit(
+        &self,
+        token: &str,
+        input: eap::CertificateInput,
+        key: String,
+        fingerprint: String,
+        expires_at: u64,
+    ) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let actor = self.management(
+                tx,
+                token,
+                "certificate.write",
+                &format!("user/{}", input.username),
+            )?;
+            actor.require("radius.enroll", &format!("radius/{}", input.listener))?;
+            let user = crate::core::user_by_name(tx, &input.username)?;
+            if actor.agent && user.admin {
+                return Err(Error::forbidden());
+            }
+            let existing = tx.get::<Certificate>("radius_certificates", &key)?;
+            if let Some(existing) = &existing {
+                if existing.user_id != user.id {
+                    return Err(Error::conflict(
+                        "Certificate is already bound to another identity",
+                    ));
+                }
+                return Ok(json!(existing));
+            }
+            if tx
+                .list::<Certificate>("radius_certificates")?
+                .iter()
+                .filter(|(_, c)| c.user_id == user.id)
+                .count()
+                >= 32
+            {
+                return Err(Error::conflict("User has too many EAP certificates"));
+            }
+            let certificate = Certificate {
+                id: crate::crypto::id(),
+                username: user.username,
+                user_id: user.id,
+                listener: input.listener.clone(),
+                fingerprint,
+                expires_at,
+            };
+            tx.put("radius_certificate_ids", &certificate.id, &key)?;
+            tx.put("radius_certificates", &key, &certificate)?;
+            audit(tx, &actor.id, "certificate.bind", &certificate.id)?;
+            Ok(json!(certificate))
+        })
+    }
+
+    pub fn radius_certificates(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let mut rows = Vec::new();
+            for (_, mut certificate) in tx.list::<Certificate>("radius_certificates")? {
+                let Some(user) = tx.get::<User>("users", &certificate.user_id)? else {
+                    continue;
+                };
+                if actor.allows("certificate.read", &format!("user/{}", user.username))
+                    && actor.allows("radius.enroll", &format!("radius/{}", certificate.listener))
+                {
+                    certificate.username = user.username;
+                    rows.push(certificate);
+                }
+            }
+            Ok(json!(rows))
+        })
+    }
+
+    pub fn radius_certificate_revoke(&self, token: &str, id: &str) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let key = tx
+                .get::<String>("radius_certificate_ids", id)?
+                .ok_or_else(|| Error::missing("Certificate not found"))?;
+            let certificate = tx
+                .get::<Certificate>("radius_certificates", &key)?
+                .ok_or_else(|| Error::missing("Certificate not found"))?;
+            let user = tx
+                .get::<User>("users", &certificate.user_id)?
+                .ok_or_else(Error::forbidden)?;
+            let actor = self.management(
+                tx,
+                token,
+                "certificate.write",
+                &format!("user/{}", user.username),
+            )?;
+            actor.require("radius.enroll", &format!("radius/{}", certificate.listener))?;
+            if actor.agent && user.admin {
+                return Err(Error::forbidden());
+            }
+            tx.delete("radius_certificates", &key)?;
+            tx.delete("radius_certificate_ids", id)?;
+            audit(tx, &actor.id, "certificate.revoke", id)?;
+            Ok(json!({"revoked":true,"id":id}))
+        })
+    }
+
+    pub(crate) fn radius_eap_create_identity(
+        &self,
+        client: &Client,
+        listener: &str,
+        profile_fp: &str,
+        key: String,
+    ) -> Result<Identity> {
+        self.store.write(|tx| {
+            let (current, settings) = self.radius_client_profile(tx, &client.id)?;
+            if !settings.eap_tls || fingerprint(&current)? != fingerprint(client)? {
+                return Err(Error::forbidden());
+            }
+            let cert = tx
+                .get::<Certificate>("radius_certificates", &key)?
+                .filter(|c| c.expires_at > now())
+                .ok_or_else(Error::forbidden)?;
+            let user = tx
+                .get::<User>("users", &cert.user_id)?
+                .filter(|u| u.enabled)
+                .ok_or_else(Error::forbidden)?;
+            let sid = crate::crypto::id();
+            let identity = Identity {
+                user_id: user.id,
+                epoch: user.epoch,
+                mfa: false,
+                auth_time: now(),
+                session_id: sid.clone(),
+                amr: vec!["x509".into()],
+                source: None,
+            };
+            let expiry = (now() + 180).min(cert.expires_at);
+            let session = Session {
+                id: sid.clone(),
+                token_hash: digest(&crate::crypto::random_token("")),
+                identity: identity.clone(),
+                expires_at: expiry,
+                revoked: false,
+            };
+            // No session_tokens index: this protocol identity cannot become an HTTP bearer session.
+            tx.put("sessions", &sid, &session)?;
+            tx.put(
+                "radius_eap_identities",
+                &sid,
+                &IdentityBinding {
+                    certificate_key: key,
+                    certificate_id: cert.id,
+                    listener: listener.into(),
+                    profile_fingerprint: profile_fp.into(),
+                    expires_at: expiry,
+                },
+            )?;
+            self.radius_identity(tx, &current, &identity)?;
+            Ok(identity)
+        })
+    }
+
+    pub(crate) fn radius_eap_binding(
+        &self,
+        tx: &Tx<'_>,
+        identity: &Identity,
+    ) -> Result<(String, String, String)> {
+        let binding = tx
+            .get::<IdentityBinding>("radius_eap_identities", &identity.session_id)?
+            .filter(|b| b.expires_at > now())
+            .ok_or_else(Error::unauthorized)?;
+        let cert = tx
+            .get::<Certificate>("radius_certificates", &binding.certificate_key)?
+            .filter(|c| {
+                c.id == binding.certificate_id
+                    && c.user_id == identity.user_id
+                    && c.expires_at > now()
+            })
+            .ok_or_else(Error::unauthorized)?;
+        Ok((cert.listener, binding.listener, binding.profile_fingerprint))
+    }
+
+    pub(crate) fn radius_eap_cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+        for (id, b) in tx.maintenance_page::<IdentityBinding>("radius_eap_identities")? {
+            if b.expires_at <= at {
+                tx.delete("radius_eap_identities", &id)?;
             }
         }
         Ok(())

@@ -428,7 +428,7 @@ impl Core {
     }
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    eap::cleanup(tx, at)?;
+    Core::radius_eap_cleanup(tx, at)?;
     Core::radius_cleanup_cache(tx, at)
 }
 pub struct Servers {
