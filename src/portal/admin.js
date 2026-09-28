@@ -13,7 +13,6 @@
   const data = { me: null, revision: 0, clients: [], users: [], groups: [], workflows: [], directories: [], operations: {}, probes: {}, verifyKeys: {}, requests: [], grants: [], audit: [], invitations: [], deliveries: [], deliveryLoadedAt: 0, mail: false, lifetime: 0 };
   // The routes can read and revoke retained grants after approver rules are removed.
   const accessRoutes = () => !!data.me?.user?.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
-  const accessDecisions = () => RiAuthCapabilities.usable("access.temporary_entitlements");
   const cloudAvailable = () => RiAuthCapabilities.usable("directory.workspace_sync") || RiAuthCapabilities.usable("directory.entra_sync");
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
   let draft = null; // the application setup wizard's draft, see newApplication
@@ -430,9 +429,7 @@
   }
 
   // ---- Confirmation and secret dialogs -----------------------------------------------------
-  // `keyed: false` is for calls the server does not keep idempotency receipts for (access
-  // decisions): they get no key, and their overrides explain a lost response instead.
-  function confirmAction({ title, text, ok, danger = false, input = null, keyed = true, run, overrides }) {
+  function confirmAction({ title, text, ok, danger = false, input = null, run, overrides }) {
     const dialog = $("confirm-dialog");
     confirmOpener = document.activeElement;
     $("confirm-title").textContent = title; $("confirm-text").textContent = text;
@@ -444,7 +441,7 @@
     confirmRun = async () => {
       const entered = $("confirm-input").value;
       if (input && !entered) { $("confirm-error").textContent = `Enter ${input.label.toLowerCase()}.`; $("confirm-error").hidden = false; $("confirm-input").focus(); return; }
-      if (keyed) key = key || requestKey();
+      key = key || requestKey();
       $("confirm-ok").disabled = true; $("confirm-cancel").disabled = true; $("confirm-form").setAttribute("aria-busy", "true");
       try {
         await run(entered, key);
@@ -1729,46 +1726,20 @@
   function accessSecurity() {
     const waiting = pending();
     const grants = activeGrants();
-    const decide = (request, approve) => confirmAction({
-      title: approve ? `Approve access to ${request.group}?` : `Deny access to ${request.group}?`,
-      ok: approve ? "Approve" : "Deny", danger: !approve,
-      text: approve ? `${request.username} joins ${request.group} for ${duration(request.ttl)}, starting now. Reason given: “${request.reason}”.` : `${request.username} does not get access. They can send a new request.`,
-      keyed: false,
-      run: async () => {
-        await api("POST", `admin/access/requests/${seg(request.id)}/${approve ? "approve" : "deny"}`);
-        await saved(approve ? `Approved ${request.username}'s access to ${request.group}.` : `Denied ${request.username}'s request.`);
-      },
-      overrides: {
-        0: "riAuth didn't answer, so the decision may or may not have been recorded. Reload to check: a request can only be decided once, so a repeated decision is refused rather than applied twice.",
-        403: "Only an approver configured for this group can decide, and never on their own request.",
-        409: "This request was already decided. Reload to see the outcome.",
-      },
-    });
+    const reviewLink = (label) => h("a", { class: "text-button", href: `${base}access/review` }, label);
     const requests = table("Access requests waiting for review", [
       { label: "Person", cell: (r) => link(hash("people", r.username), r.username) },
       { label: "Group", cell: (r) => link(hash("groups", r.group), r.group) },
       { label: "Reason", cell: (r) => r.reason },
       { label: "Duration", cell: (r) => duration(r.ttl) },
       { label: "Requested", cell: (r) => when(r.created_at) },
-      { label: "Decision", cell: (r) => accessDecisions() ? h("span", { class: "row-actions" },
-        h("button", { class: "button primary small", type: "button", "aria-label": `Approve ${r.username} for ${r.group}`, onclick: () => decide(r, true) }, "Approve"),
-        h("button", { class: "button secondary small", type: "button", "aria-label": `Deny ${r.username} for ${r.group}`, onclick: () => decide(r, false) }, "Deny"))
-        : "Configure approver rules to decide this request." },
+      { label: "Decision", cell: () => reviewLink("Review request") },
     ], waiting, "No access requests are waiting for review.", (r) => `${r.username} ${r.group} ${r.reason}`);
     const active = table("Active temporary access", [
       { label: "Person", cell: (g) => personName(userById(g.user_id)) },
       { label: "Group", cell: (g) => link(hash("groups", g.group), g.group) },
       { label: "Ends", cell: (g) => when(g.expires_at) },
-      { label: "Actions", cell: (g) => h("button", { class: "text-button", type: "button", "aria-label": `Revoke ${personName(userById(g.user_id))}'s access to ${g.group}`, onclick: () => confirmAction({
-        title: `Revoke temporary access to ${g.group}?`, ok: "Revoke", danger: true,
-        text: `${personName(userById(g.user_id))} loses the group's access now.`,
-        keyed: false,
-        run: async () => { await api("POST", `admin/access/grants/${seg(g.id)}/revoke`); await saved("Access revoked."); },
-        overrides: {
-          0: "riAuth didn't answer, so the access may or may not have been revoked. Reload to check; revoking again is refused if it already happened.",
-          409: "This access was already revoked.",
-        },
-      }) }, "Revoke") },
+      { label: "Actions", cell: () => reviewLink("Review grant") },
     ], grants, "No temporary access is active.", (g) => `${g.group}`);
     return { waiting, grants, requests, active };
   }
@@ -1964,7 +1935,7 @@
         stat("Administrators", admins.length, "", "admins"),
         stat("Administrators without MFA", unprotected.length, unprotected.length ? "warn" : "ok", "admins")),
       accessRoutes() ? h("section", { class: "admin-section", id: "review", "aria-labelledby": "review-title" }, h("h2", { id: "review-title", tabindex: "-1" }, "Waiting for review"),
-        h("p", { class: "field-hint" }, "People asking for temporary group access. Only approvers configured for a group can decide."), access.requests.node) : null,
+        h("p", { class: "field-hint" }, "People asking for temporary group access. Only configured approvers can decide on the access review page."), access.requests.node) : null,
       accessRoutes() ? h("section", { class: "admin-section", id: "temporary", "aria-labelledby": "temporary-title" }, h("h2", { id: "temporary-title", tabindex: "-1" }, "Temporary access"), access.active.node) : null,
       h("section", { class: "admin-section", id: "admins", "aria-labelledby": "admins-title" }, h("h2", { id: "admins-title", tabindex: "-1" }, "Administrators"),
         unprotected.length ? h("p", { class: "notice warn-notice" }, `${unprotected.length} ${unprotected.length === 1 ? "administrator has" : "administrators have"} no passkey or authenticator app. Ask them to add one from Your applications.`) : null,

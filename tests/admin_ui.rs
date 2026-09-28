@@ -332,6 +332,41 @@ async fn page_is_self_contained() {
 }
 
 #[tokio::test]
+async fn temporary_access_controls_open_the_scoped_review_page() {
+    let fixture = Fixture::new();
+    let app = riauth::api::router(fixture.core.clone());
+    let (status, _, page) = send(&app, "/apps", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let page = page.as_str().unwrap();
+    let nav = page
+        .split_once("<nav>")
+        .unwrap()
+        .1
+        .split_once("</nav>")
+        .unwrap()
+        .0;
+    assert!(nav.contains(
+        "<a class=\"nav-item\" id=\"access-review-link\" href=\"/access/review\" hidden>"
+    ));
+    assert_eq!(page.matches("id=\"access-review-link\"").count(), 1);
+
+    let (status, _, app_script) = send(&app, "/portal/assets/app.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let app_script = app_script.as_str().unwrap();
+    assert!(app_script.contains("$(\"access-review-link\").hidden = true"));
+    assert!(app_script.contains("$(\"access-review-link\").hidden = data.access_review_available !== true || !RiAuthCapabilities.compiled(\"access.temporary_entitlements\")"));
+
+    let (status, _, admin_script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let admin_script = admin_script.as_str().unwrap();
+    assert!(admin_script.contains("href: `${base}access/review`"));
+    assert!(admin_script.contains("Review request") && admin_script.contains("Review grant"));
+    assert!(!admin_script.contains("admin/access/requests/${"));
+    assert!(!admin_script.contains("admin/access/grants/${"));
+    assert!(!admin_script.contains("keyed: false"));
+}
+
+#[tokio::test]
 async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
     let fixture = Fixture::new();
     let browser = riauth::api::router(fixture.core.clone());
