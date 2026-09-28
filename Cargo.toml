@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["identity", "oidc", "saml", "sso"]
 
 [features]
-default = ["terminal-usb"]
+default = []
 terminal-usb = ["dep:webauthn-authenticator-rs"]
 test-support = []
 fuzzing = []

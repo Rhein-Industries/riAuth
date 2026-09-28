@@ -22,6 +22,13 @@ jobs:
       - name: Validate version and current main commit
         run: |
           python3 scripts/release-version.py "$GITHUB_REF_NAME"
+          python3 - <<'PY'
+          import pathlib, tomllib
+          server = tomllib.loads(pathlib.Path('Cargo.toml').read_text())['package']['version']
+          client = tomllib.loads(pathlib.Path('crates/riauthctl/Cargo.toml').read_text())['package']['version']
+          if client != server:
+              raise SystemExit(f'riauthctl version {client} differs from release version {server}')
+          PY
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if [ "$(git rev-parse HEAD)" != "$(git rev-parse refs/remotes/origin/main)" ]; then
             echo 'Release tag must point to the current main commit' >&2
@@ -51,7 +58,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates cmake libssl-dev libudev-dev clang pkg-config
+            ca-certificates cmake libssl-dev clang pkg-config
       - name: Build, smoke test, and package the checked tag
         run: |
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_REF_NAME^{commit}")"
@@ -59,17 +66,20 @@ jobs:
           export RIAUTH_COMMIT
           test "$(uname -m)" = x86_64
           python3 scripts/generate-third-party-notices.py --check
-          cargo build --release --locked
+          cargo build --release --locked --no-default-features --bins
+          cargo build --manifest-path crates/riauthctl/Cargo.toml --release --locked --no-default-features
+          crates/riauthctl/target/release/riauthctl --version
           docker build -t "$RIAUTH_CI_IMAGE" .
           docker run --rm "$RIAUTH_CI_IMAGE" --json capabilities
           docker run --rm --entrypoint cat "$RIAUTH_CI_IMAGE" /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md | cmp - THIRD_PARTY_NOTICES.md
           docker run --rm --entrypoint test "$RIAUTH_CI_IMAGE" -r /usr/share/doc/libssl3t64/copyright
-          docker run --rm --entrypoint test "$RIAUTH_CI_IMAGE" -r /usr/share/doc/libudev1/copyright
           scripts/package-release.sh
           cd target/dist
           sha256sum --check SHA256SUMS
           tar -xOzf riauth-linux-x86_64.tar.gz LICENSE | cmp - ../../LICENSE
           tar -xOzf riauth-linux-x86_64.tar.gz THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
+          tar -xOzf riauthctl-linux-x86_64.tar.gz LICENSE | cmp - ../../LICENSE
+          tar -xOzf riauthctl-linux-x86_64.tar.gz THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
       - name: Create a draft release for maintainer review
         env:
           GH_TOKEN: ${{ github.token }}

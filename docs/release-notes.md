@@ -40,10 +40,11 @@
   TOTP settings, replay checks and explicit upstream CA restrictions.
   HTTP clients now use platform certificate verification by default; configured
   proxy CA bundles continue to restrict trust to the supplied roots.
-- Refreshed both Cargo lockfiles and generated third-party notices. Browser test
+- Refreshed Cargo lockfiles and generated third-party notices. Browser test
   dependencies were checked against npm and are already current.
 - Pinned Rust 1.98.1 in development, CI and container builds. Container images now
-  use Debian trixie; CI uses cargo-audit 0.22.2 and checks both Rust lockfiles.
+  use Debian trixie; CI uses cargo-audit 0.22.2 and checks the server, fuzz,
+  and standalone client lockfiles.
   Dependabot now also monitors the container images and fuzz workspace.
 
 The current SAML libraries pin the transitive `rustix` dependency to 1.1.4 and
@@ -61,6 +62,10 @@ local installation and the [operations guide](operations.md) for deployment.
 
 ## Changes
 
+- Added the standalone, USB-free `riauthctl` remote client for login, status,
+  discovery, revision, bounded inventory, and reviewed plan/apply. Terminal USB
+  passkeys remain an explicit client feature; other legacy administration
+  commands remain in `riauth` during the split.
 - Updated direct Rust dependencies for random generation, TOML configuration,
   PEM handling, and WebSocket tests, plus the locked CLI parser dependency.
 - Updated the browser accessibility test dependency.
@@ -85,12 +90,14 @@ restore and startup with the exact binary intended for recovery.
 
 ## Distribution
 
-The release workflow builds a native archive on Ubuntu 24.04 x86_64 for
-compatible Linux systems and packages a container image archive. It prepares
-SHA-256 checksums and build provenance containing the commit, toolchain, and
-dependency lockfile digest. The packages include the [license](../LICENSE)
-and [third-party notices](../THIRD_PARTY_NOTICES.md). Other platforms can build
-from source.
+The release workflow builds separate `riauth-linux-x86_64.tar.gz` and
+`riauthctl-linux-x86_64.tar.gz` native archives on Ubuntu 24.04 x86_64 for
+compatible Linux systems, plus a server container image archive. The standalone
+client is built without terminal USB support. SHA-256 checksums and build
+provenance record the commit, toolchain, and both Cargo lockfile digests. The
+native archives include the [license](../LICENSE) and
+[third-party notices](../THIRD_PARTY_NOTICES.md). Linux ARM64 and other
+platform artifacts are not produced by this workflow; build from source there.
 
 Maintainers review the tagged commit, checks, smoke tests, and draft assets
 before publication. The provenance records build metadata; it is not a
