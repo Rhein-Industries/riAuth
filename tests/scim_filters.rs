@@ -47,7 +47,7 @@ async fn filtered(
 #[tokio::test]
 async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantics() {
     let f = Fixture::new();
-    let permissions: Vec<Permission> = ["user.read", "user.write"]
+    let permissions: Vec<Permission> = ["user.read", "user.write", "group.read", "group.write", "group.members"]
         .map(|action| Permission { action: action.into(), resource: "*".into() })
         .into();
     let owner = f.core.create_agent(&f.admin, NewAgent {
@@ -61,14 +61,15 @@ async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantic
     let owner = text(&owner["credential"], "token");
     let other = text(&other["credential"], "token");
     let users = [
-        ("filter-one", "A \"Quoted\" Name", true, json!([{"value":"first@example.test","primary":true},{"value":"alias@example.test"}])),
+        ("filter-one", "A \"Quoted\" and Name", true, json!([{"value":"first@example.test","primary":true},{"value":"alias@example.test"}])),
         ("filter-two", "Second", false, json!([{"value":"ALIAS@example.test","primary":true}])),
-        ("filter-three", "Third", true, json!([{"value":"different@example.test","primary":true}])),
+        ("filter-three", "Third", true, json!([])),
     ];
     for (username, display, active, emails) in users {
         f.core.scim_write(&owner, "Users", None, json!({"schemas":[scim::USER],"userName":username,"displayName":display,"active":active,"emails":emails}), false).unwrap();
     }
     f.core.scim_write(&other, "Users", None, json!({"schemas":[scim::USER],"userName":"filter-outside","active":false,"emails":[{"value":"alias@example.test","primary":true}]}), false).unwrap();
+    f.core.scim_write(&owner, "Groups", None, json!({"schemas":[scim::GROUP],"displayName":"Filter-Group"}), false).unwrap();
     let app = riauth::api::router(f.core.clone());
 
     let email = r#"EMAILS.VALUE EQ "ALIAS\u0040EXAMPLE.TEST""#;
@@ -99,15 +100,38 @@ async fn scim_user_email_and_active_filters_share_owned_list_and_search_semantic
         let (status, active) = filtered(&app, &owner, "Users", "active eq true", 1, 100, post).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(active["totalResults"], 2);
-        let (status, quoted) = filtered(&app, &owner, "Users", r#"displayName eq "A \"Quoted\" Name""#, 1, 100, post).await;
+        let (status, quoted) = filtered(&app, &owner, "Users", r#"displayName eq "A \"Quoted\" and Name""#, 1, 100, post).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(quoted["Resources"][0]["userName"], "filter-one");
+        let conjunction = r#"displayName eq "A \"Quoted\" and Name" AND emails.value EQ "ALIAS@example.test" and active eq true and emails PR"#;
+        let (status, combined) = filtered(&app, &owner, "Users", conjunction, 1, 1, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(combined["totalResults"], 1);
+        assert_eq!(combined["itemsPerPage"], 1);
+        assert_eq!(combined["Resources"][0]["userName"], "filter-one");
+        let (status, active_present) = filtered(&app, &owner, "Users", "active pr", 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(active_present["totalResults"], 3); // false is assigned and therefore present.
+        let (status, present) = filtered(&app, &owner, "Users", "emails pr and emails.value pr", 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(present["totalResults"], 2); // The empty email array is absent.
+        let (status, absent) = filtered(&app, &owner, "Users", "externalId pr", 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(absent["totalResults"], 0);
+        let (status, groups) = filtered(&app, &owner, "Groups", r#"displayName eq "Filter-Group" and id pr"#, 1, 100, post).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(groups["totalResults"], 1);
         for bad in [
             "active eq \"false\"",
             "active eq FALSE",
             r#"emails.value eq "bad\q""#,
             r#"emails.value eq "alias@example.test" or active eq true"#,
             "active eq true\n",
+            "active pr true",
+            "active eq true and",
+            "(active eq true)",
+            "active eq true and active pr and emails pr and userName pr and id pr",
+            r#"displayName eq "A \"Quoted\" and Name" and emails.value eq "bad\q""#,
         ] {
             let (status, error) = filtered(&app, &owner, "Users", bad, 1, 100, post).await;
             assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");

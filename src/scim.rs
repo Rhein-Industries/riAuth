@@ -251,6 +251,8 @@ enum Filter {
     },
     Email(String),
     Active(bool),
+    Present(&'static str),
+    EmailPresent,
 }
 
 impl Filter {
@@ -271,11 +273,110 @@ impl Filter {
                 })
             }),
             Self::Active(expected) => value["active"].as_bool() == Some(*expected),
+            Self::Present(field) => match &value[*field] {
+                Value::Null => false,
+                Value::String(s) => !s.is_empty(),
+                Value::Array(items) => !items.is_empty(),
+                Value::Object(fields) => !fields.is_empty(),
+                _ => true, // An assigned boolean is present even when false.
+            },
+            Self::EmailPresent => value["emails"].as_array().is_some_and(|emails| {
+                emails.iter().any(|email| {
+                    email["value"].as_str().is_some_and(|actual| !actual.is_empty())
+                })
+            }),
         }
     }
 }
 
-fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Filter>> {
+const MAX_FILTER_EXPRESSIONS: usize = 4;
+
+fn filter_spaces(filter: &str, pos: &mut usize) -> bool {
+    let start = *pos;
+    while filter.as_bytes().get(*pos) == Some(&b' ') {
+        *pos += 1;
+    }
+    *pos != start
+}
+
+fn filter_token<'a>(filter: &'a str, pos: &mut usize) -> &'a str {
+    let start = *pos;
+    while filter.as_bytes().get(*pos).is_some_and(|byte| *byte != b' ') {
+        *pos += 1;
+    }
+    &filter[start..*pos]
+}
+
+fn filter_literal<'a>(filter: &'a str, pos: &mut usize) -> Result<&'a str> {
+    if filter.as_bytes().get(*pos) != Some(&b'"') {
+        return Ok(filter_token(filter, pos));
+    }
+    let start = *pos;
+    *pos += 1;
+    let mut escaped = false;
+    while let Some(&byte) = filter.as_bytes().get(*pos) {
+        *pos += 1;
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            return Ok(&filter[start..*pos]);
+        }
+    }
+    Err(Error::oauth("invalid_filter", "Unterminated filter string"))
+}
+
+fn parse_filter_predicate(kind: &str, field: &str, op: &str, literal: Option<&str>) -> Result<Filter> {
+    let field = field.to_ascii_lowercase();
+    if op.eq_ignore_ascii_case("pr") {
+        return match field.as_str() {
+            "username" if kind == "Users" => Ok(Filter::Present("userName")),
+            "displayname" => Ok(Filter::Present("displayName")),
+            "externalid" => Ok(Filter::Present("externalId")),
+            "id" => Ok(Filter::Present("id")),
+            "active" if kind == "Users" => Ok(Filter::Present("active")),
+            "emails" if kind == "Users" => Ok(Filter::Present("emails")),
+            "emails.value" if kind == "Users" => Ok(Filter::EmailPresent),
+            _ => Err(Error::oauth("invalid_filter", "Unsupported presence attribute")),
+        };
+    }
+    if !op.eq_ignore_ascii_case("eq") {
+        return Err(Error::oauth("invalid_filter", "Unsupported filter operator"));
+    }
+    let literal = literal.ok_or_else(|| Error::oauth("invalid_filter", "Expected filter value"))?;
+    if field == "active" {
+        if kind != "Users" {
+            return Err(Error::oauth("invalid_filter", "active is a User filter"));
+        }
+        let active = serde_json::from_str::<bool>(literal)
+            .map_err(|_| Error::oauth("invalid_filter", "active requires true or false"))?;
+        return Ok(Filter::Active(active));
+    }
+    let needle = serde_json::from_str::<String>(literal)
+        .map_err(|_| Error::oauth("invalid_filter", "Filter value must be one quoted JSON string"))?;
+    match field.as_str() {
+        "username" if kind == "Users" => Ok(Filter::Text {
+            field: "userName", needle, exact: false,
+        }),
+        "displayname" => Ok(Filter::Text {
+            field: "displayName", needle, exact: false,
+        }),
+        "externalid" => Ok(Filter::Text {
+            field: "externalId", needle, exact: true,
+        }),
+        "id" => Ok(Filter::Text {
+            field: "id", needle, exact: true,
+        }),
+        "emails.value" if kind == "Users" => Ok(Filter::Email(needle)),
+        _ => Err(Error::oauth(
+            "invalid_filter",
+            "Supported fields: displayName, externalId, id, and User userName, emails.value, active",
+        )),
+    }
+}
+
+fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Vec<Filter>>> {
     let Some(filter) = filter else {
         return Ok(None);
     };
@@ -285,51 +386,41 @@ fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<Filter>> {
     if filter.bytes().any(|byte| byte.is_ascii_control()) {
         return Err(Error::oauth("invalid_filter", "Control characters are not allowed in filters"));
     }
-    // One attribute, one `eq`, and one literal. Only ASCII spaces may separate
-    // tokens; serde_json enforces complete JSON string/boolean literal parsing.
-    let filter = filter.trim_matches(' ');
-    let (field, rest) = filter
-        .split_once(' ')
-        .ok_or_else(|| Error::oauth("invalid_filter", "Expected attribute eq value"))?;
-    let (op, literal) = rest
-        .trim_start_matches(' ')
-        .split_once(' ')
-        .ok_or_else(|| Error::oauth("invalid_filter", "Expected attribute eq value"))?;
-    let literal = literal.trim_matches(' ');
-    if !op.eq_ignore_ascii_case("eq") || literal.is_empty() {
-        return Err(Error::oauth("invalid_filter", "Only one eq expression is supported"));
-    }
-    let field = field.to_ascii_lowercase();
-    if field == "active" {
-        if kind != "Users" {
-            return Err(Error::oauth("invalid_filter", "active is a User filter"));
+    // Flat conjunctions only: nesting depth is zero, and quoted JSON strings
+    // are scanned before looking for `and` so escaped quotes cannot split them.
+    let mut pos = 0;
+    let mut predicates = Vec::new();
+    filter_spaces(filter, &mut pos);
+    loop {
+        if predicates.len() == MAX_FILTER_EXPRESSIONS {
+            return Err(Error::oauth("invalid_filter", "Too many filter expressions"));
         }
-        let active = serde_json::from_str::<bool>(literal)
-            .map_err(|_| Error::oauth("invalid_filter", "active requires true or false"))?;
-        return Ok(Some(Filter::Active(active)));
+        let field = filter_token(filter, &mut pos);
+        if field.is_empty() || !filter_spaces(filter, &mut pos) {
+            return Err(Error::oauth("invalid_filter", "Expected filter attribute and operator"));
+        }
+        let op = filter_token(filter, &mut pos);
+        let literal = if op.eq_ignore_ascii_case("eq") {
+            if !filter_spaces(filter, &mut pos) {
+                return Err(Error::oauth("invalid_filter", "Expected filter value"));
+            }
+            Some(filter_literal(filter, &mut pos)?)
+        } else {
+            None
+        };
+        predicates.push(parse_filter_predicate(kind, field, op, literal)?);
+        let separated = filter_spaces(filter, &mut pos);
+        if pos == filter.len() {
+            break;
+        }
+        if !separated || !filter_token(filter, &mut pos).eq_ignore_ascii_case("and") {
+            return Err(Error::oauth("invalid_filter", "Only flat and expressions are supported"));
+        }
+        if !filter_spaces(filter, &mut pos) || pos == filter.len() {
+            return Err(Error::oauth("invalid_filter", "Expected expression after and"));
+        }
     }
-    let needle = serde_json::from_str::<String>(literal)
-        .map_err(|_| Error::oauth("invalid_filter", "Filter value must be one quoted JSON string"))?;
-    let parsed = match field.as_str() {
-        "username" if kind == "Users" => Filter::Text {
-            field: "userName", needle, exact: false,
-        },
-        "displayname" => Filter::Text {
-            field: "displayName", needle, exact: false,
-        },
-        "externalid" => Filter::Text {
-            field: "externalId", needle, exact: true,
-        },
-        "id" => Filter::Text {
-            field: "id", needle, exact: true,
-        },
-        "emails.value" if kind == "Users" => Filter::Email(needle),
-        _ => return Err(Error::oauth(
-            "invalid_filter",
-            "Supported fields: displayName, externalId, id, and User userName, emails.value, active",
-        )),
-    };
-    Ok(Some(parsed))
+    Ok(Some(predicates))
 }
 
 impl Core {
@@ -441,7 +532,7 @@ impl Core {
         for (id,record) in tx.list::<Record>(bucket(kind)?)? {
             if record.deleted || record.owner!=actor.id || require(&actor,&record,"read").is_err(){continue;}
             let value=self.scim_view(tx,&id,&record)?;
-            if filter.as_ref().is_none_or(|filter| filter.matches(&value)){values.push(value);}
+            if filter.as_ref().is_none_or(|filter| filter.iter().all(|predicate| predicate.matches(&value))){values.push(value);}
         }
         let total=values.len();let page:Vec<_>=values.into_iter().skip(start-1).take(count).collect();
         Ok(json!({"schemas":[LIST],"totalResults":total,"startIndex":start,"itemsPerPage":page.len(),"Resources":page}))
@@ -892,7 +983,7 @@ pub(crate) fn fuzz_resource(input: Value) {
 #[cfg(feature = "fuzzing")]
 pub(crate) fn fuzz_filter(filter: &str) {
     let _ = parse_filter("Users", Some(filter)).map(|parsed| {
-        parsed.is_none_or(|parsed| parsed.matches(&json!({"userName":"fuzz-user","id":"fuzz-id"})))
+        parsed.is_none_or(|parsed| parsed.iter().all(|predicate| predicate.matches(&json!({"userName":"fuzz-user","id":"fuzz-id"}))))
     });
 }
 
