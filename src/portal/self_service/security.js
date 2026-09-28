@@ -2,7 +2,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const { base } = RiAuth;
-  let snapshot = null, generation = 0;
+  let snapshot = null, generation = 0, providers = null;
   const passkey = RiAuth.passkeyFlow(
     () => RiAuth.post("api/portal/login/passkey/start", { reauthenticate: true }, { retry: true }),
     (credential, started) => RiAuth.post("api/portal/login/passkey/finish", { ceremony: started.ceremony, credential }),
@@ -94,7 +94,7 @@
     $("loading").hidden = false;
     try {
       const data = await RiAuth.get("api/portal/security");
-      if (mine === generation) render(data);
+      if (mine === generation) { render(data); await loadProviders(); }
     } catch (error) {
       if (mine !== generation) return;
       if (error.status === 401) signedOut();
@@ -103,6 +103,60 @@
         showStatus("Could not load your sessions and consent. Reload this page to try again.");
       }
     }
+  }
+  // Linked sign-in providers. Linking and unlinking need this browser's own recent local
+  // sign-in, bound to the account shown; starting a link only follows the provider's URL.
+  function host(issuer) { try { return new URL(issuer).host; } catch { return issuer; } }
+  function providerBinding() {
+    return { expected_user_id: providers.user.id, expected_session_id: providers.current_session_id };
+  }
+  function renderProviders(data) {
+    providers = data;
+    const rows = data.links.map((link) => {
+      const row = node("li", "security-row"), details = node("div");
+      details.append(node("strong", "", link.name), node("p", "", `Provider account ${link.subject} at ${host(link.issuer)}`));
+      const button = node("button", "button secondary", "Unlink");
+      button.type = "button"; button.setAttribute("aria-label", `Unlink ${link.name}`);
+      RiAuth.guard(button, () => changeProvider(button, async () => {
+        if (!window.confirm(`Unlink ${link.name}? You won't be able to sign in with it any more, and the sessions it started end now.`)) return;
+        await RiAuth.post(`api/portal/sources/links/${encodeURIComponent(link.id)}/unlink`, providerBinding());
+        await loadProviders(); showStatus(`${link.name} unlinked. Sessions it started have ended.`);
+      }));
+      row.append(details, button); return row;
+    });
+    $("provider-list").replaceChildren(...rows);
+    $("providers-empty").hidden = rows.length > 0;
+    const buttons = data.linkable.map((source) => {
+      const button = node("button", "button secondary", `Link ${source.name}`);
+      button.type = "button";
+      RiAuth.guard(button, () => changeProvider(button, async () => {
+        const started = await RiAuth.post(`api/portal/sources/${encodeURIComponent(source.id)}/start`, { link: providerBinding() });
+        const target = new URL(started.authorization_url);
+        if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("Unexpected provider address");
+        location.assign(target.href);
+      }));
+      return button;
+    });
+    $("provider-buttons").replaceChildren(...buttons);
+    $("provider-link").hidden = buttons.length === 0;
+    $("providers").hidden = rows.length === 0 && buttons.length === 0;
+  }
+  async function loadProviders() {
+    try { renderProviders(await RiAuth.get("api/portal/sources/links")); }
+    catch { providers = null; $("providers").hidden = true; }
+  }
+  async function changeProvider(button, run) {
+    if (!providers) return;
+    if (!providers.local_session) { showStatus("Sign in with your riAuth password or passkey in this browser to change linked providers."); return; }
+    if (!providers.can_change) { showVerify(); return; }
+    await RiAuth.inFlight(button, async () => {
+      try { await run(); } catch (error) {
+        if (error.status === 401) { signedOut(); return; }
+        if (["account_changed", "session_changed"].includes(error.code)) { await load(); showStatus("Your sign-in changed. Review the current account and choose your action again."); return; }
+        if (error.code === "reauthentication_required") { providers.can_change = false; showVerify(); return; }
+        showStatus(error.description || "The change could not be completed. Try again.");
+      }
+    });
   }
   async function act(button, path, question, success) {
     if (!snapshot) return;
@@ -164,5 +218,8 @@
     }
   }));
   window.addEventListener("pageshow", (event) => { if (event.persisted) load(); });
-  load();
+  // A finished link returns here with ?linked; the address keeps no trace of it.
+  const linked = new URLSearchParams(location.search).has("linked");
+  if (linked) history.replaceState(history.state, "", location.pathname);
+  load().then(() => { if (linked && providers) showStatus("Provider linked. You can now sign in with it."); });
 })();

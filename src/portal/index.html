@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="__BASE__portal/assets/app.css">
   <script src="__BASE__portal/assets/auth.js" defer></script>
   <script src="__BASE__portal/assets/app.js" defer></script>
+  <script src="__BASE__portal/assets/source-login.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to applications</a>
@@ -76,6 +77,7 @@
           <button class="button primary" id="password-login" type="submit">Sign in</button>
         </form>
         <p class="auth-links"><a class="text-button" id="forgot-password" href="__BASE__account/reset">Forgot your password?</a></p>
+        <div class="source-login" id="source-login" hidden></div>
         <button class="button secondary" id="start-login" type="button">Sign in with your terminal <svg class="icon"><use href="#i-arrow"/></svg></button><div id="login-request" hidden><div class="code-heading"><span>Your sign-in code</span><span id="code-time"></span></div><div class="user-code" id="user-code"></div><p class="terminal-help">Sign in with <code>riauth login</code> on this server, then run:</p><div class="command-box"><code id="login-command"></code><button class="icon-button" id="copy-command" aria-label="Copy sign-in command" title="Copy command"><svg class="icon"><use href="#i-copy"/></svg></button></div><p class="waiting"><span class="status-dot"></span>Waiting for your approval…</p><button class="text-button" id="cancel-login">Cancel sign-in</button></div><p class="auth-footnote"><svg class="icon"><use href="#i-lock"/></svg>Approval connects only this browser.</p></div><div class="auth-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="art-center"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt=""></div><span class="art-app art-one"><svg class="icon"><use href="#i-code"/></svg></span><span class="art-app art-two"><svg class="icon"><use href="#i-files"/></svg></span><span class="art-app art-three"><svg class="icon"><use href="#i-chart"/></svg></span><span class="art-app art-four"><svg class="icon"><use href="#i-cloud"/></svg></span><p>A little less searching.<br>A lot more doing.</p></div></section>
       <section class="empty-state error-state" id="error" hidden><span class="empty-icon"><svg class="icon"><use href="#i-cloud"/></svg></span><h1>We couldn’t load your workspace</h1><p>Your applications will appear when we can check your access again.</p><button class="button primary" id="retry">Try again <svg class="icon"><use href="#i-refresh"/></svg></button></section>
       <noscript><div class="auth-panel"><h1>JavaScript is needed for your applications</h1><p>Enable JavaScript and reload this page. You can continue using riAuth from your terminal.</p></div></noscript>

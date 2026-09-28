@@ -127,7 +127,8 @@ pub fn routes() -> Router<App> {
         .merge(super::mfa::routes())
         .route("/api/device/browser/{code}", get(device_browser_details))
         .route("/api/device/browser/decision", post(device_browser_decide))
-        .merge(super::self_service::http::routes());
+        .merge(super::self_service::http::routes())
+        .merge(super::sources::routes());
     #[cfg(feature = "platform")]
     let routes = routes.merge(event_map_routes());
     routes

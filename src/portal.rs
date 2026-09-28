@@ -3,6 +3,7 @@ pub mod admin;
 pub mod http;
 mod mfa;
 pub mod self_service;
+pub mod sources;
 
 use crate::{
     browser::BrowserReply,

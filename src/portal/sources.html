@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Continue signing in · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/security.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/sources.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to sign-in review</a>
+<div class="security-shell">
+  <header class="security-header">
+    <a class="security-brand" href="__BASE__apps"><img src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true">ri<span>Auth</span></a>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="eyebrow" id="review-eyebrow">SIGN IN WITH A PROVIDER</p>
+    <h1 id="review-title" tabindex="-1">Checking your sign-in…</h1>
+    <p class="security-intro" id="review-intro" role="status">Reading what your provider confirmed.</p>
+    <section class="security-card" id="review" aria-labelledby="review-title" hidden>
+      <dl class="review-facts">
+        <dt>Provider</dt><dd id="review-provider"></dd>
+        <dt>Provider account</dt><dd id="review-upstream"></dd>
+        <dt id="review-local-label">riAuth account</dt><dd id="review-local"></dd>
+      </dl>
+      <form id="review-form" novalidate>
+        <div class="field" id="review-otp-field" hidden><label for="review-otp">Authenticator or recovery code</label><input id="review-otp" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="review-otp-hint"><p class="field-hint" id="review-otp-hint">Your provider didn't confirm a second factor, so riAuth needs your authenticator code or a recovery code.</p></div>
+        <p id="review-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+        <div class="review-actions"><button class="button primary" id="review-confirm" type="submit">Continue</button><button class="button secondary" id="review-cancel" type="button">Cancel</button></div>
+      </form>
+    </section>
+    <section class="security-card" id="review-end" hidden>
+      <p id="review-end-text"></p>
+      <a class="button primary" id="review-end-link" href="__BASE__apps">Back to sign-in</a>
+    </section>
+    <noscript><div class="security-card"><h2>JavaScript is needed for this page</h2><p>Enable JavaScript and reload, or finish with <code>riauth source finish</code>.</p></div></noscript>
+  </main>
+</div>
+</body>
+</html>

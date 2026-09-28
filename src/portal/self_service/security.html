@@ -51,6 +51,12 @@
         <ul id="consent-list" class="security-list"></ul>
         <p id="consents-empty" class="field-hint" hidden>No applications have a remembered approval.</p>
       </section>
+      <section class="security-card" id="providers" aria-labelledby="providers-title" hidden>
+        <div class="section-heading"><div><h2 id="providers-title">Linked sign-in providers</h2><p>Sign in to riAuth with an account from your organization's provider. Unlinking stops that sign-in at once and ends the sessions it started.</p></div></div>
+        <ul id="provider-list" class="security-list"></ul>
+        <p id="providers-empty" class="field-hint" hidden>No provider is linked to this account.</p>
+        <div id="provider-link" hidden><p class="field-hint" id="provider-link-hint">Link a provider. You'll sign in at the provider, then review the link here before it's saved.</p><div class="provider-buttons" id="provider-buttons"></div></div>
+      </section>
     </div>
     <div id="loading" class="security-card" role="status">Loading your account security…</div>
     <noscript><div class="security-card"><h2>JavaScript is needed for this page</h2><p>Enable JavaScript and reload, or use the riauth CLI.</p></div></noscript>

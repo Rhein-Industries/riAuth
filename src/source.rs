@@ -454,6 +454,11 @@ impl StageStarted {
         })
     }
 }
+/// Who a link start targets: the bearer session presenting `token`, or a browser's session.
+enum Linker<'a> {
+    Token(Option<&'a str>),
+    Browser(&'a User, &'a Session),
+}
 struct StartedLogin {
     authorization_url: String,
     state: String,
@@ -520,12 +525,42 @@ impl Core {
                 .map(|started| started.body)
         })
     }
+    /// Starts a login for a browser. Its credential belongs in an HttpOnly cookie, never in a
+    /// page, and a link targets the session behind the browser's SSO cookie, which has no
+    /// bearer token to present.
+    pub(crate) fn source_start_browser(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        linking: Option<(&User, &Session)>,
+    ) -> Result<Value> {
+        let input = Start {
+            link: linking.is_some(),
+            authentication_transaction: None,
+        };
+        let linker = match linking {
+            Some((user, session)) => Linker::Browser(user, session),
+            None => Linker::Token(None),
+        };
+        self.source_start_for(tx, id, &input, linker, None)
+            .map(|started| started.body)
+    }
     fn source_start_in(
         &self,
         tx: &Tx<'_>,
         id: &str,
         input: &Start,
         token: Option<&str>,
+        stage: Option<&str>,
+    ) -> Result<StartedLogin> {
+        self.source_start_for(tx, id, input, Linker::Token(token), stage)
+    }
+    fn source_start_for(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        input: &Start,
+        linker: Linker<'_>,
         stage: Option<&str>,
     ) -> Result<StartedLogin> {
         let source = enabled(tx, id)?;
@@ -535,7 +570,10 @@ impl Core {
             ));
         }
         let target = if input.link {
-            let (user, session) = self.session(tx, token.ok_or_else(Error::unauthorized)?)?;
+            let (user, session) = match linker {
+                Linker::Token(token) => self.session(tx, token.ok_or_else(Error::unauthorized)?)?,
+                Linker::Browser(user, session) => (user.clone(), session.clone()),
+            };
             if session.identity.source.is_some()
                 || now().saturating_sub(session.identity.auth_time) > 300
                 || user.admin && !source.allow_admin_login
@@ -1376,45 +1414,58 @@ impl Core {
     pub fn source_links(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let (user, _) = self.session(tx, token)?;
-            Ok(json!(tx.list::<Link>("source_links")?.into_iter().filter(|(_, l)| l.user_id == user.id).map(|(id,l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject})).collect::<Vec<_>>()))
+            Ok(json!(links_of(tx, &user.id)?))
         })
     }
     pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
-            if session.identity.source.is_some()
-                || now().saturating_sub(session.identity.auth_time) > 300
-            {
-                return Err(Error::forbidden());
-            }
-            let link = tx
-                .get::<Link>("source_links", link_id)?
-                .filter(|l| l.user_id == user.id)
-                .ok_or_else(Error::forbidden)?;
-            tx.delete("source_links", link_id)?;
-            for (_, mut session) in tx.list::<Session>("sessions")? {
-                if session
-                    .identity
-                    .source
-                    .as_ref()
-                    .is_some_and(|s| s.link == link_id)
-                    && !session.revoked
-                {
-                    session.revoked = true;
-                    tx.put("sessions", &session.id, &session)?;
-                    crate::logout::queue_session(tx, &session.id)?;
-                    crate::ssf::enqueue(
-                        tx,
-                        &session.identity.user_id,
-                        crate::ssf::SESSION_REVOKED,
-                        "",
-                    )?;
-                }
-            }
-            audit(tx, &user.id, "source.unlink", &link.source)?;
-            Ok(json!({"unlinked":true}))
+            unlink(tx, &user, &session, link_id)
         })
     }
+}
+
+/// The upstream accounts linked to a user.
+pub(crate) fn links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
+    Ok(tx
+        .list::<Link>("source_links")?
+        .into_iter()
+        .filter(|(_, l)| l.user_id == user_id)
+        .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
+        .collect())
+}
+/// Removes one of the user's links from a fresh local session and revokes only the sessions
+/// that link signed in.
+pub(crate) fn unlink(tx: &Tx<'_>, user: &User, session: &Session, link_id: &str) -> Result<Value> {
+    if session.identity.source.is_some() || now().saturating_sub(session.identity.auth_time) > 300 {
+        return Err(Error::forbidden());
+    }
+    let link = tx
+        .get::<Link>("source_links", link_id)?
+        .filter(|l| l.user_id == user.id)
+        .ok_or_else(Error::forbidden)?;
+    tx.delete("source_links", link_id)?;
+    for (_, mut session) in tx.list::<Session>("sessions")? {
+        if session
+            .identity
+            .source
+            .as_ref()
+            .is_some_and(|s| s.link == link_id)
+            && !session.revoked
+        {
+            session.revoked = true;
+            tx.put("sessions", &session.id, &session)?;
+            crate::logout::queue_session(tx, &session.id)?;
+            crate::ssf::enqueue(
+                tx,
+                &session.identity.user_id,
+                crate::ssf::SESSION_REVOKED,
+                "",
+            )?;
+        }
+    }
+    audit(tx, &user.id, "source.unlink", &link.source)?;
+    Ok(json!({"unlinked":true}))
 }
 
 fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {

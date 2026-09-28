@@ -755,6 +755,7 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         | "/api/password"
         | "/api/portal/password"
         | "/api/source-login/finish"
+        | "/api/portal/sources/finish"
         | "/api/windows-devices/login"
         | "/api/windows-devices/tickets/redeem"
         | "/api/windows-devices/offline/verify" => ("login", 20),
@@ -763,7 +764,9 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         path if path.starts_with("/api/account/") || path.starts_with("/api/portal/account/") => {
             ("account", 10)
         }
-        path if path.starts_with("/api/sources/") && path.ends_with("/start") => {
+        path if (path.starts_with("/api/sources/") || path.starts_with("/api/portal/sources/"))
+            && path.ends_with("/start") =>
+        {
             ("source_start", 30)
         }
         path if path.starts_with("/oauth/sources/")
@@ -1606,6 +1609,7 @@ async fn source_unlink(
 async fn source_callback(
     State(app): State<App>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     RawQuery(query): RawQuery,
 ) -> Result<Response> {
     let Some(_permit) = app.admission(Permits::Workers).await else {
@@ -1614,10 +1618,20 @@ async fn source_callback(
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return Err(busy());
     };
-    let pairs = serde_urlencoded::from_str(query.as_deref().unwrap_or(""))
+    let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.as_deref().unwrap_or(""))
         .map_err(|_| Error::bad("Invalid source callback query"))?;
-    let value = app.core.source_callback(&id, pairs).await?;
-    source_stage_redirect(&app.core, value)
+    // A login this browser started continues on its review page, which reads the outcome with
+    // the browser's own credential; the callback reply never carries it.
+    let state = pairs
+        .iter()
+        .find(|(k, _)| k == "state")
+        .map(|(_, v)| v.clone());
+    let continuation = crate::portal::sources::continuation(&app.core, &headers, state.as_deref());
+    let value = app.core.source_callback(&id, pairs).await;
+    if let Some(path) = continuation {
+        return see_other(&app, &path, vec![]);
+    }
+    source_stage_redirect(&app.core, value?)
 }
 fn source_stage_redirect(core: &Core, value: Value) -> Result<Response> {
     if let (Some(stage), Some(authorization)) = (

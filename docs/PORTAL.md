@@ -81,6 +81,14 @@ Recovery codes appear in their own dialog with **Copy codes** and **Download** (
 
 See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
 
+## Upstream sign-in providers
+
+When an administrator has configured an enabled OIDC or OAuth [source](api.md), the sign-in panel shows **Continue with *provider***. riAuth starts the source login and sends the browser to the provider. When the provider returns to `/oauth/sources/{id}/callback`, a login started by this browser goes on to `/account/sources/continue` with a 303 instead of the CLI's JSON reply. That page reviews the result before anything is saved: the provider, the provider account, and the riAuth account it signs in, links or creates. If the account has an authenticator app and the provider did not assert a trusted MFA level, it also asks for that code or a recovery code; a wrong code can be retried within the login's attempt limit. **Cancel** forgets the login. A finished sign-in becomes this browser's own session: no bearer token is issued, and a browser-owned session the browser could no longer reach is retired, as for a password sign-in. An upstream account that is not linked and whose source does not provision accounts cannot sign in; the page says to link it first.
+
+**Sessions and consent** (`/account/security`) lists **Linked sign-in providers** and offers **Link *provider*** for the enabled sources the account has not linked. Linking and unlinking need this browser's own recent sign-in with a riAuth password or passkey, bound to the account and session the page shows; a provider sign-in or a browser that shares a terminal session is asked to sign in again first. Linking uses the same review page, links only while the same account is still signed in, and keeps the current local session. **Unlink** asks for confirmation, removes the link and ends the sessions it started. Administrators can link only sources that allow administrator sign-in.
+
+The login's one-use credential never reaches the page, a URL or the callback reply. `start` sets it as the HttpOnly, `SameSite=Lax` `riauth_source` binding cookie with a digest of the callback state and a ten-minute lifetime. The review and finish calls read the cookie and pass the write guard, and finishing clears it. The server's existing verifier, account rules, attempt limit and audit (`source.link`, `source.login`, `source.unlink`) decide every outcome. SAML sources answer with a cross-site POST that does not carry a Lax cookie, so they still use `riauth source start` and `riauth source finish`.
+
 ## Which applications appear
 
 Every catalogue refresh and launch checks the current browser session and the same authorization rules used for application access:

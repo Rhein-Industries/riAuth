@@ -37,6 +37,13 @@ Responses are JSON, protocol redirects, signed/encrypted JWTs, protocol form/ifr
 | POST | `/api/portal/sign-out` | No body or `{}`: revoke the cookie's session, queue SSO logout and clear the cookie; may return `saml_logout_url`. `{"scope":"browser"}`: for a terminal-approved browser, only unlink this browser |
 | GET | `/api/portal/requests/{code}` | End-user CLI bearer; inspect the code, account, issuer, `requested_from`, and `reauthentication_required` (true once the session is older than 240 s) |
 | POST | `/api/portal/requests/{code}` | End-user CLI bearer and `{"approve":true\|false}`; approval requires authentication within five minutes |
+| GET | `/api/portal/sources` | Public; enabled OIDC and OAuth sources a browser can sign in with, `{"sources":[{"id","name"}]}`. SAML sources stay in the CLI |
+| POST | `/api/portal/sources/{id}/start` | Write guard. `{}` signs in; `{"link":{"expected_user_id","expected_session_id"}}` links the page's account and needs this browser's own local sign-in within five minutes. 200 `{"authorization_url","expires_at","source"}` plus the HttpOnly `riauth_source` binding cookie holding the one-use credential; the credential is never in the body. `source_start` bucket |
+| GET | `/account/sources/continue` | Review page. `/oauth/sources/{id}/callback` answers a login started with that cookie with a 303 here instead of JSON |
+| POST | `/api/portal/sources/review` | Write guard and the binding cookie; the same non-consuming review as `riauth source finish` (`status`, provider, upstream account, `linking`, `local_user`, `local_otp_required`, `auto_provision`). 401 `source_login_expired` when the login ended; 403 `access_denied` when the account rules refuse it |
+| POST | `/api/portal/sources/finish` | Write guard and the binding cookie; `{"approve":false}` forgets the login, `{"approve":true,"otp":string\|null}` finishes it. A sign-in points this browser's SSO cookie at a browser-owned session (no bearer token exists); a link keeps the current session. 401 `invalid_code` leaves the login open for another code. Clears the binding cookie. `login` bucket |
+| GET | `/api/portal/sources/links` | SSO; `{"links":[{"id","source","name","issuer","subject"}],"linkable","can_change","local_session",…}` |
+| POST | `/api/portal/sources/links/{id}/unlink` | Write guard, the page binding and this browser's own local sign-in within five minutes; removes the link and revokes the sessions it started |
 
 Every cookie-authenticated POST passes the [browser write guard](#browser-write-guard); none enables cross-origin access. Approval endpoints require an end-user session bearer, never an agent credential. The factor rule (403 `mfa_required`) applies when the account already has TOTP or a passkey and the session is not MFA. See [PORTAL.md](PORTAL.md) and [passkeys](passkeys.md).
 
@@ -355,7 +362,7 @@ Blocking work has eight worker slots; a request waits up to two seconds for one,
 
 | Category | Limit | Routes |
 | --- | ---: | --- |
-| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/portal/password`, `/api/source-login/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
+| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/portal/password`, `/api/source-login/finish`, `/api/portal/sources/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
 | `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, `/api/portal/mfa*` except TOTP confirmation, interaction `…/passkey/start` and `…/finish` |
 | `browser_state` | 1200 | interaction `…/state` |
 | `browser_decision` | 60 | interaction `…/decision` |
@@ -367,7 +374,7 @@ Blocking work has eight worker slots; a request waits up to two seconds for one,
 | `mfa` | 10 | `/api/mfa/confirm`, `/api/portal/mfa/totp/confirm` |
 | `device_start` | 30 | `/oauth/device/code` |
 | `device_verify` | 20 | `/api/device/*`, `/api/authorization/*` |
-| `source_start`, `source_callback` | 30 each | source starts; upstream callbacks and stage handling |
+| `source_start`, `source_callback` | 30 each | source starts, including `/api/portal/sources/{id}/start`; upstream callbacks and stage handling |
 | `saml` | 30 | `/saml/*` other than `/saml/resume/*` |
 | `general` | 600 | everything else |
 
