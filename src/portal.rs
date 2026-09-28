@@ -7,7 +7,7 @@ pub mod sources;
 
 use crate::{
     browser::BrowserReply,
-    core::{Core, audit},
+    core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{Client, Session, User},
@@ -71,13 +71,13 @@ impl Settings {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Pending {
-    id: String,
-    code: String,
-    binding_hash: String,
+pub(crate) struct Pending {
+    pub(crate) id: String,
+    pub(crate) code: String,
+    pub(crate) binding_hash: String,
     expires_at: u64,
-    session_id: Option<String>,
-    denied: bool,
+    pub(crate) session_id: Option<String>,
+    pub(crate) denied: bool,
     /// Shown to the approving terminal.
     #[serde(default)]
     requested_from: Option<Value>,
@@ -225,28 +225,7 @@ impl Core {
 
     pub fn portal_decide(&self, token: &str, code: &str, approve: bool) -> Result<Value> {
         self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            let mut pending = pending_by_code(tx, code)?;
-            if pending.session_id.is_some() || pending.denied {
-                return Err(Error::conflict("Request already decided"));
-            }
-            if approve && now().saturating_sub(session.identity.auth_time) > 300 {
-                return Err(Error::forbidden());
-            }
-            pending.session_id = approve.then_some(session.id);
-            pending.denied = !approve;
-            tx.put("portal_requests", &pending.id, &pending)?;
-            audit(
-                tx,
-                &user.id,
-                if approve {
-                    "portal.sign_in.approve"
-                } else {
-                    "portal.sign_in.deny"
-                },
-                &pending.id,
-            )?;
-            Ok(json!({"approved":approve,"delivery":"original_browser"}))
+            crate::management::decide_portal_sign_in(self, tx, token, code, approve)
         })
     }
 
@@ -705,7 +684,7 @@ fn reply(body: Value, cookies: Vec<String>) -> BrowserReply {
     }
 }
 
-fn pending_by_code(tx: &Tx<'_>, code: &str) -> Result<Pending> {
+pub(crate) fn pending_by_code(tx: &Tx<'_>, code: &str) -> Result<Pending> {
     let id = tx
         .get::<String>("portal_codes", &digest(&crypto::normalize_code(code)?))?
         .ok_or_else(|| Error::missing("Sign-in code not found"))?;
