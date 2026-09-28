@@ -71,6 +71,8 @@ enum Mode {
     FailSecondMember,
     EntraCountedMissingUser,
     WorkspacePaged,
+    EntraPaged,
+    EntraRepeatResume,
 }
 
 struct State {
@@ -546,7 +548,9 @@ fn users(state: &State, page: usize) -> (u16, String) {
         }
         return (200, body.to_string());
     }
-    let (shown, more) = if mode == Mode::WorkspacePaged && state.kind == "workspace" {
+    let one_per_page = mode == Mode::WorkspacePaged && state.kind == "workspace"
+        || matches!(mode, Mode::EntraPaged | Mode::EntraRepeatResume) && state.kind == "entra";
+    let (shown, more) = if one_per_page {
         (
             people.get(page).cloned().into_iter().collect(),
             page + 1 < people.len(),
@@ -559,7 +563,7 @@ fn users(state: &State, page: usize) -> (u16, String) {
     } else if state.kind == "workspace" {
         Some(format!("users-{}", page + 2))
     } else {
-        Some(format!("{base}/v1.0/users?$skiptoken=users-2"))
+        Some(format!("{base}/v1.0/users?$skiptoken=users-{}", page + 2))
     };
     let next = if mode == Mode::RepeatPage && page == 1 {
         if state.kind == "workspace" {
@@ -569,6 +573,8 @@ fn users(state: &State, page: usize) -> (u16, String) {
         }
     } else if mode == Mode::WrongCollection && state.kind == "entra" {
         Some(format!("{base}/v1.0/groups?$skiptoken=users-2"))
+    } else if mode == Mode::EntraRepeatResume && state.kind == "entra" && page == 5 {
+        Some(format!("{base}/v1.0/users?$skiptoken=users-6"))
     } else {
         next
     };
@@ -2483,6 +2489,105 @@ fn workspace_controller_resumes_interrupted_pages_without_planning_removal() {
     fixture
         .core
         .cloud_apply_confirmed(&fixture.admin, "workspace", plan_id, Some(plan_id))
+        .unwrap();
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        false
+    );
+}
+
+#[test]
+fn entra_controller_rejects_repeated_resume_and_waits_for_complete_source() {
+    let (directory, mut fixture) = linked_pair("entra");
+    *directory.state.people.lock().unwrap() = vec![
+        person("ext-alice", "alice@example.test", "Alice Cloud", true),
+        person("ext-carol", "carol@example.test", "Carol Cloud", false),
+        person("ext-dan", "dan@example.test", "Dan Cloud", false),
+        person("ext-eve", "eve@example.test", "Eve Cloud", false),
+        person("ext-fay", "fay@example.test", "Fay Cloud", false),
+        person("ext-gus", "gus@example.test", "Gus Cloud", false),
+        person("ext-han", "han@example.test", "Han Cloud", false),
+    ];
+    *directory.state.mode.lock().unwrap() = Mode::EntraPaged;
+    let progress = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "entra", "corp")
+        .unwrap();
+    assert_eq!(progress["decision"], "snapshot_in_progress");
+    assert_eq!(progress["snapshot"]["phase"], "users");
+    assert_eq!(progress["snapshot"]["pages"], 5);
+    let draft = fixture
+        .snapshot()
+        .unwrap()
+        .into_iter()
+        .find(|(key, _)| key.starts_with("entra_directory_snapshots/"))
+        .unwrap()
+        .1;
+    let cursor = draft["snapshot"]["cursor"].as_str().unwrap().to_owned();
+    assert!(
+        cursor.ends_with("/v1.0/users?$skiptoken=users-6"),
+        "{cursor}"
+    );
+    assert_eq!(draft["snapshot"]["users"].as_object().unwrap().len(), 5);
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+
+    *directory.state.mode.lock().unwrap() = Mode::FailSecond;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_reconcile(&fixture.admin, "entra", "corp")
+            .unwrap_err()
+            .code,
+        "directory_unavailable"
+    );
+    *directory.state.mode.lock().unwrap() = Mode::EntraRepeatResume;
+    assert_eq!(
+        fixture
+            .core
+            .cloud_reconcile(&fixture.admin, "entra", "corp")
+            .unwrap_err()
+            .code,
+        "connector_incomplete_snapshot"
+    );
+    let held = fixture
+        .snapshot()
+        .unwrap()
+        .into_iter()
+        .find(|(key, _)| key.starts_with("entra_directory_snapshots/"))
+        .unwrap()
+        .1;
+    assert_eq!(held["snapshot"]["cursor"], cursor);
+    assert_eq!(held["snapshot"]["users"].as_object().unwrap().len(), 5);
+    assert_eq!(
+        user_named(&users_of(&fixture), "bob").unwrap()["enabled"],
+        true
+    );
+
+    fixture = fixture.reopen_with(|_| {});
+    *directory.state.mode.lock().unwrap() = Mode::EntraPaged;
+    let result = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "entra", "corp")
+        .unwrap();
+    assert_eq!(result["decision"], "awaiting_review");
+    let plan = &result["plan"];
+    assert_eq!(plan["removal_impact"]["missing_users"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    let plan_id = plan["id"].as_str().unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "entra", plan_id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    fixture
+        .core
+        .cloud_apply_confirmed(&fixture.admin, "entra", plan_id, Some(plan_id))
         .unwrap();
     assert_eq!(
         user_named(&users_of(&fixture), "bob").unwrap()["enabled"],

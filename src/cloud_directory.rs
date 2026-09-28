@@ -42,9 +42,11 @@ const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.
 const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
 const GOOGLE_MEMBER_READ: &str =
     "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
-const WORKSPACE_PAGES_PER_PLAN_CALL: usize = 5;
-const WORKSPACE_SNAPSHOT_SECONDS: u64 = 300;
+const CLOUD_PAGES_PER_PLAN_CALL: usize = 5;
+const CLOUD_SNAPSHOT_SECONDS: u64 = 300;
 const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
+const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
+const MAX_GRAPH_CURSOR_BYTES: usize = 8192;
 
 pub use crate::cloud_directory_types::{
     Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory,
@@ -370,6 +372,13 @@ impl Settings {
     fn run_key(&self) -> String {
         self.resource()
     }
+    fn snapshot_bucket(&self) -> &'static str {
+        if self.kind == "workspace" {
+            WORKSPACE_SNAPSHOTS
+        } else {
+            ENTRA_SNAPSHOTS
+        }
+    }
 }
 
 fn fingerprint_of(kind: &str, value: &impl Serialize) -> Result<String> {
@@ -663,15 +672,6 @@ fn read_body(response: reqwest::blocking::Response) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn get_json(
-    http: &reqwest::blocking::Client,
-    token: &str,
-    url: &Url,
-    graph_count: bool,
-) -> Result<Value> {
-    Ok(get_json_sized(http, token, url, graph_count)?.0)
-}
-
 fn get_json_sized(
     http: &reqwest::blocking::Client,
     token: &str,
@@ -702,6 +702,15 @@ fn get_json_sized(
     Ok((value, bytes.len()))
 }
 
+fn get_json(
+    http: &reqwest::blocking::Client,
+    token: &str,
+    url: &Url,
+    graph_count: bool,
+) -> Result<Value> {
+    Ok(get_json_sized(http, token, url, graph_count)?.0)
+}
+
 fn same_origin(base: &Url, next: &Url) -> bool {
     next.scheme() == base.scheme()
         && next.host_str() == base.host_str()
@@ -709,120 +718,6 @@ fn same_origin(base: &Url, next: &Url) -> bool {
         && next.username().is_empty()
         && next.password().is_none()
         && next.fragment().is_none()
-}
-
-fn paginate(
-    http: &reqwest::blocking::Client,
-    token: &str,
-    first: Url,
-    provider: Provider,
-    collection: &str,
-    started: Instant,
-    mut next_page: impl FnMut(&Value, &Url) -> Result<Option<Url>>,
-) -> Result<Vec<Value>> {
-    let collection_path = first.path().to_owned();
-    // Require Graph's count for users, groups, and members so a lost nextLink
-    // fails before a short response can drive removals.
-    let graph_count = provider == Provider::Entra;
-    let mut url = first;
-    let mut items = Vec::new();
-    let mut pages = Pagination::new(MAX_PAGES, MAX_OBJECTS);
-    let mut ids = BTreeSet::new();
-    let mut total = 0usize;
-    for page_index in 0..MAX_PAGES {
-        if started.elapsed() > SYNC_BUDGET {
-            return Err(unavailable("Cloud directory sync exceeded its time limit"));
-        }
-        let body = get_json(http, token, &url, graph_count)?;
-        if started.elapsed() > SYNC_BUDGET {
-            return Err(unavailable("Cloud directory sync exceeded its time limit"));
-        }
-        total = total.saturating_add(body.to_string().len());
-        if total > MAX_TOTAL_BYTES {
-            return Err(unavailable("Cloud directory page is too large"));
-        }
-        let Some(object) = body.as_object() else {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        };
-        if object.contains_key("error") {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        }
-        if graph_count && page_index == 0 && !object.contains_key("@odata.count") {
-            return Err(unavailable(
-                "Cloud directory returned an incomplete Graph count",
-            ));
-        }
-        let workspace_kind = || {
-            let expected = format!("directory#{collection}");
-            object
-                .get("kind")
-                .and_then(Value::as_str)
-                .is_some_and(|kind| kind == expected || kind == format!("admin#{expected}"))
-        };
-        if provider == Provider::Workspace && object.contains_key("kind") && !workspace_kind() {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        }
-        let page = match object.get(collection) {
-            Some(Value::Array(values)) => values.clone(),
-            None if provider == Provider::Workspace => {
-                if page_index != 0 || !workspace_kind() || object.contains_key("nextPageToken") {
-                    return Err(unavailable("Cloud directory returned an unreadable page"));
-                }
-                Vec::new()
-            }
-            Some(_) => {
-                return Err(unavailable("Cloud directory returned an unreadable page"));
-            }
-            None => return Err(unavailable("Cloud directory returned an unreadable page")),
-        };
-        if items.len().saturating_add(page.len()) > MAX_OBJECTS {
-            return Err(unavailable(
-                "Cloud directory result exceeds the supported size",
-            ));
-        }
-        let next = next_page(&body, &url)?;
-        if next
-            .as_ref()
-            .is_some_and(|next| next.path() != collection_path)
-        {
-            return Err(unavailable(
-                "Cloud directory pagination changed collection; retry a complete snapshot",
-            ));
-        }
-        let mut reported_total = None;
-        for key in ["@odata.count", "totalResults"] {
-            if let Some(value) = object.get(key) {
-                let count = value
-                    .as_u64()
-                    .and_then(|n| usize::try_from(n).ok())
-                    .ok_or_else(|| unavailable("Cloud directory returned an invalid total"))?;
-                if reported_total.is_some_and(|old| old != count) {
-                    return Err(unavailable("Cloud directory returned inconsistent totals"));
-                }
-                reported_total = Some(count);
-            }
-        }
-        for row in &page {
-            let id = row
-                .get("id")
-                .and_then(Value::as_str)
-                .filter(|id| valid_upstream_id(id))
-                .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
-            if !ids.insert(id.to_owned()) {
-                return Err(unavailable(
-                    "Cloud directory repeated an object in its snapshot",
-                ));
-            }
-        }
-        pages.page(url.as_str(), page.len(), reported_total, next.is_some())?;
-        items.extend(page);
-        match next {
-            Some(next) => url = next,
-            None => return Ok(items),
-        }
-    }
-    // A capped crawl is not a full directory. Callers must not disable missing users.
-    Err(unavailable("Cloud directory pagination did not finish"))
 }
 
 fn workspace_next(body: &Value, endpoint: &Url) -> Result<Option<Url>> {
@@ -963,10 +858,10 @@ fn select_fields(attributes: &Attributes) -> String {
     fields.into_iter().collect::<Vec<_>>().join(",")
 }
 
-/// One Workspace crawl. Only parsed users, selected group IDs, and the current
+/// One cloud-directory crawl. Only parsed users, selected group IDs, and the current
 /// collection's object IDs are retained; raw pages never accumulate.
 #[derive(Clone, Serialize, Deserialize)]
-struct WorkspaceSnapshot {
+struct CloudSnapshot {
     phase: usize,
     cursor: Option<String>,
     pagination: Pagination,
@@ -978,7 +873,7 @@ struct WorkspaceSnapshot {
     pages: usize,
 }
 
-impl WorkspaceSnapshot {
+impl CloudSnapshot {
     fn new() -> Self {
         Self {
             phase: 0,
@@ -1009,6 +904,48 @@ impl WorkspaceSnapshot {
     }
 
     fn endpoint(&self, settings: &Settings) -> Result<(Url, &'static str)> {
+        if settings.kind == "entra" {
+            return match self.phase {
+                0 => {
+                    let select = select_fields(&settings.attributes);
+                    Ok((
+                        endpoint(
+                            &settings.base_url,
+                            &["v1.0", "users"],
+                            &[("$select", &select), ("$top", "200"), ("$count", "true")],
+                        )?,
+                        "value",
+                    ))
+                }
+                1 => Ok((
+                    endpoint(
+                        &settings.base_url,
+                        &["v1.0", "groups"],
+                        &[
+                            ("$select", "id,displayName,mail"),
+                            ("$top", "200"),
+                            ("$count", "true"),
+                        ],
+                    )?,
+                    "value",
+                )),
+                phase => {
+                    let upstream = self
+                        .chosen
+                        .keys()
+                        .nth(phase - 2)
+                        .ok_or_else(|| Error::internal("Invalid Entra snapshot phase"))?;
+                    Ok((
+                        endpoint(
+                            &settings.base_url,
+                            &["v1.0", "groups", upstream, "transitiveMembers"],
+                            &[("$count", "true")],
+                        )?,
+                        "value",
+                    ))
+                }
+            };
+        }
         match self.phase {
             0 => Ok((
                 endpoint(
@@ -1039,7 +976,7 @@ impl WorkspaceSnapshot {
                     .chosen
                     .keys()
                     .nth(phase - 2)
-                    .ok_or_else(|| Error::internal("Invalid Workspace snapshot phase"))?;
+                    .ok_or_else(|| Error::internal("Invalid cloud snapshot phase"))?;
                 Ok((
                     endpoint(
                         &settings.base_url,
@@ -1078,14 +1015,35 @@ impl WorkspaceSnapshot {
                 return Err(unavailable("Cloud directory sync exceeded its time limit"));
             }
             let (first, collection) = self.endpoint(settings)?;
+            let graph = settings.kind == "entra";
             let mut url = first.clone();
             if let Some(cursor) = &self.cursor {
-                if !valid_secret_id(cursor, 2048) {
-                    return Err(unavailable("Cloud directory pagination did not finish"));
+                if graph {
+                    if cursor.len() > MAX_GRAPH_CURSOR_BYTES {
+                        return Err(unavailable("Cloud directory pagination did not finish"));
+                    }
+                    let next = Url::parse(cursor).map_err(|_| {
+                        unavailable("Cloud directory pagination left the configured host")
+                    })?;
+                    let base = Url::parse(&settings.base_url)
+                        .map_err(|_| Error::bad("Invalid directory URL"))?;
+                    if !same_origin(&base, &next)
+                        || next.path() != first.path()
+                        || !next.path().starts_with("/v1.0/")
+                    {
+                        return Err(unavailable(
+                            "Cloud directory pagination changed collection; retry a complete snapshot",
+                        ));
+                    }
+                    url = next;
+                } else {
+                    if !valid_secret_id(cursor, 2048) {
+                        return Err(unavailable("Cloud directory pagination did not finish"));
+                    }
+                    url.query_pairs_mut().append_pair("pageToken", cursor);
                 }
-                url.query_pairs_mut().append_pair("pageToken", cursor);
             }
-            let (body, page_bytes) = get_json_sized(&http, &token, &url, false)?;
+            let (body, page_bytes) = get_json_sized(&http, &token, &url, graph)?;
             if started.elapsed() > SYNC_BUDGET {
                 return Err(unavailable("Cloud directory sync exceeded its time limit"));
             }
@@ -1101,17 +1059,23 @@ impl WorkspaceSnapshot {
             if object.contains_key("error") {
                 return Err(unavailable("Cloud directory returned an unreadable page"));
             }
+            if graph && self.cursor.is_none() && !object.contains_key("@odata.count") {
+                return Err(unavailable(
+                    "Cloud directory returned an incomplete Graph count",
+                ));
+            }
             let expected = format!("directory#{collection}");
             let valid_kind = object
                 .get("kind")
                 .and_then(Value::as_str)
                 .is_some_and(|kind| kind == expected || kind == format!("admin#{expected}"));
-            if object.contains_key("kind") && !valid_kind {
+            if !graph && object.contains_key("kind") && !valid_kind {
                 return Err(unavailable("Cloud directory returned an unreadable page"));
             }
             let rows: &[Value] = match object.get(collection) {
                 Some(Value::Array(rows)) => rows,
-                None if self.cursor.is_none()
+                None if !graph
+                    && self.cursor.is_none()
                     && valid_kind
                     && !object.contains_key("nextPageToken") =>
                 {
@@ -1125,12 +1089,25 @@ impl WorkspaceSnapshot {
                     "Cloud directory result exceeds the supported size",
                 ));
             }
-            let next = workspace_next(&body, &first)?;
-            let next_cursor = next.as_ref().and_then(|url| {
-                url.query_pairs()
-                    .find(|(key, _)| key == "pageToken")
-                    .map(|(_, value)| value.into_owned())
-            });
+            let next_cursor = if graph {
+                let base = Url::parse(&settings.base_url)
+                    .map_err(|_| Error::bad("Invalid directory URL"))?;
+                graph_next(&body, &url, &base)?
+                    .map(|next| {
+                        if next.path() != first.path() || next.as_str().len() > MAX_GRAPH_CURSOR_BYTES {
+                            Err(unavailable("Cloud directory pagination changed collection; retry a complete snapshot"))
+                        } else {
+                            Ok(next.to_string())
+                        }
+                    })
+                    .transpose()?
+            } else {
+                workspace_next(&body, &first)?.as_ref().and_then(|next| {
+                    next.query_pairs()
+                        .find(|(key, _)| key == "pageToken")
+                        .map(|(_, value)| value.into_owned())
+                })
+            };
             let mut reported_total = None;
             for key in ["@odata.count", "totalResults"] {
                 if let Some(value) = object.get(key) {
@@ -1163,7 +1140,7 @@ impl WorkspaceSnapshot {
                 }
                 match self.phase {
                     0 => {
-                        let user = parse_user("workspace", row, &settings.attributes)?;
+                        let user = parse_user(settings.kind, row, &settings.attributes)?;
                         if self.users.insert(user.external_id.clone(), user).is_some() {
                             return Err(unavailable(
                                 "Cloud directory repeated an object in its snapshot",
@@ -1171,7 +1148,7 @@ impl WorkspaceSnapshot {
                         }
                     }
                     1 => {
-                        let group = parse_group("workspace", row)?;
+                        let group = parse_group(settings.kind, row)?;
                         for (local, selector) in &settings.groups {
                             if group.matches(selector)
                                 && self
@@ -1186,19 +1163,41 @@ impl WorkspaceSnapshot {
                         }
                     }
                     _ => {
-                        if !row
-                            .get("type")
-                            .and_then(Value::as_str)
-                            .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
-                        {
+                        let is_user = if graph {
+                            match row.get("@odata.type").and_then(Value::as_str) {
+                                Some("#microsoft.graph.user") => true,
+                                Some(
+                                    "#microsoft.graph.group"
+                                    | "#microsoft.graph.device"
+                                    | "#microsoft.graph.servicePrincipal"
+                                    | "#microsoft.graph.orgContact",
+                                ) => false,
+                                _ => {
+                                    return Err(unavailable(
+                                        "Cloud directory returned an unreadable page",
+                                    ));
+                                }
+                            }
+                        } else {
+                            !row.get("type")
+                                .and_then(Value::as_str)
+                                .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
+                        };
+                        if is_user {
+                            // Counted Graph collections can still reflect
+                            // different index moments. A member missing from
+                            // the complete users phase invalidates removals.
+                            if graph && !self.users.contains_key(id) {
+                                return Err(unavailable(
+                                    "Entra group member is missing from the users snapshot",
+                                ));
+                            }
                             let local = self
                                 .chosen
                                 .keys()
                                 .nth(self.phase - 2)
                                 .and_then(|upstream| self.chosen.get(upstream))
-                                .ok_or_else(|| {
-                                    Error::internal("Invalid Workspace snapshot group")
-                                })?;
+                                .ok_or_else(|| Error::internal("Invalid cloud snapshot group"))?;
                             if let Some(user) = self.users.get_mut(id) {
                                 user.groups.insert(local.clone());
                             }
@@ -1241,7 +1240,7 @@ impl WorkspaceSnapshot {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct WorkspaceSnapshotDraft {
+struct CloudSnapshotDraft {
     id: String,
     directory: String,
     actor: String,
@@ -1250,10 +1249,10 @@ struct WorkspaceSnapshotDraft {
     authority_digest: String,
     expires_at: u64,
     sequence: u64,
-    snapshot: WorkspaceSnapshot,
+    snapshot: CloudSnapshot,
 }
 
-impl WorkspaceSnapshotDraft {
+impl CloudSnapshotDraft {
     fn new(
         settings: &Settings,
         actor: &Principal,
@@ -1267,9 +1266,9 @@ impl WorkspaceSnapshotDraft {
             revision,
             fingerprint: settings.fingerprint.clone(),
             authority_digest,
-            expires_at: now().saturating_add(WORKSPACE_SNAPSHOT_SECONDS),
+            expires_at: now().saturating_add(CLOUD_SNAPSHOT_SECONDS),
             sequence: 0,
-            snapshot: WorkspaceSnapshot::new(),
+            snapshot: CloudSnapshot::new(),
         }
     }
 
@@ -1295,232 +1294,12 @@ impl WorkspaceSnapshotDraft {
 
 impl Settings {
     fn fetch(&self) -> Result<Vec<RemoteUser>> {
-        if self.kind == "workspace" {
-            let mut snapshot = WorkspaceSnapshot::new();
-            snapshot.advance(self, MAX_PAGES * (self.groups.len() + 2))?;
-            if !snapshot.complete(self) {
-                return Err(unavailable("Cloud directory pagination did not finish"));
-            }
-            return Ok(snapshot.into_users());
+        let mut snapshot = CloudSnapshot::new();
+        snapshot.advance(self, MAX_PAGES * (self.groups.len() + 2))?;
+        if !snapshot.complete(self) {
+            return Err(unavailable("Cloud directory pagination did not finish"));
         }
-        let started = Instant::now();
-        let http = http_client(self.direct_auth.is_some())?;
-        let token = access_token(self, &http)?;
-        let base = Url::parse(&self.base_url).map_err(|_| Error::bad("Invalid directory URL"))?;
-        let users_url = if self.kind == "workspace" {
-            endpoint(
-                &self.base_url,
-                &["admin", "directory", "v1", "users"],
-                &[
-                    ("customer", self.tenant.as_str()),
-                    ("domain", self.domain.as_str()),
-                    ("maxResults", "200"),
-                ],
-            )?
-        } else {
-            let select = select_fields(&self.attributes);
-            endpoint(
-                &self.base_url,
-                &["v1.0", "users"],
-                &[
-                    ("$select", select.as_str()),
-                    ("$top", "200"),
-                    ("$count", "true"),
-                ],
-            )?
-        };
-        let user_endpoint = users_url.clone();
-        let kind = self.kind;
-        let raw_users = if self.kind == "workspace" {
-            paginate(
-                &http,
-                &token,
-                users_url,
-                Provider::Workspace,
-                "users",
-                started,
-                |body, _| workspace_next(body, &user_endpoint),
-            )?
-        } else {
-            paginate(
-                &http,
-                &token,
-                users_url,
-                Provider::Entra,
-                "value",
-                started,
-                |body, current| graph_next(body, current, &base),
-            )?
-        };
-        let mut users = Vec::new();
-        let mut user_ids = BTreeSet::new();
-        for value in raw_users {
-            let user = parse_user(self.kind, &value, &self.attributes)?;
-            if !user_ids.insert(user.external_id.clone()) {
-                return Err(unavailable("Cloud directory returned an unreadable page"));
-            }
-            users.push(user);
-        }
-        if self.groups.is_empty() {
-            return Ok(users);
-        }
-        let groups_url = if self.kind == "workspace" {
-            endpoint(
-                &self.base_url,
-                &["admin", "directory", "v1", "groups"],
-                &[
-                    ("customer", self.tenant.as_str()),
-                    ("domain", self.domain.as_str()),
-                    ("maxResults", "200"),
-                ],
-            )?
-        } else {
-            endpoint(
-                &self.base_url,
-                &["v1.0", "groups"],
-                &[
-                    ("$select", "id,displayName,mail"),
-                    ("$top", "200"),
-                    ("$count", "true"),
-                ],
-            )?
-        };
-        let group_endpoint = groups_url.clone();
-        let raw_groups = if self.kind == "workspace" {
-            paginate(
-                &http,
-                &token,
-                groups_url,
-                Provider::Workspace,
-                "groups",
-                started,
-                |body, _| workspace_next(body, &group_endpoint),
-            )?
-        } else {
-            paginate(
-                &http,
-                &token,
-                groups_url,
-                Provider::Entra,
-                "value",
-                started,
-                |body, current| graph_next(body, current, &base),
-            )?
-        };
-        let mut groups = Vec::new();
-        for value in raw_groups {
-            groups.push(parse_group(kind, &value)?);
-        }
-        let mut chosen: BTreeMap<String, String> = BTreeMap::new();
-        for (local, selector) in &self.groups {
-            let matched: Vec<_> = groups
-                .iter()
-                .filter(|group| group.matches(selector))
-                .collect();
-            if matched.len() != 1 {
-                return Err(Error::conflict(
-                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
-                ));
-            }
-            if chosen
-                .insert(matched[0].id.clone(), local.clone())
-                .is_some()
-            {
-                return Err(Error::conflict(
-                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
-                ));
-            }
-        }
-        let mut members: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (upstream_id, local) in &chosen {
-            let members_url = if self.kind == "workspace" {
-                endpoint(
-                    &self.base_url,
-                    &["admin", "directory", "v1", "groups", upstream_id, "members"],
-                    &[("maxResults", "200")],
-                )?
-            } else {
-                endpoint(
-                    &self.base_url,
-                    &["v1.0", "groups", upstream_id, "transitiveMembers"],
-                    &[("$count", "true")],
-                )?
-            };
-            let member_endpoint = members_url.clone();
-            let collection = if self.kind == "workspace" {
-                "members"
-            } else {
-                "value"
-            };
-            let raw_members = if self.kind == "workspace" {
-                paginate(
-                    &http,
-                    &token,
-                    members_url,
-                    Provider::Workspace,
-                    collection,
-                    started,
-                    |body, _| workspace_next(body, &member_endpoint),
-                )?
-            } else {
-                paginate(
-                    &http,
-                    &token,
-                    members_url,
-                    Provider::Entra,
-                    collection,
-                    started,
-                    |body, current| graph_next(body, current, &base),
-                )?
-            };
-            let mut ids = BTreeSet::new();
-            for value in raw_members {
-                let id = required_string(&value, "id")?;
-                if !valid_upstream_id(&id) {
-                    return Err(unavailable("Cloud directory returned an unreadable page"));
-                }
-                if self.kind == "workspace"
-                    && value
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
-                {
-                    continue;
-                }
-                if self.kind == "entra" {
-                    match value.get("@odata.type").and_then(Value::as_str) {
-                        Some("#microsoft.graph.user") => {}
-                        Some(
-                            "#microsoft.graph.group"
-                            | "#microsoft.graph.device"
-                            | "#microsoft.graph.servicePrincipal"
-                            | "#microsoft.graph.orgContact",
-                        ) => continue,
-                        _ => {
-                            return Err(unavailable("Cloud directory returned an unreadable page"));
-                        }
-                    }
-                    // Each collection may be internally counted yet reflect a
-                    // different Graph index moment. A group user absent from
-                    // /users makes the removal snapshot inconsistent.
-                    if !user_ids.contains(&id) {
-                        return Err(unavailable(
-                            "Entra group member is missing from the users snapshot",
-                        ));
-                    }
-                }
-                ids.insert(id);
-            }
-            members.insert(local.clone(), ids);
-        }
-        for user in &mut users {
-            for (local, ids) in &members {
-                if ids.contains(&user.external_id) {
-                    user.groups.insert(local.clone());
-                }
-            }
-        }
-        Ok(users)
+        Ok(snapshot.into_users())
     }
 }
 
@@ -2210,62 +1989,8 @@ impl Core {
     /// current authority before committing local changes.
     pub fn cloud_reconcile(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
-        let settings = self.cloud_settings(kind, id)?;
         let mode = self.cloud_mode(provider, id);
-        let pending = self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-            for (_, plan) in tx.list::<Plan>("cloud_directory_plans")? {
-                if plan.kind == settings.kind
-                    && plan.directory == id
-                    && plan.actor == actor.id
-                    && !plan.applied
-                    && plan.expires_at > now()
-                    && plan.revision == revision
-                    && plan.fingerprint == settings.fingerprint
-                    && plan
-                        .review
-                        .validate(tx, &actor, &plan_content(&plan)?)
-                        .is_ok()
-                {
-                    return Ok(Some(plan));
-                }
-            }
-            Ok(None)
-        })?;
-        let plan = match pending {
-            Some(_) if settings.kind == "workspace" => {
-                // Validate a pending plan with the same durable page budget as
-                // a new plan. The final transaction reuses its ID only if the
-                // complete source and local impact still match.
-                self.cloud_plan_internal(token, kind, id, true)?
-            }
-            Some(plan) if self.fetch_entries(&settings)? == plan.entries => {
-                // A remote fetch can outlive the caller's authority or plan
-                // revision. Recheck both before returning its saved entries.
-                let bound = self.store.read(|tx| {
-                    let actor =
-                        self.management(tx, token, "directory.sync", &settings.resource())?;
-                    Ok(plan.actor == actor.id
-                        && plan.expires_at > now()
-                        && plan.revision == tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                        && plan.fingerprint == settings.fingerprint
-                        && tx
-                            .get::<Plan>("cloud_directory_plans", &plan.id)?
-                            .is_some_and(|stored| !stored.applied && stored.review == plan.review)
-                        && plan
-                            .review
-                            .validate(tx, &actor, &plan_content(&plan)?)
-                            .is_ok())
-                })?;
-                if bound {
-                    json!(plan)
-                } else {
-                    self.cloud_plan_internal(token, kind, id, true)?
-                }
-            }
-            _ => self.cloud_plan_internal(token, kind, id, true)?,
-        };
+        let plan = self.cloud_plan_internal(token, kind, id, true)?;
         if plan["decision"] == "snapshot_in_progress" {
             return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
         }
@@ -2280,7 +2005,7 @@ impl Core {
         self.cloud_plan_internal(token, kind, id, false)
     }
 
-    fn workspace_snapshot_actor(
+    fn cloud_snapshot_actor(
         &self,
         tx: &Tx<'_>,
         token: &str,
@@ -2305,7 +2030,7 @@ impl Core {
                 != authority_digest
         {
             return Err(Error::conflict(
-                "Workspace source, authority or local revision changed during snapshot",
+                "Cloud source, authority or local revision changed during snapshot",
             ));
         }
         Ok(actor)
@@ -2319,12 +2044,12 @@ impl Core {
         supersede: bool,
     ) -> Result<Value> {
         let settings = self.cloud_settings(kind, id)?;
+        let bucket = settings.snapshot_bucket();
         let (actor, revision) = self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
             Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
         })?;
-        let mut snapshot_prior: Option<(String, Option<(String, u64)>, String)> = None;
-        let entries = if settings.kind == "workspace" {
+        let (entries, snapshot_prior) = {
             let key = digest(&settings.resource());
             let (prior, mut draft, restarted, authority_digest) = self.store.read(|tx| {
                 let current = self.management(tx, token, "directory.sync", &settings.resource())?;
@@ -2341,7 +2066,7 @@ impl Core {
                     &json!([settings.resource(), revision, settings.fingerprint]),
                 )?
                 .authority_digest;
-                let previous = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, &key)?;
+                let previous = tx.get::<CloudSnapshotDraft>(bucket, &key)?;
                 let prior = previous
                     .as_ref()
                     .map(|draft| (draft.id.clone(), draft.sequence));
@@ -2357,21 +2082,13 @@ impl Core {
                 });
                 let restarted = previous.is_some() && !valid;
                 let draft = previous.filter(|_| valid).unwrap_or_else(|| {
-                    WorkspaceSnapshotDraft::new(
-                        &settings,
-                        &actor,
-                        revision,
-                        authority_digest.clone(),
-                    )
+                    CloudSnapshotDraft::new(&settings, &actor, revision, authority_digest.clone())
                 });
                 draft.bounded()?;
                 Ok((prior, draft, restarted, authority_digest))
             })?;
             self.ensure_budget(&settings)?;
-            if let Err(error) = draft
-                .snapshot
-                .advance(&settings, WORKSPACE_PAGES_PER_PLAN_CALL)
-            {
+            if let Err(error) = draft.snapshot.advance(&settings, CLOUD_PAGES_PER_PLAN_CALL) {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
                     self.record_failure(&settings)?;
                 }
@@ -2379,11 +2096,11 @@ impl Core {
             }
             self.reset_budget(&settings)?;
             draft.sequence = draft.sequence.saturating_add(1);
-            draft.expires_at = now().saturating_add(WORKSPACE_SNAPSHOT_SECONDS);
+            draft.expires_at = now().saturating_add(CLOUD_SNAPSHOT_SECONDS);
             draft.bounded()?;
             if !draft.snapshot.complete(&settings) {
                 return self.store.write(|tx| {
-                    self.workspace_snapshot_actor(
+                    self.cloud_snapshot_actor(
                         tx,
                         token,
                         &settings,
@@ -2391,20 +2108,20 @@ impl Core {
                         revision,
                         &authority_digest,
                     )?;
-                    let current = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, &key)?;
+                    let current = tx.get::<CloudSnapshotDraft>(bucket, &key)?;
                     if current.as_ref().map(|draft| (&draft.id, draft.sequence))
                         != prior.as_ref().map(|(id, sequence)| (id, *sequence))
                     {
                         return Err(Error::conflict(
-                            "Workspace snapshot advanced concurrently; resume the latest cursor",
+                            "Cloud snapshot advanced concurrently; resume the latest cursor",
                         ));
                     }
-                    tx.put(WORKSPACE_SNAPSHOTS, &key, &draft)?;
+                    tx.put(bucket, &key, &draft)?;
                     Ok(draft.progress(restarted))
                 });
             }
             let entries = self.store.read(|tx| {
-                self.workspace_snapshot_actor(
+                self.cloud_snapshot_actor(
                     tx,
                     token,
                     &settings,
@@ -2414,56 +2131,48 @@ impl Core {
                 )?;
                 materialize(tx, &settings, draft.snapshot.clone().into_users())
             })?;
-            snapshot_prior = Some((key, prior, authority_digest));
-            entries
-        } else {
-            self.fetch_entries(&settings)?
+            (entries, (key, prior, authority_digest))
         };
         let (changes, impact) = self.store.preview(|tx| {
-            if let Some((_, _, authority_digest)) = &snapshot_prior {
-                self.workspace_snapshot_actor(
-                    tx,
-                    token,
-                    &settings,
-                    &actor.id,
-                    revision,
-                    authority_digest,
-                )?;
-            }
+            self.cloud_snapshot_actor(
+                tx,
+                token,
+                &settings,
+                &actor.id,
+                revision,
+                &snapshot_prior.2,
+            )?;
             let impact = removal_impact(tx, &settings, &entries)?;
             let changes = reconcile(tx, &actor, &settings, &entries)?;
             Ok((changes, impact))
         })?;
         self.store.write(|tx| {
-            let current_actor = if let Some((_, _, authority_digest)) = &snapshot_prior {
-                self.workspace_snapshot_actor(
-                    tx,
-                    token,
-                    &settings,
-                    &actor.id,
-                    revision,
-                    authority_digest,
-                )?
-            } else {
-                self.management(tx, token, "directory.sync", &settings.resource())?
-            };
+            let current_actor = self.cloud_snapshot_actor(
+                tx,
+                token,
+                &settings,
+                &actor.id,
+                revision,
+                &snapshot_prior.2,
+            )?;
             if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
                 return Err(Error::conflict(
                     "Local configuration changed during cloud directory search",
                 ));
             }
-            if let Some((key, prior, _)) = &snapshot_prior {
-                let current = tx.get::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS, key)?;
-                if current.as_ref().map(|draft| (&draft.id, draft.sequence))
-                    != prior.as_ref().map(|(id, sequence)| (id, *sequence))
-                {
-                    return Err(Error::conflict(
-                        "Workspace snapshot advanced concurrently; resume the latest cursor",
-                    ));
-                }
+            let current = tx.get::<CloudSnapshotDraft>(bucket, &snapshot_prior.0)?;
+            if current.as_ref().map(|draft| (&draft.id, draft.sequence))
+                != snapshot_prior
+                    .1
+                    .as_ref()
+                    .map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "Cloud snapshot advanced concurrently; resume the latest cursor",
+                ));
             }
             let plans = tx.list::<Plan>("cloud_directory_plans")?;
-            if supersede && settings.kind == "workspace" {
+            if supersede {
                 if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
                     existing.actor == actor.id
                         && existing.kind == settings.kind
@@ -2481,8 +2190,8 @@ impl Core {
                             })
                             .is_ok()
                 }) {
-                    if let Some((key, Some(_), _)) = &snapshot_prior {
-                        tx.delete(WORKSPACE_SNAPSHOTS, key)?;
+                    if snapshot_prior.1.is_some() {
+                        tx.delete(bucket, &snapshot_prior.0)?;
                     }
                     return Ok(json!(existing));
                 }
@@ -2535,8 +2244,8 @@ impl Core {
                 }
             }
             tx.put("cloud_directory_plans", &plan.id, &plan)?;
-            if let Some((key, Some(_), _)) = &snapshot_prior {
-                tx.delete(WORKSPACE_SNAPSHOTS, key)?;
+            if snapshot_prior.1.is_some() {
+                tx.delete(bucket, &snapshot_prior.0)?;
             }
             crate::delegation::audit_scoped(
                 tx,
@@ -2639,9 +2348,11 @@ impl Core {
 }
 
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, draft) in tx.maintenance_page::<WorkspaceSnapshotDraft>(WORKSPACE_SNAPSHOTS)? {
-        if draft.expires_at < at {
-            tx.delete(WORKSPACE_SNAPSHOTS, &id)?;
+    for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
+        for (id, draft) in tx.maintenance_page::<CloudSnapshotDraft>(bucket)? {
+            if draft.expires_at <= at {
+                tx.delete(bucket, &id)?;
+            }
         }
     }
     for (id, plan) in tx.maintenance_page::<Plan>("cloud_directory_plans")? {

@@ -2794,12 +2794,12 @@ async fn cloud_directory(
                         true,
                     )
                     .await?;
-                if kind != "workspace" || plan["decision"] != "snapshot_in_progress" {
+                if plan["decision"] != "snapshot_in_progress" {
                     break;
                 }
             }
             if plan["decision"] == "snapshot_in_progress" {
-                bail!("Workspace snapshot did not finish within the CLI page limit");
+                bail!("Cloud directory snapshot did not finish within the CLI page limit");
             }
             write_private(out, &serde_json::to_vec_pretty(&plan)?, false)?;
             json!({"plan_file": out, "id": plan["id"], "revision": plan["revision"], "changes": plan["changes"], "removal_impact": plan["removal_impact"]})
