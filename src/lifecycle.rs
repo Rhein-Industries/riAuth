@@ -286,15 +286,13 @@ fn enqueue(
         Purpose::Reset => "Reset your riAuth password",
         Purpose::Invite => "Your riAuth account invitation",
     };
-    let browser_link = match purpose {
-        Purpose::Invite | Purpose::Verify => format!(
-            "Open in your browser: {}/account/{}#token={}\n\n",
-            core.config.issuer.trim_end_matches('/'),
-            purpose.name(),
-            token.as_str()
-        ),
-        Purpose::Reset => String::new(),
-    };
+    // The proof travels in the fragment: opening or scanning the link never sends it.
+    let browser_link = format!(
+        "Open in your browser: {}/account/{}#token={}\n\n",
+        core.config.issuer.trim_end_matches('/'),
+        purpose.name(),
+        token.as_str()
+    );
     let body = format!(
         "{subject}\n\nServer: {}\nAccount: {}\n\n{browser_link}Run: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. A password reset keeps your enrolled MFA factors. If you did not request this message, ignore it.\n",
         core.config.issuer,
@@ -489,8 +487,10 @@ impl Core {
                     Err(e) if e.status == axum::http::StatusCode::NOT_FOUND => None,
                     Err(e) => return Err(e),
                 };
-                if let Some(user) =
-                    user.filter(|u| u.enabled && u.email_verified && !u.password_hash.is_empty())
+                // Only a local password can be recovered here. Directory, passkey-only and
+                // upstream-only accounts get the same answer and no local password.
+                if let Some(user) = user.filter(|u| u.enabled && u.email_verified)
+                    && crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local
                 {
                     enqueue(self, tx, &user, Purpose::Reset, BTreeSet::new(), None)?;
                 }
@@ -650,11 +650,12 @@ impl Core {
                 user.password_hash = hashed;
                 Ok(())
             };
+            let local = crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local;
             match purpose {
                 Purpose::Verify if user.enabled => user.email_verified = true,
-                Purpose::Reset
-                    if user.enabled && user.email_verified && !user.password_hash.is_empty() =>
-                {
+                // Recovery replaces only the password: enrolled factors stay and are still
+                // required at the next sign-in, which this proof never performs.
+                Purpose::Reset if user.enabled && user.email_verified && local => {
                     apply_password(&mut user)?;
                     user.epoch += 1;
                 }

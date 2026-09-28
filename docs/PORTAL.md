@@ -9,7 +9,7 @@ The portal includes a responsive application grid, list view, name/description/c
 An existing browser session is recognized automatically. Its HttpOnly cookie is `__Host-riauth_sso` on an https issuer and `riauth_sso` on a loopback http issuer. A browser that has no such cookie gets a placeholder value when it opens the portal or an application's sign-in page; it signs nothing in, and lets two sign-ins started at the same time in two tabs end on one session. Otherwise the portal offers three ways to sign in:
 
 - **Sign in with a passkey.** Shown when the browser supports WebAuthn in a secure context. The browser offers the passkeys it holds for this riAuth host; no username is typed. A passkey sign-in counts as MFA.
-- **Username, password and "Authenticator or recovery code (if enabled)".** One form. Leave the code empty if the account has no authenticator app; a correct TOTP or recovery code makes the session MFA. Every failure, including a locked account, shows the same text, "Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.", no sooner than one second after submitting.
+- **Username, password and "Authenticator or recovery code (if enabled)".** One form. Leave the code empty if the account has no authenticator app; a correct TOTP or recovery code makes the session MFA. Every failure, including a locked account, shows the same text, "Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.", no sooner than one second after submitting. **Forgot your password?** below the form opens the [password reset page](lifecycle.md#change-or-reset-a-password-in-the-browser); application sign-in pages open it in a new tab.
 - **Sign in with your terminal.** Sign in to the same issuer in your terminal, then run the approval command the browser shows:
 
   ```sh
@@ -39,16 +39,31 @@ Buttons that act on a decision (**Sign out**, and on an application's page **All
 Some applications require MFA. After a password-only sign-in the catalogue shows a notice instead of silently hiding them:
 
 - If the account has TOTP or a passkey: "Some applications need your passkey or authenticator code." with **Sign in with your passkey**, which re-authenticates the same account.
-- Otherwise: "Some applications need extra verification. Add a passkey under Passkeys and security." with a button that opens that dialog.
+- Otherwise: "Some applications need extra verification. Add a passkey under Sign-in and security." with a button that opens that dialog.
 
-## Passkeys and security
+## Sign-in and security
 
-Signed-in users open **Passkeys and security** from the account menu. The dialog lists the account's passkeys (name and date added), adds another authenticator with a chosen name, renames a passkey, and removes one after confirmation. Closing the dialog or selecting Cancel before verification is submitted discards a pending enrollment without changing the account.
+Signed-in users open **Sign-in and security** from the account menu. It has a **Password** and a **Passkeys** section.
+
+### Password
+
+**Change password** asks for the current password, a new password and its confirmation. The change keeps passkeys, the authenticator app and recovery codes, and **signs the account out everywhere**, including this browser, terminal sessions and application grants; the page returns to sign-in with "Password changed. Sign in with your new password."
+
+- The form proves the current password again. A wrong one shows "Your current password is incorrect…" and counts toward sign-in's lockout (five failures in fifteen minutes pause password checks for fifteen minutes). New passwords follow the 12-character minimum and the [password history](enterprise/ENT-08.md).
+- If the account has TOTP or a passkey, the session must be an MFA sign-in from the last five minutes; otherwise the dialog asks to confirm with **Use your passkey** or password plus code, then reopens the form.
+- A browser signed in by terminal approval signs in here first, as for passkeys.
+- An account whose password an imported directory manages sees "Your organization's directory manages your password. Change it there."; a passkey-only or upstream-only account has no password to change.
+
+Forgotten passwords are reset from the sign-in page, not from this dialog. See [account lifecycle](lifecycle.md#change-or-reset-a-password-in-the-browser).
+
+### Passkeys
+
+The **Passkeys** section lists the account's passkeys (name and date added), adds another authenticator with a chosen name, renames a passkey, and removes one after confirmation. Closing the dialog or selecting Cancel before verification is submitted discards a pending enrollment without changing the account.
 
 - Up to sixteen passkeys per account. The browser is asked for a discoverable (resident) passkey with user verification.
-- Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your passkeys." and offers **Use your passkey** or password plus code.
+- Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your password or passkeys." (or "…your passkeys." when the password can already be changed) and offers **Use your passkey** or password plus code.
 - The first passkey of an account with no other factor needs only a recent sign-in.
-- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change passkeys: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
+- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change its password or passkeys: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your password or passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with `riauth passkey enroll`.
 - A passkey-only account cannot remove its last passkey. It can add a backup authenticator first. Renaming leaves the credential and active sessions intact.
 - **Adding or removing a passkey signs the account out everywhere**, including terminal sessions and application grants. The page returns to sign-in with "Passkey added. Sign in with it to continue." or "Passkey removed. Sign in again."
 - Authenticator apps and recovery codes are managed from the terminal: `riauth mfa enroll`, `riauth mfa recovery-codes --out FILE`.
@@ -131,7 +146,7 @@ RIAUTH_TEST_BROWSER='/path/to/chrome' \
   cargo test --test portal_browser --locked -- --ignored
 ```
 
-`tests/portal.rs` covers password, TOTP, recovery-code and passkey sign-in, uniform errors including lockout, the write guard, passkey registration and removal rules, sign-out scopes and the https cookie names. The browser test signs in through the actual CLI, checks policy-filtered applications, search/categories/favorites, persisted list preferences, live group revocation, text-injection handling and logout. It checks layout from 320 to 1440 pixels and can save desktop, tablet, mobile and empty-state screenshots. The fixture applications exist only in a disposable test database.
+`tests/portal.rs` covers password, TOTP, recovery-code and passkey sign-in, uniform errors including lockout, the write guard, passkey registration and removal rules, sign-out scopes and the https cookie names. `tests/password_browser.rs` covers browser password change and reset: account types, fresh MFA, lockout, one-time reset links and preserved factors. The browser test signs in through the actual CLI, checks policy-filtered applications, search/categories/favorites, persisted list preferences, live group revocation, text-injection handling and logout. It checks layout from 320 to 1440 pixels and can save desktop, tablet, mobile and empty-state screenshots. The fixture applications exist only in a disposable test database.
 
 The separate Chromium/Firefox/WebKit matrix includes keyboard interaction,
 responsive layout, text scaling, connection recovery and automated accessibility:

@@ -35,6 +35,7 @@ pub fn routes() -> Router<App> {
         )
         .route("/account/accept", get(account_page))
         .route("/account/verify", get(account_page))
+        .route("/account/reset", get(account_page))
         .route(
             "/portal/assets/app.css",
             get(|| async {
@@ -107,6 +108,12 @@ pub fn routes() -> Router<App> {
             "/api/portal/account/verify-request",
             post(account_verify_request),
         )
+        .route(
+            "/api/portal/account/reset-request",
+            post(account_reset_request),
+        )
+        .route("/api/portal/account/reset", post(account_reset))
+        .route("/api/portal/password", post(password_change))
         .route("/api/portal/sign-in", post(start))
         .route("/api/portal/sign-in/{id}", post(poll))
         .route("/api/portal/sign-in/{id}/cancel", post(cancel))
@@ -219,6 +226,67 @@ async fn account_verify_request(State(app): State<App>, headers: HeaderMap) -> R
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| core.portal_verify_request(sso.as_deref()).map(Json))
         .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResetRequest {
+    username: String,
+}
+
+/// Unknown and ineligible accounts get the same accepted answer and no email.
+async fn account_reset_request(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<ResetRequest>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run(move |core| core.account_reset_request(&input.username).map(Json))
+        .await
+}
+
+/// Spends a reset proof on a new password. It never signs the browser in.
+async fn account_reset(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Reset, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasswordChange {
+    current_password: String,
+    password: String,
+}
+
+async fn password_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasswordChange>,
+) -> Result<Response> {
+    let started = Instant::now();
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    let result = app
+        .run_credentials(move |core| {
+            core.portal_password_change(sso.as_deref(), input.current_password, input.password)
+        })
+        .await;
+    credential_floor(
+        started,
+        result
+            .as_ref()
+            .is_err_and(|error| error.code == "invalid_current_password"),
+    )
+    .await;
+    browser_response(result?)
 }
 
 /// How long a placeholder SSO cookie lasts if no sign-in replaces it.

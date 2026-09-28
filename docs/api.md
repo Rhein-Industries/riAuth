@@ -15,10 +15,16 @@ Responses are JSON, protocol redirects, signed/encrypted JWTs, protocol form/ifr
 | POST | `/api/portal/login/password` | `{"username","password","otp":string\|null,"reauthenticate":bool}`; 200 `{"status":"signed_in"}` plus the SSO cookie. `reauthenticate` pins the current SSO user (401 `invalid_token` without one). `login` bucket, credential queue, 1 s failure floor |
 | POST | `/api/portal/login/passkey/start` | `{"reauthenticate":bool}`; 200 `{"ceremony","public_key":{"publicKey":…},"expires_in":300}` plus the `riauth_passkey` binding cookie. Usernameless unless pinned; pinned without a passkey is 409 `no_passkey` |
 | POST | `/api/portal/login/passkey/finish` | `{"ceremony","credential"}` with `riauth_passkey`; 200 `{"status":"signed_in"}` plus the SSO cookie |
-| GET | `/api/portal/passkeys` | SSO; `{"passkeys":[{"id","name","created_at","algorithm"}],"fresh","terminal","mfa","can_register","can_remove","limit":16}`. `terminal` is true when this browser shares a terminal session (it collected a terminal approval); it can then neither register nor remove |
+| GET | `/api/portal/passkeys` | SSO; `{"passkeys":[{"id","name","created_at","algorithm"}],"fresh","terminal","mfa","can_register","can_remove","limit":16,"password","can_change_password"}`. `terminal` is true when this browser shares a terminal session (it collected a terminal approval); it can then neither register nor remove. `password` is `local`, `directory` (an imported directory verifies it) or `none` |
 | POST | `/api/portal/passkeys/registration/start` | SSO of a browser-owned session (a terminal-shared browser gets 403 `reauthentication_required`), signed in within five minutes, factor rule; `{"name"}`; resident key and user verification required |
 | POST | `/api/portal/passkeys/registration/finish` | Same browser-owned session; `{"ceremony","credential"}`; 200 `{"status":"enrolled","passkey",…,"sessions_revoked":true}` and the SSO cookie is cleared |
 | POST | `/api/portal/passkeys/{id}/remove` | SSO of a browser-owned session, signed in within five minutes, factor rule; `{}`; 200 `{"removed":true,"sessions_revoked":true}` and the SSO cookie is cleared |
+| POST | `/api/portal/password` | SSO of a browser-owned session; `{"current_password","password"}`. Local password accounts only (409 `password_unavailable`). With TOTP or a passkey enrolled: factor rule and a sign-in within five minutes. A wrong current password is 403 `invalid_current_password`, answered no sooner than one second after the request started, and counts toward the sign-in lockout (then 429 `rate_limited`). 200 `{"changed":true,"sessions_revoked":true}` and the SSO cookie is cleared; factors are kept |
+| GET | `/account/accept`, `/account/verify`, `/account/reset` | Account pages. An emailed link carries its one-use code in the fragment, which this GET never sends; `/account/reset` without a code asks for a reset link |
+| POST | `/api/portal/account/accept`, `/api/portal/account/verify` | `{"token","password"}` (accept) or `{"token"}` (verify); one-use invitation or verification proof; see [lifecycle](lifecycle.md) |
+| POST | `/api/portal/account/verify-request` | SSO, signed in within five minutes; 200 `{"accepted":true,"status":"queued"\|"cooldown"\|"already_verified"}` |
+| POST | `/api/portal/account/reset-request` | Public `{"username"}`; 200 `{"accepted":true}` for every valid username. Only an enabled account with a verified email and a local password no directory manages gets an email |
+| POST | `/api/portal/account/reset` | `{"token","password"}`; one-use reset proof; 200 `{"completed":true,"login_required":true}`. It never sets a session cookie and keeps every factor |
 | POST | `/api/portal/sign-in` | Create a ten-minute browser-bound terminal approval request; records `requested_from` |
 | POST | `/api/portal/sign-in/{id}` | Poll and consume an approved request; points the browser at the approving session (revoking a displaced browser-owned session) and sets the HttpOnly SSO cookie |
 | POST | `/api/portal/sign-in/{id}/cancel` | Cancel the request using its browser binding |
@@ -162,13 +168,15 @@ Errors keep the `{"error","error_description"}` shape.
 | `account_mismatch` | 403 | The verified user differs from the pinned account |
 | `unmet_authentication_requirements` | 403 | The sign-in does not meet the client's MFA or ACR requirement and the user has a factor |
 | `mfa_setup_required` | 403 | Same, and the user has neither TOTP nor a passkey |
-| `mfa_required` | 403 | Adding or removing a factor from a non-MFA session when the account already has one |
-| `reauthentication_required` | 403 | Adding or removing a factor from a session signed in more than 300 s ago (bearer and portal), or from a browser that shares a terminal session (portal) |
+| `mfa_required` | 403 | Adding or removing a factor, or changing the password, from a non-MFA session when the account already has TOTP or a passkey |
+| `reauthentication_required` | 403 | Adding or removing a factor from a session signed in more than 300 s ago (bearer and portal), changing the password of an account with a factor from such a session, or either from a browser that shares a terminal session (portal) |
+| `invalid_current_password` | 403 | Portal password change with a wrong current password; counts toward the sign-in lockout |
 | `session_mismatch` | 403 | A sign-out decision for another live session |
 | `interaction_expired` | 404 | The pending request, SAML request or confirmation is missing or expired |
 | `request_decided` | 409 | Already decided, or waiting on a source stage |
 | `account_changed` | 409 | `session_ref` no longer matches the browser's session |
 | `no_passkey` | 409 | Pinned passkey sign-in for an account without passkeys |
+| `password_unavailable` | 409 | Password change for an account without a local password (directory-managed, passkey-only or upstream-only) |
 | `login_required` | 400 | A decision without a valid proof, or a terminal approval more than 300 s after sign-in |
 | `unauthorized_client` | 400 | A token request for a proxy client from outside riAuth |
 | `rate_limited` | 429 | Rate bucket exceeded; CLI lockout on `/api/login` |
@@ -186,7 +194,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |
 | DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent |
-| POST | `/api/password` | Current password, new `password`, optional `otp`; invalidate old sessions/grants |
+| POST | `/api/password` | Current password, new `password`, optional `otp`; local password accounts only (409 `password_unavailable`, checked before the password); an account whose only factor is a passkey needs an MFA session from the last five minutes; invalidate old sessions/grants |
 | POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); return pending enrollment secret/URI |
 | POST | `/api/mfa/confirm` | `code`; enable factor and invalidate sessions |
 | POST | `/api/mfa/recovery-codes` | Recent MFA session; rotate ten single-use recovery codes |
@@ -327,11 +335,11 @@ Resource operations use a provisioning principal with the required user/group pe
 | GET | `/outpost/{id}/callback` | Redeem bound authorization code and issue application cookie |
 | POST | `/outpost/{id}/logout` | Revoke application cookie; exact Origin required |
 
-Blocking work has eight worker slots; a request waits up to two seconds for one, then gets 503 `temporarily_unavailable`. Password checks (`/api/login`, `/api/password`, `/api/portal/login/password` and the interaction `…/password` endpoints) first take one of four credential permits and keep both permits until the check finishes, even if the client disconnects; forward-auth checks use a separate queue of sixteen, each with the same two-second wait. Per effective client address and 60-second window, the limits by category are:
+Blocking work has eight worker slots; a request waits up to two seconds for one, then gets 503 `temporarily_unavailable`. Password checks (`/api/login`, `/api/password`, `/api/portal/login/password`, `/api/portal/password`, `/api/portal/account/accept`, `/api/portal/account/verify`, `/api/portal/account/reset` and the interaction `…/password` endpoints) first take one of four credential permits and keep both permits until the check finishes, even if the client disconnects; forward-auth checks use a separate queue of sixteen, each with the same two-second wait. Per effective client address and 60-second window, the limits by category are:
 
 | Category | Limit | Routes |
 | --- | ---: | --- |
-| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/source-login/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
+| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/portal/password`, `/api/source-login/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
 | `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, interaction `…/passkey/start` and `…/finish` |
 | `browser_state` | 1200 | interaction `…/state` |
 | `browser_decision` | 60 | interaction `…/decision` |
@@ -339,7 +347,7 @@ Blocking work has eight worker slots; a request waits up to two seconds for one,
 | `outpost_start` | 30 | `/outpost/{id}/start` |
 | `portal_start` | 10 | `/api/portal/sign-in` |
 | `portal_approve` | 20 | `/api/portal/requests/{code}` |
-| `account` | 10 | `/api/account/*` |
+| `account` | 10 | `/api/account/*`, `/api/portal/account/*` |
 | `mfa` | 10 | `/api/mfa/confirm` |
 | `device_start` | 30 | `/oauth/device/code` |
 | `device_verify` | 20 | `/api/device/*`, `/api/authorization/*` |

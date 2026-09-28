@@ -18,10 +18,12 @@
     <p id="account-description">Checking your email link…</p>
     <p id="account-error" class="form-error" role="alert" tabindex="-1" hidden></p>
     <form id="account-form" novalidate hidden>
+      <div class="field" id="account-username-field" hidden><label for="account-username">Username</label><input id="account-username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64"></div>
       <div id="account-password-fields" hidden>
         <div class="field"><label for="account-password">New password</label><input id="account-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" aria-describedby="account-password-hint"><p id="account-password-hint" class="field-hint">Use at least 12 characters. Your organization may require a stronger password.</p></div>
         <div class="field"><label for="account-confirm">Confirm new password</label><input id="account-confirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></div>
       </div>
+      <p id="account-note" class="field-hint" hidden></p>
       <button id="account-submit" class="button primary" type="submit">Continue</button>
     </form>
     <section id="account-complete" hidden aria-live="polite" tabindex="-1">
@@ -30,7 +32,7 @@
       <a id="account-complete-link" class="button primary" href="__BASE__apps">Continue to sign in</a>
     </section>
     <p id="account-fallback" hidden><a href="__BASE__apps">Open applications</a></p>
-    <noscript><p>Enable JavaScript to use this link. Opening the link does not use it; you must confirm on this page.</p></noscript>
+    <noscript><p>Enable JavaScript to use this page. Opening an email link does not use it; you must confirm on this page.</p></noscript>
   </section>
 </main>
 </body>

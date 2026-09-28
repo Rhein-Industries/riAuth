@@ -779,9 +779,15 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<Value> {
-        let username = self
-            .store
-            .read(|tx| self.session(tx, token).map(|(u, _)| u.username))?;
+        // Refuse before the login below verifies anything: a directory would check the
+        // password, and a local hash must never be planted on a directory account.
+        let username = self.store.read(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            crate::password::require_local(tx, &user)?;
+            // The login verifies a TOTP or recovery code when TOTP is enrolled.
+            crate::password::require_fresh_mfa(&user, &session, user.totp_secret.is_some())?;
+            Ok(user.username)
+        })?;
         let new_hash = crypto::password_hash(&password)?;
         let fresh = self.login(username, current, otp)?;
         let reauth = fresh["session_token"]
@@ -789,24 +795,21 @@ impl Core {
             .ok_or_else(|| Error::internal("Missing reauthentication token"))?
             .to_owned();
         let result = self.store.write(|tx| {
-            let (mut user, _) = self.session(tx, token)?;
-            let (verified, _) = self.session(tx, &reauth)?;
+            let (mut user, session) = self.session(tx, token)?;
+            let (verified, proof) = self.session(tx, &reauth)?;
             if verified.id != user.id {
                 return Err(Error::forbidden());
             }
-            crate::identity::password_history::accept(
+            crate::password::require_local(tx, &user)?;
+            // A passkey cannot be presented here: it needs this session's recent passkey sign-in.
+            crate::password::require_fresh_mfa(&user, &session, proof.identity.mfa)?;
+            crate::password::replace(
                 tx,
                 self.config.password_history,
-                &user.id,
-                &user.password_hash,
+                &mut user,
                 &password,
-                &new_hash,
+                new_hash,
             )?;
-            user.password_hash = new_hash;
-            user.epoch += 1;
-            tx.put("users", &user.id, &user)?;
-            crate::logout::queue_user(tx, &user.id)?;
-            audit(tx, &user.id, "user.password.change", &user.id)?;
             Ok(json!({"changed": true, "sessions_revoked": true}))
         });
         if result.is_err() {

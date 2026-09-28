@@ -1,22 +1,30 @@
 # Account email and recovery
 
-Invitation acceptance and email verification have browser pages. The SMTP service sends fixed-purpose messages with a one-use code, a browser link for those two journeys, and a terminal command. Password reset remains in the CLI.
+Invitation acceptance, email verification, password reset and password change have browser pages. The SMTP service sends fixed-purpose messages with a one-use code, a browser link and a terminal command.
 
 ## What still needs the terminal
 
-Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, give consent, confirm RP sign-out, accept an invitation and verify an email address. The CLI remains available for invitation acceptance and verification. These tasks still need the `riauth` CLI:
+Browsers can sign in (passkey, or password with an optional TOTP or recovery code), sign out, add and remove passkeys, give consent, confirm RP sign-out, accept an invitation, verify an email address, change a password and reset a forgotten one. The CLI remains available for these journeys (`riauth account accept|verify|reset --token-stdin`, `riauth account reset-request NAME`, `riauth passwd`). These tasks still need the `riauth` CLI:
 
 | Task | Command |
 | --- | --- |
-| Request and complete a password reset | `riauth account reset-request NAME`, `riauth account reset --token-stdin` |
-| Change your own password | `riauth passwd` |
 | Enroll TOTP, rotate recovery codes | `riauth mfa enroll`, `riauth mfa confirm`, `riauth mfa recovery-codes --out FILE` |
 | List or revoke your sessions and remembered consent | `riauth session list`, `riauth session revoke ID`, `riauth consents` |
 | Approve a device-flow login | `riauth device approve CODE` |
 | Sign in with or link an upstream source | `riauth source start ID --out FILE`, `riauth source finish --file FILE` |
 | Administration | every `user`, `group`, `client` and other management command |
 
-A user without a terminal therefore cannot recover a forgotten password alone; an administrator can set a new one with `riauth user passwd NAME`, which signs the user out everywhere, clears a lockout and keeps their factors. Such users should enroll passkeys in the portal rather than TOTP. Decide whether terminal-only recovery meets your users' needs before deployment; see [current limitations](limitations.md).
+Browser users recover a forgotten local password with **Forgot your password?** on the sign-in pages (below). An administrator can still set one with `riauth user passwd NAME`, which signs the user out everywhere, clears a lockout and keeps their factors. A lost authenticator app or passkey is factor recovery, which is separate: sign in with a recovery code, or ask an administrator, who can run `riauth user reset-mfa NAME`. Users without a terminal should enroll passkeys in the portal rather than TOTP, because TOTP enrollment and recovery-code rotation still need the terminal; see [current limitations](limitations.md).
+
+## Change or reset a password in the browser
+
+Only an enabled account with a local password can change or reset it here. An account whose password an imported [LDAP directory](ldap.md) verifies changes it in the directory; passkey-only, upstream-only and pending accounts have no local password, and neither journey creates one. Directory accounts are refused before any directory bind.
+
+**Change.** Signed-in users open **Sign-in and security** in the applications portal and choose **Change password**. The form asks for the current password again. A browser that signed in by terminal approval must sign in here first. When the account has TOTP or a passkey, the browser session must also be an MFA sign-in (passkey, or password plus code) from the last five minutes; the dialog offers that confirmation. A wrong current password counts toward the same lockout as sign-in: five failures in fifteen minutes pause password checks for fifteen minutes. `riauth passwd` applies the same account and MFA rules; there a TOTP or recovery code comes from `RIAUTH_OTP`, and an account whose only factor is a passkey needs a passkey sign-in (`riauth passkey login NAME`) from the last five minutes.
+
+**Reset.** **Forgot your password?** on the portal and on application sign-in pages opens `/account/reset`. Enter a username and the server answers the same way for every name; an eligible account (enabled, verified email, local password) receives a link that expires after 30 minutes. The code is in the link's fragment, so opening or scanning the link spends nothing. The page removes it from the address bar and sends it only with the new password. A newer request replaces the previous link; a password change, email change or another reset invalidates it. Each link works once.
+
+Both journeys keep the account's passkeys, authenticator app and recovery codes. They sign the account out everywhere, including this browser, and end its application grants; a reset clears a password lockout. Neither signs the browser in. The next password sign-in still needs the authenticator or recovery code when TOTP is enrolled, and applications and changes that require MFA still need a passkey or code. Resetting a password never removes or bypasses a factor.
 
 Configure delivery in `riauth.toml`:
 
@@ -55,9 +63,9 @@ The browser links put the code in a URL fragment, which is not sent with the GET
 
 Signed-in users with an unverified address can request or renew the verification email in the applications portal. The request requires authentication within the last five minutes; the portal offers a fresh sign-in when needed. It reports whether delivery was queued, a recent request is still cooling down, or the address is already verified. Queued means the request entered the delivery outbox; it does not confirm arrival. Opening the resulting link never consumes the proof; only the explicit verification POST does.
 
-Verification codes last 24 hours, reset codes 30 minutes and invitations seven days. They are hashed in the proof store and bound to purpose, user ID, current email address and credential version. A reset is available only to enabled accounts with a verified email and an existing local password. Upstream-only accounts are not silently converted into password accounts. Reset requests return the same accepted response for unknown or ineligible accounts, and are throttled by account and network origin. A password reset revokes sessions and grants, clears password lockout, and preserves every enrolled MFA factor.
+Verification codes last 24 hours, reset codes 30 minutes and invitations seven days. They are hashed in the proof store and bound to purpose, user ID, current email address and credential version. A reset is available only to enabled accounts with a verified email and an existing local password that no imported directory manages. Upstream-only, passkey-only and directory accounts are not silently converted into local password accounts, including when an account changed type after its link was sent. Reset requests return the same accepted response for unknown or ineligible accounts, and are throttled by account and network origin. A password reset revokes sessions and grants, clears password lockout, and preserves every enrolled MFA factor.
 
-Password reset and invitation acceptance participate in the configured [password history](enterprise/ENT-08.md): `password_history = 5` by default, `0` disables checking, and at most 24 hashes are retained per user. A reused password fails without consuming a successful account transition. Imported hashes are retained for later plaintext comparisons; an imported hash alone cannot be checked for reuse without its plaintext.
+Password change, password reset and invitation acceptance participate in the configured [password history](enterprise/ENT-08.md): `password_history = 5` by default, `0` disables checking, and at most 24 hashes are retained per user. A reused password fails without consuming a successful account transition. Imported hashes are retained for later plaintext comparisons; an imported hash alone cannot be checked for reuse without its plaintext.
 
 Interactive CLI completion prompts for the new password. Automation supplies `RIAUTH_EMAIL_TOKEN` and `RIAUTH_PASSWORD` through its secret mechanism; codes and passwords are not command-line arguments. Tokens are never returned by management or delivery-status endpoints. Pending email bodies necessarily contain the code until delivery; configure database encryption to protect the durable outbox at rest. Delivery removes its body; expired or superseded messages are redacted during maintenance.
 

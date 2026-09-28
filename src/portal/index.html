@@ -46,7 +46,7 @@
     </nav>
     <div class="sidebar-bottom">
       <div class="access-note"><span class="note-icon"><svg class="icon"><use href="#i-shield"/></svg></span><h2>One place. Your apps.</h2><p>Your applications follow your access, so everything you need stays together.</p></div>
-      <div class="account" id="account" role="group" hidden><span class="avatar" id="avatar"> </span><div class="account-text"><strong id="account-name"></strong><span id="account-username"></span></div><a class="icon-button" href="__BASE__account/security" aria-label="Sessions and consent" title="Sessions and consent"><svg class="icon"><use href="#i-shield"/></svg></a><button class="icon-button" id="account-security" aria-label="Passkeys and security" title="Passkeys and security" aria-haspopup="dialog"><svg class="icon"><use href="#i-key"/></svg></button><button class="icon-button" id="sign-out" aria-label="Sign out" title="Sign out"><svg class="icon"><use href="#i-logout"/></svg></button></div>
+      <div class="account" id="account" role="group" hidden><span class="avatar" id="avatar"> </span><div class="account-text"><strong id="account-name"></strong><span id="account-username"></span></div><a class="icon-button" href="__BASE__account/security" aria-label="Sessions and consent" title="Sessions and consent"><svg class="icon"><use href="#i-shield"/></svg></a><button class="icon-button" id="account-security" aria-label="Sign-in and security" title="Sign-in and security" aria-haspopup="dialog"><svg class="icon"><use href="#i-key"/></svg></button><button class="icon-button" id="sign-out" aria-label="Sign out" title="Sign out"><svg class="icon"><use href="#i-logout"/></svg></button></div>
       <div class="signed-out-label" id="signed-out-label"><svg class="icon"><use href="#i-lock"/></svg> Your personal workspace</div>
     </div>
   </aside>
@@ -75,6 +75,7 @@
           <div class="field"><label for="login-otp">Authenticator or recovery code (if enabled)</label><input id="login-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="login-otp-hint"><p class="field-hint" id="login-otp-hint">Leave empty if your account has no authenticator app.</p></div>
           <button class="button primary" id="password-login" type="submit">Sign in</button>
         </form>
+        <p class="auth-links"><a class="text-button" id="forgot-password" href="__BASE__account/reset">Forgot your password?</a></p>
         <button class="button secondary" id="start-login" type="button">Sign in with your terminal <svg class="icon"><use href="#i-arrow"/></svg></button><div id="login-request" hidden><div class="code-heading"><span>Your sign-in code</span><span id="code-time"></span></div><div class="user-code" id="user-code"></div><p class="terminal-help">Sign in with <code>riauth login</code> on this server, then run:</p><div class="command-box"><code id="login-command"></code><button class="icon-button" id="copy-command" aria-label="Copy sign-in command" title="Copy command"><svg class="icon"><use href="#i-copy"/></svg></button></div><p class="waiting"><span class="status-dot"></span>Waiting for your approval…</p><button class="text-button" id="cancel-login">Cancel sign-in</button></div><p class="auth-footnote"><svg class="icon"><use href="#i-lock"/></svg>Approval connects only this browser.</p></div><div class="auth-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="art-center"><img class="brand-mark" src="__BASE__portal/assets/riauth-mark.svg" alt=""></div><span class="art-app art-one"><svg class="icon"><use href="#i-code"/></svg></span><span class="art-app art-two"><svg class="icon"><use href="#i-files"/></svg></span><span class="art-app art-three"><svg class="icon"><use href="#i-chart"/></svg></span><span class="art-app art-four"><svg class="icon"><use href="#i-cloud"/></svg></span><p>A little less searching.<br>A lot more doing.</p></div></section>
       <section class="empty-state error-state" id="error" hidden><span class="empty-icon"><svg class="icon"><use href="#i-cloud"/></svg></span><h1>We couldn’t load your workspace</h1><p>Your applications will appear when we can check your access again.</p><button class="button primary" id="retry">Try again <svg class="icon"><use href="#i-refresh"/></svg></button></section>
       <noscript><div class="auth-panel"><h1>JavaScript is needed for your applications</h1><p>Enable JavaScript and reload this page. You can continue using riAuth from your terminal.</p></div></noscript>
@@ -82,13 +83,8 @@
   </div>
 </div>
 <dialog id="security-dialog" class="security" aria-labelledby="security-title">
-  <h2 id="security-title">Passkeys</h2>
-  <p class="field-hint">Sign in without a password. Adding or removing a passkey signs you out everywhere.</p>
+  <h2 id="security-title">Sign-in and security</h2>
   <p class="account-line" id="security-account"></p>
-  <p class="notice" id="passkey-unavailable" hidden>This browser cannot use passkeys. Open this page in a browser that supports passkeys over a secure connection.</p>
-  <p class="field-hint" id="passkey-only-hint" hidden>This account uses passkeys only. Keep a backup on another device or security key. Administrators must keep at least two passkeys.</p>
-  <ul class="passkey-list" id="passkey-list"></ul>
-  <p class="field-hint" id="security-status" role="status"></p>
   <div id="reauth-panel" hidden>
     <p class="notice" id="reauth-hint"></p>
     <p id="reauth-error" class="form-error" role="alert" tabindex="-1" hidden></p>
@@ -99,18 +95,39 @@
       <button class="button secondary" id="reauth-confirm" type="submit">Confirm</button>
     </form>
   </div>
-  <form id="passkey-form" novalidate>
-    <div class="field"><label for="passkey-name">Passkey name</label><input id="passkey-name" autocomplete="off" maxlength="200" aria-describedby="passkey-add-hint" required></div>
-    <p class="field-hint" id="passkey-add-hint">Choose this device, another device or a security key in your browser's passkey prompt.</p>
-    <button class="button primary" id="add-passkey" type="submit">Add a passkey</button>
-  </form>
-  <form id="passkey-action" novalidate hidden>
-    <h3 id="passkey-action-title" tabindex="-1"></h3>
-    <p class="field-hint" id="passkey-action-description"></p>
-    <div class="field" id="passkey-rename-field" hidden><label for="passkey-rename">New passkey name</label><input id="passkey-rename" autocomplete="off" maxlength="200" required></div>
-    <button class="button primary" id="passkey-action-confirm" type="submit"></button>
-  </form>
-  <button class="button secondary" id="passkey-cancel" type="button" hidden>Cancel change</button>
+  <section class="security-section" aria-labelledby="password-heading">
+    <h3 id="password-heading">Password</h3>
+    <p class="field-hint" id="password-status"></p>
+    <button class="button secondary" id="password-change-start" type="button" hidden>Change password</button>
+    <form id="password-change" novalidate hidden>
+      <div class="field"><label for="password-current">Current password</label><input id="password-current" type="password" autocomplete="current-password" maxlength="1024" required></div>
+      <div class="field"><label for="password-new">New password</label><input id="password-new" type="password" autocomplete="new-password" minlength="12" maxlength="1024" aria-describedby="password-new-hint" required><p class="field-hint" id="password-new-hint">Use at least 12 characters that you haven't used here recently.</p></div>
+      <div class="field"><label for="password-confirm">Confirm new password</label><input id="password-confirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required></div>
+      <p id="password-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+      <button class="button primary" id="password-change-submit" type="submit">Change password</button>
+      <button class="button secondary" id="password-change-cancel" type="button">Cancel</button>
+    </form>
+  </section>
+  <section class="security-section" aria-labelledby="passkeys-heading">
+    <h3 id="passkeys-heading">Passkeys</h3>
+    <p class="field-hint">Sign in without a password. Adding or removing a passkey signs you out everywhere.</p>
+    <p class="notice" id="passkey-unavailable" hidden>This browser cannot use passkeys. Open this page in a browser that supports passkeys over a secure connection.</p>
+    <p class="field-hint" id="passkey-only-hint" hidden>This account uses passkeys only. Keep a backup on another device or security key. Administrators must keep at least two passkeys.</p>
+    <ul class="passkey-list" id="passkey-list"></ul>
+    <p class="field-hint" id="security-status" role="status"></p>
+    <form id="passkey-form" novalidate>
+      <div class="field"><label for="passkey-name">Passkey name</label><input id="passkey-name" autocomplete="off" maxlength="200" aria-describedby="passkey-add-hint" required></div>
+      <p class="field-hint" id="passkey-add-hint">Choose this device, another device or a security key in your browser's passkey prompt.</p>
+      <button class="button primary" id="add-passkey" type="submit">Add a passkey</button>
+    </form>
+    <form id="passkey-action" novalidate hidden>
+      <h3 id="passkey-action-title" tabindex="-1"></h3>
+      <p class="field-hint" id="passkey-action-description"></p>
+      <div class="field" id="passkey-rename-field" hidden><label for="passkey-rename">New passkey name</label><input id="passkey-rename" autocomplete="off" maxlength="200" required></div>
+      <button class="button primary" id="passkey-action-confirm" type="submit"></button>
+    </form>
+    <button class="button secondary" id="passkey-cancel" type="button" hidden>Cancel change</button>
+  </section>
   <p class="field-hint">Authenticator apps and recovery codes are managed from your terminal: <code>riauth mfa enroll</code>, <code>riauth mfa recovery-codes --out FILE</code>.</p>
   <button class="button secondary" id="security-close" type="button">Close</button>
 </dialog>

@@ -5,10 +5,17 @@
   const state = { data: null, favorites: new Set(), view: "grid", section: "all", loading: false, generation: 0, request: null,
     verificationMessage: null, verificationRequested: false, verificationNeedsRelogin: false };
   // Passkey flows keep cancelled options for WebKit's gesture rule; `retry` runs after re-authentication.
-  const security = { flows: {}, retry: null, data: null, action: null, generation: 0, busy: false };
-  const MFA_HINT = "Sign in with your passkey or authenticator code to change your passkeys.";
-  const FRESH_HINT = "Confirm it's you to change your passkeys.";
-  const TERMINAL_HINT = "This browser uses your terminal's sign-in. Sign in here to change your passkeys.";
+  const security = { flows: {}, retry: null, data: null, action: null, generation: 0, busy: false, passwordOpen: false };
+  // Names what a verification unlocks: the password too while it is local and blocked.
+  function blocked() {
+    const data = security.data;
+    return data?.password === "local" && data.can_change_password === false ? "your password or passkeys" : "your passkeys";
+  }
+  function hint(kind, what = blocked()) {
+    if (kind === "terminal") return `This browser uses your terminal's sign-in. Sign in here to change ${what}.`;
+    if (kind === "fresh") return `Confirm it's you to change ${what}.`;
+    return `Sign in with your passkey or authenticator code to change ${what}.`;
+  }
   let pollTimer, expiryTimer, toastTimer;
   const icons = new Set(["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"]);
   const accents = new Set(["violet", "blue", "teal", "amber", "rose", "slate"]);
@@ -78,6 +85,7 @@
     security.busy = false; security.committing = false; security.run = null;
     $("passkey-action").hidden = true; $("passkey-rename").value = "";
     $("passkey-login-cancel").hidden = true;
+    closePassword();
   }
   function stopRequest() {
     state.request = null; clearTimeout(pollTimer);
@@ -128,8 +136,8 @@
       renderVerificationNotice();
       // A password-only session cannot see applications that require MFA.
       $("mfa-notice").hidden = data.mfa !== false;
-      $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey under Passkeys and security.";
-      $("mfa-action").textContent = data.mfa_available ? "Sign in with your passkey" : "Passkeys and security";
+      $("mfa-notice-text").textContent = data.mfa_available ? "Some applications need your passkey or authenticator code." : "Some applications need extra verification. Add a passkey under Sign-in and security.";
+      $("mfa-action").textContent = data.mfa_available ? "Sign in with your passkey" : "Sign-in and security";
       clearAuthError();
       const category = changedUser ? "" : $("category").value;
       $("category").replaceChildren(new Option("All categories", ""));
@@ -409,7 +417,8 @@
   function showReauth(hint) {
     $("reauth-hint").textContent = hint; $("reauth-panel").hidden = false; $("reauth-error").hidden = true;
     $("reauth-passkey").hidden = !RiAuth.passkeysAvailable() || security.data?.passkeys.length === 0;
-    $("reauth-form").hidden = security.data?.password_available === false;
+    // Directory accounts confirm with their directory password; only passwordless ones cannot.
+    $("reauth-form").hidden = security.data?.password === "none";
   }
   function hideReauth() {
     $("reauth-panel").hidden = true; $("reauth-password").value = ""; $("reauth-otp").value = "";
@@ -418,12 +427,14 @@
     const data = security.data, pending = !!security.action;
     $("passkey-form").hidden = !data || pending || !RiAuth.passkeysAvailable() || data.passkeys.length >= data.limit;
     for (const button of $("passkey-list").querySelectorAll("button")) button.disabled = security.busy || button.dataset.unavailable === "true";
-    for (const id of ["add-passkey", "passkey-action-confirm", "reauth-passkey", "reauth-confirm"]) $(id).disabled = security.busy;
+    for (const id of ["add-passkey", "passkey-action-confirm", "reauth-passkey", "reauth-confirm", "password-change-start", "password-change-submit", "password-change-cancel", "password-current", "password-new", "password-confirm"]) $(id).disabled = security.busy;
     $("passkey-name").disabled = $("passkey-rename").disabled = security.busy;
-    $("passkey-cancel").hidden = !pending && !security.busy && !security.flows.add && !security.retry;
+    // A password verification waits in the shared panel; Cancel change belongs to passkeys.
+    $("passkey-cancel").hidden = !pending && !security.busy && !security.flows.add && (!security.retry || security.retry === openPassword);
+    renderPassword();
   }
-  function verificationHint() {
-    return security.data?.terminal ? TERMINAL_HINT : security.data?.fresh === false ? FRESH_HINT : MFA_HINT;
+  function verificationHint(what) {
+    return hint(security.data?.terminal ? "terminal" : security.data?.fresh === false ? "fresh" : "mfa", what);
   }
   function canChange(kind) {
     const data = security.data;
@@ -455,9 +466,9 @@
       $("passkey-unavailable").hidden = RiAuth.passkeysAvailable();
       $("add-passkey").textContent = data.passkeys.length ? "Add another passkey" : "Add a passkey";
       securityStatus(data.passkeys.length ? `${data.passkeys.length} of ${data.limit} passkeys.${data.passkeys.length >= data.limit ? " Remove a passkey before adding another." : ""}` : "You have no passkeys yet.");
-      if (data.terminal) showReauth(TERMINAL_HINT);
-      else if (!data.fresh) showReauth(FRESH_HINT);
-      else if (data.passkeys.length ? !data.can_rename : !data.can_register) showReauth(MFA_HINT);
+      if (data.terminal) showReauth(hint("terminal"));
+      else if (!data.fresh) showReauth(hint("fresh"));
+      else if (data.passkeys.length ? !data.can_rename : !data.can_register) showReauth(hint("mfa"));
       else hideReauth();
       securityControls();
     } catch (error) {
@@ -466,13 +477,13 @@
       securityStatus(describe(error, "Couldn't load your passkeys. Close this dialog and try again."));
     }
   }
-  async function openSecurity(hint) {
+  async function openSecurity(kind) {
     if (!state.data) return;
     if (!$("security-dialog").open) $("security-dialog").showModal();
     $("security-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
     if (!$("passkey-name").value) $("passkey-name").value = navigator.userAgentData?.platform || "This device";
     securityControls(); await loadPasskeys();
-    if (hint && $("security-dialog").open) showReauth(hint);
+    if (kind && $("security-dialog").open) showReauth(hint(kind));
   }
   function factorChanged(message) {
     state.generation += 1; $("security-dialog").close();
@@ -483,7 +494,7 @@
   }
   function securityError(error, retry) {
     if (error.code === "reauthentication_required" || error.code === "mfa_required") {
-      security.retry = retry; showReauth(error.code === "mfa_required" ? MFA_HINT : FRESH_HINT); return;
+      security.retry = retry; showReauth(hint(error.code === "mfa_required" ? "mfa" : security.data?.terminal ? "terminal" : "fresh", "your passkeys")); return;
     }
     if (error.status === 401 || ["account_changed", "account_mismatch"].includes(error.code)) { refresh(); return; }
     if (error.name === "InvalidStateError") { securityStatus("This device already has a passkey for your account. Choose another device or security key."); return; }
@@ -498,7 +509,7 @@
     const add = security.flows.add, reauth = security.flows.reauth;
     security.flows.add = null; security.flows.name = null; security.retry = null; security.action = null;
     security.busy = false; security.run = null;
-    $("passkey-action").hidden = true; $("passkey-rename").value = ""; hideReauth();
+    $("passkey-action").hidden = true; $("passkey-rename").value = ""; hideReauth(); closePassword();
     securityControls();
     await Promise.all([add?.cancel(), reauth?.cancel()]);
     return true;
@@ -525,7 +536,7 @@
     }
     if (kind !== "add" && (!action || action.kind !== kind)) return;
     if (!canChange(kind)) {
-      security.retry = () => changePasskey(kind); showReauth(verificationHint()); securityControls(); return;
+      security.retry = () => changePasskey(kind); showReauth(verificationHint("your passkeys")); securityControls(); return;
     }
     const generation = security.generation, user = state.data.user.id, run = {};
     const current = () => generation === security.generation && user === state.data?.user.id;
@@ -555,6 +566,79 @@
       }
     } catch (error) { if (current()) securityError(error, () => changePasskey(kind)); }
     finally {
+      if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
+    }
+  }
+  // Password change. The form proves the current password; the server also requires this
+  // browser's own session and, once TOTP or a passkey is enrolled, MFA from the last five
+  // minutes. Password fields are cleared on every submit, close and page hide.
+  function clearPassword() {
+    for (const id of ["password-current", "password-new", "password-confirm"]) { $(id).value = ""; $(id).removeAttribute("aria-invalid"); }
+  }
+  function renderPassword() {
+    const data = security.data, local = data?.password === "local";
+    $("password-status").textContent = !data ? "" : local
+      ? "Changing your password signs you out everywhere. Your passkeys and authenticator app stay as they are."
+      : data.password === "directory"
+        ? "Your organization's directory manages your password. Change it there."
+        : "This account has no password here. It signs in with a passkey or another account.";
+    $("password-change-start").hidden = !local || security.passwordOpen;
+    $("password-change").hidden = !local || !security.passwordOpen;
+  }
+  function closePassword() {
+    security.passwordOpen = false; clearPassword(); $("password-error").hidden = true;
+    renderPassword();
+  }
+  function passwordProblem(id, message) {
+    if (id) $(id).setAttribute("aria-invalid", "true");
+    showError("password-error", message);
+  }
+  function openPassword() {
+    const data = security.data;
+    if (!data || data.password !== "local" || security.busy) return;
+    if (!data.can_change_password) {
+      security.retry = openPassword; showReauth(verificationHint("your password")); securityControls(); return;
+    }
+    if (security.retry === openPassword) { security.retry = null; hideReauth(); }
+    security.passwordOpen = true; $("password-error").hidden = true;
+    securityControls();
+    $("password-current").focus();
+  }
+  async function changePassword() {
+    if (security.busy || !state.data || !security.data || !security.passwordOpen) return;
+    const current = $("password-current").value, next = $("password-new").value, again = $("password-confirm").value;
+    $("password-error").hidden = true;
+    for (const id of ["password-current", "password-new", "password-confirm"]) $(id).removeAttribute("aria-invalid");
+    if (!current) { passwordProblem("password-current", "Enter your current password."); return; }
+    if (next.length < 12) { passwordProblem("password-new", "Use at least 12 characters for your new password."); return; }
+    if (next !== again) { passwordProblem("password-confirm", "Your new passwords do not match."); return; }
+    if (next === current) { passwordProblem("password-new", "Choose a new password that differs from your current one."); return; }
+    if (!security.data.can_change_password) { openPassword(); return; }
+    const generation = security.generation, user = state.data.user.id, run = {};
+    const live = () => generation === security.generation && user === state.data?.user.id;
+    clearPassword();
+    security.run = run; security.busy = true; security.committing = true; securityControls();
+    try {
+      // Not retried: a replay after a lost response would fail against the new password.
+      await RiAuth.post("api/portal/password", { current_password: current, password: next });
+      if (live()) factorChanged("Password changed. Sign in with your new password."); else await refresh();
+    } catch (error) {
+      if (!live()) return;
+      if (error.code === "reauthentication_required" || error.code === "mfa_required") {
+        security.retry = openPassword; security.passwordOpen = false;
+        showReauth(hint(error.code === "mfa_required" ? "mfa" : security.data?.terminal ? "terminal" : "fresh", "your password"));
+      } else if (error.code === "invalid_current_password") {
+        passwordProblem("password-current", "Your current password is incorrect. After several failed attempts, password sign-in pauses for 15 minutes.");
+      } else if (error.code === "password_unavailable") {
+        closePassword(); await loadPasskeys();
+      } else if (error.status === 401 || ["account_changed", "account_mismatch"].includes(error.code)) {
+        refresh();
+      } else if (error.status === 429) {
+        passwordProblem(null, "Too many attempts. Wait a few minutes before trying again.");
+      } else {
+        passwordProblem(null, describe(error, error.description || "Couldn't change your password. Try again."));
+      }
+    } finally {
       if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
     }
   }
@@ -598,6 +682,11 @@
     reauthenticate(password);
   });
   $("passkey-form").addEventListener("submit", (event) => { event.preventDefault(); changePasskey("add"); });
+  $("password-change-start").addEventListener("click", openPassword);
+  $("password-change").addEventListener("submit", (event) => { event.preventDefault(); changePassword(); });
+  $("password-change-cancel").addEventListener("click", () => { closePassword(); securityControls(); $("password-change-start").focus(); });
+  for (const id of ["password-current", "password-new", "password-confirm"]) $(id).addEventListener("input", () => $(id).removeAttribute("aria-invalid"));
+  window.addEventListener("pagehide", clearPassword);
   $("passkey-action").addEventListener("submit", (event) => { event.preventDefault(); if (security.action) changePasskey(security.action.kind); });
   $("passkey-cancel").addEventListener("click", async () => {
     if (await cancelChange()) { await loadPasskeys(); securityStatus("Change cancelled."); }
@@ -612,11 +701,11 @@
   });
   $("mfa-action").addEventListener("click", () => {
     if (!state.data) return;
-    if (!state.data.mfa_available || !RiAuth.passkeysAvailable()) { openSecurity(state.data.mfa_available ? MFA_HINT : null); return; }
+    if (!state.data.mfa_available || !RiAuth.passkeysAvailable()) { openSecurity(state.data.mfa_available ? "mfa" : null); return; }
     RiAuth.inFlight($("mfa-action"), async () => {
       try { await security.flows.reauth(); await refresh(); }
       catch (error) {
-        if (error.code === "no_passkey") openSecurity(MFA_HINT);
+        if (error.code === "no_passkey") openSecurity("mfa");
         else toast(describe(error, "Couldn't sign in with your passkey. Try again."));
       }
     });

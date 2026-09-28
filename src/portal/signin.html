@@ -38,6 +38,7 @@
         <div class="field"><label for="signin-otp">Authenticator or recovery code (if enabled)</label><input id="signin-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="signin-otp-hint"><p class="field-hint" id="signin-otp-hint">Leave empty if your account has no authenticator app.</p></div>
         <button class="button primary" id="signin-submit" type="submit">Sign in</button>
       </form>
+      <p class="auth-links"><a class="text-button" id="signin-forgot" href="__BASE__account/reset" target="_blank" rel="noopener noreferrer">Forgot your password? (opens in a new tab)</a></p>
       <details id="signin-terminal" class="terminal">
         <summary>Use your terminal instead</summary>
         <p class="terminal-help">Sign in with <code>riauth login</code> on this server, then run the command below. Approve only if your terminal shows this code: <strong id="signin-code"></strong></p>

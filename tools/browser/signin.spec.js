@@ -328,7 +328,7 @@ test('terminal approval from the sign-in page', async ({ page, context }) => {
   // A terminal approval can be phished, so this browser signs in itself before it may
   // change passkeys; the terminal session stays as it is.
   await page.locator('#account-security').click();
-  await expect(page.locator('#reauth-hint')).toHaveText("This browser uses your terminal's sign-in. Sign in here to change your passkeys.");
+  await expect(page.locator('#reauth-hint')).toHaveText("This browser uses your terminal's sign-in. Sign in here to change your password or passkeys.");
   await expect(page.locator('#reauth-panel')).toBeVisible();
   await page.locator('#reauth-password').fill(fixture.admin.password);
   await page.locator('#reauth-confirm').click();
@@ -390,7 +390,7 @@ test('passkey enrollment and passwordless sign-in', async ({ context }) => {
     'This engine build has no WebAuthn, so the pages hide their passkey buttons');
   await portalSignIn(page, user);
   await page.locator('#account-security').click();
-  await expect(page.getByRole('dialog', { name: 'Passkeys' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Sign-in and security' })).toBeVisible();
   await expect(page.locator('#security-status')).toHaveText('You have no passkeys yet.');
   await axe(page);
   await page.getByRole('button', { name: 'Add a passkey' }).click();

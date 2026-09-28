@@ -175,7 +175,7 @@ Raise limits when many staff share one public address (office NAT). An open sign
 | Queue | Permits | Used by | On timeout |
 | --- | ---: | --- | --- |
 | Workers | 8 | Every blocking handler and upstream source callbacks | 503, counted in `riauth_worker_rejections_total` |
-| Credentials | 4 | Password checks: `/api/login`, `/api/password`, `/api/portal/login/password`, interaction `…/password`; taken before a worker | 503 (in `riauth_server_errors_total`) |
+| Credentials | 4 | Password checks: `/api/login`, `/api/password`, `/api/portal/login/password`, `/api/portal/password`, `/api/portal/account/{accept,verify,reset}`, interaction `…/password`; taken before a worker | 503 (in `riauth_server_errors_total`) |
 | Forward auth | 16 | `/outpost/{id}/auth` and `/outpost/{id}/traefik`, instead of a worker | 503 (in `riauth_server_errors_total`) |
 
 A password check keeps its credential and worker permits until it finishes, even when the client disconnects first, so password hashing never occupies more than half the workers, and forward-auth checks never wait behind sign-ins. Occasional 503s during a morning sign-in rush mean the node is CPU-bound on Argon2: the portal and sign-in page retry idempotent reads, but never resubmit a password. Add CPU or nodes, or spread load, rather than raising limits.

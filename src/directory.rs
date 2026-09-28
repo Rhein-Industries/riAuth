@@ -1134,6 +1134,11 @@ fn membership(
     }
     Ok(changed)
 }
+/// The imported directory verifies and changes this account's password, even when its
+/// configuration has since been removed.
+pub(crate) fn manages(tx: &Tx<'_>, user_id: &str) -> Result<bool> {
+    Ok(tx.get::<Binding>("directory_users", user_id)?.is_some())
+}
 pub(crate) fn validate_identity(core: &Core, tx: &Tx<'_>, identity: &Identity) -> Result<()> {
     let binding = tx.get::<Binding>("directory_users", &identity.user_id)?;
     if let Some(binding) = binding {

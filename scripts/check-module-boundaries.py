@@ -27,7 +27,7 @@ PROTOCOL = {
     "assurance", "authenticator", "authorization", "browser", "claims",
     "cloud_directory", "device_trust", "directory", "dpop", "event_map",
     "exchange", "issuer", "jose", "keyring", "ldap_server", "logout",
-    "mtls", "oidc", "outpost", "pam", "passkey",
+    "mtls", "oidc", "outpost", "pam", "passkey", "password",
     "portal", "provider", "proxy_server", "radius", "response", "saml",
     "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
 }

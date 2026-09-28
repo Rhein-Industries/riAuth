@@ -486,15 +486,22 @@ impl Core {
                 user.totp_secret.is_some() || user.has_passkeys,
                 session.identity.mfa,
             );
+            let fresh = now().saturating_sub(session.identity.auth_time) <= FRESH_SECONDS;
+            let password = crate::password::Kind::of(tx, &user)?;
             Ok(json!({
                 "user_id": user.id,
                 "can_register": !terminal && passkeys.len() < PASSKEY_LIMIT && (!factor || mfa),
                 "passkeys": passkeys,
-                "fresh": now().saturating_sub(session.identity.auth_time) <= FRESH_SECONDS,
+                "fresh": fresh,
                 "terminal": terminal,
                 "mfa": mfa, "can_remove": !terminal && mfa, "limit": PASSKEY_LIMIT,
                 "can_rename": !terminal && mfa,
-                "password_available": password_available, "passkey_only": !password_available
+                "password_available": password_available, "passkey_only": !password_available,
+                // The change form itself proves the current password; enrolled factors
+                // also need this session's recent MFA.
+                "password": password.name(),
+                "can_change_password": password == crate::password::Kind::Local
+                    && !terminal && (!factor || mfa && fresh)
             }))
         })
     }
@@ -574,6 +581,60 @@ impl Core {
         })
     }
 
+    /// Changes the local password from this browser's own session. The request proves
+    /// the current password again; with TOTP or a passkey enrolled, the session also needs
+    /// MFA from the last five minutes. Every session and grant ends, including this
+    /// browser's, and enrolled factors stay as they are.
+    pub fn portal_password_change(
+        &self,
+        sso: Option<&str>,
+        current: String,
+        password: String,
+    ) -> Result<BrowserReply> {
+        let current = zeroize::Zeroizing::new(current);
+        let password = zeroize::Zeroizing::new(password);
+        if current.len() > 1024 {
+            return Err(Error::bad("Password or code is too long"));
+        }
+        let eligible = |tx: &Tx<'_>| {
+            let (user, session) = self.portal_factor_session(tx, sso)?;
+            crate::password::require_local(tx, &user)?;
+            crate::password::require_fresh_mfa(&user, &session, false)?;
+            Ok((user, session))
+        };
+        // Refuse cheaply before hashing; the write below checks everything again.
+        self.store.read(|tx| eligible(tx).map(drop))?;
+        let hash = crypto::password_hash(&password)?;
+        let mut verified: Option<(String, bool)> = None;
+        // Hashing runs outside the writer; a failed check still commits its lockout count.
+        self.store.prepared_write(|tx| {
+            let (mut user, _) = eligible(tx)?;
+            if let Err(locked) = crate::password::unlocked(tx, &user)? {
+                return Ok(Err(locked));
+            }
+            if verified
+                .as_ref()
+                .is_none_or(|(checked, _)| checked != &user.password_hash)
+            {
+                let _timer = self.store.telemetry().password.timer();
+                let matches = crypto::password_matches(&current, &user.password_hash);
+                verified = Some((user.password_hash.clone(), matches));
+            }
+            if !verified.as_ref().is_some_and(|(_, matches)| *matches) {
+                return Ok(Err(crate::password::record_failure(tx, &user)?));
+            }
+            crate::password::replace(
+                tx,
+                self.config.password_history,
+                &mut user,
+                &password,
+                hash.clone(),
+            )?;
+            self.portal_factor_changed(tx, sso, json!({"changed":true,"sessions_revoked":true}))
+                .map(Ok)
+        })?
+    }
+
     /// The browser session behind the SSO cookie, never a bearer token, and its user.
     pub(crate) fn portal_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
         let session = self
@@ -583,15 +644,15 @@ impl Core {
     }
 
     /// A browser that collected a terminal approval shares that terminal session, and an
-    /// approval can be phished. Changing factors needs this browser's own sign-in: the
-    /// re-authentication this 403 asks for gives the browser a session of its own.
+    /// approval can be phished. Changing the password or factors needs this browser's own
+    /// sign-in: the re-authentication this 403 asks for gives it a session of its own.
     fn portal_factor_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
         let (user, session) = self.portal_session(tx, sso)?;
         if bearer_backed(tx, &session)? {
             return Err(Error::new(
                 axum::http::StatusCode::FORBIDDEN,
                 "reauthentication_required",
-                "This browser uses your terminal's sign-in. Sign in here before changing your passkeys.",
+                "This browser uses your terminal's sign-in. Sign in here before changing your password or passkeys.",
             ));
         }
         Ok((user, session))

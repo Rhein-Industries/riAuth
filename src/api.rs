@@ -705,6 +705,7 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         "/api/login"
         | "/api/login/certificate"
         | "/api/password"
+        | "/api/portal/password"
         | "/api/source-login/finish"
         | "/api/windows-devices/login"
         | "/api/windows-devices/tickets/redeem"

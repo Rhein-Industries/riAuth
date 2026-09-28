@@ -1,3 +1,28 @@
+# Unreleased browser password change and recovery (U04)
+
+- The applications portal's **Sign-in and security** dialog (formerly **Passkeys
+  and security**) can change a local password. It asks for the current password,
+  needs the browser's own sign-in and, when TOTP or a passkey is enrolled, an MFA
+  sign-in from the last five minutes. A wrong current password counts toward the
+  sign-in lockout. The change keeps every factor and signs the account out
+  everywhere. See [account lifecycle](lifecycle.md#change-or-reset-a-password-in-the-browser).
+- **Forgot your password?** on the sign-in pages opens `/account/reset`, which
+  requests a reset link and completes it. Reset emails now include a browser
+  link that carries the one-use code in its fragment, so mail scanners cannot
+  spend it. Completion never signs the browser in and keeps every factor.
+- Directory-managed accounts no longer receive reset links, and neither a reset
+  nor `/api/password` (`riauth passwd`) can store a local password on them; the
+  API answers 409 `password_unavailable` before asking the directory. A reset
+  link issued before an account became directory-managed or passwordless is
+  refused.
+- `/api/password` now also requires an MFA session from the last five minutes
+  when the account's only factor is a passkey (sign in with
+  `riauth passkey login NAME` first). Accounts with TOTP keep supplying the code
+  in `RIAUTH_OTP`. A successful change now also clears a password lockout.
+- Account pages (`/account/accept`, `/account/verify`, `/account/reset`) now
+  start over when a newer emailed link is opened in the same tab, and show
+  their errors in the error color.
+
 # Unreleased Essentials and Platform assembly
 
 - Added explicit additive `essentials` and `platform` Cargo features. The draft

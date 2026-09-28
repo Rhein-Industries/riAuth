@@ -1999,7 +1999,7 @@ async fn portal_passkey_list_reports_freshness_and_limits() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         data,
-        json!({"user_id":f.user_id("alice"),"passkeys":[],"fresh":true,"terminal":false,"mfa":false,"can_register":true,"can_rename":false,"can_remove":false,"password_available":true,"passkey_only":false,"limit":16})
+        json!({"user_id":f.user_id("alice"),"passkeys":[],"fresh":true,"terminal":false,"mfa":false,"can_register":true,"can_rename":false,"can_remove":false,"password_available":true,"passkey_only":false,"limit":16,"password":"local","can_change_password":true})
     );
     f.age(&f.sid(&sso), 301);
     assert_eq!(list(&sso).await.2["fresh"], false);
