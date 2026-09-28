@@ -933,6 +933,7 @@ fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Resul
 }
 
 fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Result<Vec<Entry>> {
+    let mut linked = BTreeMap::new();
     for (_, binding) in tx.list::<Binding>("cloud_directory_bindings")? {
         if binding.kind == settings.kind && binding.directory == settings.id {
             if binding.identity_fingerprint != settings.identity_fingerprint {
@@ -940,19 +941,24 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
                     "Cloud directory identity mapping changed while accounts are linked; use a new directory ID",
                 ));
             }
-            let _ = tx
+            let user = tx
                 .get::<User>("users", &binding.user_id)?
                 .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
+            linked.insert(binding.external_id, user.username);
         }
     }
     let mut entries = Vec::new();
     let mut names = BTreeSet::new();
     for user in users {
-        let username = derive_username(
-            &settings.username_prefix,
-            user.email.as_deref(),
-            &user.external_id,
-        )?;
+        let username = if let Some(username) = linked.get(&user.external_id) {
+            username.clone()
+        } else {
+            derive_username(
+                &settings.username_prefix,
+                user.email.as_deref(),
+                &user.external_id,
+            )?
+        };
         if !names.insert(username.clone()) {
             return Err(Error::conflict(
                 "Cloud directory snapshot contains duplicate usernames",
@@ -1082,8 +1088,15 @@ fn reconcile(
             external_id: &entry.external_id,
         };
         let mut user = if let Some(binding) = &old {
-            tx.get::<User>("users", &binding.user_id)?
-                .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?
+            let user = tx
+                .get::<User>("users", &binding.user_id)?
+                .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
+            if user.username != entry.username {
+                return Err(Error::conflict(
+                    "Linked cloud directory username changed; create a new plan",
+                ));
+            }
+            user
         } else {
             User {
                 has_passkeys: false,
@@ -1123,7 +1136,6 @@ fn reconcile(
             membership(tx, actor, &user.id, &allow, &previous_groups, &entry.groups)?;
         let email_changed = user.email != entry.email;
         let display_changed = user.display_name != entry.display_name;
-        let username_changed = user.username != entry.username;
         let enabling = !entry.disabled && !user.enabled;
         let disabling = entry.disabled && user.enabled;
         if email_changed {
@@ -1133,25 +1145,17 @@ fn reconcile(
         if display_changed {
             user.display_name = entry.display_name.clone();
         }
-        if username_changed {
-            user.username = entry.username.clone();
-        }
         if disabling {
             user.enabled = false;
         } else if enabling {
             user.enabled = true;
         }
-        let security = !is_new && (username_changed || email_changed || disabling);
+        let security = !is_new && (email_changed || disabling);
         if security {
             user.epoch = user.epoch.saturating_add(1);
         }
-        let changed = is_new
-            || username_changed
-            || email_changed
-            || display_changed
-            || disabling
-            || enabling
-            || groups_changed;
+        let changed =
+            is_new || email_changed || display_changed || disabling || enabling || groups_changed;
         if changed {
             crate::management::write_cloud_user(
                 tx,

@@ -451,7 +451,7 @@ pub(crate) fn stage_directory_user(
 }
 
 /// Persist a prepared user from direct, desired-state, LDAP or cloud import.
-/// Connectors may rename only the user owned by their stable external binding.
+/// LDAP may rename a bound user; cloud identities keep their first local name.
 /// Every path rechecks exact authority and the local ID/index before writing.
 /// A plan emits its reconciliation audit after its reviewed change set matches.
 fn write_user_record(
@@ -473,10 +473,6 @@ fn write_user_record(
     };
     #[cfg(not(feature = "platform"))]
     let cloud_owner: Option<()> = None;
-    #[cfg(feature = "platform")]
-    let cloud_disable = matches!(&record, UserRecord::CloudDisable(_, _));
-    #[cfg(not(feature = "platform"))]
-    let cloud_disable = false;
     if let Some(owner) = directory_owner {
         actor.require("directory.sync", &format!("directory/{}", owner.directory))?;
     }
@@ -530,9 +526,7 @@ fn write_user_record(
             UserRecord::CloudSync(_, true) | UserRecord::CloudDisable(_, true)
         );
         if let Some(previous) = existing {
-            let sensitive = previous.username != user.username
-                || previous.email != user.email
-                || previous.enabled && !user.enabled;
+            let sensitive = previous.email != user.email || previous.enabled && !user.enabled;
             if sensitive != revoke || user.epoch != previous.epoch.saturating_add(u64::from(revoke))
             {
                 return Err(Error::conflict(
@@ -548,10 +542,8 @@ fn write_user_record(
     match (existing, directory_owner) {
         (Some(previous), owner) => {
             if previous.id != user.id
-                || owner.is_none() && cloud_owner.is_none() && previous.username != user.username
-                || matches!(&record, UserRecord::DirectoryDisable(_))
+                || (owner.is_none() || matches!(&record, UserRecord::DirectoryDisable(_)))
                     && previous.username != user.username
-                || cloud_disable && previous.username != user.username
             {
                 return Err(Error::conflict("User identity is immutable"));
             }
@@ -629,18 +621,8 @@ fn write_user_record(
             crate::logout::queue_user(tx, &user.id)?;
         }
     }
-    #[cfg(feature = "platform")]
-    if let Some(previous) =
-        existing.filter(|previous| cloud_owner.is_some() && previous.username != user.username)
-    {
-        tx.delete("usernames", &previous.username)?;
-    }
     tx.put("users", &user.id, user)?;
-    if existing.is_none()
-        || matches!(&record, UserRecord::Plan | UserRecord::DirectorySync(_))
-        || cloud_owner.is_some()
-            && existing.is_some_and(|previous| previous.username != user.username)
-    {
+    if existing.is_none() || matches!(&record, UserRecord::Plan | UserRecord::DirectorySync(_)) {
         tx.put("usernames", &user.username, &user.id)?;
     }
     if !directory_sync
