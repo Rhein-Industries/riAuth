@@ -119,11 +119,13 @@
   binding is matched to its application through `target`. In `any` mode,
   groups become `allowed_groups`, or users become the `users` list. In `all`
   mode, or for a single binding, groups become required groups, a user the
-  `users` list, and negated groups and users become denied ones. Policy
-  expressions, expiring bindings, unconverted groups or accounts, several
-  users in `all` mode, alternatives riAuth cannot combine, and unknown modes
-  block until reviewed. A client that would admit every user its Authentik
-  bindings restricted also blocks.
+  `users` list, and negated groups and users become denied ones. An `any`-mode
+  alternative riAuth cannot combine blocks until acknowledged in
+  `translated_binding_ids`, which accepts narrower access. Acknowledgement
+  never clears the rest, which always blocks: required conditions that do not
+  convert, several users in `all` mode, unknown or missing engine modes, `any`
+  modes where nothing converts, and user lists with nothing in common. A client
+  that would admit every user its Authentik bindings restricted also blocks.
 
 # Unreleased dependency refresh
 

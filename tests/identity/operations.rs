@@ -1261,20 +1261,42 @@ fn authentik_application_bindings_convert_exactly_or_block() {
         json!({"pk":pk,"uid":format!("uid-{pk}"),"username":username,"name":username,"groups":groups,
             "attributes":{},"type":kind,"is_active":true,"roles":[]})
     };
-    // (slug, policy_engine_mode, translated binding IDs)
-    let apps: [(&str, Value, &[&str]); 12] = [
-        ("wiki", json!("any"), &[]),
-        ("vault", json!("all"), &[]),
-        ("lab", json!("all"), &[]),
-        ("payroll", json!("any"), &[]),
-        ("kiosk", json!("any"), &[]),
-        ("desk", json!("any"), &[]),
-        ("admin", json!("all"), &[]),
-        ("chat", json!("any"), &[]),
-        ("notes", json!("all"), &["notes-policy"]),
-        ("docs", json!("any"), &[]),
-        ("mystery", json!("first_match"), &[]),
-        ("hr", Value::Null, &[]),
+    // (slug, policy_engine_mode, acknowledged binding IDs, reviewed settings.policy.access)
+    let apps: [(&str, Value, &[&str], Value); 15] = [
+        ("wiki", json!("any"), &[], json!({})),
+        ("vault", json!("all"), &[], json!({})),
+        ("lab", json!("all"), &[], json!({})),
+        ("payroll", json!("any"), &[], json!({})),
+        ("kiosk", json!("any"), &[], json!({})),
+        ("desk", json!("any"), &[], json!({})),
+        // Acknowledging an any-mode alternative accepts narrower access.
+        ("chat", json!("any"), &["chat-bob", "chat-ops"], json!({})),
+        ("admin", json!("all"), &[], json!({})),
+        ("docs", json!("any"), &[], json!({})),
+        ("hr", Value::Null, &[], json!({})),
+        // Adversarial: acknowledgements and reviewed restrictions never clear a condition
+        // riAuth cannot keep: disjoint user lists, several users in all mode, an unknown mode,
+        // and required expression or expiring conditions.
+        (
+            "roster",
+            json!("any"),
+            &["roster-alice"],
+            json!({"users":["bob"]}),
+        ),
+        ("pair", json!("all"), &["pair-alice", "pair-bob"], json!({})),
+        (
+            "mystery",
+            json!("first_match"),
+            &["mystery-staff"],
+            json!({"any_groups":["staff"]}),
+        ),
+        ("notes", json!("all"), &["notes-policy"], json!({})),
+        (
+            "timed",
+            json!("any"),
+            &["timed-staff"],
+            json!({"all_groups":["staff"]}),
+        ),
     ];
     let binding = |pk: &str, fields: Value| {
         let slug = pk.split('-').next().unwrap();
@@ -1302,27 +1324,34 @@ fn authentik_application_bindings_convert_exactly_or_block() {
         // Any mode without groups: positive users become the users allow-list.
         binding("desk-carol", json!({"user":3})),
         binding("desk-dave", json!({"user":4})),
-        // Nobody is two users at once.
-        binding("admin-alice", json!({"user":1})),
-        binding("admin-bob", json!({"user":2})),
-        // Alternatives riAuth cannot OR with the converted groups narrow access and block.
+        // Alternatives riAuth cannot OR with the converted groups narrow access once acknowledged.
         binding("chat-staff", json!({"group":"g-staff"})),
         binding("chat-bob", json!({"user":2})),
         binding("chat-ops", json!({"group":"g-ops","negate":true})),
-        // A reviewed expression beside a converted required group.
-        binding("notes-staff", json!({"group":"g-staff"})),
-        binding("notes-policy", json!({"policy":"policy-uuid"})),
-        // Expiring, excluded-group and unconverted-user bindings never convert.
+        // Nobody is two users at once, so Authentik admits no one.
+        binding("admin-alice", json!({"user":1})),
+        binding("admin-bob", json!({"user":2})),
+        // No alternative converts, so leaving these out could not narrow access.
         binding(
             "docs-expiring",
             json!({"group":"g-staff","expiring":true,"expires":"2030-01-01T00:00:00Z"}),
         ),
         binding("docs-admins", json!({"group":"g-admins"})),
         binding("docs-outpost", json!({"user":5})),
-        // An unknown mode admits no one in Authentik; without a mode, bindings cannot combine.
-        binding("mystery-staff", json!({"group":"g-staff"})),
+        // Without a mode, several bindings cannot be combined.
         binding("hr-staff", json!({"group":"g-staff"})),
         binding("hr-ops", json!({"group":"g-ops"})),
+        binding("roster-alice", json!({"user":1})),
+        binding("pair-staff", json!({"group":"g-staff"})),
+        binding("pair-alice", json!({"user":1})),
+        binding("pair-bob", json!({"user":2})),
+        binding("mystery-staff", json!({"group":"g-staff"})),
+        binding("notes-staff", json!({"group":"g-staff"})),
+        binding("notes-policy", json!({"policy":"policy-uuid"})),
+        binding(
+            "timed-staff",
+            json!({"group":"g-staff","expiring":true,"expires":"2030-01-01T00:00:00Z"}),
+        ),
     ];
     let bundle = |slugs: &[&str]| {
         let chosen = apps
@@ -1339,15 +1368,15 @@ fn authentik_application_bindings_convert_exactly_or_block() {
             "providers":chosen.clone().map(|(i, (slug, ..))| json!({"pk":i + 1,"name":slug,"client_id":slug,"client_type":"public",
                 "grant_types":["authorization_code"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],
                 "property_mappings":[],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true})).collect::<Vec<_>>(),
-            "applications":chosen.clone().map(|(i, (slug, mode, _))| json!({"pk":format!("app-{slug}"),"slug":slug,"provider":i + 1,
+            "applications":chosen.clone().map(|(i, (slug, mode, ..))| json!({"pk":format!("app-{slug}"),"slug":slug,"provider":i + 1,
                 "name":slug,"policy_engine_mode":mode})).collect::<Vec<_>>(),
             "policy_bindings":bindings.iter().filter(|b| slugs.contains(&b["target"].as_str().unwrap().trim_start_matches("app-"))).collect::<Vec<_>>(),
             "sources":[],
             "passwords":{"alice":{"reference":"env:ALICE","version":"v1"},"bob":{"reference":"env:BOB","version":"v1"},
                 "carol":{"reference":"env:CAROL","version":"v1"},"dave":{"reference":"env:DAVE","version":"v1"}},
-            "clients":chosen.map(|(_, (slug, _, translated))| (slug.to_string(), json!({"issuer":format!("{issuer}/application/o/{slug}/"),
-                "scopes":["openid","profile"],"settings":{},"translated_mapping_ids":[],"translated_binding_ids":translated,
-                "authentication_flow_reviewed":true,"require_mfa":false}))).collect::<serde_json::Map<_, _>>()})
+            "clients":chosen.map(|(_, (slug, _, acknowledged, access))| (slug.to_string(), json!({"issuer":format!("{issuer}/application/o/{slug}/"),
+                "scopes":["openid","profile"],"settings":{"policy":{"access":access}},"translated_mapping_ids":[],
+                "translated_binding_ids":acknowledged,"authentication_flow_reviewed":true,"require_mfa":false}))).collect::<serde_json::Map<_, _>>()})
     };
     let convert =
         |input: Value| riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap();
@@ -1367,30 +1396,52 @@ fn authentik_application_bindings_convert_exactly_or_block() {
         ("kiosk-ops", (Convertible, false)),
         ("desk-carol", (Convertible, false)),
         ("desk-dave", (Convertible, false)),
-        ("admin-alice", (Manual, true)),
-        ("admin-bob", (Manual, true)),
         ("chat-staff", (Convertible, false)),
-        ("chat-bob", (Manual, true)),
-        ("chat-ops", (Manual, true)),
+        ("chat-bob", (Manual, false)),
+        ("chat-ops", (Manual, false)),
+        ("admin-alice", (Unsupported, true)),
+        ("admin-bob", (Unsupported, true)),
+        ("docs-expiring", (Unsupported, true)),
+        ("docs-admins", (Unsupported, true)),
+        ("docs-outpost", (Unsupported, true)),
+        ("hr-staff", (Unsupported, true)),
+        ("hr-ops", (Unsupported, true)),
+        ("roster-alice", (Unsupported, true)),
+        ("pair-staff", (Convertible, false)),
+        ("pair-alice", (Unsupported, true)),
+        ("pair-bob", (Unsupported, true)),
+        ("mystery-staff", (Unsupported, true)),
         ("notes-staff", (Convertible, false)),
-        ("notes-policy", (Manual, false)),
-        ("docs-expiring", (Manual, true)),
-        ("docs-admins", (Manual, true)),
-        ("docs-outpost", (Manual, true)),
-        ("mystery-staff", (Manual, true)),
-        ("hr-staff", (Manual, true)),
-        ("hr-ops", (Manual, true)),
+        ("notes-policy", (Unsupported, true)),
+        ("timed-staff", (Unsupported, true)),
     ] {
         assert_eq!(findings(&report, PolicyBinding, id), [expected], "{id}");
     }
-    // A client its bindings restricted, but which would admit every user, blocks as well.
-    for (slug, _, _) in &apps {
-        let guarded = findings(&report, Application, slug).contains(&(Manual, true));
-        assert_eq!(
-            guarded,
-            ["admin", "docs", "mystery", "hr"].contains(slug),
-            "{slug}"
+    // Acknowledged or not, a condition riAuth cannot keep stays a blocker.
+    for id in [
+        "roster-alice",
+        "pair-alice",
+        "pair-bob",
+        "mystery-staff",
+        "notes-policy",
+        "timed-staff",
+    ] {
+        let slug = id.split('-').next().unwrap();
+        let blocker = format!(
+            "{slug}: application binding {id} cannot be kept exactly and blocks until changed in Authentik"
         );
+        assert!(
+            report["blockers"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(blocker)),
+            "{blocker}"
+        );
+    }
+    // A client its bindings restricted, but which would admit every user, blocks as well.
+    for (slug, ..) in &apps {
+        let guarded = findings(&report, Application, slug).contains(&(Manual, true));
+        assert_eq!(guarded, ["admin", "docs", "hr"].contains(slug), "{slug}");
     }
     let access = |report: &Value, cid: &str| {
         let client = report["draft"]["clients"]
@@ -1453,24 +1504,21 @@ fn authentik_application_bindings_convert_exactly_or_block() {
             ],
         ),
         (
-            "admin",
-            [json!([]), json!([]), json!([]), json!([]), json!([])],
-        ),
-        (
             "chat",
             [json!(["staff"]), json!([]), json!([]), json!([]), json!([])],
         ),
         (
-            "notes",
-            [json!([]), json!(["staff"]), json!([]), json!([]), json!([])],
+            "admin",
+            [json!([]), json!([]), json!([]), json!([]), json!([])],
         ),
     ] {
         assert_eq!(access(&report, cid), expected, "{cid}");
     }
 
-    // The exactly converted applications plan and apply, and admit exactly whom Authentik did.
+    // The exactly converted applications plan and apply, and admit exactly whom Authentik did;
+    // the acknowledged chat alternatives only narrow it to staff.
     let report = convert(bundle(&[
-        "wiki", "vault", "lab", "payroll", "kiosk", "desk",
+        "wiki", "vault", "lab", "payroll", "kiosk", "desk", "chat",
     ]));
     assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
     let plan = f
@@ -1510,6 +1558,8 @@ fn authentik_application_bindings_convert_exactly_or_block() {
         ("payroll", &["dave"]),
         ("kiosk", &["alice", "carol", "dave"]),
         ("desk", &["carol", "dave"]),
+        // Authentik also admitted Dave, who is not in ops; the narrowed client refuses him.
+        ("chat", &["alice", "bob", "carol"]),
     ] {
         for (username, session) in &sessions {
             let mut request = f.request(cid, &crypto::random_token(""));

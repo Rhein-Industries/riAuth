@@ -682,14 +682,14 @@ fn application_access(
     // Every condition is required in `all` mode and for a single binding; one suffices in `any`.
     // Authentik admits no one under a mode it does not know, so that never converts.
     let required = match application["policy_engine_mode"].as_str() {
-        Some(other) if other != "all" && other != "any" => {
-            Err(format!("Policy engine mode {other} is not recognized"))
-        }
+        Some(other) if other != "all" && other != "any" => Err(format!(
+            "Policy engine mode {other} is not recognized, and Authentik admits no one under it"
+        )),
         _ if enabled.len() == 1 => Ok(true),
         Some("all") => Ok(true),
         Some("any") => Ok(false),
         _ => Err(
-            "The export has no policy_engine_mode, so several bindings cannot be combined"
+            "The export has no policy_engine_mode, so how several bindings combine is unknown"
                 .to_owned(),
         ),
     };
@@ -708,63 +708,77 @@ fn application_access(
         Condition::Group(name) => Some(name),
         _ => None,
     });
-    let mut converted_users = BTreeSet::new();
+    // Only an `any`-mode alternative may be left out on acknowledgement, and only while a
+    // converted alternative still restricts access, so riAuth admits a subset of Authentik's
+    // users. A required, impossible or unknown condition is never left out.
+    enum Outcome {
+        Converted(String, Condition, bool),
+        Narrows(String),
+        Impossible(String),
+    }
     let mut outcomes = Vec::new();
     for (id, condition) in conditions {
         let outcome = match (condition, &required) {
-            (Err(reason), _) => Err(reason),
-            (Ok(_), Err(reason)) => Err(reason.clone()),
+            (_, Err(reason)) => Outcome::Impossible(reason.clone()),
+            (Err(reason), Ok(true)) => Outcome::Impossible(format!(
+                "{reason}; it is a required condition, so leaving it out would admit users Authentik refused"
+            )),
+            (Err(reason), Ok(false)) => Outcome::Narrows(reason),
             // A lone required group keeps the any-of `allowed_groups` of a single binding.
-            (Ok(Condition::Group(name)), Ok(true)) if enabled.len() == 1 => Ok((
+            (Ok(Condition::Group(name)), Ok(true)) if enabled.len() == 1 => Outcome::Converted(
                 format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
                 Condition::Group(name),
                 false,
-            )),
-            (Ok(Condition::Group(name)), Ok(true)) => Ok((
+            ),
+            (Ok(Condition::Group(name)), Ok(true)) => Outcome::Converted(
                 format!("The group binding becomes required group {name} in settings.policy.access.all_groups; members of it and of every group below it pass, as in Authentik"),
                 Condition::Group(name),
                 true,
-            )),
-            (Ok(Condition::NotGroup(name)), Ok(true)) => Ok((
+            ),
+            (Ok(Condition::NotGroup(name)), Ok(true)) => Outcome::Converted(
                 format!("The negated group binding becomes denied group {name} in settings.policy.access.denied_groups; members of it and of every group below it are refused, as in Authentik"),
                 Condition::NotGroup(name),
                 true,
-            )),
-            (Ok(Condition::User(_)), Ok(true)) if users > 1 => Err(
-                "In all mode a user must be every bound user at once, which riAuth cannot express"
+            ),
+            (Ok(Condition::User(_)), Ok(true)) if users > 1 => Outcome::Impossible(
+                "In all mode a user must be every bound user at once, so Authentik admits no one"
                     .to_owned(),
             ),
-            (Ok(Condition::User(name)), Ok(true)) => Ok((
+            (Ok(Condition::User(name)), Ok(true)) => Outcome::Converted(
                 format!("The user binding admits only {name} through settings.policy.access.users, as in Authentik"),
                 Condition::User(name),
                 true,
-            )),
-            (Ok(Condition::NotUser(name)), Ok(true)) => Ok((
+            ),
+            (Ok(Condition::NotUser(name)), Ok(true)) => Outcome::Converted(
                 format!("The negated user binding refuses {name} through settings.policy.access.denied_users, as in Authentik"),
                 Condition::NotUser(name),
                 true,
-            )),
+            ),
             // In `any` mode one any-of list survives: the groups, or else the users.
-            (Ok(Condition::Group(name)), Ok(false)) => Ok((
+            (Ok(Condition::Group(name)), Ok(false)) => Outcome::Converted(
                 format!("The group binding becomes allowed group {name}; members of it and of every group below it keep access, as in Authentik"),
                 Condition::Group(name),
                 false,
-            )),
-            (Ok(Condition::User(name)), Ok(false)) if groups == 0 => Ok((
+            ),
+            (Ok(Condition::User(name)), Ok(false)) if groups == 0 => Outcome::Converted(
                 format!("The user binding admits {name} as one of the users in settings.policy.access.users, as in Authentik"),
                 Condition::User(name),
                 false,
-            )),
-            (Ok(_), Ok(false)) => Err(
+            ),
+            (Ok(_), Ok(false)) => Outcome::Narrows(
                 "In any mode this binding is an alternative riAuth cannot combine with the converted ones"
                     .to_owned(),
             ),
         };
-        if let Ok((_, Condition::User(name), _)) = &outcome {
-            converted_users.insert(name.clone());
-        }
         outcomes.push((id, outcome));
     }
+    let converted_users = outcomes
+        .iter()
+        .filter_map(|(_, outcome)| match outcome {
+            Outcome::Converted(_, Condition::User(name), _) => Some(name.clone()),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
     // riAuth keeps one users allow-list, so reviewed and converted lists must both hold.
     let admitted = if rule.users.is_empty() {
         converted_users.clone()
@@ -773,15 +787,28 @@ fn application_access(
     } else {
         rule.users.intersection(&converted_users).cloned().collect()
     };
+    let alternative_kept = matches!(required, Ok(false))
+        && (groups > 0 || converted_users.iter().any(|name| admitted.contains(name)));
     for (id, outcome) in outcomes {
         let outcome = match outcome {
-            Ok((_, Condition::User(name), _)) if !admitted.contains(&name) => Err(format!(
-                "The reviewed settings.policy.access.users does not admit {name}, and riAuth keeps only the users both lists admit"
+            Outcome::Converted(_, Condition::User(name), _) if !admitted.contains(&name) => {
+                if alternative_kept {
+                    Outcome::Narrows(format!(
+                        "The reviewed settings.policy.access.users does not admit {name}, and riAuth keeps only the users both lists admit"
+                    ))
+                } else {
+                    Outcome::Impossible(format!(
+                        "The reviewed settings.policy.access.users does not admit {name}, so no user Authentik admitted through these bindings could pass"
+                    ))
+                }
+            }
+            Outcome::Narrows(reason) if !alternative_kept => Outcome::Impossible(format!(
+                "{reason}; no alternative of this application converts, so leaving it out cannot narrow access"
             )),
             outcome => outcome,
         };
         match outcome {
-            Ok((reason, condition, required_group)) => {
+            Outcome::Converted(reason, condition, required_group) => {
                 match condition {
                     Condition::Group(name) if required_group => {
                         rule.all_groups.insert(name);
@@ -805,18 +832,21 @@ fn application_access(
                     "Review the client's converted access conditions",
                 );
             }
-            Err(reason) => {
+            Outcome::Narrows(reason) => {
                 let item = p.add(ItemKind::PolicyBinding, id, Classification::Manual, reason,
-                    if matches!(required, Ok(false)) {
-                        "Translate it into reviewed settings.policy rules and list its ID in translated_binding_ids; in any mode leaving it out narrows access to the converted alternatives"
-                    } else {
-                        "Translate it exactly into reviewed settings.policy rules and list its ID in translated_binding_ids; leaving a required condition out would admit users Authentik refused"
-                    });
+                    "List its ID in translated_binding_ids to accept narrower access; the converted alternatives still restrict who is admitted");
                 if !resolution.translated_binding_ids.contains(id) {
                     item.block(format!(
                         "{cid}: application binding {id} cannot be converted exactly and needs a reviewed translation"
                     ));
                 }
+            }
+            Outcome::Impossible(reason) => {
+                p.add(ItemKind::PolicyBinding, id, Classification::Unsupported, reason,
+                    "Replace it in Authentik with group or user bindings riAuth expresses exactly, or remove it, and export again; translated_binding_ids cannot clear it")
+                    .block(format!(
+                        "{cid}: application binding {id} cannot be kept exactly and blocks until changed in Authentik"
+                    ));
             }
         }
     }
