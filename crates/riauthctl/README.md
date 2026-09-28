@@ -13,6 +13,8 @@ riauthctl --server https://id.example.com inventory users --limit 100
 riauthctl --server https://id.example.com user list
 riauthctl --server https://id.example.com group list
 riauthctl --server https://id.example.com client list
+riauthctl --server https://id.example.com request inspect CODE
+riauthctl --server https://id.example.com device inspect USER-CODE
 riauthctl --server https://id.example.com plan --file manifest.json --out plan.json
 riauthctl --server https://id.example.com apply --plan plan.json
 riauthctl --server https://id.example.com logout
@@ -56,3 +58,19 @@ riauthctl --server https://id.example.com passkey enroll --name security-key
 ```
 
 The base build rejects those commands locally before contacting the server. The USB feature requires a supported CTAP2 authenticator and its native USB prerequisites. USB commands need interactive touch/PIN input; `--non-interactive` fails locally. The optional transaction ID binds a passkey sign-in to a pending server authentication transaction. Local maintenance commands remain in the existing executable during the split.
+
+Terminal authorization uses the same server decisions as the browser. First sign in with `riauthctl login` or `riauthctl passkey login`, then review and decide a pending browser request or device code:
+
+```sh
+riauthctl --server https://id.example.com request inspect ABCDE-FGHIJ
+riauthctl --server https://id.example.com request approve ABCDE-FGHIJ --passkey
+riauthctl --server https://id.example.com request deny ABCDE-FGHIJ
+riauthctl --server https://id.example.com device inspect ABCDE-FGHIJ
+riauthctl --server https://id.example.com device approve ABCDE-FGHIJ --passkey
+riauthctl --server https://id.example.com device deny ABCDE-FGHIJ
+riauthctl --server https://id.example.com authorize 'https://id.example.com/oauth/authorize?...' --passkey --callback-file callback.txt
+```
+
+Approval prints the server's application, client ID, scopes, and destination before prompting. `--yes` confirms after that review and is required with `--non-interactive`; declining the prompt leaves the request pending. `--password-stdin` or an interactive password prompt can replace `--passkey`; `--mfa` prompts for a one-time code, and `RIAUTH_OTP` supplies one without a prompt. A browser request carries its server-issued authentication transaction through fresh sign-in and decision, including passkey sign-in. Device approval always signs in again after review, keeps the same account, and relies on the server's fresh identity and client policy check. Denials do not require fresh sign-in. Agent credentials cannot decide end-user requests.
+
+`authorize` accepts a complete URL on the selected issuer and returns the callback without following it. The callback may contain a one-time authorization code; use `--callback-file` to reserve a new owner-only file before making the decision and keep the code out of stdout. Terminal delivery does not support `form_post` response modes; use the original browser for those. An embedded upstream source stage also remains in the browser. The client never sends a session bearer to an application callback. The server continues to decide consent, authentication proof, policy, audit, and revocation behavior.

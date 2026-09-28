@@ -141,6 +141,7 @@ impl Core {
                     "scopes": scopes,
                     "resource": request.resource,
                     "redirect_uri": request.redirect_uri,
+                    "response_mode": request.response_mode,
                     "require_mfa": client.require_mfa,
                     "transaction_id": started.transaction_id,
                     "reauthentication_required": true,
@@ -158,7 +159,7 @@ impl Core {
                 expires_at: now() + 600,
                 source_stage: None,
             })?;
-            Ok(json!({"client_id": client.id, "application": client.name, "scopes": scopes, "resource":request.resource,"redirect_uri": request.redirect_uri, "require_mfa": client.require_mfa, "transaction_id": transaction, "reauthentication_required": fresh, "select_account": request.has_prompt("select_account"), "username": session.map(|(u, _)| u.username), "instruction": "Run `riauth authorize` with this complete authorization URL to review and approve in your terminal."}))
+            Ok(json!({"client_id": client.id, "application": client.name, "scopes": scopes, "resource":request.resource,"redirect_uri": request.redirect_uri, "response_mode": request.response_mode, "require_mfa": client.require_mfa, "transaction_id": transaction, "reauthentication_required": fresh, "select_account": request.has_prompt("select_account"), "username": session.map(|(u, _)| u.username), "instruction": "Run `riauthctl authorize` with this complete authorization URL to review and approve in your terminal."}))
         })
     }
     pub fn authorization_error(

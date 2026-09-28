@@ -1235,3 +1235,305 @@ fn routine_admin_commands_use_conditional_management_routes_and_private_secrets(
         }
     }
 }
+
+#[test]
+fn approval_browser_request_preserves_transaction_and_uses_fresh_session() {
+    const TRANSACTION: &str = "ri_auth_bound_sentinel";
+    const PASSWORD: &str = "fresh-approval-password";
+    let server = MockServer::start(|origin, request| {
+        match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            if body["transaction_id"] == TRANSACTION {
+                login_reply("ri_session_fresh_approval")
+            } else {
+                login_reply("ri_session_initial_approval")
+            }
+        }
+        "/api/authorization/ABCDE-FGHIJ" => Reply::json(
+            serde_json::json!({
+                "client_id":"dashboard", "application":"Dashboard", "scopes":["openid","profile"],
+                "redirect_uri":"https://dashboard.example/callback", "requested_from":{"ip":"192.0.2.1"},
+                "transaction_id":TRANSACTION, "reauthentication_required":true,
+                "select_account":false, "username":"alice", "response_mode":null
+            }).to_string(),
+        ),
+        "/api/authorization/decision" => {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            Reply::json(serde_json::json!({"approved":body["approve"],"delivery":"original_browser"}).to_string())
+        },
+        _ => Reply::error("{\"error\":\"invalid_request\"}"),
+    }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "alice", "--password-stdin"],
+        Some("initial-password\n"),
+    ));
+    let output = run(
+        &server.origin,
+        &session,
+        &[
+            "--non-interactive",
+            "request",
+            "approve",
+            "ABCDE-FGHIJ",
+            "--yes",
+            "--password-stdin",
+        ],
+        Some(&format!("{PASSWORD}\n")),
+    );
+    assert_ok(&output);
+    let printed = output_text(&output);
+    assert!(
+        printed.contains("Dashboard") && printed.contains("openid"),
+        "{printed}"
+    );
+    assert!(
+        !printed.contains(TRANSACTION) && !printed.contains(PASSWORD),
+        "{printed}"
+    );
+    let requests = server.requests();
+    let fresh_login = requests
+        .iter()
+        .find(|request| {
+            request.target == "/api/login"
+                && serde_json::from_slice::<serde_json::Value>(&request.body)
+                    .is_ok_and(|body| body["transaction_id"] == TRANSACTION)
+        })
+        .unwrap();
+    let login_body: serde_json::Value = serde_json::from_slice(&fresh_login.body).unwrap();
+    assert_eq!(login_body["password"], PASSWORD);
+    let decision = requests
+        .iter()
+        .find(|request| request.target == "/api/authorization/decision")
+        .unwrap();
+    let decision_body: serde_json::Value = serde_json::from_slice(&decision.body).unwrap();
+    assert_eq!(decision_body["transaction_id"], TRANSACTION);
+    assert_eq!(decision_body["approve"], true);
+    assert_eq!(
+        decision.header("authorization"),
+        Some("Bearer ri_session_fresh_approval")
+    );
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["request", "deny", "ABCDE-FGHIJ"],
+        None,
+    ));
+    let requests = server.requests();
+    let denied = requests
+        .iter()
+        .rev()
+        .find(|request| request.target == "/api/authorization/decision")
+        .unwrap();
+    let denied_body: serde_json::Value = serde_json::from_slice(&denied.body).unwrap();
+    assert_eq!(denied_body["approve"], false);
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.target == "/api/login")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn approval_device_requires_fresh_same_account_and_reviewed_scopes() {
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            if body["password"] == "fresh-device-password" {
+                login_reply("ri_session_fresh_device")
+            } else {
+                login_reply("ri_session_initial_device")
+            }
+        }
+        "/api/me" => Reply::json("{\"user\":{\"username\":\"alice\"}}"),
+        "/api/device/ABCDE-FGHIJ" => Reply::json(
+            "{\"client_id\":\"desktop\",\"application\":\"Desktop App\",\"scopes\":[\"openid\",\"offline_access\"],\"expires_at\":4102444800}",
+        ),
+        "/api/device/decision" => {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            Reply::json(serde_json::json!({"approved":body["approve"]}).to_string())
+        }
+        _ => Reply::error("{\"error\":\"invalid_request\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "alice", "--password-stdin"],
+        Some("initial-password\n"),
+    ));
+    let output = run(
+        &server.origin,
+        &session,
+        &[
+            "--non-interactive",
+            "device",
+            "approve",
+            "ABCDE-FGHIJ",
+            "--yes",
+            "--password-stdin",
+        ],
+        Some("fresh-device-password\n"),
+    );
+    assert_ok(&output);
+    let printed = output_text(&output);
+    assert!(
+        printed.contains("Desktop App") && printed.contains("offline_access"),
+        "{printed}"
+    );
+    assert!(!printed.contains("fresh-device-password"), "{printed}");
+    let requests = server.requests();
+    let approval = requests
+        .iter()
+        .find(|request| request.target == "/api/device/decision")
+        .unwrap();
+    assert_eq!(
+        approval.header("authorization"),
+        Some("Bearer ri_session_fresh_device")
+    );
+    let body: serde_json::Value = serde_json::from_slice(&approval.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"user_code":"ABCDE-FGHIJ","approve":true})
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.target == "/api/me")
+            .count(),
+        2
+    );
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["device", "deny", "ABCDE-FGHIJ"],
+        None,
+    ));
+    let requests = server.requests();
+    let denied = requests
+        .iter()
+        .rev()
+        .find(|request| request.target == "/api/device/decision")
+        .unwrap();
+    let denied_body: serde_json::Value = serde_json::from_slice(&denied.body).unwrap();
+    assert_eq!(denied_body["approve"], false);
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.target == "/api/login")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn approval_complete_url_preserves_form_and_saves_callback_privately() {
+    const TRANSACTION: &str = "ri_auth_url_sentinel";
+    let callback = MockServer::start(|_, _| Reply::json("{}"));
+    let location = callback.url("/callback?code=one_time_code_sentinel&state=state-1");
+    let server = MockServer::start(move |origin, request| {
+        if request.target == "/.well-known/openid-configuration" {
+            discovery(origin)
+        } else if request.target == "/api/login" {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            if body["transaction_id"] == TRANSACTION {
+                login_reply("ri_session_fresh_url")
+            } else {
+                login_reply("ri_session_initial_url")
+            }
+        } else if request.method == "GET" && request.target.starts_with("/oauth/authorize?") {
+            Reply::json(serde_json::json!({
+                "client_id":"dashboard", "application":"Dashboard", "scopes":["openid","profile"],
+                "redirect_uri":"https://dashboard.example/callback", "transaction_id":TRANSACTION,
+                "reauthentication_required":true, "select_account":false, "username":"alice", "response_mode":null
+            }).to_string())
+        } else if request.method == "POST" && request.target == "/oauth/authorize" {
+            Reply::redirect(location.clone())
+        } else {
+            Reply::error("{\"error\":\"invalid_request\"}")
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    let callback_file = dir.path().join("callback.txt");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "alice", "--password-stdin"],
+        Some("initial-password\n"),
+    ));
+    let url = server.url("/oauth/authorize?client_id=dashboard&response_type=code&scope=openid%20profile&state=state-1");
+    let output = run(
+        &server.origin,
+        &session,
+        &[
+            "--non-interactive",
+            "authorize",
+            &url,
+            "--yes",
+            "--password-stdin",
+            "--callback-file",
+            callback_file.to_str().unwrap(),
+        ],
+        Some("fresh-url-password\n"),
+    );
+    assert_ok(&output);
+    let printed = output_text(&output);
+    assert!(
+        printed.contains("Dashboard") && printed.contains(callback_file.to_str().unwrap()),
+        "{printed}"
+    );
+    assert!(
+        !printed.contains("one_time_code_sentinel") && !printed.contains(TRANSACTION),
+        "{printed}"
+    );
+    assert!(
+        std::fs::read_to_string(&callback_file)
+            .unwrap()
+            .contains("one_time_code_sentinel")
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&callback_file)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+    assert!(callback.requests().is_empty());
+    let requests = server.requests();
+    let decision = requests
+        .iter()
+        .find(|request| request.method == "POST" && request.target == "/oauth/authorize")
+        .unwrap();
+    let form: std::collections::BTreeMap<_, _> = url::form_urlencoded::parse(&decision.body)
+        .into_owned()
+        .collect();
+    assert_eq!(
+        form.get("transaction_id").map(String::as_str),
+        Some(TRANSACTION)
+    );
+    assert_eq!(form.get("decision").map(String::as_str), Some("approve"));
+    assert_eq!(
+        form.get("scope").map(String::as_str),
+        Some("openid profile")
+    );
+    assert_eq!(
+        decision.header("authorization"),
+        Some("Bearer ri_session_fresh_url")
+    );
+}

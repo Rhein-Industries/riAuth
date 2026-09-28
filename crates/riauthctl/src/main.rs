@@ -1,4 +1,5 @@
 mod admin;
+mod approval;
 mod management;
 mod session;
 mod transport;
@@ -103,6 +104,29 @@ enum Command {
     Client {
         #[command(subcommand)]
         command: admin::ClientCommand,
+    },
+    /// Review and decide a pending browser application authorization.
+    Request {
+        #[command(subcommand)]
+        command: approval::RequestCommand,
+    },
+    /// Review and decide a pending device authorization.
+    Device {
+        #[command(subcommand)]
+        command: approval::DeviceCommand,
+    },
+    /// Authorize a complete OIDC URL and return its callback without following it.
+    Authorize {
+        url: String,
+        #[arg(long, conflicts_with = "deny")]
+        yes: bool,
+        #[arg(long)]
+        deny: bool,
+        /// Save the callback, which can contain a one-time code, to a new private file.
+        #[arg(long)]
+        callback_file: Option<PathBuf>,
+        #[command(flatten)]
+        reauthentication: approval::Reauthentication,
     },
     /// Preview a versioned manifest and save the immutable plan privately.
     Plan {
@@ -300,6 +324,30 @@ async fn run(cli: Cli) -> Result<Value> {
         Command::User { command } => admin::user(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
         Command::Client { command } => admin::client(&remote, command, &mutation).await,
+        Command::Request { command } => {
+            approval::request(&remote, command, cli.non_interactive).await
+        }
+        Command::Device { command } => {
+            approval::device(&remote, command, cli.non_interactive).await
+        }
+        Command::Authorize {
+            url,
+            yes,
+            deny,
+            callback_file,
+            reauthentication,
+        } => {
+            approval::authorize(
+                &remote,
+                &url,
+                yes,
+                deny,
+                callback_file.as_deref(),
+                reauthentication,
+                cli.non_interactive,
+            )
+            .await
+        }
         Command::Plan { file, out } => {
             management::plan(&remote, &file, &out, cli.run_id.as_deref()).await
         }
@@ -401,7 +449,7 @@ pub(crate) fn read_password(stdin: bool, non_interactive: bool) -> Result<Zeroiz
     Ok(Zeroizing::new(value))
 }
 
-fn read_prompt(prompt: &str, non_interactive: bool) -> Result<Zeroizing<String>> {
+pub(crate) fn read_prompt(prompt: &str, non_interactive: bool) -> Result<Zeroizing<String>> {
     if non_interactive || !io::stdin().is_terminal() {
         bail!("Set RIAUTH_OTP for noninteractive MFA input");
     }

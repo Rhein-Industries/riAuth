@@ -1,6 +1,6 @@
 use crate::session::{self, AgentCredential, SavedSession};
 use anyhow::{Context, Result, bail};
-use reqwest::{Client, Method, Response, StatusCode};
+use reqwest::{Client, Method, Response, StatusCode, header};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
@@ -24,6 +24,11 @@ pub(crate) struct Remote {
 
 pub(crate) struct VerifiedIssuer {
     pub(crate) api_base: String,
+}
+
+pub(crate) enum AuthorizationPreparation {
+    Details(Value),
+    Redirect(String),
 }
 
 struct MutationHeaders {
@@ -164,6 +169,20 @@ impl Remote {
         Ok(saved)
     }
 
+    pub(crate) fn human_session_if_present(
+        &self,
+        verified: &VerifiedIssuer,
+    ) -> Result<Option<SavedSession>> {
+        if self.agent_file.is_some() {
+            bail!("Agent credentials cannot authorize as an end user");
+        }
+        match fs::symlink_metadata(&self.session_file) {
+            Ok(_) => self.human_session(verified).map(Some),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error).context("Cannot inspect saved session"),
+        }
+    }
+
     pub(crate) fn is_agent(&self) -> bool {
         self.agent_file.is_some()
     }
@@ -229,6 +248,62 @@ impl Remote {
     ) -> Result<Value> {
         self.request_at(&verified.api_base, method, path, body, bearer, run_id, None)
             .await
+    }
+
+    /// OAuth authorization deliberately returns a callback redirect instead of JSON.
+    /// The HTTP client never follows that redirect with a session bearer.
+    pub(crate) async fn authorization_prepare(
+        &self,
+        verified: &VerifiedIssuer,
+        path: &str,
+        bearer: Option<&str>,
+    ) -> Result<AuthorizationPreparation> {
+        if !path.starts_with("/oauth/authorize?") || path.contains('#') {
+            bail!("Invalid authorization path");
+        }
+        let mut request = self.http.get(format!("{}{}", verified.api_base, path));
+        if let Some(token) = bearer {
+            request = request.bearer_auth(token);
+        }
+        let response = request
+            .send()
+            .await
+            .context("Authorization preparation request failed")?;
+        if response.status() == StatusCode::FOUND {
+            return Ok(AuthorizationPreparation::Redirect(callback_location(
+                &response,
+            )?));
+        }
+        Ok(AuthorizationPreparation::Details(
+            decode_response(response).await?,
+        ))
+    }
+
+    pub(crate) async fn authorization_decide(
+        &self,
+        verified: &VerifiedIssuer,
+        pairs: &[(String, String)],
+        bearer: &str,
+    ) -> Result<String> {
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(pairs)
+            .finish();
+        let response = self
+            .http
+            .post(format!("{}/oauth/authorize", verified.api_base))
+            .bearer_auth(bearer)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .context("Authorization decision request failed")?;
+        if response.status() == StatusCode::FOUND {
+            return callback_location(&response);
+        }
+        // Preserve the server's sanitized failure code, including when the
+        // request reached a different response mode than the client supports.
+        decode_response(response).await?;
+        bail!("Authorization did not return a callback redirect")
     }
 
     /// Direct management writes use the same conditional and receipt envelope
@@ -310,6 +385,27 @@ impl Remote {
         }
         decode_response(request.send().await?).await
     }
+}
+
+fn callback_location(response: &Response) -> Result<String> {
+    let location = response
+        .headers()
+        .get(header::LOCATION)
+        .context("Authorization redirect is missing Location")?
+        .to_str()
+        .context("Authorization redirect has an invalid Location")?;
+    let callback = Url::parse(location).context("Authorization callback is not an absolute URL")?;
+    let private_scheme = !matches!(
+        callback.scheme(),
+        "http" | "https" | "file" | "data" | "javascript"
+    ) && callback.scheme().contains('.')
+        && !callback.path().is_empty();
+    if !((matches!(callback.scheme(), "http" | "https") && callback.host_str().is_some())
+        || private_scheme)
+    {
+        bail!("Authorization callback has an unsupported URL scheme");
+    }
+    Ok(location.to_owned())
 }
 
 fn management_base(document: &Value) -> Result<String> {
