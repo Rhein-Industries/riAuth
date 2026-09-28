@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, BinaryHeap},
 };
 
 pub use crate::scim_shared::{GROUP, USER, response};
@@ -636,7 +636,7 @@ fn parse_filter(kind: &str, filter: Option<&str>) -> Result<Option<FilterExpr>> 
     Ok(Some(expr))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum SortField {
     Id,
     ExternalId,
@@ -649,7 +649,7 @@ enum SortField {
     NameFamily,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct SortSpec {
     field: SortField,
     descending: bool,
@@ -756,6 +756,35 @@ fn compare_sort(left: &Value, right: &Value, spec: SortSpec) -> Ordering {
     // IDs break case-folded and missing-value ties in either direction.
     primary.then_with(|| left["id"].as_str().cmp(&right["id"].as_str()))
 }
+
+struct SortedRecord {
+    id: String,
+    record: Record,
+    value: Value,
+    spec: SortSpec,
+}
+
+impl Ord for SortedRecord {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.spec
+            .cmp(&other.spec)
+            .then_with(|| compare_sort(&self.value, &other.value, self.spec))
+    }
+}
+
+impl PartialOrd for SortedRecord {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for SortedRecord {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for SortedRecord {}
 
 const MAX_PROJECTION_SELECTORS: usize = 32;
 
@@ -1263,14 +1292,28 @@ impl Core {
             )?;
             let start = query.start_index.unwrap_or(1).max(1);
             let count = query.count.unwrap_or(100).min(1000);
+            // Both store scan directions are already ordered by SCIM id.
+            // Other sorts retain only candidates that can reach this page.
+            let store_order = sort.is_none_or(|spec| spec.field == SortField::Id);
+            let reverse_store_order =
+                sort.is_some_and(|spec| spec.field == SortField::Id && spec.descending);
+            let sort_window = if count == 0 {
+                0
+            } else {
+                start.saturating_sub(1).saturating_add(count)
+            };
             let mut total = 0;
             let mut page_records = Vec::new();
-            let mut sorted_records = Vec::new();
+            let mut sorted_records = BinaryHeap::new();
             let mut after = None;
             loop {
                 // The read transaction holds one snapshot across all pages on
                 // both backends. Never decode the whole SCIM bucket at once.
-                let records = tx.scan::<Record>(bucket, after.as_deref(), 128)?;
+                let records = if reverse_store_order {
+                    tx.scan_reverse::<Record>(bucket, after.as_deref(), 128)?
+                } else {
+                    tx.scan::<Record>(bucket, after.as_deref(), 128)?
+                };
                 if records.is_empty() {
                     break;
                 }
@@ -1284,10 +1327,15 @@ impl Core {
                     if require(&actor, &record, "read").is_err() {
                         continue;
                     }
-                    if sort.is_none() {
-                        let matches = filter.as_ref().map_or(Ok(true), |filter| {
-                            Ok(filter.matches(&scim_filter_view(tx, &id, &record)?))
-                        })?;
+                    if store_order {
+                        let matches = if sort.is_some() {
+                            let value = scim_filter_view(tx, &id, &record)?;
+                            filter.as_ref().is_none_or(|filter| filter.matches(&value))
+                        } else {
+                            filter.as_ref().map_or(Ok(true), |filter| {
+                                Ok(filter.matches(&scim_filter_view(tx, &id, &record)?))
+                            })?
+                        };
                         if matches {
                             total += 1;
                             if total >= start && page_records.len() < count {
@@ -1300,7 +1348,23 @@ impl Core {
                         let value = scim_filter_view(tx, &id, &record)?;
                         if filter.as_ref().is_none_or(|filter| filter.matches(&value)) {
                             total += 1;
-                            sorted_records.push((id, record, value));
+                            if sort_window != 0 {
+                                let candidate = SortedRecord {
+                                    id,
+                                    record,
+                                    value,
+                                    spec: sort.unwrap(),
+                                };
+                                if sorted_records.len() < sort_window {
+                                    sorted_records.push(candidate);
+                                } else if sorted_records
+                                    .peek()
+                                    .is_some_and(|last| candidate.cmp(last) == Ordering::Less)
+                                {
+                                    sorted_records.pop();
+                                    sorted_records.push(candidate);
+                                }
+                            }
                         }
                     }
                 }
@@ -1308,13 +1372,13 @@ impl Core {
                     break;
                 }
             }
-            if let Some(spec) = sort {
-                sorted_records.sort_by(|left, right| compare_sort(&left.2, &right.2, spec));
+            if !store_order {
                 page_records = sorted_records
+                    .into_sorted_vec()
                     .into_iter()
                     .skip(start - 1)
                     .take(count)
-                    .map(|(id, record, _)| (id, record))
+                    .map(|candidate| (candidate.id, candidate.record))
                     .collect();
             }
             let relations = scim_page_relations(tx, kind, &actor.id, &page_records)?;

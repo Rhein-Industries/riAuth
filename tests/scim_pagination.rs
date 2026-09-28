@@ -229,20 +229,27 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
     let mut created = Vec::with_capacity(130);
     for index in 0..130 {
         let user_name = format!("boundary-user-{index:03}");
+        // Reverse the sort key relative to insertion order, with pairs that
+        // compare equal after case folding and must fall back to SCIM id.
+        let display_name = format!(
+            "{}-{:03}",
+            if index % 2 == 0 { "Rank" } else { "rank" },
+            (129 - index) / 2
+        );
         let resource = f
             .core
             .scim_write(
                 &owner,
                 "Users",
                 None,
-                json!({"schemas":[scim::USER],"userName":user_name}),
+                json!({"schemas":[scim::USER],"userName":user_name,"displayName":display_name}),
                 false,
             )
             .unwrap();
-        created.push((text(&resource, "id"), user_name));
+        created.push((text(&resource, "id"), user_name, display_name));
     }
     created.sort_by(|left, right| left.0.cmp(&right.0));
-    let expected: Vec<_> = created.iter().map(|(id, _)| id.clone()).collect();
+    let expected: Vec<_> = created.iter().map(|(id, _, _)| id.clone()).collect();
     // One group makes a full User view scan a measurable opposite-bucket read.
     let group = f
         .core
@@ -346,6 +353,89 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
     }
     assert_eq!(no_more["totalResults"], 2);
     assert_eq!(no_more["itemsPerPage"], 0);
+
+    let mut sorted_expected = created.clone();
+    sorted_expected.sort_by(|left, right| {
+        left.2
+            .to_lowercase()
+            .cmp(&right.2.to_lowercase())
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    let sorted_ids: Vec<_> = sorted_expected.iter().map(|row| row.0.clone()).collect();
+    let sorted = |start, count, order: &str| {
+        f.core
+            .scim_list(
+                &owner,
+                "Users",
+                Query {
+                    sort_by: Some("displayName".into()),
+                    sort_order: Some(order.into()),
+                    start_index: Some(start),
+                    count: Some(count),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    };
+    for (start, count) in [(1, 2), (64, 3), (128, 3), (131, 1)] {
+        let page = sorted(start, count, "ascending");
+        assert_eq!(page["totalResults"], 130);
+        assert_eq!(page["startIndex"], start);
+        let expected = sorted_ids
+            .iter()
+            .skip(start - 1)
+            .take(count)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(ids(&page), expected);
+        assert_eq!(page["itemsPerPage"], expected.len());
+        for resource in page["Resources"].as_array().unwrap() {
+            assert_eq!(
+                *resource,
+                f.core.scim_get(&owner, "Users", &text(resource, "id")).unwrap()
+            );
+        }
+    }
+    let descending = sorted(1, 3, "descending");
+    assert_eq!(descending["totalResults"], 130);
+    let mut descending_expected = sorted_expected.clone();
+    descending_expected.sort_by(|left, right| {
+        right.2
+            .to_lowercase()
+            .cmp(&left.2.to_lowercase())
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    assert_eq!(
+        ids(&descending),
+        descending_expected
+            .iter()
+            .take(3)
+            .map(|row| row.0.clone())
+            .collect::<Vec<_>>()
+    );
+    let reverse_ids = f.core.scim_list(&owner, "Users", Query {
+        sort_by: Some("id".into()),
+        sort_order: Some("descending".into()),
+        start_index: Some(128),
+        count: Some(3),
+        ..Default::default()
+    }).unwrap();
+    assert_eq!(reverse_ids["totalResults"], 130);
+    assert_eq!(
+        ids(&reverse_ids),
+        expected.iter().rev().skip(127).cloned().collect::<Vec<_>>()
+    );
+    let filtered_sorted = f.core.scim_list(&owner, "Users", Query {
+        filter: Some(boundary_filter),
+        sort_by: Some("displayName".into()),
+        count: Some(1),
+        ..Default::default()
+    }).unwrap();
+    assert_eq!(filtered_sorted["totalResults"], 2);
+    let filtered_first = sorted_ids.iter()
+        .find(|id| **id == expected[127] || **id == expected[128])
+        .unwrap();
+    assert_eq!(ids(&filtered_sorted), vec![filtered_first.clone()]);
 
     // Group.members resolves a user in the second opposite-bucket scan batch.
     let group_page = list(&f, &owner, "Groups", 1, 1);
