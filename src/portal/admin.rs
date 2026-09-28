@@ -8,12 +8,14 @@ use super::http::{browser_write_guard, portal_html};
 use crate::{
     agent::browser_credential,
     api::{App, sso_cookie},
+    claims::Explain,
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
     passkey::NewPasskeyAdmin,
 };
 use axum::{
     Json, Router,
+    extract::rejection::JsonRejection,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
@@ -21,6 +23,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 pub fn routes() -> Router<App> {
@@ -66,6 +69,10 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/clients", get(clients).post(create_client))
         .route("/api/admin/clients/{id}", patch(update_client))
         .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
+        .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
+        .route("/api/admin/clients/{id}/explain", post(explain))
+        // Not under /clients/{id}: a client may be called "check".
+        .route("/api/admin/client-checks", post(check_client))
         .route("/api/admin/access/requests", get(access_requests))
         .route("/api/admin/access/requests/{id}/approve", post(approve))
         .route("/api/admin/access/requests/{id}/deny", post(deny))
@@ -352,4 +359,63 @@ async fn update_client(
     let token = writer(&app, &headers)?;
     app.run(move |core| core.update_client(&token, &id, input).map(Json))
         .await
+}
+
+/// The setup wizard's preflight: the create path's authorization and validation, no write.
+async fn check_client(
+    State(app): State<App>,
+    headers: HeaderMap,
+    input: std::result::Result<Json<NewClient>, JsonRejection>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    // The wizard shows this text, so a draft riAuth cannot read is explained, not a bare 422.
+    let Json(input) = input.map_err(|rejection| {
+        Error::bad(format!(
+            "riAuth couldn't read this configuration: {}",
+            rejection.body_text()
+        ))
+    })?;
+    app.run(move |core| core.check_new_client(&token, input).map(Json))
+        .await
+}
+async fn diagnostics(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.client_diagnostics(&token, &id).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignInTest {
+    username: String,
+    #[serde(default)]
+    scope: BTreeSet<String>,
+    #[serde(default)]
+    mfa: bool,
+}
+/// Simulates a person's sign-in with the policy engine; no token is issued.
+async fn explain(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<SignInTest>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.explain(
+            &token,
+            Explain {
+                client_id: id,
+                username: input.username,
+                scope: input.scope,
+                mfa: input.mfa,
+            },
+        )
+        .map(Json)
+    })
+    .await
 }

@@ -113,3 +113,61 @@ details summary{cursor:pointer;font-size:12px;font-weight:600;color:#4f3bb0;marg
 }
 @media(max-width:420px){.stats{grid-template-columns:1fr}}
 @media(forced-colors:active){.badge,.stat,.chip{border:1px solid CanvasText}}
+/* Application setup wizard, connection details and diagnostics. */
+.admin-card h3{font-size:13px;font-weight:600;margin:18px 0 6px}
+.wizard-steps{list-style:none;display:flex;flex-wrap:wrap;gap:6px 18px;margin:-10px 0 24px;padding:0;counter-reset:step}
+.wizard-step{display:flex;align-items:center;font-size:12px;color:var(--muted)}
+.wizard-step .step-label{display:inline-flex;align-items:center;gap:8px}
+.step-number{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid #cdd1dd;font-size:11px;font-weight:600;background:#fff}
+.wizard-step.current{color:var(--ink);font-weight:600}
+.wizard-step.current .step-number{background:var(--accent);border-color:var(--accent);color:#fff}
+.wizard-step.done .step-number{background:#e3f3ec;border-color:#b9dfcf;color:#1f6b4f}
+.step-link{display:inline-flex;align-items:center;min-height:36px;padding:0 4px;background:transparent;color:#4f3bb0;border-radius:6px;font-size:12px}
+.step-link:hover .step-label{text-decoration:underline}
+.wizard-title{font-size:17px;letter-spacing:-.2px}
+.wizard-form{max-width:760px}
+.uri-feedback{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:4px;font-size:11px;line-height:1.5}
+.uri-feedback li{overflow-wrap:anywhere}
+.uri-feedback li::before{display:inline-block;width:14px;font-weight:700}
+.uri-feedback .good{color:#1f6b4f}.uri-feedback .good::before{content:"✓"}
+.uri-feedback .bad{color:#a1231b}.uri-feedback .bad::before{content:"✕"}
+.uri-feedback code{font:11px ui-monospace,SFMono-Regular,Consolas,monospace;color:inherit}
+.mapping-list{display:grid;gap:10px;margin:8px 0 12px}
+.mapping-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fafbfd}
+.mapping-row .field{margin:0}
+.mapping-row .field input,.mapping-row .field select{min-height:40px;font-size:14px;max-width:none;width:100%}
+.mapping-row .text-button{min-height:40px}
+.check-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.check{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:12px;line-height:1.55}
+.check strong{display:block;font-weight:600;overflow-wrap:anywhere}
+.check p{color:var(--muted);overflow-wrap:anywhere}
+.check-level{flex-shrink:0;min-width:92px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:650;text-align:center;letter-spacing:.3px}
+.check.ok .check-level{background:#e3f3ec;color:#1f6b4f}
+.check.info .check-level{background:var(--accent-soft);color:#4f3bb0}
+.check.warn{border-color:#efd9a6}.check.warn .check-level{background:#fbf0d9;color:#7a5200}
+.check.bad{border-color:#f0c3bf}.check.bad .check-level{background:#fdecea;color:#a1231b}
+.detail-side .check{flex-direction:column;gap:6px}
+.detail-side .check-level{min-width:0;align-self:flex-start}
+.checked-at{margin-bottom:10px}
+.admin-card fieldset>legend{margin-top:10px}
+.connection-facts{margin-bottom:14px}
+.connection-facts dd{display:flex;align-items:center;gap:4px;min-width:0}
+.connection-facts dd code{min-width:0}
+.connection-facts .icon-button{width:30px;height:30px}
+.detail-side .connection-facts{grid-template-columns:1fr;gap:0}
+.detail-side .connection-facts dt{margin-top:10px}
+.detail-side .connection-facts dd code{overflow-wrap:anywhere}
+.review-facts{font-size:13px;gap:8px 18px}
+.claims dd code{font-size:11px}
+.snippet .section-heading{margin:4px 0}
+.snippet h3{margin:0}
+.test-result{font-weight:600;margin:12px 0 6px}
+.test-result.ok{color:#1f6b4f}.test-result.bad{color:#a1231b}
+.sign-in-test{gap:0}
+@media(max-width:760px){
+  .mapping-row{grid-template-columns:1fr}
+  .check{flex-direction:column;gap:6px}
+  .wizard-steps{gap:4px 12px}
+  .wizard-step .step-label{font-size:11px}
+}
+@media(forced-colors:active){.check,.step-number,.check-level{border:1px solid CanvasText}}

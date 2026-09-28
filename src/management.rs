@@ -211,6 +211,28 @@ pub(crate) fn effective_confidential(
         || settings.token_endpoint_auth_method == Some(ClientAuthMethod::PrivateKeyJwt)
 }
 
+/// The record and secret request a direct create (`NewClient`) asks for.
+pub(crate) fn new_client(input: crate::model::NewClient) -> (Client, Secret<'static>) {
+    let secret = if effective_confidential(input.confidential, input.service, &input.settings) {
+        Secret::Issue
+    } else {
+        Secret::Keep
+    };
+    let client = Client {
+        id: input.client_id,
+        name: input.name,
+        secret_hash: None,
+        redirect_uris: input.redirect_uris,
+        scopes: input.scopes,
+        allowed_groups: input.allowed_groups,
+        require_mfa: input.require_mfa,
+        enabled: true,
+        service: input.service,
+        settings: input.settings,
+    };
+    (client, secret)
+}
+
 /// The one write path for an application record.
 ///
 /// `existing` is the record read in this transaction, or `None` to create.
@@ -241,13 +263,75 @@ pub(crate) fn write_client(
     )
 }
 
+/// Authorize and validate an application write exactly as `write_client` would, without
+/// persisting it, revoking anything or returning a secret. The browser setup wizard checks
+/// its draft with this, so its answers are the write path's own.
+pub(crate) fn check_client(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    existing: Option<&Client>,
+    next: Client,
+    secret: Secret<'_>,
+) -> Result<Client> {
+    let authority = Authority::Management(actor, Record::Direct("client.check"));
+    Ok(check_client_as(tx, &authority, existing, next, secret)?.client)
+}
+
+/// An authorized, validated record that `write_client_as` persists.
+struct Checked {
+    client: Client,
+    issued: Option<String>,
+    credential_change: bool,
+}
+
 fn write_client_as(
     tx: &Tx<'_>,
     authority: Authority<'_>,
     existing: Option<&Client>,
-    mut next: Client,
+    next: Client,
     secret: Secret<'_>,
 ) -> Result<ClientWrite> {
+    let Checked {
+        client: next,
+        issued,
+        credential_change,
+    } = check_client_as(tx, &authority, existing, next, secret)?;
+    if let Some(c) = existing
+        && (!next.enabled
+            || credential_change
+            || c.settings.issuer != next.settings.issuer
+            || c.settings.pairwise_sector != next.settings.pairwise_sector)
+    {
+        revoke_client_grants(tx, &next.id)?;
+    }
+    tx.put("clients", &next.id, &next)?;
+    match authority {
+        Authority::Management(actor, Record::Direct(action)) => {
+            audit(tx, &actor.id, action, &next.id)?;
+        }
+        Authority::Management(_, Record::Plan) => {}
+        Authority::Registration(grant) => {
+            audit(
+                tx,
+                &format!("registration:{}", grant.id()),
+                "client.register",
+                &next.id,
+            )?;
+        }
+    }
+    Ok(ClientWrite {
+        client: next,
+        secret: issued,
+    })
+}
+
+fn check_client_as(
+    tx: &Tx<'_>,
+    authority: &Authority<'_>,
+    existing: Option<&Client>,
+    mut next: Client,
+    secret: Secret<'_>,
+) -> Result<Checked> {
     let resource = format!("client/{}", next.id);
     let requested = !matches!(secret, Secret::Keep);
     // A requested secret is a rotation even if the value happens to repeat.
@@ -263,7 +347,7 @@ fn write_client_as(
         Some(c) => without_secret(c)? != without_secret(&next)?,
         None => true,
     };
-    match &authority {
+    match authority {
         Authority::Management(actor, _) => {
             if other_change || !credential_change {
                 actor.require("client.write", &resource)?;
@@ -279,7 +363,7 @@ fn write_client_as(
             require_registration_bounds(grant, &next, &secret)?;
         }
     }
-    let registration_error = |error: Error| match &authority {
+    let registration_error = |error: Error| match authority {
         Authority::Registration(_) => Error::oauth(
             "invalid_client_metadata",
             "Client metadata conflicts with provider policy",
@@ -316,32 +400,10 @@ fn write_client_as(
     if other_change {
         validate_client(tx, &next).map_err(registration_error)?;
     }
-    if let Some(c) = existing
-        && (!next.enabled
-            || credential_change
-            || c.settings.issuer != next.settings.issuer
-            || c.settings.pairwise_sector != next.settings.pairwise_sector)
-    {
-        revoke_client_grants(tx, &next.id)?;
-    }
-    tx.put("clients", &next.id, &next)?;
-    match authority {
-        Authority::Management(actor, Record::Direct(action)) => {
-            audit(tx, &actor.id, action, &next.id)?;
-        }
-        Authority::Management(_, Record::Plan) => {}
-        Authority::Registration(grant) => {
-            audit(
-                tx,
-                &format!("registration:{}", grant.id()),
-                "client.register",
-                &next.id,
-            )?;
-        }
-    }
-    Ok(ClientWrite {
+    Ok(Checked {
         client: next,
-        secret: issued,
+        issued,
+        credential_change,
     })
 }
 

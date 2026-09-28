@@ -12,6 +12,7 @@
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
   const data = { me: null, revision: 0, clients: [], users: [], groups: [], requests: [], grants: [], audit: [] };
   let generation = 0, loaded = false, toastTimer, confirmRun = null, confirmOpener = null;
+  let draft = null; // the application setup wizard's draft, see newApplication
 
   class ApiError extends Error {
     constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -28,7 +29,7 @@
       else if (["hidden", "disabled", "checked", "required", "readOnly", "value", "selected"].includes(key)) node[key] = value;
       else node.setAttribute(key, value === true ? "" : String(value));
     }
-    for (const child of children.flat()) {
+    for (const child of children.flat(Infinity)) {
       if (child === undefined || child === null || child === false) continue;
       node.append(child instanceof Node ? child : document.createTextNode(String(child)));
     }
@@ -85,7 +86,9 @@
     try {
       response = await fetch(`${base}api/${path}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-        credentials: "same-origin", mode: "same-origin", cache: "no-store", referrerPolicy: "no-referrer",
+        // same-origin, as in auth.js: under no-referrer a same-origin POST carries
+        // "Origin: null" (Fetch spec, followed by Safari) and the write guard refuses it.
+        credentials: "same-origin", mode: "same-origin", cache: "no-store", referrerPolicy: "same-origin",
       });
     } catch {
       throw new ApiError(0, "network", "");
@@ -121,7 +124,7 @@
     target.hidden = false; target.focus();
   }
   // One pending/error/idempotency lifecycle for every form in the views.
-  function bindForm(form, action, overrides) {
+  function bindForm(form, action, overrides, busy = "Saving…") {
     let key = null;
     const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
     form.querySelector(".form-actions").before(status);
@@ -132,7 +135,7 @@
       const button = form.querySelector("[type=submit]");
       const label = button.textContent;
       key = key || requestKey();
-      form.setAttribute("aria-busy", "true"); button.disabled = true; button.textContent = "Saving…"; status.hidden = true;
+      form.setAttribute("aria-busy", "true"); button.disabled = true; button.textContent = busy; status.hidden = true;
       try {
         await action(key);
         key = null;
@@ -236,6 +239,9 @@
   function render(options = {}) {
     if (!loaded) return;
     const { section, id } = route();
+    // A created application's one-time secret is dropped once the wizard route is left; an
+    // unfinished draft is kept so a detour (for example to create a group) can resume it.
+    if (draft && draft.created && !(section === "applications" && id === "new")) draft = null;
     for (const item of document.querySelectorAll("#nav .nav-item")) {
       const active = item.dataset.section === section;
       item.classList.toggle("active", active);
@@ -380,7 +386,6 @@
   // ---- Applications ------------------------------------------------------------------------
   // Mirrors validate_client: services use API scopes only, without groups or MFA.
   const IDENTITY_SCOPES = ["openid", "profile", "email", "groups", "offline_access", "bound_key"];
-  const OIDC_DEFAULT = "openid profile email";
   const SERVICE_HINT = "API scopes this service may request, separated by spaces, for example: api.read api.write. Identity scopes such as openid, profile and email are not allowed.";
   const OIDC_HINT = "Separated by spaces. Must include openid, for example: openid profile email.";
   function checkScopes(scopes, service) {
@@ -430,17 +435,30 @@
     const client = data.clients.find((c) => c.client_id === id);
     if (!client) return missing("applications", "Application");
     const app = client.settings.app || {};
+    const oidcApp = !client.service && !client.settings.saml && !client.settings.proxy;
+    const native = () => Boolean(client.settings.native);
+    const scopeInput = h("input", { id: "app-scopes", spellcheck: "false", autocomplete: "off", value: sorted(client.scopes).join(" ") });
+    const redirects = h("textarea", { id: "app-redirects", rows: "3", spellcheck: "false", value: client.redirect_uris.join("\n") });
+    const origins = h("textarea", { id: "app-origins", rows: "2", spellcheck: "false", placeholder: "https://app.example.com", value: sorted(client.settings.origins).join("\n") });
+    const logout = h("textarea", { id: "app-logout", rows: "2", spellcheck: "false", value: client.settings.post_logout_redirect_uris.join("\n") });
+    const mappingRows = client.settings.claim_mappings.map(fromMapping);
+    const editor = oidcApp ? mappingEditor("app", mappingRows, () => sorted(words(scopeInput.value))) : null;
+    scopeInput.addEventListener("change", () => { if (editor) editor.draw(); });
+    const uriField = (label, input, hint, kind) => h("div", { class: "field" }, h("label", { for: input.id }, label), input, h("p", { class: "field-hint" }, hint), uriFeedback(input, native, kind).node);
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Details",
         field("Name", h("input", { id: "app-name", maxlength: "200", required: true, value: client.name })),
         check("app-enabled", "Enabled", client.enabled, "Disabling signs this application out: its existing grants are revoked and are not restored by enabling it again."),
         client.service ? null : check("app-mfa", "Require a passkey or authenticator code", client.require_mfa)),
       client.service
-        ? card("API access", field("API scopes", h("input", { id: "app-scopes", spellcheck: "false", autocomplete: "off", value: sorted(client.scopes).join(" ") }), SERVICE_HINT))
+        ? card("API access", field("API scopes", scopeInput, SERVICE_HINT))
         : card("Access", groupChecks("app", sorted(client.allowed_groups))),
       client.service ? null : card("Sign-in",
-        field("Redirect URIs", h("textarea", { id: "app-redirects", rows: "3", spellcheck: "false", value: client.redirect_uris.join("\n") }), "One per line. riAuth sends people back only to these exact addresses."),
-        field("Scopes", h("input", { id: "app-scopes", spellcheck: "false", autocomplete: "off", value: sorted(client.scopes).join(" ") }), OIDC_HINT)),
+        uriField("Redirect URIs", redirects, "One per line. riAuth sends people back only to these exact addresses.", "redirect"),
+        field("Scopes", scopeInput, OIDC_HINT),
+        oidcApp ? uriField("After sign-out, return to", logout, "Optional. Addresses the app may send people to after signing out.", "logout") : null,
+        oidcApp ? uriField("Allowed origins", origins, "Browser origins that may call the token and userinfo endpoints. Single-page apps need their own origin here.", "origin") : null),
+      oidcApp ? card("Claims", deliveryChecks("app", client.settings), h("h3", {}, "Custom claims"), editor.node) : null,
       card("Your applications page",
         field("Description", h("input", { id: "app-description", maxlength: "300", value: app.description || "" })),
         field("Category", h("input", { id: "app-category", maxlength: "60", value: app.category || "" }), "Empty shows the app under Workspace."),
@@ -460,15 +478,25 @@
         if (checked(form, "app-mfa") !== client.require_mfa) patch.require_mfa = checked(form, "app-mfa");
         const groups = selectedGroups(form, "app");
         if (!same(groups, sorted(client.allowed_groups).sort(byName))) patch.allowed_groups = groups;
-        const redirects = lines(form.querySelector("#app-redirects").value);
-        if (!same(redirects, client.redirect_uris)) patch.redirect_uris = redirects;
+        const uris = lines(redirects.value);
+        if (!same(uris, client.redirect_uris)) patch.redirect_uris = uris;
       }
-      const scopes = sorted(words(value(form, "app-scopes")));
+      const scopes = sorted(words(scopeInput.value));
       if (!same(scopes, sorted(client.scopes))) { checkScopes(scopes, client.service); patch.scopes = scopes; }
+      // A settings update replaces the whole object, so the current settings travel with it.
+      const settings = structuredClone(client.settings);
+      if (oidcApp) {
+        checkMappings(mappingRows, scopes);
+        Object.assign(settings, readDelivery(form, "app"), {
+          origins: sorted(lines(origins.value)),
+          post_logout_redirect_uris: lines(logout.value),
+          claim_mappings: mappingRows.map(toMapping),
+        });
+      }
       const next = { ...app, description: value(form, "app-description"), category: value(form, "app-category"), launch_url: value(form, "app-launch") || null, icon: value(form, "app-icon"), accent: value(form, "app-accent"), hidden: checked(form, "app-hidden") };
       const before = { description: "", category: "", launch_url: null, icon: "", accent: "", hidden: false, launch_scopes: [], ...app };
-      // A settings update replaces the whole object, so the current settings travel with it.
-      if (!same({ ...before, ...next }, before)) patch.settings = { ...client.settings, app: { ...before, ...next } };
+      if (!same({ ...before, ...next }, before)) settings.app = { ...before, ...next };
+      if (!same(settings, client.settings)) patch.settings = settings;
       if (!Object.keys(patch).length) throw invalid("There are no changes to save.");
       await api("PATCH", `admin/clients/${seg(client.client_id)}`, patch, { revision: data.revision, key });
       await saved(`Saved ${name}.`);
@@ -494,60 +522,506 @@
         !client.service && !app.launch_url && !client.settings.proxy ? badge("Setup pending", "warn") : null),
       h("div", { class: "detail-grid" }, form,
         h("div", { class: "detail-side" },
+          diagnosticsCard(client, true),
+          signInTest(client),
           card("Credentials", secret),
-          card("Protocol settings", h("p", { class: "field-hint" }, "Change these with riauth client update or a desired-state manifest; saving this page keeps them."),
+          card("Protocol settings", h("p", { class: "field-hint" }, "Signing, encryption, token lifetimes and trust are changed with riauth client update or a desired-state manifest; saving this page keeps them."),
             h("details", {}, h("summary", {}, "Show current settings"), h("pre", { class: "settings-json" }, JSON.stringify(protocol, null, 2)))))));
     return { crumb: client.name, node };
   }
-  function newApplication() {
-    const typeOption = (value, label, hint, isChecked) => h("label", { class: "choice" },
-      h("input", { type: "radio", name: "app-type", value, checked: isChecked }), h("span", {}, h("strong", {}, label), h("small", {}, hint)));
-    const redirects = field("Redirect URIs", h("textarea", { id: "new-redirects", rows: "3", spellcheck: "false", placeholder: "https://app.example.com/oauth/callback" }), "One per line: the exact callback addresses of the app.");
-    const scopeInput = h("input", { id: "new-scopes", spellcheck: "false", autocomplete: "off", value: OIDC_DEFAULT });
-    const scopes = field("Scopes", scopeInput, OIDC_HINT);
-    const mfa = check("new-mfa", "Require a passkey or authenticator code", false);
-    const access = card("Access", groupChecks("new", []));
-    let scopesEdited = false;
-    scopeInput.addEventListener("input", () => { scopesEdited = true; });
-    const form = h("form", { class: "admin-form", novalidate: true },
-      card("Application",
-        field("Client ID", h("input", { id: "new-id", maxlength: "64", required: true, spellcheck: "false", autocomplete: "off", autocapitalize: "none" }), "Used in protocol requests. Letters, digits, dots, dashes and underscores."),
-        field("Name", h("input", { id: "new-name", maxlength: "200", required: true })),
-        h("fieldset", { class: "choices" }, h("legend", {}, "Type"),
-          typeOption("confidential", "Web application", "Runs on a server and keeps a client secret.", true),
-          typeOption("public", "Browser or mobile app", "Can't keep a secret; signs in with PKCE.", false),
-          typeOption("service", "Service", "Machine-to-machine, with no people signing in.", false))),
-      card("Sign-in", redirects, scopes, mfa),
-      access,
-      actions(h("button", { class: "button primary", type: "submit" }, "Create application"), link(hash("applications"), "Cancel", { class: "button secondary" })));
-    const type = () => form.querySelector("input[name=app-type]:checked").value;
-    // Services sign in no people: swap the untouched OIDC default for API scopes and hide the
-    // redirect, group and MFA controls validate_client rejects for them.
-    form.addEventListener("change", (event) => {
-      if (event.target.name !== "app-type") return;
-      const service = type() === "service";
-      redirects.hidden = mfa.hidden = access.hidden = service;
-      scopes.querySelector("label").textContent = service ? "API scopes" : "Scopes";
-      scopes.querySelector(".field-hint").textContent = service ? SERVICE_HINT : OIDC_HINT;
-      scopeInput.placeholder = service ? "api.read api.write" : "";
-      if (!scopesEdited) scopeInput.value = service ? "" : OIDC_DEFAULT;
+
+  // ---- Application setup: shared pieces ----------------------------------------------------
+  const PROTECTED_CLAIMS = ["iss", "sub", "aud", "exp", "iat", "nbf", "jti", "nonce", "auth_time", "amr", "acr", "at_hash", "c_hash", "sid", "client_id", "scope", "cnf", "act", "email", "email_verified"];
+  const SOURCES = [["username", "Username"], ["display_name", "Display name"], ["email", "Email address"], ["email_verified", "Email verified"], ["groups", "Group names"], ["attribute", "Person attribute"], ["literal", "Fixed value"]];
+  const REASONS = {
+    required_groups_missing: "isn't in every group the application's policy requires",
+    no_matching_group: "isn't in any group the application's policy accepts",
+    denied_group: "is in a group the application's policy denies",
+    user_not_allowed: "isn't on the application's list of allowed people",
+    user_denied: "is on the application's list of denied people",
+    mfa_required: "needs a passkey or authenticator code for this application",
+    client_disabled: "can't sign in because the application is disabled",
+    user_disabled: "can't sign in because their account is disabled",
+    service_client_has_no_user_identity: "can't sign in: services have no people signing in",
+    unregistered_scope: "asked for a scope the application doesn't allow",
+    no_matching_client_group: "isn't a member of the application's allowed groups",
+  };
+  // What a claim mapping row shows; `toMapping` turns it into the stored ClaimMapping.
+  function fromMapping(m) {
+    const type = m.source.type;
+    // A text that would read back as JSON (42, true) is shown quoted, so saving keeps its type.
+    const literal = (v) => { if (typeof v !== "string") return JSON.stringify(v); try { JSON.parse(v); return JSON.stringify(v); } catch { return v; } };
+    const value = type === "attribute" ? m.source.key : type === "literal" ? literal(m.source.value) : "";
+    return { claim: m.claim, scope: m.scope, type, value };
+  }
+  function toMapping(row) {
+    const source = { type: row.type };
+    if (row.type === "attribute") source.key = row.value.trim();
+    if (row.type === "literal") { try { source.value = JSON.parse(row.value); } catch { source.value = row.value; } }
+    return { scope: row.scope, claim: row.claim.trim(), source };
+  }
+  // Names the row at fault before riAuth's own check, which reports only that one is invalid.
+  function checkMappings(rows, scopes) {
+    const seen = new Set();
+    rows.forEach((row, index) => {
+      const claim = row.claim.trim(), where = `Custom claim ${index + 1}`;
+      if (!claim) throw invalid(`${where}: enter a claim name.`);
+      if (PROTECTED_CLAIMS.includes(claim)) throw invalid(`${where}: riAuth sets ${claim} itself, so it can't be mapped.`);
+      if (seen.has(claim)) throw invalid(`${where}: ${claim} is mapped twice.`);
+      seen.add(claim);
+      if (!scopes.includes(row.scope)) throw invalid(`${where}: choose a scope this application allows.`);
+      if (row.type === "attribute" && !row.value.trim()) throw invalid(`${where}: enter the attribute name.`);
     });
-    bindForm(form, async (key) => {
-      const id = value(form, "new-id"), name = value(form, "new-name");
-      if (!id || !name) throw invalid("Enter a client ID and a name.");
-      const service = type() === "service";
-      const body = {
-        client_id: id, name, confidential: type() !== "public", service,
-        redirect_uris: service ? [] : lines(form.querySelector("#new-redirects").value),
-        scopes: words(value(form, "new-scopes")),
-        allowed_groups: service ? [] : selectedGroups(form, "new"), require_mfa: !service && checked(form, "new-mfa"),
-      };
-      checkScopes(body.scopes, service);
-      const result = await api("POST", "admin/clients", body, { key });
-      if (result.client_secret) showSecret(id, result.client_secret);
-      await saved(`Created ${name}.`, hash("applications", id));
-    }, { 409: (error) => /already exists/i.test(error.message) ? "An application with this client ID already exists." : undefined });
-    return { crumb: "New application", node: h("div", {}, heading("APPLICATIONS", "New application", "Connect an app to riAuth. You can add portal details after it is created."), form) };
+  }
+  // Rows are edited in place; `scopes()` gives the scopes a row may be sent with.
+  function mappingEditor(prefix, rows, scopes) {
+    const list = h("div", { class: "mapping-list" });
+    const draw = () => {
+      const allowed = scopes();
+      list.replaceChildren(...rows.map((row, index) => {
+        const id = `${prefix}-map-${index}`;
+        const valueInput = h("input", { id: `${id}-value`, spellcheck: "false", autocomplete: "off", maxlength: "512", value: row.value, placeholder: row.type === "literal" ? "\"staff\" or 42" : "department", oninput: (e) => { row.value = e.target.value; } });
+        const valueField = h("div", { class: "field", hidden: !["attribute", "literal"].includes(row.type) }, h("label", { for: valueInput.id }, row.type === "literal" ? "Value" : "Attribute"), valueInput);
+        const source = h("select", { id: `${id}-source`, onchange: (e) => { row.type = e.target.value; draw(); document.getElementById(`${id}-source`)?.focus(); } }, SOURCES.map(([v, text]) => h("option", { value: v, selected: v === row.type }, text)));
+        const scope = h("select", { id: `${id}-scope`, onchange: (e) => { row.scope = e.target.value; } }, allowed.map((s) => h("option", { value: s, selected: s === row.scope }, s)));
+        if (!allowed.includes(row.scope)) { row.scope = allowed.includes("profile") ? "profile" : allowed[0] || ""; scope.value = row.scope; }
+        return h("fieldset", { class: "mapping-row" }, h("legend", { class: "sr-only" }, `Custom claim ${index + 1}`),
+          h("div", { class: "field" }, h("label", { for: `${id}-claim` }, "Claim"), h("input", { id: `${id}-claim`, spellcheck: "false", autocomplete: "off", autocapitalize: "none", maxlength: "128", value: row.claim, placeholder: "department", oninput: (e) => { row.claim = e.target.value; } })),
+          h("div", { class: "field" }, h("label", { for: source.id }, "From"), source),
+          valueField,
+          h("div", { class: "field" }, h("label", { for: scope.id }, "Sent with scope"), scope),
+          h("button", { class: "text-button", type: "button", "aria-label": `Remove custom claim ${index + 1}`, onclick: () => { rows.splice(index, 1); draw(); addButton.focus(); } }, "Remove"));
+      }));
+      if (!rows.length) list.append(h("p", { class: "field-hint" }, "No custom claims. Standard claims come from the scopes above."));
+    };
+    const addButton = h("button", { class: "button secondary small", type: "button", onclick: () => {
+      rows.push({ claim: "", type: "attribute", value: "", scope: scopes().includes("profile") ? "profile" : scopes()[0] || "openid" });
+      draw(); document.getElementById(`${prefix}-map-${rows.length - 1}-claim`).focus();
+    } }, icon("plus"), "Add a claim");
+    draw();
+    return { node: h("div", {}, list, addButton), draw };
+  }
+  function deliveryChecks(prefix, settings) {
+    return h("fieldset", {}, h("legend", {}, "Where claims are sent"),
+      check(`${prefix}-groups-profile`, "Send groups with the profile scope", settings.groups_in_profile, "For apps that can't request the groups scope."),
+      check(`${prefix}-access-claims`, "Add identity claims to access tokens", settings.claims_in_access_token, "For APIs that read the person from the access token instead of calling userinfo."),
+      check(`${prefix}-userinfo-only`, "Send identity claims only from userinfo", settings.userinfo_only, "Keeps ID tokens small: they carry only sub."));
+  }
+  const readDelivery = (form, prefix) => ({
+    groups_in_profile: checked(form, `${prefix}-groups-profile`),
+    claims_in_access_token: checked(form, `${prefix}-access-claims`),
+    userinfo_only: checked(form, `${prefix}-userinfo-only`),
+  });
+  // Mirrors validate_client so each line's problem is named; riAuth still decides.
+  function uriProblem(uri, native, kind = "redirect") {
+    let url;
+    try { url = new URL(uri); } catch { return "isn't a complete URL"; }
+    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    const privateScheme = kind === "redirect" && native && !["http:", "https:", "file:", "data:", "javascript:"].includes(url.protocol) && url.protocol.slice(0, -1).includes(".");
+    if (uri.includes("*")) return "can't contain wildcards";
+    if (url.hash || uri.includes("#")) return "can't have a fragment";
+    if (url.username || url.password) return "can't contain credentials";
+    if (privateScheme) return null;
+    if (url.protocol === "http:" && !loopback) return "must use HTTPS (plain HTTP only on localhost)";
+    if (url.protocol !== "https:" && url.protocol !== "http:") return native ? "needs HTTPS, loopback HTTP, or a reverse-domain scheme like com.example.app:" : "must use HTTPS";
+    if (kind === "origin" && (url.pathname !== "/" || url.search || !uri.match(/^[a-z]+:\/\/[^/]+$/i))) return `must be an origin only, like ${url.origin}`;
+    if (kind === "redirect" && ["code", "state", "iss", "error", "error_description", "response", "session_state"].some((key) => url.searchParams.has(key))) return "can't contain code, state or other response parameters";
+    return null;
+  }
+  function uriFeedback(textarea, native, kind) {
+    const list = h("ul", { class: "uri-feedback", "aria-live": "polite" });
+    const draw = () => {
+      list.replaceChildren(...lines(textarea.value).map((uri) => {
+        const problem = uriProblem(uri, native(), kind);
+        return h("li", { class: problem ? "bad" : "good" }, h("code", {}, uri), " ", problem || (kind === "origin" ? "valid origin" : "valid"));
+      }));
+    };
+    textarea.addEventListener("input", draw); draw();
+    return { node: list, draw };
+  }
+  const originsOf = (uris) => [...new Set(uris.map((uri) => { try { const u = new URL(uri); return ["http:", "https:"].includes(u.protocol) ? u.origin : null; } catch { return null; } }).filter(Boolean))];
+  function copyButton(text, label) {
+    const button = h("button", { class: "icon-button", type: "button", "aria-label": `Copy ${label}`, title: "Copy", onclick: async () => {
+      try { await navigator.clipboard.writeText(text); announce(`${label} copied`); } catch { announce("Select the value and copy it"); }
+    } }, icon("copy"));
+    return button;
+  }
+  const LEVELS = { error: ["Needs attention", "bad"], warn: ["Check", "warn"], info: ["Note", "info"], ok: ["OK", "ok"] };
+  function checkList(checks) {
+    const order = { error: 0, warn: 1, info: 2, ok: 3 };
+    const sortedChecks = [...checks].sort((a, b) => order[a.level] - order[b.level]);
+    return h("ul", { class: "check-list" }, sortedChecks.map((c) => h("li", { class: `check ${LEVELS[c.level][1]}` },
+      h("span", { class: "check-level" }, LEVELS[c.level][0]),
+      h("div", {}, h("strong", {}, c.title), h("p", {}, c.detail), c.last_issued_at ? h("p", {}, "Last token issued ", when(c.last_issued_at), ".") : null))));
+  }
+  function claimsPreview(claims) {
+    const scopes = Object.keys(claims.by_scope);
+    const places = [claims.id_token ? "ID token" : null, "userinfo", claims.access_token ? "access token" : null].filter(Boolean).join(", ");
+    return h("div", {},
+      scopes.length ? h("dl", { class: "facts claims" }, scopes.map((scope) => [h("dt", {}, h("code", {}, scope)), h("dd", {}, claims.by_scope[scope].map((c, i) => [i ? ", " : "", h("code", { title: `from ${c.source}` }, c.claim)]))])) : h("p", { class: "field-hint" }, "No identity claims."),
+      h("p", { class: "field-hint" }, `Delivered in: ${places}.`));
+  }
+  function connectionFacts(connection, secret) {
+    const row = (label, text, copyable = true) => [h("dt", {}, label), h("dd", {}, h("code", {}, text), copyable ? copyButton(text, label) : null)];
+    const methods = connection.token_endpoint_auth_methods;
+    return h("dl", { class: "facts connection-facts" },
+      row("Issuer", connection.issuer), row("Discovery", connection.discovery_url), row("Client ID", connection.client_id),
+      secret ? row("Client secret", secret) : null,
+      [h("dt", {}, "Authentication"), h("dd", {}, methods.map((m, i) => [i ? " or " : "", h("code", {}, m)]), connection.pkce ? " · PKCE S256" : "")],
+      connection.client_assertion_audience ? row("Assertion audience", connection.client_assertion_audience) : null,
+      row("Authorize", connection.authorization_endpoint), row("Token", connection.token_endpoint),
+      connection.pkce ? row("Userinfo", connection.userinfo_endpoint) : null, row("JWKS", connection.jwks_uri),
+      connection.pkce ? row("Sign-out", connection.end_session_endpoint) : null);
+  }
+  function envSnippet(connection, secret) {
+    const text = [`OIDC_ISSUER=${connection.issuer}`, `OIDC_CLIENT_ID=${connection.client_id}`, secret ? `OIDC_CLIENT_SECRET=${secret}` : null,
+      connection.redirect_uris.length ? `OIDC_REDIRECT_URI=${connection.redirect_uris[0]}` : null, `OIDC_SCOPES="${connection.scopes.join(" ")}"`].filter(Boolean).join("\n");
+    return h("div", { class: "snippet" }, h("div", { class: "section-heading" }, h("h3", {}, "Environment for the app"), copyButton(text, "environment settings")), h("pre", { class: "settings-json" }, text));
+  }
+  // riAuth's findings plus one only the browser can make: whether the issuer's discovery
+  // document is served here. connect-src 'self' limits that to this origin.
+  async function diagnose(clientId) {
+    const report = await api("GET", `admin/clients/${seg(clientId)}/diagnostics`);
+    const url = new URL(report.connection.discovery_url);
+    if (url.origin === location.origin) {
+      try {
+        const response = await fetch(url.href, { credentials: "omit", cache: "no-store", mode: "same-origin" });
+        const doc = response.ok ? await response.json() : null;
+        report.checks.push(doc && doc.issuer === report.connection.issuer
+          ? { level: "ok", title: "Discovery document reachable", detail: `${url.href} answers with this issuer from your browser.` }
+          : { level: "error", title: "Discovery document not served", detail: `${url.href} ${response.ok ? "names another issuer" : `answered ${response.status}`}. Apps configured with this issuer can't start sign-in.` });
+      } catch {
+        report.checks.push({ level: "error", title: "Discovery document unreachable", detail: `${url.href} didn't answer from your browser.` });
+      }
+    } else {
+      report.checks.push({ level: "info", title: "Discovery checked from riAuth only", detail: `The issuer is on another origin. Open ${url.href} from the app's network to confirm it is reachable.` });
+    }
+    return report;
+  }
+  // `withConnection` adds the issuer, endpoints and client settings the app is configured with.
+  function diagnosticsCard(client, withConnection = false) {
+    const connection = h("div", {});
+    const body = h("div", { "aria-live": "polite" }, h("p", { class: "field-hint" }, "Checking…"));
+    const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
+    const run = async (button) => {
+      if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); }
+      status.hidden = true;
+      try {
+        const report = await diagnose(client.client_id);
+        if (withConnection) connection.replaceChildren(connectionFacts(report.connection), envSnippet(report.connection), h("h3", {}, "Checks"));
+        body.replaceChildren(checkList(report.checks), h("p", { class: "field-hint checked-at" }, "Checked ", when(report.checked_at), "."));
+      } catch (error) {
+        if (error.status === 401) { gate("signin"); return; }
+        body.replaceChildren(); showError(status, error);
+      } finally { if (button) { button.disabled = false; button.removeAttribute("aria-busy"); } }
+    };
+    const again = h("button", { class: "button secondary small", type: "button", onclick: () => run(again) }, icon("refresh"), "Check again");
+    run();
+    return card(withConnection ? "Connection" : "Diagnostics", h("p", { class: "field-hint" }, "Configuration and connection checks. Nothing is sent to the application."), connection, status, body, again);
+  }
+  // The policy engine's simulation (POST /policy/explain): no token is issued.
+  function signInTest(client) {
+    const users = [...data.users].sort((a, b) => byName(personName(a), personName(b)));
+    const form = h("form", { class: "admin-form sign-in-test", novalidate: true },
+      field("Person", h("select", { id: "test-user" }, users.map((u) => h("option", { value: u.username }, `${personName(u)} (${u.username})`)))),
+      check("test-mfa", "Assume they used a passkey or authenticator code", client.require_mfa),
+      actions(h("button", { class: "button secondary", type: "submit" }, "Test sign-in")));
+    const result = h("div", { "aria-live": "polite" });
+    bindForm(form, async () => {
+      const username = value(form, "test-user");
+      const report = await api("POST", `admin/clients/${seg(client.client_id)}/explain`, { username, scope: client.scopes, mfa: checked(form, "test-mfa") });
+      const reasons = [...report.reasons, ...Object.values(report.scope_decisions).flat()];
+      result.replaceChildren(
+        h("p", { class: `test-result ${report.allowed ? "ok" : "bad"}` }, report.allowed ? `${username} can sign in.` : `${username} is refused:`),
+        reasons.length ? h("ul", { class: "plain-list" }, [...new Set(reasons)].map((r) => h("li", {}, `${username} ${REASONS[r] || r.replaceAll("_", " ")}.`))) : null,
+        report.allowed ? h("details", {}, h("summary", {}, "Claims the app would receive"), h("pre", { class: "settings-json" }, JSON.stringify(report.id_token_identity_claims, null, 2))) : null);
+    }, { 403: "Testing needs permission to read both the application and the person." }, "Testing…");
+    return client.service ? null : card("Test a sign-in", h("p", { class: "field-hint" }, "Simulates this application's policy for one person. No token is issued and nothing is recorded as a sign-in."), form, result);
+  }
+
+  // ---- Application setup wizard ------------------------------------------------------------
+  // The draft outlives re-renders, so a refresh or a step change keeps what was entered, and
+  // is dropped when the route leaves #/applications/new. Each Continue sends the whole draft
+  // to /admin/client-checks: the create path's own authorization and validation, without a
+  // write. Only Create writes, with one Idempotency-Key per attempt.
+  const TYPES = {
+    web: ["Web application", "Runs on a server and keeps a secret, like Next.js, Django, Rails or Spring."],
+    spa: ["Single-page app", "Runs in the browser and can't keep a secret, like React, Vue or Angular. Signs in with PKCE."],
+    native: ["Native or mobile app", "A desktop or phone app with a reverse-domain or loopback callback. Signs in with PKCE."],
+    service: ["Service", "Machine-to-machine with client credentials. No people sign in."],
+  };
+  const STANDARD_SCOPES = [
+    ["profile", "Profile", "name, preferred_username"],
+    ["email", "Email", "email, email_verified"],
+    ["groups", "Groups", "groups: the person's group names"],
+    ["offline_access", "Stay signed in", "refresh tokens (offline_access)"],
+  ];
+  const AUTH = {
+    client_secret_basic: ["Client secret in the Authorization header", "Recommended. riAuth generates the secret and shows it once."],
+    client_secret_post: ["Client secret in the request body", "For libraries that can't send HTTP Basic authentication."],
+    private_key_jwt: ["Private key JWT", "The app signs each token request with its own key. riAuth keeps only the public key, so there's no shared secret."],
+  };
+  const REDIRECT_EXAMPLES = { web: "https://app.example.com/auth/callback", spa: "https://app.example.com/callback", native: "com.example.app:/oauth/callback" };
+  function freshDraft() {
+    return { step: 0, type: "web", name: "", id: "", idEdited: false, redirects: "", origins: "", logout: "", launch: "",
+      groups: [], mfa: false, scopes: ["openid", "profile", "email"], extraScopes: "", apiScopes: "",
+      delivery: { groups_in_profile: false, claims_in_access_token: false, userinfo_only: false }, mappings: [],
+      auth: "client_secret_basic", jwks: "", checked: null, created: null };
+  }
+  const slug = (text) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+  const confidentialType = (type) => type === "web" || type === "service";
+  const draftScopes = (d) => d.type === "service" ? words(d.apiScopes) : [...new Set([...d.scopes, ...words(d.extraScopes)])];
+  function draftBody(d) {
+    const service = d.type === "service";
+    const settings = {};
+    if (!service) {
+      if (d.type === "native") settings.native = true;
+      settings.origins = lines(d.origins);
+      settings.post_logout_redirect_uris = lines(d.logout);
+      if (d.launch.trim()) settings.app = { launch_url: d.launch.trim() };
+      Object.assign(settings, d.delivery);
+      settings.claim_mappings = d.mappings.map(toMapping);
+    }
+    if (confidentialType(d.type)) {
+      settings.token_endpoint_auth_method = d.auth;
+      if (d.auth === "private_key_jwt") settings.jwks = parseJwks(d.jwks);
+    } else settings.token_endpoint_auth_method = "none";
+    return {
+      client_id: d.id.trim(), name: d.name.trim(), confidential: confidentialType(d.type), service,
+      redirect_uris: service ? [] : lines(d.redirects), scopes: draftScopes(d),
+      allowed_groups: service ? [] : d.groups, require_mfa: !service && d.mfa, settings,
+    };
+  }
+  // Accepts a JWKS or one JWK. A private key is refused here so it never leaves the browser.
+  function parseJwks(text) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { throw invalid("Paste the app's public key as JSON: a JWKS ({\"keys\": [...]}) or a single JWK."); }
+    const set = parsed && Array.isArray(parsed.keys) ? parsed : { keys: [parsed] };
+    if (set.keys.some((key) => key && typeof key === "object" && ["d", "p", "q", "dp", "dq", "qi", "k"].some((member) => member in key))) {
+      throw invalid("This is a private key. Paste only the public key; the private key stays with the app.");
+    }
+    return set;
+  }
+  function wizardSteps(d) {
+    return d.type === "service"
+      ? [["basics", "Application"], ["api", "API access"], ["credentials", "Credentials"], ["review", "Review"]]
+      : [["basics", "Application"], ["urls", "Sign-in URLs"], ["access", "Access"], ["claims", "Claims"], ...(confidentialType(d.type) ? [["credentials", "Credentials"]] : []), ["review", "Review"]];
+  }
+  const STEP_VIEWS = {
+    basics(d) {
+      const typeOption = (key) => h("label", { class: "choice" }, h("input", { type: "radio", name: "wiz-type", value: key, checked: d.type === key }), h("span", {}, h("strong", {}, TYPES[key][0]), h("small", {}, TYPES[key][1])));
+      const name = h("input", { id: "wiz-name", maxlength: "200", required: true, value: d.name, autocomplete: "off" });
+      const id = h("input", { id: "wiz-id", maxlength: "64", required: true, spellcheck: "false", autocomplete: "off", autocapitalize: "none", value: d.id });
+      name.addEventListener("input", () => { if (!d.idEdited) id.value = slug(name.value); });
+      id.addEventListener("input", () => { d.idEdited = id.value.trim() !== "" && id.value !== slug(name.value); });
+      return [card("Application",
+        field("Name", name, "Shown to people when they sign in and on Your applications."),
+        field("Client ID", id, "Used in protocol requests and can't be changed later. Letters, digits, dots, dashes and underscores."),
+        h("fieldset", { class: "choices" }, h("legend", {}, "What are you connecting?"), Object.keys(TYPES).map(typeOption)))];
+    },
+    urls(d) {
+      const native = () => d.type === "native";
+      const redirects = h("textarea", { id: "wiz-redirects", rows: "3", spellcheck: "false", placeholder: REDIRECT_EXAMPLES[d.type], value: d.redirects });
+      const redirectCheck = uriFeedback(redirects, native, "redirect");
+      const origins = h("textarea", { id: "wiz-origins", rows: "2", spellcheck: "false", placeholder: "https://app.example.com", value: d.origins });
+      const originCheck = uriFeedback(origins, native, "origin");
+      const logout = h("textarea", { id: "wiz-logout", rows: "2", spellcheck: "false", placeholder: "https://app.example.com/signed-out", value: d.logout });
+      const logoutCheck = uriFeedback(logout, () => false, "logout");
+      const useOrigins = h("button", { class: "button secondary small", type: "button", onclick: () => {
+        const next = [...new Set([...lines(origins.value), ...originsOf(lines(redirects.value))])];
+        origins.value = next.join("\n"); originCheck.draw(); announce(next.length ? `Allowed origins: ${next.join(", ")}` : "Enter a redirect URI first");
+      } }, "Use the callback origins");
+      const redirectHint = { web: "One per line: the exact callback addresses of your server. HTTPS, or HTTP on localhost for development.", spa: "One per line: the exact page addresses the browser returns to.", native: "One per line: a reverse-domain scheme like com.example.app:/callback, or http://127.0.0.1/callback (any port is accepted)." }[d.type];
+      const originHint = d.type === "spa" ? "Required for single-page apps: the token endpoint answers only these origins from a browser." : "Only needed if code in the browser calls riAuth's token or userinfo endpoints directly.";
+      return [card("Callbacks",
+          h("div", { class: "field" }, h("label", { for: "wiz-redirects" }, "Redirect URIs"), redirects, h("p", { class: "field-hint" }, redirectHint), redirectCheck.node),
+          h("div", { class: "field" }, h("label", { for: "wiz-logout" }, "After sign-out, return to"), logout, h("p", { class: "field-hint" }, "Optional. Addresses the app may send people to after signing out."), logoutCheck.node)),
+        card("Browser access",
+          h("div", { class: "field" }, h("label", { for: "wiz-origins" }, "Allowed origins"), origins, h("p", { class: "field-hint" }, originHint), originCheck.node),
+          native() ? null : useOrigins),
+        card("Your applications page",
+          field("Launch URL", h("input", { id: "wiz-launch", type: "url", spellcheck: "false", value: d.launch, placeholder: "https://app.example.com/" }), "Optional. The app's home or login page, not its callback. Without one, the app shows as Setup pending."))];
+    },
+    access(d) {
+      const names = data.groups.map((g) => g.name).sort(byName);
+      const enabled = (g) => g.members.filter((id) => { const u = userById(id); return u && u.enabled; }).length;
+      return [card("Who can sign in",
+          h("p", { class: "field-hint" }, "Choose groups to limit sign-in to their members. With no group selected, anyone with an enabled account can sign in."),
+          names.length ? h("fieldset", { class: "group-checks" }, h("legend", { class: "sr-only" }, "Allowed groups"), names.map((name, index) => {
+            const count = enabled(data.groups.find((g) => g.name === name));
+            return check(`wiz-group-${index}`, `${name} · ${count} ${count === 1 ? "person" : "people"}`, d.groups.includes(name));
+          })) : h("p", { class: "field-hint" }, "There are no groups yet. ", link(hash("groups"), "Create a group"), " to limit who can sign in; your draft is kept.")),
+        card("Sign-in strength", check("wiz-mfa", "Require a passkey or authenticator code", d.mfa, "People without one are refused until they add it from Your applications."))];
+    },
+    claims(d) {
+      const scopeChecks = STANDARD_SCOPES.map(([scope, label, hint]) => check(`wiz-scope-${scope}`, label, d.scopes.includes(scope), hint));
+      const extra = h("input", { id: "wiz-extra", spellcheck: "false", autocomplete: "off", value: d.extraScopes, placeholder: "api.read" });
+      // Read from this step's own inputs: the editor draws before the card is attached.
+      const scopes = () => [...new Set(["openid", ...STANDARD_SCOPES.map(([s]) => s).filter((_, i) => scopeChecks[i].querySelector("input").checked), ...words(extra.value)])];
+      const editor = mappingEditor("wiz", d.mappings, scopes);
+      const node = card("Scopes and claims",
+        h("p", { class: "field-hint" }, "The app asks for these scopes at sign-in; each adds claims about the person. openid is always included and adds sub."),
+        h("fieldset", {}, h("legend", {}, "Standard scopes"), scopeChecks),
+        field("Additional scopes", extra, "Optional, separated by spaces: API scopes the app may request for its own backends."),
+        deliveryChecks("wiz", d.delivery),
+        h("h3", {}, "Custom claims"), h("p", { class: "field-hint" }, "Add claims from a person's attributes or a fixed value. A claim is sent only when its scope is requested."),
+        editor.node);
+      node.addEventListener("change", (e) => { if (e.target.id.startsWith("wiz-scope-")) editor.draw(); });
+      extra.addEventListener("change", () => editor.draw());
+      return [node];
+    },
+    api(d) {
+      return [card("API access", field("API scopes", h("input", { id: "wiz-api-scopes", spellcheck: "false", autocomplete: "off", value: d.apiScopes, placeholder: "api.read api.write" }), SERVICE_HINT))];
+    },
+    credentials(d) {
+      const option = (key) => h("label", { class: "choice" }, h("input", { type: "radio", name: "wiz-auth", value: key, checked: d.auth === key }), h("span", {}, h("strong", {}, AUTH[key][0]), h("small", {}, AUTH[key][1])));
+      const jwks = h("div", { class: "field", id: "wiz-jwks-field", hidden: d.auth !== "private_key_jwt" }, h("label", { for: "wiz-jwks" }, "Public key (JWKS)"),
+        h("textarea", { id: "wiz-jwks", rows: "7", spellcheck: "false", value: d.jwks, placeholder: "{\"keys\": [{\"kty\": \"EC\", \"crv\": \"P-256\", \"kid\": \"app-2026\", \"alg\": \"ES256\", \"x\": \"…\", \"y\": \"…\"}]}" }),
+        h("p", { class: "field-hint" }, "1–8 public signing keys, each with kid and alg (RS256, ES256 or EdDSA). Never paste the private key."));
+      const node = card("How the app authenticates", h("fieldset", { class: "choices" }, h("legend", { class: "sr-only" }, "Token endpoint authentication"), Object.keys(AUTH).map(option)), jwks);
+      node.addEventListener("change", (e) => { if (e.target.name === "wiz-auth") jwks.hidden = e.target.value !== "private_key_jwt"; });
+      return [node];
+    },
+    review(d) {
+      const body = draftBody(d);
+      const service = d.type === "service";
+      const row = (label, content) => [h("dt", {}, label), h("dd", {}, content)];
+      const list = (items, empty) => items.length ? items.map((item, i) => [i ? h("br") : null, h("code", {}, item)]) : empty;
+      const summary = card("Summary", h("dl", { class: "facts review-facts" },
+        row("Name", body.name), row("Client ID", h("code", {}, body.client_id)), row("Type", TYPES[d.type][0]),
+        service ? null : row("Redirect URIs", list(body.redirect_uris, "None")),
+        service ? null : row("Allowed origins", list(body.settings.origins, "None")),
+        service ? null : row("After sign-out", list(body.settings.post_logout_redirect_uris, "riAuth's signed-out page")),
+        service ? null : row("Access", body.allowed_groups.length ? body.allowed_groups.join(", ") : "Anyone with an account"),
+        service ? null : row("MFA", body.require_mfa ? "Required" : "Not required"),
+        row("Scopes", list(body.scopes, "None")),
+        row("Credentials", confidentialType(d.type) ? AUTH[d.auth][0] : "None: PKCE only")));
+      const checked = d.checked;
+      return [summary,
+        checked ? card("What the app receives", claimsPreview(checked.claims)) : null,
+        checked ? card("Checks", h("p", { class: "field-hint" }, "riAuth checked this configuration with the same rules as creating it."), checkList(checked.checks)) : null];
+    },
+  };
+  // Reads the current step's inputs into the draft. Leaving a step backwards keeps partial
+  // input; local problems are raised only when moving forward.
+  function readStep(stepKey, form, d) {
+    const q = (id) => form.querySelector(`#${id}`);
+    if (stepKey === "basics") {
+      d.name = q("wiz-name").value; d.id = q("wiz-id").value.trim();
+      const type = form.querySelector("input[name=wiz-type]:checked").value;
+      if (type !== d.type) {
+        d.type = type;
+        d.auth = "client_secret_basic";
+        if (type === "service") d.groups = [];
+      }
+    } else if (stepKey === "urls") {
+      d.redirects = q("wiz-redirects").value; d.origins = q("wiz-origins").value; d.logout = q("wiz-logout").value; d.launch = q("wiz-launch").value;
+    } else if (stepKey === "access") {
+      d.groups = selectedGroups(form, "wiz"); d.mfa = checked(form, "wiz-mfa");
+    } else if (stepKey === "claims") {
+      d.scopes = ["openid", ...STANDARD_SCOPES.map(([s]) => s).filter((s) => checked(form, `wiz-scope-${s}`))];
+      d.extraScopes = q("wiz-extra").value; d.delivery = readDelivery(form, "wiz");
+    } else if (stepKey === "api") {
+      d.apiScopes = q("wiz-api-scopes").value;
+    } else if (stepKey === "credentials") {
+      d.auth = form.querySelector("input[name=wiz-auth]:checked").value; d.jwks = q("wiz-jwks").value;
+    }
+  }
+  function localCheck(stepKey, d) {
+    if (stepKey === "basics") {
+      if (!d.name.trim()) throw invalid("Enter a name.");
+      if (!d.id) throw invalid("Enter a client ID.");
+    } else if (stepKey === "urls") {
+      const redirects = lines(d.redirects);
+      if (!redirects.length) throw invalid("Enter at least one redirect URI: riAuth only sends people back to registered callbacks.");
+      for (const [kind, values] of [["redirect", redirects], ["origin", lines(d.origins)], ["logout", lines(d.logout)]]) {
+        for (const uri of values) {
+          const problem = uriProblem(uri, d.type === "native", kind);
+          if (problem) throw invalid(`${uri} ${problem}.`);
+        }
+      }
+    } else if (stepKey === "claims") {
+      checkMappings(d.mappings, draftScopes(d));
+    } else if (stepKey === "api") {
+      checkScopes(words(d.apiScopes), true);
+    } else if (stepKey === "credentials" && d.auth === "private_key_jwt") {
+      if (!d.jwks.trim()) throw invalid("Paste the app's public key.");
+      parseJwks(d.jwks);
+    }
+  }
+  function wizardStepper(steps, d) {
+    return h("ol", { class: "wizard-steps" }, steps.map(([key, title], index) => {
+      const state = index === d.step ? "current" : index < d.step ? "done" : "todo";
+      const label = h("span", { class: "step-label" }, h("span", { class: "step-number", "aria-hidden": "true" }, String(index + 1)), title);
+      // Only completed steps are links: moving forward always goes through riAuth's check.
+      const content = index < d.step
+        ? h("button", { class: "step-link", type: "button", "data-step": String(index) }, label, h("span", { class: "sr-only" }, " (completed)"))
+        : label;
+      return h("li", { class: `wizard-step ${state}`, "aria-current": index === d.step ? "step" : null }, content);
+    }));
+  }
+  function newApplication() {
+    if (!draft) draft = freshDraft();
+    const d = draft;
+    if (d.created) return created(d);
+    const steps = wizardSteps(d);
+    d.step = Math.min(d.step, steps.length - 1);
+    const [stepKey, stepTitle] = steps[d.step];
+    const last = stepKey === "review";
+    const back = d.step > 0 ? h("button", { class: "button secondary", type: "button", onclick: () => { readStep(stepKey, form, d); go(d.step - 1); } }, "Back") : null;
+    const form = h("form", { class: "admin-form wizard-form", novalidate: true, "aria-labelledby": "wizard-step-title" },
+      h("h2", { class: "wizard-title", id: "wizard-step-title", tabindex: "-1" }, `Step ${d.step + 1} of ${steps.length}: ${stepTitle}`),
+      STEP_VIEWS[stepKey](d),
+      actions(h("button", { class: "button primary", type: "submit" }, last ? "Create application" : "Continue"), back,
+        link(hash("applications"), "Cancel", { class: "button secondary", onclick: () => { draft = null; } })));
+    const go = (step) => { d.step = step; render(); document.getElementById("wizard-step-title")?.focus(); };
+    const stepper = wizardStepper(steps, d);
+    stepper.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-step]");
+      if (!target) return;
+      readStep(stepKey, form, d); go(Number(target.dataset.step));
+    });
+    if (last) {
+      bindForm(form, async (key) => {
+        const body = draftBody(d);
+        const result = await api("POST", "admin/clients", body, { key });
+        d.created = { client: result.client, secret: result.client_secret || null, connection: d.checked ? d.checked.connection : null };
+        await saved(`Created ${body.name}.`);
+      }, { 409: (error) => /already exists/i.test(error.message) ? "An application with this client ID was created meanwhile. Go back and choose another client ID." : undefined }, "Creating…");
+    } else {
+      bindForm(form, async () => {
+        readStep(stepKey, form, d);
+        localCheck(stepKey, d);
+        // Continue asks riAuth: the whole draft is checked as a create would be, no write.
+        try {
+          d.checked = await api("POST", "admin/client-checks", draftBody(d));
+        } catch (error) {
+          if (error.status === 400) throw invalid(error.message);
+          throw error;
+        }
+        go(d.step + 1);
+      }, {
+        409: (error) => /already exists/i.test(error.message) ? "An application with this client ID already exists. Choose another client ID." : undefined,
+        403: "Your account isn't allowed to create this application.",
+      }, "Checking…");
+    }
+    return { crumb: "New application", node: h("div", {}, heading("APPLICATIONS", "Set up an application", "Connect an app to riAuth step by step. Each step is checked by riAuth before you continue; nothing is created until you confirm."), stepper, form) };
+  }
+  // After Create: what the app needs, with the secret shown only until this page is left.
+  function created(d) {
+    const { client, secret } = d.created;
+    const done = link(hash("applications", client.client_id), "Go to the application", { class: "button primary", onclick: () => { draft = null; } });
+    const another = h("button", { class: "button secondary", type: "button", onclick: () => { draft = freshDraft(); render({ focus: true }); } }, "Set up another");
+    const connection = d.created.connection;
+    const node = h("div", {},
+      heading("APPLICATIONS", `Connect ${client.name}`, "The application exists now. Configure the app with these values, then check the connection."),
+      secret ? h("p", { class: "notice warn-notice", role: "note" }, "Copy the client secret now. riAuth stores only a hash; it disappears when you leave this page and can only be replaced by rotating.") : null,
+      h("div", { class: "detail-grid" },
+        h("div", { class: "admin-form" },
+          card("Connection", connection ? connectionFacts(connection, secret) : h("p", { class: "field-hint" }, "Reload to see the connection details."), connection ? envSnippet(connection, secret) : null)),
+        h("div", { class: "detail-side" }, diagnosticsCard(client))),
+      actions(done, another));
+    return { crumb: "New application", node };
   }
 
   // ---- People ------------------------------------------------------------------------------

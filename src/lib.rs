@@ -4,6 +4,7 @@ compile_error!("Select --features essentials or --features platform for a server
 pub mod agent;
 pub mod api;
 mod assembly;
+pub mod application_setup;
 pub mod assurance;
 pub mod authenticator;
 pub mod authorization;

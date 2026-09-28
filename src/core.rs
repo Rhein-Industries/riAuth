@@ -617,27 +617,7 @@ impl Core {
                 "client.write",
                 &format!("client/{}", input.client_id),
             )?;
-            let secret = if crate::management::effective_confidential(
-                input.confidential,
-                input.service,
-                &input.settings,
-            ) {
-                crate::management::Secret::Issue
-            } else {
-                crate::management::Secret::Keep
-            };
-            let client = Client {
-                id: input.client_id,
-                name: input.name,
-                secret_hash: None,
-                redirect_uris: input.redirect_uris,
-                scopes: input.scopes,
-                allowed_groups: input.allowed_groups,
-                require_mfa: input.require_mfa,
-                enabled: true,
-                service: input.service,
-                settings: input.settings,
-            };
+            let (client, secret) = crate::management::new_client(input);
             let written = crate::management::write_client(
                 tx,
                 &actor,

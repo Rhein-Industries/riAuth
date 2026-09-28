@@ -112,13 +112,14 @@ async fn page_is_self_contained() {
     for asset in ["/portal/assets/admin.js", "/portal/assets/admin.css"] {
         let (status, _, body) = send(&app, asset, Call::default()).await;
         assert_eq!(status, StatusCode::OK, "{asset}");
-        // Nothing is fetched from elsewhere: the only URLs are the SVG namespace and an
-        // example placeholder.
+        // Nothing is fetched from elsewhere: the only URLs are the SVG namespace and example
+        // placeholders and hints.
         let body = body
             .as_str()
             .unwrap()
             .replace("http://www.w3.org/2000/svg", "")
-            .replace("https://app.example.com/", "");
+            .replace("https://app.example.com", "")
+            .replace("http://127.0.0.1/callback", "");
         assert!(
             !body.contains("http://") && !body.contains("https://"),
             "{asset}"
@@ -421,4 +422,298 @@ async fn a_changed_email_cannot_be_marked_verified() {
         stored(&fixture.core),
         (json!("ada@new.example"), json!(false))
     );
+}
+
+fn checks_named<'a>(report: &'a Value, id: &str) -> Vec<&'a Value> {
+    report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["id"] == id)
+        .collect()
+}
+
+#[tokio::test]
+async fn setup_wizard_checks_a_draft_with_the_create_path_without_writing() {
+    let fixture = Fixture::new();
+    let user = fixture.user("ada");
+    fixture.client("code", true);
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let member = sso_cookie(&fixture.core, &user);
+    let app = riauth::api::router(fixture.core.clone());
+    let origin = origin(&fixture.core);
+    let post = |cookie, body| Call {
+        method: "POST",
+        cookie: Some(cookie),
+        portal: true,
+        origin: Some(&origin),
+        body: Some(body),
+        ..Default::default()
+    };
+    let spa = json!({
+        "client_id": "dashboard", "name": "Dashboard", "confidential": false,
+        "redirect_uris": ["https://dash.example.com/callback"],
+        "scopes": ["openid", "profile", "email"],
+        "settings": {
+            "token_endpoint_auth_method": "none",
+            "post_logout_redirect_uris": ["https://dash.example.com/"],
+            "claim_mappings": [{"scope": "profile", "claim": "department", "source": {"type": "attribute", "key": "department"}}],
+        },
+    });
+    let revision = |app: axum::Router| {
+        let admin = admin.clone();
+        async move {
+            let call = Call {
+                cookie: Some(&admin),
+                portal: true,
+                ..Default::default()
+            };
+            send(&app, "/api/admin/session", call).await.2["revision"]
+                .as_u64()
+                .unwrap()
+        }
+    };
+    let before = revision(app.clone()).await;
+    let (status, _, report) =
+        send(&app, "/api/admin/client-checks", post(&admin, spa.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(report["valid"], true);
+    assert_eq!(
+        report["connection"]["token_endpoint_auth_methods"],
+        json!(["none"])
+    );
+    assert_eq!(report["connection"]["client_id"], "dashboard");
+    assert!(
+        report["claims"]["by_scope"]["profile"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["claim"] == "department")
+    );
+    // A browser app without an allowed origin is told which one to add.
+    let origins = checks_named(&report, "origins");
+    assert_eq!(origins[0]["level"], "warn", "{report}");
+    assert!(
+        origins[0]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("https://dash.example.com")
+    );
+    assert!(report.to_string().find("client_secret\"").is_none());
+    // Checking writes nothing: no client, no audit record, same revision.
+    assert_eq!(revision(app.clone()).await, before);
+    assert!(
+        !fixture
+            .core
+            .list_clients(&fixture.admin)
+            .unwrap()
+            .to_string()
+            .contains("dashboard")
+    );
+    let events = fixture.core.audit_events(&fixture.admin, 50).unwrap();
+    assert!(
+        !events
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["target"] == "dashboard")
+    );
+
+    // Rejections are the management path's own.
+    let mut bad = spa.clone();
+    bad["redirect_uris"] = json!(["http://dash.example.com/callback"]);
+    let (status, _, body) = send(&app, "/api/admin/client-checks", post(&admin, bad)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("Redirect URIs")
+    );
+    let mut bad = spa.clone();
+    bad["settings"]["claim_mappings"][0]["claim"] = json!("email");
+    let (status, _, body) = send(&app, "/api/admin/client-checks", post(&admin, bad)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let mut bad = spa.clone();
+    bad["settings"]["origins"] = json!(["https://dash.example.com/"]);
+    let (status, _, body) = send(&app, "/api/admin/client-checks", post(&admin, bad)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    // A private key is not a public JWKS; the draft is explained, not a bare 422.
+    let mut bad = spa.clone();
+    bad["confidential"] = json!(true);
+    bad["settings"]["token_endpoint_auth_method"] = json!("private_key_jwt");
+    bad["settings"]["jwks"] = json!({"keys": [{"kty": "EC", "kid": "k", "alg": "ES256", "crv": "P-256", "x": "x", "y": "y", "d": "secret"}]});
+    let (status, _, body) = send(&app, "/api/admin/client-checks", post(&admin, bad)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("couldn't read this configuration")
+    );
+    let mut taken = spa.clone();
+    taken["client_id"] = json!("code");
+    let (status, _, body) = send(&app, "/api/admin/client-checks", post(&admin, taken)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    // Same guards and authorization as a create.
+    let (status, _, body) =
+        send(&app, "/api/admin/client-checks", post(&member, spa.clone())).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let cross_site = Call {
+        origin: Some("https://evil.example"),
+        ..post(&admin, spa.clone())
+    };
+    let (status, _, body) = send(&app, "/api/admin/client-checks", cross_site).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    // The checked draft creates as checked; a confidential web app gets its secret once.
+    let (status, _, created) = send(&app, "/api/admin/clients", post(&admin, spa)).await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert!(created["client_secret"].is_null());
+    let web = json!({
+        "client_id": "portal-web", "name": "Portal", "confidential": true,
+        "redirect_uris": ["https://portal.example.com/auth/callback"],
+        "scopes": ["openid", "profile"],
+        "settings": {"token_endpoint_auth_method": "client_secret_basic"},
+    });
+    let (status, _, report) =
+        send(&app, "/api/admin/client-checks", post(&admin, web.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    assert_eq!(
+        report["connection"]["token_endpoint_auth_methods"],
+        json!(["client_secret_basic"])
+    );
+    assert!(checks_named(&report, "origins").is_empty(), "{report}");
+    let (status, _, created) = send(&app, "/api/admin/clients", post(&admin, web)).await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert!(
+        created["client_secret"]
+            .as_str()
+            .unwrap()
+            .starts_with("ri_client_")
+    );
+}
+
+#[tokio::test]
+async fn application_diagnostics_explain_what_blocks_sign_in() {
+    let fixture = Fixture::new();
+    let ada = fixture.user("ada");
+    let secret = fixture.client("code", true);
+    let admin = sso_cookie(&fixture.core, &fixture.admin);
+    let member = sso_cookie(&fixture.core, &ada);
+    let app = riauth::api::router(fixture.core.clone());
+    let origin = origin(&fixture.core);
+    fixture.core.create_group(&fixture.admin, "eng").unwrap();
+    fixture
+        .core
+        .update_client(
+            &fixture.admin,
+            "code",
+            riauth::model::ClientPatch {
+                allowed_groups: Some(["eng".to_owned()].into()),
+                require_mfa: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let read = |cookie| Call {
+        cookie: Some(cookie),
+        portal: true,
+        ..Default::default()
+    };
+    let diagnostics = "/api/admin/clients/code/diagnostics";
+    let (status, _, report) = send(&app, diagnostics, read(&admin)).await;
+    assert_eq!(status, StatusCode::OK, "{report}");
+    let connection = &report["connection"];
+    assert_eq!(connection["issuer"], fixture.core.config.issuer.as_str());
+    assert!(
+        connection["discovery_url"]
+            .as_str()
+            .unwrap()
+            .ends_with("/.well-known/openid-configuration")
+    );
+    assert_eq!(
+        connection["token_endpoint_auth_methods"],
+        json!(["client_secret_basic", "client_secret_post"])
+    );
+    assert!(report.to_string().find("ri_client_").is_none());
+    assert_eq!(checks_named(&report, "enabled")[0]["level"], "ok");
+    assert_eq!(checks_named(&report, "signing")[0]["level"], "ok");
+    assert_eq!(
+        checks_named(&report, "access")[0]["level"],
+        "warn",
+        "{report}"
+    );
+    assert_eq!(checks_named(&report, "launch")[0]["level"], "warn");
+    assert_eq!(checks_named(&report, "activity")[0]["level"], "info");
+
+    // With a member, access passes and the missing second factor is named.
+    fixture
+        .core
+        .group_member(&fixture.admin, "eng", "ada", true)
+        .unwrap();
+    let (_, _, report) = send(&app, diagnostics, read(&admin)).await;
+    assert_eq!(
+        checks_named(&report, "access")[0]["level"],
+        "ok",
+        "{report}"
+    );
+    assert_eq!(checks_named(&report, "mfa")[0]["level"], "warn", "{report}");
+
+    // The sign-in test is the policy engine's simulation.
+    let test = |mfa| Call {
+        method: "POST",
+        cookie: Some(&admin),
+        portal: true,
+        origin: Some(&origin),
+        body: Some(json!({"username": "ada", "scope": ["openid", "profile"], "mfa": mfa})),
+        ..Default::default()
+    };
+    let (status, _, refused) = send(&app, "/api/admin/clients/code/explain", test(false)).await;
+    assert_eq!(status, StatusCode::OK, "{refused}");
+    assert_eq!(refused["allowed"], false);
+    assert!(
+        refused["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("mfa_required"))
+    );
+    let (_, _, allowed) = send(&app, "/api/admin/clients/code/explain", test(true)).await;
+    assert_eq!(allowed["allowed"], true, "{allowed}");
+    assert_eq!(allowed["token_issued"], false);
+    assert_eq!(
+        allowed["id_token_identity_claims"]["preferred_username"],
+        "ada"
+    );
+
+    // A completed token exchange shows up as activity.
+    fixture
+        .core
+        .update_client(
+            &fixture.admin,
+            "code",
+            riauth::model::ClientPatch {
+                require_mfa: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    fixture.tokens("code", &ada, secret);
+    let (_, _, report) = send(&app, diagnostics, read(&admin)).await;
+    let activity = checks_named(&report, "activity")[0];
+    assert_eq!(activity["level"], "ok", "{report}");
+    assert!(activity["last_issued_at"].is_u64());
+
+    // Administrators only, through the portal read guard.
+    let (status, _, body) = send(&app, diagnostics, read(&member)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let no_header = Call {
+        cookie: Some(&admin),
+        ..Default::default()
+    };
+    let (status, _, body) = send(&app, diagnostics, no_header).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let (status, _, body) =
+        send(&app, "/api/admin/clients/missing/diagnostics", read(&admin)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
