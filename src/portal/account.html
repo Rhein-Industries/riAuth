@@ -8,6 +8,7 @@
   <title>Complete your account · riAuth</title>
   <link rel="stylesheet" href="__BASE__portal/assets/app.css">
   <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/capabilities.js" defer></script>
   <script src="__BASE__portal/assets/account.js" defer></script>
 </head>
 <body>
@@ -29,9 +30,9 @@
     <section id="account-complete" hidden aria-live="polite" tabindex="-1">
       <h2 id="account-complete-title"></h2>
       <p id="account-complete-text"></p>
-      <a id="account-complete-link" class="button primary" href="__BASE__apps">Continue to sign in</a>
+      <a id="account-complete-link" class="button primary" data-capability="portal.user_applications" href="__BASE__apps">Continue to sign in</a>
     </section>
-    <p id="account-fallback" hidden><a href="__BASE__apps">Open applications</a></p>
+    <p id="account-fallback" hidden><a data-capability="portal.user_applications" href="__BASE__apps">Open applications</a></p>
     <noscript><p>Enable JavaScript to use this page. Opening an email link does not use it; you must confirm on this page.</p></noscript>
   </section>
 </main>

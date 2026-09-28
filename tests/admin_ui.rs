@@ -134,6 +134,15 @@ async fn page_is_self_contained() {
 #[tokio::test]
 async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
     let fixture = Fixture::new();
+    let browser = riauth::api::router(fixture.core.clone());
+    for path in ["/account/reset", "/device"] {
+        let (status, _, page) = send(&browser, path, Call::default()).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        let page = page.as_str().unwrap();
+        assert!(page.contains("/portal/assets/capabilities.js"), "{path}");
+    }
+    let (_, _, account_script) = send(&browser, "/portal/assets/account.js", Call::default()).await;
+    assert!(account_script.as_str().unwrap().contains("RiAuthCapabilities.usable(feature)"));
     let mut core = fixture.core.clone();
     core.config.browser_ui = false;
     let app = riauth::api::router(core);
@@ -148,7 +157,9 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
     }
     for path in [
         "/apps", "/admin", "/account/security", "/account/sources/continue", "/device", "/setup",
+        "/account/accept", "/account/verify", "/account/reset",
         "/portal/assets/app.js", "/portal/assets/admin.js",
+        "/portal/assets/account.js", "/portal/assets/device.js",
         "/portal/assets/capabilities.js", "/portal/assets/signin.js",
     ] {
         let (status, _) = get(&app, path).await;
@@ -162,6 +173,14 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, _) = get(&app, "/api/admin/session").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    for path in [
+        "/api/portal/account/accept", "/api/portal/account/verify",
+        "/api/portal/account/reset", "/api/portal/account/reset-request",
+        "/api/device/browser/decision",
+    ] {
+        let (status, _) = get(&app, path).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{path}");
+    }
     let (status, root) = get(&app, "/").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(root["service"], "riAuth");

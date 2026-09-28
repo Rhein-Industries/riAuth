@@ -17,6 +17,7 @@
   // Without a proof, the reset page asks for a new link instead.
   const mode = purpose === "reset" && !token ? "request" : purpose;
   const setsPassword = mode === "accept" || mode === "reset";
+  const feature = { accept: "identity.invitations", verify: "identity.email_verification", reset: "identity.email_password_reset", request: "identity.email_password_reset" }[mode];
   const FACTORS_KEPT = "Resetting your password never removes your passkeys or authenticator app. If you lost one of them, contact your administrator.";
 
   function clearSecrets() { password.value = ""; confirm.value = ""; }
@@ -82,6 +83,7 @@
     $("account-note").textContent = FACTORS_KEPT;
     fallback.textContent = "Request a new reset link";
     fallback.href = paths.reset;
+    fallback.dataset.capability = "identity.email_password_reset";
     button.textContent = "Reset password";
   } else if (mode === "request") {
     document.title = "Reset password · riAuth";
@@ -96,14 +98,29 @@
   $("account-password-fields").hidden = !setsPassword;
   password.required = confirm.required = setsPassword;
   if (mode === "request") {
-    form.hidden = false;
-    username.focus();
+    // A new email needs configured delivery; an existing proof does not.
+    form.hidden = true;
   } else if (!mode || !token || !token.startsWith("ri_mail_") || token.length > 128) {
     fail("This email link is missing or invalid. Open the original email link or request a new one.", true);
   } else {
     form.hidden = false;
     $("account-title").focus();
   }
+
+  async function refreshCapabilities() {
+    let state = null;
+    try { state = await RiAuthCapabilities.refresh(); } catch { /* Proof redemption can still work if this read fails. */ }
+    RiAuthCapabilities.apply();
+    if (mode === "request" && $("account-complete").hidden && error.hidden) {
+      if (!state) { fail("Could not check whether email recovery is available. Reload this page and try again.", true); return; }
+      if (!RiAuthCapabilities.usable(feature)) { fail("Password reset by email isn't available on this server. Contact your administrator.", true); return; }
+      form.hidden = false;
+      username.focus();
+    } else if (mode !== "request" && state && feature && !RiAuthCapabilities.compiled(feature) && !form.hidden) {
+      fail("This account action isn't available on this server. Contact your administrator.", true);
+    }
+  }
+  void refreshCapabilities();
 
   window.addEventListener("pagehide", () => { token = null; clearSecrets(); });
   // A newer email link opened in this tab changes only the fragment; start over with it.
@@ -112,6 +129,11 @@
   });
   window.addEventListener("pageshow", (event) => {
     if (event.persisted && mode !== "request") fail("For your security, reopen the original email link to continue.", true);
+    if (event.persisted && mode === "request" && $("account-complete").hidden) {
+      form.hidden = true;
+      error.hidden = true;
+      void refreshCapabilities();
+    }
   });
 
   function complete(title, heading, text, link) {
@@ -126,6 +148,7 @@
     $("account-complete").focus();
   }
   function requestLink() {
+    if (!RiAuthCapabilities.usable("identity.email_password_reset")) return;
     const name = username.value.trim();
     if (!name) { username.setAttribute("aria-invalid", "true"); fail("Enter the username you sign in with."); return; }
     username.removeAttribute("aria-invalid");

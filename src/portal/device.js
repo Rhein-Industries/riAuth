@@ -3,7 +3,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const { base } = RiAuth;
-  const screens = ["enter", "loading", "signin", "review", "finished"];
+  const screens = ["enter", "loading", "unavailable", "signin", "review", "finished"];
   const scopeHelp = {
     openid: "Confirm your riAuth identity",
     profile: "See your name and username",
@@ -11,8 +11,35 @@
     groups: "See your group memberships",
     offline_access: "Stay connected while you're away"
   };
-  let code = null, review = null, screen = "enter", reauthenticate = false;
+  let code = null, review = null, screen = "loading", reauthenticate = false;
   let sequence = 0, authBusy = false, decisionBusy = false;
+
+  function unavailable(message) {
+    sequence += 1;
+    code = null;
+    review = null;
+    $("device-unavailable-text").textContent = message;
+    show("unavailable", "Device approval unavailable");
+  }
+  async function refreshCapabilities() {
+    let state;
+    try { state = await RiAuthCapabilities.refresh(); }
+    catch { unavailable("Could not check device approval right now. Check your connection and try again."); return; }
+    RiAuthCapabilities.apply();
+    if (!RiAuthCapabilities.usable("oidc.device")) {
+      unavailable("This server doesn't offer device approval. Contact your administrator if you need to connect a device.");
+      return;
+    }
+    if (screen === "loading" || screen === "unavailable") {
+      const url = new URL(location.href);
+      const linked = url.searchParams.get("user_code") || url.searchParams.get("code");
+      if (linked) lookup(linked);
+      else enter();
+    } else if (screen === "signin") {
+      const passkeyAvailable = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
+      $("device-passkey").hidden = $("device-signin-divider").hidden = !passkeyAvailable;
+    }
+  }
 
   function announce(message) { $("device-announcement").textContent = message; }
   function show(name, title) {
@@ -129,6 +156,7 @@
     show("review", "Review device access");
   }
   async function lookup(nextCode) {
+    if (!RiAuthCapabilities.usable("oidc.device")) return;
     const requested = normalize(nextCode);
     if (!requested) {
       enter("Enter the ten-character code shown on your device.");
@@ -163,14 +191,15 @@
     reauthenticate = again;
     $("device-signin-code").textContent = code;
     $("device-signin-title").textContent = again ? "Confirm it's you" : "Sign in to review this request";
+    const passkeyAvailable = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
     $("device-signin-reason").textContent = again
-      ? "Sign in again with the account shown on the review. You can use a passkey or your password and authenticator code."
+      ? `Sign in again with the account shown on the review. Use ${passkeyAvailable ? "a passkey or " : ""}your password and authenticator code.`
       : "Your code is ready. Sign in to see which application is asking for access.";
     $("device-username").value = again && review ? review.account.username : "";
     $("device-username").readOnly = again && !!review;
     $("device-password").value = "";
     $("device-otp").value = "";
-    $("device-passkey").hidden = $("device-signin-divider").hidden = !RiAuth.passkeysAvailable();
+    $("device-passkey").hidden = $("device-signin-divider").hidden = !passkeyAvailable;
     $("device-signin-back").textContent = again && review ? "Back to review" : "Use another device code";
     clearError("device-signin-error");
     show("signin", again ? "Confirm it's you" : "Sign in to review");
@@ -215,7 +244,7 @@
     });
   });
   $("device-passkey").addEventListener("click", () => {
-    if (authBusy) return;
+    if (authBusy || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable()) return;
     RiAuth.inFlight($("device-passkey"), async () => {
       authBusy = true;
       clearError("device-signin-error");
@@ -236,9 +265,10 @@
   $("device-reauth").addEventListener("click", () => signin(true));
   $("device-change-code").addEventListener("click", () => enter());
   $("device-start-again").addEventListener("click", () => enter());
+  $("device-retry").addEventListener("click", () => { show("loading", "Checking device approval"); void refreshCapabilities(); });
 
   async function decide(approve) {
-    if (!review || !code || decisionBusy || approve && review.approval_allowed !== true) return;
+    if (!RiAuthCapabilities.usable("oidc.device") || !review || !code || decisionBusy || approve && review.approval_allowed !== true) return;
     const button = $(approve ? "device-approve" : "device-deny");
     RiAuth.inFlight(button, async () => {
       decisionBusy = true;
@@ -276,7 +306,6 @@
   RiAuth.guard($("device-approve"), () => decide(true));
   RiAuth.guard($("device-deny"), () => decide(false));
 
-  const linked = new URL(location.href).searchParams.get("user_code") || new URL(location.href).searchParams.get("code");
-  if (linked) lookup(linked);
-  else $("device-code").focus();
+  window.addEventListener("pageshow", (event) => { if (event.persisted) void refreshCapabilities(); });
+  void refreshCapabilities();
 })();
