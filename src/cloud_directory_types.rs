@@ -36,9 +36,16 @@ pub struct Attributes {
 pub struct WorkspaceDirectory {
     pub customer_id: String,
     pub domain: String,
+    /// Broker endpoint. Omit in direct service-account mode.
+    #[serde(default)]
     pub token_url: String,
+    #[serde(default)]
     pub client_id: String,
+    #[serde(default)]
     pub client_secret_file: PathBuf,
+    /// Google service-account JSON key and the Workspace user it impersonates.
+    #[serde(default)]
+    pub direct_auth: Option<WorkspaceDirectAuth>,
     /// Admin SDK origin. Production is `https://admin.googleapis.com`.
     pub directory_url: String,
     /// Local group name to upstream group id or email. Only these groups are reconciled.
@@ -51,6 +58,13 @@ pub struct WorkspaceDirectory {
     /// Optional `scope` on the client-credentials token request. Empty omits it.
     #[serde(default)]
     pub scope: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceDirectAuth {
+    pub key_file: PathBuf,
+    pub delegated_subject: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

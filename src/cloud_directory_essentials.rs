@@ -1,5 +1,7 @@
 //! Persisted connector configuration without cloud directory execution.
-pub use crate::cloud_directory_types::{Attributes, EntraDirectory, WorkspaceDirectory};
+pub use crate::cloud_directory_types::{
+    Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory,
+};
 
 impl WorkspaceDirectory {
     pub fn validate(&self) -> crate::error::Result<()> {

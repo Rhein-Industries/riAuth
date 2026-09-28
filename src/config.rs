@@ -586,11 +586,21 @@ impl Config {
             }
         }
         for directory in value.workspace_directories.values_mut() {
-            if directory.client_secret_file.is_relative() {
+            if !directory.client_secret_file.as_os_str().is_empty()
+                && directory.client_secret_file.is_relative()
+            {
                 directory.client_secret_file = path
                     .parent()
                     .unwrap_or(Path::new("."))
                     .join(&directory.client_secret_file);
+            }
+            if let Some(direct) = &mut directory.direct_auth {
+                if !direct.key_file.as_os_str().is_empty() && direct.key_file.is_relative() {
+                    direct.key_file = path
+                        .parent()
+                        .unwrap_or(Path::new("."))
+                        .join(&direct.key_file);
+                }
             }
         }
         for directory in value.entra_directories.values_mut() {

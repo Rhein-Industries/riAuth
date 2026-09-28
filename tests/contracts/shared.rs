@@ -3418,6 +3418,7 @@ fn configure_cloud(f: &mut Fixture, remote: &cloud_mock::Mock) {
             token_url: remote.token_url.clone(),
             client_id: cloud_mock::CLIENT_ID.into(),
             client_secret_file: secret_file,
+            direct_auth: None,
             directory_url: remote.base.clone(),
             groups: BTreeMap::new(),
             attributes: Attributes {

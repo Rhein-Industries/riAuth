@@ -2,9 +2,30 @@
 
 [Implementation](../../src/cloud_directory.rs) and [tests](../../tests/cloud_directory.rs).
 
-Workspace sync imports users and selected groups through the Admin SDK Directory API. It does not copy passwords, delete local users, or change user/group records until an authorized caller applies a reviewed plan. Validate the token broker and synchronization behavior with a controlled Workspace tenant before deployment; the repository tests use local mocks.
+Workspace sync imports users and selected groups through the Admin SDK Directory API. It does not copy passwords, delete local users, or change user/group records until an authorized caller applies a reviewed plan. Validate authorization and synchronization behavior with a controlled Workspace tenant before deployment; the repository tests use local mocks.
 
-The supported token profile is OAuth 2.0 `client_credentials` (`grant_type`, `client_id`, `client_secret`, and `scope` when it is non-empty). The client secret is read from a 0600/0400 file on every plan and apply. Google's public token endpoint does not issue Admin SDK access tokens with this grant; point `token_url` at an endpoint that implements the profile. Directory calls then use `Authorization: Bearer`.
+The supported direct mode follows [Google's service-account JWT bearer flow](https://developers.google.com/identity/protocols/oauth2/service-account). A Workspace super administrator must grant domain-wide delegation to the service account's **numeric client ID** in the Admin console. Configure a dedicated Workspace user with only the Directory read privileges needed by this connector as `delegated_subject`. The signed assertion has that user as `sub`; Google constrains access by that user's privileges and the granted OAuth scopes. For users only, the connector requests `admin.directory.user.readonly`. When mapped groups are configured, it also requests `admin.directory.group.readonly` and `admin.directory.group.member.readonly` as documented in [Directory API scopes](https://developers.google.com/workspace/admin/directory/v1/guides/authorizing). Authorize exactly those scopes in the Admin console.
+
+```toml
+[workspace_directories.corp]
+customer_id = "C01234567"
+domain = "example.com"
+directory_url = "https://admin.googleapis.com"
+username_prefix = ""
+
+[workspace_directories.corp.direct_auth]
+key_file = "secrets/workspace-service-account.json"
+delegated_subject = "directory-reader@example.com"
+
+[workspace_directories.corp.groups]
+staff = "staff@example.com"
+```
+
+The key file is Google's service-account JSON file, stored outside source control with owner-only permissions (0600 or 0400). Relative paths resolve from `riauth.toml`. The connector verifies its `type` and official `token_uri`, then reads the key afresh for each plan and apply so key replacement takes effect without process restart. The direct token endpoint defaults to `https://oauth2.googleapis.com/token`; a custom endpoint is accepted only for local loopback tests. Assertions use RS256, expire after one hour, and are exchanged for a bearer token once per bounded sync. A token response with less than 60 seconds of lifetime is rejected. Authentication failures count against the same per-directory retry budget as broker failures. The key file and access token are never included in a plan. Protect and rotate service-account keys according to [Google's key guidance](https://docs.cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys).
+
+The broker mode remains available for deployments that provide tokens through a separate trusted endpoint.
+
+In broker mode, the token profile is OAuth 2.0 `client_credentials` (`grant_type`, `client_id`, `client_secret`, and `scope` when it is non-empty). The client secret is read from a 0600/0400 file on every plan and apply. Google's public token endpoint does not issue Admin SDK access tokens with this grant; point `token_url` at an endpoint that implements the profile. Directory calls then use `Authorization: Bearer`.
 
 ```toml
 [workspace_directories.corp]
@@ -26,7 +47,7 @@ display_name = "name.fullName"
 external_id = "id"
 ```
 
-`directory_url` is an origin with no path. Production is `https://admin.googleapis.com`. Loopback HTTP is accepted for a local broker. Relative secret paths are resolved from `riauth.toml`.
+`directory_url` is an origin with no path. Production is `https://admin.googleapis.com`. Loopback HTTP is accepted for a local peer. Relative secret paths are resolved from `riauth.toml`.
 
 Users come from `GET /admin/directory/v1/users` with `customer`, `domain`, and `maxResults`, following `nextPageToken` on that same URL. Groups come from `/admin/directory/v1/groups`, and members from `/admin/directory/v1/groups/{id}/members`. The connector reads `id`, `primaryEmail`, `name.fullName`, and `suspended`. `orgUnitPath` may be present and is not imported. `suspended = true` disables the linked local user. Attribute names are configurable; the stable match key is the external id, not the email.
 

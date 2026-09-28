@@ -1,10 +1,8 @@
 //! Bounded Google Workspace and Microsoft Entra ID directory sync.
 //!
-//! The supported token profile is OAuth 2.0 `client_credentials`. Google's
-//! public token endpoint does not issue Admin SDK tokens with that grant;
-//! `token_url` must be an endpoint that implements this profile. A page that
-//! fails, repeats, or leaves the configured host is not a completed sync and
-//! must not disable accounts.
+//! Workspace supports Google's delegated service-account JWT grant or the
+//! existing broker `client_credentials` grant. A page that fails, repeats, or
+//! leaves the configured host is not a completed sync and must not disable accounts.
 use crate::{
     agent::Principal,
     connector_guard::{
@@ -29,7 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 use url::Url;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 const RETRY_LIMIT: u32 = 5;
 const RETRY_WINDOW: u64 = 900;
@@ -38,8 +36,15 @@ const MAX_OBJECTS: usize = 2000;
 const MAX_PAGE_BYTES: usize = 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 const SYNC_BUDGET: Duration = Duration::from_secs(30);
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.user.readonly";
+const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
+const GOOGLE_MEMBER_READ: &str =
+    "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
 
-pub use crate::cloud_directory_types::{Attributes, EntraDirectory, WorkspaceDirectory};
+pub use crate::cloud_directory_types::{
+    Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Provider {
@@ -185,19 +190,58 @@ impl WorkspaceDirectory {
         if !valid_domain(&self.domain) {
             return Err(Error::bad("Workspace domain must be an explicit DNS name"));
         }
-        validate_token_url(&self.token_url)?;
         validate_base(&self.directory_url)?;
-        if !valid_secret_id(&self.client_id, 256) || self.client_secret_file.as_os_str().is_empty()
-        {
-            return Err(Error::bad(
-                "Workspace client id and secret file must be explicit",
-            ));
+        if let Some(direct) = &self.direct_auth {
+            if !self.client_id.is_empty() || !self.client_secret_file.as_os_str().is_empty() {
+                return Err(Error::bad(
+                    "Workspace broker and direct credentials cannot be combined",
+                ));
+            }
+            if !self.token_url.is_empty() {
+                validate_token_url(&self.token_url)?;
+                if self.token_url != GOOGLE_TOKEN_URL
+                    && !Url::parse(&self.token_url).is_ok_and(|url| {
+                        url.host_str().is_some_and(|host| {
+                            host == "localhost" || host == "127.0.0.1" || host == "[::1]"
+                        })
+                    })
+                {
+                    return Err(Error::bad(
+                        "Workspace direct token URL must be Google's endpoint or loopback",
+                    ));
+                }
+            }
+            if direct.key_file.as_os_str().is_empty()
+                || !valid_delegated_subject(&direct.delegated_subject)
+                || !self.scope.is_empty()
+            {
+                return Err(Error::bad(
+                    "Workspace direct authorization requires a key file and delegated user; scopes are fixed to read-only Directory access",
+                ));
+            }
+        } else {
+            validate_token_url(&self.token_url)?;
+            if !valid_secret_id(&self.client_id, 256)
+                || self.client_secret_file.as_os_str().is_empty()
+            {
+                return Err(Error::bad(
+                    "Workspace client id and secret file must be explicit",
+                ));
+            }
+            validate_scope(&self.scope, false)?;
         }
-        validate_scope(&self.scope, false)?;
         validate_groups(&self.groups)?;
         validate_attributes(&self.attributes)?;
         validate_prefix(&self.username_prefix)
     }
+}
+
+fn valid_delegated_subject(subject: &str) -> bool {
+    if subject.len() > 254 || subject.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    let mut parts = subject.split('@');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(local), Some(domain), None) if !local.is_empty() && valid_domain(domain))
 }
 
 impl EntraDirectory {
@@ -285,6 +329,7 @@ struct Settings {
     client_id: String,
     client_secret_file: PathBuf,
     entra_certificate: Option<(PathBuf, PathBuf)>,
+    direct_auth: Option<WorkspaceDirectAuth>,
     base_url: String,
     scope: String,
     groups: BTreeMap<String, String>,
@@ -431,6 +476,9 @@ fn access_token(
     settings: &Settings,
     http: &reqwest::blocking::Client,
 ) -> Result<Zeroizing<String>> {
+    if let Some(direct) = &settings.direct_auth {
+        return direct_access_token(settings, direct, http);
+    }
     let (field, credential) = if let Some((certificate, key)) = &settings.entra_certificate {
         (
             "client_assertion",
@@ -477,6 +525,92 @@ fn access_token(
     {
         return Err(unavailable("Cloud directory credential request failed"));
     }
+    Ok(Zeroizing::new(token.to_owned()))
+}
+
+#[derive(Deserialize)]
+struct ServiceAccountKey {
+    #[serde(rename = "type")]
+    kind: String,
+    client_email: String,
+    private_key_id: String,
+    private_key: String,
+    token_uri: String,
+}
+impl Drop for ServiceAccountKey {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
+fn direct_access_token(
+    settings: &Settings,
+    direct: &WorkspaceDirectAuth,
+    http: &reqwest::blocking::Client,
+) -> Result<Zeroizing<String>> {
+    let key_json = crate::config::read_private_secret(&direct.key_file, 16 * 1024)
+        .map_err(|_| unavailable("Workspace service-account key is unavailable"))?;
+    let key: ServiceAccountKey = serde_json::from_str(&key_json)
+        .map_err(|_| unavailable("Workspace service-account key is invalid"))?;
+    if key.kind != "service_account"
+        || !valid_delegated_subject(&key.client_email)
+        || !valid_secret_id(&key.private_key_id, 256)
+        || key.token_uri != GOOGLE_TOKEN_URL
+    {
+        return Err(unavailable("Workspace service-account key is invalid"));
+    }
+    let mut scopes = vec![GOOGLE_USER_READ];
+    if !settings.groups.is_empty() {
+        scopes.extend([GOOGLE_GROUP_READ, GOOGLE_MEMBER_READ]);
+    }
+    let now = now();
+    let claims = json!({
+        "iss": key.client_email,
+        "sub": direct.delegated_subject,
+        "scope": scopes.join(" "),
+        "aud": settings.token_url,
+        "iat": now,
+        "exp": now.saturating_add(3600),
+    });
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key.private_key_id.clone());
+    let encoding = EncodingKey::from_rsa_pem(key.private_key.as_bytes())
+        .map_err(|_| unavailable("Workspace service-account key is invalid"))?;
+    let assertion = Zeroizing::new(
+        jsonwebtoken::encode(&header, &claims, &encoding)
+            .map_err(|_| unavailable("Workspace assertion signing failed"))?,
+    );
+    let response = http
+        .post(&settings.token_url)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ])
+        .send()
+        .map_err(|_| unavailable("Cloud directory credential request failed"))?;
+    if !response.status().is_success() {
+        tracing::warn!(
+            status = response.status().as_u16(),
+            "cloud directory credential request failed"
+        );
+        return Err(unavailable("Cloud directory credential request failed"));
+    }
+    let bytes = read_body(response)?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| unavailable("Cloud directory credential request failed"))?;
+    if value.get("token_type").and_then(Value::as_str) != Some("Bearer")
+        || !value
+            .get("expires_in")
+            .and_then(Value::as_u64)
+            .is_some_and(|seconds| seconds >= 60)
+    {
+        return Err(unavailable("Cloud directory credential request failed"));
+    }
+    let token = value
+        .get("access_token")
+        .and_then(Value::as_str)
+        .filter(|token| valid_secret_id(token, 8192))
+        .ok_or_else(|| unavailable("Cloud directory credential request failed"))?;
     Ok(Zeroizing::new(token.to_owned()))
 }
 
@@ -1455,10 +1589,16 @@ impl Core {
                     id: id.into(),
                     tenant: directory.customer_id.clone(),
                     domain: directory.domain.clone(),
-                    token_url: directory.token_url.clone(),
+                    token_url: if directory.direct_auth.is_some() && directory.token_url.is_empty()
+                    {
+                        GOOGLE_TOKEN_URL.into()
+                    } else {
+                        directory.token_url.clone()
+                    },
                     client_id: directory.client_id.clone(),
                     client_secret_file: directory.client_secret_file.clone(),
                     entra_certificate: None,
+                    direct_auth: directory.direct_auth.clone(),
                     base_url: directory.directory_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),
@@ -1495,6 +1635,7 @@ impl Core {
                         .as_ref()
                         .zip(directory.private_key_file.as_ref())
                         .map(|(certificate, key)| (certificate.clone(), key.clone())),
+                    direct_auth: None,
                     base_url: directory.graph_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),

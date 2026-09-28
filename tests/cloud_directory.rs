@@ -18,9 +18,10 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use common::Fixture;
 use common::security::{Dependents, events, subscribe};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use openssl::{pkey::PKey, rsa::Rsa};
 use riauth::{
     agent::{NewAgent, Permission},
-    cloud_directory::{Attributes, EntraDirectory, WorkspaceDirectory},
+    cloud_directory::{Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory},
     config::write_private,
     connector_guard::ReconciliationMode,
     model::{Session, User, UserPatch},
@@ -32,6 +33,10 @@ use url::Url;
 const SECRET: &str = "cloud-client-secret-supersecret";
 const TOKEN: &str = "cloud-access-token-supersecret";
 const CLIENT_ID: &str = "cloud-client";
+const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.user.readonly";
+const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
+const GOOGLE_MEMBER_READ: &str =
+    "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
 
 #[derive(Clone)]
 struct Person {
@@ -82,6 +87,8 @@ struct State {
     seen_bearers: Mutex<Vec<String>>,
     paths: Mutex<Vec<String>>,
     base: Mutex<String>,
+    direct_public_key: Mutex<Option<Vec<u8>>>,
+    direct_expires_in: AtomicUsize,
 }
 
 struct Directory {
@@ -166,6 +173,8 @@ fn serve(kind: &'static str, people: Vec<Person>, secret: &str) -> Directory {
         seen_bearers: Mutex::new(Vec::new()),
         paths: Mutex::new(Vec::new()),
         base: Mutex::new(base.clone()),
+        direct_public_key: Mutex::new(None),
+        direct_expires_in: AtomicUsize::new(3600),
     });
     let stop = Arc::new(AtomicBool::new(false));
     let thread_state = Arc::clone(&state);
@@ -354,6 +363,49 @@ fn token(state: &State, request: &Incoming) -> (u16, String) {
     }
     state.token_hits.fetch_add(1, Ordering::Relaxed);
     let fields = form(&request.body);
+    if fields.get("grant_type").map(String::as_str)
+        == Some("urn:ietf:params:oauth:grant-type:jwt-bearer")
+    {
+        let key = state.direct_public_key.lock().unwrap();
+        let Some(key) = key.as_ref() else {
+            return (401, json!({"error": "unexpected_grant"}).to_string());
+        };
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.set_audience(&[format!("{}/token", state.base.lock().unwrap())]);
+        validation.set_issuer(&["sync@example.iam.gserviceaccount.com"]);
+        let valid = fields
+            .get("assertion")
+            .and_then(|jwt| {
+                jsonwebtoken::decode::<Value>(
+                    jwt,
+                    &DecodingKey::from_rsa_pem(key).ok()?,
+                    &validation,
+                )
+                .ok()
+            })
+            .is_some_and(|jwt| {
+                let claims = jwt.claims;
+                let issued = claims["iat"].as_u64().unwrap_or(0);
+                claims["sub"] == "admin@example.test"
+                    && jwt.header.kid.as_deref() == Some("local-test-key")
+                    && claims["scope"]
+                        == format!("{GOOGLE_USER_READ} {GOOGLE_GROUP_READ} {GOOGLE_MEMBER_READ}")
+                    && claims["exp"].as_u64() == Some(issued + 3600)
+                    && issued <= riauth::crypto::now()
+            });
+        if !valid || fields.len() != 2 {
+            return (401, json!({"error": "invalid_assertion"}).to_string());
+        }
+        return (
+            200,
+            json!({
+                "token_type": "Bearer",
+                "expires_in": state.direct_expires_in.load(Ordering::Relaxed),
+                "access_token": TOKEN,
+            })
+            .to_string(),
+        );
+    }
     state
         .seen_secrets
         .lock()
@@ -679,6 +731,7 @@ fn configure(fixture: &mut Fixture, kind: &str, id: &str, directory: &Directory,
                 token_url: directory.token_url.clone(),
                 client_id: CLIENT_ID.into(),
                 client_secret_file: secret_file,
+                direct_auth: None,
                 directory_url: directory.base.clone(),
                 groups: BTreeMap::from([("staff".into(), "staff@example.test".into())]),
                 attributes: attributes(kind),
@@ -1066,6 +1119,109 @@ fn exercise(kind: &'static str) {
 #[test]
 fn workspace_links_membership_suspension_and_redaction() {
     exercise("workspace");
+}
+
+#[test]
+fn workspace_direct_service_account_assertion_and_expiry() {
+    let directory = serve(
+        "workspace",
+        vec![person("ext-alice", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    let rsa = Rsa::generate(2048).unwrap();
+    let key = PKey::from_rsa(rsa).unwrap();
+    let private_key = String::from_utf8(key.private_key_to_pem_pkcs8().unwrap()).unwrap();
+    let public_key = key.public_key_to_pem().unwrap();
+    *directory.state.direct_public_key.lock().unwrap() = Some(public_key);
+    let key_file = fixture._dir.path().join("workspace-service-account.json");
+    write_private(
+        &key_file,
+        json!({
+            "type": "service_account",
+            "client_email": "sync@example.iam.gserviceaccount.com",
+            "private_key_id": "local-test-key",
+            "private_key": private_key,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        })
+        .to_string()
+        .as_bytes(),
+        true,
+    )
+    .unwrap();
+    let config = fixture
+        .core
+        .config
+        .workspace_directories
+        .get_mut("corp")
+        .unwrap();
+    config.client_id.clear();
+    config.client_secret_file.clear();
+    config.direct_auth = Some(WorkspaceDirectAuth {
+        key_file: key_file.clone(),
+        delegated_subject: "admin@example.test".into(),
+    });
+    assert!(config.validate().is_ok());
+
+    let plan = fixture
+        .core
+        .cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert!(directory.state.seen_secrets.lock().unwrap().is_empty());
+    let rotated = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    *directory.state.direct_public_key.lock().unwrap() = Some(rotated.public_key_to_pem().unwrap());
+    write_private(
+        &key_file,
+        json!({
+            "type": "service_account",
+            "client_email": "sync@example.iam.gserviceaccount.com",
+            "private_key_id": "local-test-key",
+            "private_key": String::from_utf8(rotated.private_key_to_pem_pkcs8().unwrap()).unwrap(),
+            "token_uri": "https://oauth2.googleapis.com/token",
+        })
+        .to_string()
+        .as_bytes(),
+        true,
+    )
+    .unwrap();
+    fixture
+        .core
+        .cloud_apply(&fixture.admin, "workspace", plan["id"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        user_named(&users_of(&fixture), "alice").unwrap()["enabled"],
+        true
+    );
+
+    directory
+        .state
+        .direct_expires_in
+        .store(10, Ordering::Relaxed);
+    let before = directory.state.directory_hits.load(Ordering::Relaxed);
+    assert!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .is_err()
+    );
+    assert_eq!(
+        directory.state.directory_hits.load(Ordering::Relaxed),
+        before
+    );
+    directory
+        .state
+        .direct_expires_in
+        .store(3600, Ordering::Relaxed);
+    assert!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .is_ok()
+    );
 }
 
 #[test]
@@ -2229,6 +2385,7 @@ fn directory_urls_reject_non_loopback_http() {
         token_url: "http://127.0.0.1:9/token".into(),
         client_id: CLIENT_ID.into(),
         client_secret_file: std::path::PathBuf::from("secret"),
+        direct_auth: None,
         directory_url: "http://example.com".into(),
         groups: BTreeMap::new(),
         attributes: attributes("workspace"),
