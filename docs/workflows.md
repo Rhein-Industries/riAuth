@@ -16,8 +16,9 @@ keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
-Platform now starts two active configured authentication shapes: local password
-alone for an account without TOTP, or password followed by enrolled local TOTP.
+Platform now starts three active configured authentication shapes: local password
+alone for an account without TOTP, password followed by enrolled local TOTP, or
+one user-verified passkey step for an account with an enrolled passkey.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
@@ -186,16 +187,16 @@ receipts and complete the run in one transaction. Revision two allows three
 attempts per verifier within ten minutes; exhausted TOTP leads to recovery code,
 and exhausted recovery denies. Revision-one runs retain their original path.
 
-### Active configured password paths
+### Active configured local verifier paths
 
 Platform can load an operator-authored definition in `config.toml` and start it
 with `POST /api/workflows/configured/{workflow}` using a live bearer token. The
 entry must be active and canonical. The supported shapes have one
-`verify_password` step, or `verify_password` followed by `verify_totp`. Both
-route failed verification to `denied`; success requires password alone or both
-password and TOTP receipts. The model validates the revision, fingerprint,
-proof floor, run duration, step timeout and retry/execution limits. Neither
-shape has a configured source or custom-stage dependency. For example, the
+`verify_password` step, `verify_password` followed by `verify_totp`, or one
+`verify_passkey` step. Each routes failed verification to `denied`; success
+requires the corresponding verifier receipts. The model validates the revision,
+fingerprint, proof floor, run duration, step timeout and retry/execution limits.
+None of these shapes has a configured source or custom-stage dependency. The
 password-only shape is:
 
 ```toml
@@ -259,6 +260,14 @@ code. Each retry needs a new handle. The existing verifier consumes a successful
 TOTP time step once across workflows and ordinary sign-in; both receipts and
 finalization commit together. This configured path has no recovery-code fallback.
 
+For a passkey-only definition, use one `verify_passkey` step and set the
+authenticated terminal to `requires = [["passkey"]]`. The existing
+`POST /api/workflows/{id}/passkey/start` and `/passkey` endpoints reserve and
+consume its user-verified WebAuthn ceremony. The verifier binds the ceremony to
+the run, attempt, account, session, request and definition; a response from a
+different run or session cannot complete it. The passkey step can satisfy an
+account's enrolled TOTP assurance floor. It also issues no session or code.
+
 `POST /api/workflows/{id}/password` executes the verifier.
 `GET /api/workflows/{id}` resumes and applies deadlines, and
 `POST /api/workflows/{id}/cancel` closes a cancellable run. The existing writer pins
@@ -267,8 +276,9 @@ password receipt with terminal completion. A wrong password consumes one bounded
 attempt and the account-wide lockout budget. A cancelled or expired attempt
 cannot later complete. An inactive entry cannot start a run; a started run keeps
 its pinned definition across server restarts. The password-only shape refuses
-accounts with enrolled TOTP; the two-step shape requires it. Both are
-reauthentication only: neither issues a new session nor a downstream OIDC code.
+accounts with enrolled TOTP; the two-step shape requires it. The passkey shape
+requires an enrolled passkey. All three are reauthentication only: they issue
+neither a new session nor a downstream OIDC code.
 
 ## Downstream OIDC completion
 
@@ -587,11 +597,11 @@ These are not implemented or established by this slice:
   and other initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
-* Execution of configured enrollment, recovery, and authentication chains beyond
-  Password→TOTP, custom stages, and the other built-in verifiers. The configured password
-  path stores attempt timing, enforces retry and run
-  bounds, cancellation and expiry, rejects upstream-only accounts, and rechecks
-  account, session, request and receipt authority in its final transaction.
+* Configured enrollment, recovery, authentication chains beyond Password→TOTP,
+  custom stage execution, and the other built-in verifiers. The configured local
+  verifier paths store attempt timing, enforce retry and run bounds, cancellation
+  and expiry, and recheck account, session, request and receipt authority in the
+  final transaction. The password paths reject upstream-only accounts.
 * Binding runs to their security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. It does not cover the `Environment`
   (stage registrations and permissions) or any approval record

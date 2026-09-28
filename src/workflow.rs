@@ -3,7 +3,7 @@
 //! The W01 definition model and W03 completion seam describe authentication,
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
-//! reauthentication for live bearer sessions, plus configured local-password paths;
+//! reauthentication for live bearer sessions, plus configured local verifier paths;
 //! see `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
@@ -130,6 +130,46 @@ pub(crate) fn configured_password_requires_totp(definition: &Definition) -> Opti
         }
         _ => None,
     }
+}
+
+/// A configured passkey run uses the existing user-verified WebAuthn adapter.
+/// Only its built-in verifier can emit the proof required by this terminal.
+pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Authentication
+        || definition.steps.len() != 1
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+    {
+        return false;
+    }
+    let step = &definition.steps[0];
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Authenticated);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    matches!(step.action, Action::VerifyPasskey {})
+        && success.requires.len() == 1
+        && success.requires[0].as_slice() == [Proof::Passkey]
+        && step.transitions.len() == 2
+        && step
+            .transitions
+            .iter()
+            .all(|transition| transition.when.is_none())
+        && step.transitions.iter().any(|transition| {
+            transition.on == Label::fixed("verified") && transition.to == success.id
+        })
+        && step
+            .transitions
+            .iter()
+            .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
 }
 
 #[derive(JsonSchema, Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

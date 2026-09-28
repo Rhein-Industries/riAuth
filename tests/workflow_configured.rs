@@ -13,6 +13,7 @@ use riauth::{
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
+use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
 
 const PASSWORD: &str = "configured-workflow-fixture-password";
 
@@ -64,6 +65,15 @@ fn totp_definition(id: &str) -> workflow::Definition {
         ]
     }));
     document["terminals"][0]["requires"] = json!([["password", "totp"]]);
+    workflow::parse(document.to_string().as_bytes()).unwrap()
+}
+
+fn passkey_definition(id: &str) -> workflow::Definition {
+    let mut document = serde_json::to_value(definition(id)).unwrap();
+    document["entry"] = json!("passkey");
+    document["steps"][0]["id"] = json!("passkey");
+    document["steps"][0]["action"] = json!({"type": "verify_passkey"});
+    document["terminals"][0]["requires"] = json!([["passkey"]]);
     workflow::parse(document.to_string().as_bytes()).unwrap()
 }
 
@@ -448,5 +458,201 @@ fn configured_password_totp_consumes_only_bound_fresh_verifiers() {
     assert_eq!(
         core.store.list::<Session>("sessions").unwrap().len(),
         sessions
+    );
+}
+
+#[test]
+fn configured_passkey_stage_finishes_only_its_owned_durable_ceremony() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = Config {
+        data_dir: dir.path().join("data"),
+        ..Default::default()
+    };
+    let selected = passkey_definition("local-passkey");
+    let fingerprint = selected.fingerprint();
+    config.workflows.insert(
+        "local-passkey".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: selected,
+        },
+    );
+    let mut forged = config.clone();
+    forged
+        .workflows
+        .get_mut("local-passkey")
+        .unwrap()
+        .definition
+        .steps[0]
+        .action = workflow::Action::VerifyPassword {};
+    assert!(forged.validate().is_err());
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
+    let config = Config::load(&path).unwrap();
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let login = |core: &Core| {
+        core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let initial = login(&core);
+    assert!(
+        core.workflow_configured_start(&initial, "local-passkey")
+            .is_err()
+    );
+    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let registration = core
+        .passkey_register_start(&initial, "Existing".into())
+        .unwrap();
+    let credential = authenticator
+        .do_registration(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(registration["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    core.passkey_register_finish(
+        &initial,
+        registration["ceremony"].as_str().unwrap(),
+        credential,
+    )
+    .unwrap();
+    let token = login(&core);
+    let other_session = login(&core);
+    let sessions = core.store.list::<Session>("sessions").unwrap().len();
+
+    let run = core
+        .workflow_configured_start(&token, "local-passkey")
+        .unwrap();
+    assert_eq!(run.binding.fingerprint, fingerprint);
+    assert!(
+        core.workflow_password(&token, &run.id, PASSWORD.into())
+            .is_err()
+    );
+    let challenge = core.workflow_passkey_challenge(&token, &run.id).unwrap();
+    let response = authenticator
+        .do_authentication(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(challenge.public_key).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        core.workflow_passkey(&other_session, &run.id, response.clone())
+            .is_err()
+    );
+    let stored: Value = core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let request_id = stored["record"]["request"].as_str().unwrap();
+    let original: Value = core
+        .store
+        .get("workflow_requests", request_id)
+        .unwrap()
+        .unwrap();
+    let mut changed = original.clone();
+    changed["id"] = json!("another-request");
+    core.store
+        .write(|tx| tx.put("workflow_requests", request_id, &changed))
+        .unwrap();
+    assert!(
+        core.workflow_passkey(&token, &run.id, response.clone())
+            .is_err()
+    );
+    core.store
+        .write(|tx| tx.put("workflow_requests", request_id, &original))
+        .unwrap();
+    drop(core);
+
+    let core = Core::open(config).unwrap();
+    assert!(matches!(
+        core.workflow_resume(&token, &run.id).unwrap().state,
+        RunState::Active { attempt: 1, .. }
+    ));
+    let finished = core
+        .workflow_passkey(&token, &run.id, response.clone())
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    let final_run: Value = core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let evidence_id = final_run["record"]["steps"][0]["evidence"]
+        .as_str()
+        .unwrap();
+    let receipt: Value = core
+        .store
+        .get("workflow_evidence", evidence_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt["proof"], "passkey");
+    assert_eq!(receipt["action"]["type"], "verify_passkey");
+    assert_eq!(receipt["consumed"], true);
+    for field in ["account", "account_epoch", "session", "request", "binding"] {
+        assert_eq!(receipt[field], final_run["record"][field], "{field}");
+    }
+    assert!(
+        core.workflow_passkey(&token, &run.id, response.clone())
+            .is_err()
+    );
+    assert_eq!(
+        core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+    assert!(
+        core.store
+            .list::<Value>("browser_logins")
+            .unwrap()
+            .is_empty()
+    );
+
+    let cancelled = core
+        .workflow_configured_start(&token, "local-passkey")
+        .unwrap();
+    let challenge = core
+        .workflow_passkey_challenge(&token, &cancelled.id)
+        .unwrap();
+    let cancelled_response = authenticator
+        .do_authentication(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(challenge.public_key).unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        core.workflow_cancel(&token, &cancelled.id).unwrap().state,
+        RunState::Cancelled {}
+    ));
+    assert!(
+        core.workflow_passkey(&token, &cancelled.id, cancelled_response)
+            .is_err()
+    );
+
+    let expired = core
+        .workflow_configured_start(&token, "local-passkey")
+        .unwrap();
+    core.store
+        .write(|tx| {
+            let mut row: Value = tx.get("workflow_runs", &expired.id)?.unwrap();
+            row["record"]["started_at"] = json!(now() - 601);
+            tx.put("workflow_runs", &expired.id, &row)
+        })
+        .unwrap();
+    assert!(matches!(
+        core.workflow_resume(&token, &expired.id).unwrap().state,
+        RunState::Expired {}
+    ));
+    assert!(
+        core.workflow_passkey_challenge(&token, &expired.id)
+            .is_err()
     );
 }

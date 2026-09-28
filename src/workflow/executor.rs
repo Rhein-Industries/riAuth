@@ -19,7 +19,7 @@ use super::{
     Action, Credential, Definition, Environment, Facts, Id, Label, Proof, RunBinding, RunState,
     Target, Validated, builtin, configured_password_requires_totp,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
-    validate,
+    supported_configured_passkey, validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -160,7 +160,9 @@ impl RuntimeRun {
                 return Err(Error::conflict("Workflow definition changed"));
             }
             checked
-        } else if configured_password_requires_totp(&self.definition).is_some() {
+        } else if configured_password_requires_totp(&self.definition).is_some()
+            || supported_configured_passkey(&self.definition)
+        {
             validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
         } else {
             let Some(Action::VerifySource { source }) =
@@ -855,7 +857,7 @@ impl CompletionStore for TxCompletion<'_, '_> {
 }
 
 impl Core {
-    /// Start one active, operator-configured local password reauthentication
+    /// Start one active, operator-configured local verifier reauthentication
     /// workflow. The definition is loaded from validated server configuration;
     /// the caller supplies only its identifier, never actions or transitions.
     pub fn workflow_configured_start(&self, token: &str, workflow: &str) -> Result<View> {
@@ -867,7 +869,8 @@ impl Core {
             .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
         let checked = validate(configured.definition.clone(), &Environment::platform())
             .map_err(invalid_error)?;
-        if configured_password_requires_totp(checked.definition()).is_none()
+        if (configured_password_requires_totp(checked.definition()).is_none()
+            && !supported_configured_passkey(checked.definition()))
             || checked.definition().id.as_str() != workflow
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
@@ -900,6 +903,7 @@ impl Core {
             .transpose()?;
             let checked = mfa_definition.as_ref().unwrap_or(checked);
             let configured_password = configured_password_requires_totp(checked.definition());
+            let configured_passkey = supported_configured_passkey(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
@@ -914,10 +918,11 @@ impl Core {
                     "This account needs a different verifier path",
                 ));
             }
-            if matches!(
+            if (matches!(
                 checked.definition().id.as_str(),
                 PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
-            ) && !user.has_passkeys
+            ) || configured_passkey)
+                && !user.has_passkeys
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
