@@ -53,12 +53,49 @@ fn single<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
     Ok(value)
 }
 fn identity_header(name: &str) -> bool {
+    // CGI-style backends can map underscores and hyphens to the same variable.
+    let name = name.replace('_', "-");
     name.starts_with("x-authentik-") || name.starts_with("x-auth-") || name.starts_with("x-riauth-")
+}
+fn untrusted_request_header(name: &str) -> bool {
+    let name = name.replace('_', "-");
+    matches!(
+        name.as_str(),
+        "host" | "authorization" | "cookie" | "set-cookie" | "forwarded"
+    ) || identity_header(&name)
+        || [
+            "x-forwarded-",
+            "x-original-",
+            "x-real-",
+            "x-remote-",
+            "remote-",
+            "x-ssl-",
+            "ssl-client-",
+            "proxy-",
+        ]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
 }
 fn private_cookie(name: &str) -> bool {
     name.starts_with("riauth_")
         || name.starts_with("__Host-riauth_")
         || name.starts_with("__Secure-riauth_")
+}
+fn connection_tokens(headers: &HeaderMap) -> Result<Vec<String>> {
+    let mut tokens = Vec::new();
+    for value in headers.get_all("connection").iter() {
+        for name in value
+            .to_str()
+            .map_err(|_| Error::bad("Invalid Connection header"))?
+            .split(',')
+        {
+            let name = name.trim().to_ascii_lowercase();
+            axum::http::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| Error::bad("Invalid Connection header token"))?;
+            tokens.push(name);
+        }
+    }
+    Ok(tokens)
 }
 fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
     let mut removed = vec![
@@ -72,18 +109,7 @@ fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
         "upgrade".into(),
         "content-length".into(),
     ];
-    for value in headers.get_all("connection").iter() {
-        for name in value
-            .to_str()
-            .map_err(|_| Error::bad("Invalid Connection header"))?
-            .split(',')
-        {
-            let name = name.trim().to_ascii_lowercase();
-            axum::http::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| Error::bad("Invalid Connection header token"))?;
-            removed.push(name);
-        }
-    }
+    removed.extend(connection_tokens(headers)?);
     let mut result = HeaderMap::new();
     for (name, value) in headers {
         if !(removed.iter().any(|v| v == name.as_str())
@@ -283,17 +309,12 @@ async fn handle(
         Err(e) => return Err(e),
     };
     let mut headers = clean(request.headers())?;
-    for name in [
-        "host",
-        "authorization",
-        "cookie",
-        "forwarded",
-        "x-original-url",
-        "x-forwarded-for",
-        "x-forwarded-host",
-        "x-forwarded-proto",
-        "x-real-ip",
-    ] {
+    let untrusted = headers
+        .keys()
+        .filter(|name| untrusted_request_header(name.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    for name in untrusted {
         headers.remove(name);
     }
     for (name, value) in &identity_headers {
@@ -323,6 +344,9 @@ async fn handle(
         if request.method() != Method::GET
             || single(request.headers(), "upgrade")?
                 .is_none_or(|v| !v.eq_ignore_ascii_case("websocket"))
+            || !connection_tokens(request.headers())?
+                .iter()
+                .any(|token| token == "upgrade")
             || single(request.headers(), "sec-websocket-version")? != Some("13")
             || single(request.headers(), "origin")? != Some(&route.external)
         {
@@ -417,6 +441,9 @@ async fn handle(
             || single(&upstream_headers, "sec-websocket-accept")? != Some(&expected)
             || single(&upstream_headers, "upgrade")?
                 .is_none_or(|v| !v.eq_ignore_ascii_case("websocket"))
+            || !connection_tokens(&upstream_headers)?
+                .iter()
+                .any(|token| token == "upgrade")
         {
             return Err(Error::new(
                 StatusCode::BAD_GATEWAY,
