@@ -1,3 +1,4 @@
+pub use crate::model::client_config::ExchangePolicy;
 use crate::{
     core::{Core, audit},
     crypto::{digest, now},
@@ -12,18 +13,6 @@ use std::collections::BTreeSet;
 
 pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 pub const ACCESS_TOKEN: &str = "urn:ietf:params:oauth:token-type:access_token";
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ExchangePolicy {
-    pub subject_clients: BTreeSet<String>,
-    pub target_clients: BTreeSet<String>,
-    pub scopes: BTreeSet<String>,
-    #[serde(default)]
-    pub allow_impersonation: bool,
-    #[serde(default)]
-    pub allow_delegation: bool,
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ExchangeGrant {

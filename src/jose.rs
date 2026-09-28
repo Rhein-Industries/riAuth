@@ -1,4 +1,5 @@
 //! Pinned JOSE trust. No token-controlled URL is ever fetched.
+pub use crate::model::client_config::{ClientAuthMethod, MachineTrust};
 pub use crate::model::jwk::{PublicJwk, PublicJwks};
 use crate::{
     crypto::{digest, now},
@@ -7,21 +8,11 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
 pub const ASSERTION_TYPE: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 pub const JWT_GRANT: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ClientAuthMethod {
-    None,
-    ClientSecretBasic,
-    ClientSecretPost,
-    PrivateKeyJwt,
-}
 
 impl PublicJwk {
     pub fn algorithm(&self) -> Result<Algorithm> {
@@ -288,15 +279,6 @@ mod signed_claim_tests {
             .is_ok()
         );
     }
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct MachineTrust {
-    pub issuer: String,
-    pub subject: String,
-    pub jwks: PublicJwks,
-    pub scopes: BTreeSet<String>,
 }
 
 /// Consume a short-lived assertion inside the same transaction as its result.

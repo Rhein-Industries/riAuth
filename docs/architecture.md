@@ -29,6 +29,9 @@ management mutation checks now live in Core rather than request context. The
 shared model owns public JWK record data used by SSF streams and providers;
 JOSE retains key validation and token verification. The direct
 identity-to-JOSE reference is gone, while a transitive source cycle remains. The
+model also owns serializable client authentication, workload trust, token
+exchange policy and encryption-key configuration, with validation and protocol
+operations retained in their adapters. The
 same note records the remaining Core, storage, protocol, API and client coupling.
 
 ## Entry points and request handling

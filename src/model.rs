@@ -1,3 +1,4 @@
+pub mod client_config;
 pub mod client_settings;
 pub mod jwk;
 
@@ -103,17 +104,17 @@ pub struct ProviderSettings {
     pub proxy: Option<client_settings::proxy::Settings>,
     pub resources: BTreeMap<String, BTreeSet<String>>,
     pub issuer: Option<String>,
-    pub token_endpoint_auth_method: Option<crate::jose::ClientAuthMethod>,
+    pub token_endpoint_auth_method: Option<client_config::ClientAuthMethod>,
     pub jwks: Option<jwk::PublicJwks>,
-    pub machine_trust: Vec<crate::jose::MachineTrust>,
-    pub exchange: Option<crate::exchange::ExchangePolicy>,
+    pub machine_trust: Vec<client_config::MachineTrust>,
+    pub exchange: Option<client_config::ExchangePolicy>,
     pub exchange_from: BTreeSet<String>,
     pub signing_key: Option<String>,
-    pub id_token_encryption: Option<crate::encryption::EncryptionKey>,
-    pub access_token_encryption: Option<crate::encryption::EncryptionKey>,
-    pub userinfo_encryption: Option<crate::encryption::EncryptionKey>,
+    pub id_token_encryption: Option<client_config::EncryptionKey>,
+    pub access_token_encryption: Option<client_config::EncryptionKey>,
+    pub userinfo_encryption: Option<client_config::EncryptionKey>,
     pub userinfo_signed_response: bool,
-    pub authorization_encryption: Option<crate::encryption::EncryptionKey>,
+    pub authorization_encryption: Option<client_config::EncryptionKey>,
     pub default_acr_values: Vec<String>,
     pub require_pushed_authorization_requests: bool,
     pub require_signed_request: bool,
@@ -160,7 +161,7 @@ impl Client {
     pub fn confidential(&self) -> bool {
         self.secret_hash.is_some()
             || self.settings.token_endpoint_auth_method
-                == Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
+                == Some(client_config::ClientAuthMethod::PrivateKeyJwt)
     }
     pub fn view(&self) -> serde_json::Value {
         serde_json::json!({"client_id": self.id, "name": self.name, "confidential": self.confidential(), "redirect_uris": self.redirect_uris, "scopes": self.scopes, "allowed_groups": self.allowed_groups, "require_mfa": self.require_mfa, "enabled": self.enabled, "service": self.service, "settings": self.settings})

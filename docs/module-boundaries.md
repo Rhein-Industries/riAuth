@@ -339,3 +339,41 @@ calls `identity::record_transition`. The source scanner does not trace `super`
 imports, macro expansion, trait dispatch or field access. This cut therefore
 does not establish independent crates, an API or management engine contract,
 standalone client build, or Essentials/Platform assembly parity.
+
+## Wave 6: shared client configuration data
+
+[model/client_config.rs](../src/model/client_config.rs) now owns the serializable
+`ClientAuthMethod`, `MachineTrust`, `ExchangePolicy` and `EncryptionKey` data
+definitions. Their derives, fields, Serde attributes and defaults retain the
+reviewed wire and stored-record shapes. `ProviderSettings` and
+`Client::confidential` name the shared definitions directly. The old public
+`jose::*`, `exchange::ExchangePolicy` and `encryption::EncryptionKey` paths
+re-export those same Rust types. JOSE trust and assertion verification, token
+exchange, encryption-key validation and JWE encryption remain in their existing
+adapters; provider validation still enforces their combined client policy.
+
+The source scan at `target/riwork/A03-wave6-graph.json` covers **84 Rust source
+files**, up from 83. The model's eight explicit references to the four old
+configuration paths fell to zero, and the checker now guards that count. At the
+file-group level the model-to-shared-support edge fell from 1 to 0 because
+`model.rs` no longer names `encryption`; shared-support-to-model rose from 3 to
+4 because `encryption.rs` re-exports the shared type. The model-to-protocol
+edge remains **1 file**: `model.rs` still names `exchange::ExchangeGrant` and
+other protocol-support records. The exact roots and path delta are in
+`target/riwork/A03-wave6-before-graph.json` and `A03-wave6-edges.json`.
+
+```mermaid
+flowchart LR
+  Identity["Shared identity effects"] --> Model["Shared model"]
+  Model --> Exchange["Token exchange adapter"]
+  Exchange --> Storage["Storage"]
+  Storage --> Identity
+```
+
+The direct model references to JOSE and encryption are gone, and client
+configuration no longer names `exchange::ExchangePolicy`. The transitive
+`identity -> model -> exchange -> storage -> identity` source cycle remains
+through `Grant.exchange: ExchangeGrant`. Other model fields still embed
+authenticator, claims and source types. This scoped move does not establish
+independent crates, a management/API contract, standalone client build or
+Essentials/Platform assembly parity.

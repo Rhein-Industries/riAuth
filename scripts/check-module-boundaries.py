@@ -32,8 +32,67 @@ PROTOCOL = {
 }
 IDENTITY_ALLOWED = {"crypto", "error", "model", "identity"}
 STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf"}
-MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost"}
+MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost", "jose", "encryption"}
+MODEL_CONFIG_LEGACY = {
+    "jose": {"ClientAuthMethod", "MachineTrust"},
+    "exchange": {"ExchangePolicy"},
+    "encryption": {"EncryptionKey"},
+}
 CONTEXT_FORBIDDEN = {"core"}
+RAW_STRING = re.compile(r'(?:br|r)(?P<hashes>#{0,255})"')
+CHAR_LITERAL = re.compile(r"(?:b)?'(?:\\(?:u\{[0-9A-Fa-f_]+\}|x[0-9A-Fa-f]{2}|.)|[^'\\\n])'")
+
+
+def masked_rust_source(source: str) -> str:
+    """Mask comments and literals, preserving line breaks and import punctuation."""
+    def mask(fragment: str) -> str:
+        return "".join(char if char in "\r\n" else " " for char in fragment)
+
+    result = []
+    pos = 0
+    while pos < len(source):
+        start = pos
+        if source.startswith("//", pos):
+            newline = source.find("\n", pos)
+            pos = len(source) if newline == -1 else newline
+        elif source.startswith("/*", pos):
+            depth = 1
+            pos += 2
+            while pos < len(source) and depth:
+                if source.startswith("/*", pos):
+                    depth += 1
+                    pos += 2
+                elif source.startswith("*/", pos):
+                    depth -= 1
+                    pos += 2
+                else:
+                    pos += 1
+        else:
+            token_start = pos == 0 or not (source[pos - 1].isalnum() or source[pos - 1] == "_")
+            raw = RAW_STRING.match(source, pos) if token_start else None
+            char = CHAR_LITERAL.match(source, pos) if token_start else None
+            if raw:
+                closing = '"' + raw.group("hashes")
+                end = source.find(closing, raw.end())
+                pos = len(source) if end == -1 else end + len(closing)
+            elif char:
+                pos = char.end()
+            elif source[pos] == '"':
+                pos += 1
+                while pos < len(source):
+                    if source[pos] == "\\":
+                        pos += 2
+                    elif source[pos] == '"':
+                        pos += 1
+                        break
+                    else:
+                        pos += 1
+            else:
+                result.append(source[pos])
+                pos += 1
+                continue
+        result.append(mask(source[start:pos]))
+    return "".join(result)
 
 
 def root_module(path: Path) -> str:
@@ -62,7 +121,7 @@ def group(module: str) -> str:
 
 def grouped_roots(source: str) -> list[str]:
     roots = []
-    for match in re.finditer(r"crate::\s*\{", source):
+    for match in re.finditer(r"crate\s*::\s*\{", source):
         start = match.end()
         depth = 0
         field_start = start
@@ -88,11 +147,56 @@ def grouped_roots(source: str) -> list[str]:
     return roots
 
 
+def split_use_branches(tree: str) -> list[str]:
+    branches = []
+    depth = 0
+    start = 0
+    for pos, char in enumerate(tree):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            branches.append(tree[start:pos])
+            start = pos + 1
+    branches.append(tree[start:])
+    return branches
+
+
+def expanded_use_paths(tree: str, prefix: tuple[str, ...] = ()) -> list[tuple[str, ...]]:
+    paths = []
+    for branch in split_use_branches(tree):
+        branch = branch.strip()
+        if not branch:
+            continue
+        brace = branch.find("{")
+        if brace != -1 and branch.endswith("}"):
+            head = branch[:brace].strip().removesuffix("::")
+            parts = tuple(part.strip() for part in head.split("::") if part.strip())
+            paths.extend(expanded_use_paths(branch[brace + 1:-1], prefix + parts))
+        else:
+            head = re.split(r"\s+as\s+", branch, maxsplit=1)[0]
+            parts = tuple(part.strip() for part in head.split("::") if part.strip())
+            paths.append(prefix + parts)
+    return paths
+
+
+def legacy_client_config_references(source: str) -> set[str]:
+    source = masked_rust_source(source)
+    paths = set(re.findall(r"\bcrate\s*::\s*(\w+)\s*::\s*(\w+)\b", source))
+    for match in re.finditer(r"\buse\s+crate\s*::\s*(.*?);", source, flags=re.S):
+        paths.update(
+            path[:2] for path in expanded_use_paths(match.group(1)) if len(path) >= 2
+        )
+    return {
+        f"{root}::{leaf}" for root, leaf in paths
+        if leaf in MODEL_CONFIG_LEGACY.get(root, ())
+    }
+
+
 def references(path: Path) -> set[str]:
-    source = path.read_text()
-    source = re.sub(r"(?m)^\s*//[^\n]*$", "", source)
-    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
-    refs = set(re.findall(r"\bcrate::([A-Za-z_]\w*)", source))
+    source = masked_rust_source(path.read_text())
+    refs = set(re.findall(r"\bcrate\s*::\s*([A-Za-z_]\w*)", source))
     refs.update(grouped_roots(source))
     refs.discard("self")
     refs.discard("super")
@@ -127,6 +231,10 @@ def main() -> None:
             errors.append(f"{path.relative_to(ROOT)}: storage refers to {sorted(refs & STORAGE_FORBIDDEN)}")
         if source_group == "model" and refs & MODEL_FORBIDDEN:
             errors.append(f"{path.relative_to(ROOT)}: model refers to {sorted(refs & MODEL_FORBIDDEN)}")
+        if source_group == "model":
+            legacy_config = legacy_client_config_references(path.read_text())
+            if legacy_config:
+                errors.append(f"{path.relative_to(ROOT)}: model refers to legacy client configuration types {sorted(legacy_config)}")
         if source_module == "context" and refs & CONTEXT_FORBIDDEN:
             errors.append(f"{path.relative_to(ROOT)}: context refers to {sorted(refs & CONTEXT_FORBIDDEN)}")
     graph = {
@@ -157,6 +265,10 @@ def main() -> None:
             ),
             "model_adapter_reference_files": sum(
                 bool(references(path) & MODEL_FORBIDDEN)
+                for path in paths if group(root_module(path)) == "model"
+            ),
+            "model_legacy_client_config_reference_files": sum(
+                bool(legacy_client_config_references(path.read_text()))
                 for path in paths if group(root_module(path)) == "model"
             ),
             "context_core_reference_files": sum(

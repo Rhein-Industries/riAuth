@@ -1,3 +1,6 @@
+#[path = "common/client_config.rs"]
+mod client_config;
+
 use riauth::{
     agent::{Agent, NewAgent, Permission},
     config::Config,
@@ -722,6 +725,30 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
             },
         )
         .unwrap();
+    let config_fixture = client_config::stored_client();
+    original
+        .create_client(
+            &admin,
+            NewClient {
+                client_id: config_fixture.id.clone(),
+                name: config_fixture.name.clone(),
+                confidential: true,
+                redirect_uris: config_fixture.redirect_uris.clone(),
+                scopes: config_fixture.scopes.clone(),
+                allowed_groups: config_fixture.allowed_groups.clone(),
+                require_mfa: config_fixture.require_mfa,
+                service: config_fixture.service,
+                settings: config_fixture.settings.clone(),
+            },
+        )
+        .unwrap();
+    let stored_config: Client = original
+        .store
+        .get("clients", &config_fixture.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored_config.settings, config_fixture.settings);
+    let config_bytes = serde_json::to_vec(&stored_config).unwrap();
     let keys = original.jwks().unwrap();
     drop(original);
     let migrated = local.path().join("postgres.toml");
@@ -730,6 +757,21 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
     let first = Core::open(config.clone()).unwrap();
     let second = Core::open(config.clone()).unwrap();
     assert_eq!(first.jwks().unwrap(), keys);
+    for core in [&first, &second] {
+        let migrated_config: Client = core
+            .store
+            .get("clients", &config_fixture.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(serde_json::to_vec(&migrated_config).unwrap(), config_bytes);
+        assert!(
+            core.list_clients(&admin)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .contains(&config_fixture.view())
+        );
+    }
     assert_eq!(second.me(&admin).unwrap()["user"]["username"], "admin");
     assert_eq!(first.doctor(&admin).unwrap()["storage"], "postgresql");
     shared_identity_effects_on_postgres(&first, &second, &admin);
