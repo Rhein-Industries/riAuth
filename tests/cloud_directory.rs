@@ -1135,6 +1135,7 @@ fn workspace_links_membership_suspension_and_redaction() {
     exercise("workspace");
 }
 
+#[cfg(feature = "test-support")]
 #[test]
 fn workspace_direct_service_account_assertion_and_expiry() {
     let directory = serve(
@@ -1238,6 +1239,7 @@ fn workspace_direct_service_account_assertion_and_expiry() {
     );
 }
 
+#[cfg(feature = "test-support")]
 #[test]
 fn workspace_direct_rejects_external_origins_aliases_and_redirects() {
     let directory = serve(
@@ -1347,6 +1349,110 @@ fn workspace_direct_rejects_external_origins_aliases_and_redirects() {
     assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 1);
     assert_eq!(receiver.state.directory_hits.load(Ordering::Relaxed), 0);
     assert!(receiver.state.seen_bearers.lock().unwrap().is_empty());
+}
+
+#[test]
+fn workspace_direct_proxy_and_fake_peer_boundary() {
+    let directory = serve(
+        "workspace",
+        vec![person("ext-alice", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let config = fixture
+        .core
+        .config
+        .workspace_directories
+        .get_mut("corp")
+        .unwrap();
+    config.client_id.clear();
+    config.client_secret_file.clear();
+    config.direct_auth = Some(WorkspaceDirectAuth {
+        key_file: fixture._dir.path().join("direct-service-account.json"),
+        delegated_subject: "admin@example.test".into(),
+    });
+
+    if !cfg!(feature = "test-support") {
+        assert!(config.validate().is_err());
+        config.directory_url = "https://admin.googleapis.com".into();
+        config.token_url.clear();
+        assert!(config.validate().is_ok());
+        assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+        return;
+    }
+
+    if std::env::var_os("RIAUTH_DIRECT_PROXY_CHILD").is_some() {
+        let _ = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap()
+            .get("http://proxy-test.invalid/probe")
+            .send();
+        fixture.core.create_group(&fixture.admin, "staff").unwrap();
+        let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+        *directory.state.direct_public_key.lock().unwrap() = Some(key.public_key_to_pem().unwrap());
+        let key_file = &fixture.core.config.workspace_directories["corp"]
+            .direct_auth
+            .as_ref()
+            .unwrap()
+            .key_file;
+        write_private(
+            key_file,
+            json!({
+                "type": "service_account",
+                "client_email": "sync@example.iam.gserviceaccount.com",
+                "private_key_id": "local-test-key",
+                "private_key": String::from_utf8(key.private_key_to_pem_pkcs8().unwrap()).unwrap(),
+                "token_uri": "https://oauth2.googleapis.com/token",
+            })
+            .to_string()
+            .as_bytes(),
+            true,
+        )
+        .unwrap();
+        assert!(
+            fixture.core.config.workspace_directories["corp"]
+                .validate()
+                .is_ok()
+        );
+        let plan = fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .unwrap();
+        assert_eq!(plan["changes"].as_array().unwrap().len(), 1);
+        assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+        assert!(directory.state.directory_hits.load(Ordering::Relaxed) > 0);
+        return;
+    }
+
+    let proxy = serve("workspace", Vec::new(), SECRET);
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg("workspace_direct_proxy_and_fake_peer_boundary")
+        .arg("--nocapture")
+        .env("RIAUTH_DIRECT_PROXY_CHILD", "1")
+        .env("HTTP_PROXY", &proxy.base)
+        .env("HTTPS_PROXY", &proxy.base)
+        .env("ALL_PROXY", &proxy.base)
+        .env("http_proxy", &proxy.base)
+        .env("https_proxy", &proxy.base)
+        .env("all_proxy", &proxy.base)
+        .env("NO_PROXY", "")
+        .env("no_proxy", "")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(
+        proxy.state.paths.lock().unwrap().as_slice(),
+        ["http://proxy-test.invalid/probe"]
+    );
+    assert_eq!(proxy.state.directory_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(proxy.state.token_hits.load(Ordering::Relaxed), 0);
 }
 
 #[test]

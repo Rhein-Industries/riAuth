@@ -162,6 +162,7 @@ fn validate_base(value: &str) -> Result<Url> {
     }
     Ok(url)
 }
+#[cfg(feature = "test-support")]
 fn direct_loopback(url: &Url) -> bool {
     url.scheme() == "http"
         && match url.host() {
@@ -170,13 +171,16 @@ fn direct_loopback(url: &Url) -> bool {
             _ => false,
         }
 }
-fn validate_direct_workspace_endpoints(directory: &str, base: &Url, token: &str) -> Result<()> {
+fn validate_direct_workspace_endpoints(directory: &str, _base: &Url, token: &str) -> Result<()> {
     let official = directory.trim_end_matches('/') == "https://admin.googleapis.com"
         && (token.is_empty() || token == GOOGLE_TOKEN_URL);
-    let fake_peer = direct_loopback(base)
+    #[cfg(feature = "test-support")]
+    let fake_peer = direct_loopback(_base)
         && Url::parse(token).is_ok_and(|token_url| {
-            direct_loopback(&token_url) && token_url.origin() == base.origin()
+            direct_loopback(&token_url) && token_url.origin() == _base.origin()
         });
+    #[cfg(not(feature = "test-support"))]
+    let fake_peer = false;
     if official || fake_peer {
         Ok(())
     } else {
@@ -411,11 +415,16 @@ fn endpoint(base: &str, path: &[&str], query: &[(&str, &str)]) -> Result<Url> {
     Ok(url)
 }
 
-fn http_client() -> Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
+fn http_client(direct_workspace: bool) -> Result<reqwest::blocking::Client> {
+    let mut builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
-        .pool_max_idle_per_host(0)
+        .pool_max_idle_per_host(0);
+    if direct_workspace {
+        // A delegated assertion and Admin SDK bearer must never enter an ambient proxy.
+        builder = builder.no_proxy();
+    }
+    builder
         .build()
         .map_err(|_| unavailable("Cloud directory request failed"))
 }
@@ -942,7 +951,7 @@ fn select_fields(attributes: &Attributes) -> String {
 impl Settings {
     fn fetch(&self) -> Result<Vec<RemoteUser>> {
         let started = Instant::now();
-        let http = http_client()?;
+        let http = http_client(self.direct_auth.is_some())?;
         let token = access_token(self, &http)?;
         let base = Url::parse(&self.base_url).map_err(|_| Error::bad("Invalid directory URL"))?;
         let users_url = if self.kind == "workspace" {
@@ -1586,7 +1595,7 @@ impl Core {
     /// create a plan, consume the sync retry budget, or persist connector state.
     pub(crate) fn cloud_connection_probe(&self, kind: &str, id: &str) -> Result<()> {
         let settings = self.cloud_settings(kind, id)?;
-        let http = http_client()?;
+        let http = http_client(settings.direct_auth.is_some())?;
         let token = access_token(&settings, &http)?;
         let users = if kind == "workspace" {
             endpoint(
