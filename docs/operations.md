@@ -135,14 +135,14 @@ HTTP handlers admit blocking crypto/database work through eight application work
 
 Logout delivery uses signed, audience-bound events, bounded concurrent requests, certificate verification, a five-second timeout and no redirects. Failures retry with increasing delay for up to 24 hours; delivery records remain seven days. Inspect `riauth deliveries` with the corresponding permission. The RP must verify signatures/claims, target `sid`, and reject repeated `jti` values. Outbox delivery does not invalidate an RP that ignores logout events.
 
-For break-glass administrator recovery, stop the server and use trusted local filesystem/key access:
+For break-glass administrator recovery, stop every server connected to the store and use trusted local filesystem/key access. redb's exclusive file lock prevents another process from opening the store; PostgreSQL recovery refuses other connected riAuth clients. The command sets a new password, revokes sessions and grants, and records `admin.recover` in audit. Existing factors stay enrolled by default. For a passkey-only administrator with no authenticator app, a new password alone would bypass the passkey requirement, so recovery refuses it unless the operator explicitly chooses `--reset-mfa`. That flag removes enrolled passkeys, authenticator settings and recovery codes and records `admin.recover.factors_reset`:
 
 ```sh
-riauth-maintenance --config /path/to/riauth.toml recover-admin admin --reset-mfa
+riauth-maintenance --config /path/to/riauth.toml recover-admin admin --password-stdin --reset-mfa
 riauth --config /path/to/riauth.toml serve
 ```
 
-Recovery resets the password, restores enabled administrator access, clears MFA when requested, and invalidates old sessions/grants. The last enabled administrator is protected during ordinary management. Browser and offline OAuth grants have their own expiry rules; recovery must be verified through the applications as well as the CLI.
+Supply a new password on standard input. Omit `--reset-mfa` when a password-backed administrator still has its authenticator code and needs the enrolled factors preserved. A passkey-only administrator with an authenticator app can also keep its factors and use that code with the new password. The last enabled administrator is protected during ordinary management. Verify the recovered login and applications, then enroll replacement passkeys before relying on passwordless access again.
 
 Prometheus metrics are served at `/api/operations/prometheus` with `operations.read=operations/metrics`. `riauth metrics --prometheus` returns the exposition text in a JSON field. Requests rejected by header or trusted-proxy validation are included. Separate counters report 4xx client errors, 5xx server errors, 401/403 authentication rejections, rate limiting and worker admission failures. The original combined error counter remains for compatibility. Per-route latency uses registered route templates, finite method names and status classes; usernames, arbitrary paths and credentials are never metric labels.
 

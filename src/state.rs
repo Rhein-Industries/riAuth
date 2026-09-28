@@ -173,13 +173,12 @@ impl Manifest {
         }
         for u in &self.users {
             if u.password_disabled
-                && (u.admin
-                    || u.password_ref.is_some()
+                && (u.password_ref.is_some()
                     || u.password_hash_ref.is_some()
                     || u.password_version.is_some())
             {
                 return Err(Error::bad(
-                    "Password-disabled accounts cannot be administrators or supply password credentials",
+                    "Password-disabled accounts cannot supply password credentials",
                 ));
             }
             if u.totp_ref.is_some() != u.totp_version.is_some() {
@@ -682,6 +681,15 @@ fn reconcile(
         let credential_change = password_change || factor_change;
         let mut secret_references = BTreeSet::new();
         if password_change && !spec.password_disabled {
+            if let Some(existing) = &existing {
+                if existing.password_hash.is_empty()
+                    && crate::passkey::passkey_count(tx, &existing.id)? > 0
+                {
+                    return Err(Error::conflict(
+                        "Passkey-only account password recovery is an offline operator operation",
+                    ));
+                }
+            }
             secret_references.extend(
                 spec.password_ref
                     .iter()
@@ -775,6 +783,15 @@ fn reconcile(
         user.email_verified = spec.email_verified;
         user.enabled = spec.enabled;
         user.admin = spec.admin;
+        if user.enabled
+            && user.admin
+            && user.password_hash.is_empty()
+            && crate::passkey::passkey_count(tx, &user.id)? < 2
+        {
+            return Err(Error::conflict(
+                "Passkey-only administrators require two passkeys",
+            ));
+        }
         user.attributes = spec.attributes.clone();
         user.subjects = spec.subjects.clone();
         if existing.as_ref().is_some_and(|u| u.epoch != user.epoch) {

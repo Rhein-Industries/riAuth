@@ -1,6 +1,6 @@
 //! WebAuthn ceremonies persist private challenge state on the server.
 use crate::{
-    core::{Core, audit, require_factor_session, validate_display, validate_name},
+    core::{Core, audit, require_factor_session, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{AuthenticationTransaction, Identity, Session, User},
@@ -29,6 +29,34 @@ struct Registration {
     name: String,
     expires_at: u64,
     state: PasskeyRegistration,
+}
+
+/// A new administrator is invisible until two distinct credentials have been verified.
+/// The initiating administrator must keep the same fresh, browser-owned MFA session
+/// throughout the ceremony. The pending record contains no password or live authority.
+#[derive(Serialize, Deserialize)]
+struct AdminRegistration {
+    user: User,
+    owner_id: String,
+    session_id: String,
+    session_epoch: u64,
+    binding_hash: String,
+    expires_at: u64,
+    state: PasskeyRegistration,
+    primary: Option<Credential>,
+    primary_name: String,
+    backup_name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewPasskeyAdmin {
+    pub username: String,
+    #[serde(default)]
+    pub display_name: String,
+    pub email: Option<String>,
+    pub primary_name: String,
+    pub backup_name: String,
 }
 #[derive(Serialize, Deserialize)]
 struct Authentication {
@@ -130,6 +158,247 @@ fn validate_passkey_name(name: &str) -> Result<()> {
         return Err(Error::bad("Passkey name must not be blank"));
     }
     Ok(())
+}
+
+fn admin_registration_options(
+    core: &Core,
+    user: &User,
+    exclude: Vec<CredentialID>,
+) -> Result<(Value, PasskeyRegistration)> {
+    let (challenge, state) = webauthn(core)?
+        .start_passkey_registration(
+            handle(&user.id),
+            &user.username,
+            &user.display_name,
+            Some(exclude),
+        )
+        .map_err(|_| Error::bad("Cannot start administrator passkey enrollment"))?;
+    let mut options = json!(challenge);
+    options["publicKey"]["authenticatorSelection"] =
+        json!({"residentKey":"required","requireResidentKey":true,"userVerification":"required"});
+    Ok((options, state))
+}
+
+impl Core {
+    fn admin_registration_session(
+        &self,
+        tx: &Tx<'_>,
+        token: &str,
+        cookie: &str,
+        pending: Option<&AdminRegistration>,
+        username: &str,
+    ) -> Result<(User, Session)> {
+        let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
+        let (user, session) = self.browser_user(tx, cookie)?;
+        if actor.agent || actor.id != user.id || crate::signin::bearer_backed(tx, &session)? {
+            return Err(reauthentication_required());
+        }
+        require_fresh_factor(&user, &session)?;
+        if !session.identity.mfa {
+            return Err(Error::new(
+                StatusCode::FORBIDDEN,
+                "mfa_required",
+                "Sign in with a passkey or authenticator code first",
+            ));
+        }
+        if let Some(pending) = pending {
+            if pending.expires_at <= now()
+                || pending.owner_id != user.id
+                || pending.session_id != session.id
+                || pending.session_epoch != user.epoch
+                || !crypto::constant_eq(&pending.binding_hash, &digest(cookie))
+            {
+                return Err(reauthentication_required());
+            }
+        }
+        Ok((user, session))
+    }
+
+    /// The browser administrator creates a new account only after both independent
+    /// credential IDs have been verified. No provisional administrator can sign in.
+    pub fn admin_passkey_start(
+        &self,
+        token: &str,
+        cookie: &str,
+        input: NewPasskeyAdmin,
+    ) -> Result<Value> {
+        validate_name(&input.username)?;
+        validate_passkey_name(&input.primary_name)?;
+        validate_passkey_name(&input.backup_name)?;
+        if input.primary_name.trim() == input.backup_name.trim() {
+            return Err(Error::bad(
+                "Give the primary and backup passkeys different names",
+            ));
+        }
+        if let Some(email) = &input.email {
+            validate_email(email)?;
+        }
+        let display_name = if input.display_name.is_empty() {
+            input.username.clone()
+        } else {
+            input.display_name
+        };
+        validate_display(&display_name)?;
+        let user = User {
+            has_passkeys: false,
+            totp_settings: Default::default(),
+            pairwise_seed: crypto::random_token(""),
+            id: crypto::id(),
+            username: input.username,
+            email: input.email,
+            display_name,
+            password_hash: String::new(),
+            enabled: true,
+            admin: true,
+            epoch: 0,
+            totp_secret: None,
+            totp_pending: None,
+            totp_last_step: None,
+            created_at: now(),
+            attributes: Default::default(),
+            email_verified: false,
+            subjects: Default::default(),
+            recovery_codes: Default::default(),
+        };
+        self.store.write(|tx| {
+            let (owner, session) =
+                self.admin_registration_session(tx, token, cookie, None, &user.username)?;
+            if tx.get::<String>("usernames", &user.username)?.is_some() {
+                return Err(Error::conflict("Username already exists"));
+            }
+            let pending = tx.list::<AdminRegistration>("admin_passkey_registration")?;
+            let active = pending.iter().filter(|(_, p)| p.expires_at > now()).count();
+            for (key, pending) in pending {
+                if pending.expires_at <= now() {
+                    tx.delete("admin_passkey_registration", &key)?;
+                }
+            }
+            if active >= 128 {
+                return Err(Error::conflict(
+                    "Too many pending administrator enrollments",
+                ));
+            }
+            let (public_key, state) = admin_registration_options(self, &user, Vec::new())?;
+            let ceremony = crypto::random_token("ri_admin_passkey_");
+            tx.put(
+                "admin_passkey_registration",
+                &digest(&ceremony),
+                &AdminRegistration {
+                    user,
+                    owner_id: owner.id,
+                    session_id: session.id,
+                    session_epoch: owner.epoch,
+                    binding_hash: digest(cookie),
+                    expires_at: now() + 300,
+                    state,
+                    primary: None,
+                    primary_name: input.primary_name,
+                    backup_name: input.backup_name,
+                },
+            )?;
+            Ok(json!({"ceremony":ceremony,"public_key":public_key,"expires_in":300}))
+        })
+    }
+
+    pub fn admin_passkey_first(
+        &self,
+        token: &str,
+        cookie: &str,
+        ceremony: &str,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let mut pending = tx.get::<AdminRegistration>("admin_passkey_registration", &digest(ceremony))?
+                .filter(|p| p.primary.is_none()).ok_or_else(Error::unauthorized)?;
+            self.admin_registration_session(tx, token, cookie, Some(&pending), &pending.user.username)?;
+            let key = webauthn(self)?.finish_passkey_registration(&response, &pending.state)
+                .map_err(|_| Error::bad("Primary passkey verification failed"))?;
+            let id = credential_id(key.cred_id());
+            if tx.get::<Credential>("passkeys", &id)?.is_some() {
+                return Err(Error::conflict("Credential is already enrolled"));
+            }
+            let primary = Credential { id, user_id: pending.user.id.clone(), name: pending.primary_name.clone(), created_at: now(), counter: 0, key };
+            let (public_key, state) = admin_registration_options(self, &pending.user, vec![primary.key.cred_id().clone()])?;
+            pending.primary = Some(primary);
+            pending.state = state;
+            let next = crypto::random_token("ri_admin_passkey_");
+            tx.delete("admin_passkey_registration", &digest(ceremony))?;
+            tx.put("admin_passkey_registration", &digest(&next), &pending)?;
+            Ok(json!({"ceremony":next,"public_key":public_key,"expires_in":pending.expires_at.saturating_sub(now())}))
+        })
+    }
+
+    pub fn admin_passkey_finish(
+        &self,
+        token: &str,
+        cookie: &str,
+        ceremony: &str,
+        response: RegisterPublicKeyCredential,
+    ) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let pending = tx
+                .get::<AdminRegistration>("admin_passkey_registration", &digest(ceremony))?
+                .ok_or_else(Error::unauthorized)?;
+            let primary = pending.primary.as_ref().ok_or_else(Error::unauthorized)?;
+            let (owner, _) = self.admin_registration_session(
+                tx,
+                token,
+                cookie,
+                Some(&pending),
+                &pending.user.username,
+            )?;
+            if tx
+                .get::<String>("usernames", &pending.user.username)?
+                .is_some()
+            {
+                return Err(Error::conflict("Username already exists"));
+            }
+            let key = webauthn(self)?
+                .finish_passkey_registration(&response, &pending.state)
+                .map_err(|_| Error::bad("Backup passkey verification failed"))?;
+            let backup_id = credential_id(key.cred_id());
+            if backup_id == primary.id
+                || tx.get::<Credential>("passkeys", &backup_id)?.is_some()
+                || tx.get::<Credential>("passkeys", &primary.id)?.is_some()
+            {
+                return Err(Error::conflict("Use a distinct, unenrolled backup passkey"));
+            }
+            let backup = Credential {
+                id: backup_id,
+                user_id: pending.user.id.clone(),
+                name: pending.backup_name,
+                created_at: now(),
+                counter: 0,
+                key,
+            };
+            let mut user = pending.user;
+            user.has_passkeys = true;
+            tx.put("users", &user.id, &user)?;
+            tx.put("usernames", &user.username, &user.id)?;
+            tx.put("passkeys", &primary.id, primary)?;
+            tx.put("passkeys", &backup.id, &backup)?;
+            tx.delete("admin_passkey_registration", &digest(ceremony))?;
+            audit(tx, &owner.id, "user.create.passkey_only", &user.id)?;
+            Ok(json!({"user":crate::model::UserView::from(&user),"passkeys":2}))
+        })
+    }
+
+    pub fn admin_passkey_cancel(&self, token: &str, cookie: &str, ceremony: &str) -> Result<Value> {
+        self.store.write(|tx| {
+            let pending = tx
+                .get::<AdminRegistration>("admin_passkey_registration", &digest(ceremony))?
+                .ok_or_else(Error::unauthorized)?;
+            self.admin_registration_session(
+                tx,
+                token,
+                cookie,
+                Some(&pending),
+                &pending.user.username,
+            )?;
+            tx.delete("admin_passkey_registration", &digest(ceremony))?;
+            Ok(json!({"cancelled":true}))
+        })
+    }
 }
 
 impl Core {
@@ -318,9 +587,14 @@ impl Core {
             .filter(|c| c.user_id == user.id)
             .ok_or_else(|| Error::missing("Passkey not found"))?;
         let count = user_keys(tx, &user.id)?.len();
-        if count == 1 && user.password_hash.is_empty() {
+        if user.password_hash.is_empty() && count == 1 {
             return Err(Error::conflict(
                 "Establish another local credential before removing the last passkey",
+            ));
+        }
+        if user.password_hash.is_empty() && user.admin && count <= 2 {
+            return Err(Error::conflict(
+                "Passkey-only administrators must keep two passkeys",
             ));
         }
         tx.delete("passkeys", id)?;
@@ -672,6 +946,9 @@ impl Core {
 }
 pub(crate) fn passkey_list_in(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
     Ok(user_keys(tx, user_id)?.iter().map(view).collect())
+}
+pub(crate) fn passkey_count(tx: &Tx<'_>, user_id: &str) -> Result<usize> {
+    Ok(user_keys(tx, user_id)?.len())
 }
 pub fn clear(tx: &Tx<'_>, user_id: &str) -> Result<()> {
     for credential in user_keys(tx, user_id)? {

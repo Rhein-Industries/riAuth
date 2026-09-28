@@ -10,6 +10,7 @@ use crate::{
     api::{App, sso_cookie},
     error::{Error, Result},
     model::{ClientPatch, NewClient, NewUser, UserPatch, UserView},
+    passkey::NewPasskeyAdmin,
 };
 use axum::{
     Json, Router,
@@ -20,6 +21,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 pub fn routes() -> Router<App> {
     Router::new()
@@ -45,6 +47,16 @@ pub fn routes() -> Router<App> {
         )
         .route("/api/admin/session", get(session))
         .route("/api/admin/users", get(users).post(create_user))
+        .route("/api/admin/users/passkey/start", post(passkey_admin_start))
+        .route("/api/admin/users/passkey/first", post(passkey_admin_first))
+        .route(
+            "/api/admin/users/passkey/finish",
+            post(passkey_admin_finish),
+        )
+        .route(
+            "/api/admin/users/passkey/cancel",
+            post(passkey_admin_cancel),
+        )
         .route("/api/admin/users/{username}", patch(update_user))
         .route("/api/admin/groups", get(groups).post(create_group))
         .route(
@@ -193,6 +205,80 @@ async fn create_user(
     let token = writer(&app, &headers)?;
     app.run(move |core| core.create_user(&token, input).map(Json))
         .await
+}
+
+async fn passkey_admin_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<NewPasskeyAdmin>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    let cookie = sso_cookie(&app, &headers)
+        .ok_or_else(Error::unauthorized)?
+        .to_owned();
+    app.run(move |core| core.admin_passkey_start(&token, &cookie, input).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyAnswer {
+    ceremony: String,
+    credential: RegisterPublicKeyCredential,
+}
+
+async fn passkey_admin_first(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyAnswer>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    let cookie = sso_cookie(&app, &headers)
+        .ok_or_else(Error::unauthorized)?
+        .to_owned();
+    app.run(move |core| {
+        core.admin_passkey_first(&token, &cookie, &input.ceremony, input.credential)
+            .map(Json)
+    })
+    .await
+}
+
+async fn passkey_admin_finish(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyAnswer>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    let cookie = sso_cookie(&app, &headers)
+        .ok_or_else(Error::unauthorized)?
+        .to_owned();
+    app.run(move |core| {
+        core.admin_passkey_finish(&token, &cookie, &input.ceremony, input.credential)
+            .map(Json)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCancel {
+    ceremony: String,
+}
+
+async fn passkey_admin_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCancel>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    let cookie = sso_cookie(&app, &headers)
+        .ok_or_else(Error::unauthorized)?
+        .to_owned();
+    app.run(move |core| {
+        core.admin_passkey_cancel(&token, &cookie, &input.ceremony)
+            .map(Json)
+    })
+    .await
 }
 async fn update_user(
     State(app): State<App>,

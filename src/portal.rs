@@ -477,7 +477,7 @@ impl Core {
             let (user, session) = self.portal_session(tx, sso)?;
             let mut passkeys = crate::passkey::passkey_list_in(tx, &user.id)?;
             let password_available = !user.password_hash.is_empty();
-            let removable = password_available || passkeys.len() > 1;
+            let removable = password_available || passkeys.len() > if user.admin { 2 } else { 1 };
             for passkey in &mut passkeys {
                 passkey["removable"] = json!(removable);
             }

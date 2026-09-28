@@ -141,7 +141,7 @@
         if (error.status === 422) { status.replaceChildren(error.message); status.hidden = false; status.focus(); return; }
         showError(status, error, overrides);
       } finally {
-        form.removeAttribute("aria-busy"); button.disabled = false; button.textContent = label;
+        form.removeAttribute("aria-busy"); button.disabled = false; button.textContent = form.dataset.submitLabel || label;
       }
     });
   }
@@ -612,12 +612,12 @@
         h("button", { class: "text-button", type: "button", "aria-label": `Remove ${user.username} from ${name}`, onclick: (event) => member(event.currentTarget, name, user.username, false) }, "Remove"))))
         : h("p", { class: "field-hint" }, "Not in any group."),
       others.length ? addTo("person-add-group", "Add to group", others.map((name) => [name, name]), (button, name) => member(button, name, user.username, true)) : null);
-    const passwordAction = h("button", { class: "button secondary", type: "button", onclick: () => confirmAction({
+    const passwordAction = user.password_available === false && user.mfa_enabled ? null : h("button", { class: "button secondary", type: "button", onclick: () => confirmAction({
       title: `Set a new password for ${user.username}?`, ok: "Set password", input: { label: "New password", type: "password" },
       text: `The password policy and history apply. Setting it signs them out everywhere.${selfNote}`,
       run: async (password, key) => { await api("PATCH", `admin/users/${seg(user.username)}`, { password }, { revision: data.revision, key }); await saved("Password set."); },
     }) }, "Set a new password");
-    const mfaAction = user.mfa_enabled ? h("button", { class: "button secondary", type: "button", onclick: () => confirmAction({
+    const mfaAction = user.mfa_enabled && user.password_available !== false ? h("button", { class: "button secondary", type: "button", onclick: () => confirmAction({
       title: `Reset MFA for ${user.username}?`, ok: "Reset MFA", danger: true,
       text: `Removes their passkeys, authenticator app and recovery codes and signs them out everywhere. Until they enroll again they sign in with a password only.${selfNote}`,
       run: async (_, key) => { await api("PATCH", `admin/users/${seg(user.username)}`, { reset_mfa: true }, { revision: data.revision, key }); await saved("MFA reset."); },
@@ -634,28 +634,93 @@
       h("div", { class: "detail-grid" }, form,
         h("div", { class: "detail-side" }, membership,
           card("Sign-in and security",
-            h("p", { class: "field-hint" }, user.mfa_enabled ? "Signs in with a passkey or an authenticator code." : "Has no passkey or authenticator app. Only they can add one, after signing in."),
+            h("p", { class: "field-hint" }, user.password_available === false && user.admin ? "Passkey-only administrator. Keep two passkeys on separate devices or security keys. Password recovery requires the offline operator procedure." : user.mfa_enabled ? "Signs in with a passkey or an authenticator code." : "Has no passkey or authenticator app. Only they can add one, after signing in."),
             h("div", { class: "stack" }, passwordAction, mfaAction, signOutAction)),
           card("Record", h("dl", { class: "facts" }, h("dt", {}, "Created"), h("dd", {}, when(user.created_at)), h("dt", {}, "ID"), h("dd", {}, h("code", {}, user.id)))))));
     return { crumb: personName(user), node };
   }
   function newPerson() {
+    const passkeyFields = h("div", { hidden: true },
+      field("Primary passkey name", h("input", { id: "new-primary-passkey", maxlength: "200", autocomplete: "off", value: "Primary device" })),
+      field("Backup passkey name", h("input", { id: "new-backup-passkey", maxlength: "200", autocomplete: "off", value: "Backup security key" })),
+      h("p", { class: "notice" }, "Enroll two different passkeys. Use a separate device or security key for the backup. riAuth can verify distinct credentials, but cannot prove that synced passkeys are stored independently."));
+    const passwordField = field("Initial password", h("input", { id: "new-password", type: "password", maxlength: "1024", required: true, autocomplete: "new-password" }), "Share it through a secure channel. They can add a passkey after signing in.");
+    const cancelEnrollment = h("button", { class: "button secondary", type: "button", hidden: true }, "Cancel passkey enrollment");
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Account",
         field("Username", h("input", { id: "new-username", maxlength: "64", required: true, spellcheck: "false", autocomplete: "off", autocapitalize: "none" })),
         field("Display name", h("input", { id: "new-display", maxlength: "200", autocomplete: "off" })),
         field("Email", h("input", { id: "new-email", type: "email", maxlength: "320", spellcheck: "false", autocomplete: "off" })),
-        field("Initial password", h("input", { id: "new-password", type: "password", maxlength: "1024", required: true, autocomplete: "new-password" }), "Share it through a secure channel. They can add a passkey after signing in."),
-        check("new-admin", "Administrator", false, "Administrators manage everything on these pages.")),
-      actions(h("button", { class: "button primary", type: "submit" }, "Create person"), link(hash("people"), "Cancel", { class: "button secondary" })));
+        passwordField, passkeyFields,
+        check("new-admin", "Administrator", false, "Administrators manage everything on these pages."),
+        check("new-passkey-only", "Passkey-only administrator", false, "Requires your recent passkey or authenticator sign-in. Both passkeys must be enrolled before the account is created.")),
+      actions(h("button", { class: "button primary", type: "submit" }, "Create person"), cancelEnrollment, link(hash("people"), "Cancel", { class: "button secondary" })));
+    const mode = form.querySelector("#new-passkey-only"), admin = form.querySelector("#new-admin");
+    mode.addEventListener("change", () => {
+      if (mode.checked) admin.checked = true;
+      passwordField.hidden = mode.checked; passkeyFields.hidden = !mode.checked;
+      form.querySelector("#new-password").required = !mode.checked;
+      for (const id of ["new-primary-passkey", "new-backup-passkey"]) form.querySelector(`#${id}`).required = mode.checked;
+      form.dataset.submitLabel = mode.checked ? "Enroll primary passkey" : "Create person";
+      form.querySelector("[type=submit]").textContent = form.dataset.submitLabel;
+    });
+    admin.addEventListener("change", () => { if (!admin.checked && mode.checked) { mode.checked = false; mode.dispatchEvent(new Event("change")); } });
+    let firstFlow = null, backupFlow = null, backupStart = null, finishKey = null;
+    cancelEnrollment.addEventListener("click", async () => {
+      cancelEnrollment.disabled = true;
+      try {
+        if (backupStart && backupFlow && !await backupFlow.cancel()) return;
+        if (backupStart) await api("POST", "admin/users/passkey/cancel", { ceremony: backupStart.ceremony });
+        if (!backupStart && firstFlow && !await firstFlow.cancel()) return;
+      } catch { /* Pending enrollment expires without creating an account. */ }
+      finally { cancelEnrollment.disabled = false; }
+      await refresh({ focus: true });
+    });
     bindForm(form, async (key) => {
       const username = value(form, "new-username"), password = form.querySelector("#new-password").value;
-      if (!username || !password) throw invalid("Enter a username and an initial password.");
+      if (!username) throw invalid("Enter a username.");
+      if (mode.checked) {
+        if (!RiAuth.passkeysAvailable()) throw invalid("Use a browser that supports passkeys on a secure connection.");
+        if (!backupStart && !firstFlow) {
+          const input = { username, display_name: value(form, "new-display"), email: value(form, "new-email") || null,
+            primary_name: value(form, "new-primary-passkey"), backup_name: value(form, "new-backup-passkey") };
+          if (!input.primary_name || !input.backup_name || input.primary_name === input.backup_name) throw invalid("Name the primary and backup passkeys differently.");
+          firstFlow = RiAuth.passkeyFlow(
+            () => api("POST", "admin/users/passkey/start", input),
+            (credential, started) => api("POST", "admin/users/passkey/first", { ceremony: started.ceremony, credential }),
+            true, (started) => api("POST", "admin/users/passkey/cancel", { ceremony: started.ceremony }));
+          for (const input of form.querySelectorAll("input")) { if (input.type === "checkbox") input.disabled = true; else input.readOnly = true; }
+          cancelEnrollment.hidden = false;
+        }
+        try {
+          if (!backupStart) {
+            backupStart = await firstFlow();
+            form.dataset.submitLabel = "Enroll backup passkey and create administrator";
+            announce("Primary passkey verified. Enroll the backup on another device or security key.");
+            return;
+          }
+          finishKey = key;
+          backupFlow ||= RiAuth.passkeyFlow(() => Promise.resolve(backupStart),
+            (credential, started) => api("POST", "admin/users/passkey/finish", { ceremony: started.ceremony, credential }, { revision: data.revision, key: finishKey }),
+            true, (started) => api("POST", "admin/users/passkey/cancel", { ceremony: started.ceremony }));
+          await backupFlow();
+          await saved(`Created passkey-only administrator ${username}.`, hash("people", username));
+        } catch (error) {
+          if (error.name === "NotAllowedError") throw invalid("Passkey prompt closed. Select the enrollment button again to retry.");
+          throw error;
+        }
+        return;
+      }
+      if (!password) throw invalid("Enter an initial password.");
       const body = { username, password, display_name: value(form, "new-display"), admin: checked(form, "new-admin"), email: value(form, "new-email") || null };
       await api("POST", "admin/users", body, { key });
       await saved(`Created ${username}.`, hash("people", username));
-    }, { 409: (error) => /already exists/i.test(error.message) ? "That username is already taken." : undefined });
-    return { crumb: "New person", node: h("div", {}, heading("PEOPLE", "New person", "Create an account with an initial password."), form) };
+    }, {
+      403: (error) => error.code === "mfa_required" ? "Sign in with your passkey or authenticator code in this browser, then try again." :
+        error.code === "reauthentication_required" ? "Sign in again in this browser, then start a new passkey enrollment." : undefined,
+      409: (error) => /already exists/i.test(error.message) ? "That username is already taken." : undefined,
+    });
+    return { crumb: "New person", node: h("div", {}, heading("PEOPLE", "New person", "Create an account with a password or enroll a passkey-only administrator."), form) };
   }
 
   // ---- Groups ------------------------------------------------------------------------------

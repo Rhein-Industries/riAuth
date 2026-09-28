@@ -330,7 +330,13 @@ impl Core {
     }
     pub fn recover_admin(&self, username: &str, password: &str, reset_mfa: bool) -> Result<()> {
         self.store.write(|tx| {
+            if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+                return Err(Error::conflict("Stop every riAuth process connected to this database before administrator recovery"));
+            }
             let mut user = user_by_name(tx, username)?;
+            if user.password_hash.is_empty() && user.totp_secret.is_none() && !reset_mfa {
+                return Err(Error::conflict("Passkey-only recovery requires explicit --reset-mfa; enrolled factors will be removed"));
+            }
             let hashed = crypto::password_hash(password)?;
             crate::identity::password_history::accept(
                 tx,
@@ -355,7 +361,7 @@ impl Core {
             tx.put("users", &user.id, &user)?;
             crate::logout::queue_user(tx, &user.id)?;
             tx.delete("attempts", username)?;
-            audit(tx, "local-recovery", "admin.recover", &user.id)
+            audit(tx, "local-recovery", if reset_mfa { "admin.recover.factors_reset" } else { "admin.recover" }, &user.id)
         })
     }
     pub fn me(&self, token: &str) -> Result<Value> {
@@ -463,6 +469,11 @@ impl Core {
                 return Err(Error::forbidden());
             }
             if let Some(password) = patch.password {
+                if user.password_hash.is_empty()
+                    && crate::passkey::passkey_count(tx, &user.id)? > 0
+                {
+                    return Err(Error::conflict("Passkey-only account password recovery is an offline operator operation"));
+                }
                 let hashed = crypto::password_hash(&password)?;
                 crate::identity::password_history::accept(
                     tx,
@@ -509,6 +520,9 @@ impl Core {
                 user.display_name = name;
             }
             if patch.reset_mfa {
+                if user.password_hash.is_empty() {
+                    return Err(Error::conflict("Passkey-only accounts cannot lose every sign-in credential through remote MFA reset"));
+                }
                 crate::passkey::clear(tx, &user.id)?;
                 user.has_passkeys = false;
                 user.recovery_codes.clear();
@@ -519,6 +533,11 @@ impl Core {
             }
             if patch.revoke_sessions {
                 user.epoch += 1;
+            }
+            if user.enabled && user.admin && user.password_hash.is_empty()
+                && crate::passkey::passkey_count(tx, &user.id)? < 2
+            {
+                return Err(Error::conflict("Passkey-only administrators require two passkeys"));
             }
             ensure_remaining_admin(tx, &user)?;
             tx.put("users", &user.id, &user)?;
