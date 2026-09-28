@@ -82,10 +82,11 @@ pub(crate) fn record_transition(
     key: &str,
     before: Option<&Value>,
     after: Option<&Value>,
+    require_elevation_ready: impl FnOnce(&User) -> Result<()>,
 ) -> Result<()> {
     if bucket == "users" {
         if let Some(before) = before {
-            user_security_transition(tx, key, before, after)?;
+            user_security_transition(tx, key, before, after, require_elevation_ready)?;
         }
     } else if bucket == "passkeys"
         && before.is_some() != after.is_some()
@@ -103,12 +104,13 @@ fn user_security_transition(
     user_id: &str,
     before: &Value,
     after: Option<&Value>,
+    require_elevation_ready: impl FnOnce(&User) -> Result<()>,
 ) -> Result<()> {
     let disabled = after.is_none_or(|user| user["enabled"] == false);
     let promoted = after.is_some_and(|user| before["admin"] == false && user["admin"] == true);
     if promoted {
         let prior: User = serde_json::from_value(before.clone()).map_err(Error::internal)?;
-        crate::delegation::require_elevation_ready(tx, &prior)?;
+        require_elevation_ready(&prior)?;
     }
     // A disabled or promoted account must not regain old delegated authority
     // if it is later enabled or demoted. This covers every user writer.
