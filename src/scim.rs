@@ -1190,11 +1190,6 @@ impl Core {
             } else {
                 normalize(input)?
             };
-            if kind == "Users" && !patch {
-                if let Some(value) = data.get("name").cloned() {
-                    data["name"] = Value::Object(name_fields(&value)?);
-                }
-            }
             let schema = if kind == "Users" { USER } else { GROUP };
             if !data["schemas"]
                 .as_array()
@@ -1288,7 +1283,6 @@ impl Core {
                     .unwrap_or(&label)
                     .to_owned();
                 validate_display(&display)?;
-                if !patch { validate_email_entries(&data)?; }
                 let email = read_email(&data)?;
                 if user.email != email {
                     user.email_verified = false;
@@ -1515,22 +1509,9 @@ fn validate_email_entries(data: &Value) -> Result<()> {
         .ok_or_else(|| Error::bad("emails must be an array of at most eight values"))?;
     let mut seen = BTreeSet::new();
     for email in emails {
-        let fields = email.as_object().ok_or_else(|| Error::bad("Email must be an object"))?;
-        if fields.keys().any(|key| !["value", "type", "primary"].contains(&key.as_str())) {
-            return Err(Error::bad("Unsupported email sub-attribute"));
-        }
         let value = email["value"].as_str().ok_or_else(|| Error::bad("Email value missing"))?;
         validate_email(value)?;
         if !seen.insert(value.to_ascii_lowercase()) { return Err(Error::bad("Duplicate email value")); }
-        if email.get("primary").is_some() && !email["primary"].is_boolean() {
-            return Err(Error::bad("Email primary must be a boolean"));
-        }
-        if let Some(kind) = email.get("type") {
-            let kind = kind.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
-            if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
-                return Err(Error::bad("Invalid email type"));
-            }
-        }
     }
     read_email(data)?;
     Ok(())
@@ -1622,10 +1603,33 @@ fn patch_entry(field: &str, value: &Value) -> Result<Value> {
             ("emails", "type") => "type",
             ("emails", "primary") => "primary",
             ("members", "display") => {
-                return Err(Error::oauth("mutability", "Member display is read-only"));
+                if !value.is_string() {
+                    return Err(Error::bad("Member display must be a string"));
+                }
+                // A GET-shaped member may echo display. Membership writes
+                // resolve it again from the owned User record.
+                continue;
             }
             _ => return Err(Error::bad("Unsupported complex PATCH sub-attribute")),
         };
+        if field == "emails" {
+            match canonical {
+                "value" => {
+                    let value = value.as_str().ok_or_else(|| Error::bad("Email value must be a string"))?;
+                    validate_email(value)?;
+                }
+                "type" => {
+                    let kind = value.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
+                    if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
+                        return Err(Error::bad("Invalid email type"));
+                    }
+                }
+                "primary" if !value.is_boolean() => {
+                    return Err(Error::bad("Email primary must be a boolean"));
+                }
+                _ => {}
+            }
+        }
         if result.insert(canonical.into(), value.clone()).is_some() {
             return Err(Error::bad("Duplicate complex PATCH sub-attribute"));
         }
@@ -1854,6 +1858,16 @@ fn name_fields(value: &Value) -> Result<Map<String, Value>> {
     Ok(fields)
 }
 
+fn stored_name_fields(value: &Value) -> Result<Map<String, Value>> {
+    value.as_object().cloned().ok_or_else(|| Error::bad("name must be a complex object"))
+}
+
+fn remove_name_key(fields: &mut Map<String, Value>, sub: &str) -> bool {
+    let keys: Vec<_> = fields.keys().filter(|key| key.eq_ignore_ascii_case(sub)).cloned().collect();
+    for key in &keys { fields.remove(key); }
+    !keys.is_empty()
+}
+
 fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) -> Result<()> {
     if operation == "remove" {
         match path {
@@ -1865,9 +1879,9 @@ fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) 
             }
             NamePath::Sub(sub) => {
                 let mut fields = data.get("name").filter(|value| !value.is_null())
-                    .map(name_fields).transpose()?
+                    .map(stored_name_fields).transpose()?
                     .ok_or_else(|| Error::oauth("noTarget", "Name path is not assigned"))?;
-                if fields.remove(sub).is_none() {
+                if !remove_name_key(&mut fields, sub) {
                     return Err(Error::oauth("noTarget", "Name path is not assigned"));
                 }
                 if fields.is_empty() {
@@ -1891,8 +1905,11 @@ fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) 
         }
     };
     let mut fields = data.get("name").filter(|value| !value.is_null())
-        .map(name_fields).transpose()?.unwrap_or_default();
-    fields.extend(updates);
+        .map(stored_name_fields).transpose()?.unwrap_or_default();
+    for (key, value) in updates {
+        remove_name_key(&mut fields, &key);
+        fields.insert(key, value);
+    }
     data["name"] = Value::Object(fields);
     Ok(())
 }
