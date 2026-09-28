@@ -95,10 +95,12 @@ struct Reserved {
 
 fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthority) -> Result<()> {
     let first_totp = supported_configured_password_totp_enrollment(checked.definition());
+    let replace_totp = supported_configured_password_totp_replacement(checked.definition());
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
         TOTP_WORKFLOW => true,
         _ if first_totp => false,
+        _ if replace_totp => true,
         _ => configured_password_path(checked.definition())
             .ok_or_else(Error::forbidden)?
             .requires_mfa(),
@@ -107,7 +109,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     if request.source.is_some()
         || request.requires_mfa != mfa
         || user.totp_secret.is_some() != mfa
-        || (first_totp
+        || ((first_totp || replace_totp)
             && (user.has_passkeys
                 || user.totp_pending.is_some()
                 || request.authorization.is_some()

@@ -546,6 +546,9 @@ impl Config {
                     checked.definition(),
                 )
                 && !crate::workflow::supported_configured_totp_replacement(checked.definition())
+                && !crate::workflow::supported_configured_password_totp_replacement(
+                    checked.definition(),
+                )
                 && !crate::workflow::supported_configured_passkey_removal(checked.definition())
                 && !crate::workflow::supported_configured_password_reset(checked.definition())
                 && !crate::workflow::supported_configured_consent(checked.definition()))

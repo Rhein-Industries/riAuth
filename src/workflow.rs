@@ -303,6 +303,86 @@ pub(crate) fn supported_configured_totp_replacement(definition: &Definition) -> 
     supported_configured_totp_change(definition, true, false)
 }
 
+/// A local account with TOTP and no passkey may replace it only after both a
+/// fresh password and its current TOTP are verified in the same bound run.
+pub(crate) fn supported_configured_password_totp_replacement(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Enrollment
+        || definition.steps.len() != 4
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 600
+        || definition.limits.max_executions > 8
+    {
+        return false;
+    }
+    let [session, password, totp, replace] = definition.steps.as_slice() else {
+        return false;
+    };
+    let (Some(success), Some(denied)) = (
+        definition
+            .terminals
+            .iter()
+            .find(|terminal| terminal.outcome == Outcome::Enrolled),
+        definition
+            .terminals
+            .iter()
+            .find(|terminal| terminal.outcome == Outcome::Denied),
+    ) else {
+        return false;
+    };
+    let routes = |step: &Step, signal: &'static str, target: &Id| {
+        step.transitions.len() == 2
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .any(|transition| transition.on == Label::fixed(signal) && &transition.to == target)
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && transition.to == denied.id
+            })
+    };
+    session.id.as_str() == "session"
+        && password.id.as_str() == "password"
+        && totp.id.as_str() == "totp"
+        && replace.id.as_str() == "enroll"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(password.action, Action::VerifyPassword {})
+        && matches!(totp.action, Action::VerifyTotp {})
+        && matches!(replace.action, Action::ReplaceTotp {})
+        && session.max_attempts == 1
+        && password.max_attempts <= 3
+        && totp.max_attempts <= 3
+        && replace.max_attempts == 1
+        && session.timeout_seconds <= 60
+        && password.timeout_seconds <= 300
+        && totp.timeout_seconds <= 120
+        && replace.timeout_seconds <= 120
+        && [session, password, totp, replace]
+            .into_iter()
+            .all(|step| step.cancellable)
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 4
+        && [
+            Proof::Session,
+            Proof::Password,
+            Proof::Totp,
+            Proof::Enrolled,
+        ]
+        .into_iter()
+        .all(|proof| success.requires[0].contains(&proof))
+        && routes(session, "verified", &password.id)
+        && routes(password, "verified", &totp.id)
+        && routes(totp, "verified", &replace.id)
+        && routes(replace, "completed", &success.id)
+}
+
 fn supported_configured_totp_change(
     definition: &Definition,
     replace: bool,

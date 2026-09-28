@@ -327,11 +327,24 @@ pub(crate) fn commit_workflow_totp_replacement_in(
     commit_workflow_totp_change_in(tx, user, secret, code, WorkflowTotpChange::PasskeyReplace)
 }
 
+/// The old TOTP stays enrolled until the bound password, current-factor and
+/// new-code receipts reach the configured workflow's final writer.
+#[cfg(feature = "platform")]
+pub(crate) fn commit_workflow_password_totp_replacement_in(
+    tx: &impl AuthenticatorTx,
+    user: User,
+    secret: &str,
+    code: &str,
+) -> Result<()> {
+    commit_workflow_totp_change_in(tx, user, secret, code, WorkflowTotpChange::PasswordReplace)
+}
+
 #[cfg(feature = "platform")]
 enum WorkflowTotpChange {
     PasskeyEnroll,
     PasswordEnroll,
     PasskeyReplace,
+    PasswordReplace,
 }
 
 #[cfg(feature = "platform")]
@@ -342,8 +355,14 @@ fn commit_workflow_totp_change_in(
     code: &str,
     change: WorkflowTotpChange,
 ) -> Result<()> {
-    let replace = matches!(change, WorkflowTotpChange::PasskeyReplace);
-    let passkey = !matches!(change, WorkflowTotpChange::PasswordEnroll);
+    let replace = matches!(
+        change,
+        WorkflowTotpChange::PasskeyReplace | WorkflowTotpChange::PasswordReplace
+    );
+    let passkey = matches!(
+        change,
+        WorkflowTotpChange::PasskeyEnroll | WorkflowTotpChange::PasskeyReplace
+    );
     if user.totp_secret.is_some() != replace
         || user.totp_pending.is_some()
         || user.has_passkeys != passkey

@@ -101,6 +101,70 @@ fn recovery_fallback_allowed(checked: &Validated) -> bool {
         || configured_password_path(definition) == Some(ConfiguredPasswordPath::TotpOrRecovery)
 }
 
+/// This mutation has two primary proofs. A recovery code cannot replace the
+/// current TOTP: possession of the old factor is required before new-secret
+/// generation, and both receipts must still name this exact run and request.
+fn replacement_primary(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &RuntimeRun,
+    user: &User,
+    request: &RequestAuthority,
+    at: u64,
+) -> Result<StoredEvidence> {
+    if !supported_configured_password_totp_replacement(checked.definition())
+        || !request.requires_mfa
+        || request.source.is_some()
+        || request.authorization.is_some()
+        || request.consent.is_some()
+        || request.recovery.is_some()
+        || request.invitation.is_some()
+        || request.removal.is_some()
+        || user.has_passkeys
+        || user.totp_secret.is_none()
+        || user.totp_pending.is_some()
+        || at < run.step_started_at
+        || !matches!(&run.record.state, RunState::Active { step, .. } if step.as_str() == "totp")
+    {
+        return Err(Error::forbidden());
+    }
+    crate::password::require_local(tx, user)?;
+    let [session, password] = run.record.steps.as_slice() else {
+        return Err(Error::forbidden());
+    };
+    let mut primary = None;
+    for (recorded, expected) in [(session, Proof::Session), (password, Proof::Password)] {
+        let step = checked.step(&recorded.step).ok_or_else(Error::forbidden)?;
+        if recorded.signal != Label::fixed("verified")
+            || step.action.proof(&recorded.signal) != Some(expected)
+        {
+            return Err(Error::forbidden());
+        }
+        let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
+        let receipt: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
+        super::super::evidence::check_evidence(
+            &run.record,
+            recorded,
+            step,
+            expected,
+            reference,
+            &receipt,
+            at,
+            Some(Some(RECEIPT_SECONDS as u32)),
+        )
+        .map_err(invalid_error)?;
+        if receipt.verified_at.saturating_add(RECEIPT_SECONDS) <= at {
+            return Err(Error::conflict("Workflow proof expired"));
+        }
+        evidence_authority(core, tx, &run.record, &receipt, at)?;
+        if expected == Proof::Password {
+            primary = Some(receipt);
+        }
+    }
+    primary.ok_or_else(Error::forbidden)
+}
+
 /// Check its primary proof before touching the account's factor replay state.
 fn primary(
     core: &Core,
@@ -111,6 +175,9 @@ fn primary(
     request: &RequestAuthority,
     at: u64,
 ) -> Result<StoredEvidence> {
+    if supported_configured_password_totp_replacement(checked.definition()) {
+        return replacement_primary(core, tx, checked, run, user, request, at);
+    }
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,
         (password::TOTP_WORKFLOW, false) => Proof::Password,

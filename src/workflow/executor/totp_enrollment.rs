@@ -18,6 +18,7 @@ enum Mode {
     Enroll,
     PasswordEnroll,
     Replace,
+    PasswordTotpReplace,
 }
 
 impl Mode {
@@ -29,24 +30,45 @@ impl Mode {
         }
     }
 
+    fn replacement(definition: &Definition) -> Self {
+        if supported_configured_password_totp_replacement(definition) {
+            Self::PasswordTotpReplace
+        } else {
+            Self::Replace
+        }
+    }
+
     fn supported(self, definition: &Definition) -> bool {
         match self {
             Self::Enroll => supported_configured_totp_enrollment(definition),
             Self::PasswordEnroll => supported_configured_password_totp_enrollment(definition),
             Self::Replace => supported_configured_totp_replacement(definition),
+            Self::PasswordTotpReplace => supported_configured_password_totp_replacement(definition),
         }
     }
 
     fn requires_passkey(self) -> bool {
-        self != Self::PasswordEnroll
+        matches!(self, Self::Enroll | Self::Replace)
     }
 
     fn factor(self) -> Proof {
-        if self == Self::PasswordEnroll {
-            Proof::Password
-        } else {
-            Proof::Passkey
+        match self {
+            Self::Enroll | Self::Replace => Proof::Passkey,
+            Self::PasswordEnroll => Proof::Password,
+            Self::PasswordTotpReplace => Proof::Totp,
         }
+    }
+
+    fn prerequisites(self) -> &'static [Proof] {
+        match self {
+            Self::Enroll | Self::Replace => &[Proof::Session, Proof::Passkey],
+            Self::PasswordEnroll => &[Proof::Session, Proof::Password],
+            Self::PasswordTotpReplace => &[Proof::Session, Proof::Password, Proof::Totp],
+        }
+    }
+
+    fn is_replacement(self) -> bool {
+        matches!(self, Self::Replace | Self::PasswordTotpReplace)
     }
 
     fn action(self) -> Action {
@@ -54,14 +76,14 @@ impl Mode {
             Self::Enroll | Self::PasswordEnroll => Action::EnrollCredential {
                 credential: Credential::Totp,
             },
-            Self::Replace => Action::ReplaceTotp {},
+            Self::Replace | Self::PasswordTotpReplace => Action::ReplaceTotp {},
         }
     }
 
     fn label(self) -> &'static str {
         match self {
             Self::Enroll | Self::PasswordEnroll => "enrollment",
-            Self::Replace => "replacement",
+            Self::Replace | Self::PasswordTotpReplace => "replacement",
         }
     }
 }
@@ -72,6 +94,7 @@ fn binding(run: &RuntimeRun, reservation: &InFlight, mode: Mode) -> Result<Strin
             Mode::Enroll => "workflow-totp-enrollment/v1",
             Mode::PasswordEnroll => "workflow-password-totp-enrollment/v1",
             Mode::Replace => "workflow-totp-replacement/v1",
+            Mode::PasswordTotpReplace => "workflow-password-totp-replacement/v1",
         },
         &run.record.id,
         &run.record.account,
@@ -106,9 +129,9 @@ fn verified_session(
         return Err(Error::forbidden());
     };
     if user.has_passkeys != mode.requires_passkey()
-        || user.totp_secret.is_some() != (mode == Mode::Replace)
+        || user.totp_secret.is_some() != mode.is_replacement()
         || user.totp_pending.is_some()
-        || request.requires_mfa
+        || request.requires_mfa != (mode == Mode::PasswordTotpReplace)
         || request.source.is_some()
         || request.authorization.is_some()
         || request.consent.is_some()
@@ -116,19 +139,20 @@ fn verified_session(
         || request.invitation.is_some()
         || request.removal.is_some()
         || run.credential_mutation.is_some()
-        || run.record.steps.len() != 2
+        || run.record.steps.len() != mode.prerequisites().len()
         || checked.step(step).map(|value| &value.action) != Some(&mode.action())
     {
         return Err(Error::forbidden());
     }
-    if mode == Mode::PasswordEnroll {
+    if matches!(mode, Mode::PasswordEnroll | Mode::PasswordTotpReplace) {
         crate::password::require_local(tx, &user)?;
         if let Err(error) = crate::password::unlocked(tx, &user)? {
             return Err(error);
         }
     }
     let mut factor_at = None;
-    for (recorded, proof) in run.record.steps.iter().zip([Proof::Session, mode.factor()]) {
+    for (recorded, proof) in run.record.steps.iter().zip(mode.prerequisites()) {
+        let proof = *proof;
         let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
         let evidence: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
         super::super::evidence::check_evidence(
@@ -150,14 +174,26 @@ fn verified_session(
     let mut session: Session = tx
         .get("sessions", &request.session)?
         .ok_or_else(Error::forbidden)?;
+    let original = session.identity.clone();
+    if mode == Mode::PasswordTotpReplace && !original.mfa {
+        return Err(Error::forbidden());
+    }
     session.identity = Identity {
         user_id: user.id.clone(),
         epoch: user.epoch,
         session_id: session.id.clone(),
         auth_time: factor_at.ok_or_else(Error::forbidden)?,
-        mfa: mode.requires_passkey(),
+        // The current TOTP receipt freshens only this local copy. Keep the
+        // bearer's original assurance for password-and-TOTP replacement.
+        mfa: if mode == Mode::PasswordTotpReplace {
+            original.mfa
+        } else {
+            mode.requires_passkey()
+        },
         amr: if mode.requires_passkey() {
             vec!["webauthn".into(), "mfa".into()]
+        } else if mode == Mode::PasswordTotpReplace {
+            original.amr
         } else {
             vec!["pwd".into()]
         },
@@ -238,9 +274,9 @@ impl Verified {
         }
         let (user, request) = authority(core, tx, run, now())?;
         if user.has_passkeys != self.mode.requires_passkey()
-            || user.totp_secret.is_some() != (self.mode == Mode::Replace)
+            || user.totp_secret.is_some() != self.mode.is_replacement()
             || user.totp_pending.is_some()
-            || request.requires_mfa
+            || request.requires_mfa != (self.mode == Mode::PasswordTotpReplace)
             || request.source.is_some()
             || request.authorization.is_some()
             || request.consent.is_some()
@@ -250,7 +286,7 @@ impl Verified {
         {
             return Err(Error::forbidden());
         }
-        if self.mode == Mode::PasswordEnroll {
+        if matches!(self.mode, Mode::PasswordEnroll | Mode::PasswordTotpReplace) {
             crate::password::require_local(tx, &user)?;
             if let Err(error) = crate::password::unlocked(tx, &user)? {
                 return Err(error);
@@ -273,6 +309,14 @@ impl Verified {
                 &self.secret,
                 &self.code,
             )?,
+            Mode::PasswordTotpReplace => {
+                crate::authenticator::commit_workflow_password_totp_replacement_in(
+                    tx,
+                    user,
+                    &self.secret,
+                    &self.code,
+                )?
+            }
         }
         let after: User = tx
             .get("users", &run.account)?
@@ -293,7 +337,7 @@ impl Verified {
             to_epoch: after.epoch,
             credential: match self.mode {
                 Mode::Enroll | Mode::PasswordEnroll => "totp",
-                Mode::Replace => "totp_replaced",
+                Mode::Replace | Mode::PasswordTotpReplace => "totp_replaced",
             }
             .into(),
             recovery_request: None,
@@ -321,6 +365,8 @@ impl Core {
             let checked = run.validated()?;
             let mode = if requested == Mode::Enroll {
                 Mode::enrollment(checked.definition())
+            } else if requested == Mode::Replace {
+                Mode::replacement(checked.definition())
             } else {
                 requested
             };
@@ -381,7 +427,7 @@ impl Core {
             audit(
                 tx,
                 &user.id,
-                if mode == Mode::Replace {
+                if mode.is_replacement() {
                     "mfa.replace.begin"
                 } else {
                     "mfa.enroll.begin"
@@ -397,7 +443,7 @@ impl Core {
                 "digits": settings.digits,
                 "period": settings.period,
             });
-            if mode == Mode::Replace {
+            if mode.is_replacement() {
                 response["replace"] = json!(true);
             }
             Ok(response)
@@ -430,6 +476,8 @@ impl Core {
             let checked = run.validated()?;
             let mode = if requested == Mode::Enroll {
                 Mode::enrollment(checked.definition())
+            } else if requested == Mode::Replace {
+                Mode::replacement(checked.definition())
             } else {
                 requested
             };
@@ -477,7 +525,7 @@ impl Core {
                 audit(
                     tx,
                     &user.id,
-                    if mode == Mode::Replace {
+                    if mode.is_replacement() {
                         "workflow.totp_replace.failed"
                     } else {
                         "workflow.totp_enroll.failed"
