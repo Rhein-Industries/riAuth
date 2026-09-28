@@ -39,11 +39,14 @@
   optional `[backup]` table sets its archive and frame quotas, stall timeout and
   maximum duration. See [streamed backup export](operations.md#streamed-backup-export).
 - Streamed exports are audited per actor and stream ID:
-  `operations.backup.started` is committed before the response begins (or the
-  export is refused), followed by exactly one of `operations.backup.completed`,
-  `operations.backup.cancelled` or `operations.backup.failed`. A response cut
-  short is never recorded as completed. Server shutdown also drops archive bytes
-  still queued for a client.
+  `operations.backup.started` is committed before the export opens its snapshot
+  (or the export is refused), followed by one of `operations.backup.completed`,
+  `operations.backup.cancelled` or `operations.backup.failed`, also when a
+  client stops reading but keeps the connection open. A response cut short is
+  never recorded as completed. A storage failure while writing the terminal
+  event, or a process exit while it is written for a disconnected client, can
+  leave it missing. Server shutdown also drops archive bytes still queued for a
+  client.
 - `POST /api/operations/backup` still returns v2 JSON for existing API clients.
   Restore reads v1, v2 and v3 archives as before.
 

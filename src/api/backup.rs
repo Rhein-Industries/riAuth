@@ -13,23 +13,29 @@
 //! queued archive bytes are dropped instead of holding the shutdown open, and
 //! new exports receive 503.
 //!
-//! Every export that starts leaves a durable audit trail for its actor and
-//! stream ID. `operations.backup.started` is committed before the export opens
-//! its snapshot, which may hold the only storage connection (PostgreSQL
-//! `pool_size = 1`) until it ends; exactly one of `completed`, `failed` or
-//! `cancelled` follows once the export has released it. `completed` means
-//! every archive byte, trailer included, was handed to the connection; an
-//! export that merely finished queueing is not complete. Details name the
-//! stream and its sizes, never the key or a credential.
+//! Every export that starts leaves an audit trail for its actor and stream ID.
+//! `operations.backup.started` is committed before the export opens its
+//! snapshot, which may hold the only storage connection (PostgreSQL
+//! `pool_size = 1`) until it ends. At most one of `completed`, `failed` or
+//! `cancelled` follows, written after the export released that snapshot (see
+//! [`Ending`]). The export writes it itself when it fails, also for a client
+//! that holds the connection open without reading, so the outcome never
+//! depends on the body being polled or dropped. `completed` means every
+//! archive byte, trailer included, was handed to the connection; an export
+//! that merely finished queueing is not complete. Details name the stream and
+//! its sizes, never the key or a credential.
 
 use super::*;
 use crate::operations::stream::{self, Progress, StreamLimits, StreamOptions, StreamSummary};
 use axum::body::{Body, Bytes};
 use std::{
     collections::VecDeque,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        PoisonError,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc, oneshot};
 use zeroize::Zeroizing;
 
 /// Largest body chunk handed to the connection.
@@ -48,6 +54,8 @@ const COMPLETED: &str = "operations.backup.completed";
 const FAILED: &str = "operations.backup.failed";
 const CANCELLED: &str = "operations.backup.cancelled";
 const SHUTTING_DOWN: &str = "server is shutting down";
+const STALLED: &str = "backup client stopped reading";
+const OVERDUE: &str = "backup stream exceeded backup.max_duration_seconds";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -127,33 +135,45 @@ pub(super) async fn stream(
         .await?;
     let cancel = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel(QUEUE);
+    let stall = Duration::from_secs(settings.stall_timeout_seconds);
+    let deadline = Instant::now() + Duration::from_secs(settings.max_duration_seconds);
     let sink = Sink {
         sender,
         runtime: tokio::runtime::Handle::current(),
-        stall: Duration::from_secs(settings.stall_timeout_seconds),
-        deadline: Instant::now() + Duration::from_secs(settings.max_duration_seconds),
+        stall,
+        deadline,
         cancel: cancel.clone(),
         shutdown: shutdown.clone(),
         failure: None,
     };
+    let ending = Arc::new(Ending::new(trail));
+    let (finished, result) = oneshot::channel();
+    let producer = Producer {
+        ending: ending.clone(),
+        runtime: tokio::runtime::Handle::current(),
+        stall,
+        deadline,
+        shutdown: shutdown.clone(),
+    };
     let core = app.core.clone();
     let exporting = cancel.clone();
-    let export = tokio::task::spawn_blocking(move || {
-        // The slot is released only after the export stopped reading storage.
+    // Detached: the export ends its own trail when it fails and watches the
+    // delivery of a finished archive.
+    tokio::task::spawn_blocking(move || {
+        // Held until this export can no longer end its trail.
         let _slot = slot;
         crate::context::scope(context, || {
-            export(&core, stream_id, &token, &key, limits, sink, &exporting)
+            let outcome = export(&core, stream_id, &token, &key, limits, sink, &exporting);
+            producer.finish(outcome, finished);
         })
     });
-    // From here every outcome ends the trail exactly once, also when a client
-    // that hangs up drops this handler.
     let mut transfer = Transfer {
         head: VecDeque::new(),
         receiver,
-        export: Some(export),
+        result: Some(result),
         shutdown,
-        trail: Some(trail),
-        delivered: 0,
+        ending,
+        done: false,
         _cancel: CancelOnDrop(cancel),
     };
     // The export sends its preamble only after authorizing the caller in its
@@ -252,7 +272,6 @@ impl Sink {
 
 impl std::io::Write for Sink {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        const OVERDUE: &str = "backup stream exceeded backup.max_duration_seconds";
         if bytes.is_empty() {
             return Ok(0);
         }
@@ -285,9 +304,7 @@ impl std::io::Write for Sink {
             Err(mpsc::error::SendTimeoutError::Timeout(_)) if remaining <= self.stall => {
                 Err(self.fail(OVERDUE))
             }
-            Err(mpsc::error::SendTimeoutError::Timeout(_)) => {
-                Err(self.fail("backup client stopped reading"))
-            }
+            Err(mpsc::error::SendTimeoutError::Timeout(_)) => Err(self.fail(STALLED)),
         }
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -315,8 +332,7 @@ struct Trail {
 }
 
 impl Trail {
-    /// Commits one event in its own write transaction; the export's read
-    /// snapshot never contains it.
+    /// Commits one event in its own write transaction.
     fn record(&self, action: &str, mut details: Value) -> Result<()> {
         details["stream_id"] = json!(self.stream_id);
         details["request_id"] = json!(self.request_id);
@@ -358,21 +374,156 @@ impl Trail {
     }
 }
 
+fn terminal(error: &Error) -> &'static str {
+    if error.code == "cancelled" {
+        CANCELLED
+    } else {
+        FAILED
+    }
+}
+
+/// The terminal event of one started export. Whoever takes the trail first
+/// writes it: the export when it fails, its watchdog when delivery of a
+/// finished archive stops, the body when it completes or stops, or a transfer
+/// dropped before that. Each writes only after the export released its
+/// snapshot. Only the body writes `completed`. A storage error while writing,
+/// or a process exit while a dropped transfer's detached write is pending,
+/// leaves the trail without one; the first is logged.
+struct Ending {
+    trail: Mutex<Option<Trail>>,
+    /// Archive bytes handed to the connection.
+    delivered: AtomicU64,
+    /// Woken by delivery progress and when the trail ends.
+    progress: Notify,
+}
+
+impl Ending {
+    fn new(trail: Trail) -> Self {
+        Self {
+            trail: Mutex::new(Some(trail)),
+            delivered: AtomicU64::new(0),
+            progress: Notify::new(),
+        }
+    }
+    fn take(&self) -> Option<Trail> {
+        let trail = self
+            .trail
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if trail.is_some() {
+            self.progress.notify_one();
+        }
+        trail
+    }
+    fn open(&self) -> bool {
+        self.trail
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some()
+    }
+    fn delivered(&self) -> u64 {
+        self.delivered.load(Ordering::Acquire)
+    }
+    fn deliver(&self, bytes: usize) {
+        self.delivered.fetch_add(bytes as u64, Ordering::AcqRel);
+        self.progress.notify_one();
+    }
+    /// Blocking. Writes the terminal event unless the trail already ended.
+    fn end(&self, action: &'static str, mut details: Value) {
+        if let Some(trail) = self.take() {
+            details["bytes"] = json!(self.delivered());
+            let _ = trail.record(action, details);
+        }
+    }
+}
+
+/// The export thread's part once the export returned: its snapshot, and any
+/// storage connection it held, are released by then.
+struct Producer {
+    ending: Arc<Ending>,
+    runtime: tokio::runtime::Handle,
+    stall: Duration,
+    deadline: Instant,
+    shutdown: Option<Shutdown>,
+}
+
+impl Producer {
+    fn finish(
+        self,
+        outcome: Result<StreamSummary>,
+        finished: oneshot::Sender<Result<StreamSummary>>,
+    ) {
+        let succeeded = outcome.is_ok();
+        if let Err(error) = &outcome {
+            self.ending
+                .end(terminal(error), json!({"reason": error.message}));
+        }
+        let _ = finished.send(outcome);
+        if succeeded {
+            self.watch();
+        }
+    }
+    /// A finished archive may still wait in the queue. Until the body hands
+    /// its last byte over, a client that stops reading, the deadline or
+    /// shutdown ends the trail as cancelled, and the body then aborts.
+    fn watch(&self) {
+        let ending = &self.ending;
+        let reason = self.runtime.block_on(async {
+            let mut seen = ending.delivered();
+            let mut since = Instant::now();
+            loop {
+                if !ending.open() {
+                    return None;
+                }
+                if ending.delivered() != seen {
+                    seen = ending.delivered();
+                    since = Instant::now();
+                }
+                let (wake, reason) = if since + self.stall < self.deadline {
+                    (since + self.stall, STALLED)
+                } else {
+                    (self.deadline, OVERDUE)
+                };
+                if Instant::now() >= wake {
+                    return Some(reason);
+                }
+                let stopping = async {
+                    match &self.shutdown {
+                        Some(shutdown) => shutdown.wait().await,
+                        None => std::future::pending().await,
+                    }
+                };
+                tokio::select! {
+                    biased;
+                    _ = stopping => return Some(SHUTTING_DOWN),
+                    _ = ending.progress.notified() => {}
+                    _ = tokio::time::sleep_until(wake.into()) => {}
+                }
+            }
+        });
+        if let Some(reason) = reason {
+            ending.end(CANCELLED, json!({"reason": reason}));
+        }
+    }
+}
+
 struct Transfer {
     /// Chunks received with the preamble, sent before the queue.
     head: VecDeque<Bytes>,
     receiver: mpsc::Receiver<Bytes>,
-    export: Option<tokio::task::JoinHandle<Result<StreamSummary>>>,
+    /// The export's outcome, sent once its snapshot is released.
+    result: Option<oneshot::Receiver<Result<StreamSummary>>>,
     shutdown: Option<Shutdown>,
-    /// Taken when the terminal event is recorded.
-    trail: Option<Trail>,
-    /// Archive bytes handed to the connection.
-    delivered: u64,
+    ending: Arc<Ending>,
+    /// Set once the body produced its last frame.
+    done: bool,
     _cancel: CancelOnDrop,
 }
 
 enum Step {
     Chunk(Bytes),
+    Ended,
     Stopped,
     Drained,
 }
@@ -381,9 +532,13 @@ impl Transfer {
     fn stopping(&self) -> bool {
         self.shutdown.as_ref().is_some_and(Shutdown::started)
     }
-    /// Shutdown takes precedence over queued bytes, so a stopping server
-    /// never finishes sending an archive.
+    /// A trail ended elsewhere and shutdown both take precedence over queued
+    /// bytes, so neither a failed export nor a stopping server finishes an
+    /// archive.
     async fn step(&mut self) -> Step {
+        if !self.ending.open() {
+            return Step::Ended;
+        }
         if self.stopping() {
             return Step::Stopped;
         }
@@ -400,50 +555,50 @@ impl Transfer {
         };
         received.map_or(Step::Drained, Step::Chunk)
     }
-    /// Waits for the export to end, which releases its snapshot and storage
-    /// connection, so a terminal event never waits behind them.
-    async fn outcome(
-        &mut self,
-    ) -> Option<std::result::Result<Result<StreamSummary>, tokio::task::JoinError>> {
-        Some(self.export.take()?.await)
+    /// The export's outcome, available once it released its snapshot.
+    async fn result(&mut self) -> Option<Result<StreamSummary>> {
+        let result = self.result.take()?;
+        Some(
+            result
+                .await
+                .unwrap_or_else(|_| Err(Error::internal("Backup export ended without an outcome"))),
+        )
+    }
+    /// Writes the terminal event unless the trail already ended, once the
+    /// export released its snapshot.
+    async fn end(&mut self, action: &'static str, mut details: Value) {
+        let Some(trail) = self.ending.take() else {
+            return;
+        };
+        let _ = self.result().await;
+        details["bytes"] = json!(self.ending.delivered());
+        let _ = trail.record_async(action, details).await;
     }
     /// Ends a started export that sent the client nothing and returns the
     /// error the caller receives.
     async fn abandon(&mut self) -> Error {
-        let error = match self.outcome().await {
-            Some(Ok(Err(error))) => error,
-            Some(Err(error)) => Error::internal(error),
-            Some(Ok(Ok(_))) | None => Error::internal("Backup stream ended without its preamble"),
+        let error = match self.result().await {
+            Some(Err(error)) => error,
+            Some(Ok(_)) | None => Error::internal("Backup stream ended without its preamble"),
         };
-        let action = if error.code == "cancelled" {
-            CANCELLED
-        } else {
-            FAILED
-        };
-        self.finish(action, json!({"reason": error.message})).await;
+        // A failed export has ended its trail already; this covers the rest.
+        self.end(terminal(&error), json!({"reason": error.message}))
+            .await;
         if self.stopping() {
             shutting_down()
         } else {
             error
         }
     }
-    /// Records the terminal event once. A failed audit write is logged; it
-    /// cannot recall bytes already sent.
-    async fn finish(&mut self, action: &'static str, mut details: Value) {
-        if let Some(trail) = self.trail.take() {
-            details["bytes"] = json!(self.delivered);
-            let _ = trail.record_async(action, details).await;
-        }
-    }
 }
 
 impl Drop for Transfer {
-    /// The handler or body went away before a terminal event: the client
+    /// The handler or body went away before the trail ended: the client
     /// disconnected, or the server dropped the connection while shutting down.
-    /// Dropping the queue and the guard stops the export; the event is
-    /// recorded once it has released its snapshot and storage connection.
+    /// Dropping the queue and the guard stops the export. The event is written
+    /// by a detached task once the export released its snapshot.
     fn drop(&mut self) {
-        let Some(trail) = self.trail.take() else {
+        let Some(trail) = self.ending.take() else {
             return;
         };
         let reason = if self.stopping() {
@@ -451,79 +606,75 @@ impl Drop for Transfer {
         } else {
             "client disconnected"
         };
-        let details = json!({"reason": reason, "bytes": self.delivered});
-        let export = self.export.take();
+        let ending = self.ending.clone();
+        let result = self.result.take();
         trail.runtime.clone().spawn(async move {
-            if let Some(export) = export {
-                let _ = export.await;
+            if let Some(result) = result {
+                let _ = result.await;
             }
+            let details = json!({"reason": reason, "bytes": ending.delivered()});
             let _ = trail.record_async(CANCELLED, details).await;
         });
     }
 }
 
 fn body(transfer: Transfer) -> Body {
+    const UNDELIVERED: &str = "backup export ended before the archive was delivered";
     Body::from_stream(futures_util::stream::unfold(
         transfer,
         |mut transfer| async move {
-            // After its terminal event the body is over.
-            transfer.trail.as_ref()?;
+            if transfer.done {
+                return None;
+            }
             let failure = match transfer.step().await {
                 Step::Chunk(chunk) => {
-                    transfer.delivered += chunk.len() as u64;
+                    transfer.ending.deliver(chunk.len());
                     return Some((Ok(chunk), transfer));
                 }
+                Step::Ended => UNDELIVERED.to_owned(),
                 Step::Stopped => {
-                    // The export stops at its next write.
-                    let _ = transfer.outcome().await;
                     transfer
-                        .finish(CANCELLED, json!({"reason": SHUTTING_DOWN}))
+                        .end(CANCELLED, json!({"reason": SHUTTING_DOWN}))
                         .await;
                     SHUTTING_DOWN.to_owned()
                 }
                 // Only a complete archive, entirely handed over, ends the body.
-                Step::Drained => match transfer.outcome().await? {
-                    Ok(Ok(summary)) if summary.bytes == transfer.delivered => {
-                        transfer
-                            .finish(
-                                COMPLETED,
-                                json!({
-                                    "frames": summary.frames,
-                                    "records": summary.records,
-                                    "transcript": summary.transcript,
-                                    "created_at": summary.created_at,
-                                }),
-                            )
-                            .await;
+                Step::Drained => match transfer.result().await {
+                    Some(Ok(summary)) if summary.bytes == transfer.ending.delivered() => {
+                        let Some(trail) = transfer.ending.take() else {
+                            // Delivery was cancelled first; never complete after that.
+                            transfer.done = true;
+                            return Some((Err(std::io::Error::other(UNDELIVERED)), transfer));
+                        };
+                        let details = json!({
+                            "frames": summary.frames,
+                            "records": summary.records,
+                            "bytes": summary.bytes,
+                            "transcript": summary.transcript,
+                            "created_at": summary.created_at,
+                        });
+                        let _ = trail.record_async(COMPLETED, details).await;
                         return None;
                     }
-                    Ok(Ok(summary)) => {
+                    Some(Ok(summary)) => {
                         let reason = format!(
                             "handed over {} of {} archive bytes",
-                            transfer.delivered, summary.bytes
+                            transfer.ending.delivered(),
+                            summary.bytes
                         );
-                        transfer.finish(FAILED, json!({"reason": reason})).await;
+                        transfer.end(FAILED, json!({"reason": reason})).await;
                         reason
                     }
-                    Ok(Err(error)) => {
-                        let action = if error.code == "cancelled" {
-                            CANCELLED
-                        } else {
-                            FAILED
-                        };
+                    Some(Err(error)) => {
                         transfer
-                            .finish(action, json!({"reason": error.message}))
+                            .end(terminal(&error), json!({"reason": error.message}))
                             .await;
                         error.message
                     }
-                    Err(error) => {
-                        transfer
-                            .finish(FAILED, json!({"reason": "backup export task failed"}))
-                            .await;
-                        error.to_string()
-                    }
+                    None => UNDELIVERED.to_owned(),
                 },
             };
+            transfer.done = true;
             Some((Err(std::io::Error::other(failure)), transfer))
         },
     ))

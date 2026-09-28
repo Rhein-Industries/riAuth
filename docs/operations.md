@@ -287,16 +287,23 @@ shutdown the server also drops archive bytes still queued for the client.
 Every export that passes authorization records durable audit events for its
 actor with target `backup/<stream ID>`. `operations.backup.started` is committed
 before the export opens its snapshot, so the archive contains it; if it cannot
-be recorded, the export is refused. Exactly one terminal event follows once the
-export has released its snapshot: `operations.backup.completed` (frames,
+be recorded, the export is refused. At most one terminal event follows, written
+after the export released its snapshot: `operations.backup.completed` (frames,
 records, bytes, transcript) only after every archive byte, trailer included,
 was handed to the connection; otherwise `operations.backup.cancelled` (client
 disconnected or stopped reading, deadline, shutdown) or `operations.backup.failed`
-(for example the quota), each with the reason and the bytes handed over. An
-export that finished sealing while its response was cut short is recorded as
-cancelled, not completed; only the client's verification confirms receipt.
-Details never contain the backup key or a credential. The server also logs each
-event and the export's progress every 10 seconds.
+(for example the quota), each with the reason and the bytes handed over. The
+export writes a failure itself, so a client that keeps the connection open
+without reading still gets a terminal event after `stall_timeout_seconds`; the
+same holds when the export finished but its last queued bytes are not taken.
+An export that finished sealing while its response was cut short is recorded
+as cancelled, not completed, and its response then never completes; only the
+client's verification confirms receipt. A started export can remain without a
+terminal event if storage fails while it is written (the server logs the
+failure) or if the process exits while the event for a disconnected client is
+still being written in the background. Details never contain the backup key or
+a credential. The server also logs each event and the export's progress every
+10 seconds.
 
 On PostgreSQL an export holds one pooled connection for its whole duration.
 It works with `pool_size = 1`, but then other requests that need storage wait

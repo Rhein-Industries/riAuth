@@ -1405,3 +1405,84 @@ async fn http_stream_audit_records_completion_only_for_a_whole_archive() {
         "an audit event holds the backup key"
     );
 }
+
+/// A client that keeps the connection open but stops reading neither polls nor
+/// drops the response body. The export still ends its own trail as cancelled
+/// once its stall timeout passes, and the held body never completes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn http_stream_stalled_reader_ends_the_trail_while_the_body_is_held() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use riauth::operations::stream::preamble_stream_id;
+    use std::time::{Duration, Instant};
+    use tower::ServiceExt;
+
+    // Several MiB of records, far more than the export's 1 MiB queue.
+    let seed = Seed::new(3000);
+    let mut core = seed.fixture.core.clone();
+    core.config.backup.stall_timeout_seconds = 5;
+    let key = riauth::crypto::random_token("");
+    let request = Request::post("/api/operations/backup/stream")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", seed.fixture.admin))
+        .body(Body::from(
+            serde_json::json!({"encryption_key": key}).to_string(),
+        ))
+        .unwrap();
+    let mut held = riauth::api::router(core.clone())
+        .oneshot(request)
+        .await
+        .unwrap();
+    assert_eq!(held.status(), StatusCode::OK);
+    let mut preamble = Vec::new();
+    while preamble.len() < 32 {
+        let frame = held.body_mut().frame().await.unwrap().unwrap();
+        preamble.extend_from_slice(&frame.into_data().unwrap());
+    }
+    let target = format!("backup/{}", preamble_stream_id(&preamble).unwrap());
+
+    // Read nothing more, and keep `held` alive. The seed's filler records
+    // share the audit bucket, so events are read as JSON.
+    let waiting = Instant::now();
+    let events = loop {
+        let events: Vec<Value> = core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .map(|(_, event)| event)
+            .filter(|event| event["target"] == target.as_str())
+            .collect();
+        if events.len() > 1 {
+            break events;
+        }
+        assert!(
+            waiting.elapsed() < Duration::from_secs(20),
+            "a stalled export left its trail open"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let mut actions: Vec<_> = events
+        .iter()
+        .map(|event| event["action"].as_str().unwrap())
+        .collect();
+    actions.sort();
+    assert_eq!(
+        actions,
+        ["operations.backup.cancelled", "operations.backup.started"]
+    );
+    let cancelled = events
+        .iter()
+        .find(|event| event["action"] == "operations.backup.cancelled")
+        .unwrap();
+    assert_eq!(
+        cancelled["details"]["reason"],
+        "backup client stopped reading"
+    );
+
+    // Reading on never completes the archive.
+    assert!(held.into_body().collect().await.is_err());
+}
