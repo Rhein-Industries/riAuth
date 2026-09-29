@@ -25,7 +25,7 @@ Sign-in lockout is `Core::password_login`. Recovery codes are
 A human administrator whose session is not delegated and not an agent is
 allowed every edition-available action. A delegated operator or an agent is
 refused when the target account is an administrator, including a password or
-MFA reset. The disposable drill used two human administrator sessions.
+MFA reset. Both disposable drills used two human administrator sessions.
 
 ## Which procedure
 
@@ -38,7 +38,7 @@ MFA reset. The disposable drill used two human administrator sessions.
 
 Break-glass also refuses an unproven or operator-exposed account unless
 `--reset-mfa` is set. That refusal is documented with the break-glass command.
-This drill did not create an exposed account.
+Neither drill created an exposed account.
 
 `recover-admin` opens the store itself. On PostgreSQL it refuses with
 `Stop every riAuth process connected to this database before administrator recovery`
@@ -46,20 +46,23 @@ when another riAuth session is still connected. On redb, a second opener fails
 with `storage_owned`. The serving commands in this page run against the
 process that is already up.
 
-## What the disposable drill ran
+## What the disposable drills ran
 
-[tests/admin_lockout.rs](../tests/admin_lockout.rs) opens a tempfile redb,
-creates its own accounts, and drops the directory when the test ends. It calls
-library methods on that store. It does not call `recover_admin`, start
-`riauth` or `riauth serve`, open a browser, send SMTP, contact LDAP, or read
-a deployment config.
+Two drills use a tempfile redb and drop it when the test ends. Neither calls
+`recover_admin`, opens a browser, sends SMTP, contacts LDAP, or reads a
+deployment config.
 
-The same test was run twice with `CARGO_INCREMENTAL=0` and
-`CARGO_TARGET_DIR` outside this checkout. The default feature set is
-`platform` ([Cargo.toml](../Cargo.toml)). The second run was
-`--no-default-features --features essentials`. Both runs passed. The CLI
-process was not executed, so the exit codes below are the mapping in
-`report_error`, not a recorded process status.
+### Library calls
+
+[tests/admin_lockout.rs](../tests/admin_lockout.rs) calls library methods on
+that store. It does not start `riauth` or `riauth serve`. The same test was
+run twice with `CARGO_INCREMENTAL=0` and `CARGO_TARGET_DIR` outside this
+checkout. The default feature set is `platform` ([Cargo.toml](../Cargo.toml)).
+The second run was `--no-default-features --features essentials`. Both runs
+passed. Those calls do not send Idempotency-Key or If-Match, because
+`Core::update_user` had no HTTP request context. HTTP statuses below are
+library results. Process exit codes are in the [CLI process](#cli-process)
+section.
 
 Observed on that store:
 
@@ -104,6 +107,69 @@ Observed on that store:
   password sign-in for that administrator succeeded. The test never stopped
   the store.
 
+### CLI process
+
+[tests/admin_lockout_cli.rs](../tests/admin_lockout_cli.rs) starts the default
+Platform `riauth` binary and runs `riauth serve` on `127.0.0.1:0`. The config
+and the store are a tempfile. The built-in `admin` account signs in on one
+session file, creates a second administrator, and keeps that session. Sign-in
+attempts for the locked account use a second session file. The tempfile sets
+`rate_limits.login` to 1000 so the burst of sign-in attempts records the
+account lock. The default category is 20 requests per minute per address, and
+this run did not record that window. Essentials was not compiled for this
+process. The Essentials result is the library run above.
+
+The run used `CARGO_INCREMENTAL=0`, `CARGO_TARGET_DIR` outside this checkout,
+and `cargo test --offline --test admin_lockout_cli`. One test passed.
+
+Observed process statuses. Every invocation used `--json`. Failures use the
+`riauth.cli/v1` envelope with `ok: false`, `error.http_status`,
+`error.retryable`, and `exit_code` equal to the process status.
+
+- Five wrong passwords for the locked administrator: process exit 3,
+  `invalid_credentials`, HTTP 401, `retryable` false, message
+  `Invalid username, password, or one-time code`.
+- The next sign-in with the correct password: exit 6, `rate_limited`, HTTP 429,
+  `retryable` true, message `Too many attempts; try again later`.
+- Six wrong passwords for an unknown name: exit 3 with that same 401 envelope.
+  This process cannot read the `attempts` row. The library drill is the one
+  that observed no row.
+- `user passwd` and `user reset-mfa` without both `--idempotency-key` and
+  `--if-revision`: exit 1, `operation_failed`, `http_status` 0, `retryable`
+  false. The message contains
+  `User update requires --idempotency-key and --if-revision`. The CLI returns
+  before HTTP, so this run did not record HTTP 428. The revision stayed the
+  same.
+- A new idempotency key with a stale `--if-revision`: exit 5, `conflict`,
+  HTTP 409, message `Configuration revision changed`. The revision stayed the
+  same.
+- Reusing the current password: exit 2, `invalid_request`, HTTP 400, message
+  `Password was used recently`. The revision stayed the same. The correct
+  password still exited 6, so the missing flags, the stale revision, and the
+  reused password left the lock in place.
+- `user passwd` with the current revision and a new key: exit 0. The revision
+  advanced by one, and `user list` showed one row for that username. Repeating
+  those arguments, including the original `--if-revision`, returned the same
+  success data and did not advance the revision again.
+- The same idempotency key with a different password: exit 5, `conflict`,
+  HTTP 409, message `Idempotency key was used for a different request`. The
+  revision stayed the same. Sign-in then succeeded with the first replacement
+  and returned exit 3 for the second password.
+- After that password change, five new wrong passwords and the next correct
+  password again recorded exit 3 and then exit 6.
+- `user reset-mfa` with the fresh revision and a different key: exit 0, and
+  the revision advanced by one. The correct password still exited 6. No factor
+  was enrolled, so authenticator and recovery-code retention remains the
+  library observation.
+- A later `user passwd` with a new key and the new revision: exit 0, and the
+  revision advanced by one. The previous password then exited 3, and the new
+  password exited 0.
+- `whoami` for the relief administrator succeeded before the lock and again
+  after the last password change. While the account was locked, that same
+  session read the revision and sent `user passwd` and `user reset-mfa`. The
+  server process was still running at that point. The test then stopped it.
+  No deployment store was opened, and no SMTP was sent.
+
 ## Attempt lock
 
 Local password sign-in counts failures on the `attempts` row for that
@@ -124,17 +190,21 @@ is not the unlock.
 The bearer and CLI login surface the 429 text above. Browser sign-in rewrites
 both that 429 `rate_limited` and a 401 credential failure to HTTP 401
 `invalid_credentials` with `Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.`
-The rewrite is `credential_error` in [src/signin.rs](../src/signin.rs). This
-drill used `Core::login`, which is the bearer path, and did not open a browser.
+The rewrite is `credential_error` in [src/signin.rs](../src/signin.rs). The
+library drill used `Core::login`, which is the bearer path. The CLI process
+drill recorded `riauth login` status. Neither opened a browser.
 
-CLI exit mapping for those HTTP statuses is 401 exit 3, 400 and 422 exit 2,
-409 and 428 exit 5, and 429 or 503 exit 6. With `--json`, exit 6 sets
-`"retryable": true`. That flag is the status class.
+`report_error` maps those HTTP statuses to process exits: 401 to exit 3, 400
+and 422 to exit 2, 409 and 428 to exit 5, and 429 or 503 to exit 6. With
+`--json`, exit 6 sets `"retryable": true`. That flag is the status class. The
+CLI process drill recorded exits 3, 2, 5, and 6 for the HTTP results above.
+A missing `--idempotency-key` or `--if-revision` stops in the CLI before HTTP
+and records exit 1. That run did not record HTTP 428.
 
 A wrong current password on a signed-in password change uses the same five
 failures and 900 second pause (`password::record_failure`). Until the lock,
 the response is HTTP 403 `invalid_current_password`, message
-`Your current password is incorrect`. This drill did not call that change.
+`Your current password is incorrect`. Neither drill called that change.
 
 An imported directory account uses `directory_attempts` in
 [src/assembly/directory.rs](../src/assembly/directory.rs), keyed by user id.
@@ -142,7 +212,7 @@ The window is also 900 seconds. When the stored count is already 5, the next
 attempt returns 429 `rate_limited`, message `Too many login attempts`, and
 does not bind. LDAP import rejects an administrator with
 `LDAP may only manage non-administrator directory accounts`. An administrator
-lock is the local `attempts` row. This drill did not connect to a directory.
+lock is the local `attempts` row. Neither drill connected to a directory.
 
 Windows device sign-in keeps its own attempt counter in
 [src/assembly/windows_login.rs](../src/assembly/windows_login.rs). This page
@@ -167,7 +237,7 @@ factor within `FRESH_SECONDS` (300). The CLI is
 `riauth mfa recovery-codes --out FILE`. The portal route is
 `POST /api/portal/mfa/recovery-codes` in [src/portal/mfa.rs](../src/portal/mfa.rs).
 Both call `recovery_codes_in`. Rotation does not delete `attempts` and does
-not advance the account epoch. The drill rotated codes through
+not advance the account epoch. The library drill rotated codes through
 `Core::recovery_codes` on the bearer session. It did not call the portal route
 or the CLI.
 
@@ -184,15 +254,17 @@ code.
 applies. The default retained history is 5. A reused password returns
 `Password was used recently` and leaves the lock in place. A password shorter
 than 12 bytes or longer than 1024 bytes returns
-`Passwords must be between 12 and 1024 bytes`. The drill observed the reuse
-refusal. It did not submit a short password.
+`Passwords must be between 12 and 1024 bytes`. The library drill observed the
+reuse refusal on `Core::update_user`. The CLI process drill recorded it as
+exit 2. Neither submitted a short password.
 
 Use one command when only one of those blocks is present. Use both when the
-account is locked and the remaining factor is gone. The drill ran them as two
-updates, which is what the two CLI commands send. Read `riauth revision`
+account is locked and the remaining factor is gone. The library drill ran the
+two updates through `Core::update_user`. The CLI process drill ran
+`user passwd` and `user reset-mfa` as separate processes. Read `riauth revision`
 again between them: each successful user write advances the configuration
-revision, and a repeated idempotency key for a different body returns
-`Idempotency key was used for a different request`.
+revision. The CLI drill recorded a repeated idempotency key for a different
+password as exit 5, message `Idempotency key was used for a different request`.
 
 ## Browser account recovery
 
@@ -207,13 +279,13 @@ account with a verified email, or with an exposure recovery address. An
 unknown name, an unverified address, a directory account, a passkey-only
 account, and an upstream-only account get the same accepted response and no
 message. The same username is also skipped when a reset was requested in the
-last 60 seconds or five times in the current hour. The drill saw that skip as
+last 60 seconds or five times in the current hour. The library drill saw that skip as
 a second accepted response that left the first queued message usable. It did
 not wait out the hour.
 
 The queued lifetime is 1800 seconds. The code is in the link fragment, so
 opening the link does not spend it. A newer allowed request replaces the
-previous proof. Completion is one use. The drill read the code from the
+previous proof. Completion is one use. The library drill read the code from the
 tempfile outbox. It did not start a listener on `127.0.0.1:2525` and did not
 run the mail worker. `delivered_at` stayed null.
 
@@ -223,7 +295,7 @@ recovery codes. The response is `completed: true` and `login_required: true`.
 It does not sign the browser in. The next password sign-in still needs an
 authenticator code or a recovery code when an authenticator is enrolled.
 Exposed-credential completion also clears factors and sets `factors_reset`.
-The drill's account had no exposure record, and the response did not set
+The library drill's account had no exposure record, and the response did not set
 `factors_reset`.
 
 On Platform, completion runs `complete_password_reset_workflow`, and
@@ -327,18 +399,25 @@ riauth --config "$live_config" account reset-request "$locked_admin"
 riauth --config "$live_config" --session-file "$session_file" account deliveries
 ```
 
-## What this drill did not run
+## What these drills did not run
 
-- The `riauth` CLI, including `login`, `revision`, `user passwd`,
-  `user reset-mfa`, and `account reset-request`. The library calls are the
-  writers those commands use. Idempotency-Key and If-Match were not sent,
-  because the drill called `Core::update_user` without an HTTP request context.
+- `riauth account reset-request` and `riauth account deliveries` as processes.
+  The library drill called `account_reset_request` directly. The CLI drill
+  did not.
+- HTTP 428. Missing `--idempotency-key` or `--if-revision` stopped in the CLI
+  before the request. The library calls had no HTTP context, so they did not
+  send Idempotency-Key or If-Match either.
 - A browser, the admin UI, and `credential_error`.
-- SMTP dialogue, a mail worker, and any host other than the unset-mail check
-  plus an unsent loopback outbox row.
+- SMTP dialogue, a mail worker, and any host other than the library drill's
+  unset-mail check plus an unsent loopback outbox row. The CLI drill did not
+  configure mail.
 - An LDAP bind or a `directory_attempts` row.
 - A passkey-only account, a delegated operator, an agent, and an exposed or
-  unproven credential.
+  unproven credential. The CLI drill did not enroll a factor. Factor retention
+  on `user reset-mfa` remains the library observation.
+- The Essentials `riauth` binary. The library test ran on Essentials. The CLI
+  process ran on the default Platform binary only.
+- A password shorter than 12 bytes or longer than 1024 bytes.
 - `recover-admin`, a second store opener, PostgreSQL, archive restore, PITR,
   key escrow, a real OIDC or SAML relying party, and Windows device recovery.
 - Any deployment account or deployment store.
