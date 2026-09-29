@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records five loopback observations. The first
+build. The walkthrough records six loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -22,15 +22,18 @@ separate `riauthctl` and `riauth-maintenance` snapshots supplied for a later
 source revision. The fourth used only that server snapshot and ran the
 section 5 backup, restore, and recovery-status entry points. The fifth used
 only that server snapshot, opened an isolated browser at `/apps`, and stopped
-the section 4 passkey ceremony before a credential was stored. The commands
+the section 4 passkey ceremony before a credential was stored. The sixth used
+only that server snapshot, captured one invitation on a loopback SMTP sink,
+accepted the password in an isolated browser, and signed in only after that
+acceptance. The commands
 in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
 [standalone client](../crates/riauthctl/src/main.rs).
 
 The three slices were checked by reading the source and the current docs,
-then by `python3 scripts/check-docs.py`. Section 14 was source-reviewed and
-remains unrun. Five disposable loopback runs are recorded in
+then by `python3 scripts/check-docs.py`. Section 14's password acceptance
+was run once on loopback. Six disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -44,9 +47,12 @@ has no `doctor` subcommand. The fourth ran section 5 `keygen`, `backup`,
 complete`, `recover-admin`, and a second server unrun. The fifth signed in
 at `/apps` with the password form, opened **Sign-in and security**, and
 cancelled **Add a passkey** when Chrome required iCloud Keychain, the Chrome
-profile, a USB security key, or Touch ID. Rename, remove, passkey sign-in,
-hardware, peers, invitation acceptance, and Essentials-guide execution
-remain unrun. The
+profile, a USB security key, or Touch ID. The sixth appended a loopback
+`[mail]` table, issued one invitation with `--idempotency-key` and
+`--if-revision`, opened the captured link, accepted a password, left `/apps`
+signed out, refused a replay of that link, and then signed in as the invited
+person. Rename, remove, passkey sign-in, passkey invitation acceptance,
+hardware, peers, and Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -1838,9 +1844,10 @@ and does not copy that write-up.
 
 The configuration from section 2 has no `[mail]` table. `identity.invitations`
 is compiled on Essentials and on Platform. It becomes usable when `[mail]`
-passes the local SMTP material check in `require_local_material`. This task
-did not add `[mail]`, did not issue an invitation, and did not send a message.
-`account invite` and `account revoke-invitation` stop locally unless both
+passes the local SMTP material check in `require_local_material`. One
+loopback run added a `[mail]` table with `security` set to `loopback` and
+host `127.0.0.1`, issued one invitation, and captured the message on that
+host. `account invite` and `account revoke-invitation` stop locally unless both
 `--idempotency-key` and `--if-revision` are present. The message is
 `Invitation writes require --idempotency-key and --if-revision (from riauth revision)`.
 The source string wraps `riauth revision` in backticks. This section does not
@@ -1895,9 +1902,56 @@ forms, and creates no session. A revoked or replaced link hides the forms
 too. Password and passkey spend the same invitation. `riauth account accept`
 is the password completion and does not call the passkey endpoints.
 
+### Loopback observation
+
+The [walkthrough](roadmap/d01-platform-cli-walkthrough.md) records one
+password acceptance on a copy of the Platform server snapshot supplied for
+`58357fd`. After `init`, the configuration gained a `[mail]` table with
+host `127.0.0.1`, `security` `loopback`, and no SMTP username. A sink on
+that host captured one message. The product mail job delivered it.
+`account deliveries` listed one delivered row and no message body.
+
+An invite without `--idempotency-key` and `--if-revision` exited 1 before
+a request. Standard output was empty. Standard error matched the local bail
+above, and the bytes included the backticks around `riauth revision`.
+`riauth revision` printed revision 0. The bound invite exited 0. The new
+account was disabled, was not an administrator, had no password, and had an
+unverified `example.test` address. The captured link used
+`http://localhost:9000/account/accept` and a fragment whose token starts
+with `ri_mail_` and is 51 characters. The token is not recorded.
+
+An isolated Chromium window opened that link. The address bar no longer
+contained the fragment. The page offered a password and **Accept with a
+passkey**. Only the password was submitted. The result was **Invitation
+accepted**, **Your account is ready**, and the sentence that says to sign
+in with the new password. Server CLI `user list` showed that account enabled,
+with the delivered address verified and a password available. Chrome showed
+**Save password?** and **Never** was pressed.
+
+`/apps` then showed the sign-in panel, including **Sign in with a passkey**,
+**Sign in**, and **Sign in with your terminal**. The signed-in welcome was
+absent. Opening the same link again showed the password form. Submitting
+the password again showed **This invitation has already been accepted.
+Continue to sign in.** and hid both forms. `/apps` was still the sign-in
+panel. A later password sign-in opened the catalogue for **Invitee Lab
+(@invitee)** with **All applications (0)**. **Sign out** was visible and
+was not used.
+
+The success JSON, the session cookie, and `GET /api/portal` were not read.
+The driver refused an in-page fetch, so this run does not record an HTTP
+status for the portal. The signed-out panel is the evidence that acceptance
+had not signed the browser in. The shipped invitation workflow was not
+started as an operator workflow run. The Playwright invitation journeys,
+Firefox, WebKit, an expired or revoked link, passkey acceptance, sign-out,
+and a real mailbox were not run. The pages came from the immutable snapshot.
+The walkthrough limits the source comparison to the invitation and mail
+files it names.
+
 ### Browser test limits
 
-This task did not run these browsers, and it did not send mail.
+The loopback observation above used one isolated desktop Chromium window.
+It did not run these Playwright journeys, and it did not use Firefox or
+WebKit.
 
 `tools/browser/invitation-password.spec.js` is a headless keyboard journey
 at 390 by 844 CSS pixels on Chromium, Firefox, and WebKit. It uses the
@@ -1962,7 +2016,9 @@ spec itself says it does not claim:
 Those five are manual gates. This task did not run the Playwright spec or a
 spoken screen reader. Section 4 records one isolated desktop browser on
 loopback. That browser signed in at `/apps` and cancelled the passkey prompt
-before a credential existed. Physical keys, synced passkeys, phones, and
+before a credential existed. Section 14 records a second isolated desktop
+browser that accepted an invitation password and did not start a passkey
+ceremony. Physical keys, synced passkeys, phones, and
 spoken screen readers remain manual gates. [Passkeys](passkeys.md) also says
 physical hardware and platform compatibility still need testing on the
 intended devices. The cancelled prompt in section 4 is one loopback
@@ -1988,7 +2044,11 @@ snapshot: `keygen`, `backup`, `restore` into a new directory, and `recovery
 status`. That run left `recovery complete`, `recover-admin`, and a second
 server unrun. A fifth run opened section 4 in an isolated browser, signed
 in at `/apps`, and cancelled passkey enrollment before a credential
-existed. Rename, remove, and passkey sign-in stayed unrun. Sections 9
+existed. Rename, remove, and passkey sign-in stayed unrun. A sixth run
+issued one invitation through loopback SMTP, accepted the password in an
+isolated browser, confirmed `/apps` stayed on the sign-in panel, refused a
+replay, and then signed in as the invited person. Passkey acceptance,
+sign-out, and the headless invitation journeys stayed unrun. Sections 9
 through 13 remain source-reviewed procedures. The generated `init` file still has no directory,
 no SCIM target, no workflow, no SAML client, and no LDAP listener until the
 operator adds them. Those later commands were not executed here. Sections 11
@@ -2000,8 +2060,9 @@ Still outside this slice, as later tasks:
 
 - Email verification, password change and reset, authenticator-app
   enrollment, recovery codes, session list, and consent withdrawal as
-  operator or user tasks. Invitation acceptance is section 14 and was
-  not run here. The portal markup includes password, authenticator-app, and
+  operator or user tasks. Section 14 records one invitation password
+  acceptance. Passkey acceptance of an invitation, an expired link, and a
+  revoked link were not run. The portal markup includes password, authenticator-app, and
   sessions controls beside passkeys ([index.html](../src/portal/index.html)).
   [Account email and recovery](lifecycle.md) describes those browser pages.
   [Re-enrollment and user communication](reenrollment.md) cites the source
@@ -2063,8 +2124,8 @@ Still outside this slice, as later tasks:
   `recovery complete`, `recover-admin`, an LDAP directory plan or
   apply, a SCIM plan or apply, a workflow plan or a configured-workflow run,
   a SAML metadata exchange with a peer, an LDAP provider bind, or an
-  invitation acceptance. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has five runs.
+  invitation passkey acceptance. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has six runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2076,4 +2137,6 @@ Still outside this slice, as later tasks:
   and `recovery status` on the Platform server snapshot, with the restored
   service left closed. The fifth supplies password sign-in at `/apps` and a
   cancelled **Add a passkey** on that same server snapshot. The server then
-  listed no passkeys. D01 remains incomplete.
+  listed no passkeys. The sixth supplies one loopback invitation, password
+  acceptance, a signed-out applications page, replay refusal, and a later
+  password sign-in. D01 remains incomplete.

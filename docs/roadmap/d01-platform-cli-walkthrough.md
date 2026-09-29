@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records five disposable loopback runs of the
+This page records six disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -12,10 +12,13 @@ separate `riauthctl` and `riauth-maintenance` snapshots and ran the printed
 maintenance init and remote client commands. The fourth copied only that
 server snapshot and ran the section 5 backup, restore, and recovery-status
 entry points. The fifth copied only that server snapshot and opened section 4
-in an isolated browser. No run used an external peer or `cargo install`.
+in an isolated browser. The sixth copied only that server snapshot, captured
+one invitation on loopback SMTP, and accepted the password in an isolated
+browser. No run used an external peer or `cargo install`.
 The first two runs did not launch `riauthctl` or `riauth-maintenance`. The
-fourth and fifth runs did not launch them either. The fifth run is the only
-run that opened a browser, and it stored no passkey.
+fourth, fifth, and sixth runs did not launch them either. The fifth and sixth
+runs opened a browser. The fifth stored no passkey. The sixth did not start
+a passkey ceremony.
 
 ## Essentials catalog run
 
@@ -1720,6 +1723,284 @@ Still unrun on this run:
   `passkey finish`, and `passkey remove`
 - `riauth doctor`, `recovery complete`, `recover-admin`, and a second server
 - sections 6 through 14
+- a physical key, a synced passkey, a phone, a spoken screen reader, an
+  external peer, and the Essentials guide
+
+D01 remains incomplete.
+
+## Section 14 invitation password
+
+The docs worktree for this record is
+`0791deb4737326c1bc2157a48a636decc1117a69`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the catalog
+run, the remote-administration run, the section 5 run, and the section 4 run
+copied. Its mode stayed `-r-x------`, its size stayed 289661864 bytes, its
+mtime stayed `2026-09-29 17:00:59 +0200`, and its SHA-256 stayed
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. The
+snapshot path was not executed. A copy lived in a new `mktemp` directory
+under `/tmp`, mode `700`. The copy was chmod `700`, its SHA-256 matched the
+snapshot before any command, and its inode differed. This page calls that
+directory `$LAB`. The copy's real path is not recorded. `riauthctl` and
+`riauth-maintenance` were not launched. `deployment-private/` was not written.
+
+`riauth --version` printed `riauth 0.1.1`. Standard error was empty. This
+run did not print `riauth capabilities` or `riauth doctor`. The browser
+behavior below was observed from that immutable snapshot.
+
+### Setup and mail
+
+Free space on the data volume stayed above 7 GiB. Port 9000 was free before
+serve. Both default home session files were absent. The administrator
+password and the invited person's password were different 24-character
+alphanumeric values in mode `600` files. Neither value is recorded.
+
+```sh
+riauth --config $LAB/riauth.toml --non-interactive init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir $LAB/data \
+  --admin admin \
+  --password-stdin
+```
+
+Exit 0. Standard error was `Creating instance and signing key…`, 37 bytes,
+including the newline. The configuration file was mode `600`. It contained
+no administrator password. After `init`, and before `serve`, the lab appended
+this table. The port was the ephemeral port of a sink bound to `127.0.0.1`.
+On this run that port was `65192`. The table had no `username` and no
+`password_file`.
+
+```toml
+[mail]
+host = "127.0.0.1"
+port = 65192
+from = "Identity <identity@example.test>"
+security = "loopback"
+```
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+`/healthz` succeeded through `curl --fail`. The body was 187 bytes. This run
+did not request `/readyz`. `$LAB/data` held one redb file of 118784 bytes.
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session \
+  login admin --password-stdin
+```
+
+Exit 0. The session file was mode `600`. Standard output named user `admin`
+and did not contain a session token. The login object is not copied because
+it contains the lab path.
+
+The invitation file was mode `600`:
+
+```json
+{"username": "invitee", "email": "invitee@example.test", "display_name": "Invitee Lab", "groups": []}
+```
+
+`groups` was empty, so the invite did not require a group. The same file was
+used for both invite attempts.
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session \
+  account invite --file $LAB/invite.json
+```
+
+Exit 1. Standard output was 0 bytes. Standard error matched this text,
+including its trailing newline. The source string wraps the revision command
+in backticks:
+
+```text
+error: Invitation writes require --idempotency-key and --if-revision (from `riauth revision`)
+```
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session revision
+```
+
+Exit 0. Standard error was 0 bytes. Standard output was a JSON object whose
+only field was `revision` with value 0. `--json` was not passed.
+
+`$KEY` below was one UUID in a mode `600` file. The value is not recorded.
+The bound command is the one that issued the invitation:
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session \
+  --idempotency-key "$KEY" \
+  --if-revision 0 \
+  account invite --file $LAB/invite.json
+```
+
+Exit 0. `delivery_queued` was true. The returned account was `invitee`,
+display name `Invitee Lab`, `enabled` false, `admin` false,
+`password_available` false, `email_verified` false, and `mfa_enabled` false.
+The address domain was `example.test`. The user id is not recorded. The
+response contained no invitation token.
+
+The product mail job delivered one message to the loopback sink during the
+wait of up to 45 seconds. The fixture pump was not used. The captured
+message was mode `600` and stayed in the lab. Its subject was `Your riAuth
+account invitation`. The body contained `Account: invitee`. The link's
+origin and path were `http://localhost:9000/account/accept`, the fragment
+token started with `ri_mail_`, and that token was 51 characters. The link
+and the message body are not recorded.
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session \
+  account deliveries
+```
+
+Exit 0. The result was one list row. `delivered_at` was set, `attempts` was
+1, and `stopped` was false. The row had no body, recipient, or subject
+field.
+
+At that point the serve log was 433 bytes. A scan of the configuration, the
+serve log, the health body, and the revision, invite, deliveries, login,
+init, and unbound outputs found no password, no invitation token, and no
+PEM header. The log contained the
+`background_overloaded` marker once. The log text is not copied.
+
+### Browser
+
+Desktop interaction used the Cua driver 0.30.3. Accessibility and screen
+recording were granted. The driver launched a new isolated Chromium profile
+and copied no existing profile data. The page was the captured link. After
+the page script ran, the address was `http://localhost:9000/account/accept`
+with no fragment. The title was `Accept invitation · riAuth`.
+
+The description was `Set a password, or add a passkey, to activate your
+account. You will sign in after accepting the invitation.` The password
+form, a **Passkey name** field, and **Accept with a passkey** were visible.
+The password and confirmation each received 24 masked characters. The page
+tree did not expose the password value. **Accept with a passkey** was not
+used. Activating **Accept invitation** did not return a confirmed input
+effect from the driver. The next snapshot was the proof.
+
+The page showed **Invitation accepted**, **Your account is ready**, and
+`Sign in with your new password to open your applications. An application
+may also require a passkey or authenticator code.` The link was **Continue
+to sign in**. The password form and the passkey form were not in the visible
+tree.
+
+```sh
+riauth --config $LAB/riauth.toml --session-file $LAB/admin.session user list
+```
+
+Exit 0. Standard error was empty. The list had two accounts. `invitee` was
+`admin` false, display name `Invitee Lab`, `email_verified` true, `enabled`
+true, `mfa_enabled` false, and `password_available` true. The address domain
+was `example.test`.
+
+Chrome showed a window titled **Save password?**. **Never** was pressed.
+That window was gone afterward. **Save** was not pressed. A later window
+list did not show a second **Save password?** prompt. This record does not
+say that **Never** suppresses a later prompt.
+
+`http://localhost:9000/apps` then showed `Sign in to see the applications
+available to you. Your workspace is ready when you are.` The buttons were
+**Sign in with a passkey**, **Sign in**, and **Sign in with your terminal**.
+The signed-in welcome was absent. **Sign in with a passkey** was not used.
+
+The same captured link was opened again. The password form was visible
+again. A second password submit was required before the page changed. The
+alert was `This invitation has already been accepted. Continue to sign in.`
+The password form and the passkey form were not in the visible tree. **Open
+applications** was visible. The passkey-or-password description remained.
+`/apps` still showed the same sign-in panel.
+
+The username field then read back as `invitee`. The password field received
+24 masked characters. Activating **Sign in** did not return a confirmed
+input effect. The next snapshot showed the catalogue. The title was `Your
+applications · riAuth`. The account control was **Signed in as Invitee Lab
+(@invitee)**. The welcome text was **Welcome back, Invitee Lab. Find your
+next starting point.** The page also showed `Some applications need extra
+verification. Add a passkey or an authenticator app under Sign-in and
+security.` The headings were **Your applications.** and **All applications
+(0)**. The empty-catalogue text was `No applications are available for this
+account yet. Contact your administrator if you’re expecting access.` The
+status was `0 applications shown.` **Sign out**, **Sign-in and security**,
+and **Sessions and consent** were visible and were not used.
+
+The success JSON was not read. The session cookie was not read. An in-page
+`GET /api/portal` was refused by the driver before it ran, so this record
+has no portal HTTP status and no cookie-jar result. The signed-out panel
+after acceptance, and again after the replay, is the evidence that the
+browser had no session until the later password sign-in.
+
+A final scan before shutdown, still on the running copy, printed `riauth
+0.1.1` with empty standard error. The serve log was 1034 bytes. That scan
+found no password, no invitation token, and no PEM header. The
+`background_overloaded` marker occurred three times.
+The redb file was still 118784 bytes. The copy was still mode `700`, its
+SHA-256 still matched the snapshot, and its inode still differed.
+
+### Source comparison
+
+The comparison is `git diff 58357fd 0791deb`, limited to the files named
+here. These files had no difference:
+
+- `src/lifecycle.rs`
+- `src/lifecycle/invitation.rs`
+- `src/lifecycle/invitation/passkey.rs`
+- `src/portal/account.js`
+- `src/portal/account.html`
+- `src/portal/http.rs`
+- `src/api/invitation.rs`
+- `src/api/server.rs`
+- `src/config.rs`
+- `src/background.rs`
+- `src/workflow/executor/invitation.rs`
+- `src/crypto.rs`
+- `src/signin.rs`
+- `src/portal/index.html`
+
+`src/cli.rs` differs in the agent-creation and agent-revocation idempotency
+checks. The invitation command was outside that diff. `src/management.rs`
+differs in agent issuance receipt handling and the already-revoked check.
+`invite_user` was outside that diff. This comparison does not cover the rest
+of the tree. The password page was served by the immutable snapshot. The
+name `platform-invitation-password-enrollment` was not started as an
+operator workflow run.
+
+### Cleanup
+
+The Cua session was ended, and the isolated browser process was gone before
+the lab was removed. The lab shell's cleanup stopped `serve` with SIGTERM.
+SIGKILL was not required. It stopped the SMTP sink, re-hashed the snapshot,
+found port 9000 free, found both default home session files absent, and
+removed the lab directory. A following check found the directory gone, the
+snapshot hash and mode unchanged, port 9000 free, and both home session
+files absent. Free space on the data volume stayed above 7 GiB. After
+cleanup, available space was 14006576 KiB.
+
+### Unrun on this invitation run
+
+The executed chain is `riauth init`, a loopback `[mail]` table, `serve`,
+`/healthz`, server CLI login, an unbound `account invite`, `revision`, one
+bound `account invite`, one captured message, `account deliveries`, password
+acceptance in an isolated browser, `user list`, a signed-out `/apps` visit,
+a replay of the same link, and a later password sign-in as `invitee`.
+
+Still unrun on this run:
+
+- `tools/browser/invitation-password.spec.js`,
+  `invitation-passkey.spec.js`, and `invitation-passkey-shim.spec.js`
+- Firefox, WebKit, and the CI browser job
+- **Accept with a passkey**, **Sign in with a passkey**, and **Sign out**
+- an expired, revoked, or replaced invitation link
+- `account revoke-invitation` and `riauth account accept`
+- a second invite, and any retry of the same idempotency key
+- `GET /api/portal`, the session cookie, and the accept response JSON
+- a real mailbox, and any SMTP host other than `127.0.0.1`
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`, `riauth capabilities`, and `/readyz`
+- `recovery complete`, `recover-admin`, and a second server
+- sections 9 through 13
 - a physical key, a synced passkey, a phone, a spoken screen reader, an
   external peer, and the Essentials guide
 
