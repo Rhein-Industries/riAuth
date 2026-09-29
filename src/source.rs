@@ -1086,9 +1086,7 @@ impl Core {
 }
 
 pub(crate) fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
-    tx.get::<Source>("sources", id)?
-        .filter(|s| s.enabled)
-        .ok_or_else(|| Error::missing("Enabled source not found"))
+    crate::assembly::source_enabled(tx, id)
 }
 
 /// A presented login ends when its stored source is missing or no longer has

@@ -386,6 +386,84 @@ fn source_configuration_keeps_scoped_receipt_revision_and_audit_order() {
 }
 
 #[test]
+fn source_enabled_lookup_keeps_missing_disabled_and_request_error_order() {
+    let fixture = Fixture::new();
+    let request_bound = || Start {
+        link: false,
+        authentication_transaction: Some("request-bound".into()),
+    };
+    let before = fixture.snapshot().unwrap();
+    let missing = fixture
+        .core
+        .source_start("corp", request_bound(), None)
+        .unwrap_err();
+    assert_eq!(missing.code, "not_found");
+    assert_eq!(missing.message, "Enabled source not found");
+    fixture.assert_snapshot(&before);
+
+    let mut source = oauth_source();
+    source.enabled = false;
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("sources", &source.id, &source))
+        .unwrap();
+    let before = fixture.snapshot().unwrap();
+    let disabled = fixture
+        .core
+        .source_start("corp", request_bound(), None)
+        .unwrap_err();
+    assert_eq!(disabled.code, missing.code);
+    assert_eq!(disabled.message, missing.message);
+    fixture.assert_snapshot(&before);
+
+    source.enabled = true;
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("sources", &source.id, &source))
+        .unwrap();
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .source_start("corp", request_bound(), None)
+            .unwrap_err()
+            .message,
+        "OAuth-only sources do not prove fresh authentication time; use OIDC or a local authenticator for request-bound reauthentication"
+    );
+    fixture.assert_snapshot(&before);
+
+    let started = fixture
+        .core
+        .source_start(
+            "corp",
+            Start {
+                link: false,
+                authentication_transaction: None,
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(started["credential"]["source"], "corp");
+    let authorization_url =
+        url::Url::parse(started["authorization_url"].as_str().unwrap()).unwrap();
+    let state = authorization_url
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1;
+    let pending: Value = fixture
+        .core
+        .store
+        .get("source_logins", &digest(&state))
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending["source"], "corp");
+    assert_eq!(pending["fingerprint"], source.fingerprint().unwrap());
+}
+
+#[test]
 fn source_start_keeps_session_and_callback_state_in_one_writer() {
     let fixture = Fixture::new();
     let source = oauth_source();

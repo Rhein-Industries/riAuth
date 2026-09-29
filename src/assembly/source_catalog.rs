@@ -47,6 +47,12 @@ pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpe
         .collect())
 }
 
+pub(crate) fn enabled_source(tx: &Tx<'_>, id: &str) -> Result<Source> {
+    tx.get::<Source>("sources", id)?
+        .filter(|source| source.enabled)
+        .ok_or_else(|| Error::missing("Enabled source not found"))
+}
+
 impl Core {
     pub fn source_put(&self, token: &str, input: SourceInput) -> Result<Value> {
         let secret = input.client_secret.map(zeroize::Zeroizing::new);

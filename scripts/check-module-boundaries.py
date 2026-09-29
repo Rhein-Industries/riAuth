@@ -1007,6 +1007,20 @@ def main() -> None:
                 or "crate::source::export_all_links(tx)?" not in live_target
             ):
                 errors.append("src/source.rs: source link export reads and scope filter belong in assembly")
+            protocol_enabled = rust_function_body(path.read_text(), "enabled")
+            catalog_enabled = rust_function_body(source_catalog, "enabled_source")
+            catalog_enabled_compact = re.sub(r"\s+", "", catalog_enabled or "")
+            if (
+                re.sub(r"\s+", "", protocol_enabled or "")
+                != "crate::assembly::source_enabled(tx,id)"
+                or "enabled_sourceassource_enabled" not in assembly_exports
+                or catalog_enabled is None
+                or not (0 <= catalog_enabled_compact.find('tx.get::<Source>("sources",id)?')
+                        < catalog_enabled_compact.find(".filter(|source|source.enabled)")
+                        < catalog_enabled_compact.find('Error::missing("Enabledsourcenotfound")'))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", catalog_enabled)
+            ):
+                errors.append("src/source.rs: enabled source storage lookup belongs in assembly")
             source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
             pending_stage = rust_function_body(source_stage_assembly, "enforce_pending_stage")
             pending_compact = re.sub(r"\s+", "", pending_stage or "")

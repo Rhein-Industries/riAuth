@@ -83,7 +83,8 @@ pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
 mod source_callback;
 mod source_catalog;
 pub(crate) use source_catalog::{
-    export_all_links as source_export_all_links, export_links as source_export_links,
+    enabled_source as source_enabled, export_all_links as source_export_all_links,
+    export_links as source_export_links,
 };
 mod source_finish;
 pub(crate) use source_finish::clear_browser_return;
