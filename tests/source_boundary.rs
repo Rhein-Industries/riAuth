@@ -7,9 +7,10 @@ use riauth::{
     context::{RequestContext, scope},
     crypto::digest,
     jose::ClientAuthMethod,
+    model::Session,
     source::{OAuthProfile, Source, SourceInput, Start},
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 const SECRET: &str = "source-boundary-secret";
@@ -272,4 +273,161 @@ fn source_start_keeps_session_and_callback_state_in_one_writer() {
         fixture.core.audit_events(&fixture.admin, 100).unwrap(),
         audit_before
     );
+}
+
+#[test]
+fn source_unlink_keeps_session_receipt_and_revocation_atomic() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let alice = fixture.user("alice");
+    let bob = fixture.user("bob");
+    let alice_id = fixture.core.me(&alice).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let link_id = "corp-link";
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                link_id,
+                &json!({
+                    "source": "corp",
+                    "issuer": source.issuer,
+                    "subject": "upstream-alice",
+                    "user_id": alice_id,
+                }),
+            )
+        })
+        .unwrap();
+
+    let remote = fixture
+        .core
+        .login("alice".into(), common::PASSWORD.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let remote_id = fixture.core.me(&remote).unwrap()["session_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            let mut session = tx.get::<Session>("sessions", &remote_id)?.unwrap();
+            session.identity.source = Some(
+                serde_json::from_value(json!({
+                    "id": "corp",
+                    "fingerprint": source.fingerprint()?,
+                    "link": link_id,
+                    "pin_retired": false,
+                }))
+                .unwrap(),
+            );
+            tx.put("sessions", &remote_id, &session)
+        })
+        .unwrap();
+    assert!(fixture.core.me(&remote).is_ok());
+
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .source_unlink("invalid", link_id)
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture.core.source_unlink(&bob, link_id).unwrap_err().code,
+        "access_denied"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .source_unlink(&remote, link_id)
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    fixture.assert_snapshot(&before);
+
+    let unlink = |token: &str, fingerprint: &str| {
+        scope(
+            Some(RequestContext {
+                idempotency_key: Some("unlink-corp".into()),
+                fingerprint: fingerprint.into(),
+                ..Default::default()
+            }),
+            || fixture.core.source_unlink(token, link_id),
+        )
+    };
+    let result = unlink(&alice, "unlink-request").unwrap();
+    assert_eq!(result, json!({"unlinked": true}));
+    assert!(
+        fixture
+            .core
+            .store
+            .get::<Value>("source_links", link_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        fixture
+            .core
+            .store
+            .get::<Session>("sessions", &remote_id)
+            .unwrap()
+            .unwrap()
+            .revoked
+    );
+    assert!(fixture.core.me(&remote).is_err());
+    assert!(fixture.core.me(&alice).is_ok());
+    let audits = fixture.core.audit_events(&fixture.admin, 100).unwrap();
+    assert_eq!(
+        audits
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "source.unlink" && event["target"] == "corp")
+            .count(),
+        1
+    );
+
+    let after = fixture.snapshot().unwrap();
+    assert_eq!(unlink(&alice, "unlink-request").unwrap(), result);
+    fixture.assert_snapshot(&after);
+    assert_eq!(
+        unlink(&alice, "different-request").unwrap_err().message,
+        "Idempotency key was used for a different request"
+    );
+    fixture.assert_snapshot(&after);
+
+    let other_session = fixture
+        .core
+        .login("alice".into(), common::PASSWORD.into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before_other_session = fixture.snapshot().unwrap();
+    assert_eq!(
+        unlink(&other_session, "unlink-request").unwrap_err().code,
+        "access_denied"
+    );
+    fixture.assert_snapshot(&before_other_session);
 }

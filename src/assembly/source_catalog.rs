@@ -31,6 +31,13 @@ impl Core {
         })
     }
 
+    pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            crate::management::unlink_source(tx, &user, &session, link_id)
+        })
+    }
+
     pub fn source_list(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;

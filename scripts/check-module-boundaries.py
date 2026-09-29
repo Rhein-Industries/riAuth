@@ -843,6 +843,25 @@ def main() -> None:
                 or not re.search(r"\bpub\(crate\)\s+fn\s+source_start_in\s*\(", source_protocol)
             ):
                 errors.append("src/source.rs: source start writer belongs in assembly")
+            source_unlink = rust_function_body(
+                masked_rust_source(source_catalog), "source_unlink"
+            )
+            source_unlink_raw = rust_function_body(source_catalog, "source_unlink")
+            if (
+                rust_function_body(source_protocol, "source_unlink") is not None
+                or source_unlink is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_unlink)
+                or not (0 <= source_unlink.find("self.session")
+                        < source_unlink.find("management::unlink_source"))
+                or source_unlink_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_unlink\s*\(", source_catalog)
+                or not re.search(r"self\.session\s*\(\s*tx\s*,\s*token\s*\)\s*\?", source_unlink_raw)
+                or not re.search(
+                    r"management::unlink_source\s*\(\s*tx\s*,\s*&user\s*,\s*&session\s*,\s*link_id\s*\)",
+                    source_unlink_raw,
+                )
+            ):
+                errors.append("src/source.rs: session-bound source unlink writer belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

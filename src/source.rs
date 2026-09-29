@@ -1463,12 +1463,6 @@ impl Core {
             Ok(json!(links_of(tx, &user.id)?))
         })
     }
-    pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
-        self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            crate::management::unlink_source(tx, &user, &session, link_id)
-        })
-    }
 }
 
 /// The upstream accounts linked to a user.
