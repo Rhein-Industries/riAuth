@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records eight loopback observations. The first
+build. The walkthrough records nine loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -30,7 +30,10 @@ schema, validate, plan, apply, runtime `[workflows.local-password]` restart,
 configured start, and export. It did not submit the password step. The eighth
 used only that server snapshot and ran section 9 `directory list`,
 `directory plan`, and `directory apply` against one disposable loopback
-OpenLDAP listener. The commands in sections 1 through 13 are the ones
+OpenLDAP listener. The ninth used only that server snapshot and ran section
+10 `provision targets`, `provision plan`, `provision apply`, and `provision
+jobs` against one disposable loopback SCIM fixture. The commands in sections
+1 through 13 are the ones
 implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
@@ -38,7 +41,7 @@ implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14's password acceptance
-was run once on loopback. Eight disposable loopback runs are recorded in
+was run once on loopback. Nine disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -61,7 +64,10 @@ restarted serve with `[workflows.local-password]`, started that configured
 workflow, and ran `export`. The password step was not submitted. The
 eighth created the local group `staff`, appended `[directories.staff]` with
 `transport` `starttls`, and ran `directory list`, `directory plan`, and
-`directory apply` against a disposable loopback OpenLDAP listener. Rename,
+`directory apply` against a disposable loopback OpenLDAP listener. The
+ninth created local user `quinn`, added `admin` and `quinn` to `staff`, and
+ran `provision targets`, `provision plan`, `provision apply`, and `provision
+jobs` against a disposable loopback SCIM fixture. Rename,
 remove, passkey sign-in, passkey invitation acceptance, hardware, peers, and
 Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
@@ -73,7 +79,8 @@ the other Platform protocols unset. Sections 9 and 10 add the shared LDAP
 import and outbound SCIM steps on this Platform server. Sections 11 through
 13 add the configured-workflow, SAML, and LDAP provider procedures. Section
 11 was executed once on loopback. Section 9 was executed once on loopback
-against a disposable OpenLDAP listener. Sections 10, 12, and 13 were read
+against a disposable OpenLDAP listener. Section 10 was executed once on
+loopback against a disposable SCIM fixture. Sections 12 and 13 were read
 from this tree and were not executed. Assembly and
 downgrade rules stay in [server editions](editions.md).
 
@@ -1129,8 +1136,35 @@ Add that flag on the same apply command after reading the plan. `provision
 jobs` prints each job's `delivery_state`. The state names, the one-hour plan
 lifetime, and the rule that delivery is at least once are in
 [outbound provisioning](scim.md#outbound-provisioning). A target the server
-cannot reach fails delivery. This task did not run a plan or an apply
-against a live peer.
+cannot reach fails delivery.
+
+### Loopback observation
+
+One run used a copy of the Platform server snapshot supplied for `58357fd`.
+`init` wrote an empty `[scim_targets]` table. The run created local group
+`staff` and local user `quinn` (`enabled` true, `admin` false), then added
+both `admin` and `quinn` to `staff`. It stopped `serve`, appended
+`[scim_targets.payroll]` with `export_groups` true and no
+`scim_reconciliation_modes` entry, and started `serve` again. The token file
+was mode `0600`. The configuration did not contain the token. `provision
+targets` showed reconciliation mode `manual-review`.
+
+`provision plan` wrote plan `c0c69a62-6ffa-4477-90c9-ff95878a0269` at
+revision 4. Standard output omitted `removal_impact`. The plan file had
+`review_required` false and zero disabled users, missing users, and removed
+memberships, so apply omitted `--confirm-removals`. The plan's only user was
+`quinn`. Its `staff` member list was `quinn`, even though the local group
+also contained `admin`.
+
+The peer was a disposable loopback HTTP fixture at
+`http://127.0.0.1:56148/scim/v2`, not a named directory and not a SCIM
+conformance suite. It recorded `GET /scim/v2/Users` and `GET /scim/v2/Groups`
+with `count=2`, each returning no resources, then `POST /scim/v2/Users`
+status 201 for `quinn` and `POST /scim/v2/Groups` status 201 for `staff`.
+The group member value was the fixture user id `fixture-user-1`. No delivered
+user name was `admin`. `provision jobs` then showed `delivery_state`
+`succeeded`, `completed` true, and processed 2 of 2. The walkthrough records
+the requests and the cleanup. Sections 12 and 13 were not part of this run.
 
 ## 11. Select one configured password workflow
 
@@ -2161,15 +2195,22 @@ server CLI creation of local group `staff`, then `directory list`,
 `directory plan`, and `directory apply` against a disposable loopback
 OpenLDAP listener with `transport` `starttls`.
 `removal_impact.review_required` was false, so apply omitted
-`--confirm-removals`. Sections 10, 12, and 13 remain source-reviewed
+`--confirm-removals`. A ninth run executed section 10: `provision targets`,
+`provision plan`, `provision apply`, and `provision jobs` for target
+`payroll`. Local group `staff` contained `admin` and `quinn`. The plan and
+the fixture received only `quinn`, and the job reached `delivery_state`
+`succeeded`. `removal_impact.review_required` was false, so that apply also
+omitted `--confirm-removals`. Sections 12 and 13 remain source-reviewed
 procedures. The generated `init` file contains empty `[directories]`,
 `[workspace_directories]`, `[entra_directories]`, `[scim_targets]`,
 `[ldap_listeners]`, `[proxy_listeners]`, `[radius_listeners]`, and
 `[signers]` tables, and no directory id until the operator appends one. It
-has no workflow table and no SAML client. SCIM, SAML, and LDAP provider
-commands were not executed here. No service provider or upstream identity
-provider was contacted. The section 9 directory was the disposable loopback
-`slapd`, not a customer directory.
+has no workflow table and no SAML client. Inbound SCIM, SAML, and LDAP
+provider commands were not executed here. No named service provider, SaaS
+directory, or upstream identity provider was contacted. The section 9
+directory was the disposable loopback `slapd`, not a customer directory.
+The section 10 peer was a disposable loopback SCIM fixture, not a customer
+directory and not a conformance suite.
 
 Still outside this slice, as later tasks:
 
@@ -2236,14 +2277,14 @@ Still outside this slice, as later tasks:
   entry points.
 - Any claim that a person completed `cargo install`, the OIDC redirect,
   passkey enrollment, passkey rename or removal, passkey sign-in,
-  `recovery complete`, `recover-admin`, a SCIM plan or
-  apply, a SAML metadata exchange with a peer, an LDAP
-  provider bind, or an invitation passkey acceptance. One section 9 LDAP
-  plan and apply was run against a disposable loopback OpenLDAP listener.
-  One section 11 workflow
-  plan, apply, and configured start was run, and its password step was not
-  submitted. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has eight runs.
+  `recovery complete`, `recover-admin`, a SAML metadata exchange with a peer,
+  an LDAP provider bind, or an invitation passkey acceptance. One section 9
+  LDAP plan and apply was run against a disposable loopback OpenLDAP
+  listener. One section 10 SCIM plan and apply was run against a disposable
+  loopback fixture, and its job reached `delivery_state` `succeeded`. One
+  section 11 workflow plan, apply, and configured start was run, and its
+  password step was not submitted. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has nine runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2262,4 +2303,8 @@ Still outside this slice, as later tasks:
   that same server snapshot. The eighth supplies section 9 `directory list`,
   `directory plan`, and `directory apply` for directory `staff` on that same
   server snapshot, against one disposable loopback OpenLDAP listener. The
-  imported account was `alice` in group `staff`. D01 remains incomplete.
+  imported account was `alice` in group `staff`. The ninth supplies section
+  10 `provision targets`, `provision plan`, `provision apply`, and `provision
+  jobs` for target `payroll` on that same server snapshot, against one
+  disposable loopback SCIM fixture. The exported account was `quinn` in group
+  `staff`. D01 remains incomplete.

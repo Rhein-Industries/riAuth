@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records eight disposable loopback runs of the
+This page records nine disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -17,12 +17,15 @@ one invitation on loopback SMTP, and accepted the password in an isolated
 browser. The seventh copied only that server snapshot and ran the section 11
 configured password workflow through export. The eighth copied only that
 server snapshot and ran section 9 `directory list`, `directory plan`, and
-`directory apply` against one disposable loopback OpenLDAP listener. No run
-used an external peer or `cargo install`. The first two runs did not launch
-`riauthctl` or `riauth-maintenance`. The fourth, fifth, sixth, seventh, and
-eighth runs did not launch them either. The fifth and sixth runs opened a
-browser. The fifth stored no passkey. The sixth did not start a passkey
-ceremony. The seventh and eighth did not open a browser.
+`directory apply` against one disposable loopback OpenLDAP listener. The
+ninth copied only that server snapshot and ran section 10 `provision targets`,
+`provision plan`, `provision apply`, and `provision jobs` against one
+disposable loopback SCIM fixture. No run used an external peer or
+`cargo install`. The first two runs did not launch `riauthctl` or
+`riauth-maintenance`. The fourth, fifth, sixth, seventh, eighth, and ninth
+runs did not launch them either. The fifth and sixth runs opened a browser.
+The fifth stored no passkey. The sixth did not start a passkey ceremony.
+The seventh, eighth, and ninth did not open a browser.
 
 ## Essentials catalog run
 
@@ -2599,5 +2602,171 @@ Still unrun on this run:
 - `recovery complete`, `recover-admin`, and a second server
 - a browser, a physical key, a synced passkey, a phone, a spoken screen
   reader, a customer directory, and the Essentials guide
+
+D01 remains incomplete.
+
+## Section 10 outbound SCIM
+
+The docs worktree for this record is
+`a5769bb4e94e6adc8847c6d30d92782f3a3133b2`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the earlier
+server-snapshot runs copied. Its SHA-256 is
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`, mode
+`500`, 289661864 bytes. The run copied it with `cp -c`, then `chmod 700`
+on the copy only. The copy's hash matched and its inode differed. The
+immutable file was not executed. Free space on the data volume was 90992640
+KiB before the copy and stayed above 7 GiB. After the clone it was 90837084
+KiB.
+
+`riauth --version` printed `riauth 0.1.1`. `capabilities` reported edition
+`platform`, interface `server`, version `0.1.1`, `schema_version`
+`riauth.capabilities/v2`, 29 schemas, and `build_features` `essentials` and
+`platform`. `init` exited 0. Its stderr was 37 bytes. The new file's table
+headers were `[proxy_listeners]`, `[radius_listeners]`, `[ldap_listeners]`,
+`[directories]`, `[workspace_directories]`, `[entra_directories]`,
+`[scim_targets]`, and `[signers]`. `[scim_targets.payroll]` was absent.
+`/readyz` returned status `ok`, role `integrated`, version `0.1.1`, 187
+bytes, both before the SCIM table was added and after the restart.
+
+The printed target id is `payroll`. The run kept that id and
+`groups = ["staff"]`, `export_groups = true`, and left
+`scim_reconciliation_modes` unset. The URL was
+`http://127.0.0.1:56148/scim/v2`. The token file name was
+`payroll-scim-token`, mode `600`, and the token was not written into the
+configuration or this page. OAuth was not configured. The server listened on
+`127.0.0.1:9000`. The fixture listened on `127.0.0.1:56148`. The session
+file was a lab file. Neither default home session file was written.
+
+Local setup, with `--idempotency-key` and `--if-revision` read from
+`revision` before each write:
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --idempotency-key section10-staff \
+  --if-revision 0 group create staff
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --idempotency-key section10-quinn \
+  --if-revision 1 user create quinn --email quinn@example.test \
+  --name "Quinn Example" --password-stdin
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --idempotency-key section10-admin-member \
+  --if-revision 2 group add-member staff admin
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --idempotency-key section10-quinn-member \
+  --if-revision 3 group add-member staff quinn
+```
+
+Revision moved 0, 1, 2, 3, 4 across those four writes. `user list` showed
+`admin` (`admin` true, `password_available` true, `email_verified` false)
+and `quinn` (`enabled` true, `admin` false, `password_available` true,
+email `quinn@example.test`, `email_verified` false). `group list` showed
+`staff` with two members, `admin` and `quinn`. User ids are not copied here.
+
+`serve` was stopped with SIGTERM, the target table was appended, and `serve`
+was started again. `provision targets` showed id `payroll`, that URL, group
+`staff`, `export_groups` true, and reconciliation mode `manual-review`.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session provision targets
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session provision plan payroll \
+  --out $LAB/payroll-plan.json
+```
+
+Plan id `c0c69a62-6ffa-4477-90c9-ff95878a0269`, revision 4, `expires_at`
+1790710524. Standard output keys were `id`, `plan_file`, `resources`,
+`revision`, and `target`. It omitted `removal_impact`. The plan file had
+`disabled_users` 0, `missing_users` 0, `removed_memberships` 0, and
+`review_required` false. Its user resource was `quinn`, schema
+`urn:ietf:params:scim:schemas:core:2.0:User`, `active` true, display name
+`Quinn Example`, email `quinn@example.test`. Its group resource was `staff`,
+schema `urn:ietf:params:scim:schemas:core:2.0:Group`, with one member, and
+that member was `quinn`. `admin` was not a plan resource. Apply omitted
+`--confirm-removals`.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session provision apply \
+  --plan $LAB/payroll-plan.json
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session provision jobs
+```
+
+Apply returned the same plan id, `delivery_state` `pending`, `completed`
+false, processed 0 of total 2, and no error. Three `provision jobs` reads
+followed. The third showed `delivery_state` `succeeded`, `completed` true,
+`stale` false, processed 2 of total 2, `attempts` 0, no error, and
+`unlinked_create` null. Revision stayed 4 after plan and after apply.
+
+The fixture is a local HTTP stand-in for the snapshot client's create
+sequence. It is not Okta, Entra, Google Workspace, the printed
+`payroll.example.com` host, the recipe's second riAuth router, or a SCIM
+conformance suite. No `ServiceProviderConfig` request was observed. The four
+requests, in order, were:
+
+| Request | Result |
+| --- | --- |
+| `GET /scim/v2/Users`, `externalId` filter, `count=2`, `Accept: application/scim+json` | 200, no resources |
+| `POST /scim/v2/Users`, `Content-Type: application/scim+json`, `Idempotency-Key` present | 201, `userName` `quinn`, `active` true, id `fixture-user-1` |
+| `GET /scim/v2/Groups`, `externalId` filter, `count=2`, `Accept: application/scim+json` | 200, no resources |
+| `POST /scim/v2/Groups`, `Content-Type: application/scim+json`, `Idempotency-Key` present | 201, `displayName` `staff`, members `[fixture-user-1]`, id `fixture-group-1` |
+
+Each request authenticated. The bearer value is not recorded. Both 201
+responses echoed `externalId`. The values begin with `urn:riauth:` and are
+kept in the redacted evidence file, not on this page. The delivered user
+body had no password field. No request carried `userName` `admin`.
+
+`git diff 58357fd a5769bb` for this comparison shows no change in
+`src/background.rs`, `src/connector_guard.rs`, `src/core.rs`, `src/scim.rs`,
+`src/scim_shared.rs`, or `src/model.rs`. `src/provisioning.rs` changes by a
+`deactivation_diagnostics` module and a diagnostics comment. The Users-then-Groups
+create requests above are outside that diff. `src/cli.rs` changes agent
+create, rotate, and revoke so each requires `--idempotency-key` and
+`--if-revision`. `provision targets`, `provision plan`, `provision apply`,
+`provision jobs`, `user create`, `group create`, `group add-member`,
+`revision`, and `login` are outside that diff. `src/config.rs` changes the
+browser-consent adapter so it also accepts a password-plus-TOTP consent
+workflow. SCIM URL validation and token-file reading are outside that diff.
+This is not a whole-tree comparison. The observed client is the snapshot
+binary.
+
+The evidence script exited 0. Its cleanup stopped `serve` and the fixture
+with SIGTERM. SIGKILL was not required. It re-hashed the snapshot, found
+port 9000 free, found the fixture port free, found both default home session
+files absent, and removed the lab directory. The cleanup proof records
+`lab_removed` true, snapshot hash match, mode `500`, and `script_exit` 0.
+Free space after cleanup was 90723916 KiB. The redacted evidence file and
+the cleanup proof were written outside the lab before the lab directory was
+removed.
+
+### Unrun on this SCIM run
+
+The executed chain is `riauth init`, `serve`, `/readyz`, server CLI login,
+local `--version` and `capabilities`, `revision`, `group create staff`,
+`user create quinn`, `group add-member` for `admin` and `quinn`, a SIGTERM
+restart after appending `[scim_targets.payroll]`, a second `/readyz`,
+`provision targets`, `provision plan`, `provision apply`, and `provision
+jobs` until `delivery_state` `succeeded`.
+
+Still unrun on this run:
+
+- `--confirm-removals`
+- OAuth client credentials and `ca_file`
+- a later `PATCH` of an existing remote user or group
+- a departure that deactivates a remote account
+- `provision stop`, `provision resolve`, and deactivation commands
+- inbound `riauth scim`
+- sections 12 and 13
+- `directory workspace` and `directory entra`
+- an audit read of the plan or the job
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`
+- `recovery complete`, `recover-admin`, and a second server
+- a browser, a named SaaS directory, a conformance suite, and the Essentials
+  guide
 
 D01 remains incomplete.
