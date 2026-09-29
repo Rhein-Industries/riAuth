@@ -239,7 +239,10 @@ the path commits, or revoke another actor's family merely by guessing a code.
 `exchange_device`; [authorization](../../src/authorization.rs)
 `validate_reference`/`consume`; [JOSE](../../src/jose.rs) `consume_assertion`;
 [passkeys](../../src/passkey.rs) finish paths; [Windows](../../src/windows_login.rs)
-`windows_ticket_redeem`. Nested `Ok(Err(...))` differs from a transaction error:
+`windows_ticket_redeem`; [SAML logout](../../src/saml/logout.rs) `source_logout`
+records a request only after its signature verifies and every session index
+matches a source session, including one already revoked by a pinned-certificate
+change. Nested `Ok(Err(...))` differs from a transaction error:
 the former can commit failure/replay state, the latter rolls the writer back.
 
 **Existing regressions.** [OIDC](../../tests/identity/oidc.rs)
@@ -248,7 +251,9 @@ the former can commit failure/replay state, the latter rolls the writer back.
 `code_replay_revocation_requires_original_client_and_verifier`,
 `signed_and_pushed_requests_are_bound_immutable_expiring_and_one_use`;
 [factors](../../tests/identity/factors.rs)
-`unknown_discoverable_credential_is_rejected_and_ceremony_consumed`.
+`unknown_discoverable_credential_is_rejected_and_ceremony_consumed`;
+[SAML logout](../../tests/identity/saml_logout.rs)
+`saml_source_logout_after_certificate_rollover_is_one_time_and_replay_spares_the_next_login`.
 
 **Missing coverage / later contract.** Q02-C03 records each path's success,
 client-error consumption, server-error rollback and replay-family effect.

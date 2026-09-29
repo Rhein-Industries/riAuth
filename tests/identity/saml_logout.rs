@@ -1055,3 +1055,312 @@ async fn saml_logout_rechecks_reviewed_oidc_return_after_confirmation_and_flow_c
         3
     );
 }
+
+/// A verified IdP logout whose index belongs only to a session revoked by a
+/// pinned-certificate change is consumed once. Replaying it leaves the next
+/// login that reuses the index in place. Restoring the previous certificate
+/// leaves that consumed request unverifiable. An unpresented login started
+/// before the change can still complete after the original certificate returns.
+#[test]
+fn saml_source_logout_after_certificate_rollover_is_one_time_and_replay_spares_the_next_login() {
+    let f = Fixture::new();
+    let alice = f.user("logout-rollover");
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let cert = saml_tests::cert(&local, "riAuth SLO rollover");
+    let upstream = peer(None);
+    let replacement = peer(None);
+    let source = Source {
+        id: "upstream".into(),
+        name: "SAML upstream".into(),
+        issuer: "urn:test:upstream".into(),
+        authorization_endpoint: "https://upstream.example.test/sso".into(),
+        token_endpoint: "".into(),
+        client_id: "urn:test:riauth-source".into(),
+        token_endpoint_auth_method: riauth::jose::ClientAuthMethod::None,
+        jwks: Default::default(),
+        scopes: Default::default(),
+        enabled: true,
+        auto_provision: false,
+        groups: Default::default(),
+        trusted_mfa_acr: Default::default(),
+        allow_admin_login: false,
+        oauth_profile: None,
+        saml: Some(riauth::source::saml::Settings {
+            signing_key: "signing".into(),
+            sp_certificate_pem: cert.clone(),
+            idp_certificates_pem: vec![upstream.cert.clone()],
+            name_id_format: NameIdFormat::Persistent,
+            name_attribute: None,
+            email_attribute: None,
+            email_verified_attribute: None,
+            require_encrypted_assertions: false,
+            slo_redirect_url: None,
+            slo_post_url: Some("https://upstream.example.test/slo".into()),
+        }),
+    };
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let session_a = source_login(&f, &source, &upstream, Some(&alice));
+    let user_id = text(&f.core.me(&session_a).unwrap()["user"], "id");
+    assert_eq!(user_id, text(&f.core.me(&alice).unwrap()["user"], "id"));
+    let (parked, parked_request, parked_credential) = saml_source_tests::begin(&f, &source, None);
+    let parked_response = upstream.response(
+        &source,
+        &f.core.saml_source_callback_url(&source.id),
+        &parked_request,
+        None,
+        false,
+    );
+    let mut rotated = source.clone();
+    rotated.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: rotated.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&session_a).is_err());
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+    let parked_row = |f: &Fixture| {
+        f.core
+            .store
+            .get::<Value>("source_logins", &digest(&parked))
+            .unwrap()
+            .unwrap()
+    };
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    let replays = |f: &Fixture| f.core.store.list::<u64>("saml_replays").unwrap().len();
+    let before = replays(&f);
+    let destination = "http://localhost:9000/saml/sources/upstream/slo";
+    let logout_request = |subject: &str, index: &str| {
+        request(
+            subject,
+            index,
+            &source.issuer,
+            destination,
+            &source.issuer,
+            &source.client_id,
+        )
+    };
+    let present = |signer: &Upstream, xml: &str, relay: &str| {
+        f.core.saml_source_logout(
+            "upstream",
+            &message(signer, xml, relay, "SAMLRequest", true),
+            true,
+        )
+    };
+    let hides = |error: &riauth::error::Error, secrets: &[&str]| {
+        let shown = error.to_string();
+        for secret in secrets {
+            assert!(!shown.contains(secret), "{shown}");
+        }
+    };
+    let wrong_name = logout_request("somebody-else", "upstream-session");
+    let wrong = present(&replacement, &wrong_name, "rollover-wrong-name").err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(wrong.code, "access_denied");
+    hides(
+        &wrong,
+        &[
+            replacement.cert.as_str(),
+            upstream.cert.as_str(),
+            "rollover-wrong-name",
+            wrong_name.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before);
+    let wrong_again = present(&replacement, &wrong_name, "rollover-wrong-name").err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(wrong_again.code, "access_denied");
+    assert_eq!(replays(&f), before);
+    let unknown_index = logout_request("opaque-subject", "other-index");
+    let unknown = present(&replacement, &unknown_index, "rollover-unknown-index").err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(unknown.code, "access_denied");
+    hides(
+        &unknown,
+        &[
+            replacement.cert.as_str(),
+            "rollover-unknown-index",
+            unknown_index.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before);
+    assert_eq!(
+        present(&replacement, &unknown_index, "rollover-unknown-index")
+            .err()
+        .expect("expected SAML source logout to fail")
+            .code,
+        "access_denied"
+    );
+    assert_eq!(replays(&f), before);
+    let removed = logout_request("opaque-subject", "upstream-session");
+    let removed_error = present(&upstream, &removed, "rollover-old-cert").err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(removed_error.code, "access_denied");
+    hides(
+        &removed_error,
+        &[upstream.cert.as_str(), "rollover-old-cert", removed.as_str()],
+    );
+    assert_eq!(replays(&f), before);
+    let logout_xml = logout_request("opaque-subject", "upstream-session");
+    let raw = message(
+        &replacement,
+        &logout_xml,
+        "rollover-state",
+        "SAMLRequest",
+        true,
+    );
+    let (xml, relay, post) = decode(
+        f.core.saml_source_logout("upstream", &raw, true).unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-state");
+    assert!(xml.contains("status:Success"));
+    assert!(!xml.contains("PartialLogout"));
+    assert_eq!(replays(&f), before + 1);
+    assert!(f.core.me(&session_a).is_err());
+    let replayed = f.core.saml_source_logout("upstream", &raw, true).err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(replayed.code, "conflict");
+    assert_eq!(replayed.message, "SAML logout request replay");
+    hides(
+        &replayed,
+        &[
+            replacement.cert.as_str(),
+            "rollover-state",
+            logout_xml.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before + 1);
+    let session_b = source_login(&f, &rotated, &replacement, None);
+    assert_eq!(text(&f.core.me(&session_b).unwrap()["user"], "id"), user_id);
+    let spared = f.core.saml_source_logout("upstream", &raw, true).err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(spared.code, "conflict");
+    assert_eq!(spared.message, "SAML logout request replay");
+    assert!(f.core.me(&session_b).is_ok());
+    assert_eq!(replays(&f), before + 1);
+    let second = logout_request("opaque-subject", "upstream-session");
+    let second_raw = message(
+        &replacement,
+        &second,
+        "rollover-second",
+        "SAMLRequest",
+        true,
+    );
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout("upstream", &second_raw, true)
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-second");
+    assert!(xml.contains("status:Success"));
+    assert!(f.core.me(&session_b).is_err());
+    assert_eq!(replays(&f), before + 2);
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    assert_eq!(
+        f.core
+            .saml_source_callback(
+                &source.id,
+                vec![
+                    ("RelayState".into(), parked.clone()),
+                    ("SAMLResponse".into(), STANDARD.encode(&parked_response)),
+                ],
+            )
+            .unwrap()["completed"],
+        true
+    );
+    let parked_session = text(
+        &f.core
+            .source_finish(Finish {
+                credential: parked_credential,
+                approve: true,
+                otp: None,
+            })
+            .unwrap(),
+        "session_token",
+    );
+    assert_eq!(
+        text(&f.core.me(&parked_session).unwrap()["user"], "id"),
+        user_id
+    );
+    let links = f
+        .core
+        .store
+        .list::<Value>("source_links")
+        .unwrap()
+        .into_iter()
+        .map(|(_, link)| link)
+        .collect::<Vec<_>>();
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["source"], "upstream");
+    assert_eq!(links[0]["issuer"], source.issuer);
+    assert_eq!(links[0]["subject"], "opaque-subject");
+    assert_eq!(links[0]["user_id"], user_id);
+    let restored = f.core.saml_source_logout("upstream", &raw, true).err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(restored.code, "access_denied");
+    hides(
+        &restored,
+        &[
+            replacement.cert.as_str(),
+            "rollover-state",
+            logout_xml.as_str(),
+        ],
+    );
+    assert!(f.core.me(&parked_session).is_ok());
+    assert_eq!(replays(&f), before + 2);
+    let fresh = logout_request("opaque-subject", "upstream-session");
+    let fresh_raw = message(&upstream, &fresh, "rollover-restored", "SAMLRequest", true);
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout("upstream", &fresh_raw, true)
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-restored");
+    assert!(xml.contains("status:Success"));
+    assert!(f.core.me(&parked_session).is_err());
+    assert_eq!(replays(&f), before + 3);
+    let still = f.core.saml_source_logout("upstream", &raw, true).err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(still.code, "access_denied");
+    hides(&still, &[replacement.cert.as_str(), "rollover-state"]);
+    assert_eq!(replays(&f), before + 3);
+}
