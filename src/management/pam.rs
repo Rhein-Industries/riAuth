@@ -328,6 +328,12 @@ pub(crate) fn revoke_access(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> 
     if receipt.is_none() {
         require_revoke_authority(core, &actor, &grant)?;
     }
+    // An expired grant confers no entitlement. Browser review already omits it;
+    // bearer and CLI must not turn retention-only history into a new revocation.
+    // Exact-key replay above still returns a revocation committed while live.
+    if grant.expires_at <= now() {
+        return Err(Error::conflict("Access grant has expired"));
+    }
     require_revision(tx)?;
     grant.revoked_at = Some(now());
     grant.revoked_by = Some(actor.id.clone());

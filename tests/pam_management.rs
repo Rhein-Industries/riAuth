@@ -9,7 +9,7 @@ use riauth::{
     config::Config,
     core::Core,
     crypto::now,
-    pam::{AccessRequest, NewAccessRequest},
+    pam::{AccessGrant, AccessRequest, NewAccessRequest},
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -62,6 +62,25 @@ impl PamFixture {
             .iter()
             .filter(|event| event["action"] == action && event["target"] == target)
             .count()
+    }
+
+    fn reopen(self) -> Self {
+        let Self {
+            _dir,
+            core,
+            admin,
+            alice,
+            approver,
+        } = self;
+        let config = core.config.clone();
+        drop(core);
+        Self {
+            _dir,
+            core: Core::open(config).unwrap(),
+            admin,
+            alice,
+            approver,
+        }
     }
 }
 
@@ -562,4 +581,204 @@ async fn configured_approver_browser_review_uses_scoped_reads_and_exact_retries(
     assert_eq!(f.audit_count("access.revoke", &grant_id), 1);
     assert_eq!(f.revision(), revoke_at + 1);
     assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+}
+
+#[tokio::test]
+async fn expired_grant_revoke_rejects_fresh_writes_but_replays_committed_result() {
+    let f = PamFixture::new();
+    let cookie = terminal_cookie(&f.core, &f.approver);
+    let origin = url::Url::parse(&f.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Short release support".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let approved = f
+        .core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    let grant_id = text(&approved["grant"], "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &grant_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &grant_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+    let app = riauth::api::router(f.core.clone());
+    let review = send(&app, review_read("/api/portal/access/review", &cookie)).await;
+    assert_eq!(review.0, StatusCode::OK);
+    assert_eq!(review.1["grants"], json!([]));
+    let revision = f.revision();
+    let stored = json!(
+        f.core
+            .store
+            .get::<AccessGrant>("access_grants", &grant_id)
+            .unwrap()
+            .unwrap()
+    );
+    let receipts = f.core.store.list::<Value>("receipts").unwrap().len();
+    let bearer_path = format!("/api/access/grants/{grant_id}/revoke");
+    let browser_path = format!("/api/portal/access/grants/{grant_id}/revoke");
+    assert_eq!(
+        send(
+            &app,
+            bearer(&bearer_path, &f.alice, "unauthorized", Some(revision), None)
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer(
+                &bearer_path,
+                &f.approver,
+                "expired-bearer",
+                Some(revision),
+                None
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            browser(&browser_path, &cookie, &origin, "expired-browser", revision)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .revoke_access(&f.admin, &grant_id)
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        json!(
+            f.core
+                .store
+                .get::<AccessGrant>("access_grants", &grant_id)
+                .unwrap()
+                .unwrap()
+        ),
+        stored
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("receipts").unwrap().len(),
+        receipts
+    );
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 0);
+    assert_eq!(f.revision(), revision);
+
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Revoke before the deadline".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let approved = f
+        .core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    let live_id = text(&approved["grant"], "id");
+    let live_path = format!("/api/access/grants/{live_id}/revoke");
+    let live_revision = f.revision();
+    let approver = f.approver.clone();
+    let retry = || {
+        bearer(
+            &live_path,
+            &approver,
+            "committed-revoke",
+            Some(live_revision),
+            None,
+        )
+    };
+    let committed = send(&app, retry()).await;
+    assert_eq!(committed.0, StatusCode::OK);
+    assert_eq!(f.audit_count("access.revoke", &live_id), 1);
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &live_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &live_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(send(&app, retry()).await, committed);
+    assert_eq!(
+        send(
+            &app,
+            bearer(
+                &live_path,
+                &f.approver,
+                "fresh-revoke",
+                Some(f.revision()),
+                None
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    drop(app);
+    let f = f.reopen();
+    let app = riauth::api::router(f.core.clone());
+    let after_restart = f.revision();
+    assert_eq!(
+        send(
+            &app,
+            bearer(
+                &bearer_path,
+                &f.approver,
+                "expired-after-restart",
+                Some(after_restart),
+                None
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(send(&app, retry()).await, committed);
+    assert_eq!(
+        send(
+            &app,
+            bearer(
+                &live_path,
+                &f.approver,
+                "after-restart",
+                Some(after_restart),
+                None
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 0);
+    assert_eq!(f.audit_count("access.revoke", &live_id), 1);
+    assert_eq!(f.revision(), after_restart);
 }
