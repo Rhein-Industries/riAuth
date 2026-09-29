@@ -38,8 +38,54 @@ marker. The successful restore invalidated two sessions and kept serving closed
 until the matching recovery ID was completed. The restored service returned 200
 for readiness, discovery, and JWKS, and accepted a fresh normal-user login.
 
-The JSON reports **observations**, not proof for an actual deployment. Rehearse
-the following separately with that deployment's files and external systems:
+## Disposable PostgreSQL drill
+
+On a host with `initdb`, `pg_ctl`, `createdb`, and `psql`, run the PostgreSQL drill
+with a private Cargo target and a new evidence path:
+
+```sh
+CARGO_TARGET_DIR=/tmp/riauth-r05-recovery-target cargo build --locked --bin riauth
+python3 scripts/recovery-drill-postgres.py \
+  --binary /tmp/riauth-r05-recovery-target/debug/riauth \
+  --pg-bin /opt/homebrew/bin \
+  --evidence /tmp/riauth-r05-postgres-evidence.json
+```
+
+`--pg-bin` may be omitted when these tools are together beside `initdb` on `PATH`.
+The script creates one temporary PostgreSQL cluster bound to loopback, with separate
+source and empty target databases. It uses trust authentication only inside that
+disposable cluster. It stops riAuth and PostgreSQL and removes the cluster, keys,
+sessions, and archive when the run ends. Its connection files, database key and
+evidence output are owner-only.
+
+The drill signs in a normal user and takes a verified v3 archive from PostgreSQL.
+It stops PostgreSQL under the running service and requires `/livez` to stay at 200,
+`/readyz` to return 503, and login to fail with `storage_unavailable`. After a
+database restart, wrong-key restore must leave the target empty, and restore into
+the occupied source must preserve its serving state. It then imports the archive
+directly into the empty PostgreSQL target, checks session invalidation and the
+closed recovery gate, completes the gate for its freshly generated fixture
+credentials, and verifies a fresh login and health checks on the restored service.
+
+The [2026-09-29 PostgreSQL host run](evidence/r05-postgres-local-2026-09-29.json)
+passed all 16 checks with PostgreSQL 16.14. During the database outage, liveness
+stayed at 200, readiness returned 503, and login returned `storage_unavailable`
+(exit 6). A wrong key returned `invalid_request` (exit 2) and left the target
+empty. An occupied database returned `conflict` (exit 5) and remained serving.
+The verified restore invalidated two sessions and kept serving closed until
+reconciliation was attested; the restored service then accepted a fresh login.
+An initial drill attempt exposed a CLI panic in PostgreSQL restore. The restore
+command now runs its blocking database work on Tokio's blocking pool.
+
+The PostgreSQL drill covers **archive restore into an empty PostgreSQL database**.
+It does not exercise `pg_dump`/`pg_restore`, PITR, asynchronous replication, or
+multi-node failover. Those remain separate deployment gates.
+
+## Deployment gates
+
+Both JSON reports record **observations**, not proof for an actual deployment.
+Rehearse the following separately with that deployment's files and external
+systems:
 
 | Gate | Required exercise |
 | --- | --- |
