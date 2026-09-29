@@ -212,18 +212,25 @@ pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
 /// Add a passkey after existing UV proof. No transition can skip either the
 /// live session or fresh factor, or complete without registration capability.
 pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -> bool {
-    supported_configured_passkey_change(definition, false)
+    supported_configured_passkey_change(definition, Proof::Passkey)
 }
 
 /// A local password-only account may add its first passkey only through a
 /// live session, fresh password receipt and workflow-owned WebAuthn ceremony.
 pub(crate) fn supported_configured_password_passkey_enrollment(definition: &Definition) -> bool {
-    supported_configured_passkey_change(definition, true)
+    supported_configured_passkey_change(definition, Proof::Password)
 }
 
-fn supported_configured_passkey_change(definition: &Definition, password: bool) -> bool {
-    let max_duration = if password { 600 } else { 1_200 };
-    let max_executions = if password { 8 } else { 16 };
+/// A local account with TOTP and no passkey may add its first passkey after
+/// consuming a fresh code from its currently enrolled TOTP in this run.
+pub(crate) fn supported_configured_totp_first_passkey_enrollment(definition: &Definition) -> bool {
+    supported_configured_passkey_change(definition, Proof::Totp)
+}
+
+fn supported_configured_passkey_change(definition: &Definition, factor_proof: Proof) -> bool {
+    let existing_passkey = factor_proof == Proof::Passkey;
+    let max_duration = if existing_passkey { 1_200 } else { 600 };
+    let max_executions = if existing_passkey { 16 } else { 8 };
     if definition.origin != Origin::Configured
         || definition.category != Category::Enrollment
         || definition.steps.len() != 3
@@ -261,12 +268,11 @@ fn supported_configured_passkey_change(definition: &Definition, password: bool) 
                 transition.on == Label::fixed("failed") && &transition.to == failed
             })
     };
-    let factor_name = if password { "password" } else { "passkey" };
-    let factor_proof = if password { Proof::Password } else { Proof::Passkey };
-    let factor_action = if password {
-        matches!(factor.action, Action::VerifyPassword {})
-    } else {
-        matches!(factor.action, Action::VerifyPasskey {})
+    let (factor_name, factor_action, factor_timeout) = match factor_proof {
+        Proof::Passkey => ("passkey", Action::VerifyPasskey {}, 300),
+        Proof::Password => ("password", Action::VerifyPassword {}, 300),
+        Proof::Totp => ("totp", Action::VerifyTotp {}, 120),
+        _ => return false,
     };
     session.id.as_str() == "session"
         && factor.id.as_str() == factor_name
@@ -274,7 +280,7 @@ fn supported_configured_passkey_change(definition: &Definition, password: bool) 
         && success.id.as_str() == "success"
         && denied.id.as_str() == "denied"
         && matches!(session.action, Action::ResumeSession {})
-        && factor_action
+        && factor.action == factor_action
         && matches!(
             enroll.action,
             Action::EnrollCredential {
@@ -285,7 +291,7 @@ fn supported_configured_passkey_change(definition: &Definition, password: bool) 
         && factor.max_attempts <= 3
         && enroll.max_attempts == 1
         && session.timeout_seconds <= 60
-        && factor.timeout_seconds <= 300
+        && factor.timeout_seconds <= factor_timeout
         && enroll.timeout_seconds <= 300
         && session.cancellable
         && factor.cancellable

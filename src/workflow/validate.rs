@@ -406,11 +406,12 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
             Some("an account-binding proof")
         }
         Action::EnrollCredential { credential } => {
-            let reverified = any(&[Proof::Session]) && any(&[Proof::Password, Proof::Passkey]);
+            let reverified =
+                any(&[Proof::Session]) && any(&[Proof::Password, Proof::Passkey, Proof::Totp]);
             let invited = any(&[Proof::Invitation])
                 && matches!(credential, Credential::Passkey | Credential::Password);
             (!reverified && !invited).then_some(
-                "a session with fresh password or passkey verification, or an invitation for a first passkey or password",
+                "a session with fresh password, passkey or TOTP verification, or an invitation for a first passkey or password",
             )
         }
         Action::ReplaceTotp {}

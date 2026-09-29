@@ -165,6 +165,74 @@ fn replacement_primary(
     primary.ok_or_else(Error::forbidden)
 }
 
+/// A current TOTP code may authorize first-passkey registration only for an
+/// already MFA-authenticated local session bound to this run's session receipt.
+fn first_passkey_primary(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &RuntimeRun,
+    user: &User,
+    request: &RequestAuthority,
+    at: u64,
+) -> Result<StoredEvidence> {
+    if !supported_configured_totp_first_passkey_enrollment(checked.definition())
+        || !request.requires_mfa
+        || request.source.is_some()
+        || request.authorization.is_some()
+        || request.consent.is_some()
+        || request.recovery.is_some()
+        || request.invitation.is_some()
+        || request.removal.is_some()
+        || user.has_passkeys
+        || crate::passkey::passkey_count(tx, &user.id)? != 0
+        || user.totp_secret.is_none()
+        || user.totp_pending.is_some()
+        || at < run.step_started_at
+        || !matches!(&run.record.state, RunState::Active { step, .. } if step.as_str() == "totp")
+    {
+        return Err(Error::forbidden());
+    }
+    crate::password::require_local(tx, user)?;
+    if let Err(error) = crate::password::unlocked(tx, user)? {
+        return Err(error);
+    }
+    let session: Session = tx
+        .get("sessions", &request.session)?
+        .ok_or_else(Error::forbidden)?;
+    if !session.identity.mfa {
+        return Err(Error::forbidden());
+    }
+    let [recorded] = run.record.steps.as_slice() else {
+        return Err(Error::forbidden());
+    };
+    let step = checked.entry().ok_or_else(Error::forbidden)?;
+    if recorded.step != step.id
+        || recorded.signal != Label::fixed("verified")
+        || step.action.proof(&recorded.signal) != Some(Proof::Session)
+    {
+        return Err(Error::forbidden());
+    }
+    let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
+    let receipt: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
+    super::super::evidence::check_evidence(
+        &run.record,
+        recorded,
+        step,
+        Proof::Session,
+        reference,
+        &receipt,
+        at,
+        Some(Some(RECEIPT_SECONDS as u32)),
+    )
+    .map_err(invalid_error)?;
+    if receipt.verified_at.saturating_add(RECEIPT_SECONDS) <= at {
+        return Err(Error::conflict("Workflow proof expired"));
+    }
+    evidence_authority(core, tx, &run.record, &receipt, at)?;
+    Ok(receipt)
+}
+
 /// Check its primary proof before touching the account's factor replay state.
 fn primary(
     core: &Core,
@@ -175,6 +243,9 @@ fn primary(
     request: &RequestAuthority,
     at: u64,
 ) -> Result<StoredEvidence> {
+    if supported_configured_totp_first_passkey_enrollment(checked.definition()) {
+        return first_passkey_primary(core, tx, checked, run, user, request, at);
+    }
     if supported_configured_password_totp_replacement(checked.definition()) {
         return replacement_primary(core, tx, checked, run, user, request, at);
     }

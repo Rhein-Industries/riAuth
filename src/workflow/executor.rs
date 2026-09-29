@@ -24,10 +24,11 @@ use super::{
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
     supported_configured_passkey_enrollment, supported_configured_passkey_removal,
-    supported_configured_password_passkey_enrollment,
-    supported_configured_password_reset, supported_configured_password_totp_enrollment,
+    supported_configured_password_passkey_enrollment, supported_configured_password_reset,
+    supported_configured_password_totp_enrollment,
     supported_configured_password_totp_replacement, supported_configured_totp_enrollment,
-    supported_configured_totp_replacement, validate,
+    supported_configured_totp_first_passkey_enrollment, supported_configured_totp_replacement,
+    validate,
     validate::{Code, Invalid, fail},
 };
 use crate::{
@@ -178,6 +179,7 @@ impl RuntimeRun {
             || supported_configured_passkey(&self.definition)
             || supported_configured_passkey_enrollment(&self.definition)
             || supported_configured_password_passkey_enrollment(&self.definition)
+            || supported_configured_totp_first_passkey_enrollment(&self.definition)
             || supported_configured_totp_enrollment(&self.definition)
             || supported_configured_password_totp_enrollment(&self.definition)
             || supported_configured_totp_replacement(&self.definition)
@@ -921,6 +923,7 @@ impl Core {
             && !supported_configured_passkey(checked.definition())
             && !supported_configured_passkey_enrollment(checked.definition())
             && !supported_configured_password_passkey_enrollment(checked.definition())
+            && !supported_configured_totp_first_passkey_enrollment(checked.definition())
             && !supported_configured_totp_enrollment(checked.definition())
             && !supported_configured_password_totp_enrollment(checked.definition())
             && !supported_configured_totp_replacement(checked.definition())
@@ -1022,6 +1025,8 @@ impl Core {
                 supported_configured_passkey_enrollment(checked.definition());
             let configured_first_passkey =
                 supported_configured_password_passkey_enrollment(checked.definition());
+            let configured_totp_first_passkey =
+                supported_configured_totp_first_passkey_enrollment(checked.definition());
             let configured_totp_enrollment =
                 supported_configured_totp_enrollment(checked.definition());
             let configured_password_totp_enrollment =
@@ -1037,6 +1042,7 @@ impl Core {
                 || configured_password_totp_enrollment
                 || configured_password_totp_replacement
                 || configured_first_passkey
+                || configured_totp_first_passkey
             {
                 crate::password::require_local(tx, &user)?;
             }
@@ -1088,6 +1094,16 @@ impl Core {
             {
                 return Err(Error::conflict(
                     "First passkey enrollment is unavailable for this account",
+                ));
+            }
+            if configured_totp_first_passkey
+                && (user.has_passkeys
+                    || crate::passkey::passkey_count(tx, &user.id)? != 0
+                    || user.totp_secret.is_none()
+                    || user.totp_pending.is_some())
+            {
+                return Err(Error::conflict(
+                    "TOTP-authorized first passkey enrollment is unavailable for this account",
                 ));
             }
             if configured_password_totp_replacement
@@ -1172,7 +1188,8 @@ impl Core {
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
                     || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa)
-                    || configured_password_totp_replacement,
+                    || configured_password_totp_replacement
+                    || configured_totp_first_passkey,
                 source: None,
                 authorization: None,
                 consent: None,
@@ -1196,6 +1213,7 @@ impl Core {
             if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
                 || configured_enrollment
                 || configured_first_passkey
+                || configured_totp_first_passkey
                 || configured_totp_enrollment
                 || configured_password_totp_enrollment
                 || configured_totp_replacement

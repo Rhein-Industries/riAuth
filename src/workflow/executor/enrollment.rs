@@ -1,6 +1,6 @@
-//! One bounded credential mutation: fresh existing-passkey verification followed
-//! by registration. Every receipt remains at E until the completion writer
-//! commits the real credential, revocation and final run together at E+1.
+//! Bounded passkey enrollment after a fresh exact factor proof. Every receipt
+//! remains at E until the completion writer commits the real credential,
+//! revocation and final run together at E+1.
 
 use super::*;
 use crate::{
@@ -14,12 +14,15 @@ use webauthn_rs::prelude::RegisterPublicKeyCredential;
 enum Mode {
     ExistingPasskey,
     FirstPasskey,
+    FirstTotp,
 }
 
 impl Mode {
     fn from_definition(definition: &Definition) -> Result<Self> {
         if supported_configured_password_passkey_enrollment(definition) {
             Ok(Self::FirstPasskey)
+        } else if supported_configured_totp_first_passkey_enrollment(definition) {
+            Ok(Self::FirstTotp)
         } else if definition.id.as_str() == PASSKEY_ENROLLMENT
             || supported_configured_passkey_enrollment(definition)
         {
@@ -33,6 +36,7 @@ impl Mode {
         match self {
             Self::ExistingPasskey => Proof::Passkey,
             Self::FirstPasskey => Proof::Password,
+            Self::FirstTotp => Proof::Totp,
         }
     }
 }
@@ -41,6 +45,8 @@ fn binding(run: &RuntimeRun, reservation: &InFlight) -> Result<String> {
     serde_json::to_string(&(
         if supported_configured_password_passkey_enrollment(&run.definition) {
             "workflow-first-passkey-enrollment/v1"
+        } else if supported_configured_totp_first_passkey_enrollment(&run.definition) {
+            "workflow-totp-first-passkey-enrollment/v1"
         } else {
             "workflow-passkey-enrollment/v1"
         },
@@ -144,7 +150,7 @@ fn verified_session(
         || request.recovery.is_some()
         || request.invitation.is_some()
         || request.removal.is_some()
-        || request.requires_mfa
+        || request.requires_mfa != (mode == Mode::FirstTotp)
         || run.credential_mutation.is_some()
         || run.record.steps.len() != 2
         || checked.step(step).map(|s| &s.action)
@@ -160,6 +166,19 @@ fn verified_session(
             if user.has_passkeys
                 || crate::passkey::passkey_count(tx, &user.id)? != 0
                 || user.totp_secret.is_some()
+                || user.totp_pending.is_some()
+            {
+                return Err(Error::forbidden());
+            }
+            crate::password::require_local(tx, &user)?;
+            if let Err(error) = crate::password::unlocked(tx, &user)? {
+                return Err(error);
+            }
+        }
+        Mode::FirstTotp => {
+            if user.has_passkeys
+                || crate::passkey::passkey_count(tx, &user.id)? != 0
+                || user.totp_secret.is_none()
                 || user.totp_pending.is_some()
             {
                 return Err(Error::forbidden());
@@ -205,14 +224,24 @@ fn verified_session(
     let mut session: Session = tx
         .get("sessions", &request.session)?
         .ok_or_else(Error::forbidden)?;
+    let original = session.identity.clone();
+    if mode == Mode::FirstTotp && !original.mfa {
+        return Err(Error::forbidden());
+    }
     session.identity = Identity {
         user_id: user.id.clone(),
         epoch: user.epoch,
         session_id: session.id.clone(),
         auth_time: auth_time.ok_or_else(Error::forbidden)?,
-        mfa: mode == Mode::ExistingPasskey,
+        mfa: if mode == Mode::FirstTotp {
+            original.mfa
+        } else {
+            mode == Mode::ExistingPasskey
+        },
         amr: if mode == Mode::ExistingPasskey {
             vec!["webauthn".into(), "mfa".into()]
+        } else if mode == Mode::FirstTotp {
+            original.amr
         } else {
             vec!["pwd".into()]
         },
@@ -265,7 +294,7 @@ impl Verified {
             return Err(Error::forbidden());
         }
         let (user, request) = authority(core, tx, run, now())?;
-        if request.requires_mfa
+        if request.requires_mfa != (self.mode == Mode::FirstTotp)
             || request.source.is_some()
             || request.authorization.is_some()
             || request.consent.is_some()
@@ -288,6 +317,25 @@ impl Verified {
                 crate::password::require_local(tx, &user)?;
                 if let Err(error) = crate::password::unlocked(tx, &user)? {
                     return Err(error);
+                }
+            }
+            Mode::FirstTotp => {
+                if user.has_passkeys
+                    || crate::passkey::passkey_count(tx, &user.id)? != 0
+                    || user.totp_secret.is_none()
+                    || user.totp_pending.is_some()
+                {
+                    return Err(Error::forbidden());
+                }
+                crate::password::require_local(tx, &user)?;
+                if let Err(error) = crate::password::unlocked(tx, &user)? {
+                    return Err(error);
+                }
+                let session: Session = tx
+                    .get("sessions", &request.session)?
+                    .ok_or_else(Error::forbidden)?;
+                if !session.identity.mfa {
+                    return Err(Error::forbidden());
                 }
             }
             _ => {}
