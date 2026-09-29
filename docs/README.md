@@ -6,7 +6,7 @@ Choose a path for v0.1.1:
 - **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). It walks the same tasks on the Platform binaries, then one configured workflow, SAML, and the LDAP provider listener.
 - **Undifferentiated local walkthrough?** [Get started locally](getting-started.md) uses the Cargo default feature set, `platform`. Then read the [project README](../README.md) and [release notes](release-notes.md).
 - **Signing in or managing your account?** Use [My applications](PORTAL.md), [passkeys](passkeys.md), and [account lifecycle](lifecycle.md).
-- **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), and [migration](migration.md).
+- **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), [migration](migration.md), and [re-enrollment](reenrollment.md).
 - **Connecting an application?** Follow [OIDC profiles](oidc-profiles.md), [SAML](saml.md), or [proxy SSO](proxy.md), with the [API reference](api.md) when needed.
 - **Contributing?** Read [CONTRIBUTING](../CONTRIBUTING.md), [architecture](architecture.md), and [testing](testing.md).
 
@@ -33,6 +33,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
 | [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |
+| [Re-enrollment](reenrollment.md) | Authentik operator decision table and copy-ready notices for passkeys, factors, recovery, sessions, and rollback |
 | [Release compatibility](release-notes.md) | Behaviour changes, schema and backup compatibility, artifacts and rollback |
 | [Testing](testing.md) | Local checks and deployment validation |
 | [Q07 parser assurance](q07-parser-assurance.md) | Bounded parser/dependency checks, a local SCIM parser repair, and remaining assurance work |

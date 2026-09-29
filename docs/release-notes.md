@@ -1,3 +1,24 @@
+# Unreleased Authentik re-enrollment notices (G04)
+
+- [Re-enrollment and user communication](reenrollment.md) is the operator
+  decision table and the copy-ready notices for passkeys, other factors,
+  recovery, session invalidation, and rollback. The notices are drafts.
+  This change does not send them and does not deploy a cutover.
+- The page separates behavior this tree already implements from gates that
+  remain open: a real Authentik export, staged per-application cutover,
+  notice delivery, hostname-takeover passkey behavior, a passkey sign-in to
+  a `require_mfa` client, relying-party sessions outside riAuth, and mail
+  to imported users whose `email_verified` starts false.
+- An imported password hash is a private reference an operator supplies.
+  Passkeys, live sessions, static recovery tokens, other authenticator
+  devices, app passwords, and API tokens stay unsupported findings. A newly
+  established password must be 12–1024 bytes. An imported hash is not held
+  to the 12-byte minimum; the existing fixture password `legacy` verifies.
+- [Account email and recovery](lifecycle.md) and [SAML](saml.md) now match
+  the portal: authenticator-app enrollment and recovery-code creation are
+  browser controls. The Essentials and Platform guides record that those
+  pages were not executed in the guide slices.
+
 # Unreleased upgrade activation fence (O04)
 
 - Startup rejects future schema or index revisions and a persisted activation

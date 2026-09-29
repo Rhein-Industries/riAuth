@@ -22,7 +22,7 @@ CLI consequences:
 
 ## Passkeys in the browser
 
-The [portal](PORTAL.md#passkeys-and-security) and every sign-in page offer **Sign in with a passkey**.
+The [portal](PORTAL.md#sign-in) and every sign-in page offer **Sign in with a passkey**.
 
 - **Usernameless.** When no account is signed in, the browser offers the passkeys it holds for this host and sends no username. riAuth identifies the user from the credential and its user handle.
 - **Pinned re-authentication.** When a page re-authenticates the signed-in account (`prompt=login`, `max_age`, step-up, or the portal's confirm panel), the challenge lists that account's credentials, so non-discoverable keys work too.
@@ -32,7 +32,7 @@ The [portal](PORTAL.md#passkeys-and-security) and every sign-in page offer **Sig
 - **Explicit cancellation.** Closing the passkey dialog or selecting Cancel before verification is submitted discards its pending registration. Cancelling a sign-in before submission discards its pending authentication challenge. A cancelled ceremony cannot later finish; neither action creates a credential or session.
 - **Unknown passkeys.** A credential riAuth does not know fails with "This passkey isn't registered with riAuth. Use another passkey or sign in with your password." riAuth never calls `PublicKeyCredential.signalUnknownCredential`, so browsers keep passkeys that belong to another service.
 
-**Authentik passkeys are not migrated.** They are bound to Authentik's hostname and database. Users add new passkeys in the riAuth portal after migration. If riAuth takes over Authentik's hostname, browsers may still offer the old Authentik passkeys; they fail with the message above and keep working for Authentik during a rollback. Plan re-enrollment before requiring passkeys for application access.
+**Authentik passkeys are not migrated.** They are bound to Authentik's hostname and database. Users add new passkeys in the riAuth portal after migration. If riAuth takes over Authentik's hostname, browsers may still offer the old Authentik passkeys; riAuth rejects them with the message above and does not call `PublicKeyCredential.signalUnknownCredential`. Whether Authentik accepts that credential again after routing returns was not run. Notices and the operator decision table are in [re-enrollment](reenrollment.md). Plan re-enrollment before requiring passkeys for application access.
 
 `POST /api/passkey/authentication/start` no longer returns `transports` hints, and an unknown username gets a decoy challenge with the same shape as a real one (it always lists one credential; real accounts may list several).
 

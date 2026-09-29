@@ -1640,9 +1640,10 @@ Still outside this slice, as later tasks:
   withdrawal. The portal markup includes password, authenticator-app, and
   sessions controls beside passkeys
   ([index.html](../src/portal/index.html)). [Account email and recovery](lifecycle.md)
-  both describes those browser pages and still says authenticator-app
-  enrollment and recovery-code rotation need the terminal. The pages were
-  not run here, so that conflict stays unresolved.
+  describes those browser pages. This guide slice did not run the pages.
+  [Re-enrollment and user communication](reenrollment.md) cites the source
+  and the browser-management tests for authenticator-app enrollment and
+  recovery-code creation.
 - PostgreSQL and the two-host layout in [deployment examples](deployment-examples.md),
   native HTTPS, and a trusted proxy.
 - Platform additions that this install does not configure: RADIUS
