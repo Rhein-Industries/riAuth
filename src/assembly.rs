@@ -12,11 +12,20 @@ mod cloud_directory_catalog;
 #[cfg(feature = "platform")]
 mod cloud_directory_plan;
 #[cfg(feature = "platform")]
+mod cloud_directory_reconcile;
+#[cfg(feature = "platform")]
 pub(crate) use cloud_directory_plan::cleanup_plans as cloud_plan_cleanup;
 #[cfg(feature = "platform")]
 mod cloud_directory_snapshot;
 #[cfg(feature = "platform")]
 pub(crate) use cloud_directory_snapshot::cleanup as cloud_snapshot_cleanup;
+#[cfg(feature = "platform")]
+pub(crate) fn cleanup_cloud_directory(tx: &Tx<'_>, at: u64) -> Result<()> {
+    cloud_snapshot_cleanup(tx, at)?;
+    cloud_plan_cleanup(tx, at)?;
+    cloud_budget_cleanup(tx, at)?;
+    Ok(())
+}
 #[cfg(feature = "platform")]
 mod device_trust;
 mod directory;

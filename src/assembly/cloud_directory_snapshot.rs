@@ -1,10 +1,11 @@
 //! Concrete storage transactions for cloud-directory snapshots.
 
+use super::cloud_directory_reconcile::materialize_completed_draft;
 use crate::{
     agent::Principal,
     cloud_directory::{
         CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, CloudSnapshotDraft, ENTRA_SNAPSHOTS, Entry,
-        Settings, WORKSPACE_SNAPSHOTS, materialize_completed_draft,
+        Settings, WORKSPACE_SNAPSHOTS,
     },
     connector_guard::ReviewBinding,
     core::Core,

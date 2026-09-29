@@ -361,6 +361,26 @@ def main() -> None:
         ):
             errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
         if path == SRC / "cloud_directory.rs":
+            cloud_protocol = masked_rust_source(path.read_text().split("#[cfg(test)]", 1)[0])
+            reconcile_assembly = (SRC / "assembly/cloud_directory_reconcile.rs").read_text()
+            assembly_root = (SRC / "assembly.rs").read_text()
+            plan_assembly = (SRC / "assembly/cloud_directory_plan.rs").read_text()
+            snapshot_assembly = (SRC / "assembly/cloud_directory_snapshot.rs").read_text()
+            if (
+                re.search(r"\bTx\b|\bstore\s*::|\btx\s*\.\s*(?:get|put|delete|list|maintenance_page|scan)\b|\.\s*store\s*\.\s*(?:read|write|preview)\b", cloud_protocol)
+                or not all(
+                    rust_function_body(reconcile_assembly, name) is not None
+                    for name in (
+                        "removal_impact", "linked_usernames", "materialize_completed_draft",
+                        "membership", "authorize_reconcile", "reconcile",
+                    )
+                )
+                or not re.search(r'#\[cfg\(feature\s*=\s*"platform"\)\]\s*mod\s+cloud_directory_reconcile\s*;', assembly_root)
+                or "use super::cloud_directory_reconcile::{" not in plan_assembly
+                or "use super::cloud_directory_reconcile::materialize_completed_draft;" not in snapshot_assembly
+                or 'tx.put("cloud_directory_users", &user.id, &binding)?' not in reconcile_assembly
+            ):
+                errors.append("src/cloud_directory.rs: concrete cloud reconciliation storage belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_snapshot_actor") is not None:
                 errors.append("src/cloud_directory.rs: snapshot authority/revision check belongs in assembly")
             reconcile = rust_function_body(masked_rust_source(path.read_text()), "cloud_reconcile")
@@ -521,12 +541,16 @@ def main() -> None:
                 errors.append("src/cloud_directory.rs: final apply mutation belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
                 errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
-            cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")
-            if cleanup is None or re.search(r"\bmaintenance_page\s*::\s*<\s*Plan\s*>", cleanup):
+            cleanup = rust_function_body(masked_rust_source(assembly_root), "cleanup_cloud_directory")
+            if (
+                cleanup is None
+                or re.search(r"\bmaintenance_page\s*::\s*<\s*Plan\s*>", cleanup)
+                or "pub(crate) use crate::assembly::cleanup_cloud_directory as cleanup;" not in path.read_text()
+            ):
                 errors.append("src/cloud_directory.rs: reviewed-plan retention belongs in assembly")
             if (
                 cleanup is None
-                or not re.search(r"\bcloud_snapshot_cleanup\s*\(", cleanup)
+                or not re.search(r"\bcloud_snapshot_cleanup\s*\([\s\S]*\bcloud_plan_cleanup\s*\([\s\S]*\bcloud_budget_cleanup\s*\(", cleanup)
                 or re.search(r"\bmaintenance_page\s*::\s*<\s*Cloud(?:Snapshot|Apply)Draft\s*>", cleanup)
             ):
                 errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
