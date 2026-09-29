@@ -861,7 +861,9 @@ Still outside this slice:
   than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
   A named service provider remains an open peer. The LDAP provider recipe
   is not the LDAP import left unconfigured above. Other D03 recipes and
-  acceptance against category targets (D05) remain open. The first D04
+  acceptance against category targets (D05) remain open. The
+  [acceptance evidence matrix](roadmap/d05-acceptance-evidence.md) classifies
+  the evidence that exists and leaves every category unpassed. The first D04
   decision page is [operational recovery](operational-recovery.md); further
   emergency runbooks remain open. The
   [connector dependency incidents](connector-incidents.md) page covers read,

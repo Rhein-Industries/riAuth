@@ -1682,7 +1682,9 @@ Still outside this slice, as later tasks:
   A named service provider remains an open peer. SAML source remains a
   separate profile. The LDAP provider recipe is separate from LDAP import.
   Other D03 recipes and acceptance against category targets (D05) remain
-  open. The first D04 decision page is
+  open. The [acceptance evidence matrix](roadmap/d05-acceptance-evidence.md)
+  classifies the evidence that exists and leaves every category unpassed.
+  The first D04 decision page is
   [operational recovery](operational-recovery.md); further emergency runbooks
   remain open. The [connector dependency incidents](connector-incidents.md) page covers
   read, stop, and retry decisions for external dependencies. The

@@ -44,6 +44,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Q10 installed release gate](roadmap/q10-installed-release-gate.md) | Native packaged-binary transition and recovery gate, local preflight evidence, and remaining external checks |
 | [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake text, a verify-only checker, and a source SPDX producer; a release SBOM, signatures, a review record, and Linux ARM64 execution stay open |
 | [Q03 independent OIDF pilot](roadmap/q03-conformance-pilot.md) | Pinned runner preflight, missing private pilot inputs, and the open independent run gate |
+| [D05 acceptance evidence](roadmap/d05-acceptance-evidence.md) | Evidence classes for the ten category targets; every category and D05 stay unpassed |
 | [Release limitations](limitations.md) | Unsupported profiles and deployment responsibilities |
 
 ## Interfaces and identity

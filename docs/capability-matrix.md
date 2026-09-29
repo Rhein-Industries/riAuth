@@ -301,7 +301,9 @@ so no named external IdP is connected. The outbound SCIM page follows
 a second riAuth router on loopback HTTP, so no named SaaS directory is
 connected. The other D03
 integration recipes, D04 emergency runbooks, and D05 acceptance against
-the category targets are still open. So are a
+the category targets are still open. The
+[acceptance evidence matrix](roadmap/d05-acceptance-evidence.md) classifies
+the evidence that exists and leaves every category unpassed. So are a
 conformance result, a named relying party or service provider, a
 Workspace or Entra tenant, a live Vault, a hardware authenticator, and an
 installed-release run of this commit on Linux x86-64 and ARM64.
