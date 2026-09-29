@@ -109,18 +109,23 @@ Observed on that store:
 
 ### CLI process
 
-[tests/admin_lockout_cli.rs](../tests/admin_lockout_cli.rs) starts the default
-Platform `riauth` binary and runs `riauth serve` on `127.0.0.1:0`. The config
-and the store are a tempfile. The built-in `admin` account signs in on one
-session file, creates a second administrator, and keeps that session. Sign-in
-attempts for the locked account use a second session file. The tempfile sets
-`rate_limits.login` to 1000 so the burst of sign-in attempts records the
-account lock. The default category is 20 requests per minute per address, and
-this run did not record that window. Essentials was not compiled for this
-process. The Essentials result is the library run above.
+[tests/admin_lockout_cli.rs](../tests/admin_lockout_cli.rs) starts the
+`riauth` binary Cargo built for that run and executes `riauth serve` on
+`127.0.0.1:0`. The config and the store are a tempfile. The built-in `admin`
+account signs in on one session file, creates a second administrator, and
+keeps that session. Sign-in attempts for the locked account use a second
+session file. The tempfile sets `rate_limits.login` to 1000 so the burst of
+sign-in attempts records the account lock. The default category is 20
+requests per minute per address, and these runs did not record that window.
 
-The run used `CARGO_INCREMENTAL=0`, `CARGO_TARGET_DIR` outside this checkout,
-and `cargo test --offline --test admin_lockout_cli`. One test passed.
+Both process runs used `CARGO_INCREMENTAL=0` and `CARGO_TARGET_DIR` outside
+this checkout. The default feature set is `platform`
+([Cargo.toml](../Cargo.toml)): `cargo test --offline --test admin_lockout_cli`.
+That run passed. The Essentials run was
+`cargo test --offline --no-default-features --features essentials --test admin_lockout_cli`.
+That run passed. Both executed
+`second_administrator_lockout_cli_records_exit_codes` and recorded the
+statuses below.
 
 Observed process statuses. Every invocation used `--json`. Failures use the
 `riauth.cli/v1` envelope with `ok: false`, `error.http_status`,
@@ -415,8 +420,6 @@ riauth --config "$live_config" --session-file "$session_file" account deliveries
 - A passkey-only account, a delegated operator, an agent, and an exposed or
   unproven credential. The CLI drill did not enroll a factor. Factor retention
   on `user reset-mfa` remains the library observation.
-- The Essentials `riauth` binary. The library test ran on Essentials. The CLI
-  process ran on the default Platform binary only.
 - A password shorter than 12 bytes or longer than 1024 bytes.
 - `recover-admin`, a second store opener, PostgreSQL, archive restore, PITR,
   key escrow, a real OIDC or SAML relying party, and Windows device recovery.

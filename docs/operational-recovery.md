@@ -520,12 +520,12 @@ Still open:
   procedure and the disposable drills are in
   [administrator lockout](admin-lockout.md). The library drill called library
   methods on a tempfile store, once on the default Platform features and once
-  on Essentials. A separate CLI drill started an isolated loopback
-  `riauth serve` from a tempfile and recorded process exit codes for `login`,
-  `revision`, `user passwd`, and `user reset-mfa`, including revision and
-  idempotency, on the default Platform binary. That CLI run did not use the
-  Essentials binary, a browser, SMTP, LDAP, passkey-only recovery, PostgreSQL,
-  or break-glass.
+  on Essentials. The CLI drill started an isolated loopback `riauth serve`
+  from a tempfile and recorded process exit codes for `login`, `revision`,
+  `user passwd`, and `user reset-mfa`, including revision and idempotency.
+  That process test passed once on the default Platform binary and once with
+  `--no-default-features --features essentials`. Those runs did not use a
+  browser, SMTP, LDAP, passkey-only recovery, PostgreSQL, or break-glass.
 - Live connector and dependency failures. The decision page is
   [connector dependency incidents](connector-incidents.md) for LDAP, outbound
   SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks. That page
