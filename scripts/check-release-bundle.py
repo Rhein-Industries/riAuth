@@ -2,11 +2,23 @@
 """Fail closed unless both release architectures have complete, matching assets."""
 
 import hashlib
+import importlib.util
 import json
 import pathlib
 import re
 import sys
 import tarfile
+
+
+def _package_documents():
+    path = pathlib.Path(__file__).resolve().parent / "spdx_sbom.py"
+    spec = importlib.util.spec_from_file_location("riauth_spdx_sbom", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+package_documents = _package_documents()
 
 
 ARCHITECTURES = {"x86_64": "amd64", "aarch64": "arm64"}
@@ -35,7 +47,9 @@ def check(root, commit, repository, run_id, run_attempt):
             f"riauth-maintenance-{edition}-linux-{arch}.tar.gz" for edition in ("essentials", "platform")
         } | {
             f"riauth-{edition}-linux-{arch}.docker.tar.gz" for edition in ("essentials", "platform")
-        } | {f"riauthctl-linux-{arch}.tar.gz", f"build-provenance-linux-{arch}.json"}
+        } | {f"riauthctl-linux-{arch}.tar.gz", f"build-provenance-linux-{arch}.json"} | (
+            package_documents.linux_spdx_names(arch)
+        )
         sums_name = f"SHA256SUMS-linux-{arch}"
         expected.update(assets | {sums_name})
         lines = (root / sums_name).read_text().splitlines()
@@ -49,6 +63,7 @@ def check(root, commit, repository, run_id, run_attempt):
         require(set(entries) == assets, f"{sums_name} has missing or unexpected entries: {set(entries) ^ assets}")
         for name, checksum in entries.items():
             require(digest(root / name) == checksum, f"checksum mismatch: {name}")
+        package_documents.require_linux_package_bytes(root, arch)
 
         provenance = json.loads((root / f"build-provenance-linux-{arch}.json").read_text())
         for field, value in {

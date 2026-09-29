@@ -1,12 +1,15 @@
 """Reproducibility and negative checks for the source SPDX producer."""
 
+import gzip
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest import mock
@@ -17,6 +20,10 @@ SCRIPT = ROOT / "scripts/spdx_sbom.py"
 spec = importlib.util.spec_from_file_location("spdx_sbom", SCRIPT)
 spdx = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(spdx)
+BUNDLE_SCRIPT = ROOT / "scripts/check-release-bundle.py"
+bundle_spec = importlib.util.spec_from_file_location("check_release_bundle", BUNDLE_SCRIPT)
+bundle = importlib.util.module_from_spec(bundle_spec)
+bundle_spec.loader.exec_module(bundle)
 
 TARGET = "x86_64-unknown-linux-gnu"
 REG = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1018,3 +1025,287 @@ class SpdxProducer(unittest.TestCase):
             self.assertFalse((directory / "out.json.tmp").exists())
             self.assertEqual(lock.read_bytes(), before)
             self.assertNotIn("This output is a release SBOM.", completed.stderr)
+
+
+def lone_metadata(name, version="0.1.1"):
+    root_id = f"path+file:///tmp/q11-package#{name}@{version}"
+    return {
+        "packages": [package(root_id, name, version, license_text="MIT OR Apache-2.0")],
+        "resolve": {"root": root_id, "nodes": [node(root_id, [])]},
+    }
+
+
+def write_gzip_member(path, member, payload):
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as archive:
+        info = tarfile.TarInfo(member)
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+    path.write_bytes(gzip.compress(raw.getvalue(), mtime=0))
+
+
+class LinuxPackageDocuments(unittest.TestCase):
+    def write_graph_files(self, dist, arch):
+        for graph in spdx.linux_graphs(arch):
+            for name in graph["files"]:
+                (dist / name).write_bytes(f"bytes:{name}".encode())
+
+    def locks(self, base):
+        platform_meta, lock_packages, _ids, _checksums = closure_fixture()
+        server_lock = base / "Cargo.lock"
+        client_lock = base / "riauthctl.lock"
+        server_lock.write_bytes(render_lock(lock_packages))
+        client_lock.write_bytes(render_lock([("riauthctl", "0.1.1", "path", None)]))
+        return lone_metadata("riauth"), platform_meta, server_lock, lone_metadata("riauthctl"), client_lock
+
+    def produce(self, dist, pieces):
+        essentials, platform_meta, server_lock, client_meta, client_lock = pieces
+        return spdx.package_linux(
+            dist, "x86_64", essentials, platform_meta, server_lock, client_meta, client_lock,
+        )
+
+    def test_three_graphs_are_stable_and_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            dist = base / "dist"
+            dist.mkdir()
+            self.write_graph_files(dist, "x86_64")
+            pieces = self.locks(base)
+            written = self.produce(dist, pieces)
+            self.assertEqual([path.name for path in written], [
+                "riauth-essentials-linux-x86_64.spdx.json",
+                "riauth-platform-linux-x86_64.spdx.json",
+                "riauthctl-linux-x86_64.spdx.json",
+            ])
+            first = {path.name: path.read_bytes() for path in written}
+            self.produce(dist, pieces)
+            self.assertEqual(first, {path.name: path.read_bytes() for path in written})
+            documents = {}
+            for name, payload in first.items():
+                document = json.loads(payload)
+                SpdxProducer.assert_honest(self, document, payload.decode())
+                documents[name] = document
+            essentials = documents["riauth-essentials-linux-x86_64.spdx.json"]
+            platform_doc = documents["riauth-platform-linux-x86_64.spdx.json"]
+            client = documents["riauthctl-linux-x86_64.spdx.json"]
+            self.assertEqual(essentials["name"], "riauth-x86_64-unknown-linux-gnu")
+            self.assertEqual(platform_doc["name"], essentials["name"])
+            self.assertNotEqual(essentials["documentNamespace"], platform_doc["documentNamespace"])
+            self.assertEqual(client["name"], "riauthctl-x86_64-unknown-linux-gnu")
+            self.assertEqual({item["name"] for item in essentials["packages"]}, {
+                "riauth",
+                "riauth-essentials-linux-x86_64.tar.gz",
+                "riauth-maintenance-essentials-linux-x86_64.tar.gz",
+                "riauth-essentials-linux-x86_64.docker.tar.gz",
+            })
+            platform_text = first["riauth-platform-linux-x86_64.spdx.json"].decode()
+            self.assertNotIn("riauth-essentials-linux-x86_64.tar.gz", platform_text)
+            self.assertNotIn("riauthctl-linux-x86_64.tar.gz", platform_text)
+            self.assertIn("libc", {item["name"] for item in platform_doc["packages"]})
+            self.assertIn("features=essentials;", essentials["creationInfo"]["comment"])
+            self.assertIn("features=essentials,platform;", platform_doc["creationInfo"]["comment"])
+            self.assertIn("features=none;", client["creationInfo"]["comment"])
+            self.assertIn("target=x86_64-unknown-linux-gnu;", client["creationInfo"]["comment"])
+            self.assertIn("no_default_features=true;", client["creationInfo"]["comment"])
+            server_hash = hashlib.sha256(pieces[2].read_bytes()).hexdigest()
+            client_hash = hashlib.sha256(pieces[4].read_bytes()).hexdigest()
+            self.assertNotEqual(server_hash, client_hash)
+            self.assertIn(f"lock_sha256={server_hash}.", essentials["creationInfo"]["comment"])
+            self.assertIn(f"lock_sha256={server_hash}.", platform_doc["creationInfo"]["comment"])
+            self.assertIn(f"lock_sha256={client_hash}.", client["creationInfo"]["comment"])
+            self.assertNotIn(client_hash, essentials["creationInfo"]["comment"])
+
+    def test_missing_or_invalid_graph_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            dist = base / "dist"
+            dist.mkdir()
+            self.write_graph_files(dist, "x86_64")
+            (dist / "riauthctl-linux-x86_64.tar.gz").unlink()
+            pieces = self.locks(base)
+            with self.assertRaisesRegex(spdx.SpdxError, "input is not a regular file"):
+                self.produce(dist, pieces)
+            self.assertEqual(list(dist.glob("*.spdx.json")), [])
+            self.write_graph_files(dist, "x86_64")
+            essentials, platform_meta, server_lock, _client_meta, client_lock = pieces
+            with self.assertRaisesRegex(spdx.SpdxError, "metadata resolve root is missing"):
+                spdx.package_linux(
+                    dist, "x86_64", essentials, platform_meta, server_lock, {}, client_lock,
+                )
+            self.assertEqual(list(dist.glob("*.spdx.json")), [])
+
+    def test_changed_and_missing_bytes_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            dist = base / "dist"
+            dist.mkdir()
+            self.write_graph_files(dist, "x86_64")
+            pieces = self.locks(base)
+            self.produce(dist, pieces)
+            document = dist / "riauth-platform-linux-x86_64.spdx.json"
+            saved = document.read_bytes()
+            document.unlink()
+            with self.assertRaisesRegex(spdx.SpdxError, "package SPDX is missing"):
+                spdx.require_linux_package_bytes(dist, "x86_64")
+            document.write_bytes(saved)
+            archive = dist / "riauth-essentials-linux-x86_64.tar.gz"
+            archive.write_bytes(archive.read_bytes() + b"x")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            (dist / "SHA256SUMS-linux-x86_64").write_text(f"{digest}  {archive.name}\n")
+            with self.assertRaisesRegex(spdx.SpdxError, "packaged file sha256 mismatch"):
+                spdx.require_linux_package_bytes(dist, "x86_64")
+            archive.unlink()
+            with self.assertRaisesRegex(spdx.SpdxError, "packaged file is missing"):
+                spdx.require_linux_package_bytes(dist, "x86_64")
+
+    def test_cli_matches_the_library_and_refuses_a_partial_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            dist = base / "dist"
+            dist.mkdir()
+            refused = SpdxProducer.cli(self, [
+                "package-linux",
+                "--arch", "x86_64",
+                "--dist", str(dist),
+                "--server-lock", str(base / "Cargo.lock"),
+                "--client-lock", str(base / "riauthctl.lock"),
+            ])
+            self.assertEqual(refused.returncode, 1, refused.stderr)
+            self.assertIn("pass --server-manifest or both", refused.stderr)
+            self.assertNotIn("Traceback", refused.stderr)
+            self.assertEqual(refused.stdout, "")
+            self.assertEqual(list(dist.iterdir()), [])
+            usage = SpdxProducer.cli(self, ["package-linux", "--arch", "mips"])
+            self.assertEqual(usage.returncode, 2, usage.stderr)
+            self.assertNotIn("Traceback", usage.stderr)
+            self.write_graph_files(dist, "x86_64")
+            essentials, platform_meta, server_lock, client_meta, client_lock = self.locks(base)
+            library = {
+                path.name: path.read_bytes()
+                for path in self.produce(dist, (essentials, platform_meta, server_lock, client_meta, client_lock))
+            }
+            for name in library:
+                (dist / name).unlink()
+            essentials_path = base / "essentials.json"
+            platform_path = base / "platform.json"
+            client_path = base / "client.json"
+            essentials_path.write_text(json.dumps(essentials), encoding="utf-8")
+            platform_path.write_text(json.dumps(platform_meta), encoding="utf-8")
+            client_path.write_text(json.dumps(client_meta), encoding="utf-8")
+            completed = SpdxProducer.cli(self, [
+                "package-linux",
+                "--arch", "x86_64",
+                "--dist", str(dist),
+                "--essentials-metadata", str(essentials_path),
+                "--platform-metadata", str(platform_path),
+                "--server-lock", str(server_lock),
+                "--client-metadata", str(client_path),
+                "--client-lock", str(client_lock),
+            ])
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.stdout.strip(), f"wrote 3 SPDX documents for x86_64. {spdx.HONESTY}")
+            self.assertNotIn("This output is a release SBOM.", completed.stdout)
+            for name, payload in library.items():
+                self.assertEqual((dist / name).read_bytes(), payload)
+
+
+class LinuxBundleDocuments(unittest.TestCase):
+    def build(self, base):
+        dist = base / "dist"
+        dist.mkdir()
+        payloads = {}
+        for arch in ("x86_64", "aarch64"):
+            for graph in spdx.linux_graphs(arch):
+                for name in graph["files"]:
+                    path = dist / name
+                    if name.startswith("riauth-maintenance-"):
+                        payload = f"binary:{name}".encode()
+                        payloads[name] = payload
+                        write_gzip_member(path, "riauth-maintenance", payload)
+                    else:
+                        path.write_bytes(f"bytes:{name}".encode())
+        essentials = lone_metadata("riauth")
+        client = lone_metadata("riauthctl")
+        server_lock = base / "Cargo.lock"
+        client_lock = base / "riauthctl.lock"
+        server_lock.write_bytes(render_lock([("riauth", "0.1.1", "path", None)]))
+        client_lock.write_bytes(render_lock([("riauthctl", "0.1.1", "path", None)]))
+        for arch in ("x86_64", "aarch64"):
+            spdx.package_linux(dist, arch, essentials, essentials, server_lock, client, client_lock)
+        server_hash = hashlib.sha256(server_lock.read_bytes()).hexdigest()
+        client_hash = hashlib.sha256(client_lock.read_bytes()).hexdigest()
+        for arch, oci in (("x86_64", "amd64"), ("aarch64", "arm64")):
+            provenance = {
+                "schema": "riauth.build/v4",
+                "commit": "a" * 40,
+                "repository": "Rhein-Industries/riAuth",
+                "run_id": "123",
+                "run_attempt": "1",
+                "target_triple": f"{arch}-unknown-linux-gnu",
+                "oci_platform": f"linux/{oci}",
+                "build_os": {"name": "Linux", "architecture": arch},
+                "rustc": "rustc 1.98.1 (fixture)",
+                "cargo_lock_sha256": server_hash,
+                "riauthctl_cargo_lock_sha256": client_hash,
+                "riauthctl_features": "no-default-features",
+                "server_builds": {},
+                "maintenance_builds": {},
+            }
+            for edition, features in (
+                ("essentials", ["essentials"]),
+                ("platform", ["essentials", "platform"]),
+            ):
+                provenance["server_builds"][edition] = {
+                    "features": features,
+                    "no_default_features": True,
+                    "docker_image_id": "sha256:" + ("ab" if edition == "essentials" else "cd") * 32,
+                }
+                member = payloads[f"riauth-maintenance-{edition}-linux-{arch}.tar.gz"]
+                provenance["maintenance_builds"][edition] = {
+                    "features": features,
+                    "no_default_features": True,
+                    "binary_sha256": hashlib.sha256(member).hexdigest(),
+                }
+            (dist / f"build-provenance-linux-{arch}.json").write_text(json.dumps(provenance) + "\n")
+            self.write_sums(dist, arch)
+        return dist
+
+    def write_sums(self, dist, arch):
+        token = f"linux-{arch}"
+        names = sorted(
+            path.name for path in dist.iterdir()
+            if path.is_file() and token in path.name and path.name != f"SHA256SUMS-linux-{arch}"
+        )
+        lines = [
+            f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}"
+            for name in names
+        ]
+        (dist / f"SHA256SUMS-linux-{arch}").write_text("\n".join(lines) + "\n")
+
+    def check(self, dist):
+        bundle.check(dist, "a" * 40, "Rhein-Industries/riAuth", "123", "1")
+
+    def test_bundle_accepts_fixture_documents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dist = self.build(pathlib.Path(directory))
+            self.check(dist)
+            text = (dist / "riauthctl-linux-aarch64.spdx.json").read_text()
+            self.assertIn(spdx.HONESTY, text)
+            self.assertNotIn("This output is a release SBOM.", text)
+
+    def test_rewritten_checksum_does_not_hide_changed_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dist = self.build(pathlib.Path(directory))
+            archive = dist / "riauth-essentials-linux-x86_64.tar.gz"
+            archive.write_bytes(archive.read_bytes() + b"x")
+            self.write_sums(dist, "x86_64")
+            with self.assertRaisesRegex(ValueError, "packaged file sha256 mismatch"):
+                self.check(dist)
+
+    def test_missing_document_fails_the_exact_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dist = self.build(pathlib.Path(directory))
+            (dist / "riauth-platform-linux-aarch64.spdx.json").unlink()
+            self.write_sums(dist, "aarch64")
+            with self.assertRaisesRegex(ValueError, "missing or unexpected"):
+                self.check(dist)

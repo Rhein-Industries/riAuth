@@ -1,12 +1,14 @@
 # Q11 vulnerability intake and release evidence
 
-Status: source check, plus a source SPDX producer. Q11 remains open. This
+Status: source check, plus a source SPDX producer wired to the Linux
+packager's exact archive and image names. Q11 remains open. This
 page does not record a signature, a release SBOM, a separate review record,
 a GitHub release created by this work, or a Linux ARM64 run. No release SBOM
 was produced in this slice.
 
-The check reads the files named below. It does not build a bundle, download
-assets, or call the edition-matrix, installed-release, or bundle checkers.
+The check reads the files named below, including the installed release gate.
+It does not build a bundle, download assets, or run the edition-matrix,
+installed-release, or bundle checkers against release files.
 
 ## Intake
 
@@ -55,11 +57,41 @@ repository, run id, run attempt, target, OS, feature sets, image ids,
 maintenance binary digests, rustc, and both Cargo lockfile digests. It has no
 signature field.
 
+Before that provenance object and `SHA256SUMS-linux-$ARCH`, the packager runs:
+
+```sh
+python3 scripts/spdx_sbom.py package-linux \
+  --arch "$RIAUTH_ARCH" \
+  --dist "$riauth_dist" \
+  --server-manifest Cargo.toml \
+  --server-lock Cargo.lock \
+  --client-manifest crates/riauthctl/Cargo.toml \
+  --client-lock crates/riauthctl/Cargo.lock
+```
+
+The command resolves Essentials with feature `essentials`, Platform with
+features `essentials,platform`, and riauthctl with no features. Each
+resolution passes `--no-default-features`, `--locked`, and `--offline`.
+Essentials and Platform share `Cargo.lock`. riauthctl uses
+`crates/riauthctl/Cargo.lock`. The documents are
+`riauth-essentials-linux-$ARCH.spdx.json` (Essentials server archive,
+Essentials maintenance archive, and Essentials container archive),
+`riauth-platform-linux-$ARCH.spdx.json` (the Platform counterparts), and
+`riauthctl-linux-$ARCH.spdx.json` (the riauthctl archive only). Provenance
+is not an input. `SHA256SUMS-linux-$ARCH` is written afterward, so its lines
+include the three documents. Generated documents go to the packager dist
+directory, `target/dist` in the workflow, and are not source. This output is
+not a release SBOM. Quoting the command is not a run of the packager.
+
 [check-release-bundle.py](../../scripts/check-release-bundle.py) is the command
 the publish job runs on the combined artifact directory. It fails closed unless
-both architectures' filenames, checksums, and provenance fields match. Its
-success line is printed only by that command. This procedure does not run it,
-and the workflow file is not that success.
+both architectures' filenames, checksums, package-document bytes, and
+provenance fields match. A checksum line rewritten to a new archive digest
+still fails when the document records the previous digest. A missing document
+fails the exact filename set. Its success line is printed only by that
+command. This procedure does not run it, and the workflow file is not that
+success. The installed gate uses the same filename set and the same byte
+comparison for one architecture. This procedure does not run that gate.
 
 The publish job then runs `gh release create` with `--draft` and
 `--verify-tag`, using the [release notes](../release-notes.md) as the draft
@@ -76,16 +108,28 @@ crate's license options. That column is not an SPDX document, and the
 generator does not write a CycloneDX SBOM. The source producer below is a
 separate tool. The release workflow does not call it.
 
-The release workflow, the packager, and the bundle checker do not name a
-signing or SBOM producer. The denylist checked in those three files is
-`cosign`, `syft`, `cyclonedx`, `spdx`, `in-toto`, `gpg`, `minisign`,
-`ssh-keygen`, `sigstore`, and the output markers `.sbom`, `.spdx`, `.cdx`,
-`.sig`, and `cyclonedx`. Those three files must also not name `spdx_sbom.py`
-or `spdx-sbom`. The filename check is separate from the word-boundary
-denylist. The [Q08 note](q08-exact-edition-bundles.md) and the
-[Q10 gate](q10-installed-release-gate.md) remain the edition-matrix and
-installed-artifact records. This check does not call those scripts and does
-not use their results.
+The release workflow file does not name this producer. It also does not name
+a signing tool. The packager names the producer once, in the command above.
+The bundle checker and the installed gate each load it so their exact asset
+sets include the three document names and compare each recorded checksum with
+the file bytes. Those two checkers do not run `package-linux`.
+
+The workflow, packager, bundle checker, and installed gate still fail this
+audit if they name `cosign`, `syft`, `cyclonedx`, the word `spdx`, `in-toto`,
+`gpg`, `minisign`, `ssh-keygen`, or `sigstore`, or if they contain `.sbom`,
+`.spdx`, `.cdx`, `.sig`, or `cyclonedx`. The `.spdx.json` filenames stay in
+the producer, so those four release files do not contain the `.spdx` marker.
+`spdx_sbom.py` does not match the word-boundary denylist. The workflow must
+contain no `spdx_sbom.py` reference. The packager must contain the one
+command above. Each asset checker must contain one `spdx_sbom.py` reference,
+one `linux_spdx_names` call, and one `require_linux_package_bytes` call.
+
+The [Q08 note](q08-exact-edition-bundles.md) `RELEASE_NAMES` list is
+unchanged. It reports that older name list as present or unavailable. It is
+not the publish exact-set, and it does not list the three documents. The
+[Q10 gate](q10-installed-release-gate.md) remains the installed-artifact
+record. This check does not run either script against assets and does not
+use their results.
 
 ## Source SPDX producer
 
@@ -157,16 +201,27 @@ python3 scripts/spdx_sbom.py verify \
 ```
 
 `PATH` is an exact file. A local sample records that sample. It does not
-create a release SBOM. The release workflow, `package-release.sh`, and
-`check-release-bundle.py` do not name this producer. Connecting it to a
-packaged archive waits for a real artifact run and a checker update. This
-producer does not call the [Q08 note](q08-exact-edition-bundles.md) scripts
-or the [Q10 gate](q10-installed-release-gate.md), and it does not use their
-results. Success from `produce` or `verify` is not a release result.
+create a release SBOM.
 
-The producer fixtures hash named sample bytes and one no-dependency crate
-resolved with `cargo metadata --locked --offline`. They do not hash a
-packaged riAuth archive or a release binary. Run them with:
+`package-linux` is the binding the packager uses. It writes no document until
+every named archive and image is a regular file, then writes all three or
+none. `--server-manifest` and `--client-manifest` run the locked offline
+metadata commands. The fixtures pass `--essentials-metadata`,
+`--platform-metadata`, and `--client-metadata` instead, so those fixtures do
+not run cargo. A second write of the same inputs is byte-identical. Changed
+or missing archive bytes fail `require_linux_package_bytes` even when a
+checksum file has been rewritten to the new digest. This output is not a
+release SBOM.
+
+This slice did not execute the packager. No release-built binary or image
+was hashed. No release SBOM was produced in this slice. The producer does
+not call the [Q08 note](q08-exact-edition-bundles.md) scripts. Success from
+`produce`, `verify`, or `package-linux` is not a release result.
+
+The producer fixtures hash named sample bytes, one no-dependency crate
+resolved with `cargo metadata --locked --offline`, and temporary archive
+bytes supplied to `package-linux`. They do not run `package-release.sh`.
+Run them with:
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_spdx_sbom.py' -v
@@ -184,12 +239,17 @@ python3 -m unittest discover -s tests -p 'test_release_evidence.py' -v
 Exit 0 means the checkout still matches this contract: the intake sentences,
 the single draft release command, provenance schema `riauth.build/v4`, the
 attestation disclaimer, the third-party notice output name, no signing
-producer on that release path, and the source SPDX producer named above. The
-JSON report uses schema `riauth.release-evidence/v1`. It keeps
+producer on that release path, the source SPDX producer named above, one
+packager call to that producer, and asset checks that name the package
+documents. The JSON report uses schema `riauth.release-evidence/v1`. It keeps
 `sbom.spdx_or_cyclonedx_document`, `sbom.notices_are_an_sbom`,
 `sbom.source_producer_in_release_workflow`, and `sbom.release_sbom_produced`
-false. Signing, an independent review record, publication, release execution,
-and Linux ARM64 execution stay negative. Exit 0 is not a release result.
+false. `sbom.packager_source_calls_producer` and
+`sbom.asset_checks_require_package_spdx` are true because this source text
+contains that call and those checks. They do not record a packager run or a
+release SBOM. Signing, an independent review record, publication, release
+execution, and Linux ARM64 execution stay negative.
+Exit 0 is not a release result.
 
 `release_assets.status` is `not_requested` unless `--dist DIR` is set.
 `--dist` lists regular filenames in that directory and sets `verification` to
@@ -213,7 +273,9 @@ still not a release job.
 The earlier source check on this branch is `063096e`. Accepted history
 records that same check as `95d1720`. This worktree continues from `063096e`
 and leaves the accepted commit unchanged. The producer was not added to the
-release workflow or the packager. No release SBOM was produced in this slice.
+release workflow. The Linux packager source calls it through `package-linux`,
+and the asset checkers require the resulting document bytes.
+This slice did not execute the packager. No release SBOM was produced in this slice.
 
 Signatures, a release SBOM from a real packaged artifact run, a separate
 review record, and a published asset set whose checksums and provenance were

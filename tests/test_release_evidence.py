@@ -44,8 +44,11 @@ class ReleaseEvidenceAudit(unittest.TestCase):
         self.assertFalse(report["sbom"]["notices_are_an_sbom"])
         self.assertEqual(report["sbom"]["source_producer"], "scripts/spdx_sbom.py")
         self.assertFalse(report["sbom"]["source_producer_in_release_workflow"])
+        self.assertTrue(report["sbom"]["packager_source_calls_producer"])
+        self.assertTrue(report["sbom"]["asset_checks_require_package_spdx"])
         self.assertFalse(report["sbom"]["release_sbom_produced"])
         self.assertIn("scripts/spdx_sbom.py", report["files"])
+        self.assertIn("scripts/check-installed-release-gate.py", report["files"])
         self.assertFalse(report["independent_review_record"])
         self.assertFalse(report["provenance"]["cryptographic_attestation"])
         self.assertEqual(report["provenance"]["schema"], "riauth.build/v4")
@@ -143,6 +146,8 @@ class ReleaseEvidenceAudit(unittest.TestCase):
         self.assertFalse(report["sbom"]["spdx_or_cyclonedx_document"])
         self.assertFalse(report["sbom"]["notices_are_an_sbom"])
         self.assertFalse(report["sbom"]["source_producer_in_release_workflow"])
+        self.assertTrue(report["sbom"]["packager_source_calls_producer"])
+        self.assertTrue(report["sbom"]["asset_checks_require_package_spdx"])
         self.assertFalse(report["sbom"]["release_sbom_produced"])
         self.assertFalse(report["release_executed"])
 
@@ -153,8 +158,19 @@ class ReleaseEvidenceAudit(unittest.TestCase):
                     root = self.copy_checkout(directory)
                     path = root / relative
                     path.write_text(path.read_text() + "\npython3 scripts/spdx_sbom.py\n")
-                    with self.assertRaisesRegex(evidence.AuditError, "signing or SBOM producer"):
+                    with self.assertRaisesRegex(evidence.AuditError, "source producer"):
                         evidence.audit(root)
+
+    def test_packager_must_keep_the_exact_package_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.copy_checkout(directory)
+            path = root / "scripts/package-release.sh"
+            path.write_text(path.read_text().replace(
+                evidence.PACKAGE_CALL,
+                "python3 scripts/spdx_sbom.py\n",
+            ))
+            with self.assertRaisesRegex(evidence.AuditError, "packager must call the source producer once"):
+                evidence.audit(root)
 
     def test_procedure_must_keep_the_source_producer_boundary(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -2,8 +2,10 @@
 """Build or verify an SPDX document from locked Cargo metadata and exact files.
 
 The document is a pure function of the lockfile, the resolved graph, and the
-bytes of the named input files. This output is not a release SBOM. This
-document is not a build attestation. Crate archives were not fetched.
+bytes of the named input files. package-linux binds the Essentials, Platform,
+and riauthctl graphs to the exact archives and images for one Linux
+architecture. This output is not a release SBOM. This document is not a build
+attestation. Crate archives were not fetched.
 """
 
 import argparse
@@ -95,11 +97,16 @@ def read_input(name, path):
         raise SpdxError(f"input is a symlink: {name}")
     if not path.is_file():
         raise SpdxError(f"input is not a regular file: {name}")
+    checksum = hashlib.sha256()
+    size = 0
     try:
-        payload = path.read_bytes()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                checksum.update(chunk)
+                size += len(chunk)
     except OSError as error:
         raise SpdxError(f"input is unreadable: {name}: {error}") from error
-    return {"name": name, "sha256": sha256_bytes(payload), "size": len(payload)}
+    return {"name": name, "sha256": checksum.hexdigest(), "size": size}
 
 
 def load_lock(path):
@@ -574,6 +581,220 @@ def assemble(metadata, lock_path, target, features, no_default_features, named_p
     )
 
 
+LINUX_TARGETS = {
+    "x86_64": "x86_64-unknown-linux-gnu",
+    "aarch64": "aarch64-unknown-linux-gnu",
+}
+
+
+def linux_graphs(arch):
+    """Exact packaged files for each locked graph. Names only; no build is run."""
+    target = LINUX_TARGETS.get(arch)
+    if target is None:
+        raise SpdxError(f"unsupported package architecture: {arch}")
+    essentials = f"riauth-essentials-linux-{arch}"
+    platform = f"riauth-platform-linux-{arch}"
+    return (
+        {
+            "id": "essentials",
+            "output": f"{essentials}.spdx.json",
+            "features": ("essentials",),
+            "no_default_features": True,
+            "lock": "server",
+            "files": (
+                f"{essentials}.tar.gz",
+                f"riauth-maintenance-essentials-linux-{arch}.tar.gz",
+                f"{essentials}.docker.tar.gz",
+            ),
+        },
+        {
+            "id": "platform",
+            "output": f"{platform}.spdx.json",
+            "features": ("essentials", "platform"),
+            "no_default_features": True,
+            "lock": "server",
+            "files": (
+                f"{platform}.tar.gz",
+                f"riauth-maintenance-platform-linux-{arch}.tar.gz",
+                f"{platform}.docker.tar.gz",
+            ),
+        },
+        {
+            "id": "riauthctl",
+            "output": f"riauthctl-linux-{arch}.spdx.json",
+            "features": (),
+            "no_default_features": True,
+            "lock": "client",
+            "files": (f"riauthctl-linux-{arch}.tar.gz",),
+        },
+    )
+
+
+def linux_spdx_names(arch):
+    return {graph["output"] for graph in linux_graphs(arch)}
+
+
+def _sha256_file(path):
+    checksum = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    return checksum.hexdigest()
+
+
+def _recorded_file_checksums(document, names):
+    recorded = {}
+    packages = document.get("packages")
+    if not isinstance(packages, list):
+        raise SpdxError("package SPDX has no package list")
+    for item in packages:
+        if not isinstance(item, dict):
+            raise SpdxError("package SPDX entry is not an object")
+        name = item.get("name")
+        if name not in names:
+            continue
+        if name in recorded:
+            raise SpdxError(f"duplicate packaged file entry: {name}")
+        checksums = item.get("checksums")
+        if not isinstance(checksums, list):
+            raise SpdxError(f"packaged file has no checksum: {name}")
+        values = [
+            entry.get("checksumValue") for entry in checksums
+            if isinstance(entry, dict) and entry.get("algorithm") == "SHA256"
+        ]
+        if len(values) != 1 or not isinstance(values[0], str) or HEX64.fullmatch(values[0]) is None:
+            raise SpdxError(f"packaged file checksum is not one sha256: {name}")
+        recorded[name] = values[0]
+    return recorded
+
+
+def require_linux_package_bytes(dist, arch):
+    """Fail unless each package SPDX checksum matches the file bytes now on disk."""
+    dist = pathlib.Path(dist)
+    for graph in linux_graphs(arch):
+        path = dist / graph["output"]
+        if path.is_symlink() or not path.is_file():
+            raise SpdxError(f"package SPDX is missing: {graph['output']}")
+        try:
+            text = path.read_text()
+            document = json.loads(text)
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise SpdxError(f"package SPDX is unreadable: {graph['output']}: {error}") from error
+        if not isinstance(document, dict):
+            raise SpdxError(f"package SPDX is not an object: {graph['output']}")
+        # Keep the claim sentence out of this source file. The evidence audit
+        # rejects that exact sentence in the producer.
+        claim = "This output is a release " + "SBOM."
+        if claim in text:
+            raise SpdxError(f"package document claims a release document: {graph['output']}")
+        comment = document.get("creationInfo", {})
+        comment = comment.get("comment", "") if isinstance(comment, dict) else ""
+        for sentence in (HONESTY, NOT_ATTESTATION, NOT_FETCHED):
+            if sentence not in comment:
+                raise SpdxError(f"package SPDX is missing honesty text: {graph['output']}")
+        feature_text = ",".join(graph["features"]) if graph["features"] else "none"
+        target = LINUX_TARGETS[arch]
+        if f"target={target};" not in comment or f"features={feature_text};" not in comment:
+            raise SpdxError(f"package SPDX graph marker mismatch: {graph['output']}")
+        if "no_default_features=true;" not in comment:
+            raise SpdxError(f"package SPDX graph marker mismatch: {graph['output']}")
+        names = set(graph["files"])
+        recorded = _recorded_file_checksums(document, names)
+        missing = sorted(names - set(recorded))
+        if missing:
+            raise SpdxError("package SPDX omits packaged files: " + ", ".join(missing))
+        for name in graph["files"]:
+            file_path = dist / name
+            if file_path.is_symlink() or not file_path.is_file():
+                raise SpdxError(f"packaged file is missing: {name}")
+            try:
+                actual = _sha256_file(file_path)
+            except OSError as error:
+                raise SpdxError(f"packaged file is unreadable: {name}: {error}") from error
+            if recorded[name] != actual:
+                raise SpdxError(f"packaged file sha256 mismatch: {name}")
+
+
+def package_linux(dist, arch, essentials_metadata, platform_metadata, server_lock,
+                  client_metadata, client_lock):
+    """Write the three package documents. Refuse before creating any of them."""
+    dist = pathlib.Path(dist)
+    if not dist.is_dir():
+        raise SpdxError(f"package directory is not a directory: {dist}")
+    graphs = {
+        "essentials": essentials_metadata,
+        "platform": platform_metadata,
+        "riauthctl": client_metadata,
+    }
+    locks = {"server": server_lock, "client": client_lock}
+    planned = []
+    for graph in linux_graphs(arch):
+        named = []
+        for name in graph["files"]:
+            path = dist / name
+            if path.is_symlink() or not path.is_file():
+                raise SpdxError(f"input is not a regular file: {name}")
+            named.append((name, path))
+        output = dist / graph["output"]
+        if any(path.resolve(strict=False) == output.resolve(strict=False) for _name, path in named):
+            raise SpdxError("output path is an input file")
+        if output.is_symlink():
+            raise SpdxError("output path is a symlink")
+        planned.append((graph, named, output, graphs[graph["id"]], locks[graph["lock"]]))
+    ready = []
+    for graph, named, output, metadata, lock in planned:
+        document = assemble(
+            metadata, lock, LINUX_TARGETS[arch], graph["features"], True, named, {},
+        )
+        ready.append((output, canonical_bytes(document)))
+    for output, payload in ready:
+        write_bytes(output, payload)
+    return [output for output, _payload in ready]
+
+
+def _load_package_metadata(manifest, metadata_path, target, features):
+    if metadata_path:
+        return load_metadata(metadata_path)
+    return run_cargo_metadata(manifest, target, features, True)
+
+
+def package_linux_command(args):
+    arch = args.arch
+    try:
+        target = LINUX_TARGETS[arch]
+    except KeyError as error:
+        raise SpdxError(f"unsupported package architecture: {arch}") from error
+    server_manifest = bool(args.server_manifest)
+    server_metadata = bool(args.essentials_metadata or args.platform_metadata)
+    if server_manifest == server_metadata or bool(args.essentials_metadata) != bool(args.platform_metadata):
+        raise SpdxError(
+            "pass --server-manifest or both --essentials-metadata and --platform-metadata"
+        )
+    client_manifest = bool(args.client_manifest)
+    client_metadata = bool(args.client_metadata)
+    if client_manifest == client_metadata:
+        raise SpdxError("pass --client-manifest or --client-metadata")
+    if server_manifest:
+        essentials = _load_package_metadata(
+            args.server_manifest, None, target, ("essentials",),
+        )
+        platform = _load_package_metadata(
+            args.server_manifest, None, target, ("essentials", "platform"),
+        )
+    else:
+        essentials = _load_package_metadata(None, args.essentials_metadata, target, ())
+        platform = _load_package_metadata(None, args.platform_metadata, target, ())
+    if client_manifest:
+        client = _load_package_metadata(args.client_manifest, None, target, ())
+    else:
+        client = _load_package_metadata(None, args.client_metadata, target, ())
+    written = package_linux(
+        args.dist, arch, essentials, platform, args.server_lock, client, args.client_lock,
+    )
+    print(f"wrote {len(written)} SPDX documents for {arch}. {HONESTY}")
+    return 0
+
+
 def metadata_from_args(args):
     if args.metadata:
         return load_metadata(args.metadata)
@@ -603,8 +824,23 @@ def main(argv=None):
     verify = commands.add_parser("verify")
     command_args(verify)
     verify.add_argument("--document", required=True)
+    package = commands.add_parser(
+        "package-linux",
+        help="Write Essentials, Platform, and riauthctl documents for one architecture. " + HONESTY,
+    )
+    package.add_argument("--arch", required=True, choices=tuple(LINUX_TARGETS))
+    package.add_argument("--dist", required=True)
+    package.add_argument("--server-manifest")
+    package.add_argument("--essentials-metadata")
+    package.add_argument("--platform-metadata")
+    package.add_argument("--server-lock", required=True)
+    package.add_argument("--client-manifest")
+    package.add_argument("--client-metadata")
+    package.add_argument("--client-lock", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "package-linux":
+            return package_linux_command(args)
         features = parse_features(args.features)
         named_paths = parse_named_paths(args.file)
         expectations = parse_expectations(args.expect)

@@ -4,8 +4,9 @@ The native `package` job now runs
 [`check-installed-release-gate.py`](../../scripts/check-installed-release-gate.py)
 once on Linux x86-64 and once on Linux ARM64, after packaging and the existing
 archive/image smoke. It takes the checked tag's commit, repository, run ID and
-run attempt from the release job. The gate reads the nine expected assets for
-that architecture. It rejects missing or extra files, bad SHA256SUMS entries,
+run attempt from the release job. The gate reads the twelve expected assets for
+that architecture, including the three package documents named by the source
+producer. It rejects missing or extra files, bad SHA256SUMS entries,
 wrong provenance or lockfile hashes, wrong target/toolchain/feature metadata,
 and an installed maintenance binary whose hash differs from provenance. It
 extracts only named regular binaries from the checked archives into a private

@@ -39,6 +39,13 @@ for edition in essentials platform; do
   test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$RIAUTH_COMMIT"
   docker save "$image" | gzip -n > "$riauth_dist/riauth-$edition-linux-$RIAUTH_ARCH.docker.tar.gz"
 done
+python3 scripts/spdx_sbom.py package-linux \
+  --arch "$RIAUTH_ARCH" \
+  --dist "$riauth_dist" \
+  --server-manifest Cargo.toml \
+  --server-lock Cargo.lock \
+  --client-manifest crates/riauthctl/Cargo.toml \
+  --client-lock crates/riauthctl/Cargo.lock
 python3 - <<'PY'
 import hashlib, json, os, pathlib, platform, subprocess
 root = pathlib.Path('target/dist')

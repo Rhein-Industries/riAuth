@@ -8,6 +8,7 @@ executed. Missing, mixed, or unverified release assets fail before installation.
 import argparse
 import contextlib
 import hashlib
+import importlib.util
 import json
 import pathlib
 import platform
@@ -19,6 +20,17 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+
+
+def _package_documents():
+    path = pathlib.Path(__file__).resolve().parent / "spdx_sbom.py"
+    spec = importlib.util.spec_from_file_location("riauth_spdx_sbom", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+package_documents = _package_documents()
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -70,7 +82,7 @@ def expected_names(arch):
     } | {f"riauth-{edition}-linux-{arch}.docker.tar.gz" for edition in EDITIONS} | {
         f"riauthctl-linux-{arch}.tar.gz", f"build-provenance-linux-{arch}.json",
         f"SHA256SUMS-linux-{arch}",
-    }
+    } | package_documents.linux_spdx_names(arch)
 
 
 def verify_assets(dist, arch, commit, repository, run_id, run_attempt):
@@ -98,6 +110,7 @@ def verify_assets(dist, arch, commit, repository, run_id, run_attempt):
     require(set(entries) == expected - {sums_name}, "release checksum manifest differs from exact asset set")
     for name, checksum in entries.items():
         require(digest(dist / name) == checksum, f"release checksum mismatch: {name}")
+    package_documents.require_linux_package_bytes(dist, arch)
     provenance = json.loads((dist / f"build-provenance-linux-{arch}.json").read_text())
     required = {"schema": "riauth.build/v4", "commit": commit, "repository": repository,
                 "run_id": run_id, "run_attempt": run_attempt,

@@ -3,11 +3,14 @@
 
 Reads a checkout. Does not build, sign, publish, download assets, or decide
 that a release succeeded. --dist lists filenames only. scripts/spdx_sbom.py
-is a source producer; a successful audit still reports no release SBOM.
+is a source producer. The Linux packager source calls it, and the asset
+checkers require its package documents. A successful audit still reports no
+release SBOM.
 """
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import pathlib
 import platform
@@ -24,10 +27,20 @@ AUDITED = (
     ".github/workflows/release.yml",
     "scripts/package-release.sh",
     "scripts/check-release-bundle.py",
+    "scripts/check-installed-release-gate.py",
     "scripts/generate-third-party-notices.py",
     "scripts/spdx_sbom.py",
 )
 SOURCE_PRODUCER = "scripts/spdx_sbom.py"
+PACKAGE_CALL = "\n".join((
+    "python3 scripts/spdx_sbom.py package-linux \\",
+    '  --arch "$RIAUTH_ARCH" \\',
+    '  --dist "$riauth_dist" \\',
+    "  --server-manifest Cargo.toml \\",
+    "  --server-lock Cargo.lock \\",
+    "  --client-manifest crates/riauthctl/Cargo.toml \\",
+    "  --client-lock crates/riauthctl/Cargo.lock",
+))
 PRODUCER_HONESTY = (
     "This output is not a release SBOM.",
     "This document is not a build attestation.",
@@ -80,6 +93,7 @@ RELEASE_PATHS = (
     ".github/workflows/release.yml",
     "scripts/package-release.sh",
     "scripts/check-release-bundle.py",
+    "scripts/check-installed-release-gate.py",
 )
 
 
@@ -132,6 +146,128 @@ def worktree_state(root):
     return {"commit": commit, "dirty": bool(status.strip())}
 
 
+def release_denylist(relative, text):
+    hits = []
+    for pattern in PRODUCER_PATTERNS:
+        if pattern.search(text):
+            hits.append(f"{relative}: {pattern.pattern}")
+    lowered = text.lower()
+    for marker in OUTPUT_MARKERS:
+        if marker in lowered:
+            hits.append(f"{relative}: output marker {marker}")
+    if "spdx-sbom" in lowered:
+        hits.append(f"{relative}: spdx-sbom")
+    return hits
+
+
+def require_source_wiring(texts):
+    hits = []
+    for relative in RELEASE_PATHS:
+        hits.extend(release_denylist(relative, texts[relative]))
+    require(not hits, "release path names a signing or SBOM producer: " + ", ".join(hits))
+    workflow = texts[".github/workflows/release.yml"]
+    require(
+        workflow.count("spdx_sbom.py") == 0 and "package-linux" not in workflow,
+        "release workflow names the source producer",
+    )
+    packager = texts["scripts/package-release.sh"]
+    require(
+        packager.count(PACKAGE_CALL) == 1 and packager.count("spdx_sbom.py") == 1,
+        "packager must call the source producer once",
+    )
+    asset_checks = (
+        (
+            "scripts/check-release-bundle.py",
+            "bundle checker",
+            "package_documents.require_linux_package_bytes(root, arch)",
+        ),
+        (
+            "scripts/check-installed-release-gate.py",
+            "installed gate",
+            "package_documents.require_linux_package_bytes(dist, arch)",
+        ),
+    )
+    for relative, label, byte_call in asset_checks:
+        text = texts[relative]
+        require(
+            text.count("spdx_sbom.py") == 1
+            and text.count("package_documents.linux_spdx_names(arch)") == 1
+            and text.count(byte_call) == 1
+            and "package-linux" not in text,
+            f"{label} source producer references changed",
+        )
+
+
+def load_audited_module(root, relative, name):
+    path = root / relative
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise AuditError(f"could not load {relative}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except (OSError, SyntaxError, ImportError, AttributeError, ValueError) as error:
+        raise AuditError(f"could not load {relative}: {error}") from error
+    return module
+
+
+def expected_package_graphs(arch):
+    essentials = f"riauth-essentials-linux-{arch}"
+    platform = f"riauth-platform-linux-{arch}"
+    return (
+        {
+            "id": "essentials",
+            "output": f"{essentials}.spdx.json",
+            "features": ("essentials",),
+            "no_default_features": True,
+            "lock": "server",
+            "files": (
+                f"{essentials}.tar.gz",
+                f"riauth-maintenance-essentials-linux-{arch}.tar.gz",
+                f"{essentials}.docker.tar.gz",
+            ),
+        },
+        {
+            "id": "platform",
+            "output": f"{platform}.spdx.json",
+            "features": ("essentials", "platform"),
+            "no_default_features": True,
+            "lock": "server",
+            "files": (
+                f"{platform}.tar.gz",
+                f"riauth-maintenance-platform-linux-{arch}.tar.gz",
+                f"{platform}.docker.tar.gz",
+            ),
+        },
+        {
+            "id": "riauthctl",
+            "output": f"riauthctl-linux-{arch}.spdx.json",
+            "features": (),
+            "no_default_features": True,
+            "lock": "client",
+            "files": (f"riauthctl-linux-{arch}.tar.gz",),
+        },
+    )
+
+
+def require_package_contract(root):
+    """Load the producer after its honesty text has already been accepted."""
+    try:
+        producer = load_audited_module(root, SOURCE_PRODUCER, "audited_source_producer")
+        gate = load_audited_module(
+            root, "scripts/check-installed-release-gate.py", "audited_installed_gate",
+        )
+        for arch in ("x86_64", "aarch64"):
+            graphs = producer.linux_graphs(arch)
+            require(graphs == expected_package_graphs(arch), f"{arch} package graphs changed")
+            names = producer.linux_spdx_names(arch)
+            require(names <= gate.expected_names(arch), "installed gate omits package document names")
+    except AuditError:
+        raise
+    except (OSError, SyntaxError, ImportError, AttributeError, ValueError, TypeError) as error:
+        raise AuditError(f"package document contract failed: {error}") from error
+
+
 def inventory(dist):
     if dist is None:
         return {"status": "not_requested", "verification": "not performed"}
@@ -171,19 +307,7 @@ def audit(root, dist=None):
     for token in ("runner: ubuntu-24.04", "runner: ubuntu-24.04-arm", "arch: x86_64", "arch: aarch64"):
         require(token in workflow, f"release workflow is missing declared target text: {token}")
 
-    producers = []
-    for relative in RELEASE_PATHS:
-        lowered = texts[relative].lower()
-        for pattern in PRODUCER_PATTERNS:
-            if pattern.search(texts[relative]):
-                producers.append(f"{relative}: {pattern.pattern}")
-        for marker in OUTPUT_MARKERS:
-            if marker in lowered:
-                producers.append(f"{relative}: output marker {marker}")
-        for token in ("spdx_sbom.py", "spdx-sbom"):
-            if token in lowered:
-                producers.append(f"{relative}: {token}")
-    require(not producers, "release path names a signing or SBOM producer: " + ", ".join(producers))
+    require_source_wiring(texts)
 
     for token in (
         "'schema': 'riauth.build/v4'",
@@ -234,12 +358,27 @@ def audit(root, dist=None):
         "procedure no longer says no release SBOM was produced",
     )
     require("This output is a release SBOM." not in procedure, "procedure claims a release SBOM")
+    require(
+        "python3 scripts/spdx_sbom.py package-linux" in procedure,
+        "procedure does not name the packager binding",
+    )
+    require(
+        "The release workflow file does not name this producer." in procedure,
+        "procedure no longer keeps the producer out of the release workflow",
+    )
+    require(
+        "This slice did not execute the packager." in procedure,
+        "procedure claims the packager ran",
+    )
+    require("packager_source_calls_producer" in procedure, "procedure omits the packager source field")
+    require("asset_checks_require_package_spdx" in procedure, "procedure omits the asset-check field")
     producer_text = texts[SOURCE_PRODUCER]
     for sentence in PRODUCER_HONESTY:
         require(sentence in producer_text, f"source producer is missing honesty text: {sentence}")
     require("--locked" in producer_text, "source producer does not pass --locked")
     require("--offline" in producer_text, "source producer does not pass --offline")
     require("This output is a release SBOM." not in producer_text, "source producer claims a release SBOM")
+    require_package_contract(root)
 
     policy_contacts = contacts(security)
     invented = [item for item in contacts(procedure) if item not in policy_contacts]
@@ -272,6 +411,8 @@ def audit(root, dist=None):
             "notices_are_an_sbom": False,
             "source_producer": SOURCE_PRODUCER,
             "source_producer_in_release_workflow": False,
+            "packager_source_calls_producer": True,
+            "asset_checks_require_package_spdx": True,
             "release_sbom_produced": False,
         },
         "independent_review_record": False,
