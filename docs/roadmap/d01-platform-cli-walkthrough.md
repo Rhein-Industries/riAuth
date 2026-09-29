@@ -3,12 +3,15 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records two disposable loopback runs of the
+This page records three disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
-a Platform-catalog snapshot and continued through the server CLI group, claim,
-and audit commands. Neither run used a browser, an external peer,
-`cargo install`, `riauthctl`, or `riauth-maintenance`.
+a Platform-catalog server snapshot and continued through the server CLI group,
+claim, and audit commands. The third copied that same server snapshot plus
+separate `riauthctl` and `riauth-maintenance` snapshots and ran the printed
+maintenance init and remote client commands. No run used a browser, an
+external peer, or `cargo install`. The first two runs did not launch
+`riauthctl` or `riauth-maintenance`.
 
 ## Essentials catalog run
 
@@ -816,6 +819,469 @@ Still unrun:
 - Backup, restore, and recovery
 - Sections 9 through 14: LDAP import, outbound SCIM, workflows, SAML,
   the LDAP provider, and invitation acceptance
+- PostgreSQL, native HTTPS, a trusted proxy, RADIUS, proxy SSO, Workspace,
+  Entra, and an external mailbox
+
+The Essentials guide was not executed. D01 remains incomplete.
+
+## Printed remote administration run
+
+The docs worktree for this record is
+`9c374beae00e99fbc7f922ef44c23243d6fbc28a`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. Three immutable snapshots were copied into a
+new `mktemp` directory under `/tmp`, mode `700`. This page calls that
+directory `$LAB`. The real path is not recorded. Every command used the
+copies `$LAB/riauth`, `$LAB/riauthctl`, and `$LAB/riauth-maintenance`. The
+snapshot paths were not executed. Their modes stayed `-r-x------`, and their
+mtimes stayed at the values below.
+
+The server snapshot is
+`/tmp/riauth-platform-58357fd-immutable/riauth`, supplied as the Platform
+debug binary for `58357fde77211e62dc51c14fb3fc216bdf143ceb`. The tool
+snapshots are `/tmp/riauth-tools-f430c2f-immutable/riauthctl` and
+`/tmp/riauth-tools-f430c2f-immutable/riauth-maintenance`, supplied for
+`f430c2f01b63cbd53ffd0f56ebd277e03724d822`. This run checked the stated
+hashes and the server copy's artifact catalog. It did not compile the
+binaries.
+
+`58357fd` is an ancestor of `f430c2f`. The Rust source that changed between
+them is `4f5cde4` in [provisioning.rs](../../src/provisioning.rs) and
+[reconciliation.rs](../../src/reconciliation.rs), with
+`tests/reconciliation_completion.rs` and small edits in the reconciliation
+tests. `395097c` and `f430c2f` change documentation. `crates/riauthctl` and
+[cli/local.rs](../../src/cli/local.rs) have an empty diff across that range.
+`9c374be` is the child of `f430c2f` and changes
+[assembly.rs](../../src/assembly.rs),
+[source_catalog.rs](../../src/assembly/source_catalog.rs),
+[source.rs](../../src/source.rs), `tests/source_boundary.rs`, and
+`scripts/check-module-boundaries.py`. That commit is in neither snapshot.
+The three binaries were not produced by one `cargo install` in this task.
+
+| Binary | Version | Size | SHA-256 | mtime |
+| --- | --- | --- | --- | --- |
+| `riauth` | `riauth 0.1.1` | 289661864 | `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069` | `2026-09-29 17:00:59 +0200` |
+| `riauthctl` | `riauthctl 0.1.1` | 22431144 | `edccd38a893972b1d369a3743a0e069c698fab99ee3508f066aa639b6f6602a3` | `2026-09-29 17:16:50 +0200` |
+| `riauth-maintenance` | `riauth-maintenance 0.1.1` | 85114656 | `7b2293f9548f74d8e15a14e851bc0594c67c912fe4fbd2bf6e63e485e4cd71ab` | `2026-09-29 17:16:50 +0200` |
+
+Copy mode was `700`. Each copy's SHA-256 matched its snapshot before the
+first invocation of that copy. `riauthctl` and `riauth-maintenance` printed
+a version and did not print an edition. The only edition in this run is the
+server copy's artifact catalog below.
+
+The password was 32 characters, written to a mode `600` file, and passed
+with `--password-stdin`. The password, both session tokens, and the client
+secret are not recorded. The server CLI session and the riauthctl session
+were separate files in `$LAB`, each mode `600`. `~/.config/riauth/session.json`
+and `~/.config/riauthctl/session.json` were absent before and after.
+
+The server process was PID 64511. It was stopped with that PID.
+`serve_sigkill` was not required. TCP 9000 had no listener afterward. The
+lab directory was removed. The serve log was 141 bytes and was scanned for
+the password, both session tokens, and the client secret. None of those
+values were present. The log did not contain `background_overloaded`. The
+log text was deleted with the lab.
+
+The run started at `2026-09-29T15:30:04Z`. Global `--json` was not passed.
+Progress notes were kept off standard output so a revision read stayed a
+single JSON object.
+
+### Capabilities and help
+
+```sh
+$LAB/riauth capabilities
+```
+
+Exit 0. Standard error was empty. Standard output was 20679 bytes.
+
+| Field | Value |
+| --- | --- |
+| `schema_version` | `riauth.capabilities/v2` |
+| `version` | `0.1.1` |
+| `interface` | `server` |
+| `edition` | `platform` |
+| `build_features` | `["essentials", "platform"]` |
+| `scope` | `artifact` |
+| `target` | `macos` / `aarch64` |
+| `feature_states` | 87 entries |
+| `compiled_features` | 87 |
+| `usable`, `enabled`, `configured`, `runtime_ready` | `null` on every entry |
+| `compiled` true | 87 |
+| `compiled` false | 0 |
+
+Before any mutation, the copies' help was read. `$LAB/riauth group --help`
+listed `review`, `list`, `create`, `add-member`, and `remove-member`.
+`$LAB/riauthctl group --help` listed `list`, `get`, `has-member`, `create`,
+`add-member`, and `remove-member`. `$LAB/riauthctl client --help` listed
+`list`, `get`, `create`, `update`, `rotate-secret`, and `disable`.
+`$LAB/riauthctl --help` listed `status`, `discovery`, `login`, `whoami`,
+`logout`, `revision`, `inventory`, `user`, `group`, `client`, `session`,
+`request`, `device`, `authorize`, `plan`, `apply`, and `passkey`. It did
+not list `doctor`, `explain`, `audit`, or `report`.
+`$LAB/riauth-maintenance --help` listed `init` and did not list `serve`.
+`$LAB/riauth-maintenance init --help` included `--password-stdin`.
+`$LAB/riauthctl client create --help` included `--secret-file`.
+`$LAB/riauth report audit --help` included `--out` and `--run-id`.
+
+`doctor` remains the server CLI command. The probe below was the unsupported
+`riauthctl` spelling:
+
+```sh
+$LAB/riauthctl doctor
+```
+
+Exit 2. Standard output was empty. Standard error was:
+
+```text
+error: unrecognized subcommand 'doctor'
+
+Usage: riauthctl [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+```
+
+That rejection is local clap parsing. It sent no request. `riauthctl status`
+was not run in its place.
+
+### Maintenance init
+
+```sh
+$LAB/riauth-maintenance --config $LAB/riauth.toml init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir data \
+  --admin admin \
+  --password-stdin \
+  --non-interactive
+```
+
+Exit 0. Standard error: `Creating instance and signing key…`
+
+```json
+{
+  "config": "$LAB/riauth.toml",
+  "initialized": true,
+  "issuer": "http://localhost:9000"
+}
+```
+
+The configuration file was mode `600`. `$LAB/data/riauth.redb` existed. The
+generated configuration was:
+
+```toml
+browser_ui = true
+state_reconciliation_mode = "manual-review"
+issuer = "http://localhost:9000"
+listen = "127.0.0.1:9000"
+data_dir = "data"
+access_token_ttl = 300
+refresh_token_ttl = 2592000
+session_ttl = 28800
+password_history = 5
+trusted_proxies = []
+reviewed_client_creation = false
+
+[proxy_listeners]
+
+[radius_listeners]
+
+[ldap_listeners]
+
+[directories]
+
+[workspace_directories]
+
+[entra_directories]
+
+[scim_targets]
+
+[signers]
+```
+
+The maintenance command did not print an edition. This run does not display
+a store stamp. The printed guide prompts for the password; this run passed
+`--password-stdin` and `--non-interactive`.
+
+### Serve and readiness
+
+```sh
+$LAB/riauth --config $LAB/riauth.toml serve
+curl --fail --silent --show-error --max-time 2 http://127.0.0.1:9000/readyz
+```
+
+`/readyz` exited 0. The body was:
+
+```json
+{"duties":{"authentication":true,"background_jobs":true,"protocol_listeners":true},"issuer":"http://localhost:9000","role":"integrated","service":"riAuth","status":"ok","version":"0.1.1"}
+```
+
+`protocol_listeners` was true on this server copy. The listener tables above
+were empty. The duty comes from the integrated Platform server process
+([process_role.rs](../../src/process_role.rs)). It does not identify the
+maintenance binary's edition.
+
+### Server CLI login and doctor
+
+```sh
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  --non-interactive \
+  login admin --password-stdin
+```
+
+Exit 0. Standard error was empty. The session token is omitted. The public
+user fields were `id` `b2f7a829-d698-4b62-8e10-e2868d8f755a`, `username`
+`admin`, `display_name` `admin`, `email` null, `enabled` true, `admin` true,
+`mfa_enabled` false, `password_available` true, `email_verified` false,
+`created_at` 1790695809, empty `attributes`, and empty `subjects`.
+`expires_at` was 1790724610.
+
+```sh
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  doctor
+```
+
+Exit 0. Standard error was empty. `healthy` was true, `schema_version` 3,
+`revision` 0, `storage` `redb`, `encrypted_at_rest` false,
+`active_signing_key` `6018afc5-3d3e-436e-862e-9a3dcff16d10`, `users` 1,
+`enabled_administrators` 1, `clients` 0, `pending_logout_deliveries` 0,
+`tls` `reverse_proxy`, `checked_at` 1790695810, and `issuer`
+`http://localhost:9000`. There was no `edition` field. `doctor` was not
+repeated after the later writes. Browser sign-in at `/apps` and
+`prepare-setup` were not run.
+
+### riauthctl login, client create, discovery, and whoami
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  login admin --password-stdin
+```
+
+Exit 0. Standard output named `user`, `expires_at`, and `session_file`.
+The same public user fields were present, with the same `id`, `created_at`,
+and `expires_at` 1790724610. `password_available` was the string
+`[redacted]`. [riauthctl main.rs](../../crates/riauthctl/src/main.rs)
+replaces a field whose name contains `password` before it prints. The
+server CLI login above is the boolean observation. The session token was
+not in standard output.
+
+The printed client create omits `--idempotency-key`, `--if-revision`, and
+`--run-id`. This run did the same, and added `--session-file` and
+`--non-interactive`. The secret file was `$LAB/local-demo-secret.json`
+instead of `deployment-private/local-demo-secret.json`.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  client create local-demo \
+  --name 'Local demo' \
+  --confidential \
+  --redirect-uri http://localhost:3000/callback \
+  --scope openid,profile \
+  --secret-file $LAB/local-demo-secret.json
+```
+
+Exit 0. Standard output had `client` and `credential_file`. It had no
+`client_secret` field. `credential_file` was `$LAB/local-demo-secret.json`.
+The secret file was mode `600`. Its keys were `client` and `client_secret`.
+`client_secret` was a non-empty string of length 53 and is omitted. The
+public client fields were `client_id` `local-demo`, `name` `Local demo`,
+`confidential` true, `enabled` true, `service` false, `require_mfa` false,
+`allowed_groups` `[]`, `redirect_uris` `["http://localhost:3000/callback"]`,
+and `scopes` `openid` and `profile`. `claim_mappings` was empty. The value
+printed for `claims_in_access_token` was the string `[redacted]`, because
+that field name ends in `_token` and the same riauthctl redaction replaces
+it. The boolean stored for that field was not visible in this output. No
+idempotency key was printed. The later audit row for this create has
+`run_id` null.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  discovery
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  whoami
+```
+
+`discovery` exited 0. Standard output was 3662 bytes. `issuer` was
+`http://localhost:9000`. `authorization_endpoint` was
+`http://localhost:9000/oauth/authorize`, `token_endpoint` was
+`http://localhost:9000/oauth/token`, `userinfo_endpoint` was
+`http://localhost:9000/oauth/userinfo`, and `jwks_uri` was
+`http://localhost:9000/oauth/jwks`.
+
+`whoami` exited 0. It returned the same user, `groups` `[]`, `mfa` false,
+`expires_at` 1790724610, and `session_id`
+`5c7a2180-0b29-4e37-9280-e0587f63a154`. `password_available` was again the
+string `[redacted]`. This `whoami` ran before the group commands, so the
+empty group list is the membership at that moment. The application on port
+3000 was not started.
+
+### Groups, claims, and audit
+
+`revision` immediately before create returned `{"revision": 1}`.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  --run-id staff-group \
+  --idempotency-key staff-create \
+  --if-revision 1 \
+  group create staff
+```
+
+Exit 0. The group name was `staff` and the member list was empty.
+
+`revision` immediately before add-member returned `{"revision": 2}`.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  --run-id staff-group \
+  --idempotency-key staff-add-admin \
+  --if-revision 2 \
+  group add-member staff admin
+```
+
+Exit 0. The group name was `staff` and the member list had one string.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  group get staff
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  group has-member staff admin
+```
+
+`group get` exited 0 and returned `staff` with one member. `group
+has-member` exited 0 and returned `group` `staff`, `username` `admin`, and
+`member` true. Member ids are not copied here.
+
+The settings file was the printed claim-mapping object, saved under `$LAB`
+instead of `deployment-private/platform-lab/local-demo-claims.json`.
+`revision` immediately before the update returned `{"revision": 3}`.
+
+```sh
+$LAB/riauthctl --server http://localhost:9000 \
+  --session-file $LAB/riauthctl-session.json \
+  --non-interactive \
+  --run-id local-demo-claims \
+  --idempotency-key local-demo-claims \
+  --if-revision 3 \
+  client update local-demo \
+  --scope openid,profile,groups \
+  --settings-file $LAB/local-demo-claims.json
+```
+
+Exit 0. Standard output was the client view. `scopes` were `groups`,
+`openid`, and `profile`. `claim_mappings` was one entry: scope `profile`,
+claim `department`, source type `literal`, value `lab`. The printed
+`claims_in_access_token` value was again the string `[redacted]`. The
+settings file did not set that field. The rest of the settings object is
+not copied here.
+
+```sh
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  explain local-demo admin \
+  --scope 'openid profile groups'
+```
+
+Exit 0. `simulation` was true, `token_issued` was false, `allowed` was
+true, and `reasons` was empty. `userinfo.groups` was `["staff"]`,
+`userinfo.department` was `lab`, and `userinfo.name` and
+`userinfo.preferred_username` were `admin`. `userinfo` also contained
+`sub`. `access_token_identity_claims` contained only `sub`.
+`id_token_identity_claims` contained `department`, `groups`, `name`,
+`preferred_username`, and `sub`. The response also included `mfa_assumed`
+and `scope_decisions`; those values are not copied here. No token was
+issued.
+
+```sh
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  audit --limit 100
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  inventory audit --limit 100 --filter staff-group
+$LAB/riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/session.json \
+  report audit --run-id staff-group --out $LAB/audit-staff-group.csv
+```
+
+`audit --limit 100` exited 0 and returned seven rows. `details` is not
+copied. In returned order:
+
+| `action` | `target` | `run_id` |
+| --- | --- | --- |
+| `login.succeeded` | `5c7a2180-0b29-4e37-9280-e0587f63a154` | null |
+| `client.create` | `local-demo` | null |
+| `group.create` | `staff` | `staff-group` |
+| `client.update` | `local-demo` | `local-demo-claims` |
+| `group.member.add` | `staff/b2f7a829-d698-4b62-8e10-e2868d8f755a` | `staff-group` |
+| `instance.initialize` | `admin` | null |
+| `login.succeeded` | `28a89b95-413b-4925-8fef-ced4ca4a40d3` | null |
+
+CLI password login audits `login.succeeded` with the bearer session id
+([core.rs](../../src/core.rs)). The first target equals the `whoami`
+`session_id` from the riauthctl login. The last target is the other bearer
+session, from the server CLI login. Neither target is a session token.
+`client.create` has a null `run_id` because that command did not pass
+`--run-id`. The membership target is `staff/` plus the administrator id.
+
+`inventory audit` exited 0. `item_count` was 2, `limit` was 100,
+`next_cursor` was null, and `revision` was 4. In returned order the items
+were `group.member.add` and then `group.create`, both with `run_id`
+`staff-group` and the targets above. `details` is not copied. No `--after`
+page was requested.
+
+`report audit` exited 0. Standard output was `rows` 2, `pages` 1, and
+`output_file` `$LAB/audit-staff-group.csv`. The file was mode `600`. Its
+header was `id,at,actor,action,target,run_id,request_id`. The data rows, in
+file order, were `group.create` and then `group.member.add`, with the same
+targets and `run_id` `staff-group`. The CSV was deleted with the lab and is
+not committed.
+
+### Unrun on this remote-administration run
+
+The executed chain is maintenance init, Platform server startup and
+`/readyz`, server CLI login and `doctor`, riauthctl login, the printed
+`local-demo` create, `discovery`, `whoami`, the printed group commands
+including `group get` and `group has-member`, the printed claim update,
+`explain`, and the three audit commands. `riauthctl doctor` was attempted
+and rejected locally.
+
+Still unrun:
+
+- `cargo install` of `riauth`, `riauth-maintenance`, and `riauthctl`
+- Browser sign-in, `/apps`, `/setup`, `/admin`, port 3000, consent, and
+  passkey enrollment
+- Sections 4 and 5, including backup, restore, and recovery
+- Sections 9 through 14: LDAP import, outbound SCIM, workflows, SAML,
+  the LDAP provider, and invitation acceptance
+- Signing-key commands, including `keys import`, `keys bind`, and
+  `keys generate`
+- `riauthctl status`, `plan`, `apply`, and `passkey`
+- A second `riauthctl login`; the saved riauthctl session was still present
+- A spoken screen reader, a physical key, a synced passkey, a phone, or a
+  mobile operating system
 - PostgreSQL, native HTTPS, a trusted proxy, RADIUS, proxy SSO, Workspace,
   Entra, and an external mailbox
 

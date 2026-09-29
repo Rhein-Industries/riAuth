@@ -20,9 +20,11 @@ in [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 Reading this page does not mean those steps were executed here. Both slices
 were checked by reading the source and the current docs, then by
 `python3 scripts/check-docs.py`. Section 11 was source-reviewed and was not
-executed here. No Cargo build was run, no server was
-started, and no browser, group change, claim preview, audit export, LDAP
-plan, SCIM delivery, invitation, backup, or accessibility pass was recorded.
+executed here. No Cargo build was run for this page. No Essentials server
+was started here, and this page did not run a browser, group change, claim
+preview, audit export, LDAP plan, SCIM delivery, invitation, backup, or
+accessibility pass. Loopback runs of the Platform binaries are recorded in
+the [Platform guide](platform-guide.md).
 The [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -494,7 +496,8 @@ message is:
 `Group writes require --idempotency-key and --if-revision (from riauth revision)`.
 The source string wraps `riauth revision` in backticks. This section uses
 `riauthctl` because that is the session from section 3. This Essentials page
-did not run the group commands.
+did not run the group commands. The Platform walkthrough records a later
+`riauthctl` run of `group get` and `group has-member`.
 
 `--group staff` on `client update` replaces `allowed_groups` and limits who
 may use the application. This section leaves `local-demo` unrestricted.

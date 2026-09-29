@@ -14,10 +14,12 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records two loopback binaries. The first reported the
-Essentials catalog. The second was a copied Platform debug binary whose
-artifact catalog had `edition` `platform` and `build_features`
-`["essentials", "platform"]`. The commands in sections 1 through 13 are the
+build. The walkthrough records three loopback observations. The first
+reported the Essentials catalog. The second was a copied Platform debug
+server whose artifact catalog had `edition` `platform` and `build_features`
+`["essentials", "platform"]`. The third used that same server snapshot with
+separate `riauthctl` and `riauth-maintenance` snapshots supplied for a later
+source revision. The commands in sections 1 through 13 are the
 ones implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
@@ -25,14 +27,17 @@ ones implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14 was source-reviewed and
-remains unrun. Two disposable loopback runs are recorded in
+remains unrun. Three disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
-build was run for either. The first stopped after one `local-demo` client
-create on the Essentials catalog. The second repeated setup on the Platform
-catalog and then ran the server CLI client, group, claim, and audit commands
-that `riauth` implements. It skipped the printed `riauthctl` lines, sections
-4 and 5, and `group get` / `group has-member`. Browser, hardware, peer,
-backup, passkey, invitation, and Essentials-guide execution remain unrun. The
+build was run for any of them. The first stopped after one `local-demo`
+client create on the Essentials catalog. The second repeated setup on the
+Platform catalog and then ran the server CLI client, group, claim, and audit
+commands that `riauth` implements. It skipped the printed `riauthctl` lines,
+sections 4 and 5, and `group get` / `group has-member`. The third ran
+`riauth-maintenance init` and the printed `riauthctl` client, group, and
+claim commands, then the server CLI `explain` and audit commands. `riauthctl`
+has no `doctor` subcommand. Browser, hardware, peer, backup, passkey,
+invitation, and Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -159,12 +164,21 @@ Platform-catalog run copied a supplied debug snapshot and ran the same
 command on the copy. That catalog reported `edition` `platform`,
 `build_features` `["essentials", "platform"]`, and `scope` `artifact`. All
 87 entries again had those four fields null, and all 87 had `compiled`
-true. This task did not run `cargo install`. The Platform fields above are
-the second command's document, not an installed release binary.
+true. The remote-administration run copied that same server snapshot again.
+Its `riauth capabilities` document matched the second run, including a
+standard output of 20679 bytes. Its `riauthctl` and `riauth-maintenance`
+copies printed version `0.1.1` and did not print an edition. Those two
+snapshots were supplied for source revision `f430c2f`; the server snapshot
+was supplied for `58357fd`. The Rust source that changed between those
+revisions is provisioning and reconciliation, plus the reconciliation
+completion test. Documentation commits sit in that range as well, and
+`9c374be` is newer than both snapshots. This task did not run `cargo install`,
+and these three files were not produced as one install. The Platform fields
+above are the server copy's document, not an installed release binary.
 
-This install is one set of Platform binaries plus the remote client. The
-instance created in the next section is loopback redb, with the issuer
-`http://localhost:9000` and the listener `127.0.0.1:9000`. `init` fills the
+The install command above is one set of Platform binaries plus the remote
+client. The instance created in the next section is loopback redb, with the
+issuer `http://localhost:9000` and the listener `127.0.0.1:9000`. `init` fills the
 configuration from those flags and the configuration defaults: no PostgreSQL,
 no SAML, no RADIUS, no proxy listener, no workflow table, no cloud directory,
 and no external signer. Released container archives are outside this slice.
@@ -199,11 +213,17 @@ edition. The Platform install above records Platform. Relative paths
 are resolved from the configuration file's directory. The generated files are
 under `deployment-private/`, which this repository ignores.
 `reviewed_client_creation` defaults to false, so the application created
-later does not wait for a creation review. Both loopback records used
-`riauth init` with these arguments plus `--password-stdin` and
+later does not wait for a creation review. The first two loopback records
+used `riauth init` with these arguments plus `--password-stdin` and
 `--non-interactive`. Each generated file had `reviewed_client_creation = false`.
 Each `doctor` result listed `storage` `redb` and `healthy` true, with no
-edition field. Neither run launched `riauth-maintenance`.
+edition field. Those two runs did not launch `riauth-maintenance`. The
+remote-administration run used the printed `riauth-maintenance init` with
+the same issuer, listener, data directory, and admin name, plus
+`--password-stdin` and `--non-interactive`. Its generated file had the same
+`reviewed_client_creation = false`. Its `doctor` result again listed
+`storage` `redb` and `healthy` true, with no edition field. The maintenance
+binary printed `riauth-maintenance 0.1.1` and did not print an edition.
 
 Leave the service running in this terminal:
 
@@ -219,12 +239,14 @@ curl --fail http://127.0.0.1:9000/readyz
 
 `/readyz` checks storage readiness. A passing probe is the entry check for
 this slice. It is not a production cutover. The Essentials-catalog run
-reported `duties.protocol_listeners` false. The Platform-catalog run
-reported it true, with `authentication` true, `background_jobs` true,
-`role` `integrated`, and `status` `ok`. Its generated `proxy_listeners`,
-`radius_listeners`, and `ldap_listeners` tables were empty.
+reported `duties.protocol_listeners` false. The Platform-catalog run and the
+later remote-administration run each reported it true, with `authentication`
+true, `background_jobs` true, `role` `integrated`, and `status` `ok`. Both
+of those generated `proxy_listeners`, `radius_listeners`, and
+`ldap_listeners` tables were empty.
 [process_role.rs](../src/process_role.rs) sets that duty on an integrated
-Platform process. The flag does not mean a listener stanza was added.
+Platform process. The flag does not mean a listener stanza was added, and
+it does not identify the maintenance binary's edition.
 
 ### User: sign in
 
@@ -250,9 +272,12 @@ riauth --server http://localhost:9000 doctor
 ```
 
 `login` prompts for the same password and writes `~/.config/riauth/session.json`.
-`doctor` uses that session. Keep the file private. Both loopback records
-passed `--session-file` and `--password-stdin`, and the default session path
-stayed absent.
+`doctor` uses that session. Keep the file private. All three loopback records
+passed `--session-file` and `--password-stdin` for this server CLI login, and
+the default session path stayed absent. The remote-administration run also
+saved the riauthctl session with `--session-file`. `~/.config/riauthctl/session.json`
+stayed absent. `riauthctl doctor` is not a command on that client. The copy
+exited 2 with `unrecognized subcommand 'doctor'` and sent no request.
 
 ### Alternative: the administrator chooses the first credentials in the browser
 
@@ -325,11 +350,22 @@ and a new secret-file path; the details are in the
 section 13, before it sends the request. A confidential client then needs
 `--output-file` or `--show-secrets`. That command has no `--secret-file`.
 With `--output-file`, standard output names `output_file` and `written`, and
-the secret stays in the private file. Both loopback records created
-`local-demo` that way. Neither ran the `riauthctl` command printed above,
-and neither started the application on port 3000. The Platform-catalog run
-then continued at sections 6 through 8 with the server CLI, skipping
-sections 4 and 5.
+the secret stays in the private file. The first two loopback records created
+`local-demo` that way. The remote-administration run used the `riauthctl`
+command printed above, with `--session-file` and `--non-interactive`, and
+without `--idempotency-key`, `--if-revision`, or `--run-id`. It exited 0.
+Standard output named `credential_file` and omitted the secret. The secret
+file was mode `0600`, and the secret length was 53. The audit row for that
+create has `run_id` null. The same run then executed `discovery` and
+`whoami`. `whoami` ran before the group commands, so `groups` was empty.
+`riauthctl` printed `password_available` as the string `[redacted]` because
+the field name contains `password`
+([riauthctl main.rs](../crates/riauthctl/src/main.rs)). The server CLI login
+in that run printed the boolean true. No run started the application on port
+3000. The Platform-catalog run continued at sections 6 through 8 with the
+server CLI and skipped sections 4 and 5. The remote-administration run also
+skipped sections 4 and 5, then continued with the printed `riauthctl` group
+and claim commands.
 
 If `--scope` is omitted, a non-service client asks for
 `openid profile email offline_access`. This slice sets `openid,profile` so
@@ -587,8 +623,18 @@ CLI instead. `riauth group --help` printed the five commands above.
 `group create staff` without the two flags exited 1 with empty output and
 that message. A later create at revision 1 and `group add-member staff admin`
 at revision 2 both exited 0. The create response had no members. The
-add-member response named `staff` and had one member. `group get` and
-`group has-member` were not run.
+add-member response named `staff` and had one member. That server-CLI run
+did not execute `group get` or `group has-member`.
+
+The remote-administration run used the printed `riauthctl` commands, with
+`--session-file` and `--non-interactive`. `riauthctl group --help` on that
+copy listed `list`, `get`, `has-member`, `create`, `add-member`, and
+`remove-member`. Create ran at revision 1 with key `staff-create`. Add-member
+ran at revision 2 with key `staff-add-admin`. Both exited 0. The create
+response named `staff` and had no members. The add-member response named
+`staff` and had one member. `group get staff` exited 0 and returned `staff`
+with one member. `group has-member staff admin` exited 0 and returned
+`member` true.
 
 `--group staff` on `client update` replaces `allowed_groups` and limits who
 may use the application. This section leaves `local-demo` unrestricted.
@@ -684,6 +730,18 @@ false, `allowed` true, empty `reasons`, `userinfo.groups` containing
 `userinfo.preferred_username` equal to `admin`. `userinfo` also contained
 `sub`. `access_token_identity_claims` contained only `sub`.
 
+The remote-administration run used the printed `riauthctl client update`.
+The revision read was 3 and the key was `local-demo-claims`. The stored
+scopes were `groups`, `openid`, and `profile`. `claim_mappings` kept the
+literal `department` value `lab`. `riauthctl` printed
+`claims_in_access_token` as the string `[redacted]` because the field name
+ends in `_token`. The settings file did not set that field, and the boolean
+was not visible in the riauthctl output. The following `explain` matched the
+claim preview above: `simulation` true, `token_issued` false, `allowed`
+true, empty `reasons`, `userinfo.groups` containing `staff`,
+`userinfo.department` `lab`, and access-token identity claims containing
+only `sub`.
+
 ## 8. Review the audit record
 
 Audit commands use the server CLI session. An administrator passes
@@ -734,6 +792,16 @@ two group rows, `next_cursor` null, `limit` 100, and `revision` 4.
 path was a lab file, not `deployment-private/platform-lab/audit-staff-group.csv`,
 and the file was removed with the lab. Row `details` were not copied into
 the record.
+
+The remote-administration run executed the same three commands on the server
+CLI session. `audit --limit 100` returned seven rows. `client.create` for
+`local-demo` had `run_id` null. The two group rows used `run_id`
+`staff-group`, and `client.update` used `local-demo-claims`. Two
+`login.succeeded` rows were present, one for each CLI login. `inventory
+audit --filter staff-group` returned the two group rows, `next_cursor`
+null, `limit` 100, and `revision` 4. `report audit` wrote two data rows
+under the same header, mode `0600`, to a lab file that was removed with the
+lab. Row `details` were not copied.
 
 ## 9. Import one LDAP directory
 
@@ -1814,9 +1882,15 @@ spec and were not checked here.
 This page is the Platform half of the task guide through the third slice.
 It does not finish the Platform guide, and it does not finish D01.
 
-Sections 6 through 8 were executed on the Platform-catalog binary with the
-server CLI. That chain skipped the printed `riauthctl` commands, `group get`,
-`group has-member`, and sections 4 and 5. Sections 9 through 13 remain
+Sections 6 through 8 have two loopback observations. The Platform-catalog
+run used the server CLI and skipped the printed `riauthctl` commands,
+`group get`, and `group has-member`. The remote-administration run executed
+`riauth-maintenance init`, server startup, server CLI login and `doctor`,
+`riauthctl` login, the printed client create, `discovery`, `whoami`, the
+printed group commands including `group get` and `group has-member`, the
+printed client update, and the server CLI `explain` and audit commands.
+`riauthctl doctor` exited 2 locally. Both of those chains skipped sections
+4 and 5. Sections 9 through 13 remain
 source-reviewed procedures. The generated `init` file still has no directory,
 no SCIM target, no workflow, no SAML client, and no LDAP listener until the
 operator adds them. Those later commands were not executed here. Sections 11
