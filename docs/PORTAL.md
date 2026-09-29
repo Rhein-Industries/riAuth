@@ -216,6 +216,17 @@ and computes the six-digit code. This is not a phone authenticator app, a
 physical device, or a mobile operating system, and the viewport is CSS only.
 Hardware authenticators, real mobile devices, and email recovery remain open,
 and this Playwright project is not a CI job.
+`tools/browser/passkey-rename.spec.js` is a separate headless journey on the
+same 390×844 CSS viewport. The password-only fixture account enrolls one
+passkey through Playwright's WebAuthn shim and signs in with that credential.
+From the keyboard, an empty name and a whitespace-only name leave the passkey
+unchanged and return focus to the name field. Saving a new name trims it,
+keeps the same passkey id, and leaves the account's other browser session
+signed in. The new name is still there after a reload, and the same virtual
+credential signs in again. The shim is not a physical security key, a synced
+passkey, a phone, or a mobile operating system, and the viewport is CSS only.
+Hardware authenticators, real mobile devices, and email recovery remain open,
+and this Playwright project is not a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
