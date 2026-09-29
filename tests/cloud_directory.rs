@@ -3414,6 +3414,54 @@ fn cloud_operations_sync_authority_controls_controller_view() {
     assert_redacted(&with_sync);
 }
 
+#[test]
+fn cloud_operations_connection_check_read_is_scoped_and_pure() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    configure(&mut fixture, "workspace", "other", &directory, "");
+    let own_check = json!({"checked_at": 101, "connected": true});
+    let other_check = json!({"checked_at": 202, "connected": false, "error": "connection_failed"});
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put("cloud_connection_checks", "workspace/corp", &own_check)?;
+            tx.put("cloud_connection_checks", "workspace/other", &other_check)
+        })
+        .unwrap();
+    let reader = agent_token(
+        &fixture,
+        "corp-check-reader",
+        vec![permission("directory.read", "workspace/corp")],
+    );
+    let before = fixture.snapshot().unwrap();
+
+    let own = fixture
+        .core
+        .cloud_operations(&reader, "workspace", "corp")
+        .unwrap();
+    assert_eq!(own["last_connection_check"], own_check);
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations(&reader, "workspace", "other")
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    let other = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "other")
+        .unwrap();
+    assert_eq!(other["last_connection_check"], other_check);
+    fixture.assert_snapshot(&before);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
     use axum::{

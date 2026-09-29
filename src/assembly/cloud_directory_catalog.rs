@@ -29,6 +29,17 @@ impl Core {
             .read(|tx| Ok(self.principal(tx, token)?.allows("directory.sync", scope)))
     }
 
+    pub(crate) fn cloud_operation_last_connection_check(
+        &self,
+        token: &str,
+        scope: &str,
+    ) -> Result<Option<Value>> {
+        self.store.read(|tx| {
+            self.management(tx, token, "directory.read", scope)?;
+            tx.get::<Value>("cloud_connection_checks", scope)
+        })
+    }
+
     pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
         self.store.read(|tx| {

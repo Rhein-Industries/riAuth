@@ -212,10 +212,7 @@ impl Core {
                 })
             })
             .collect::<Vec<_>>();
-        let last_connection_check = self.store.read(|tx| {
-            self.management(tx, token, "directory.read", &scope)?;
-            tx.get::<Value>("cloud_connection_checks", &scope)
-        })?;
+        let last_connection_check = self.cloud_operation_last_connection_check(token, &scope)?;
         self.store.read(|tx| {
             self.management(tx, token, "directory.read", &scope)?;
             Ok(())
