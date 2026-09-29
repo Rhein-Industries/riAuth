@@ -44,7 +44,7 @@ The issuer and active-capability comparison runs on the Platform build with:
 cargo test --locked --offline --lib -- node_security:: --test-threads=2
 ```
 
-It checks that listen address, `browser_ui`, and process role stay out of the stored agreement, that disabling `identity.device_trust` refuses a second open without rewriting the agreement, and that a missing or malformed agreement row fails closed.
+It checks that listen address, `browser_ui`, process role, the data directory, a database key path, TLS paths, and trusted proxies stay out of the stored agreement, that disabling `identity.device_trust` refuses a second open without rewriting the agreement, that a different access, refresh, or session lifetime or `password_history` refuses the open without rewriting the row, that a format 1 row is refused and left in place, and that a missing or malformed agreement row fails closed.
 
 Two mismatched `riauth serve` processes against one disposable PostgreSQL database are selected separately:
 
@@ -52,7 +52,7 @@ Two mismatched `riauth serve` processes against one disposable PostgreSQL databa
 RIAUTH_PG_TEST_TARGET=node_security_postgres ./scripts/test-postgres.sh
 ```
 
-The script passes `--locked --features test-support` and `--ignored`. One gateway with another listen address and `browser_ui` false becomes ready with `duties.background_jobs` false. A capability mismatch and an issuer mismatch each exit 2, accept no TCP connection, and leave `riauth_store.records_v1` unchanged. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [node security](roadmap/o03-node-security.md).
+The script passes `--locked --features test-support` and `--ignored`. One gateway with another listen address and `browser_ui` false becomes ready with `duties.background_jobs` false. A capability mismatch and an issuer mismatch each exit 2, accept no TCP connection, and leave `riauth_store.records_v1` unchanged. A second test on its own database keeps such a gateway ready while `access_token_ttl` 600 and `password_history` 0 each exit 2 and leave that database unchanged. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [node security](roadmap/o03-node-security.md).
 
 ## Logout dispatch lease
 

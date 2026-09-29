@@ -138,7 +138,9 @@ Putting a Platform-only name in that list on Essentials fails earlier,
 because the name is not compiled ([`src/capability.rs`](../src/capability.rs)).
 On an initialized store, the compiled names that remain enabled are stored
 with the issuer ([`src/node_security.rs`](../src/node_security.rs)). A process
-whose set differs is refused before it binds. `configured` and
+whose set differs is refused before it binds. The row also stores access,
+refresh, and session lifetimes and `password_history`; a different value is
+refused before bind. `configured` and
 `runtime_ready` stay local. A back-channel logout claim stores a 60-second
 lease and the worker pins it before the POST. See [node security](roadmap/o03-node-security.md).
 

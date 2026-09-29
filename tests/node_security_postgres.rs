@@ -33,6 +33,8 @@ const OTHER_ISSUER: &str = "http://127.0.0.1:8";
 const CAPABILITY_MISMATCH: &str =
     "Configured active capabilities do not match the initialized instance";
 const ISSUER_MISMATCH: &str = "Configured issuer does not match the initialized instance";
+const POLICY_MISMATCH: &str =
+    "Configured token lifetimes or password policy do not match the initialized instance";
 
 struct Disposable {
     control: postgres::Client,
@@ -484,6 +486,15 @@ fn capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres() {
             .iter()
             .any(|name| name == "identity.device_trust")
     );
+    assert_eq!(agreement_value["format"], 2);
+    assert_eq!(agreement_value["authentication"]["access_token_ttl"], 300);
+    assert_eq!(
+        agreement_value["authentication"]["refresh_token_ttl"],
+        2_592_000
+    );
+    assert_eq!(agreement_value["authentication"]["session_ttl"], 28_800);
+    assert_eq!(agreement_value["authentication"]["password_history"], 5);
+    assert!(!agreement.contains(&dir.path().display().to_string()));
     assert_eq!(text_of(&before, "meta/issuer"), format!("\"{ISSUER}\""));
     let users = before
         .keys()
@@ -538,6 +549,186 @@ fn capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres() {
     database.remove();
     println!(
         "gateway_pid={gateway_pid} capability_pid={capability_pid} issuer_pid={issuer_pid} exit=2 issuer={ISSUER} other_issuer={OTHER_ISSUER} gateway_listen=http://{gateway_listen} capability_listen=http://{capability_listen} issuer_listen=http://{issuer_listen} tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true users={users} database_dropped={}",
+        database.name
+    );
+}
+
+fn write_policy_config(
+    dir: &Path,
+    name: &str,
+    postgres: &PostgresConfig,
+    listen: SocketAddr,
+    data_dir: &Path,
+    access_token_ttl: u64,
+    password_history: u32,
+) -> PathBuf {
+    let file = dir.join(format!("{name}.toml"));
+    let config = Config {
+        browser_ui: false,
+        process: ProcessSelection {
+            role: ProcessRole::Gateway,
+            accept_partial_duties: true,
+        },
+        postgres: Some(postgres.clone()),
+        issuer: ISSUER.into(),
+        listen,
+        data_dir: data_dir.to_path_buf(),
+        access_token_ttl,
+        password_history,
+        ..Config::default()
+    };
+    config.validate().unwrap();
+    riauth::config::write_private(
+        &file,
+        toml::to_string_pretty(&config).unwrap().as_bytes(),
+        false,
+    )
+    .unwrap();
+    let text = fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("tls_cert_file"), "{text}");
+    assert!(!text.contains("tls_key_file"), "{text}");
+    assert!(!text.contains("https://"), "{text}");
+    assert!(
+        text.contains(&format!("access_token_ttl = {access_token_ttl}")),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("password_history = {password_history}")),
+        "{text}"
+    );
+    let loaded = Config::load(&file).unwrap();
+    assert_eq!(loaded.issuer, ISSUER);
+    assert_eq!(loaded.access_token_ttl, access_token_ttl);
+    assert_eq!(loaded.password_history, password_history);
+    assert_eq!(loaded.refresh_token_ttl, 2_592_000);
+    assert_eq!(loaded.session_ttl, 28_800);
+    assert_eq!(loaded.process.role, ProcessRole::Gateway);
+    assert!(loaded.process.accept_partial_duties);
+    assert!(!loaded.browser_ui);
+    assert!(loaded.tls_cert_file.is_none() && loaded.tls_key_file.is_none());
+    assert_ne!(loaded.data_dir, dir.join("data"));
+    file
+}
+
+#[test]
+#[ignore = "starts a gateway and mismatched serve processes against one disposable PostgreSQL database; use scripts/test-postgres.sh"]
+fn authentication_policy_mismatch_binds_nothing_and_preserves_postgres() {
+    let (dir, postgres, mut database) = Disposable::create();
+    let init = Config {
+        data_dir: dir.path().join("data"),
+        postgres: Some(postgres.clone()),
+        issuer: ISSUER.into(),
+        browser_ui: true,
+        ..Config::default()
+    };
+    init.validate().unwrap();
+    let core = Core::initialize(
+        init,
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Admin".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(core.store.backend(), "postgresql");
+    drop(core);
+
+    let gateway_listen = reserve();
+    let gateway_dir = dir.path().join("gateway-data");
+    let gateway_file = write_policy_config(
+        dir.path(),
+        "gateway-policy",
+        &postgres,
+        gateway_listen,
+        &gateway_dir,
+        300,
+        5,
+    );
+    let gateway = Gateway::spawn(
+        &Config::load(&gateway_file).unwrap(),
+        &gateway_file,
+        dir.path().join("gateway-policy.log"),
+    );
+    let http = client();
+    let ready = json_ok(http.get(format!("{}/readyz", gateway.url)).send().unwrap());
+    assert_eq!(ready["status"], "ok");
+    assert_eq!(ready["role"], "gateway");
+    assert_eq!(ready["duties"]["background_jobs"], false);
+    assert_eq!(ready["issuer"], ISSUER);
+
+    let before = database.records();
+    let agreement = text_of(&before, "meta/node_security");
+    let agreement_value: Value = serde_json::from_str(&agreement).unwrap();
+    assert_eq!(agreement_value["format"], 2);
+    assert_eq!(agreement_value["issuer"], ISSUER);
+    assert_eq!(agreement_value["authentication"]["access_token_ttl"], 300);
+    assert_eq!(
+        agreement_value["authentication"]["refresh_token_ttl"],
+        2_592_000
+    );
+    assert_eq!(agreement_value["authentication"]["session_ttl"], 28_800);
+    assert_eq!(agreement_value["authentication"]["password_history"], 5);
+    assert!(!agreement.contains("gateway-data"));
+    assert!(!agreement.contains("database_key"));
+    assert!(!agreement.contains(&dir.path().display().to_string()));
+    let users = before
+        .keys()
+        .filter(|key| key.starts_with("users/"))
+        .count();
+    assert_eq!(users, 1);
+
+    let lifetime_listen = reserve();
+    let lifetime_file = write_policy_config(
+        dir.path(),
+        "lifetime",
+        &postgres,
+        lifetime_listen,
+        &dir.path().join("lifetime-data"),
+        600,
+        5,
+    );
+    let lifetime_pid = Refusal::spawn(&lifetime_file, &dir.path().join("lifetime.log"))
+        .wait_without_listener(
+            lifetime_listen,
+            &dir.path().join("lifetime.log"),
+            POLICY_MISMATCH,
+        );
+    assert_eq!(database.records(), before);
+
+    let history_listen = reserve();
+    let history_file = write_policy_config(
+        dir.path(),
+        "history",
+        &postgres,
+        history_listen,
+        &dir.path().join("history-data"),
+        300,
+        0,
+    );
+    let history_pid = Refusal::spawn(&history_file, &dir.path().join("history.log"))
+        .wait_without_listener(
+            history_listen,
+            &dir.path().join("history.log"),
+            POLICY_MISMATCH,
+        );
+    assert_eq!(database.records(), before);
+
+    let still = json_ok(http.get(format!("{}/readyz", gateway.url)).send().unwrap());
+    assert_eq!(still["status"], "ok");
+    assert_eq!(still["role"], "gateway");
+    assert_eq!(still["duties"]["background_jobs"], false);
+    assert_eq!(still["issuer"], ISSUER);
+    assert_eq!(database.records(), before);
+
+    let gateway_pid = gateway.pid;
+    drop(gateway);
+    assert!(TcpStream::connect_timeout(&gateway_listen, Duration::from_millis(200)).is_err());
+    database.remove();
+    println!(
+        "gateway_pid={gateway_pid} lifetime_pid={lifetime_pid} history_pid={history_pid} exit=2 issuer={ISSUER} gateway_listen=http://{gateway_listen} lifetime_listen=http://{lifetime_listen} history_listen=http://{history_listen} tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users={users} database_dropped={}",
         database.name
     );
 }
