@@ -3008,7 +3008,7 @@
       ],
       "label": "extend",
       "journey": "module",
-      "current_state": "Prometheus metrics, doctor, logout and mail delivery endpoints, an alert rules template, and an alert webhook remain. Platform GET /api/operations/offboarding (riauth offboard diagnostics) counts every scheduled-offboarding job and lists at most 50 redacted attention items: failed jobs, done jobs whose live downstream state is pending or incomplete, and scheduled or running jobs that already have last_error. Items and visible targets report has_error and leave the stored error text on the job read. operations.read on operations/offboarding sees the counts; an item also requires user.offboard on the stored username. Hidden targets still decide downstream state. affects_readiness is false, and doctor, /readyz, and /livez stay on their existing answers. There are no dashboards and no connector-lag, storage-pressure, or key-problem signals. Node mismatch remains O03. queues.offboard_jobs.failed still counts status failed only. Downstream resolved is an attestation. Failed provisioning jobs and mail deliveries stay on their existing reads. GET /api/operations/reconciliation counts stored reconciliation schedules and retained jobs and lists at most 50 redacted attention rows: failed jobs, stale jobs other than a schedule disabled before dispatch, queued or running jobs that already have last_error, and schedules that already have last_error. Items report has_error and a fixed next_action, and leave stored error text on the schedule and job reads. next_run is the next enqueue time, so this read does not measure connector lag. operations.read on operations/reconciliation sees every controller scope. affects_readiness is false. The offboarding read still scans offboard_jobs and does not add a Prometheus series. Platform GET /api/operations/offboarding/deactivations counts every stored deactivation and lists at most 50 redacted attention rows for delivery states pending, failed, ambiguous, and dismissed. Rows no offboarding job records are included. has_error and a fixed next_action leave stored error text, URLs, and remote identifiers on the deactivation read. An item requires user.offboard on the account's current username; the stored username is not the authorization key. A missing account is visible to a full administrator without that stored name, and an agent leaves it withheld. operations.read on operations/offboarding is required. affects_readiness is false. Essentials keeps GET /api/provisioning/deactivations and does not serve this route. riauth offboard diagnostics remains the job aggregate.",
+      "current_state": "Prometheus metrics, doctor, logout and mail delivery endpoints, an alert rules template, and an alert webhook remain. Platform GET /api/operations/offboarding (riauth offboard diagnostics) counts every scheduled-offboarding job and lists at most 50 redacted attention items: failed jobs, done jobs whose live downstream state is pending or incomplete, and scheduled or running jobs that already have last_error. Items and visible targets report has_error and leave the stored error text on the job read. operations.read on operations/offboarding sees the counts; an item also requires user.offboard on the stored username. Hidden targets still decide downstream state. affects_readiness is false, and doctor, /readyz, and /livez stay on their existing answers. There are no dashboards and no connector-lag, storage-pressure, or key-problem signals. Node mismatch remains O03. queues.offboard_jobs.failed still counts status failed only. Downstream resolved is an attestation. Failed provisioning jobs and mail deliveries stay on their existing reads. GET /api/operations/reconciliation counts stored reconciliation schedules and retained jobs and lists at most 50 redacted attention rows: failed jobs, stale jobs other than a schedule disabled before dispatch, queued or running jobs that already have last_error, and schedules that already have last_error. Items report has_error and a fixed next_action, and leave stored error text on the schedule and job reads. next_run is the next enqueue time, so this read does not measure connector lag. operations.read on operations/reconciliation sees every controller scope. affects_readiness is false. The offboarding read still scans offboard_jobs and does not add a Prometheus series. Platform GET /api/operations/offboarding/deactivations pages provisioning_deactivations at the storage page of 128, counts every stored deactivation, and retains at most 50 redacted attention rows for delivery states pending, failed, ambiguous, and dismissed. Job records are not read, and the response has no job-linkage field. Rows with no job record stay in the counts because the scan is the deactivation bucket. Each page decodes up to 128 full deactivation values, and this read does not size-cap a stored value. has_error and a fixed next_action leave stored error text, URLs, and remote identifiers on the deactivation read. An item requires user.offboard on the account's current username; the stored username is not the authorization key. A missing account is visible to a full administrator without that stored name, and an agent leaves it withheld. operations.read on operations/offboarding is required. affects_readiness is false. Essentials keeps GET /api/provisioning/deactivations and does not serve this route. riauth offboard diagnostics remains the job aggregate.",
       "implementation": [
         "src/offboarding.rs",
         "src/reconciliation.rs",
@@ -3031,6 +3031,16 @@
           "ci": "ci-check"
         },
         {
+          "ref": "tests/offboarding_deactivation_diagnostics.rs::redb_offboarding_deactivation_diagnostics_pages_exact_counts",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/offboarding_deactivation_diagnostics.rs::postgres_offboarding_deactivation_diagnostics_pages_exact_counts",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
+        {
           "ref": "tests/reconciliation_diagnostics.rs::reconciliation_diagnostics_reports_controller_failures_without_secrets",
           "kind": "rust",
           "ci": "ci-check"
@@ -3049,6 +3059,8 @@
       "tests_run_in_this_task": [
         "offboarding_diagnostics_reports_incomplete_and_failed_without_secrets",
         "offboarding_deactivation_diagnostics_reports_incomplete_delivery_without_secrets",
+        "redb_offboarding_deactivation_diagnostics_pages_exact_counts",
+        "postgres_offboarding_deactivation_diagnostics_pages_exact_counts",
         "reconciliation_diagnostics_reports_controller_failures_without_secrets"
       ],
       "documentation": [

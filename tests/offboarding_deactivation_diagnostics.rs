@@ -5,6 +5,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use common::backend::Backend;
 use common::{Fixture, PASSWORD};
 use http_body_util::BodyExt;
 use riauth::{
@@ -15,6 +16,8 @@ use riauth::{
     },
     model::{Audit, NewUser, User},
     offboarding::{Job, Status as JobStatus},
+    store::maintenance::PAGE,
+    telemetry::ReadContext,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -402,8 +405,9 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     assert_eq!(count(&report, "delivery_resolved"), 1);
     assert_eq!(count(&report, "delivery_cancelled"), 1);
     assert_eq!(count(&report, "attention"), 10);
-    assert_eq!(count(&report, "unreferenced"), 12);
-    assert_eq!(count(&report, "unreferenced_attention"), 9);
+    assert!(report["counts"].get("unreferenced").is_none());
+    assert!(report["counts"].get("unreferenced_attention").is_none());
+    assert!(!report.to_string().contains("referenced_by_offboard_job"));
     assert_eq!(count(&report, "withheld"), 0);
     assert_eq!(count(&report, "withheld_attention"), 0);
     assert_eq!(report["listed"], 10);
@@ -445,7 +449,7 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     assert_eq!(failed["hold"], Value::Null);
     assert_eq!(failed["hold_recognized"], true);
     assert_eq!(failed["next_action"], "retry_or_replan_deactivation");
-    assert_eq!(failed["referenced_by_offboard_job"], true);
+    assert!(failed.get("referenced_by_offboard_job").is_none());
     assert_eq!(failed["remote_completion_verified"], false);
     assert_eq!(failed["has_unlinked_create"], false);
     let stale = item(&report, "fail-frank");
@@ -453,7 +457,7 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     assert_eq!(stale["delivery_state"], "failed");
     assert_eq!(stale["next_action"], "inspect_and_replan");
     assert_eq!(stale["dispatch_recovery_count"], 1);
-    assert_eq!(stale["referenced_by_offboard_job"], false);
+    assert!(stale.get("referenced_by_offboard_job").is_none());
     let ghost = item(&report, "fail-ghost");
     assert_eq!(ghost["account_present"], false);
     assert!(ghost.get("username").is_none());
@@ -477,7 +481,7 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     assert_eq!(held["next_action"], "review_provisioning_plan");
     assert_eq!(held["has_unlinked_create"], true);
     assert_eq!(held["target"], "wiki");
-    assert_eq!(held["referenced_by_offboard_job"], false);
+    assert!(held.get("referenced_by_offboard_job").is_none());
     let unknown_hold = item(&report, "pend-ivan");
     assert_eq!(unknown_hold["hold"], Value::Null);
     assert_eq!(unknown_hold["hold_recognized"], false);
@@ -615,7 +619,11 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
         alice_only["items"][0]["next_action"],
         "inspect_hidden_target"
     );
-    assert_eq!(alice_only["items"][0]["referenced_by_offboard_job"], true);
+    assert!(
+        alice_only["items"][0]
+            .get("referenced_by_offboard_job")
+            .is_none()
+    );
     assert_eq!(count(&alice_only, "withheld"), 12);
     assert_eq!(count(&alice_only, "withheld_attention"), 9);
     assert_redacted(&alice_only);
@@ -709,8 +717,9 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     assert_eq!(count(&flooded, "failed"), 53);
     assert_eq!(count(&flooded, "delivery_failed"), 53);
     assert_eq!(count(&flooded, "attention"), 60);
-    assert_eq!(count(&flooded, "unreferenced"), 62);
-    assert_eq!(count(&flooded, "unreferenced_attention"), 59);
+    assert!(flooded["counts"].get("unreferenced").is_none());
+    assert!(flooded["counts"].get("unreferenced_attention").is_none());
+    assert!(!flooded.to_string().contains("referenced_by_offboard_job"));
     assert_eq!(flooded["listed"], 50);
     assert_eq!(flooded["truncated"], true);
     let flooded_ids: Vec<_> = flooded["items"]
@@ -735,4 +744,328 @@ async fn offboarding_deactivation_diagnostics_reports_incomplete_delivery_withou
     }));
     assert_redacted(&flooded);
     assert_eq!(audit_len(&fixture), after_agents);
+}
+
+/// Two full storage pages, then a short page. The population is not a multiple
+/// of `PAGE`, so the scan count is the page count and does not include an
+/// empty follow-up read.
+fn deactivation_diagnostics_pages_exact_counts(backend: Backend) {
+    let fixture = backend.fixture();
+    let alice = add_user(&fixture, "alice");
+    let beth = add_user(&fixture, "beth");
+    let mut rows = Vec::new();
+    for n in 0..PAGE {
+        rows.push(row(
+            &format!("a-{n:04}"),
+            &alice.id,
+            &alice.username,
+            "payroll",
+            Status::Pending,
+        ));
+    }
+    for n in 0..PAGE {
+        let mut delivered = row(
+            &format!("b-{n:04}"),
+            &alice.id,
+            &alice.username,
+            "payroll",
+            Status::Delivered,
+        );
+        delivered.outcome = Some("deactivated".into());
+        delivered.last_error = None;
+        delivered.delivered_at = Some(12);
+        rows.push(delivered);
+    }
+    for n in 0..60 {
+        rows.push(row(
+            &format!("c-{n:04}"),
+            &alice.id,
+            &alice.username,
+            "payroll",
+            Status::Failed,
+        ));
+    }
+    let mut ambiguous = row(
+        "d-ambig",
+        &alice.id,
+        &alice.username,
+        "payroll",
+        Status::Running,
+    );
+    ambiguous.uncertain = true;
+    rows.push(ambiguous);
+    let mut waived = row(
+        "e-waive",
+        &alice.id,
+        &alice.username,
+        "payroll",
+        Status::Dismissed,
+    );
+    waived.dismissal = Some(Dismissal {
+        reason: DismissalReason::RemoteAbsent,
+        evidence: "SECRET-EVIDENCE https://secret.example/waiver".into(),
+        by: "admin".into(),
+        at: 3,
+        previous_status: Status::Failed,
+        revision: "SECRET-REVISION".into(),
+    });
+    rows.push(waived);
+    let mut attested = row(
+        "f-attest",
+        &alice.id,
+        &alice.username,
+        "payroll",
+        Status::Failed,
+    );
+    attested.resolution = Some(Resolution {
+        observed: Observed::Applied,
+        evidence: "SECRET-RESOLUTION https://secret.example/ticket".into(),
+        by: "admin".into(),
+        at: 5,
+        create_settlement: None,
+    });
+    rows.push(attested);
+    rows.push(row(
+        "g-cancel",
+        &alice.id,
+        &alice.username,
+        "payroll",
+        Status::Superseded,
+    ));
+    rows.push(row(
+        "h-stale",
+        &alice.id,
+        &alice.username,
+        "payroll",
+        Status::Stale,
+    ));
+    let mut ghost = row(
+        "i-ghost",
+        "missing-user",
+        "https://secret.example/ghost?access_token=SECRET-GHOST",
+        "archive",
+        Status::Failed,
+    );
+    ghost.user_id = "missing-user".into();
+    rows.push(ghost);
+    rows.push(row(
+        "j-beth",
+        &beth.id,
+        &beth.username,
+        "wiki",
+        Status::Pending,
+    ));
+    let total = rows.len();
+    assert_eq!(total, PAGE * 2 + 67);
+    assert_ne!(total % PAGE, 0, "the last page must be short");
+    let scans_expected = total.div_ceil(PAGE);
+
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            for row in &rows {
+                tx.put(DEACTIVATIONS, &row.id, row)?;
+            }
+            let job = Job {
+                id: "job-boundary".into(),
+                username: alice.username.clone(),
+                user_id: alice.id.clone(),
+                execute_at: 1,
+                timezone: "UTC".into(),
+                status: JobStatus::Done,
+                attempts: 1,
+                lease_owner: None,
+                lease_until: 0,
+                last_error: Some("https://secret.example/job?access_token=SECRET-JOB".into()),
+                created_by: "admin".into(),
+                actions: vec!["downstream.deactivate".into()],
+                cancel_requested: false,
+                next_attempt: 1,
+                result: Some(json!({
+                    "downstream": {"targets": [{"target": "payroll", "delivery": "c-0000"}]}
+                })),
+                created_at: 1,
+            };
+            tx.put(JOBS, &job.id, &job)?;
+            Ok(())
+        })
+        .unwrap();
+    let stored_job = fixture
+        .core
+        .store
+        .get::<Job>(JOBS, "job-boundary")
+        .unwrap()
+        .unwrap();
+    assert!(
+        stored_job
+            .last_error
+            .as_deref()
+            .unwrap()
+            .contains("SECRET-JOB")
+    );
+
+    let operations = agent(
+        &fixture,
+        "page-ops",
+        &[("operations.read", "operations/offboarding")],
+    );
+    let alice_only = agent(
+        &fixture,
+        "page-alice",
+        &[
+            ("operations.read", "operations/offboarding"),
+            ("user.offboard", "user/alice"),
+        ],
+    );
+    let scans = &fixture.core.store.telemetry().reads;
+    let read_once = |token: &str| {
+        let before_unbounded = scans.scans(ReadContext::Read, false).count();
+        let before_count = scans.scans(ReadContext::Read, true).count();
+        let before_rows = scans.scans(ReadContext::Read, true).sum();
+        let report = fixture
+            .core
+            .offboarding_deactivation_diagnostics(token)
+            .unwrap();
+        assert_eq!(
+            scans.scans(ReadContext::Read, false).count(),
+            before_unbounded,
+            "deactivation diagnostic must page the bucket"
+        );
+        assert_eq!(
+            scans.scans(ReadContext::Read, true).count() - before_count,
+            scans_expected as u64
+        );
+        assert_eq!(
+            scans.scans(ReadContext::Read, true).sum() - before_rows,
+            total as u64
+        );
+        report
+    };
+
+    let report = read_once(&fixture.admin);
+    assert_eq!(
+        report["schema_version"],
+        "riauth.offboarding-deactivation-diagnostics/v1"
+    );
+    assert_eq!(report["affects_readiness"], false);
+    assert!(report.get("healthy").is_none());
+    assert!(report["checked_at"].as_u64().unwrap() > 0);
+    assert_eq!(report["limits"]["attention_items"], 50);
+    assert_eq!(count(&report, "deactivations"), total as u64);
+    assert_eq!(count(&report, "pending"), (PAGE + 1) as u64);
+    assert_eq!(count(&report, "running"), 1);
+    assert_eq!(count(&report, "delivered"), PAGE as u64);
+    assert_eq!(count(&report, "superseded"), 1);
+    assert_eq!(count(&report, "stale"), 1);
+    assert_eq!(count(&report, "failed"), 62);
+    assert_eq!(count(&report, "dismissed"), 1);
+    assert_eq!(count(&report, "delivery_pending"), (PAGE + 1) as u64);
+    assert_eq!(count(&report, "delivery_failed"), 62);
+    assert_eq!(count(&report, "delivery_ambiguous"), 1);
+    assert_eq!(count(&report, "delivery_dismissed"), 1);
+    assert_eq!(count(&report, "delivery_succeeded"), PAGE as u64);
+    assert_eq!(count(&report, "delivery_resolved"), 1);
+    assert_eq!(count(&report, "delivery_cancelled"), 1);
+    assert_eq!(count(&report, "attention"), (PAGE + 65) as u64);
+    assert_eq!(count(&report, "withheld"), 0);
+    assert_eq!(count(&report, "withheld_attention"), 0);
+    assert!(report["counts"].get("unreferenced").is_none());
+    assert!(report["counts"].get("unreferenced_attention").is_none());
+    let status_sum: u64 = [
+        "pending",
+        "running",
+        "delivered",
+        "superseded",
+        "stale",
+        "failed",
+        "dismissed",
+    ]
+    .into_iter()
+    .map(|key| count(&report, key))
+    .sum();
+    assert_eq!(status_sum, total as u64);
+    let delivery_sum: u64 = [
+        "delivery_pending",
+        "delivery_failed",
+        "delivery_ambiguous",
+        "delivery_dismissed",
+        "delivery_succeeded",
+        "delivery_resolved",
+        "delivery_cancelled",
+    ]
+    .into_iter()
+    .map(|key| count(&report, key))
+    .sum();
+    assert_eq!(delivery_sum, total as u64);
+    assert_eq!(report["listed"], 50);
+    assert_eq!(report["truncated"], true);
+    let ids: Vec<_> = report["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap().to_owned())
+        .collect();
+    let expected: Vec<_> = (0..50).map(|n| format!("c-{n:04}")).collect();
+    assert_eq!(ids, expected);
+    assert!(report["items"].as_array().unwrap().iter().all(|item| {
+        item["username"] == "alice"
+            && item["target"] == "payroll"
+            && item["target_hidden"] == false
+            && item["delivery_state"] == "failed"
+            && item["next_action"] == "retry_or_replan_deactivation"
+            && item.get("referenced_by_offboard_job").is_none()
+    }));
+    assert_redacted(&report);
+    let body = report.to_string();
+    for needle in [
+        "beth",
+        "wiki",
+        "archive",
+        "SECRET-JOB",
+        "referenced_by_offboard_job",
+    ] {
+        assert!(!body.contains(needle), "{needle}");
+    }
+
+    let hidden = read_once(&operations);
+    assert_eq!(count(&hidden, "deactivations"), total as u64);
+    assert_eq!(count(&hidden, "attention"), (PAGE + 65) as u64);
+    assert_eq!(count(&hidden, "withheld"), total as u64);
+    assert_eq!(count(&hidden, "withheld_attention"), (PAGE + 65) as u64);
+    assert_eq!(hidden["listed"], 0);
+    assert_eq!(hidden["truncated"], false);
+    assert_eq!(hidden["items"], json!([]));
+    assert_redacted(&hidden);
+    for needle in ["alice", "beth", "payroll", "wiki", "archive", "SECRET-JOB"] {
+        assert!(!hidden.to_string().contains(needle), "{needle}");
+    }
+
+    let scoped = read_once(&alice_only);
+    assert_eq!(count(&scoped, "withheld"), 2);
+    assert_eq!(count(&scoped, "withheld_attention"), 2);
+    assert_eq!(scoped["listed"], 50);
+    assert_eq!(scoped["truncated"], true);
+    assert!(scoped["items"].as_array().unwrap().iter().all(|item| {
+        item["username"] == "alice"
+            && item.get("target").is_none()
+            && item["target_hidden"] == true
+            && item["next_action"] == "inspect_hidden_target"
+            && item["id"].as_str().unwrap().starts_with("c-")
+    }));
+    assert_redacted(&scoped);
+    for needle in ["beth", "payroll", "wiki", "archive", "SECRET-JOB"] {
+        assert!(!scoped.to_string().contains(needle), "{needle}");
+    }
+}
+
+#[test]
+fn redb_offboarding_deactivation_diagnostics_pages_exact_counts() {
+    deactivation_diagnostics_pages_exact_counts(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_offboarding_deactivation_diagnostics_pages_exact_counts() {
+    deactivation_diagnostics_pages_exact_counts(Backend::Postgres);
 }

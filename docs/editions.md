@@ -114,7 +114,8 @@ verification, temporary-access approval, scheduled offboarding and Vault Transit
 signing engines also compile only in Platform. The scheduled-offboarding
 diagnostic route is Platform because a serving Essentials store cannot retain
 `offboard_jobs`. Platform `GET /api/operations/offboarding/deactivations` is the
-redacted read for incomplete and failed deactivation delivery. Essentials keeps
+redacted read for incomplete and failed deactivation delivery. It pages the
+deactivation bucket and does not load offboarding jobs. Essentials keeps
 the shared deactivation rows and `GET /api/provisioning/deactivations`. Shared configuration, temporary access, offboarding and
 remote-key records remain decodable for downgrade inspection; an Essentials
 binary still refuses to restore or open a store that retains them. Restore a Platform archive with Platform, then use the handoff

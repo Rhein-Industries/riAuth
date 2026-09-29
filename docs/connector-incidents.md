@@ -50,6 +50,7 @@ the logout outbox, not mail and not SCIM. Incomplete scheduled offboarding is
 `riauth offboard diagnostics` (`GET /api/operations/offboarding`), which is
 separate from `doctor`. Deactivation rows, including a row no offboarding job
 records, are `GET /api/operations/offboarding/deactivations` on Platform.
+That read pages the deactivation bucket and does not load offboarding jobs.
 
 Counters in `riauth metrics` reset at process start. `runtime.signing_errors`,
 `runtime.alert_delivery_errors`, and `runtime.cleanup_errors` are those

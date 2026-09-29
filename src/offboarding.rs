@@ -18,7 +18,8 @@
 //! the job read, and the aggregate reports only whether an error is present.
 //! `Core::offboarding_deactivation_diagnostics` is the row-level companion for
 //! incomplete and failed deactivation delivery, including rows no job records.
-//! The reads do not change readiness.
+//! It pages the deactivation bucket and retains at most 50 redacted attention
+//! rows. It does not load offboarding jobs. The reads do not change readiness.
 
 pub use crate::offboarding_types::{ACTIONS, BUCKET, Job, MAX_ATTEMPTS, Status};
 use crate::{
@@ -34,7 +35,6 @@ use crate::{
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
 
 const LEASE_SECONDS: u64 = 60;
 const MAX_SCHEDULE_SECONDS: u64 = 366 * 24 * 60 * 60;
@@ -661,8 +661,6 @@ struct DeactivationCounts {
     delivery_resolved: u64,
     delivery_cancelled: u64,
     attention: u64,
-    unreferenced: u64,
-    unreferenced_attention: u64,
     withheld: u64,
     withheld_attention: u64,
 }
@@ -673,35 +671,11 @@ struct VisibleAccount {
     recorded_matches: bool,
 }
 
-fn referenced_deliveries(tx: &Tx<'_>) -> Result<BTreeSet<String>> {
-    let mut ids = BTreeSet::new();
-    for (_, job) in tx.list::<Job>(BUCKET)? {
-        let Some(targets) = job
-            .result
-            .as_ref()
-            .and_then(|result| result["downstream"]["targets"].as_array())
-        else {
-            continue;
-        };
-        for entry in targets {
-            if let Some(id) = entry["delivery"].as_str().filter(|id| !id.is_empty()) {
-                ids.insert(id.to_owned());
-            }
-        }
-    }
-    Ok(ids)
-}
-
 fn deactivation_needs_attention(state: &str) -> bool {
     matches!(state, "pending" | "failed" | "ambiguous" | "dismissed")
 }
 
-fn count_deactivation(
-    counts: &mut DeactivationCounts,
-    row: &Deactivation,
-    state: &str,
-    referenced: bool,
-) {
+fn count_deactivation(counts: &mut DeactivationCounts, row: &Deactivation, state: &str) {
     counts.deactivations = counts.deactivations.saturating_add(1);
     let status = match row.status {
         downstream::Status::Pending => &mut counts.pending,
@@ -724,9 +698,6 @@ fn count_deactivation(
         _ => &mut counts.delivery_failed,
     };
     *delivery = delivery.saturating_add(1);
-    if !referenced {
-        counts.unreferenced = counts.unreferenced.saturating_add(1);
-    }
 }
 
 fn visible_account(
@@ -762,7 +733,6 @@ fn deactivation_item(
     account: &VisibleAccount,
     actor: &Principal,
     state: &str,
-    referenced: bool,
 ) -> ListedItem {
     let hidden = !actor.allows("provisioner.read", &format!("provisioner/{}", row.target));
     let status = deactivation_status_name(row.status);
@@ -794,7 +764,6 @@ fn deactivation_item(
         "uncertain": row.uncertain,
         "delivered_at": row.delivered_at,
         "remote_completion_verified": false,
-        "referenced_by_offboard_job": referenced,
         "has_unlinked_create": row.unlinked_create.is_some(),
         "dispatch_recovery_count": row.dispatch_recoveries.len(),
         "next_action": action,
@@ -818,6 +787,37 @@ fn deactivation_item(
         id: row.id.clone(),
         body,
     }
+}
+
+fn sort_attention(items: &mut [ListedItem]) {
+    items.sort_by(|left, right| {
+        left.rank
+            .cmp(&right.rank)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+/// Keep the best `DIAGNOSTIC_ITEMS` rows. Worse rows are dropped immediately.
+fn retain_attention(items: &mut Vec<ListedItem>, item: ListedItem) {
+    if items.len() < DIAGNOSTIC_ITEMS {
+        items.push(item);
+        if items.len() == DIAGNOSTIC_ITEMS {
+            sort_attention(items);
+        }
+        return;
+    }
+    let keep = {
+        let worst = items.last().expect("the retained list is full");
+        (item.rank, item.id.as_str()) < (worst.rank, worst.id.as_str())
+    };
+    if !keep {
+        return;
+    }
+    items.pop();
+    let pos = items.partition_point(|existing| {
+        (existing.rank, existing.id.as_str()) < (item.rank, item.id.as_str())
+    });
+    items.insert(pos, item);
 }
 
 fn load(tx: &Tx<'_>, id: &str) -> Result<Job> {
@@ -1055,45 +1055,67 @@ impl Core {
         })
     }
 
-    /// Counts for every stored deactivation row, plus redacted attention rows
-    /// for incomplete or failed delivery. A row no offboarding job records is
-    /// still counted. Stored error text, remote identifiers, URLs, leases,
-    /// evidence and the historical username stay on the deactivation read.
-    /// This read does not claim, dispatch, or change readiness.
+    /// Counts for every stored deactivation row, plus at most 50 redacted
+    /// attention rows for incomplete or failed delivery. Rows are read one
+    /// storage page at a time. A row no offboarding job records is still
+    /// counted; job records are not read, so the response has no job-linkage
+    /// field. Stored error text, remote identifiers, URLs, leases, evidence
+    /// and the historical username stay on the deactivation read. This read
+    /// does not claim, dispatch, or change readiness.
     pub fn offboarding_deactivation_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.management(tx, token, "operations.read", "operations/offboarding")?;
-            let referenced = referenced_deliveries(tx)?;
             let mut counts = DeactivationCounts::default();
-            let mut listed = Vec::new();
-            for (_, row) in tx.list::<Deactivation>(downstream::BUCKET)? {
-                let state = row.delivery_state();
-                let referenced = referenced.contains(&row.id);
-                count_deactivation(&mut counts, &row, state, referenced);
-                let visible = visible_account(tx, &row, &actor)?;
-                if visible.is_none() {
-                    counts.withheld = counts.withheld.saturating_add(1);
-                }
-                if !deactivation_needs_attention(state) {
-                    continue;
-                }
-                counts.attention = counts.attention.saturating_add(1);
-                if !referenced {
-                    counts.unreferenced_attention = counts.unreferenced_attention.saturating_add(1);
-                }
-                let Some(account) = visible else {
-                    counts.withheld_attention = counts.withheld_attention.saturating_add(1);
-                    continue;
+            let mut listed = Vec::with_capacity(DIAGNOSTIC_ITEMS);
+            let mut visible_attention = 0u64;
+            let mut after: Option<String> = None;
+            loop {
+                let page = tx.scan::<Deactivation>(
+                    downstream::BUCKET,
+                    after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                )?;
+                let Some(last_key) = page.last().map(|(key, _)| key.clone()) else {
+                    break;
                 };
-                listed.push(deactivation_item(&row, &account, &actor, state, referenced));
+                if after
+                    .as_ref()
+                    .is_some_and(|previous| last_key.as_str() <= previous.as_str())
+                {
+                    return Err(Error::internal(
+                        "Deactivation diagnostic page did not advance",
+                    ));
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = Some(last_key);
+                for (_, row) in page {
+                    let state = row.delivery_state();
+                    count_deactivation(&mut counts, &row, state);
+                    let visible = visible_account(tx, &row, &actor)?;
+                    if visible.is_none() {
+                        counts.withheld = counts.withheld.saturating_add(1);
+                    }
+                    if !deactivation_needs_attention(state) {
+                        continue;
+                    }
+                    counts.attention = counts.attention.saturating_add(1);
+                    let Some(account) = visible else {
+                        counts.withheld_attention = counts.withheld_attention.saturating_add(1);
+                        continue;
+                    };
+                    visible_attention = visible_attention.saturating_add(1);
+                    retain_attention(
+                        &mut listed,
+                        deactivation_item(&row, &account, &actor, state),
+                    );
+                }
+                if !full {
+                    break;
+                }
             }
-            listed.sort_by(|left, right| {
-                left.rank
-                    .cmp(&right.rank)
-                    .then_with(|| left.id.cmp(&right.id))
-            });
-            let truncated = listed.len() > DIAGNOSTIC_ITEMS;
-            listed.truncate(DIAGNOSTIC_ITEMS);
+            if listed.len() < DIAGNOSTIC_ITEMS {
+                sort_attention(&mut listed);
+            }
             let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
             Ok(json!({
                 "schema_version": "riauth.offboarding-deactivation-diagnostics/v1",
@@ -1102,7 +1124,7 @@ impl Core {
                 "limits": { "attention_items": DIAGNOSTIC_ITEMS },
                 "counts": counts,
                 "listed": items.len(),
-                "truncated": truncated,
+                "truncated": visible_attention > u64::try_from(DIAGNOSTIC_ITEMS).unwrap_or(u64::MAX),
                 "items": items,
             }))
         })
