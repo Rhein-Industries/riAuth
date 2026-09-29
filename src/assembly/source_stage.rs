@@ -28,6 +28,14 @@ impl Core {
         tx.put("source_stage_requests", suspension, &stage.id)
     }
 
+    pub(crate) fn discard_stage_resume_bearer(&self, tx: &Tx<'_>, token: &str) -> Result<()> {
+        tx.delete("session_tokens", &digest(token))
+    }
+
+    pub(crate) fn persist_stage_resume_use(&self, tx: &Tx<'_>, stage: &SourceStage) -> Result<()> {
+        tx.put("source_stages", &stage.id, stage)
+    }
+
     pub fn source_stage_resume(
         &self,
         stage_id: &str,

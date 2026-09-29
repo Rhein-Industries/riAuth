@@ -978,14 +978,14 @@ impl Core {
             .get::<Session>("sessions", &sid)?
             .ok_or_else(|| Error::internal("missing session"))?;
         // The bearer token was never returned, so the session is reachable only by its browser.
-        tx.delete("session_tokens", &digest(token))?;
+        self.discard_stage_resume_bearer(tx, token)?;
         let mut request = stage.request.clone();
         request.decision = Some("approve".into());
         request.transaction_id = Some(stage.transaction.clone());
         // Only this resume flow may authorize the suspended request. Mark the stage
         // within the same store transaction before the authorization gate checks it.
         stage.used = true;
-        tx.put("source_stages", &stage.id, &stage)?;
+        self.persist_stage_resume_use(tx, &stage)?;
         let redirect = match self.authorize_session(tx, session.clone(), request) {
             Ok(redirect) => redirect,
             Err(_) => {

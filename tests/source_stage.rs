@@ -1726,9 +1726,9 @@ fn query(redirect: &str) -> std::collections::HashMap<String, String> {
 }
 
 #[tokio::test]
-async fn stage_start_reserves_one_request_and_retry_rebinds_after_cancel() {
+async fn stage_resume_consumes_retried_request_after_cancel() {
     let f = Fixture::new();
-    let _upstream = Upstream::new(&f, true).await;
+    let upstream = Upstream::new(&f, true).await;
     stage_client(&f, false);
     let (request, _) = authorization(&f, None, None);
     let prepared = f.core.authorization_prepare(None, request.clone()).unwrap();
@@ -1801,6 +1801,55 @@ async fn stage_start_reserves_one_request_and_retry_rebinds_after_cancel() {
             .as_deref(),
         Some(next_stage.as_str())
     );
+
+    let next_authorization_id = text(&retried["source_stage"], "authorization_id");
+    upstream
+        .callback(&f, &retried["source_stage"], "subject-1")
+        .await;
+    let resumed = f
+        .core
+        .source_stage_resume(&next_stage, &next_authorization_id, None)
+        .unwrap();
+    assert_eq!(resumed["status"], "complete");
+    assert_eq!(resumed["code_issued"], true);
+    let issued = codes(&f);
+    assert_eq!(issued.len(), 1);
+    let session: Session = f
+        .core
+        .store
+        .get("sessions", &issued[0].identity.session_id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<String>("session_tokens", &session.token_hash)
+            .unwrap()
+            .is_none()
+    );
+    let resumed_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &next_stage)
+        .unwrap()
+        .unwrap();
+    assert_eq!(resumed_stage["used"], true);
+    let completed = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&next_stage, &next_authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage already used"
+    );
+    assert_eq!(
+        f.core
+            .source_stage_cancel(&next_stage, &next_authorization_id)
+            .unwrap_err()
+            .message,
+        "Source stage already completed"
+    );
+    f.assert_snapshot(&completed);
 }
 
 #[tokio::test]

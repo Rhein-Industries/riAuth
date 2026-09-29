@@ -981,6 +981,32 @@ def main() -> None:
                 )
             ):
                 errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
+            stage_resume = rust_function_body(source_protocol, "resume_stage")
+            stage_resume_compact = re.sub(r"\s+", "", stage_resume or "")
+            stage_resume_raw = rust_function_body(path.read_text(), "resume_stage")
+            discard_bearer = rust_function_body(source_stage_assembly, "discard_stage_resume_bearer")
+            persist_resume = rust_function_body(source_stage_assembly, "persist_stage_resume_use")
+            if (
+                stage_resume is None
+                or stage_resume_raw is None
+                or not (0 <= stage_resume_compact.find("self.complete_source_login(")
+                        < stage_resume_compact.find("tx.get::<String>(")
+                        < stage_resume_compact.find("tx.get::<Session>(")
+                        < stage_resume_compact.find("self.discard_stage_resume_bearer(tx,token)?")
+                        < stage_resume_compact.find("request.decision=Some(")
+                        < stage_resume_compact.find("stage.used=true")
+                        < stage_resume_compact.find("self.persist_stage_resume_use(tx,&stage)?")
+                        < stage_resume_compact.find("self.authorize_session("))
+                or re.search(r'\btx\s*\.\s*delete\s*\(\s*"session_tokens"', stage_resume_raw)
+                or re.search(r'\btx\s*\.\s*put\s*\(\s*"source_stages"', stage_resume_raw)
+                or discard_bearer is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+discard_stage_resume_bearer\s*\(", source_stage_assembly)
+                or 'tx.delete("session_tokens",&digest(token))' not in re.sub(r"\s+", "", discard_bearer)
+                or persist_resume is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_stage_resume_use\s*\(", source_stage_assembly)
+                or 'tx.put("source_stages",&stage.id,stage)' not in re.sub(r"\s+", "", persist_resume)
+            ):
+                errors.append("src/source.rs: source stage resume bearer and one-use writes belong in assembly")
             source_finish_assembly = (SRC / "assembly/source_finish.rs").read_text()
             source_finish = rust_function_body(source_finish_assembly, "source_finish")
             source_finish_compact = re.sub(r"\s+", "", source_finish or "")
