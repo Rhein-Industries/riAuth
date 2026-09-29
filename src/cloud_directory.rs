@@ -1253,7 +1253,7 @@ pub(crate) struct CloudSnapshotDraft {
 }
 
 impl CloudSnapshotDraft {
-    fn new(
+    pub(crate) fn new(
         settings: &Settings,
         actor: &Principal,
         revision: u64,
@@ -1272,7 +1272,24 @@ impl CloudSnapshotDraft {
         }
     }
 
-    fn bounded(&self, settings: &Settings) -> Result<()> {
+    pub(crate) fn resumable_for(
+        &self,
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: &str,
+    ) -> bool {
+        self.directory == settings.id
+            && self.actor == actor.id
+            && self.revision == revision
+            && self.fingerprint == settings.fingerprint
+            && self.authority_digest == authority_digest
+            && self.expires_at > now()
+            && !self.snapshot.complete(settings)
+            && self.snapshot.phase <= settings.groups.len() + 2
+    }
+
+    pub(crate) fn bounded(&self, settings: &Settings) -> Result<()> {
         self.snapshot.bounded(settings)?;
         // A 4 MiB serialized draft leaves ample room below the 8 MiB backup
         // frame ceiling for its stored key and frame wrapper.
@@ -1955,42 +1972,9 @@ impl Core {
         let (actor, revision) = self.cloud_snapshot_actor_revision(token, &settings.resource())?;
         let (entries, snapshot_prior) = {
             let key = digest(&settings.resource());
-            let (prior, mut draft, restarted, authority_digest) = self.store.read(|tx| {
-                let current = self.management(tx, token, "directory.sync", &settings.resource())?;
-                if current.id != actor.id
-                    || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
-                {
-                    return Err(Error::conflict(
-                        "Local configuration changed during cloud directory search",
-                    ));
-                }
-                let authority_digest = ReviewBinding::new(
-                    tx,
-                    &current,
-                    &json!([settings.resource(), revision, settings.fingerprint]),
-                )?
-                .authority_digest;
-                let previous = tx.get::<CloudSnapshotDraft>(bucket, &key)?;
-                let prior = previous
-                    .as_ref()
-                    .map(|draft| (draft.id.clone(), draft.sequence));
-                let valid = previous.as_ref().is_some_and(|draft| {
-                    draft.directory == settings.id
-                        && draft.actor == actor.id
-                        && draft.revision == revision
-                        && draft.fingerprint == settings.fingerprint
-                        && draft.authority_digest == authority_digest
-                        && draft.expires_at > now()
-                        && !draft.snapshot.complete(&settings)
-                        && draft.snapshot.phase <= settings.groups.len() + 2
-                });
-                let restarted = previous.is_some() && !valid;
-                let draft = previous.filter(|_| valid).unwrap_or_else(|| {
-                    CloudSnapshotDraft::new(&settings, &actor, revision, authority_digest.clone())
-                });
-                draft.bounded(&settings)?;
-                Ok((prior, draft, restarted, authority_digest))
-            })?;
+            let (prior, mut draft, restarted, authority_digest) = self.cloud_snapshot_prepare(
+                token, &settings, bucket, &key, &actor, revision,
+            )?;
             self.cloud_budget_ensure(&settings.run_key())?;
             if let Err(error) = draft.snapshot.advance(&settings, settings.quota.pages_per_call) {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {

@@ -2615,6 +2615,41 @@ fn workspace_resumes_interrupted_plan_and_apply_pages_without_removal() {
 }
 
 #[test]
+fn workspace_plan_snapshot_restarts_for_a_different_authorized_actor() {
+    let directory = serve(
+        "workspace",
+        (0..6)
+            .map(|index| {
+                person(
+                    &format!("ext-{index}"),
+                    &format!("user{index}@example.test"),
+                    &format!("User {index}"),
+                    true,
+                )
+            })
+            .collect(),
+        SECRET,
+    );
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let other = agent_token(
+        &fixture,
+        "other-syncer",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+
+    let first = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    assert_eq!(first["decision"], "snapshot_in_progress");
+    assert_eq!(first["pages"], 5);
+    let second = fixture.core.cloud_plan(&other, "workspace", "corp").unwrap();
+    assert_eq!(second["decision"], "snapshot_in_progress");
+    assert_eq!(second["restart"], true);
+    assert_eq!(second["pages"], 5);
+    assert_ne!(second["snapshot_id"], first["snapshot_id"]);
+}
+
+#[test]
 fn workspace_quotas_bind_plan_continuation_and_apply() {
     let (directory, mut fixture) = linked_pair("workspace");
     let old = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();

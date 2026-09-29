@@ -380,6 +380,18 @@ def main() -> None:
                 or re.search(r"let\s*\(\s*actor\s*,\s*revision\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", plan_internal)
             ):
                 errors.append("src/cloud_directory.rs: snapshot actor/revision read belongs in assembly")
+            snapshot_prepare = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_snapshot.rs").read_text()),
+                "cloud_snapshot_prepare",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_prepare\s*\(", plan_internal)
+                or re.search(r"let\s*\(\s*prior\s*,\s*mut\s+draft\s*,\s*restarted\s*,\s*authority_digest\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", plan_internal)
+                or snapshot_prepare is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", snapshot_prepare)
+            ):
+                errors.append("src/cloud_directory.rs: planning draft authorization/read belongs in assembly")
             apply_confirmed = rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_confirmed")
             if (
                 apply_confirmed is None
