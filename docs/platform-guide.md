@@ -1361,7 +1361,10 @@ with the value `explicit_local_operator_input`, `required_scopes`, and
 mode 0600.
 
 `keys import` prints `id`, `active`, and `retained_verification_keys`.
-`active` is the public JWK. The private PEM stays in the operator file.
+The command posts the PEM it read to `/api/keys` as `private_key_pem`.
+The server stores the imported local signing key in the riAuth key store,
+at `key_domains/<id>` for `saml-signing` and `source-sp`. `active` is the
+public JWK of that stored key.
 Importing a key whose `kid` is already present fails with
 `Signing key id is already in use`.
 
