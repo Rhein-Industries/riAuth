@@ -598,7 +598,9 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
 
     // Another fresh browser session of the same account did not start this link.
     let other = browser(&f);
+    let before_foreign = f.snapshot().unwrap();
     assert_eq!(finish(&other).err().unwrap().code, "session_changed");
+    f.assert_snapshot(&before_foreign);
     // The original session must still be a fresh local sign-in when the link is written.
     age(riauth::signin::FRESH_SECONDS + 5);
     assert_eq!(
@@ -610,7 +612,9 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
     // A failure after the proof is spent rolls back the link and the new session with it.
     age(0);
     let before = sessions();
+    let before_delivery = f.snapshot().unwrap();
     assert!(riauth::portal::sources::with_failed_delivery(|| finish(&original)).is_err());
+    f.assert_snapshot(&before_delivery);
     assert_eq!((links(), sessions()), (0, before));
     assert_eq!(
         f.core.portal_source_review(Some(&credential)).unwrap()["status"],
@@ -618,9 +622,24 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
     );
 
     // The same login then finishes once, from the original session, which stays signed in.
-    assert_eq!(finish(&original).unwrap().body["linked"], true);
+    let finished = finish(&original).unwrap();
+    assert_eq!(finished.body["linked"], true);
+    assert!(!finished.body.to_string().contains("ri_session_"));
+    assert!(!finished.body.to_string().contains(&credential));
     assert_eq!(links(), 1);
     assert!(f.core.portal_source_links(Some(&original)).is_ok());
+    assert_eq!(
+        f.core
+            .audit_events(&f.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "source.link" && event["target"] == "upstream")
+            .count(),
+        1
+    );
+    let committed = f.snapshot().unwrap();
     assert_eq!(
         f.core
             .portal_source_review(Some(&credential))
@@ -628,6 +647,11 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
             .code,
         "source_login_expired"
     );
+    assert_eq!(
+        finish(&original).err().unwrap().code,
+        "source_login_expired"
+    );
+    f.assert_snapshot(&committed);
 }
 
 #[cfg(feature = "test-support")]

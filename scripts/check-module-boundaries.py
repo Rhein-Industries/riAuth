@@ -924,8 +924,7 @@ def main() -> None:
             source_finish_compact = re.sub(r"\s+", "", source_finish or "")
             if (
                 rust_function_body(source_protocol, "source_finish") is not None
-                or len(re.findall(r"\bself\.store\.write\s*\(", source_protocol)) != 1
-                or not re.search(r"\bpub\(crate\)\s+fn\s+source_finish_browser\s*<", path.read_text())
+                or re.search(r"\bself\.store\s*\.\s*(?:read|write)\s*\(", source_protocol)
                 or source_finish is None
                 or not re.search(r"\bpub\s+fn\s+source_finish\s*\(", source_finish_assembly)
                 or not (0 <= source_finish_compact.find("Zeroizing::new(input.credential)")
@@ -944,6 +943,27 @@ def main() -> None:
                 or not re.search(r"\bmod\s+source_finish\s*;", (SRC / "assembly.rs").read_text())
             ):
                 errors.append("src/source.rs: charged source finish writer belongs in assembly")
+            source_finish_browser = rust_function_body(
+                source_finish_assembly.replace("source_finish_browser<T>", "source_finish_browser"),
+                "source_finish_browser",
+            )
+            source_finish_browser_compact = re.sub(r"\s+", "", source_finish_browser or "")
+            if (
+                re.search(r"\bfn\s+source_finish_browser\s*<", path.read_text())
+                or source_finish_browser is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_finish_browser\s*<T>\s*\(", source_finish_assembly)
+                or not (0 <= source_finish_browser_compact.find("self.store.write")
+                        < source_finish_browser_compact.find('tx.get::<String>("source_polls",&digest(credential))')
+                        < source_finish_browser_compact.find('tx.get::<Login>("source_logins",&state)')
+                        < source_finish_browser_compact.find("pending.stage.is_some()||pending.workflow.is_some()")
+                        < source_finish_browser_compact.find("bind(tx,pending.target.as_ref())?")
+                        < source_finish_browser_compact.find("letlinking=pending.target.is_some()")
+                        < source_finish_browser_compact.find("self.complete_source_login")
+                        < source_finish_browser_compact.find("Ok(body)=>deliver(tx,linking,&body).map(Ok)")
+                        < source_finish_browser_compact.find("Err(error)=>Ok(Err(error))"))
+                or not source_finish_browser_compact.endswith("})?")
+            ):
+                errors.append("src/source.rs: browser source finish transaction belongs in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
             source_callback_raw = rust_function_body(path.read_text(), "source_callback")
             callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
