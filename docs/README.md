@@ -2,8 +2,8 @@
 
 Choose a path for v0.1.1:
 
-- **New Essentials operator or user?** Follow the [Essentials guide](essentials-guide.md). Its small install uses the Essentials binaries and loopback redb.
-- **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). It walks the same tasks on the Platform binaries, then one configured workflow, SAML, and the LDAP provider listener.
+- **New Essentials operator or user?** Follow the [Essentials guide](essentials-guide.md). Its small install uses the Essentials binaries and loopback redb. Section 11 is browser invitation acceptance.
+- **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). It walks the same tasks on the Platform binaries, then one configured workflow, SAML, and the LDAP provider listener. Section 14 is that same invitation page.
 - **Undifferentiated local walkthrough?** [Get started locally](getting-started.md) uses the Cargo default feature set, `platform`. Then read the [project README](../README.md) and [release notes](release-notes.md).
 - **Signing in or managing your account?** Use [My applications](PORTAL.md), [passkeys](passkeys.md), and [account lifecycle](lifecycle.md).
 - **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), [migration](migration.md), and [re-enrollment](reenrollment.md).
@@ -16,8 +16,8 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 
 | Guide | Purpose |
 | --- | --- |
-| [Essentials guide](essentials-guide.md) | Essentials operator and user tasks: small install, first administrator, one OIDC app, passkey self-service, backup and recovery entry points, groups, claims, audit review, LDAP import, and outbound SCIM |
-| [Platform guide](platform-guide.md) | The same tasks on the Platform binaries, with shared semantics and the remote-client split, then a configured workflow, SAML IdP and source, and an LDAP provider listener |
+| [Essentials guide](essentials-guide.md) | Essentials operator and user tasks: small install, first administrator, one OIDC app, passkey self-service, backup and recovery entry points, groups, claims, audit review, LDAP import, outbound SCIM, and browser invitation acceptance |
+| [Platform guide](platform-guide.md) | The same tasks on the Platform binaries, with shared semantics and the remote-client split, then a configured workflow, SAML IdP and source, an LDAP provider listener, and the same browser invitation acceptance |
 | [Getting started](getting-started.md) | Undifferentiated local walkthrough; `cargo install --locked --path .` selects the default `platform` feature |
 | [Project README](../README.md) | Install, initialize and try browser and terminal sign-in |
 | [Architecture](architecture.md) | Components, request paths, state and worker boundaries |

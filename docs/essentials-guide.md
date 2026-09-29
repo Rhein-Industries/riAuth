@@ -3,30 +3,35 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This is the Essentials task guide through its second slice. The first five
-tasks are one small loopback install, the first administrator sign-in, one
-confidential OpenID Connect web application, passkey self-service in the
-browser, and the backup and recovery commands that open a restored store.
-The next tasks create a local group, publish claims for that application,
-review the audit record, import one LDAP directory, and send one outbound
-SCIM target. The commands are the ones implemented in this tree: `[features]`
+This is the Essentials task guide through its second slice, plus the
+invitation-acceptance page in section 11. The first five tasks are one
+small loopback install, the first administrator sign-in, one confidential
+OpenID Connect web application, passkey self-service in the browser, and
+the backup and recovery commands that open a restored store. The next tasks
+create a local group, publish claims for that application, review the audit
+record, import one LDAP directory, and send one outbound SCIM target.
+Section 11 is the invited person's browser page: accept with a password, or
+with a first passkey when the page shows that choice. The commands in
+sections 1 through 10 are the ones implemented in this tree: `[features]`
 in [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
 [standalone client](../crates/riauthctl/src/main.rs).
 
 Reading this page does not mean those steps were executed here. Both slices
 were checked by reading the source and the current docs, then by
-`python3 scripts/check-docs.py`. No Cargo build was run, no server was
+`python3 scripts/check-docs.py`. Section 11 was read from accepted commit
+`58e5ef3` and was not executed here. No Cargo build was run, no server was
 started, and no browser, group change, claim preview, audit export, LDAP
-plan, SCIM delivery, backup, or accessibility pass was recorded. The
-[A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
+plan, SCIM delivery, invitation, backup, or accessibility pass was recorded.
+The [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
 
 A new Platform operator uses the [Platform guide](platform-guide.md) for the
 same tasks with the Platform binaries. That guide's sections 11 through 13
 add configured workflows, SAML, and the LDAP provider listener. Those three
-procedures stay on the Platform page. Assembly limits that are outside
+procedures stay on the Platform page. Invitation acceptance is section 11
+here and section 14 there. Assembly limits that are outside
 these tasks stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -772,6 +777,104 @@ lifetime, and the rule that delivery is at least once are in
 cannot reach fails delivery. This task did not run a plan or an apply
 against a live peer.
 
+## 11. Accept an invitation in the browser
+
+This is the invited person's page, on both editions. It is separate from
+the signed-in passkey task in section 4. Issuing an invitation, the `[mail]`
+table, and the password-only `riauth account accept` command stay in
+[Account email and recovery](lifecycle.md). The enrollment routes are in
+[Passkeys](passkeys.md). This checkout's passkeys page still says the
+invitation page offers only a password and that the passkey endpoints are
+for authenticator clients. Accepted `58e5ef3` also shows the passkey choice
+on that page. [Portal](PORTAL.md) in this checkout does not record the two
+headless journeys. This section states the acceptance contract and does not
+copy that write-up.
+
+The configuration from section 2 has no `[mail]` table. `identity.invitations`
+is compiled on Essentials and on Platform. It becomes usable when `[mail]`
+passes the local SMTP material check in `require_local_material`. This task
+did not add `[mail]`, did not issue an invitation, and did not send a message.
+On accepted `58e5ef3`, `account invite` and `account revoke-invitation` stop
+locally unless both `--idempotency-key` and `--if-revision` are present. The
+message is `Invitation writes require --idempotency-key and --if-revision (from riauth revision)`.
+The source string wraps `riauth revision` in backticks. This checkout's
+invite arm does not contain that bail. This section does not print an invite.
+
+### Capability gating
+
+On `/account/accept`, a fragment token that starts with `ri_mail_` and is at
+most 128 characters shows the password form. Another token hides it. When
+the capability refresh reports that `identity.invitations` is not compiled,
+the page says the account action is not available and hides the form. A
+missing `[mail]` table leaves that feature compiled and unusable, and the
+password form still shows. Both editions compile it.
+
+**Add a passkey** starts hidden. The script shows it when the password form
+is visible, the fragment token is present, `PublicKeyCredential` exists in a
+secure context, and `identity.passkeys` is usable. The form is also marked
+`data-capability="identity.passkeys"`, and the portal stylesheet hides a
+control with `data-capability-disabled`. Both editions compile
+`identity.passkeys`. It has no mail or directory prerequisite. The lab issuer
+`http://localhost:9000` is loopback HTTP, which a browser treats as a secure
+context, so a browser with WebAuthn can show the choice. When the choice
+stays hidden, password acceptance remains.
+
+### One use and no session
+
+Opening the link loads the page. The fragment is not sent with that GET, so
+the proof is not spent. The page then removes the fragment from the address
+bar and keeps the token only for the later POST.
+
+**Accept invitation** posts the token and the new password to
+`/api/portal/account/accept`. **Accept with a passkey** posts the token and
+the passkey name to `/api/account/accept/passkey/start`, then the
+authenticator response to `/finish`. Cancel posts `/cancel`. A blank passkey
+name is refused, and the invitation stays unused. Starting a ceremony does
+not spend the invitation. A cancelled or failed authenticator attempt leaves
+the invitation available for another start.
+
+A successful password acceptance or passkey finish returns `completed` true
+and `login_required` true and retires the proof as used. Essentials commits
+that result in the invitation transaction. The handlers return that JSON and
+do not set a session cookie. The person signs in afterwards. The password
+text says to sign in with the new password, and that an application may also
+require a passkey or authenticator code. The passkey text says to sign in
+with the new passkey and that this page did not sign them in. The same link
+opened again reports that the invitation has already been accepted and hides
+both forms. An expired invitation reports that it has expired, hides both
+forms, and creates no session. A revoked or replaced link hides the forms
+too. Password and passkey spend the same invitation. `riauth account accept`
+is the password completion and does not call the passkey endpoints.
+
+### Browser test limits
+
+These limits were read from accepted `58e5ef3`, which also contains the
+passkey journey from `a72a086`. This task did not run either browser.
+
+`tools/browser/invitation-password.spec.js` is a headless keyboard journey
+at 390 by 844 CSS pixels on Chromium, Firefox, and WebKit. It uses the
+fixture's loopback SMTP capture. It installs no virtual authenticator and
+does not post the invitation passkey endpoints, so a visible passkey choice
+stays unused. Success sets no session cookie and leaves `GET /api/portal`
+unauthorized. An expired link and a replay are rejected. The new password
+then signs in, and signing out removes that session.
+
+`tools/browser/invitation-passkey.spec.js` is the passkey journey. Chromium
+uses one CDP virtual authenticator. Firefox and WebKit skip it because that
+authenticator exists only in Chromium. The virtual authenticator is not a
+physical key, a synced passkey, a phone, or a mobile operating system.
+
+Neither journey is an external mailbox, a spoken screen reader, a phone
+hybrid, a mobile operating system, or a release. Playwright stays outside
+CI. The viewport is CSS pixels. This checkout does not contain those spec
+files. This task did not run them, and it did not send mail.
+
+The page behavior was read from accepted `58e5ef3` in `src/portal/account.js`,
+`src/portal/account.html`, `src/portal/http.rs`, `src/api/invitation.rs`,
+and `src/lifecycle/invitation/passkey.rs`. This checkout's `account.js` and
+`account.html` were compared with that commit and do not contain the passkey
+form.
+
 ## Unverified architecture artifacts
 
 These artifacts are in the tree. This slice did not execute them, and they
@@ -816,15 +919,15 @@ them. Those commands were not executed here.
 
 Still outside this slice:
 
-- Invitations, email verification, password change and reset,
-  authenticator-app enrollment, recovery codes, session list, and consent
-  withdrawal as operator or user tasks. The portal markup includes password,
-  authenticator-app, and sessions controls beside passkeys
-  ([index.html](../src/portal/index.html)). [Account email and recovery](lifecycle.md)
-  describes those browser pages. This guide slice did not run the pages.
+- Email verification, password change and reset, authenticator-app
+  enrollment, recovery codes, session list, and consent withdrawal as
+  operator or user tasks. Invitation acceptance is section 11 and was
+  not run here. The portal markup includes password, authenticator-app, and
+  sessions controls beside passkeys ([index.html](../src/portal/index.html)).
+  [Account email and recovery](lifecycle.md) describes those browser pages.
   [Re-enrollment and user communication](reenrollment.md) cites the source
-  and the browser-management tests for authenticator-app enrollment and
-  recovery-code creation.
+  and browser-management tests for authenticator-app enrollment and
+  recovery-code creation. This guide slice did not run those pages.
 - Inbound SCIM (`riauth scim` and `/scim/v2`). The Platform build mounts
   those routes. Section 10 is outbound `riauth provision` only.
 - PostgreSQL, native HTTPS, a trusted proxy, and the released-image small
@@ -874,5 +977,6 @@ Still outside this slice:
   ambiguous outbound disables. The backup commands here are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
-  preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply
-  on this revision. Those claims need a run. This page does not supply one.
+  preview, the audit export, an LDAP plan or apply, a SCIM plan or apply,
+  or an invitation acceptance on this revision. Those claims need a run.
+  This page does not supply one.
