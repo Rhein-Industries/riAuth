@@ -43,6 +43,23 @@
     $("verify-panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
     ($("verify-passkey").hidden ? $("verify-password") : $("verify-passkey")).focus();
   }
+  // The error sits above the fields. On a short screen it is off-screen unless focus moves to it.
+  function clearVerifyInvalid() {
+    for (const id of ["verify-password", "verify-otp"]) {
+      $(id).removeAttribute("aria-invalid");
+      $(id).removeAttribute("aria-describedby");
+    }
+  }
+  function showVerifyError(message, fields) {
+    clearVerifyInvalid();
+    for (const id of fields) {
+      $(id).setAttribute("aria-invalid", "true");
+      $(id).setAttribute("aria-describedby", "verify-error");
+    }
+    $("verify-error").textContent = message;
+    $("verify-error").hidden = false;
+    $("verify-error").focus();
+  }
   function render(data) {
     snapshot = data;
     $("security-admin-link").hidden = data.user.admin !== true;
@@ -202,7 +219,8 @@
     event.preventDefault();
     if (!snapshot) return;
     const password = $("verify-password").value;
-    if (!password) { $("verify-error").textContent = "Enter your password."; $("verify-error").hidden = false; return; }
+    if (!password) { showVerifyError("Enter your password.", ["verify-password"]); return; }
+    clearVerifyInvalid();
     RiAuth.inFlight($("verify-password-button"), async () => {
       try {
         await RiAuth.post("api/portal/login/password", {
@@ -211,12 +229,16 @@
         $("verify-password").value = $("verify-otp").value = "";
         await load(); showStatus("Identity confirmed. Choose your action again.");
       } catch (error) {
-        $("verify-error").textContent = error.description || "Could not confirm your identity. Try again.";
-        $("verify-error").hidden = false;
-        $("verify-error").focus();
+        showVerifyError(error.description || "Could not confirm your identity. Try again.", ["verify-password", "verify-otp"]);
       }
     });
   });
+  for (const id of ["verify-password", "verify-otp"]) {
+    $(id).addEventListener("input", () => {
+      $(id).removeAttribute("aria-invalid");
+      $(id).removeAttribute("aria-describedby");
+    });
+  }
   $("verify-passkey").addEventListener("click", () => RiAuth.inFlight($("verify-passkey"), async () => {
     if (!snapshot) return;
     try {

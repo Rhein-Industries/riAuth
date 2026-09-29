@@ -173,7 +173,23 @@ RIAUTH_TEST_BROWSER='/path/to/chrome' \
 `tests/portal.rs` covers password, TOTP, recovery-code and passkey sign-in, uniform errors including lockout, the write guard, passkey registration and removal rules, sign-out scopes and the https cookie names. `tests/password_browser.rs` covers browser password change and reset: account types, fresh MFA, lockout, one-time reset links and preserved factors. The browser test signs in through the actual CLI, checks policy-filtered applications, search/categories/favorites, persisted list preferences, live group revocation, text-injection handling and logout. It checks layout from 320 to 1440 pixels and can save desktop, tablet, mobile and empty-state screenshots. The fixture applications exist only in a disposable test database.
 
 The separate Chromium/Firefox/WebKit matrix includes keyboard interaction,
-responsive layout, text scaling, connection recovery and automated accessibility:
+responsive layout, text scaling, connection recovery and automated accessibility.
+`tools/browser/accessibility-journeys.spec.js` covers device approval, the
+password-reset page when email delivery is unavailable, sessions and consent after
+terminal approval, and the sign-in and security dialog. The fixture has no mail
+delivery, so that reset page focuses the unavailable-recovery alert instead of
+asking for a username. Each of those pages must be reachable from the keyboard, report no WCAG 2.1
+A/AA axe violations, and avoid horizontal scrolling at 320, 768 and 1440 CSS pixels
+and at 200% text on a desktop-width viewport. An empty password on Sessions and
+consent moves focus to the error and marks the password field invalid, including on
+a 320×480 viewport where that error would otherwise sit above the visible area.
+After a password sign-in, Sign out and the workspace navigation stay inside a 320 CSS
+pixel viewport.
+Chromium additionally cancels a virtual internal authenticator from the keyboard.
+The spec does not exercise a physical security key, a synced platform passkey, a
+phone hybrid transport, a mobile operating system, or a spoken screen reader.
+`CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
+private target directory:
 
 ```sh
 cargo build --example portal_fixture --locked
