@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.24)
+project(RiAuthCredentialProvider LANGUAGES CXX)
+
+if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "The riAuth credential provider requires 64-bit Windows")
+endif()
+
+add_library(RiAuth.CredentialProvider SHARED CredentialProvider.cpp CredentialProvider.def)
+set_target_properties(RiAuth.CredentialProvider PROPERTIES PREFIX "")
+target_compile_features(RiAuth.CredentialProvider PRIVATE cxx_std_17)
+target_compile_definitions(RiAuth.CredentialProvider PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+target_link_libraries(RiAuth.CredentialProvider PRIVATE advapi32 netapi32 ole32 secur32 shell32 uuid)
+if(MSVC)
+  target_compile_options(RiAuth.CredentialProvider PRIVATE /W4 /WX /sdl /guard:cf)
+  target_link_options(RiAuth.CredentialProvider PRIVATE /guard:cf /DYNAMICBASE /NXCOMPAT)
+endif()

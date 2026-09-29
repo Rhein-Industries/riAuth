@@ -15,16 +15,35 @@ Responses are JSON, protocol redirects, signed/encrypted JWTs, protocol form/ifr
 | POST | `/api/portal/login/password` | `{"username","password","otp":string\|null,"reauthenticate":bool}`; 200 `{"status":"signed_in"}` plus the SSO cookie. `reauthenticate` pins the current SSO user (401 `invalid_token` without one). `login` bucket, credential queue, 1 s failure floor |
 | POST | `/api/portal/login/passkey/start` | `{"reauthenticate":bool}`; 200 `{"ceremony","public_key":{"publicKey":…},"expires_in":300}` plus the `riauth_passkey` binding cookie. Usernameless unless pinned; pinned without a passkey is 409 `no_passkey` |
 | POST | `/api/portal/login/passkey/finish` | `{"ceremony","credential"}` with `riauth_passkey`; 200 `{"status":"signed_in"}` plus the SSO cookie |
-| GET | `/api/portal/passkeys` | SSO; `{"passkeys":[{"id","name","created_at","algorithm"}],"fresh","terminal","mfa","can_register","can_remove","limit":16}`. `terminal` is true when this browser shares a terminal session (it collected a terminal approval); it can then neither register nor remove |
+| GET | `/api/portal/passkeys` | SSO; `{"passkeys":[{"id","name","created_at","algorithm"}],"fresh","terminal","mfa","can_register","can_remove","limit":16,"password","can_change_password"}`. `terminal` is true when this browser shares a terminal session (it collected a terminal approval); it can then neither register nor remove. `password` is `local`, `directory` (an imported directory verifies it) or `none` |
 | POST | `/api/portal/passkeys/registration/start` | SSO of a browser-owned session (a terminal-shared browser gets 403 `reauthentication_required`), signed in within five minutes, factor rule; `{"name"}`; resident key and user verification required |
 | POST | `/api/portal/passkeys/registration/finish` | Same browser-owned session; `{"ceremony","credential"}`; 200 `{"status":"enrolled","passkey",…,"sessions_revoked":true}` and the SSO cookie is cleared |
 | POST | `/api/portal/passkeys/{id}/remove` | SSO of a browser-owned session, signed in within five minutes, factor rule; `{}`; 200 `{"removed":true,"sessions_revoked":true}` and the SSO cookie is cleared |
+| GET | `/api/portal/mfa` | SSO; `{"user_id","totp_enabled","enrollment_pending","recovery_codes_remaining","recovery_codes_total":10,"fresh","terminal","mfa","factor"}`. Never a secret or code; `enrollment_pending` covers only this session's unexpired setup |
+| POST | `/api/portal/mfa/totp/start` | SSO of a browser-owned session, signed in within five minutes, factor rule; `{"expected_user_id","replace":bool}`; 200 `{"secret","otpauth_uri","qr":{"size","path"},"expires_in":600,"algorithm","digits","period","replace"}`. `qr.path` is SVG path data in module units. The pending secret is bound to this session and the account's credential version; an enabled app keeps working until confirmation. 409 `account_mismatch` for another signed-in account, 409 `conflict` when `replace` does not match whether an app is enabled |
+| POST | `/api/portal/mfa/totp/confirm` | Same session, freshness and factor rule; `{"expected_user_id","code"}`; 200 `{"status":"enabled"\|"replaced","recovery_codes":[…ten],"single_use":true,"sessions_revoked":true}` and the SSO cookie is cleared. Replacement retires the old secret and recovery codes. 400 `invalid_code`, `enrollment_expired` or `enrollment_not_found` |
+| POST | `/api/portal/mfa/totp/cancel` | SSO; `{}`; discards this session's pending setup; `{"cancelled":bool}` |
+| POST | `/api/portal/mfa/totp/remove` | Browser-owned session, freshness and factor rule; `{"expected_user_id"}`; removes the app, its recovery codes and any pending setup; 200 `{"removed":true,"sessions_revoked":true}` and the SSO cookie is cleared |
+| POST | `/api/portal/mfa/recovery-codes` | Browser-owned session, freshness and factor rule, app enabled (else 409); `{"expected_user_id"}`; 200 `{"recovery_codes":[…ten],"single_use":true}`. Earlier codes stop working; sessions continue |
+| POST | `/api/portal/password` | SSO of a browser-owned session; `{"current_password","password"}`. Local password accounts only (409 `password_unavailable`). With TOTP or a passkey enrolled: factor rule and a sign-in within five minutes. A wrong current password is 403 `invalid_current_password`, answered no sooner than one second after the request started, and counts toward the sign-in lockout (then 429 `rate_limited`). 200 `{"changed":true,"sessions_revoked":true}` and the SSO cookie is cleared; factors are kept |
+| GET | `/account/accept`, `/account/verify`, `/account/reset` | Account pages. An emailed link carries its one-use code in the fragment, which this GET never sends; `/account/reset` without a code asks for a reset link |
+| POST | `/api/portal/account/accept`, `/api/portal/account/verify` | `{"token","password"}` (accept) or `{"token"}` (verify); one-use invitation or verification proof; see [lifecycle](lifecycle.md) |
+| POST | `/api/portal/account/verify-request` | SSO, signed in within five minutes; 200 `{"accepted":true,"status":"queued"\|"cooldown"\|"already_verified"}` |
+| POST | `/api/portal/account/reset-request` | Public `{"username"}`; 200 `{"accepted":true}` for every valid username. Only an enabled account with a verified email and a local password no directory manages gets an email |
+| POST | `/api/portal/account/reset` | `{"token","password"}`; one-use reset proof; 200 `{"completed":true,"login_required":true}`. It never sets a session cookie and keeps every factor |
 | POST | `/api/portal/sign-in` | Create a ten-minute browser-bound terminal approval request; records `requested_from` |
 | POST | `/api/portal/sign-in/{id}` | Poll and consume an approved request; points the browser at the approving session (revoking a displaced browser-owned session) and sets the HttpOnly SSO cookie |
 | POST | `/api/portal/sign-in/{id}/cancel` | Cancel the request using its browser binding |
 | POST | `/api/portal/sign-out` | No body or `{}`: revoke the cookie's session, queue SSO logout and clear the cookie; may return `saml_logout_url`. `{"scope":"browser"}`: for a terminal-approved browser, only unlink this browser |
 | GET | `/api/portal/requests/{code}` | End-user CLI bearer; inspect the code, account, issuer, `requested_from`, and `reauthentication_required` (true once the session is older than 240 s) |
 | POST | `/api/portal/requests/{code}` | End-user CLI bearer and `{"approve":true\|false}`; approval requires authentication within five minutes |
+| GET | `/api/portal/sources` | Public; enabled sources a browser can sign in with, `{"sources":[{"id","name"}]}`. The platform build includes SAML; its ACS POST does not finish the login |
+| POST | `/api/portal/sources/{id}/start` | Write guard. `{}` signs in; `{"link":{"expected_user_id","expected_session_id"}}` links the page's account and needs this browser's own local sign-in within five minutes. 200 `{"authorization_url","expires_at","source"}` plus the HttpOnly `riauth_source` binding cookie holding the one-use credential; the credential is never in the body. `source_start` bucket |
+| GET | `/account/sources/continue` | Review page. `/oauth/sources/{id}/callback`, and a SAML return that spent its one-time cookie, answer a browser-started login with a 303 here instead of JSON |
+| POST | `/api/portal/sources/review` | Write guard and the binding cookie; the same non-consuming review as `riauth source finish` (`status`, provider, upstream account, `linking`, `local_user`, `local_otp_required`, `auto_provision`). 401 `source_login_expired` when the login ended; 403 `access_denied` when the account rules refuse it |
+| POST | `/api/portal/sources/finish` | Write guard and the binding cookie; `{"approve":false}` forgets the login, `{"approve":true,"otp":string\|null}` finishes it. A sign-in points this browser's SSO cookie at a browser-owned session (no bearer token exists); a link keeps the current session. 401 `invalid_code` leaves the login open for another code. Clears the binding cookie. `login` bucket |
+| GET | `/api/portal/sources/links` | SSO; `{"links":[{"id","source","name","issuer","subject"}],"linkable","can_change","local_session",…}` |
+| POST | `/api/portal/sources/links/{id}/unlink` | Write guard, the page binding and this browser's own local sign-in within five minutes; removes the link and revokes the sessions it started |
 
 Every cookie-authenticated POST passes the [browser write guard](#browser-write-guard); none enables cross-origin access. Approval endpoints require an end-user session bearer, never an agent credential. The factor rule (403 `mfa_required`) applies when the account already has TOTP or a passkey and the session is not MFA. See [PORTAL.md](PORTAL.md) and [passkeys](passkeys.md).
 
@@ -40,8 +59,8 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET | `/oauth/authorize` | Query authorization request; JSON details for the CLI, or `303` to `/oauth/resume/{id}` for `Accept: text/html` (with `Vary: Accept`) |
 | POST | `/oauth/authorize` | Form request plus `decision`; end-user CLI bearer and any required authentication transaction |
 | GET | `/oauth/resume/{id}` | With its binding cookie: HTML gets the sign-in page while undecided; JSON gets the terminal instructions and `Refresh`. Once decided, delivers the callback **once** (302 or form post) and deletes the request, its code index and any leftover proof |
-| POST | `/oauth/device/code` | Form client authentication and optional scope |
-| GET | `/device` | Terminal device-approval instructions |
+| POST | `/oauth/device/code` | Form client authentication and optional scope; returns `verification_uri` and `verification_uri_complete` for browser approval |
+| GET | `/device` | Browser code-entry and approval page; `?user_code=CODE` pre-fills the code without taking a decision |
 | POST | `/oauth/token` | Form client authentication plus grant parameters; every grant for a proxy client is refused with 400 `unauthorized_client` (its codes are redeemed only inside riAuth) |
 | POST | `/oauth/par` | Authenticated pushed authorization request |
 | POST | `/oauth/register` | Restricted RFC 7591 registration using an initial access credential |
@@ -57,11 +76,12 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET | `/saml/{id}/metadata` | Signed SAML IdP metadata |
 | GET, POST | `/saml/{id}/sso` | Signed AuthnRequest / LogoutRequest / LogoutResponse; an interactive AuthnRequest from a browser gets `303` to `/saml/resume/{id}` |
 | GET | `/saml/sources/{id}/metadata` | Signed SAML SP metadata for an upstream source |
-| POST | `/saml/sources/{id}/acs` | Signed/encrypted source assertion, bound to terminal login |
+| POST | `/saml/sources/{id}/acs` | Signed/encrypted source assertion. CLI and embedded-stage logins finish from this POST. A browser-started login is not finished here: the response sets a one-time HttpOnly `SameSite=Lax` `riauth_source_return` cookie and `303`s to the return route. The token is not in the URL or body |
+| GET | `/saml/sources/{id}/return` | Same-site handoff. Confirms the browser login only when the `riauth_source` cookie and the one-time return cookie are both present, then `303`s to `/account/sources/continue` and clears the return cookie. A valid return cookie without the start cookie ends the login. A missing return cookie does not |
 | GET, POST | `/saml/sources/{id}/slo` | Signed upstream logout request or correlated response |
 | GET | `/saml/logout/{ticket}` | Continue browser SAML cleanup of already revoked sessions |
 | GET | `/saml/logout/{ticket}/status` | Capability-bound propagation progress |
-| GET | `/oauth/sources/{id}/callback` | State-bound upstream OIDC/OAuth callback |
+| GET | `/oauth/sources/{id}/callback` | Upstream OIDC/OAuth callback. A browser-started login is redeemed only with its `riauth_source` binding cookie; a missing or different cookie ends the login and does not exchange the code. CLI and embedded-stage logins are not cookie-bound |
 | GET, POST | `/oauth/source-stages/{id}/resume` | Resume an embedded source stage with its `authorization_id`; only POST JSON accepts `otp`, GET rejects factor parameters |
 | POST | `/oauth/source-stages/{id}/cancel` | Cancel that source stage using `authorization_id` |
 | GET | `/.well-known/ssf-configuration` | Public Shared Signals profile metadata; see [ENT-07](enterprise/ENT-07.md) for wire limitations |
@@ -71,11 +91,13 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 
 Supported grants are `authorization_code` (`code`, `redirect_uri`, `code_verifier`), device authorization (`urn:ietf:params:oauth:grant-type:device_code`, `device_code`), `refresh_token` (`refresh_token`, optional narrowed `scope`) `client_credentials` (service clients and custom scopes only), JWT bearer (`urn:ietf:params:oauth:grant-type:jwt-bearer`) and token exchange (`urn:ietf:params:oauth:grant-type:token-exchange`). Workload trust and exchange require explicit client policy.
 
+Device-code polls to `POST /oauth/token` may send `Idempotency-Key` with public or client-secret authentication. An exact retry replays a committed `authorization_pending` or `slow_down` error without advancing the polling interval again, while the same client, device code and polling state remain live. A changed request or a later device decision conflicts; expiry and token redemption still take precedence. Successful token issuance has no replay receipt and remains one-use. Browser approval still requires its signed-in cookie and reviewed session reference. Keyed `private_key_jwt` polls are rejected because consuming the assertion's one-use identifier prevents safe proof revalidation on an exact retry. Device-code creation has no receipt: it returns plaintext one-time codes while storing only their hashes.
+
 Clients use their registered authentication method: Basic, form secret, private_key_jwt, or public identification. Basic components are form-encoded before Base64. Mixed methods are rejected. JWT assertions, constrained token exchange and restricted RFC 7591 registration are supported; see [OIDC profiles](oidc-profiles.md).
 
 Authorization requires code response type, registered redirect, `openid` scope and S256 PKCE. Optional fields include state, nonce, `max_age`, supported query/fragment/form-post/JARM response modes, `claims`, `acr_values`, `resource`, `dpop_jkt`, and space-separated prompts (`none`, `login`, `consent`, `select_account`). `none` is exclusive. A trusted callback receives authorization errors with state/issuer; invalid client or redirect never causes navigation.
 
-Browser authorization creates a unique pending request, browser binding and approval code. The browser can finish it on the interaction page, or the user approves in the terminal. `GET /api/authorization/{code}` requires an end-user session, prepares request-bound reauthentication when needed, reports `requested_from` (the browser's IP address, User-Agent and time), and sets `reauthentication_required` once the session's sign-in is older than 240 s. `POST /api/authorization/decision` accepts `code`, `approve`, optional `transaction_id` and `remember`; an approval from a session signed in more than 300 s ago fails with 400 `login_required` ("Sign in again in your terminal before approving"). Sessions with `auth_time = 0` (OAuth-only upstream sources) are exempt from both rules. A successful decision is delivered to the original browser. Administrative agent credentials cannot participate. The internal `request_binding` parameter is rejected on external authorization requests.
+Browser authorization creates a unique pending request, browser binding and approval code. The browser can finish it on the interaction page, or the user approves in the terminal. `GET /api/authorization/{code}` requires an end-user session, prepares request-bound reauthentication when needed, reports `requested_from` (the browser's IP address, User-Agent and time), and sets `reauthentication_required` once the session's sign-in is older than 240 s. Terminal authorization preparation also reports `response_mode` so clients can reject browser-only form-post delivery before deciding. `POST /api/authorization/decision` accepts `code`, `approve`, optional `transaction_id` and `remember`; an approval from a session signed in more than 300 s ago fails with 400 `login_required` ("Sign in again in your terminal before approving"). Sessions with `auth_time = 0` (OAuth-only upstream sources) are exempt from both rules. A successful decision is delivered to the original browser. Administrative agent credentials cannot participate. The internal `request_binding` parameter is rejected on external authorization requests.
 
 `POST /api/login` optionally accepts `transaction_id`. Successful password/MFA authentication binds the resulting session to that exact transaction. Reusing a recently authenticated session is insufficient for `prompt=login` or `max_age=0`. Silent authorization additionally requires a valid browser session, current policy and remembered consent covering requested scopes, or a client with `implicit_consent`.
 
@@ -159,20 +181,25 @@ Errors keep the `{"error","error_description"}` shape.
 | `unknown_passkey` | 401 | The discoverable credential is not registered |
 | `invalid_token` | 401 | Missing or wrong binding cookie, or a required SSO session is missing |
 | `access_denied` | 403 | Write guard, policy, untrusted forward-auth peer |
-| `account_mismatch` | 403 | The verified user differs from the pinned account |
+| `account_mismatch` | 403 | The verified user differs from the pinned account (409 for a factor change whose `expected_user_id` is not the signed-in account) |
 | `unmet_authentication_requirements` | 403 | The sign-in does not meet the client's MFA or ACR requirement and the user has a factor |
 | `mfa_setup_required` | 403 | Same, and the user has neither TOTP nor a passkey |
-| `mfa_required` | 403 | Adding or removing a factor from a non-MFA session when the account already has one |
-| `reauthentication_required` | 403 | Adding or removing a factor from a session signed in more than 300 s ago (bearer and portal), or from a browser that shares a terminal session (portal) |
+| `mfa_required` | 403 | Changing a factor (including TOTP confirmation, replacement and recovery-code rotation), or changing the password, from a non-MFA session when the account already has TOTP or a passkey |
+| `reauthentication_required` | 403 | Changing a factor from a session signed in more than 300 s ago (bearer and portal), changing the password of an account with a factor from such a session, or either from a browser that shares a terminal session (portal) |
+| `invalid_current_password` | 403 | Portal password change with a wrong current password; counts toward the sign-in lockout |
+| `invalid_code`, `enrollment_expired`, `enrollment_not_found` | 400 | TOTP confirmation with a wrong code, an expired setup, or no setup started by this session for the account's current credential version (cancelled, replaced by a newer start, or cleared by a restore) |
 | `session_mismatch` | 403 | A sign-out decision for another live session |
 | `interaction_expired` | 404 | The pending request, SAML request or confirmation is missing or expired |
 | `request_decided` | 409 | Already decided, or waiting on a source stage |
 | `account_changed` | 409 | `session_ref` no longer matches the browser's session |
 | `no_passkey` | 409 | Pinned passkey sign-in for an account without passkeys |
+| `password_unavailable` | 409 | Password change for an account without a local password (directory-managed, passkey-only or upstream-only) |
 | `login_required` | 400 | A decision without a valid proof, or a terminal approval more than 300 s after sign-in |
 | `unauthorized_client` | 400 | A token request for a proxy client from outside riAuth |
 | `rate_limited` | 429 | Rate bucket exceeded; CLI lockout on `/api/login` |
 | `temporarily_unavailable`, `transaction_conflict` | 503 | Admission timeout, store conflict or outage, or a staged login that expired between the two sign-in phases |
+| `connector_overloaded` | 503 | Connector lane is full or this configured target already has an active operation; `Retry-After: 1`. The operation has not started or claimed durable work. |
+| `connector_operation_pending` | 409 | An admitted connector operation exceeded its 60-second response deadline and may still commit; inspect state before retrying. No `Retry-After` hint. |
 
 For HTML requests, a 4xx from a resume path renders a short page ("This sign-in belongs to another browser", "This sign-in has expired or was already completed…") with a link to the portal instead of JSON.
 
@@ -185,11 +212,13 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | GET | `/api/me` | Current user/session or agent/permissions |
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |
-| DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent |
-| POST | `/api/password` | Current password, new `password`, optional `otp`; invalidate old sessions/grants |
-| POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); return pending enrollment secret/URI |
-| POST | `/api/mfa/confirm` | `code`; enable factor and invalidate sessions |
-| POST | `/api/mfa/recovery-codes` | Recent MFA session; rotate ten single-use recovery codes |
+| DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent; `Idempotency-Key` replays an exact revocation of another session while the caller remains live, without a configuration `If-Match` |
+| POST | `/api/password` | Current password, new `password`, optional `otp`; local password accounts only (409 `password_unavailable`, checked before the password); an account whose only factor is a passkey needs an MFA session from the last five minutes; invalidate old sessions/grants |
+| POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); 409 when an app is enabled; return the pending secret/URI, bound to this session |
+| POST | `/api/mfa/replace` | Same rules; start replacing the enabled app, which keeps working until `mfa/confirm` |
+| POST | `/api/mfa/confirm` | `code`; the session that started the setup, with the same freshness and factor rule; enable or replace the factor, clear recovery codes and invalidate sessions. 400 `invalid_code`, `enrollment_expired` or `enrollment_not_found` |
+| POST | `/api/mfa/remove` | Same rules; remove the app and its recovery codes and invalidate sessions |
+| POST | `/api/mfa/recovery-codes` | App enabled (else 409), recent MFA session; replace all recovery codes with ten single-use ones; sessions continue |
 | GET | `/api/passkeys` | Current user's registered passkeys |
 | DELETE | `/api/passkeys/{id}` | Recent end-user session and the factor rule; remove own passkey and invalidate credentials |
 | POST | `/api/passkey/registration/start`, `/api/passkey/registration/finish` | Recent-session registration and the factor rule; server-side one-use ceremony |
@@ -206,15 +235,17 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | POST | `/api/source-login/finish` | Private source transaction, explicit approval and optional local OTP |
 | GET | `/api/source-links` | Current user's linked upstream identities |
 | DELETE | `/api/source-links/{id}` | Unlink own upstream identity and revoke associated sessions |
-| POST | `/api/device-trust/challenge`, `/api/device-trust/verify` | End-user bearer; nonce challenge and pinned local JWT verification; see [ENT-06](enterprise/ENT-06.md) |
+| POST | `/api/device-trust/challenge`, `/api/device-trust/verify` | End-user bearer; local nonce JWT, or a Verified Access v2 challenge response when that provider is configured; see [ENT-06](enterprise/ENT-06.md) |
 | GET | `/api/device/{code}` | Review device request |
-| POST | `/api/device/decision` | `user_code`, `approve`; enforce identity/client policy |
+| POST | `/api/device/decision` | `user_code`, `approve`; enforce fresh identity/client policy |
+| GET | `/api/device/browser/{code}` | SSO-cookie review of verified client, scopes, claim names, account and request-bound `session_ref`; read-only |
+| POST | `/api/device/browser/decision` | SSO-cookie `user_code`, `approve`, `session_ref`; same-origin write guard and one-time decision |
 | GET | `/api/consents` | Current user's remembered application consent |
 | DELETE | `/api/consents/{id}` | Revoke current user's consent and grants for this client |
 
 Temporary access routes use the same human sessions. `GET /api/access/requests` and `GET /api/access/grants` list requests/grants (agent readers need `access.read`). `POST /api/access/requests` accepts `group`, `reason`, `ttl`; `POST /api/access/requests/{id}/approve` or `POST /api/access/requests/{id}/deny` requires a configured human approver. `POST /api/access/grants/{id}/revoke` requires an approver or administrator. Self-approval and agent decisions are forbidden. See [ENT-01](enterprise/ENT-01.md).
 
-OAuth access tokens and agent credentials cannot substitute for end-user CLI sessions.
+OAuth access tokens and agent credentials cannot substitute for end-user CLI sessions. The serving procedure for a stolen session, a lost passkey, a compromised agent or client secret, and a signing-key concern is [credential compromise](credential-compromise.md).
 
 ## Management
 
@@ -222,14 +253,15 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 
 | Method | Route | Contract |
 | --- | --- | --- |
-| GET | `/api/capabilities` | Public versioned capabilities and permission/schema discovery |
-| GET, POST | `/api/users` | Visible users / create user |
-| PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset |
-| GET, POST | `/api/groups` | Visible groups / create group |
-| PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member |
-| GET, POST | `/api/clients` | Visible clients / register application |
-| PATCH | `/api/clients/{id}` | Client configuration, including `settings` |
-| POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants |
+| GET | `/api/capabilities` | Public `riauth.capabilities/v2` instance snapshot: `features` contains only locally usable profiles; `feature_states` separates compiled, enabled, configured and usable with redacted reasons. Permissions and schemas remain build catalogs. External peer health and caller authorization are separate. |
+| GET, POST | `/api/users` | Existing visible-user array / create user; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| GET | `/api/users?limit=100&cursor=...` | Opt-in JSON user pages; `items`, `next_cursor`, `limit`, `revision` |
+| PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset; requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| GET, POST | `/api/groups` | Visible groups / create group; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member; both writes require `Idempotency-Key` and `If-Match: "<revision>"` |
+| GET, POST | `/api/clients` | Visible clients / register application; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| PATCH | `/api/clients/{id}` | Client configuration, including `settings`; client ID and type are immutable; requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants; requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET | `/api/resources/{kind}/{name}` | Exact user/client/group lookup |
 | GET | `/api/inventory/{kind}` | Users/groups/clients/sources/audit; `after`, `limit`, optional `filter` (exact run id for audit, name substring otherwise) |
 | GET | `/api/audit?limit=100` | Recent audit; maximum 1,000 events |
@@ -240,7 +272,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/directories` | Configured LDAP directories visible to the caller |
 | POST | `/api/directories/{id}/plan` | LDAP import plan; no account writes |
 | GET | `/api/directory-plans/{id}` | Caller-bound LDAP plan |
-| POST | `/api/directory-plans/{id}/apply` | Apply one reviewed LDAP plan |
+| POST | `/api/directory-plans/{id}/apply` | Validate one reviewed LDAP plan in bounded pages; repeat on `snapshot_in_progress` with the same plan ID and removal-confirmation header |
 | GET | `/api/workspace-directories` | Configured Workspace directories; no secrets |
 | POST | `/api/workspace-directories/{id}/plan` | Workspace sync plan; no account writes |
 | GET | `/api/workspace-directory-plans/{id}` | Caller-bound Workspace plan |
@@ -249,15 +281,16 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/entra-directories/{id}/plan` | Entra sync plan; no account writes |
 | GET | `/api/entra-directory-plans/{id}` | Caller-bound Entra plan |
 | POST | `/api/entra-directory-plans/{id}/apply` | Apply one reviewed Entra plan; high-impact removals need plan-ID confirmation header |
-| POST | `/api/policy/explain` | `client_id`, `username`, scope array, optional assumed `mfa`; read-only simulation |
-| GET, POST | `/api/agents` | Human administrator: list/create scoped agents. Optional `parent` is an enabled non-administrator username |
-| DELETE | `/api/agents/{id}` | Human administrator: revoke credential |
+| POST | `/api/policy/explain` | `client_id`, `username`, scope array, optional assumed `mfa`; read-only explanation with projected claims |
+| POST | `/api/policy/simulate` | Read-only policy what-if for one `client_id`, `username`, `scope` array and required `assurance` (`password`, `mfa`, `federated`, `certificate`). Optional `group: {name, member}` changes one assumed membership; optional `source` assumes a verified configured source. Returns `decision` (`allow`, `deny`, `needs_live_proof`), reason codes, configuration `revision`, and `dependency_revision`; no claims or credentials. |
+| GET, POST | `/api/agents` | Human administrator: list/create scoped agents. Creation requires `Idempotency-Key` and the current numeric revision in `If-Match`; the server CLI requires `--idempotency-key` and `--if-revision`. Optional `parent` is an enabled non-administrator username. The credential is returned only on the first committed response. An exact retry returns 409 `credential_already_issued` without the credential; inspect the agent and rotate if delivery failed. |
+| DELETE | `/api/agents/{id}` | Human administrator: revoke credential; the first attempt requires `Idempotency-Key` and the current numeric revision in `If-Match`. An exact retry reuses both headers and returns the revoked public view; a fresh repeat is 409. |
 | GET, POST | `/api/windows-devices` | `device.enroll`: list devices, or enroll/rotate one. Secret and optional offline ticket are returned once. See [enterprise/ENT-13.md](enterprise/ENT-13.md) |
 | DELETE | `/api/windows-devices/{id}` | Revoke that device and its sign-in tickets |
 | POST | `/api/windows-devices/login` | No admin bearer. Device secret plus password or a fresh session. Returns a 300s single-use sign-in ticket, not an OAuth token |
 | POST | `/api/windows-devices/tickets/redeem` | Consume a sign-in ticket once and return a Windows logon assertion |
 | POST | `/api/windows-devices/offline/verify` | Re-check an offline ticket with the device secret |
-| POST | `/api/agents/{id}/rotate` | Human administrator: rotate credential with requested `ttl`; parent and permissions stay unchanged |
+| POST | `/api/agents/{id}/rotate` | Human administrator: rotate credential with requested `ttl`; parent and permissions stay unchanged. Requires `Idempotency-Key` and current numeric revision in `If-Match` (`--idempotency-key` and `--if-revision` in the server CLI). Old token invalidation, new token hash, redacted receipt and one audit commit together. Only the first response discloses the new token; an exact retry returns 409 `credential_already_issued` without it. If delivery failed, inspect the agent and start a separate rotation with a fresh key and revision. |
 | GET, POST | `/api/certificates` | Enrolled HTTPS certificate bindings; `mtls.read` / `mtls.bind` |
 | DELETE | `/api/certificates/{id}` | Revoke an HTTPS certificate binding and its sessions |
 | GET, POST | `/api/radius/certificates` | RADIUS EAP-TLS bindings; user certificate and listener enrollment permissions |
@@ -266,33 +299,50 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | DELETE | `/api/registration/{id}` | Revoke an initial registration credential |
 | GET, POST | `/api/sources` | List/upsert upstream identity-source configuration |
 | GET | `/api/saml/{id}/metadata`, `/api/saml/sources/{id}/metadata` | JSON wrappers for signed XML metadata |
-| POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups |
-| DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation |
-| GET, POST | `/api/offboard/jobs` | List/schedule durable local offboarding jobs; `user.offboard` |
+| GET | `/api/account/invitations` | Accounts waiting to accept an invitation: link status and expiry, groups, inviter and, with `operations.read`, delivery state. Never returns codes |
+| POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups; requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation; requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| GET, POST | `/api/offboard/jobs` | List/schedule durable offboarding jobs with live per-target downstream outcomes; `user.offboard` |
 | GET | `/api/offboard/jobs/{id}` | Inspect an offboarding job |
 | POST | `/api/offboard/jobs/{id}/reschedule`, `/api/offboard/jobs/{id}/cancel` | Update a scheduled job or request cancellation; see [ENT-10](enterprise/ENT-10.md) |
 | GET, POST, PATCH, PUT, DELETE | `/api/ssf/streams` | SSF 1.0 receiver configuration; generated stream IDs, `stream_id` query for GET/DELETE, bearer administrator, `ssf.configure` agent, or OAuth service access token with `ssf.configure` scope |
 | GET, POST | `/api/ssf/admin/streams` | List/create pinned inbound trust and subject bindings; administrator or `ssf.manage` agent |
 | DELETE | `/api/ssf/admin/streams/{id}` | Delete an authorized trust registration and cancel its pending deliveries |
-| PUT | `/api/ssf/admin/streams/{id}/subjects` | Replace exact approved local subject bindings for a stream |
+| PUT | `/api/ssf/admin/streams/{id}/subjects` | Replace exact approved local subject bindings for a stream. Desired-state `ssf_streams` uses this writer and the administrator create writer for the non-secret subset only; see [ENT-07](enterprise/ENT-07.md) |
 | GET | `/api/provisioning/targets` | Configured outbound SCIM targets |
 | POST | `/api/provisioning/targets/{id}/plan` | Create an immutable provisioning plan |
 | GET | `/api/provisioning/plans/{id}` | Inspect caller-bound plan |
 | POST | `/api/provisioning/plans/{id}/apply` | Apply reviewed plan to a durable delivery job |
-| GET | `/api/provisioning/jobs` | Inspect permitted delivery jobs |
-| GET, POST | `/api/keys` | List/import/generate signing-key domains |
-| POST | `/api/keys/rotate` | Authorized signing-key rotation |
+| GET | `/api/provisioning/jobs` | Inspect permitted delivery jobs and their `delivery_state` |
+| POST | `/api/provisioning/jobs/{id}/stop` | Stop an unfinished delivery job so its target can be replanned; `provisioner.sync` |
+| GET | `/api/provisioning/deactivations` | Newest per-target offboarding deactivation outcomes and `delivery_state`; `provisioner.read` on the target and `user.read` on the account |
+| POST | `/api/provisioning/deactivations/{id}/retry` | Re-evaluate a failed or stale deactivation against the current link; `provisioner.sync` |
+| POST | `/api/provisioning/deactivations/{id}/resolve`, `/api/provisioning/jobs/{id}/resolve` | Record operator evidence (`observed`, `evidence`) for ambiguity no attempt can settle; `provisioner.sync` plus read access to the named account or item |
+| POST | `/api/provisioning/deactivations/{id}/dismiss` | Waive a held, failed or stale row with its exact `revision`, `reason` (`remote_absent` or `permanently_unverifiable`) and `evidence`; requires `Idempotency-Key`, `provisioner.sync`, `provisioner.read` on the target and `user.read` on the account |
+| GET, POST | `/api/keys` | List/import/generate signing-key domains; POST is bearer-only and requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| POST | `/api/keys/rotate` | Authorized signing-key rotation; bearer-only, requires `Idempotency-Key` and `If-Match: "<revision>"`; exact retry returns the committed `kid` |
 | POST | `/api/state/plan` | Versioned manifest; redacted immutable plan |
 | GET | `/api/state/plans/{id}` | Same principal's plan and applied result |
 | POST | `/api/state/apply` | Exact plan, resolved `secrets` map and optional `run_id` |
 | GET | `/api/state/export` | Visible manifest, revision, no credential material |
 | GET | `/api/state/revision` | Revision for conditional mutations |
-| GET | `/api/operations/doctor` | Storage/key/admin diagnostics |
+| GET | `/api/operations/doctor` | Storage/key/admin diagnostics; `operations.read` on `operations/health`; `users`, `clients`, and pending logout deliveries are counted one page of 128 at a time |
+| GET | `/api/operations/offboarding` | Platform scheduled-offboarding counts and at most 50 redacted attention items; `operations.read` on `operations/offboarding`; a username also needs `user.offboard` on that stored user; `has_error` records a stored error and the text stays on the job read |
+| GET | `/api/operations/offboarding/deactivations` | Platform deactivation-delivery counts and at most 50 redacted attention rows, read one storage page at a time, with no job-linkage field; same `operations.read` resource; an item also needs `user.offboard` on the account's current username; `has_error` records a stored error and the text stays on the deactivation read |
+| GET | `/api/operations/reconciliation` | Reconciliation-controller counts and at most 50 redacted attention rows; `operations.read` on `operations/reconciliation`; `has_error` records a stored error and the text stays on the schedule and job reads; `next_run` is the next enqueue time; a schedule row's `last_completed_at` is local controller completion time or null and can refer to an earlier job than `last_job` |
+| GET | `/api/operations/provisioning` | Provisioning-job counts and at most 50 redacted attention rows, read one storage page of 128 at a time; `operations.read` on `operations/provisioning`; an item also needs `provisioner.read` on `provisioner/<target>`; `has_error` records a stored error and the text stays on `GET /api/provisioning/jobs`; Essentials and Platform both serve it |
+| GET | `/api/operations/provisioning/deactivations` | Deactivation counts and at most 50 redacted attention rows, read one storage page of 128 at a time; `operations.read` on `operations/provisioning`; an item also needs `provisioner.read` on the stored target and `user.read` on the live account; a missing account is withheld, including for a full administrator; the target name and stored username are omitted; `has_error` records a stored error and the text stays on `GET /api/provisioning/deactivations`; `user.offboard` is not used; Essentials and Platform both serve it |
+| GET | `/api/operations/ssf` | Platform outbound Shared Signals delivery counts and at most 50 redacted attention rows, read one storage page at a time; `operations.read` on `operations/ssf`; an item also needs `ssf.configure` or `ssf.manage` on `ssf/<stream id>`; the raw event, endpoint, subject, audience, JTI, and credential type stay on the delivery record; incident steps are in [SSF delivery](ssf-delivery.md) |
 | GET | `/api/operations/metrics` | Process counters and capacity |
 | GET | `/api/operations/prometheus` | Authenticated Prometheus text metrics |
 | GET | `/api/operations/mail` | Redacted email-delivery state |
 | GET | `/api/operations/logout` | Logout delivery state |
-| POST | `/api/operations/backup` | Base64url `encryption_key`; encrypted complete snapshot |
+| POST | `/api/operations/backup/stream` | Base64url `encryption_key`, optional lower `max_archive_bytes`; streams an encrypted complete snapshot as `riauth.backup/v3` |
+| POST | `/api/operations/backup` | Legacy: base64url `encryption_key`; encrypted complete snapshot as `riauth.backup/v2` JSON of at most 64 MiB |
+
+`GET /api/users` without `limit` or `cursor` keeps its array response. A request with either parameter uses the paged response. Set `limit` from 1 to 100 (default 100 when continuing) and repeat the same limit with each `next_cursor` until it is null. Pages follow stored user-key order and apply `user.read` to each row. A page may have no visible items and still return a cursor: each request examines at most 10,000 records in batches of at most 128. Cursors are encrypted, valid for one hour, and bound to the credential, page size, configuration revision, User-record generation, recovery timeline and current grants or agent permissions. A changed collection, authorization state or restored timeline returns HTTP 409; restart from the first page. `GET /api/inventory/users` and CSV exports retain their separate cursor contracts.
+
+Both backup routes need `operations.backup` on `operations/backup`. The streaming route reports authorization, key and quota failures, and 503 while another export runs, as JSON errors before the archive starts. A 200 response is `application/octet-stream` with `X-riAuth-Backup-Format: riauth.backup/v3` and the effective `X-riAuth-Backup-Max-Bytes`. A later failure aborts the body rather than ending it, so accept an archive only after it authenticates through its trailer, as `riauth backup` does. See [streamed backup export](operations.md#streamed-backup-export).
 
 Workspace and Entra plans expose `removal_impact` with `disabled_users`, `missing_users`, `removed_memberships`, and `review_required`. Any previously linked user missing from the snapshot, any mapped-group membership removal, a full linked-user disable, or a large partial disable requires confirmation. For a plan with `review_required: true`, inspect its `changes` and send `X-riAuth-Confirm-Cloud-Removals: <plan-id>` with the apply request. The exact stored plan ID is required; the server re-fetches the directory and rejects a changed snapshot or impact.
 
@@ -300,7 +350,13 @@ Workspace and Entra plans expose `removal_impact` with `disabled_users`, `missin
 
 Provider settings include explicit grant lists, lifetimes, native profile, exact origins, post-logout/back-channel URLs, mappings, claim placement and policy. Use the generated `provider`, `client-create`, `client-update`, `user-create`, `user-update`, `manifest` and `apply` schemas rather than inferring fields from examples.
 
-Direct administrative resource writes support `Idempotency-Key` and `If-Match: "<revision>"`; agent mutations require the latter. Successful results and their receipt commit in one transaction. Identical authenticated retries return the original result for 24 hours. Reusing a key for a different request fails. Plan/apply uses its own immutable-plan identity and preconditions. `X-riAuth-Run-ID` supplies correlation; the server creates `X-Request-ID` and records redacted mutation details.
+Direct administrative resource writes support `Idempotency-Key` and `If-Match: "<revision>"`; agent create, rotate and revoke require both. Successful results and their receipt commit in one transaction. Identical authenticated retries normally return the original result for 24 hours. Agent creation and rotation instead store only a redacted issuance marker and reject an exact retry without re-disclosing the credential. Reusing a key for a different request fails. Plan/apply uses its own immutable-plan identity and preconditions. Direct client writes and plan/apply share one application write path for authorization, validation, type immutability and grant revocation. A record change needs `client.write`; a secret or authentication-settings change also needs `client.rotate`. `rotate-secret` needs only `client.rotate` and does not revalidate unrelated client configuration; a manifest must still hold `client.write` for every client it names. A settings change cannot turn a confidential client (shared secret or `private_key_jwt`) into a public one, or the reverse; create a new client instead. `X-riAuth-Run-ID` supplies correlation; the server creates `X-Request-ID` and records redacted mutation details.
+
+### Policy simulation
+
+Policy simulation uses the same management principal as other reads. It requires `client.read` and `user.read` on the named records, `group.read` on the changed group and every group used by the evaluated policy, and `source.read` on an assumed source. The older explanation also requires group read rights for policy decisions and projected group claims. The new response omits profile, group lists, claims, secrets and source metadata. `revision` is the configuration revision; `dependency_revision` fingerprints the request, policy, relevant observed memberships, user state, source availability and device-trust result in one read snapshot. Neither value is an apply receipt or authorization proof. A source is assumed to have been verified, but no link or login is verified. Fresh authentication proofs and approved device state return `needs_live_proof` unless another policy check already denies the request. Use `riauth simulate <client-id> <username> --with-group <name> --assurance mfa` (or `--without-group`, `--source`, `--scope`); `riauth schema policy-simulation` describes the API body.
+
+The compact administration page sends the same body to `POST /api/admin/policy/simulate` with its SSO cookie and same-origin portal guards. That route calls the same read-only management method as the bearer API and CLI.
 
 ## Inbound SCIM
 
@@ -325,23 +381,23 @@ Resource operations use a provisioning principal with the required user/group pe
 | GET | `/outpost/{id}/callback` | Redeem bound authorization code and issue application cookie |
 | POST | `/outpost/{id}/logout` | Revoke application cookie; exact Origin required |
 
-Blocking work has eight worker slots; a request waits up to two seconds for one, then gets 503 `temporarily_unavailable`. Password checks (`/api/login`, `/api/password`, `/api/portal/login/password` and the interaction `…/password` endpoints) first take one of four credential permits and keep both permits until the check finishes, even if the client disconnects; forward-auth checks use a separate queue of sixteen, each with the same two-second wait. Per effective client address and 60-second window, the limits by category are:
+Blocking work has eight worker slots; a request waits up to two seconds for one, then gets 503 `temporarily_unavailable`. Password checks (`/api/login`, `/api/password`, `/api/portal/login/password`, `/api/portal/password`, `/api/portal/account/accept`, `/api/portal/account/verify`, `/api/portal/account/reset` and the interaction `…/password` endpoints) first take one of four credential permits and keep both permits until the check finishes, even if the client disconnects; forward-auth checks use a separate queue of sixteen, each with the same two-second wait. Per effective client address and 60-second window, the limits by category are:
 
 | Category | Limit | Routes |
 | --- | ---: | --- |
-| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/source-login/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
-| `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, interaction `…/passkey/start` and `…/finish` |
+| `login` | 20 | `/api/login`, `/api/login/certificate`, `/api/password`, `/api/portal/password`, `/api/source-login/finish`, `/api/portal/sources/finish`, Windows login and tickets, `/api/portal/login/password`, interaction `…/password` |
+| `passkey` | 30 | `/api/passkey/*`, `/api/portal/login/passkey/*`, `/api/portal/passkeys*`, `/api/portal/mfa*` except TOTP confirmation, interaction `…/passkey/start` and `…/finish` |
 | `browser_state` | 1200 | interaction `…/state` |
 | `browser_decision` | 60 | interaction `…/decision` |
 | `forward_auth` | 6000 | `/outpost/{id}/auth`, `/outpost/{id}/traefik`; always counted in memory, per node |
 | `outpost_start` | 30 | `/outpost/{id}/start` |
 | `portal_start` | 10 | `/api/portal/sign-in` |
 | `portal_approve` | 20 | `/api/portal/requests/{code}` |
-| `account` | 10 | `/api/account/*` |
-| `mfa` | 10 | `/api/mfa/confirm` |
+| `account` | 10 | `/api/account/*`, `/api/portal/account/*` |
+| `mfa` | 10 | `/api/mfa/confirm`, `/api/portal/mfa/totp/confirm` |
 | `device_start` | 30 | `/oauth/device/code` |
 | `device_verify` | 20 | `/api/device/*`, `/api/authorization/*` |
-| `source_start`, `source_callback` | 30 each | source starts; upstream callbacks and stage handling |
+| `source_start`, `source_callback` | 30 each | source starts, including `/api/portal/sources/{id}/start`; upstream callbacks and stage handling |
 | `saml` | 30 | `/saml/*` other than `/saml/resume/*` |
 | `general` | 600 | everything else |
 

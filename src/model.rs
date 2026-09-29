@@ -1,3 +1,12 @@
+pub mod assurance;
+pub mod claims;
+pub mod client_config;
+pub mod client_settings;
+pub mod credential;
+pub mod exchange;
+pub mod federation;
+pub mod jwk;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -6,7 +15,7 @@ pub struct User {
     #[serde(default)]
     pub has_passkeys: bool,
     #[serde(default)]
-    pub totp_settings: crate::authenticator::TotpSettings,
+    pub totp_settings: credential::TotpSettings,
     #[serde(default)]
     pub pairwise_seed: String,
     pub id: String,
@@ -40,6 +49,7 @@ pub struct UserView {
     pub enabled: bool,
     pub admin: bool,
     pub mfa_enabled: bool,
+    pub password_available: bool,
     pub created_at: u64,
     pub attributes: BTreeMap<String, serde_json::Value>,
     pub email_verified: bool,
@@ -55,6 +65,7 @@ impl From<&User> for UserView {
             enabled: u.enabled,
             admin: u.admin,
             mfa_enabled: u.totp_secret.is_some() || u.has_passkeys,
+            password_available: !u.password_hash.is_empty(),
             created_at: u.created_at,
             attributes: u.attributes.clone(),
             email_verified: u.email_verified,
@@ -68,6 +79,51 @@ pub struct Group {
     pub name: String,
     pub members: BTreeSet<String>,
 }
+
+/// Complete durable membership, expressed as exact usernames and bound to
+/// stable user IDs by the shared review service.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupMembershipInput {
+    pub members: Vec<String>,
+}
+
+pub type GroupChangeBinding = crate::delegation::GrantChangeBinding;
+
+/// Complete replacement of the two reviewed access-policy fields. Creation,
+/// other client settings and credentials keep their separate contracts.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientPolicyInput {
+    pub allowed_groups: BTreeSet<String>,
+    pub require_mfa: bool,
+}
+
+pub type ClientPolicyBinding = crate::delegation::GrantChangeBinding;
+pub type ClientStatusBinding = crate::delegation::GrantChangeBinding;
+
+/// Exact enable/disable intent; effects are computed and bound by the service.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientStatusInput {
+    pub enabled: bool,
+}
+pub type ClientCreationBinding = crate::delegation::GrantChangeBinding;
+
+/// Exact replacement of OAuth callbacks, browser CORS origins and logout endpoints.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClientEndpointInput {
+    pub redirect_uris: Vec<String>,
+    pub origins: BTreeSet<String>,
+    pub post_logout_redirect_uris: Vec<String>,
+    // Explicit null removes a channel. Missing fields must never imply removal.
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub frontchannel_logout_uri: Option<String>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub backchannel_logout_uri: Option<String>,
+}
+pub type ClientEndpointBinding = crate::delegation::GrantChangeBinding;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
@@ -89,28 +145,28 @@ pub struct Client {
 pub struct ProviderSettings {
     /// User-facing application metadata. Access always inherits the client policies.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub app: Option<crate::portal::Settings>,
+    pub app: Option<client_settings::portal::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub saml: Option<crate::saml::Settings>,
+    pub saml: Option<client_settings::saml::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub radius: Option<crate::radius::Settings>,
+    pub radius: Option<client_settings::radius::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ldap: Option<crate::ldap_server::Settings>,
+    pub ldap: Option<client_settings::ldap::Settings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub proxy: Option<crate::outpost::Settings>,
+    pub proxy: Option<client_settings::proxy::Settings>,
     pub resources: BTreeMap<String, BTreeSet<String>>,
     pub issuer: Option<String>,
-    pub token_endpoint_auth_method: Option<crate::jose::ClientAuthMethod>,
-    pub jwks: Option<crate::jose::PublicJwks>,
-    pub machine_trust: Vec<crate::jose::MachineTrust>,
-    pub exchange: Option<crate::exchange::ExchangePolicy>,
+    pub token_endpoint_auth_method: Option<client_config::ClientAuthMethod>,
+    pub jwks: Option<jwk::PublicJwks>,
+    pub machine_trust: Vec<client_config::MachineTrust>,
+    pub exchange: Option<client_config::ExchangePolicy>,
     pub exchange_from: BTreeSet<String>,
     pub signing_key: Option<String>,
-    pub id_token_encryption: Option<crate::encryption::EncryptionKey>,
-    pub access_token_encryption: Option<crate::encryption::EncryptionKey>,
-    pub userinfo_encryption: Option<crate::encryption::EncryptionKey>,
+    pub id_token_encryption: Option<client_config::EncryptionKey>,
+    pub access_token_encryption: Option<client_config::EncryptionKey>,
+    pub userinfo_encryption: Option<client_config::EncryptionKey>,
     pub userinfo_signed_response: bool,
-    pub authorization_encryption: Option<crate::encryption::EncryptionKey>,
+    pub authorization_encryption: Option<client_config::EncryptionKey>,
     pub default_acr_values: Vec<String>,
     pub require_pushed_authorization_requests: bool,
     pub require_signed_request: bool,
@@ -127,11 +183,11 @@ pub struct ProviderSettings {
     pub post_logout_redirect_uris: Vec<String>,
     pub backchannel_logout_uri: Option<String>,
     pub frontchannel_logout_uri: Option<String>,
-    pub claim_mappings: Vec<crate::claims::ClaimMapping>,
+    pub claim_mappings: Vec<claims::ClaimMapping>,
     pub groups_in_profile: bool,
     pub claims_in_access_token: bool,
     pub userinfo_only: bool,
-    pub policy: crate::claims::Policy,
+    pub policy: claims::Policy,
     /// Upstream source embedded in interactive authorization. One source id.
     /// Authentication is suspended until that source returns; it is not a new login stack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -157,7 +213,7 @@ impl Client {
     pub fn confidential(&self) -> bool {
         self.secret_hash.is_some()
             || self.settings.token_endpoint_auth_method
-                == Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
+                == Some(client_config::ClientAuthMethod::PrivateKeyJwt)
     }
     pub fn view(&self) -> serde_json::Value {
         serde_json::json!({"client_id": self.id, "name": self.name, "confidential": self.confidential(), "redirect_uris": self.redirect_uris, "scopes": self.scopes, "allowed_groups": self.allowed_groups, "require_mfa": self.require_mfa, "enabled": self.enabled, "service": self.service, "settings": self.settings})
@@ -169,7 +225,7 @@ pub struct Identity {
     #[serde(default)]
     pub amr: Vec<String>,
     #[serde(default)]
-    pub source: Option<crate::source::SourceIdentity>,
+    pub source: Option<federation::SourceIdentity>,
     pub user_id: String,
     pub epoch: u64,
     pub mfa: bool,
@@ -205,7 +261,7 @@ pub struct Code {
     #[serde(default)]
     pub dpop_jkt: Option<String>,
     #[serde(default)]
-    pub claims_request: crate::assurance::ClaimsRequest,
+    pub claims_request: assurance::ClaimsRequest,
     #[serde(default)]
     pub acr_values: Option<String>,
     pub client_id: String,
@@ -259,13 +315,13 @@ pub struct Grant {
     #[serde(default)]
     pub id_token_jkt: Option<String>,
     #[serde(default)]
-    pub claims_request: crate::assurance::ClaimsRequest,
+    pub claims_request: assurance::ClaimsRequest,
     #[serde(default)]
     pub acr_values: Option<String>,
     #[serde(default)]
     pub machine_trust_hash: Option<String>,
     #[serde(default)]
-    pub exchange: Option<crate::exchange::ExchangeGrant>,
+    pub exchange: Option<exchange::ExchangeGrant>,
     pub client_id: String,
     pub identity: Option<Identity>,
     pub scopes: BTreeSet<String>,
@@ -331,7 +387,7 @@ pub struct UserPatch {
     pub subjects: Option<BTreeMap<String, String>>,
 }
 
-#[derive(schemars::JsonSchema, Deserialize, Serialize)]
+#[derive(schemars::JsonSchema, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewClient {
     pub client_id: String,

@@ -2,9 +2,30 @@
 
 [Implementation](../../src/cloud_directory.rs) and [tests](../../tests/cloud_directory.rs).
 
-Workspace sync imports users and selected groups through the Admin SDK Directory API. It does not copy passwords, delete local users, or change user/group records until an authorized caller applies a reviewed plan. Validate the token broker and synchronization behavior with a controlled Workspace tenant before deployment; the repository tests use local mocks.
+Workspace sync imports users and selected groups through the Admin SDK Directory API. It does not copy passwords, delete local users, or change user/group records until an authorized caller applies a reviewed plan. Validate authorization and synchronization behavior with a controlled Workspace tenant before deployment; the repository tests use local mocks.
 
-The supported token profile is OAuth 2.0 `client_credentials` (`grant_type`, `client_id`, `client_secret`, and `scope` when it is non-empty). The client secret is read from a 0600/0400 file on every plan and apply. Google's public token endpoint does not issue Admin SDK access tokens with this grant; point `token_url` at an endpoint that implements the profile. Directory calls then use `Authorization: Bearer`.
+The supported direct mode follows [Google's service-account JWT bearer flow](https://developers.google.com/identity/protocols/oauth2/service-account). A Workspace super administrator must grant domain-wide delegation to the service account's **numeric client ID** in the Admin console. Configure a dedicated Workspace user with only the Directory read privileges needed by this connector as `delegated_subject`. The signed assertion has that user as `sub`; Google constrains access by that user's privileges and the granted OAuth scopes. For users only, the connector requests `admin.directory.user.readonly`. When mapped groups are configured, it also requests `admin.directory.group.readonly` and `admin.directory.group.member.readonly` as documented in [Directory API scopes](https://developers.google.com/workspace/admin/directory/v1/guides/authorizing). Authorize exactly those scopes in the Admin console.
+
+```toml
+[workspace_directories.corp]
+customer_id = "C01234567"
+domain = "example.com"
+directory_url = "https://admin.googleapis.com"
+username_prefix = ""
+
+[workspace_directories.corp.direct_auth]
+key_file = "secrets/workspace-service-account.json"
+delegated_subject = "directory-reader@example.com"
+
+[workspace_directories.corp.groups]
+staff = "staff@example.com"
+```
+
+The key file is Google's service-account JSON file, stored outside source control with owner-only permissions (0600 or 0400). Relative paths resolve from `riauth.toml`. The connector verifies its `type` and official `token_uri`, then reads the key afresh for each plan and apply so key replacement takes effect without process restart. Standard Platform builds accept only the exact `https://admin.googleapis.com` Directory origin and `https://oauth2.googleapis.com/token` token endpoint in direct mode. The direct HTTP client ignores ambient system and environment proxies, and does not follow redirects. Only builds with the explicit `test-support` feature accept a fake peer using the same literal HTTP loopback IP and port for both endpoints; do not enable that feature in shipped builds. Assertions use RS256, expire after one hour, and are exchanged for a bearer token once per bounded sync. A token response with less than 60 seconds of lifetime is rejected. Authentication failures count against the same per-directory retry budget as broker failures. The key file and access token are never included in a plan. Protect and rotate service-account keys according to [Google's key guidance](https://docs.cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys).
+
+The broker mode remains available for deployments that provide tokens through a separate trusted endpoint. It retains the normal HTTP client's proxy behavior.
+
+In broker mode, the token profile is OAuth 2.0 `client_credentials` (`grant_type`, `client_id`, `client_secret`, and `scope` when it is non-empty). The client secret is read from a 0600/0400 file on every plan and apply. Google's public token endpoint does not issue Admin SDK access tokens with this grant; point `token_url` at an endpoint that implements the profile. Directory calls then use `Authorization: Bearer`.
 
 ```toml
 [workspace_directories.corp]
@@ -26,7 +47,7 @@ display_name = "name.fullName"
 external_id = "id"
 ```
 
-`directory_url` is an origin with no path. Production is `https://admin.googleapis.com`. Loopback HTTP is accepted for a local broker. Relative secret paths are resolved from `riauth.toml`.
+`directory_url` is an origin with no path. Production is `https://admin.googleapis.com`. Loopback HTTP is accepted for a local peer. Relative secret paths are resolved from `riauth.toml`.
 
 Users come from `GET /admin/directory/v1/users` with `customer`, `domain`, and `maxResults`, following `nextPageToken` on that same URL. Groups come from `/admin/directory/v1/groups`, and members from `/admin/directory/v1/groups/{id}/members`. The connector reads `id`, `primaryEmail`, `name.fullName`, and `suspended`. `orgUnitPath` may be present and is not imported. `suspended = true` disables the linked local user. Attribute names are configurable; the stable match key is the external id, not the email.
 
@@ -42,9 +63,13 @@ riauth --if-revision "$(jq -r .revision deployment-private/workspace-plan.json)"
 
 The same operations are `GET /api/workspace-directories`, `POST /api/workspace-directories/{id}/plan`, `GET /api/workspace-directory-plans/{id}`, and `POST /api/workspace-directory-plans/{id}/apply`.
 
-Each plan includes `removal_impact.disabled_users`, `missing_users`, `removed_memberships`, and `review_required`. A previously linked user missing from the snapshot, any mapped-group membership removal, a full linked-user disable, or a large partial disable requires explicit confirmation. When `review_required` is true, inspect the complete plan and apply with `riauth directory workspace apply --plan deployment-private/workspace-plan.json --confirm-removals`; the HTTP equivalent is `X-riAuth-Confirm-Cloud-Removals: <plan-id>` on the apply request. The header must contain that exact plan's ID. Apply still re-fetches the directory and checks the stored plan before changing accounts.
+Workspace plan and apply requests read at most five source pages and return `decision: snapshot_in_progress` with a durable `snapshot_id` until the user, group, and selected membership pages finish. Repeat the same request, including the plan ID and removal confirmation header on apply, to resume; the CLI does this automatically. Apply progress also includes `operation: apply_validation` and `plan_id`. The apply cursor is bound to the exact stored plan and review commitment. Controller validation of a pending Workspace plan uses the planning cursor and retains the plan ID only when the completed source still matches. Each draft retains a page token, parsed users, selected group IDs, and the current collection's seen IDs. It expires after five idle minutes. Planning restarts on authority, revision, or configuration changes; apply rejects those changes and requires a new plan. Each collection is limited to 20 pages and 2,000 objects, each response to 1 MiB and 200 rows, and the entire crawl and serialized draft to 4 MiB. Plans are limited to 7 MiB so their backup records fit below the 8 MiB frame ceiling with headroom. An unfinished or invalid crawl cannot produce a plan or change local users and groups. Each request has a 30-second source budget; the five-minute plan expiry still bounds the whole apply validation.
 
-The agent needs `directory.read` and `directory.sync` on `workspace/corp`, `user.write` for every affected username, and `group.members` for each allow-listed local group. `directory/corp` does not grant this sync. Plans are actor-bound, expire after five minutes, and omit access tokens and client secrets. Plan creation persists the plan and audit bookkeeping; user and group changes happen only at apply. Apply fetches the upstream directory again and rejects changes to the reviewed entries, directory configuration, or local revision. Generate and review a new plan after a conflict.
+The optional [source crawl quotas](../removal-safeguards.md#source-crawl-quotas) can tighten these page, object, byte and draft-expiry bounds. A quota change requires a new plan.
+
+Each plan includes `removal_impact.disabled_users`, `missing_users`, `removed_memberships`, and `review_required`. A previously linked user missing from the snapshot, any mapped-group membership removal, a full linked-user disable, or a large partial disable requires explicit confirmation. When `review_required` is true, inspect the complete plan and apply with `riauth directory workspace apply --plan deployment-private/workspace-plan.json --confirm-removals`; the HTTP equivalent is `X-riAuth-Confirm-Cloud-Removals: <plan-id>` on the apply request. The header must contain that exact plan's ID. The shared `X-riAuth-Confirm-Removals` header is also accepted. See [connector removal safeguards](../removal-safeguards.md) for exact thresholds, content/authority commitments and upgrade behavior. Apply still re-fetches the directory and checks the stored plan before changing accounts.
+
+The agent needs `directory.read` and `directory.sync` on `workspace/corp`, `user.write` for every affected username, and `group.members` for each allow-listed local group. `directory/corp` does not grant this sync. Plans are actor-bound, expire after five minutes, and omit access tokens and client secrets. Plan creation persists the plan and audit bookkeeping; user and group changes happen only after a complete apply crawl matches every reviewed entry. Apply rejects changes to the reviewed entries, directory configuration, local revision, or actor authority. Generate and review a new plan after a conflict. Workspace list pagination does not provide a point-in-time transaction across users, groups, and memberships; upstream changes that occur during the crawl and leave the final staged entries unchanged cannot be detected.
 
 New users are explicit links stored by Workspace customer, directory id, and upstream id. A matching email or username does not adopt an existing account. Username collisions abort the plan. Administrators, LDAP-linked users, and users linked to another directory or tenant are refused. The local username is chosen at first link from the email local-part, or the external id when that name is not usable, plus `username_prefix`. Later email changes update the mailbox and clear `email_verified`; they do not rename the account or take over a different user.
 

@@ -1,3 +1,8 @@
+#[path = "common/client_policy.rs"]
+mod client_policy;
+#[path = "common/client_status.rs"]
+mod client_status;
+
 use axum::{
     Router,
     body::Body,
@@ -342,27 +347,9 @@ fn portal_inherits_live_access_without_admin_bypass_or_information_leaks() {
     hidden.app.as_mut().unwrap().hidden = true;
     f.client("hidden", hidden, &[]);
     f.client("disabled", metadata(), &[]);
-    f.core
-        .update_client(
-            &f.admin,
-            "disabled",
-            ClientPatch {
-                enabled: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    client_status::set(&f.core, &f.admin, "disabled", false);
     f.client("mfa", metadata(), &[]);
-    f.core
-        .update_client(
-            &f.admin,
-            "mfa",
-            ClientPatch {
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    client_policy::replace(&f.core, &f.admin, "mfa", None, Some(true));
     let mut acr = metadata();
     acr.default_acr_values.push(riauth::assurance::MFA.into());
     f.client("acr", acr, &[]);
@@ -1020,12 +1007,24 @@ async fn portal_login_endpoints_enforce_origin_header_fetch_site_and_json() {
             "login/passkey/finish",
             json!({"ceremony":"ri_passkey_auth_x","credential":{}}),
         ),
-        ("passkeys/registration/start", json!({"name":"Laptop"})),
+        (
+            "passkeys/registration/start",
+            json!({"name":"Laptop","expected_user_id":f.user_id("alice")}),
+        ),
         (
             "passkeys/registration/finish",
             json!({"ceremony":"ri_passkey_enroll_x","credential":{}}),
         ),
+        (
+            "passkeys/registration/cancel",
+            json!({"ceremony":"ri_passkey_enroll_x"}),
+        ),
+        ("passkeys/unknown/rename", json!({"name":"New name"})),
         ("passkeys/unknown/remove", json!({})),
+        (
+            "login/passkey/cancel",
+            json!({"ceremony":"ri_passkey_auth_x"}),
+        ),
         ("sign-out", json!({"scope":"browser"})),
     ] {
         // A fresh router per endpoint keeps these requests within every rate bucket.
@@ -1080,7 +1079,7 @@ async fn portal_login_endpoints_enforce_origin_header_fetch_site_and_json() {
         post(
             "/identity/api/portal/passkeys/registration/start",
             &cookie,
-            json!({"name":""}),
+            json!({"name":"","expected_user_id":f.user_id("alice")}),
         ),
     )
     .await;
@@ -1573,7 +1572,7 @@ async fn portal_passkey_registration_requires_fresh_mfa_rule_and_signs_out() {
             post(
                 "/api/portal/passkeys/registration/start",
                 &format!("riauth_sso={sso}"),
-                json!({"name":"Laptop"}),
+                json!({"name":"Laptop","expected_user_id":alice_id}),
             ),
         )
     };
@@ -1648,6 +1647,135 @@ async fn portal_passkey_registration_requires_fresh_mfa_rule_and_signs_out() {
     // The new passkey signs in without a username, and that session may enroll.
     let passkey = f.passkey_browser(&mut authenticator, &credential, &alice_id);
     assert_eq!(start(&passkey).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn portal_passkey_cancel_consumes_only_the_initiating_browsers_ceremony() {
+    let f = Fixture::new("/identity");
+    let alice = f.user("alice");
+    f.create("bob");
+    let first = f.browser("alice", None);
+    let second = f.browser("alice", None);
+    let bob = f.browser("bob", None);
+    let app = riauth::api::router(f.core.clone());
+    let cookie = |sso: &str| format!("riauth_sso={sso}");
+    let (status, _, error) = call(
+        &app,
+        post(
+            "/identity/api/portal/passkeys/registration/start",
+            &cookie(&first),
+            json!({"name":"Wrong account","expected_user_id":f.user_id("bob")}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        (status, error["error"].as_str()),
+        (StatusCode::CONFLICT, Some("account_mismatch"))
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("passkey_registration")
+            .unwrap()
+            .is_empty()
+    );
+    let (status, _, started) = call(
+        &app,
+        post(
+            "/identity/api/portal/passkeys/registration/start",
+            &cookie(&first),
+            json!({"name":"Cancelled key","expected_user_id":f.user_id("alice")}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{started}");
+    let ceremony = &started["ceremony"];
+    let mut unused = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let response = register(&f, &mut unused, &started);
+    let cancel_registration = |sso: &str| {
+        call(
+            &app,
+            post(
+                "/identity/api/portal/passkeys/registration/cancel",
+                &cookie(sso),
+                json!({"ceremony":ceremony}),
+            ),
+        )
+    };
+    for other in [&second, &bob] {
+        assert_eq!(cancel_registration(other).await.0, StatusCode::UNAUTHORIZED);
+    }
+    let (status, _, body) = cancel_registration(&first).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["cancelled"], true);
+    assert_eq!(
+        cancel_registration(&first).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            &app,
+            post(
+                "/identity/api/portal/passkeys/registration/finish",
+                &cookie(&first),
+                json!({"ceremony":ceremony,"credential":response}),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert!(f.core.store.list::<Value>("passkeys").unwrap().is_empty());
+    assert_eq!(f.signed_in_as(&first).as_deref(), Some("alice"));
+
+    let (mut authenticator, credential) = f.enroll(&alice);
+    let (status, cookies, started) = call(
+        &app,
+        post("/identity/api/portal/login/passkey/start", "", json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{started}");
+    let binding = cookie_named(&cookies, "riauth_passkey").unwrap();
+    let proof = discoverable(
+        &f,
+        &mut authenticator,
+        &started,
+        &credential,
+        &f.user_id("alice"),
+    );
+    let cancel_login = |cookie: &str| {
+        call(
+            &app,
+            post(
+                "/identity/api/portal/login/passkey/cancel",
+                cookie,
+                json!({"ceremony":started["ceremony"]}),
+            ),
+        )
+    };
+    assert_eq!(cancel_login("").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        cancel_login("riauth_passkey=wrong_browser").await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let bound = format!("riauth_passkey={binding}");
+    let (status, _, body) = cancel_login(&bound).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["cancelled"], true);
+    assert_eq!(cancel_login(&bound).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        call(
+            &app,
+            post(
+                "/identity/api/portal/login/passkey/finish",
+                &bound,
+                json!({"ceremony":started["ceremony"],"credential":proof}),
+            ),
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]
@@ -1750,7 +1878,11 @@ async fn terminal_shared_browser_signs_in_before_changing_passkeys() {
     for (uri, body) in [
         (
             "/api/portal/passkeys/registration/start".to_owned(),
-            json!({"name":"Planted"}),
+            json!({"name":"Planted","expected_user_id":f.user_id("alice")}),
+        ),
+        (
+            format!("/api/portal/passkeys/{id}/rename"),
+            json!({"name":"Hijacked"}),
         ),
         (format!("/api/portal/passkeys/{id}/remove"), json!({})),
     ] {
@@ -1802,7 +1934,7 @@ async fn terminal_shared_browser_signs_in_before_changing_passkeys() {
         post(
             "/api/portal/passkeys/registration/start",
             &cookie(&owned),
-            json!({"name":"Laptop"}),
+            json!({"name":"Laptop","expected_user_id":f.user_id("alice")}),
         ),
     )
     .await;
@@ -1854,7 +1986,7 @@ async fn portal_passkey_list_reports_freshness_and_limits() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         data,
-        json!({"passkeys":[],"fresh":true,"terminal":false,"mfa":false,"can_register":true,"can_remove":false,"limit":16})
+        json!({"user_id":f.user_id("alice"),"passkeys":[],"fresh":true,"terminal":false,"mfa":false,"can_register":true,"can_rename":false,"can_remove":false,"password_available":true,"passkey_only":false,"limit":16,"password":"local","can_change_password":true})
     );
     f.age(&f.sid(&sso), 301);
     assert_eq!(list(&sso).await.2["fresh"], false);
@@ -1904,7 +2036,7 @@ async fn portal_passkey_list_reports_freshness_and_limits() {
         post(
             "/api/portal/passkeys/registration/start",
             &format!("riauth_sso={passkey}"),
-            json!({"name":"Seventeenth"}),
+            json!({"name":"Seventeenth","expected_user_id":f.user_id("alice")}),
         ),
     )
     .await;
@@ -2219,11 +2351,21 @@ async fn portal_page_and_auth_asset_stay_offline() {
     let auth = page
         .find(r#"<script src="/identity/portal/assets/auth.js" defer></script>"#)
         .unwrap();
+    let capabilities = page
+        .find(r#"<script src="/identity/portal/assets/capabilities.js" defer></script>"#)
+        .unwrap();
     let script = page
         .find(r#"<script src="/identity/portal/assets/app.js" defer></script>"#)
         .unwrap();
-    assert!(auth < script, "auth.js loads before app.js");
-    assert_eq!(page.matches("<script").count(), 2, "no inline script");
+    let source_login = page
+        .find(r#"<script src="/identity/portal/assets/source-login.js" defer></script>"#)
+        .unwrap();
+    assert!(
+        auth < capabilities && capabilities < script,
+        "shared helpers load before app.js"
+    );
+    assert!(script < source_login, "source login loads after app.js");
+    assert_eq!(page.matches("<script").count(), 4, "no inline script");
     assert!(page.contains(r#"src="/identity/portal/assets/riauth-mark.svg""#));
     for id in [
         "auth-error",

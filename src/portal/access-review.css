@@ -1,0 +1,20 @@
+body.access-review{background:#f7f8fc;color:#252b3b}
+.access-review main{max-width:1060px;margin:0 auto;padding:38px 24px 80px}
+.access-review nav{margin-bottom:32px}
+.access-review nav a{color:#5745a4;font-weight:600}
+.review-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:14px}
+.review-heading h1{font-size:34px;margin:4px 0 10px}
+.review-heading p:last-child{max-width:670px;color:#5e6678;line-height:1.5}
+.review-identity{color:#5e6678;margin-bottom:32px}
+.access-review section{margin:34px 0}
+.access-review section h2{font-size:20px;margin-bottom:14px}
+.review-list{display:grid;gap:12px}
+.review-card{border:1px solid #e3e5ed;background:white;border-radius:12px;padding:20px;box-shadow:0 2px 8px #20253708}
+.review-card h3{font-size:17px;margin:0 0 8px}
+.review-card p{margin:6px 0;line-height:1.5}
+.review-meta{color:#5e6678;font-size:13px}
+.review-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+.review-retry{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+.access-review .notice{padding:14px 16px;border-radius:9px;background:#f0ecfc;color:#382c70;line-height:1.5}
+.review-empty{color:#5e6678;padding:18px;border:1px dashed #cdd1dd;border-radius:10px}
+@media(max-width:620px){.review-heading{display:block}.review-heading button{margin-top:14px}.access-review main{padding:25px 16px 60px}}

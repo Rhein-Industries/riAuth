@@ -3,7 +3,7 @@
 mod common;
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -21,6 +21,7 @@ use axum::{
 use common::{Fixture, strings, text};
 use riauth::{
     agent::{NewAgent, Permission},
+    connector_guard::ReconciliationMode,
     core::Core,
     crypto::{self, digest},
     error::Error,
@@ -35,6 +36,296 @@ const ACCESS: &str = "ENT12-ACCESS-7f3c9a";
 const SECRET: &str = "ENT12-SECRET-91ab44";
 const LEAKED_ACCESS: &str = "ENT12-ACCESS-LEAK";
 const LEAKED_SECRET: &str = "ENT12-SECRET-LEAK";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn controller_modes_bind_plans_and_stop_at_removal_review_floor() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("reconciliation-modes");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    for user in ["first", "second"] {
+        f.user(user);
+        f.core.group_member(&f.admin, "staff", user, true).unwrap();
+    }
+    let agent = provisioner(&f, &name);
+
+    let manual = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(manual["decision"], "awaiting_review");
+    assert_eq!(manual["mode"], "manual-review");
+    assert_eq!(
+        f.core.provisioning_reconcile(&agent, &name).unwrap()["plan"]["id"],
+        manual["plan"]["id"]
+    );
+    assert!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&manual["plan"], "id"))
+            .is_err()
+    );
+    let initial = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(initial["decision"], "queued");
+    assert_eq!(initial["job"]["completed"], false);
+    step(&f.core).await;
+    step(&f.core).await;
+    assert_eq!(scim.users.lock().unwrap().len(), 2);
+
+    f.core
+        .group_member(&f.admin, "staff", "first", false)
+        .unwrap();
+    let guarded = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(guarded["decision"], "awaiting_review");
+    assert_eq!(guarded["reason"], "guarded_removal");
+    assert_eq!(
+        f.core.provisioning_reconcile(&agent, &name).unwrap()["plan"]["id"],
+        guarded["plan"]["id"]
+    );
+    assert_eq!(guarded["plan"]["removal_impact"]["review_required"], false);
+    assert_eq!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::Automatic);
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&guarded["plan"], "id"))
+            .is_err()
+    );
+    let automatic = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(automatic["decision"], "queued");
+    assert_eq!(automatic["job"]["completed"], false);
+    step(&f.core).await;
+    step(&f.core).await;
+    let remote = scim.users.lock().unwrap().clone();
+    assert_eq!(
+        remote.iter().filter(|u| u["active"] == true).count(),
+        1,
+        "jobs={} remote={}",
+        f.core.provisioning_jobs(&agent).unwrap(),
+        json!(remote)
+    );
+    assert_eq!(
+        f.core
+            .provisioning_apply(&agent, &text(&automatic["plan"], "id"))
+            .unwrap()["completed"],
+        true,
+        "jobs={}",
+        f.core.provisioning_jobs(&agent).unwrap()
+    );
+
+    f.core
+        .group_member(&f.admin, "staff", "second", false)
+        .unwrap();
+    let held = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(held["decision"], "awaiting_review");
+    assert_eq!(held["reason"], "removal_review_required");
+    assert_eq!(held["plan"]["removal_impact"]["review_required"], true);
+    let id = text(&held["plan"], "id");
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    assert_eq!(
+        f.core
+            .provisioning_jobs(&agent)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let job = f
+        .core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    assert_eq!(job["completed"], false);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("mode-change");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    f.core
+        .group_member(&f.admin, "staff", "member", true)
+        .unwrap();
+    let agent = provisioner(&f, &name);
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    let queued = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(queued["decision"], "queued");
+    let id = text(&queued["plan"], "id");
+
+    let store = f.core.store.clone();
+    let delay = |id: &str| {
+        store
+            .write(|tx| {
+                let mut job = tx.get::<Value>("provisioning_jobs", id)?.unwrap();
+                job["next_attempt"] = json!(crypto::now() + 3600);
+                tx.put("provisioning_jobs", id, &job)
+            })
+            .unwrap();
+    };
+    delay(&id);
+
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::Automatic);
+    let replanned = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(replanned["decision"], "queued");
+    assert_ne!(replanned["plan"]["id"], queued["plan"]["id"]);
+    let job = f
+        .core
+        .store
+        .get::<Value>("provisioning_jobs", &id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(job["stale"], true);
+    assert_eq!(job["cursor"], 0);
+    let second = text(&replanned["plan"], "id");
+    delay(&second);
+
+    f.core.create_group(&f.admin, "unrelated").unwrap();
+    let revised = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(revised["decision"], "queued");
+    assert_ne!(revised["plan"]["id"], replanned["plan"]["id"]);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &second)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    let third = text(&revised["plan"], "id");
+    delay(&third);
+
+    let agent_id = revised["plan"]["actor"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("agent:")
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent = tx.get::<Value>("agents", agent_id)?.unwrap();
+            agent["permissions"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"action":"audit.read","resource":"*"}));
+            tx.put("agents", agent_id, &agent)
+        })
+        .unwrap();
+    let rebound = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(rebound["decision"], "queued");
+    assert_ne!(rebound["plan"]["id"], revised["plan"]["id"]);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &third)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    let fourth = text(&rebound["plan"], "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &fourth)?.unwrap();
+            job["lease"] = json!("in-flight");
+            job["next_attempt"] = json!(crypto::now() + 60);
+            tx.put("provisioning_jobs", &fourth, &job)
+        })
+        .unwrap();
+    f.core
+        .config
+        .scim_reconciliation_modes
+        .insert(name.clone(), ReconciliationMode::GuardedAutomatic);
+    let settling = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(settling["decision"], "awaiting_prior_delivery");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("provisioning_jobs", &fourth)
+            .unwrap()
+            .unwrap()["stale"],
+        true
+    );
+    assert!(
+        f.core
+            .provisioning_apply(&agent, &text(&settling["plan"], "id"))
+            .is_err()
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &fourth)?.unwrap();
+            job["lease"] = Value::Null;
+            tx.put("provisioning_jobs", &fourth, &job)
+        })
+        .unwrap();
+    let resumed = f.core.provisioning_reconcile(&agent, &name).unwrap();
+    assert_eq!(resumed["decision"], "queued");
+    assert_eq!(resumed["plan"]["id"], settling["plan"]["id"]);
+    assert_eq!(scim.hits.load(Ordering::SeqCst), 0);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_links")
+            .unwrap()
+            .is_empty()
+    );
+}
 
 #[derive(Clone)]
 struct TokenReply {
@@ -59,10 +350,88 @@ struct ScimState {
     hits: Arc<AtomicUsize>,
     seen: Arc<Mutex<Vec<String>>>,
     users: Arc<Mutex<Vec<Value>>>,
+    list_override: Arc<Mutex<Option<Value>>>,
     accept: Arc<Mutex<Option<String>>>,
     patch_no_content: Arc<AtomicBool>,
     patch_error_after_apply_once: Arc<AtomicBool>,
     patch_hits: Arc<AtomicUsize>,
+    lookup_override: Arc<Mutex<Option<Value>>>,
+    groups: Arc<Mutex<Vec<Value>>>,
+    // Replaces the members-related fields of a single-resource GET for a group.
+    group_read_override: Arc<Mutex<Option<Value>>>,
+    // Same replacement, but only for responses about a group after it was
+    // patched: the PATCH response body and later GETs (the read-back).
+    group_readback_override: Arc<Mutex<Option<Value>>>,
+    patched_groups: Arc<Mutex<HashSet<String>>>,
+}
+impl ScimState {
+    fn collection(&self, kind: &str) -> Option<&Arc<Mutex<Vec<Value>>>> {
+        match kind {
+            "Users" => Some(&self.users),
+            "Groups" => Some(&self.groups),
+            _ => None,
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("provisioned");
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", true)
+        .unwrap();
+    let identities_before = f.core.store.list::<Value>("users").unwrap();
+    let groups_before = f.core.store.list::<Value>("groups").unwrap();
+    let tokens = token_state();
+    let scim = scim_state();
+    *scim.list_override.lock().unwrap() = Some(json!({"Resources":[
+        {"id":"remote-1","externalId":"wrong-identity"}
+    ],"totalResults":1}));
+    *scim.accept.lock().unwrap() = Some(ACCESS.into());
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("ambiguous-lookup");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "scim-token", ACCESS)),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    f.core
+        .provisioning_apply(&agent, &text(&plan, "id"))
+        .unwrap();
+    step(&f.core).await;
+    assert_eq!(
+        job_error(&f, &agent),
+        "conflict: Remote external identity is ambiguous; refusing to choose an account"
+    );
+    assert_eq!(scim.hits.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        scim.seen.lock().unwrap().as_slice(),
+        &[format!("Bearer {ACCESS}")]
+    );
+    assert!(scim.users.lock().unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_links")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("users").unwrap(),
+        identities_before
+    );
+    assert_eq!(f.core.store.list::<Value>("groups").unwrap(), groups_before);
 }
 
 struct Servers(Vec<tokio::task::JoinHandle<()>>);
@@ -233,8 +602,325 @@ fn plans_supersede_pending_snapshots_and_bound_historical_links() {
             Ok(())
         })
         .unwrap();
-    let error = f.core.provisioning_plan(&agent, &target_name).unwrap_err();
+    let error = loop {
+        match f.core.provisioning_plan(&agent, &target_name) {
+            Ok(progress) => assert_eq!(progress["decision"], "snapshot_in_progress"),
+            Err(error) => break error,
+        }
+    };
     assert!(error.message.contains("total resource limit"));
+}
+
+#[test]
+fn paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("paged-plan");
+    let target_url = "http://127.0.0.1:9/scim/v2".to_owned();
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: target_url.clone(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    f.core.store.write(|tx| {
+        for index in 0..128 {
+            let id = format!("historical-{index:04}");
+            let external_id = format!("urn:example:{id}");
+            let link = json!({
+                "target": target_name,
+                "url": target_url,
+                "kind": "Users",
+                "local_id": id,
+                "remote_id": format!("remote-{index}"),
+                "external_id": external_id,
+                "body": {"schemas": [riauth::scim::USER], "externalId": external_id, "active": true}
+            });
+            tx.put("provisioning_links", &digest(&format!("{target_name}\0Users\0{id}")), &link)?;
+        }
+        Ok(())
+    }).unwrap();
+
+    let first = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(first["decision"], "snapshot_in_progress");
+    assert_eq!(first["scanned_links"], 128);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_plans")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .list::<Value>("provisioning_snapshots")
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let f = f.reopen_with(|_| {});
+    // This key sorts before the durable cursor. Finishing from the cursor
+    // alone would silently omit its required disable.
+    f.core.store.write(|tx| {
+        let link = json!({
+            "target": target_name,
+            "url": target_url,
+            "kind": "Users",
+            "local_id": "late",
+            "remote_id": "remote-late",
+            "external_id": "urn:example:late",
+            "body": {"schemas": [riauth::scim::USER], "externalId": "urn:example:late", "active": true}
+        });
+        tx.put("provisioning_links", "!", &link)
+    }).unwrap();
+    let restarted = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(restarted["decision"], "snapshot_in_progress");
+    assert_eq!(restarted["restart"], true);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_plans")
+            .unwrap()
+            .is_empty()
+    );
+
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(plan["resources"].as_array().unwrap().len(), 129);
+    assert_eq!(plan["removal_impact"]["disabled_users"], 129);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert!(
+        f.core
+            .provisioning_apply(&agent, plan["id"].as_str().unwrap())
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_snapshots")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn final_scim_plan_and_apply_read_only_reviewed_links() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("bounded-impact");
+    let target_url = "http://127.0.0.1:9/scim/v2".to_owned();
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: target_url.clone(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    let user_key = digest(&format!("{target_name}\0Users\0departed"));
+    f.core
+        .store
+        .write(|tx| {
+            for index in 0..300 {
+                let id = format!("other-{index:04}");
+                let link = json!({
+                    "target": "other-target", "url": target_url, "kind": "Users",
+                    "local_id": id, "remote_id": format!("remote-{index}"),
+                    "external_id": format!("urn:example:{id}"),
+                    "body": {"active": true}
+                });
+                tx.put(
+                    "provisioning_links",
+                    &digest(&format!("other-target\0Users\0{id}")),
+                    &link,
+                )?;
+            }
+            tx.put(
+                "provisioning_links",
+                &user_key,
+                &json!({
+                    "target": target_name, "url": target_url, "kind": "Users",
+                    "local_id": "departed", "remote_id": "remote-departed",
+                    "external_id": "urn:example:departed", "body": {"active": true}
+                }),
+            )?;
+            tx.put(
+                "provisioning_links",
+                &digest(&format!("{target_name}\0Groups\0staff")),
+                &json!({
+                    "target": target_name, "url": target_url, "kind": "Groups",
+                    "local_id": "staff", "remote_id": "remote-staff",
+                    "external_id": "urn:example:staff",
+                    "body": {"members": [{"value": "remote-departed"}]}
+                }),
+            )
+        })
+        .unwrap();
+
+    let scanned = || {
+        f.core
+            .store
+            .telemetry()
+            .scanned_records
+            .load(Ordering::Relaxed)
+    };
+    for _ in 0..2 {
+        assert_eq!(
+            f.core.provisioning_plan(&agent, &target_name).unwrap()["decision"],
+            "snapshot_in_progress"
+        );
+    }
+    let before_final = scanned();
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert!(
+        scanned() - before_final < 128,
+        "final planning rescanned all links"
+    );
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert_eq!(plan["managed_links"].as_object().unwrap().len(), 2);
+    assert!(plan["links_generation"].is_u64());
+    let before_reuse = scanned();
+    let pending = f.core.provisioning_reconcile(&agent, &target_name).unwrap();
+    assert_eq!(pending["plan"]["id"], plan["id"]);
+    assert!(
+        scanned() - before_reuse < 128,
+        "pending plan reuse rescanned all links"
+    );
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut link = tx.get::<Value>("provisioning_links", &user_key)?.unwrap();
+            link["remote_id"] = json!("remote-rotated");
+            tx.put("provisioning_links", &user_key, &link)
+        })
+        .unwrap();
+    let old_id = text(&plan, "id");
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &old_id, Some(&old_id))
+            .is_err()
+    );
+
+    for _ in 0..2 {
+        assert_eq!(
+            f.core.provisioning_plan(&agent, &target_name).unwrap()["decision"],
+            "snapshot_in_progress"
+        );
+    }
+    let replanned = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    let new_id = text(&replanned, "id");
+    let before_apply = scanned();
+    let job = f
+        .core
+        .provisioning_apply_confirmed(&agent, &new_id, Some(&new_id))
+        .unwrap();
+    assert!(scanned() - before_apply < 128, "apply rescanned all links");
+    assert_eq!(job["completed"], false);
+}
+
+#[test]
+fn scim_user_cursor_ignores_login_but_restarts_on_projection_change() {
+    let mut f = Fixture::new();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("selected");
+    f.core
+        .group_member(&f.admin, "staff", "selected", true)
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let target_name = unique("login-cursor");
+    f.core.config.scim_targets.insert(
+        target_name.clone(),
+        Target {
+            url: "http://127.0.0.1:9/scim/v2".into(),
+            token_file: Some(write_secret(&dir, "scim-token", "test-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &target_name);
+    let selected_id = f
+        .core
+        .store
+        .get::<String>("usernames", "selected")
+        .unwrap()
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let selected = tx
+                .get::<riauth::model::User>("users", &selected_id)?
+                .unwrap();
+            for index in 0..128 {
+                let mut filler = selected.clone();
+                filler.id = format!("filler-{index:04}");
+                filler.username = filler.id.clone();
+                tx.put("users", &filler.id, &filler)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let generation = || {
+        f.core
+            .store
+            .get::<u64>("provisioning_user_generation", "all")
+            .unwrap()
+            .unwrap()
+    };
+
+    let first = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(first["decision"], "snapshot_in_progress");
+    assert_eq!(first["scanned_users"], 128);
+    let before_login = generation();
+    f.core
+        .login("selected".into(), common::PASSWORD.into(), None)
+        .unwrap();
+    assert_eq!(generation(), before_login);
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut selected = tx
+                .get::<riauth::model::User>("users", &selected_id)?
+                .unwrap();
+            selected.display_name = "Changed for SCIM".into();
+            tx.put("users", &selected_id, &selected)
+        })
+        .unwrap();
+    assert!(generation() > before_login);
+    let restarted = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(restarted["decision"], "snapshot_in_progress");
+    assert_eq!(restarted["restart"], true);
+    assert_ne!(restarted["snapshot_id"], first["snapshot_id"]);
+
+    let before_second_login = generation();
+    f.core
+        .login("selected".into(), common::PASSWORD.into(), None)
+        .unwrap();
+    assert_eq!(generation(), before_second_login);
+    let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
+    assert_eq!(plan["resources"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        plan["resources"][0]["body"]["displayName"],
+        "Changed for SCIM"
+    );
 }
 
 #[test]
@@ -1139,10 +1825,16 @@ fn scim_state() -> ScimState {
         hits: Arc::new(AtomicUsize::new(0)),
         seen: Arc::new(Mutex::new(Vec::new())),
         users: Arc::new(Mutex::new(Vec::new())),
+        list_override: Arc::new(Mutex::new(None)),
         accept: Arc::new(Mutex::new(None)),
         patch_no_content: Arc::new(AtomicBool::new(false)),
         patch_error_after_apply_once: Arc::new(AtomicBool::new(false)),
         patch_hits: Arc::new(AtomicUsize::new(0)),
+        lookup_override: Arc::new(Mutex::new(None)),
+        groups: Arc::new(Mutex::new(Vec::new())),
+        group_read_override: Arc::new(Mutex::new(None)),
+        group_readback_override: Arc::new(Mutex::new(None)),
+        patched_groups: Arc::new(Mutex::new(HashSet::new())),
     }
 }
 
@@ -1168,8 +1860,8 @@ async fn serve(tokens: &TokenState, scim: &ScimState) -> (Servers, String, Strin
         .route("/oauth/metadata", get(token_metadata))
         .with_state(tokens.clone());
     let scim_app = Router::new()
-        .route("/scim/v2/Users", get(list_users).post(create_user))
-        .route("/scim/v2/Users/{id}", get(get_user).patch(patch_user))
+        .route("/scim/v2/{kind}", get(list_users).post(create_user))
+        .route("/scim/v2/{kind}/{id}", get(get_user).patch(patch_user))
         .with_state(scim.clone());
     let token_task = tokio::spawn(async move {
         axum::serve(token_listener, token_app).await.unwrap();
@@ -1258,6 +1950,7 @@ async fn token_metadata(State(state): State<TokenState>) -> Response {
 
 async fn list_users(
     State(state): State<ScimState>,
+    Path(kind): Path<String>,
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
@@ -1265,8 +1958,17 @@ async fn list_users(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if let Some(response) = state.list_override.lock().unwrap().clone() {
+        return Json(response).into_response();
+    }
+    if let Some(body) = state.lookup_override.lock().unwrap().clone() {
+        return Json(body).into_response();
+    }
     let filter = query.get("filter").cloned().unwrap_or_default();
-    let users = state.users.lock().unwrap();
+    let users = collection.lock().unwrap();
     let matched: Vec<_> = users
         .iter()
         .filter(|user| {
@@ -1281,6 +1983,7 @@ async fn list_users(
 
 async fn create_user(
     State(state): State<ScimState>,
+    Path(kind): Path<String>,
     headers: HeaderMap,
     Json(mut body): Json<Value>,
 ) -> Response {
@@ -1288,31 +1991,61 @@ async fn create_user(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    body["id"] = json!("remote-user-1");
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut resources = collection.lock().unwrap();
+    body["id"] = if kind == "Users" {
+        json!(format!("remote-user-{}", resources.len() + 1))
+    } else {
+        json!(format!("remote-group-{}", resources.len() + 1))
+    };
     body["meta"] = json!({"version": "1"});
-    state.users.lock().unwrap().push(body.clone());
+    resources.push(body.clone());
     (StatusCode::CREATED, etag(), Json(body)).into_response()
 }
 
 async fn get_user(
     State(state): State<ScimState>,
-    Path(id): Path<String>,
+    Path((kind, id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Response {
     state.hits.fetch_add(1, Ordering::SeqCst);
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let users = state.users.lock().unwrap();
-    let Some(user) = users.iter().find(|user| user["id"] == id).cloned() else {
+    let Some(collection) = state.collection(&kind) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let users = collection.lock().unwrap();
+    let Some(mut user) = users.iter().find(|user| user["id"] == id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if kind == "Groups" {
+        let fields = state
+            .group_read_override
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| {
+                state
+                    .patched_groups
+                    .lock()
+                    .unwrap()
+                    .contains(&id)
+                    .then(|| state.group_readback_override.lock().unwrap().clone())
+                    .flatten()
+            });
+        if let Some(fields) = fields {
+            replace_members(&mut user, &fields);
+        }
+    }
     (StatusCode::OK, etag(), Json(user)).into_response()
 }
 
 async fn patch_user(
     State(state): State<ScimState>,
-    Path(id): Path<String>,
+    Path((kind, id)): Path<(String, String)>,
     headers: HeaderMap,
     Json(patch): Json<Value>,
 ) -> Response {
@@ -1320,7 +2053,10 @@ async fn patch_user(
     if !scim_authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let mut users = state.users.lock().unwrap();
+    let Some(collection) = state.collection(&kind) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut users = collection.lock().unwrap();
     let Some(user) = users.iter_mut().find(|user| user["id"] == id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -1333,7 +2069,13 @@ async fn patch_user(
             user[key] = value.clone();
         }
     }
-    let body = user.clone();
+    let mut body = user.clone();
+    if kind == "Groups" {
+        state.patched_groups.lock().unwrap().insert(id);
+        if let Some(fields) = state.group_readback_override.lock().unwrap().clone() {
+            replace_members(&mut body, &fields);
+        }
+    }
     if state
         .patch_error_after_apply_once
         .swap(false, Ordering::SeqCst)
@@ -1345,6 +2087,12 @@ async fn patch_user(
     } else {
         (StatusCode::OK, etag(), Json(body)).into_response()
     }
+}
+
+fn replace_members(resource: &mut Value, fields: &Value) {
+    let resource = resource.as_object_mut().unwrap();
+    resource.remove("members");
+    resource.extend(fields.as_object().unwrap().clone());
 }
 
 fn etag() -> [(header::HeaderName, &'static str); 1] {
@@ -1484,4 +2232,463 @@ fn assert_redacted(haystack: &str, secrets: &[&str]) {
             haystack.len()
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch() {
+    let mut f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("guarded-offboarding");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("provisioned");
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", true)
+        .unwrap();
+    let agent = provisioner(&f, &name);
+    deliver(&f, &agent, &name).await;
+    f.core
+        .group_member(&f.admin, "staff", "provisioned", false)
+        .unwrap();
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    assert_eq!(plan["removal_impact"]["disabled_users"], 1);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let jobs = f.core.store.list::<Value>("provisioning_jobs").unwrap();
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some("wrong-id"))
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("provisioning_jobs").unwrap(),
+        jobs
+    );
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0);
+    f.core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    let remote = scim.users.lock().unwrap()[0].clone();
+    let cases = [
+        json!({}),
+        json!({"Resources":[],"totalResults":1}),
+        json!({"Resources":[remote.clone()],"totalResults":2}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"startIndex":2}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"itemsPerPage":0}),
+        json!({"Resources":[remote.clone()],"totalResults":1,"nextLink":"another-page"}),
+        json!({"Resources":[remote.clone(),remote.clone()],"totalResults":2}),
+        json!({"Resources":[],"totalResults":0}),
+    ];
+    for body in cases {
+        *scim.lookup_override.lock().unwrap() = Some(body.clone());
+        step(&f.core).await;
+        assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0, "{body}");
+        assert_eq!(scim.users.lock().unwrap()[0], remote);
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links
+        );
+        let job = f
+            .core
+            .store
+            .get::<Value>("provisioning_jobs", &id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(job["cursor"], 0);
+        assert_eq!(job["completed"], false);
+        assert!(job["error"].is_string());
+        f.core
+            .store
+            .write(|tx| {
+                let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
+                job["next_attempt"] = json!(crypto::now());
+                tx.put("provisioning_jobs", &id, &job)
+            })
+            .unwrap();
+    }
+    *scim.lookup_override.lock().unwrap() = None;
+    scim.users.lock().unwrap()[0]
+        .as_object_mut()
+        .unwrap()
+        .remove("active");
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 0);
+    scim.users.lock().unwrap()[0] = remote;
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", &id)?.unwrap();
+            job["next_attempt"] = json!(crypto::now());
+            tx.put("provisioning_jobs", &id, &job)
+        })
+        .unwrap();
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), 1);
+    assert_eq!(scim.users.lock().unwrap()[0]["active"], false);
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+}
+
+/// Seeds a delivered target whose linked "staff" group has one managed member,
+/// then applies a reviewed, confirmed plan removing that last member. The user
+/// stays provisioned through "everyone". Returns with the job cursor at the
+/// "staff" item and nothing removed remotely yet.
+async fn staff_removal_at_group_step(
+    scim: &ScimState,
+    scim_url: String,
+) -> (Fixture, tempfile::TempDir, String, String, String) {
+    let mut f = Fixture::new();
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("guarded-group");
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: scim_url,
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["everyone", "staff"]),
+            export_groups: true,
+        },
+    );
+    f.core.create_group(&f.admin, "everyone").unwrap();
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    for group in ["everyone", "staff"] {
+        f.core
+            .group_member(&f.admin, group, "member", true)
+            .unwrap();
+    }
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    f.core.provisioning_apply(&agent, &id).unwrap();
+    for _ in 0..3 {
+        step(&f.core).await;
+    }
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+    assert_eq!(
+        remote_staff(scim)["members"],
+        json!([{"value":"remote-user-1"}])
+    );
+
+    f.core
+        .group_member(&f.admin, "staff", "member", false)
+        .unwrap();
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 1);
+    assert_eq!(plan["removal_impact"]["disabled_users"], 0);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    assert_eq!(plan["resources"][2]["local_id"], "staff");
+    assert!(f.core.provisioning_apply(&agent, &id).is_err());
+    f.core
+        .provisioning_apply_confirmed(&agent, &id, Some(&id))
+        .unwrap();
+    // The unchanged user and the unchanged "everyone" group advance normally.
+    step(&f.core).await;
+    step(&f.core).await;
+    assert_eq!(job_record(&f, &id)["cursor"], 2);
+    (f, dir, agent, name, id)
+}
+
+fn remote_staff(scim: &ScimState) -> Value {
+    scim.groups
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|g| g["displayName"] == "staff")
+        .cloned()
+        .unwrap()
+}
+
+fn job_record(f: &Fixture, id: &str) -> Value {
+    f.core
+        .store
+        .get::<Value>("provisioning_jobs", id)
+        .unwrap()
+        .unwrap()
+}
+
+fn make_due(f: &Fixture, id: &str) {
+    f.core
+        .store
+        .write(|tx| {
+            let mut job = tx.get::<Value>("provisioning_jobs", id)?.unwrap();
+            job["next_attempt"] = json!(crypto::now());
+            tx.put("provisioning_jobs", id, &job)
+        })
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_last_group_member_removal_requires_complete_remote_membership() {
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
+    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let job = |f: &Fixture| job_record(f, &id);
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let patches = scim.patch_hits.load(Ordering::SeqCst);
+    for fields in [
+        json!({}),
+        json!({"members":null}),
+        json!({"members":[],"membersNextLink":"/scim/v2/Groups/next"}),
+        json!({"members":[{"value":"remote-user-1"}],"membersNextLink":"/next"}),
+        json!({"members":[],"@odata.nextLink":"/scim/v2/Groups/next"}),
+    ] {
+        *scim.group_read_override.lock().unwrap() = Some(fields.clone());
+        step(&f.core).await;
+        assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches, "{fields}");
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links,
+            "{fields}"
+        );
+        let current = job(&f);
+        assert_eq!(current["cursor"], 2, "{fields}");
+        assert_eq!(current["completed"], false, "{fields}");
+        assert!(
+            current["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("members")),
+            "{fields}: {}",
+            current["error"]
+        );
+        make_due(&f, &id);
+    }
+    assert_eq!(
+        remote_staff(&scim)["members"],
+        json!([{"value":"remote-user-1"}])
+    );
+    // A complete, explicit remote membership lets the reviewed removal proceed.
+    *scim.group_read_override.lock().unwrap() = None;
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches + 1);
+    assert_eq!(remote_staff(&scim)["members"], json!([]));
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+    let key = digest(&format!("{name}\0Groups\0staff"));
+    let link = f
+        .core
+        .store
+        .get::<Value>("provisioning_links", &key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(link["body"]["members"], json!([]));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback() {
+    let scim = scim_state();
+    let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
+    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let links = f.core.store.list::<Value>("provisioning_links").unwrap();
+    let assert_unadvanced = |context: &str| {
+        assert_eq!(
+            f.core.store.list::<Value>("provisioning_links").unwrap(),
+            links,
+            "{context}"
+        );
+        let job = job_record(&f, &id);
+        assert_eq!(job["cursor"], 2, "{context}");
+        assert_eq!(job["completed"], false, "{context}");
+        assert_eq!(job["stale"], false, "{context}");
+        assert!(job["lease"].is_null(), "{context}");
+        assert!(job["attempts"].as_u64().unwrap() >= 1, "{context}");
+        job["error"].as_str().unwrap_or_default().to_owned()
+    };
+    // (204 read-back via GET?, members-related fields reported after the PATCH)
+    for (no_content, fields) in [
+        (false, json!({})),
+        (
+            false,
+            json!({"members":[],"membersNextLink":"/scim/v2/Groups/next"}),
+        ),
+        (true, json!({"members":null})),
+        (
+            true,
+            json!({"members":[],"@odata.nextLink":"/scim/v2/Groups/next"}),
+        ),
+    ] {
+        let context = format!("no_content={no_content} {fields}");
+        // Each case starts from a remote group that still holds the member.
+        {
+            let mut groups = scim.groups.lock().unwrap();
+            let staff = groups
+                .iter_mut()
+                .find(|g| g["displayName"] == "staff")
+                .unwrap();
+            staff["members"] = json!([{"value":"remote-user-1"}]);
+        }
+        scim.patched_groups.lock().unwrap().clear();
+        scim.patch_no_content.store(no_content, Ordering::SeqCst);
+        *scim.group_readback_override.lock().unwrap() = Some(fields.clone());
+        let patches = scim.patch_hits.load(Ordering::SeqCst);
+
+        step(&f.core).await;
+        // The PATCH was dispatched and applied remotely, but its read-back is
+        // incomplete: the item must not advance or overwrite the managed link,
+        // and the error must not claim that nothing was dispatched.
+        assert_eq!(
+            scim.patch_hits.load(Ordering::SeqCst),
+            patches + 1,
+            "{context}"
+        );
+        assert_eq!(remote_staff(&scim)["members"], json!([]), "{context}");
+        let error = assert_unadvanced(&context);
+        assert!(
+            error.contains("may have been applied") && !error.contains("no replacement"),
+            "{context}: {error}"
+        );
+
+        // The retry re-reads the remote group, which still reports incomplete
+        // membership: it is rejected before dispatch, without a second PATCH.
+        make_due(&f, &id);
+        step(&f.core).await;
+        assert_eq!(
+            scim.patch_hits.load(Ordering::SeqCst),
+            patches + 1,
+            "{context}"
+        );
+        let error = assert_unadvanced(&context);
+        assert!(error.contains("members"), "{context}: {error}");
+        make_due(&f, &id);
+    }
+
+    // Once the remote reports explicit complete membership, the retry verifies
+    // the already-applied removal and advances without another PATCH.
+    *scim.group_readback_override.lock().unwrap() = None;
+    scim.patch_no_content.store(false, Ordering::SeqCst);
+    let patches = scim.patch_hits.load(Ordering::SeqCst);
+    step(&f.core).await;
+    assert_eq!(scim.patch_hits.load(Ordering::SeqCst), patches);
+    assert_eq!(remote_staff(&scim)["members"], json!([]));
+    assert_eq!(
+        f.core.provisioning_apply(&agent, &id).unwrap()["completed"],
+        true
+    );
+    let key = digest(&format!("{name}\0Groups\0staff"));
+    let link = f
+        .core
+        .store
+        .get::<Value>("provisioning_links", &key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(link["body"]["members"], json!([]));
+}
+
+#[test]
+fn scim_apply_binds_reviewed_content_authority_and_previous_links() {
+    let mut f = Fixture::new();
+    let dir = tempfile::tempdir().unwrap();
+    let name = unique("apply-binding");
+    f.core.create_group(&f.admin, "staff").unwrap();
+    f.user("member");
+    f.core
+        .group_member(&f.admin, "staff", "member", true)
+        .unwrap();
+    f.core.config.scim_targets.insert(
+        name.clone(),
+        Target {
+            url: "http://127.0.0.1:9/scim/v2".into(),
+            token_file: Some(write_secret(&dir, "bearer", "fixture-token")),
+            oauth: None,
+            ca_file: None,
+            groups: strings(&["staff"]),
+            export_groups: false,
+        },
+    );
+    let agent = provisioner(&f, &name);
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut p = tx.get::<Value>("provisioning_plans", &id)?.unwrap();
+            p["resources"][0]["body"]["active"] = json!(false);
+            tx.put("provisioning_plans", &id, &p)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    let actor = plan["actor"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("agent:")
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut a = tx.get::<Value>("agents", actor)?.unwrap();
+            a["permissions"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"action":"audit.read","resource":"*"}));
+            tx.put("agents", actor, &a)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
+    let plan = f.core.provisioning_plan(&agent, &name).unwrap();
+    let id = text(&plan, "id");
+    let resource = &plan["resources"][0];
+    let local = resource["local_id"].as_str().unwrap();
+    let key = digest(&format!("{name}\0Users\0{local}"));
+    f.core.store.write(|tx|tx.put("provisioning_links",&key,&json!({"target":name,"url":f.core.config.scim_targets[&name].url,"kind":"Users","local_id":local,"remote_id":"remote-changed","external_id":resource["body"]["externalId"],"body":resource["body"]}))).unwrap();
+    assert!(
+        f.core
+            .provisioning_apply_confirmed(&agent, &id, Some(&id))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("provisioning_jobs")
+            .unwrap()
+            .is_empty()
+    );
 }

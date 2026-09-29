@@ -1,0 +1,11 @@
+{
+  "http": 200,
+  "status": "success",
+  "uid": "riauth-alert-metrics",
+  "url": "/d/riauth-alert-metrics/riauth-alert-metrics",
+  "version": 1,
+  "slug": "riauth-alert-metrics",
+  "folderUid": "",
+  "request_message": "o06 scale follow-up loopback import",
+  "versions_api_message_for_version_1": "Initial save"
+}

@@ -1,0 +1,5 @@
+{
+  "connection_file": "/config/postgres-connection",
+  "ca_file": "/config/postgres-ca.pem",
+  "pool_size": 8
+}

@@ -75,6 +75,11 @@ impl IntoResponse for Error {
             Json(json!({"error": self.code, "error_description": self.message})),
         )
             .into_response();
+        if self.code == "connector_overloaded" {
+            response
+                .headers_mut()
+                .insert("retry-after", "1".parse().unwrap());
+        }
         if self.status == StatusCode::UNAUTHORIZED {
             response.headers_mut().insert(
                 "www-authenticate",

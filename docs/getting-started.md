@@ -2,9 +2,11 @@
 
 This guide starts one riAuth instance on your computer, signs in as its first administrator, and registers an OpenID Connect (OIDC) web application. The default HTTP listener is bound to loopback for local evaluation.
 
+The install command below uses the Cargo default feature set, `platform` ([Cargo.toml](../Cargo.toml)). A new Essentials operator follows the [Essentials guide](essentials-guide.md), which selects `--features essentials` and keeps the small install on loopback redb. A new Platform operator follows the [Platform guide](platform-guide.md) for the same tasks with the Platform binaries named explicitly. Both guides separate `riauthctl` from server maintenance and from optional terminal USB.
+
 ## Prerequisites
 
-Install the pinned Rust **1.98.1** toolchain, a C/C++ compiler, and CMake. Linux builds also need `pkg-config`, OpenSSL development headers, and udev development headers. See the [project README](../README.md) for the release scope and [operations](operations.md) for deployment options.
+Install the pinned Rust **1.98.1** toolchain, a C/C++ compiler, and CMake. Linux builds also need `pkg-config` and OpenSSL development headers. The optional legacy terminal USB feature additionally needs udev development headers. See the [project README](../README.md) for the release scope and [operations](operations.md) for deployment options.
 
 ## 1. Install and initialize
 
@@ -16,6 +18,13 @@ riauth init
 ```
 
 `riauth init` prompts for the first administrator password and creates `riauth.toml` plus the `data/` directory in the current directory. The default username is `admin`, the issuer is `http://localhost:9000`, and the listener is `127.0.0.1:9000`. The generated files are ignored by Git. Run the remaining commands from this directory so the CLI finds `riauth.toml`.
+
+The separate `riauth-maintenance init` command performs the same local initialization. It is available from `cargo build --locked --bin riauth-maintenance`; the older `riauth init` remains available during the CLI split. Continue to use `riauth serve` to start the service.
+
+To let the first administrator choose their credentials in the browser, use
+[browser first-administrator setup](browser-bootstrap.md) instead of `riauth init`.
+The operator provisions a private expiring ownership proof before starting the
+pending server; visiting a fresh server alone never grants administrator access.
 
 Start the service and leave this terminal open:
 

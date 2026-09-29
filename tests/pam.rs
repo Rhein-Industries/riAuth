@@ -287,7 +287,10 @@ fn approval_grants_group_policy_until_expiry_or_revocation() {
     assert_eq!(pam.core.me(&pam.alice).unwrap()["groups"], json!([]));
     assert_eq!(explained(&pam.core, &pam.admin)["allowed"], false);
     assert!(pam.core.userinfo(&access).is_err());
-    pam.core.revoke_access(&pam.admin, &grant_id).unwrap();
+    assert_eq!(
+        status_of(pam.core.revoke_access(&pam.admin, &grant_id)),
+        409
+    );
     assert_eq!(
         status_of(pam.core.revoke_access(&pam.approver, &grant_id)),
         409
@@ -922,7 +925,9 @@ fn user_grant_index_bounds_lookup_and_rebuilds_changed_associations() {
             for (key, _) in tx.list::<serde_json::Value>("index_user_access_grants")? {
                 tx.delete("index_user_access_grants", &key)?;
             }
-            tx.delete("meta", "index_version")
+            // Simulate a pre-activation index for the legacy rebuild path.
+            tx.delete("meta", "index_version")?;
+            tx.delete("meta", "version_activation")
         })
         .unwrap();
     riauth::upgrade::migrate(&f.core.store).unwrap();

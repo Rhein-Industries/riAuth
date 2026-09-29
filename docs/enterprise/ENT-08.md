@@ -1,6 +1,6 @@
 # ENT-08 Password history
 
-[Implementation](../../src/password_history.rs) and [tests](../../tests/password_history.rs).
+[Implementation](../../src/identity/password_history.rs) and [tests](../../tests/password_history.rs).
 
 riAuth can reject reuse of recent passwords. This is an operator control, not a certification of any compliance regime.
 

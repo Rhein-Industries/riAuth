@@ -3,6 +3,21 @@ issuer = "http://localhost:9000"
 listen = "127.0.0.1:9000"
 data_dir = "data"
 
+# Optional API-only mode. Browser pages and embedded assets are served by default.
+# browser_ui = false
+
+# Optional process role. Omit this table for the integrated one-process server:
+# product HTTP, configured listeners, and background loops.
+# gateway keeps product HTTP and configured listeners and does not start background loops.
+# worker starts background loops, serves only /livez, /readyz, and /healthz,
+# and requires browser_ui = false with no LDAP, RADIUS, or proxy listeners.
+# gateway and worker require accept_partial_duties = true. riAuth does not
+# check that any other process covers the omitted duties, and two processes
+# still cannot open one redb file.
+# [process]
+# role = "gateway"
+# accept_partial_duties = true
+
 # Durations in seconds.
 access_token_ttl = 300
 refresh_token_ttl = 2592000

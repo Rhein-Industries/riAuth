@@ -25,12 +25,12 @@ e = "AQAB"
 Provision the non-exportable key and narrowly scoped Vault token in Vault first. The example modulus is a placeholder and fails validation. An optional `namespace` selects the Vault namespace. Paths resolve beside the configuration; owner-only credential files (at most 4096 bytes) are read for signing and can be rotated without putting the credential into a manifest or database. All service nodes need the same signer definition and access.
 
 ```sh
-riauth keys bind signing --signer production-v7 --algorithm RS256
+riauth --if-revision 42 --idempotency-key bind-signing-v7 keys bind signing --signer production-v7 --algorithm RS256
 # Or bind a provider-specific signing domain:
-riauth keys bind payroll --signer production-v7 --algorithm RS256
+riauth --if-revision 43 --idempotency-key bind-payroll-v7 keys bind payroll --signer production-v7 --algorithm RS256
 ```
 
-The existing `key.write` permission controls binding. Agents can select only signer names already configured by the server operator, not supply network endpoints or arbitrary credential paths. A new binding signs and verifies a challenge after authorization, revision and idempotency checks. An authenticated retry with a matching saved receipt returns that result without contacting Vault, even during an outage. New key versions should be configured under distinct signer names and kids; bind the new version after configuration is present on every node. Rotation retains old public verification keys through the token/session retention window.
+Use the current values from `riauth revision` in place of 42 and 43. Each logical write needs its own stable key; retry the same command with its original revision and key. The existing `key.write` permission controls binding. Agents can select only signer names already configured by the server operator, not supply network endpoints or arbitrary credential paths. A new binding signs and verifies a challenge after authorization, revision and idempotency checks. An authenticated retry with a matching saved receipt returns that result without contacting Vault, even during an outage. New key versions should be configured under distinct signer names and kids; bind the new version after configuration is present on every node. Rotation retains old public verification keys through the token/session retention window. The serving `rotate-key` retention window and the effects it leaves in place are in [credential compromise](credential-compromise.md).
 
 Supported algorithms are RS256 with PKCS#1 v1.5/SHA-256, ES256/P-256 with the JWS signature representation, and Ed25519/EdDSA. These parameters follow the [Vault Transit signing API](https://developer.hashicorp.com/vault/api-docs/secret/transit). HTTP loopback is accepted for local fixtures; other addresses require HTTPS, certificate verification and no redirects. Each signing request has a three-second timeout and a 64 KiB response limit. Key-service response bodies and credentials are not logged.
 
@@ -38,7 +38,9 @@ This is a Vault Transit integration, not an assertion that the configured Vault 
 
 Encrypted database backups preserve the remote signer name, version and public pin,
 plus configuration file references. They cannot restore the Vault key or bearer
-credential. Re-provision the exact signer and test issuance during recovery; a
-successful local restore/JWKS check alone does not prove that Vault can sign.
+credential. Restore never contacts Vault, and a server without the matching signer
+starts but answers token requests with `signer_unavailable`. Re-provision the exact
+signer and test issuance during recovery; a successful local restore/JWKS check
+alone does not prove that Vault can sign. See [disaster recovery](disaster-recovery.md).
 `riauth_signing_errors_total` and the optional signing-failure alert signal report
 process-local signing failures; see [operations](operations.md).

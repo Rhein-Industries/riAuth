@@ -13,7 +13,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -22,16 +22,7 @@ use std::time::Instant;
 use webauthn_rs::prelude::PublicKeyCredential;
 
 pub(super) fn routes() -> Router<App> {
-    Router::new()
-        .route(
-            "/portal/assets/signin.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("../portal/signin.js"),
-                )
-            }),
-        )
+    let routes = Router::new()
         .route("/oauth/resume/{id}/state", get(state::<false>))
         .route("/oauth/resume/{id}/password", post(password::<false>))
         .route(
@@ -42,7 +33,33 @@ pub(super) fn routes() -> Router<App> {
             "/oauth/resume/{id}/passkey/finish",
             post(passkey_finish::<false>),
         )
+        .route(
+            "/oauth/resume/{id}/passkey/cancel",
+            post(passkey_cancel::<false>),
+        )
         .route("/oauth/resume/{id}/decision", post(decision::<false>))
+        .route("/oauth/logout/resume/{id}/state", get(logout_state))
+        .route("/oauth/logout/resume/{id}/decision", post(logout_decision));
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(saml_routes());
+    routes
+}
+
+pub(super) fn browser_routes() -> Router<App> {
+    Router::new().route(
+        "/portal/assets/signin.js",
+        get(|| async {
+            (
+                [("content-type", "text/javascript; charset=utf-8")],
+                include_str!("../portal/signin.js"),
+            )
+        }),
+    )
+}
+
+#[cfg(feature = "platform")]
+fn saml_routes() -> Router<App> {
+    Router::new()
         .route("/saml/resume/{id}/state", get(state::<true>))
         .route("/saml/resume/{id}/password", post(password::<true>))
         .route(
@@ -53,9 +70,11 @@ pub(super) fn routes() -> Router<App> {
             "/saml/resume/{id}/passkey/finish",
             post(passkey_finish::<true>),
         )
+        .route(
+            "/saml/resume/{id}/passkey/cancel",
+            post(passkey_cancel::<true>),
+        )
         .route("/saml/resume/{id}/decision", post(decision::<true>))
-        .route("/oauth/logout/resume/{id}/state", get(logout_state))
-        .route("/oauth/logout/resume/{id}/decision", post(logout_decision))
 }
 
 /// The sign-in, consent and sign-out page. It never refreshes itself: signin.js polls the
@@ -63,6 +82,16 @@ pub(super) fn routes() -> Router<App> {
 /// keep their opener.
 /// `sso`: the browser presented an SSO cookie; without one it gets a placeholder.
 pub(super) fn interaction_page(app: &App, code: &str, command: &str, sso: bool) -> Response {
+    if !app.core.config.browser_ui {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "interaction_required",
+                "error_description": "This instance does not serve browser interaction pages"
+            })),
+        )
+            .into_response();
+    }
     let html = include_str!("../portal/signin.html")
         .replace("__CODE__", &escape(code))
         .replace("__COMMAND__", &escape(command));
@@ -184,6 +213,31 @@ async fn passkey_finish<const SAML: bool>(
         } else {
             core.authorize_passkey_finish(&id, binding, sso, ceremony, response)?
         })
+    })
+    .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCancel {
+    ceremony: String,
+}
+async fn passkey_cancel<const SAML: bool>(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<PasskeyCancel>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        let binding = binding(core, &headers, SAML, &id);
+        if SAML {
+            core.browser_passkey_cancel(&input.ceremony, &format!("saml:{id}"), binding)
+                .map(Json)
+        } else {
+            core.authorize_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony)
+                .map(Json)
+        }
     })
     .await
 }

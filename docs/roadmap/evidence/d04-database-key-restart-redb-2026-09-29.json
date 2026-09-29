@@ -1,0 +1,145 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "redb",
+    "edition": "essentials",
+    "version": "0.1.1",
+    "loopback": true,
+    "fresh_temp_store": true,
+    "database_key_removed_while_serving": true,
+    "restart_attempted": true,
+    "listener_opened": false,
+    "redb_unchanged": true,
+    "recovery_complete_run": false,
+    "restored_directory_served": false,
+    "restored_issuer_login": false,
+    "cargo_build": false,
+    "temporary_files_removed": true,
+    "server_process_stopped": true,
+    "restart_timeout_seconds": 15
+  },
+  "outcome": "passed",
+  "detail": "restart without the database key file exited 2 invalid_request before the listener opened and left riauth.redb unchanged",
+  "checks": [
+    {
+      "id": "binaries",
+      "exit_code": 0,
+      "observed": {
+        "riauth_sha256": "264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f",
+        "riauth_bytes": 204953512,
+        "cargo_build": false
+      }
+    },
+    {
+      "id": "capabilities",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "edition": "essentials",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials"
+        ]
+      }
+    },
+    {
+      "id": "keygen_database",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "created": true
+      }
+    },
+    {
+      "id": "init",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "initialized": true,
+        "issuer": "http://127.0.0.1:58339",
+        "listen": "127.0.0.1:58339"
+      }
+    },
+    {
+      "id": "readyz_before_key_removal",
+      "exit_code": 0,
+      "observed": {
+        "http_status": 200,
+        "pid_alive": true
+      }
+    },
+    {
+      "id": "key_removed_while_serving",
+      "exit_code": 0,
+      "observed": {
+        "database_key_exists": false,
+        "config_still_names_database_key_file": true,
+        "pid_alive": true,
+        "readyz_http_status": 200
+      }
+    },
+    {
+      "id": "stop_original_process",
+      "exit_code": 0,
+      "observed": {
+        "pid_alive": false,
+        "command_line_matched_temp_config": true
+      }
+    },
+    {
+      "id": "port_free_before_restart",
+      "exit_code": 0,
+      "observed": {
+        "port_free": true,
+        "wait_ms": 30228,
+        "listen": "127.0.0.1:58339"
+      }
+    },
+    {
+      "id": "redb_before_restart",
+      "exit_code": 0,
+      "observed": {
+        "inode": 316409002,
+        "size": 61440,
+        "mtime_ns": 1790692308992832967,
+        "sha256": "d4987e11d8735345321790b50230768e5119c496dfd399e043f2d8415e5bc0a5"
+      }
+    },
+    {
+      "id": "restart_with_original_config",
+      "exit_code": 2,
+      "timed_out": false,
+      "elapsed_ms": 153,
+      "schema_version": "riauth.cli/v1",
+      "ok": false,
+      "observed": {
+        "pid_alive_at_bound": false,
+        "error_code": "invalid_request",
+        "error_message": "Encryption key must be a private file of at most 128 bytes",
+        "http_status": 400,
+        "retryable": false,
+        "json_exit_code": 2,
+        "stderr": "error: Encryption key must be a private file of at most 128 bytes",
+        "stderr_contains_listening": false,
+        "listening_observed_while_alive": false,
+        "listener_tcp_connected": false,
+        "listener_http_status": null,
+        "database_key_exists": false
+      }
+    },
+    {
+      "id": "redb_after_restart",
+      "exit_code": 0,
+      "observed": {
+        "inode": 316409002,
+        "size": 61440,
+        "mtime_ns": 1790692308992832967,
+        "sha256": "d4987e11d8735345321790b50230768e5119c496dfd399e043f2d8415e5bc0a5",
+        "unchanged": true
+      }
+    }
+  ]
+}

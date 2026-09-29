@@ -19,9 +19,16 @@ export const fixtureExecutable = resolve(repository, process.env.CARGO_TARGET_DI
   process.platform === 'win32' ? 'portal_fixture.exe' : 'portal_fixture');
 
 // Resolves to {fixture, stop}. `relyingParty` is the origin (http://localhost:PORT) the
-// fixture registers its redirect URIs under. `stop()` sends SIGTERM and waits for the exit.
-export async function startFixture({ relyingParty } = {}) {
-  const env = relyingParty ? { ...process.env, RIAUTH_FIXTURE_RP_ORIGIN: relyingParty } : process.env;
+// fixture registers its redirect URIs under. `mailCapture` turns on the fixture's loopback
+// SMTP sink for that process only; leaving it false removes the variable so a parent shell
+// cannot enable mail for suites that expect the unavailable-recovery alert. `stop()` sends
+// SIGTERM and waits for the exit.
+export async function startFixture({ relyingParty, reviewedClientCreation = false, mailCapture = false } = {}) {
+  const env = { ...process.env };
+  if (relyingParty) env.RIAUTH_FIXTURE_RP_ORIGIN = relyingParty;
+  if (reviewedClientCreation) env.RIAUTH_FIXTURE_REVIEWED_CLIENT_CREATION = '1';
+  if (mailCapture) env.RIAUTH_FIXTURE_MAIL_CAPTURE = '1';
+  else delete env.RIAUTH_FIXTURE_MAIL_CAPTURE;
   const service = spawn(fixtureExecutable, [], { env, stdio: ['ignore', 'pipe', 'inherit'] });
   const stop = async () => {
     if (service.exitCode !== null || service.signalCode !== null) return;

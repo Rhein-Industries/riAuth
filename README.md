@@ -21,6 +21,8 @@ Explore the [documentation](docs/README.md) for configuration and protocol detai
 
 ## Try it locally
 
+Edition-specific first tasks are in the [Essentials guide](docs/essentials-guide.md) and the [Platform guide](docs/platform-guide.md). The commands below use the Cargo default feature set, `platform`.
+
 Install the build prerequisites in the [getting-started guide](docs/getting-started.md), then:
 
 ```sh

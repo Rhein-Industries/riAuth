@@ -1,8 +1,7 @@
 use crate::{
-    core::Core,
-    crypto::{digest, now},
-    error::{Error, Result},
-    store::Tx,
+    crypto::now,
+    error::Result,
+    store::{Store, Tx},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -15,6 +14,8 @@ pub struct RequestContext {
     pub idempotency_key: Option<String>,
     pub fingerprint: String,
     pub revision: Option<u64>,
+    /// The exact quoted entity tag supplied for a SCIM resource mutation.
+    pub if_match: Option<String>,
     /// Attributed client address, after trusted-proxy processing.
     pub client_ip: Option<IpAddr>,
     /// User-Agent without control characters, at most 256 bytes.
@@ -41,51 +42,183 @@ pub fn scope<T>(context: Option<RequestContext>, f: impl FnOnce() -> T) -> T {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Receipt {
+pub(crate) struct Receipt {
+    pub(crate) fingerprint: String,
+    pub(crate) permissions: Value,
+    pub(crate) result: Value,
+    pub(crate) expires_at: u64,
+}
+
+const REDACTION_PAGE: usize = 128;
+
+fn exact_keys(object: &serde_json::Map<String, Value>, keys: &[&str]) -> bool {
+    object.len() == keys.len() && keys.iter().all(|key| object.contains_key(*key))
+}
+
+/// Generic receipts from older agent create/rotate writers stored this exact
+/// response shape. The receipt has no route field, so keep the matcher narrow:
+/// DCR and other secret-return receipts must retain their replay contract.
+fn legacy_agent_issuance_id(receipt: &Receipt) -> Option<&str> {
+    if !receipt.permissions.as_array().is_some_and(Vec::is_empty) {
+        return None;
+    }
+    let result = receipt.result.as_object()?;
+    if !exact_keys(result, &["agent", "credential"]) {
+        return None;
+    }
+    let agent = result.get("agent")?.as_object()?;
+    if !exact_keys(
+        agent,
+        &[
+            "id",
+            "permissions",
+            "expires_at",
+            "created_at",
+            "enabled",
+            "parent_user",
+        ],
+    ) {
+        return None;
+    }
+    let id = agent.get("id")?.as_str()?;
+    if id.is_empty() || !agent.get("enabled")?.as_bool()? {
+        return None;
+    }
+    agent.get("created_at")?.as_u64()?;
+    let expires_at = agent.get("expires_at")?.as_u64()?;
+    if !agent
+        .get("parent_user")
+        .is_some_and(|parent| parent.is_null() || parent.is_string())
+    {
+        return None;
+    }
+    let permissions = agent.get("permissions")?.as_array()?;
+    if permissions.is_empty()
+        || permissions.iter().any(|permission| {
+            let Some(permission) = permission.as_object() else {
+                return true;
+            };
+            !exact_keys(permission, &["action", "resource"])
+                || !permission.get("action").is_some_and(Value::is_string)
+                || !permission.get("resource").is_some_and(Value::is_string)
+        })
+    {
+        return None;
+    }
+    let credential = result.get("credential")?.as_object()?;
+    if !exact_keys(credential, &["issuer", "agent_id", "token", "expires_at"])
+        || !credential.get("issuer").is_some_and(Value::is_string)
+        || credential.get("agent_id")?.as_str()? != id
+        || credential.get("expires_at")?.as_u64()? != expires_at
+        || !credential.get("token")?.as_str()?.starts_with("ri_agent_")
+    {
+        return None;
+    }
+    Some(id)
+}
+
+fn redact_legacy_agent_issuance(receipt: &mut Receipt) -> bool {
+    let Some(id) = legacy_agent_issuance_id(receipt).map(str::to_owned) else {
+        return false;
+    };
+    receipt.result = json!({"agent_id": id, "credential_issued": true});
+    true
+}
+
+/// Inspect every receipt before this Core is returned to a server. An older
+/// writer or restore can add a legacy receipt after a prior scrub, so the
+/// historical completion marker cannot authorize skipping this scan. Each
+/// page commits independently; an interrupted open starts again and safely
+/// skips already-redacted results while retaining every retry key and expiry.
+fn scrub_legacy_agent_receipts_with(
+    store: &Store,
+    mut after_page_commit: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    let mut after: Option<String> = None;
+    loop {
+        let (last, done) = store.write(|tx| {
+            let page = tx.scan::<Receipt>("receipts", after.as_deref(), REDACTION_PAGE)?;
+            let done = page.len() < REDACTION_PAGE;
+            let last = page.last().map(|(key, _)| key.clone());
+            for (key, mut receipt) in page {
+                if redact_legacy_agent_issuance(&mut receipt) {
+                    tx.put("receipts", &key, &receipt)?;
+                }
+            }
+            Ok((last, done))
+        })?;
+        after_page_commit()?;
+        if done {
+            return Ok(());
+        }
+        after = last;
+    }
+}
+
+pub(crate) fn scrub_legacy_agent_receipts_on_open(store: &Store) -> Result<()> {
+    scrub_legacy_agent_receipts_with(store, || Ok(()))
+}
+
+/// Test the same scanner after its first page has durably committed.
+#[cfg(feature = "test-support")]
+pub fn interrupt_legacy_agent_receipt_scrub_after_page(store: &Store) -> Result<()> {
+    scrub_legacy_agent_receipts_with(store, || {
+        Err(crate::error::Error::bad(
+            "Injected receipt scrub interruption",
+        ))
+    })
+}
+pub(crate) fn replay_receipt(
+    tx: &Tx<'_>,
+    key: &str,
+    fingerprint: &str,
+    permissions: &Value,
+) -> Result<Option<Value>> {
+    let Some(receipt) = tx.get::<Receipt>("receipts", key)? else {
+        return Ok(None);
+    };
+    if receipt.expires_at <= now() {
+        return Err(crate::error::Error::conflict(
+            "Idempotency receipt expired; inspect state before using a new key",
+        ));
+    }
+    if receipt.fingerprint != fingerprint {
+        return Err(crate::error::Error::conflict(
+            "Idempotency key was used for a different request",
+        ));
+    }
+    if receipt.permissions != *permissions {
+        return Err(crate::error::Error::forbidden());
+    }
+    Ok(Some(receipt.result))
+}
+pub(crate) fn save_receipt(
+    tx: &Tx<'_>,
+    key: &str,
     fingerprint: String,
     permissions: Value,
-    result: Value,
-    expires_at: u64,
-}
-impl Core {
-    pub(crate) fn mutation(
-        &self,
-        token: &str,
-        f: impl FnOnce(&Tx<'_>) -> Result<Value>,
-    ) -> Result<Value> {
-        self.store.write(|tx| {
-            let actor = self.principal(tx, token)?;
-            let context = current();
-            let receipt_key = context.as_ref().and_then(|c| c.idempotency_key.as_ref()).map(|k| digest(&format!("{}\0{k}", actor.id)));
-            let permissions = serde_json::to_value(&actor.permissions).map_err(Error::internal)?;
-            if let Some(key) = &receipt_key && let Some(receipt) = tx.get::<Receipt>("receipts", key)? {
-                if receipt.expires_at <= now() { return Err(Error::conflict("Idempotency receipt expired; inspect state before using a new key")); }
-                if receipt.fingerprint != context.as_ref().unwrap().fingerprint { return Err(Error::conflict("Idempotency key was used for a different request")); }
-                if receipt.permissions != permissions { return Err(Error::forbidden()); }
-                return Ok(receipt.result);
-            }
-            if let Some(c) = &context {
-                if actor.agent && c.revision.is_none() {
-                    return Err(Error::new(axum::http::StatusCode::PRECONDITION_REQUIRED, "precondition_required", "Agent mutations require If-Match with the current revision, or use plan/apply"));
-                }
-                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                if c.revision.is_some_and(|r| r != revision) {
-                    return Err(Error::conflict("Configuration revision changed"));
-                }
-            }
-            let result = f(tx)?;
-            if let Some(key) = receipt_key {
-                tx.put("receipts", &key, &Receipt { fingerprint: context.unwrap().fingerprint, permissions, result: result.clone(), expires_at: now() + 86_400 })?;
-            }
-            Ok(result)
-        })
-    }
+    result: &Value,
+) -> Result<()> {
+    tx.put(
+        "receipts",
+        key,
+        &Receipt {
+            fingerprint,
+            permissions,
+            result: result.clone(),
+            expires_at: now() + 86_400,
+        },
+    )
 }
 pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
     // Keep expired receipts as bounded tombstones for seven days, preventing accidental immediate reuse.
-    for (id, receipt) in tx.maintenance_page::<Receipt>("receipts")? {
+    for (id, mut receipt) in tx.maintenance_page::<Receipt>("receipts")? {
         if receipt.expires_at.saturating_add(6 * 86_400) <= now() {
             tx.delete("receipts", &id)?;
+        } else if redact_legacy_agent_issuance(&mut receipt) {
+            // A receipt introduced by an older writer after startup is also
+            // scrubbed in a successful maintenance transaction.
+            tx.put("receipts", &id, &receipt)?;
         }
     }
     Ok(())

@@ -59,6 +59,8 @@ The listener limits packet size, connection count, concurrent authentication, pe
 
 The network regression test uses an independent OpenSSL packet authenticator and TLS client against actual UDP/RadSec listeners. It covers MFA, duplicate/replay handling, missing/bad authenticators, group revocation, VLAN/vendor encoding and certificate pinning. Actual switch/AP/VPN interoperability remains a deployment check.
 
+`scripts/test-radius.sh` runs an operator-supplied FreeRADIUS `radclient` against a loopback PAP listener on `127.0.0.1` with an ephemeral port. The recorded local run used `radclient version 3.2.10, built on Sep 29 2026 at 07:49:30`. A correct password produces Access-Accept and radclient exits 0. A wrong password produces Access-Reject and radclient exits 1. Sending the same datagram again returns the cached Access-Accept and does not record another `radius.accept`. The script does not start a system RADIUS service.
+
 Protocol references: [RADIUS](https://www.rfc-editor.org/rfc/rfc2865.html), [Message-Authenticator](https://www.rfc-editor.org/rfc/rfc3579.html), [tunnel attributes](https://www.rfc-editor.org/rfc/rfc2868.html), [RadSec](https://www.rfc-editor.org/rfc/rfc6614.html), [Authentik RADIUS](https://docs.goauthentik.io/add-secure-apps/providers/radius/).
 
 
@@ -89,7 +91,7 @@ riauth radius revoke-certificate CERTIFICATE_ID
 riauth --json schema radius-certificate
 ```
 
-The fingerprint is SHA-256 of leaf DER. A certificate cannot be adopted by another identity. CN, email, outer EAP identity and RADIUS User-Name do not select the local user. Anonymous outer identities are supported; successful replies carry the authenticated local username. Agents need `certificate.write` on `user/alice` and `radius.enroll` on `radius/lan`; inventory requires `certificate.read` on the user and the listener permission. Agents cannot enroll administrator identities. Normal revision conditions, idempotency receipts and audit attribution apply to these management operations.
+The fingerprint is SHA-256 of leaf DER. A certificate cannot be adopted by another identity. CN, email, outer EAP identity and RADIUS User-Name do not select the local user. Anonymous outer identities are supported; successful replies carry the authenticated local username. Agents need `certificate.write` on `user/alice` and `radius.enroll` on `radius/lan`; inventory requires `certificate.read` on the user and the listener permission. Agents cannot enroll administrator identities. Bind and revoke require `--idempotency-key` and `--if-revision` (from `riauth revision`) in the CLI, or `Idempotency-Key` and `If-Match: "<revision>"` in the bearer API. Retry with the same key, revision and request for the committed result; the shared writer keeps authorization, receipt and audit in one transaction.
 
 Certificate authentication has AMR `x509` and ACR `urn:riauth:acr:certificate`. It does not satisfy a password or MFA policy. This ACR may be selected as the RADIUS client's default. The resulting short-lived private identity is never issued as an HTTP bearer credential. Authorization checks live user state, group/scope policy, client settings, certificate binding, expiry and trust-file fingerprint again before Access-Accept and on its cached retries.
 

@@ -320,8 +320,12 @@ async fn unauthenticated_background_and_unsafe_requests_get_401() {
             .set("x-forwarded-method", "POST")
             .set("origin", APP)
             .set("sec-fetch-site", "same-origin"),
-        call().set("x-forwarded-method", "DELETE"),
-        call().without("x-forwarded-method"),
+        call()
+            .set("x-forwarded-method", "DELETE")
+            .set("x-riauth-request-intent", "api"),
+        call()
+            .without("x-forwarded-method")
+            .set("x-riauth-request-intent", "api"),
     ] {
         let reply = request.send(&s.router).await;
         assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
@@ -447,34 +451,56 @@ async fn cross_site_unsafe_methods_are_refused_before_authentication() {
     let s = setup();
     for authenticated in [false, true] {
         let cookie = if authenticated { s.proxy.as_str() } else { "" };
-        for request in [
-            call()
-                .set("x-forwarded-method", "POST")
-                .set("origin", "https://attacker.test"),
-            call()
-                .set("x-forwarded-method", "post")
-                .set("origin", "null"),
-            call()
-                .set("x-forwarded-method", "POST")
-                .set("sec-fetch-site", "cross-site"),
-            call()
-                .set("x-forwarded-method", "DELETE")
-                .set("origin", APP)
-                .set("sec-fetch-site", "same-site"),
-            call()
-                .set("x-forwarded-method", "PATCH")
-                .add("origin", APP)
-                .add("origin", APP),
-            call()
-                .set("x-forwarded-method", "PUT")
-                .add("sec-fetch-site", "same-origin")
-                .add("sec-fetch-site", "same-origin"),
-            call()
-                .without("x-forwarded-method")
-                .set("origin", "https://attacker.test"),
+        // Duplicate provenance headers fail parsing with 400 before origin policy runs.
+        for (request, expected) in [
+            (
+                call()
+                    .set("x-forwarded-method", "POST")
+                    .set("origin", "https://attacker.test"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "post")
+                    .set("origin", "null"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "POST")
+                    .set("sec-fetch-site", "cross-site"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "DELETE")
+                    .set("origin", APP)
+                    .set("sec-fetch-site", "same-site"),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "PATCH")
+                    .add("origin", APP)
+                    .add("origin", APP),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                call()
+                    .set("x-forwarded-method", "PUT")
+                    .add("sec-fetch-site", "same-origin")
+                    .add("sec-fetch-site", "same-origin"),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                call()
+                    .without("x-forwarded-method")
+                    .set("origin", "https://attacker.test"),
+                StatusCode::FORBIDDEN,
+            ),
         ] {
             let reply = request.set("cookie", cookie).send(&s.router).await;
-            assert_eq!(reply.status, StatusCode::FORBIDDEN, "{authenticated}");
+            assert_eq!(reply.status, expected, "{authenticated}");
             assert!(reply.header("x-riauth-login").is_none());
             assert!(reply.header("location").is_none());
             assert!(reply.header("x-authentik-username").is_none());
@@ -487,6 +513,56 @@ async fn cross_site_unsafe_methods_are_refused_before_authentication() {
         .send(&s.router)
         .await;
     assert_eq!(reply.status, StatusCode::FOUND);
+}
+
+#[tokio::test]
+async fn unsafe_writes_need_browser_provenance_or_explicit_api_intent() {
+    let s = setup();
+    for cookie in ["", s.proxy.as_str()] {
+        let denied = call()
+            .set("x-forwarded-method", "POST")
+            .set("cookie", cookie)
+            .send(&s.router)
+            .await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN);
+        assert!(denied.header("x-authentik-username").is_none());
+    }
+    for intent in ["", "browser", "api, api"] {
+        let denied = call()
+            .set("x-forwarded-method", "POST")
+            .set("cookie", &s.proxy)
+            .set("x-riauth-request-intent", intent)
+            .send(&s.router)
+            .await;
+        assert_eq!(denied.status, StatusCode::FORBIDDEN, "{intent}");
+    }
+    let duplicate = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .add("x-riauth-request-intent", "api")
+        .add("x-riauth-request-intent", "api")
+        .send(&s.router)
+        .await;
+    assert_eq!(duplicate.status, StatusCode::BAD_REQUEST);
+
+    let allowed = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .set("x-riauth-request-intent", "api")
+        .send(&s.router)
+        .await;
+    assert_eq!(allowed.status, StatusCode::OK);
+    assert_eq!(allowed.header("x-authentik-username"), Some("alice"));
+    assert!(allowed.header("x-riauth-request-intent").is_none());
+
+    let denied = call()
+        .set("x-forwarded-method", "POST")
+        .set("cookie", &s.proxy)
+        .set("x-riauth-request-intent", "api")
+        .set("origin", "https://attacker.test")
+        .send(&s.router)
+        .await;
+    assert_eq!(denied.status, StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -740,7 +816,12 @@ async fn traefik_forward_auth_real() {
         Json(json!({
             "username": header(&headers, "x-authentik-username"),
             "auth_user": header(&headers, "x-auth-user"),
-            "alias": header(&headers, "x_auth_user"),
+            "identity_dot": header(&headers, "x.auth.user"),
+            "identity_bang": header(&headers, "x!auth!user"),
+            "identity_underscore": header(&headers, "x_auth_user"),
+            "intent_dot": header(&headers, "x.riauth.request.intent"),
+            "intent_bang": header(&headers, "x!riauth!request!intent"),
+            "intent_underscore": header(&headers, "x_riauth_request_intent"),
             "authorization": header(&headers, "authorization"),
             "cookie": header(&headers, "cookie"),
             "uri": uri.to_string(),
@@ -877,7 +958,12 @@ async fn traefik_forward_auth_real() {
         )
         .header("x-authentik-username", "root")
         .header("x-auth-user", "root")
-        .header("x_auth_user", "root")
+        .header("X.Auth.User", "root")
+        .header("X!Auth!User", "root")
+        .header("X_Auth_User", "root")
+        .header("X.Riauth.Request.Intent", "api")
+        .header("X!Riauth!Request!Intent", "api")
+        .header("X_Riauth_Request_Intent", "api")
         .header("authorization", "Bearer attacker")
         .header("x-original-url", "http://attacker.test/")
         .send()
@@ -888,7 +974,16 @@ async fn traefik_forward_auth_real() {
         .unwrap();
     assert_eq!(seen["username"], "alice");
     assert_eq!(seen["auth_user"], "alice");
-    assert_eq!(seen["alias"], Value::Null);
+    for alias in [
+        "identity_dot",
+        "identity_bang",
+        "identity_underscore",
+        "intent_dot",
+        "intent_bang",
+        "intent_underscore",
+    ] {
+        assert_eq!(seen[alias], Value::Null, "{alias} reached upstream");
+    }
     assert_eq!(seen["authorization"], Value::Null);
     assert_eq!(seen["cookie"], "app-session=fixture");
     assert_eq!(seen["uri"], "/ui/?one=1&two=2");

@@ -20,6 +20,20 @@ flowchart LR
 
 Network listeners and integrations are enabled separately by configuration.
 
+The [module-boundary work](module-boundaries.md) separates shared account
+liveness and transactional security effects from Core assembly and SSF transport,
+places protocol setting data in the shared client model, and keeps parent-owned
+agent, Windows and RP logout persistence with the shared identity effects. An
+identity transaction port removes the identity-to-storage source edge, and
+management mutation checks now live in Core rather than request context. The
+shared model owns public JWK record data used by SSF streams and providers;
+JOSE retains key validation and token verification. The direct
+identity-to-JOSE reference is gone, while a transitive source cycle remains. The
+model also owns serializable client authentication, workload trust, token
+exchange policy and encryption-key configuration, with validation and protocol
+operations retained in their adapters. The
+same note records the remaining Core, storage, protocol, API and client coupling.
+
 ## Entry points and request handling
 
 One Rust crate builds the `riauth` binary and library. [CLI dispatch](../src/cli.rs) handles local initialization, restore, import and configuration, then uses [remote transport](../src/cli/transport.rs) for authenticated server operations. The remote client pins saved sessions and agent credentials to the configured issuer, rejects redirects and uses a configurable per-request timeout (`--request-timeout` / `RIAUTH_REQUEST_TIMEOUT`, default 30 seconds). It does not refresh human sessions automatically.
@@ -40,9 +54,9 @@ Browsers sign in directly, with a passkey or with a password plus an optional TO
 
 ## Identity, authorization and protocols
 
-[Core](../src/core.rs) owns configuration and storage access. [The model](../src/model.rs) defines users, groups, clients, sessions and grants. Shared [claims/policy](../src/claims.rs), [assurance](../src/assurance.rs), [provider](../src/provider.rs) and [authorization](../src/authorization.rs) code connects OIDC, portal, SAML, LDAP and proxy behavior. Temporary [PAM grants](../src/pam.rs) add effective groups without changing durable group membership; SCIM, LDAP and user CSV consistently project durable membership. Effective authentication groups use a per-user grant index. [Device-trust verification](../src/device_trust.rs) binds proofs to the originating session, user epoch and fixed device id, and caps expiry by the proof and session.
+[Core](../src/core.rs) owns configuration and storage access. [The model](../src/model.rs) defines users, groups, clients, sessions and grants. Shared [claims/policy](../src/claims.rs), [assurance](../src/assurance.rs), [provider](../src/provider.rs) and [authorization](../src/authorization.rs) code connects OIDC, portal, SAML, LDAP and proxy behavior. Temporary [PAM grants](../src/pam.rs) add effective groups without changing durable group membership; SCIM, LDAP and user CSV consistently project durable membership. Effective authentication groups use a per-user grant index. [Device-trust verification](../src/device_trust.rs) binds proofs to the originating session, user epoch and fixed device id, and caps expiry by the proof and session. The [Verified Access v2 adapter](../src/verified_access.rs) is separate from the local JWT stand-in.
 
-[OIDC](../src/oidc.rs), [JOSE](../src/jose.rs), [DPoP](../src/dpop.rs), [token exchange](../src/exchange.rs), [registration](../src/registration.rs) and [browser handoff](../src/browser.rs) implement the documented OAuth profiles. [Source federation](../src/source.rs) and [SAML sources](../src/source/saml.rs) bind upstream identities to explicit local accounts. [Passkeys](../src/passkey.rs), [TOTP](../src/authenticator.rs), [certificate login](../src/mtls.rs), [password history](../src/password_history.rs) and [email lifecycle](../src/lifecycle.rs) cover local authentication and recovery.
+[OIDC](../src/oidc.rs), [JOSE](../src/jose.rs), [DPoP](../src/dpop.rs), [token exchange](../src/exchange.rs), [registration](../src/registration.rs) and [browser handoff](../src/browser.rs) implement the documented OAuth profiles. [Source federation](../src/source.rs) and [SAML sources](../src/source/saml.rs) bind upstream identities to explicit local accounts. [Passkeys](../src/passkey.rs), [TOTP](../src/authenticator.rs), [certificate login](../src/mtls.rs), [password history](../src/identity/password_history.rs) and [email lifecycle](../src/lifecycle.rs) cover local authentication and recovery.
 
 Agents use separate scoped credentials through [agent authorization](../src/agent.rs). [Desired state](../src/state.rs), [mutation context](../src/context.rs), [resource inventory](../src/resource.rs) and [schemas](../src/schema.rs) support reviewable plans, conditional writes and retry receipts. These permissions do not grant end-user authentication or administrator delegation.
 
@@ -50,7 +64,7 @@ Agents use separate scoped credentials through [agent authorization](../src/agen
 
 [The store](../src/store.rs) provides either process-owned redb or [PostgreSQL](../src/postgres_store.rs). Authentication/token operations can prepare expensive work outside a writer, then [revalidate](../src/store/prepared.rs) before commit. Management writes and quota updates still serialize. PAM grant lookup uses a per-user index, and offboarding claims use a due-work index. [Schema version 3](../src/upgrade.rs) and [derived indexes](../src/store/maintenance.rs) support bounded maintenance pages and delivery queues. Derived-index revisions are backfilled atomically on upgrade and restored archives rebuild indexes. User-disable writes centrally revoke owned agents and Windows devices; security transitions enqueue SSF notifications in the same transaction.
 
-The HTTP server starts these workers:
+The default integrated role starts these loops in the same process as HTTP. An explicit `gateway` keeps HTTP and configured protocol listeners and does not start the background loops. An explicit `worker` starts the background loops and serves only probes. Native TLS reload follows the HTTP listener when certificate files are set, on every role that reaches that listener. Selection, the fail-closed rules, and what was not run are in [process roles](roadmap/o01-process-roles.md).
 
 | Worker | Nominal interval | Contract |
 | --- | --- | --- |
@@ -60,9 +74,9 @@ The HTTP server starts these workers:
 | Maintenance | 60 seconds | Cleanup, up to eight offboarding jobs, then optional alert dispatch |
 | Native TLS reload | 60 seconds after startup | Replace valid TLS material; retain the active configuration on failure |
 
-Intervals are scheduling settings, not completion deadlines; storage, network delays and queue size affect progress. Offboarding currently revokes local access only. Logout, email, SCIM, SSF and offboarding use five indexed queues; offboarding jobs retain leases and revalidate their creator’s parent authority before execution. [Operations](operations.md) describes retries, metrics and recovery limits.
+Intervals are scheduling settings, not completion deadlines; storage, network delays and queue size affect progress. Disabling an account commits local revocation together with per-target SCIM deactivation intent; the provisioning worker delivers it under a scoped controller. Logout, email, SCIM, SSF, offboarding and SCIM deactivation use six indexed queues; offboarding jobs retain leases and revalidate their creator’s parent authority before execution. [Operations](operations.md) describes retries, metrics and recovery limits.
 
-[Backups](../src/operations.rs) read one consistent snapshot in plaintext pages and produce authenticated v2 ciphertext chunks plus a final manifest. The complete ciphertext response is buffered within a 64 MiB archive limit; the new writer limits serialized plaintext pages to 8 MiB (restore accepts older larger chunks within the archive cap). Restore rejects oversized input before reading it and restores one decrypted chunk at a time into a new redb directory. CSV exports write bounded pages to a private temporary file and publish the complete result atomically. External configuration files, secret files and remote services still need separate recovery arrangements.
+[Backups](../src/operations.rs) read one consistent snapshot in plaintext pages and produce authenticated v2 ciphertext chunks plus a final manifest. The complete ciphertext response is buffered within a 64 MiB archive limit; the new writer limits serialized plaintext pages to 8 MiB (restore accepts older larger chunks within the archive cap). Restore rejects oversized v2 input before reading it and imports one decrypted chunk at a time into the selected new redb directory or empty PostgreSQL database. The [v3 stream codec](../src/operations/stream.rs) writes the same snapshot as authenticated frames directly to a writer with bounded codec buffers, quotas, progress and cancellation; restore selects it by magic, authenticates it twice, and imports into either backend. `riauth backup` and the streaming endpoint produce v3; the legacy JSON endpoint still produces v2. Source pages cap stored key and value bytes before decoding, and restore/index validation scans one record at a time. Peak process memory remains unproven because decoding, storage caching and the restore transaction can add to those buffers. CSV exports write bounded pages to a private temporary file and publish the complete result atomically. External configuration files, secret files and remote services still need separate recovery arrangements; see [disaster recovery](disaster-recovery.md).
 
 ## Verification
 

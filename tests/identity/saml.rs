@@ -484,6 +484,7 @@ fn exercise(independent: Option<&Path>) {
         .unwrap()
         .1
         .to_owned();
+    let before_rejected = f.core.store.read(|tx| tx.snapshot()).unwrap();
     let tampered = request.replace("state+%26+exact+%2B", "changed");
     assert!(
         f.core
@@ -526,6 +527,12 @@ fn exercise(independent: Option<&Path>) {
             )
             .is_err()
     );
+    assert_eq!(
+        f.core.store.read(|tx| tx.snapshot()).unwrap(),
+        before_rejected,
+        "rejected signed SAML requests must not change identity or pending state"
+    );
+    assert!(f.core.me(&session).is_ok());
     let passive = redirect(
         &authn("_passive", "IsPassive=\"true\""),
         &sp_key,
@@ -783,7 +790,7 @@ async fn trailing_slash_issuers_advertise_reachable_saml_endpoints() {
             "session_token",
         );
         assert_eq!(core.config.issuer, issuer);
-        assert_eq!(core.discovery()["issuer"], issuer);
+        assert_eq!(core.discovery().unwrap()["issuer"], issuer);
         let base = issuer.trim_end_matches('/');
         let idp_keys: crypto::Keys = core.store.get("meta", "keys").unwrap().unwrap();
         let idp_key = PKey::private_key_from_pem(idp_keys.active.pem.as_bytes()).unwrap();
@@ -1176,6 +1183,61 @@ fn saml_browser_password_sign_in_binds_proof_to_request() {
     assert!(xml.contains(":status:Success\""));
     assert!(xml.contains("urn:oasis:names:tc:SAML:2.0:ac:classes:Password"));
     assert!(pending_row(&f, &id).is_none());
+}
+
+#[test]
+fn saml_consent_creation_waits_for_bound_one_use_resume() {
+    let f = Fixture::new();
+    browser_app(&f, false, false);
+    let alice = f.user("alice");
+    let (code, id, binding) = waiting(f.core.saml_initiate("saml-app", None).unwrap());
+    approve(&f, &alice, &code, None, true);
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.core
+            .saml_resume(&id, Some("wrong-browser"))
+            .err()
+            .unwrap()
+            .status
+            .as_u16(),
+        401
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
+    let (xml, _) = body(f.core.saml_resume(&id, Some(&binding)).unwrap());
+    assert!(xml.contains(":status:Success\""));
+    let rows = f.core.store.list::<Value>("saml_consents").unwrap();
+    let alice_id = user_id(&f, "alice");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].0, digest(&format!("{alice_id}\0saml-app")));
+    assert!(f.core.saml_resume(&id, Some(&binding)).is_err());
+    assert_eq!(
+        f.core.store.list::<Value>("saml_consents").unwrap().len(),
+        1
+    );
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["actor"] == alice_id.as_str()
+                && event["action"] == "saml.approve"
+                && event["target"] == "saml-app")
+            .count(),
+        1
+    );
 }
 
 #[test]

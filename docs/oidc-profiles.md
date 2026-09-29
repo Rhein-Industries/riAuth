@@ -33,6 +33,8 @@ Verify by starting login **from the application**. After sign-in and consent, it
 
 Keep the client secret and authorization codes out of logs. An application session remains the application's responsibility: configure and test its logout behavior rather than assuming a token or riAuth session revocation closes every existing application session. See [logout delivery](operations.md#diagnostics-and-recovery) and [testing](testing.md) for deployment checks.
 
+The [OIDC relying-party recipe](recipes/oidc-relying-party.md) records the ignored browser test's public client `rp`, the assertions that test makes, and the gap between its in-process router and a named application. The `reports` client above is a separate confidential example. That test was not run for the recipe.
+
 ## Browser sign-in, consent and proxy clients
 
 An interactive authorization from a browser leads to the sign-in page (see the [API contract](api.md#browser-sign-in-and-interaction-pages)). How request parameters behave there:
@@ -76,6 +78,37 @@ RFC 8693 exchange requires an authenticated confidential requester, an `exchange
 
 ## Authorization and assurance
 
+### Platform conditional application policy
+
+Platform clients may set `settings.policy.conditional` in the existing client
+settings API or manifest. `access` is a list of required predicates; each entry
+in `scopes` is required when that scope is requested. These checks add to the
+existing application, group, MFA, scope, device-trust and assurance rules. An
+absent `conditional` value keeps the existing behavior. Essentials does not
+accept or advertise this setting, and a stored conditional policy prevents an
+Essentials server from opening the database.
+
+The closed predicate set is `application` (`id`), `group_member` (`group`),
+`verified_source` (`source`), `proof_fresh` (`proof`: `password`, `passkey` or
+`source`, plus `max_age_seconds`), `assurance` (`level`: `password`, `mfa`,
+`federated` or `certificate`), `approved_device` (`max_age_seconds`), and
+bounded `all`, `any` and `not` combinations. Application IDs must name the
+owning client. Group and source references must exist when the client is saved.
+Freshness uses the authenticated session's server-held time and method;
+OAuth-only upstream identity without authentication time cannot satisfy it.
+`verified_source` requires a currently valid upstream link and source; LDAP
+directory identity is not treated as an upstream source. `approved_device`
+requires an unexpired verification record bound to the current user, session
+and account epoch. Unknown types and fields are rejected.
+
+`conditional.claim_mappings` uses the same scoped `ClaimMapping` source and
+claim validation as ordinary mappings, with an additional `when` predicate.
+These mappings are projected only after authorization and never replace
+protocol or built-in identity claims. They are re-evaluated for token issuance,
+refresh, UserInfo and SAML assertions. `riauth explain` has no live session, so
+it reports `conditional_policy_requires_session` and does not simulate these
+claims as granted.
+
 Supported response modes are `query`, `fragment`, `form_post`, `jwt`, `query.jwt`, `fragment.jwt`, and `form_post.jwt`, using authorization code with mandatory S256 PKCE. The `jwt` modes deliver a signed JARM response. Implicit and hybrid grants are not advertised.
 
 `claims` requests can make supported claims essential and constrain their values. Mapped claims require their registered scopes and consent. The base assurance values are `urn:riauth:acr:password`, `urn:riauth:acr:mfa`, and `urn:riauth:acr:federated`. When HTTPS client-certificate authentication is configured, discovery also advertises `urn:riauth:acr:certificate`; an enrolled certificate produces AMR `cert` and does not satisfy MFA. See [client-certificate login](enterprise/ENT-05.md). A source satisfies MFA only when its verified ACR is explicitly listed in the source's `trusted_mfa_acr`, or when local TOTP is completed. Authentication-method claims retain their provenance.
@@ -93,7 +126,7 @@ riauth logout-request approve USER-CODE --yes
 
 Temporary approved group grants participate in authorization and group claims while active, without modifying durable membership. Expiry/revocation is enforced on the next online check; an already issued JWT retains its signed claims until expiration when validated offline. See [temporary access](enterprise/ENT-01.md).
 
-`settings.require_device_trust` additionally requires fresh verification bound to the originating session, user epoch and device id. Challenges cannot cross sessions, and freshness ends at the earliest configured TTL, verifier JWT expiry or session expiry. The current verifier accepts a nonce-bound JWT under a configured local key; it is a stand-in, not a tested Chrome Enterprise/Verified Access integration. Sessions remain bearer credentials; hardware proof on each request is a separate integration. See [device trust](enterprise/ENT-06.md).
+`settings.require_device_trust` additionally requires fresh verification bound to the originating session, user epoch and device id. Challenges cannot cross sessions. Freshness ends at the earliest of the configured TTL and session expiry; the local provider also caps it by the verifier JWT expiry. The default verifier accepts a nonce-bound JWT under a configured local key. `google_verified_access_v2` is a separate adapter for the pinned Chrome Verified Access v2 endpoints. It requires the response to embed the issued challenge and leaves the device signature to Google's verify endpoint. That adapter was not executed against `verifiedaccess.googleapis.com` or a managed device. Sessions remain bearer credentials; hardware proof on each request is a separate integration. See [device trust](enterprise/ENT-06.md).
 
 ## Keys, encryption and issuer continuity
 
@@ -119,6 +152,8 @@ The `bound_key` scope follows Authentik's ID-token profile: it produces `dpop+id
 
 ## Upstream OIDC sources
 
+The [upstream OIDC recipe](recipes/upstream-oidc.md) records the in-process issuer fixture `upstream_oidc_pkce_pinned_keys_claim_validation_and_terminal_completion`, the assertions that test makes, and the fact that Okta, Entra, and Google are not connected. That test was not run for the recipe.
+
 Inspect `riauth schema source-input` for direct configuration or `source` for manifest entries. A source contains exact issuer/authorization/token endpoints, upstream client ID/auth method, pinned public JWKS, scopes, approved provisioning groups and trusted MFA ACRs. Supply its client secret through a private input file or versioned manifest reference.
 
 ```sh
@@ -131,9 +166,9 @@ riauth source finish --file deployment-private/source-transaction.json
 riauth source finish --file deployment-private/source-transaction.json --yes
 ```
 
-The final command saves a private CLI session. The browser callback never receives that session credential. Local TOTP, if required, comes from `RIAUTH_OTP` or `--otp-stdin`. To link an existing account, authenticate locally and start with `--link`; fresh local authentication is required. `source links` lists associations; `source unlink ID` removes one and revokes sessions created through it. Email equality never links accounts. Auto-provisioning cannot create administrators. Administrative source login requires an explicit human-admin setting, and agents cannot modify such a source.
+The final command saves a private CLI session. The browser callback never receives that session credential. A login started in the browser is completed only when the callback presents the binding cookie set at start. The CLI flow has no such cookie, and the state in its authorization URL is what redeems the code. Local TOTP, if required, comes from `RIAUTH_OTP` or `--otp-stdin`. To link an existing account, authenticate locally and start with `--link`; fresh local authentication is required. `source links` lists associations; `source unlink ID` removes one and revokes sessions created through it. Email equality never links accounts. Auto-provisioning cannot create administrators. Administrative source login requires an explicit human-admin setting, and agents cannot modify such a source.
 
-Source profiles and `source_links` are supported in plan/apply. An imported link names the source, local username and exact upstream subject; agent permissions must cover both source and user. Source secrets, polling credentials and private state do not appear in exports/audit. Configuration changes revoke source sessions. Source key rotation is explicit; failed or ambiguous upstream code exchanges require a new login request.
+Source profiles and `source_links` are supported in plan/apply. An imported link names the source, local username and exact upstream subject; agent permissions must cover both source and user. Source secrets, polling credentials and private state do not appear in exports/audit. Configuration changes revoke source sessions. Issuer, upstream client ID and OAuth identity mapping stay immutable while accounts are linked. Source key rotation is explicit: an ID token verifies when its `kid` is still in the pinned JWKS, including while an old key and its replacement are both pinned, and a token whose key was removed is rejected. A login whose pinned keys changed before the code exchange, or whose token response arrives after that change, is ended; restoring the previous keys does not finish it or redeem its code. A code presented while the source is disabled ends that login. Enabling the source again does not redeem that code. A login that has not been presented can still complete after the source is enabled again. Replacing only the upstream client secret leaves existing source sessions in place. Failed or ambiguous upstream code exchanges require a new login request.
 
 This profile supports signed OIDC code responses and Basic/post/public upstream clients. The OAuth-only JSON identity profile is described below. Encrypted upstream ID tokens and upstream `private_key_jwt` remain unsupported.
 

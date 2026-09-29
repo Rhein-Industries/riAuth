@@ -1,0 +1,280 @@
+//! Run `sh tests/edition_transition_cross_build.sh` for the two-build contract.
+#[cfg(feature = "platform")]
+use riauth::model::NewUser;
+#[cfg(feature = "platform")]
+use riauth::store::Store;
+use riauth::{config::Config, core::Core};
+use serde_json::Value;
+#[cfg(feature = "platform")]
+use serde_json::json;
+#[cfg(feature = "platform")]
+use std::path::Path;
+#[cfg(feature = "platform")]
+use std::process::Command;
+use std::{collections::BTreeMap, env, fs};
+
+fn fixture_dir() -> std::path::PathBuf {
+    env::var_os("RIAUTH_CROSS_BUILD_DIR")
+        .map(Into::into)
+        .expect("Run through tests/edition_transition_cross_build.sh")
+}
+
+fn shared_records(snapshot: BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+    snapshot
+        .into_iter()
+        .filter(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                "meta/revision" | "meta/version_activation" | "meta/edition_provenance"
+            ) && !key.starts_with("meta/edition_transition_history/")
+        })
+        .collect()
+}
+
+#[cfg(feature = "platform")]
+fn run(config: &Path, command: &[&str]) -> (i32, Value) {
+    let output = Command::new(env!("CARGO_BIN_EXE_riauth-maintenance"))
+        .args(["--json", "--config"])
+        .arg(config)
+        .args(command)
+        .output()
+        .unwrap();
+    let document = serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+        panic!(
+            "maintenance output: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    (output.status.code().unwrap(), document)
+}
+
+#[cfg(feature = "platform")]
+#[test]
+#[ignore = "run through tests/edition_transition_cross_build.sh"]
+fn marked_compatible_transition_cross_build() {
+    let root = fixture_dir();
+    fs::create_dir_all(&root).unwrap();
+    let config = Config {
+        data_dir: root.join("instance"),
+        ..Default::default()
+    };
+    let config_path = root.join("riauth.toml");
+    fs::write(&config_path, toml::to_string_pretty(&config).unwrap()).unwrap();
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: "fixture-password-only".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let session = core
+        .login("admin".into(), "fixture-password-only".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fs::write(root.join("session_token"), session).unwrap();
+    let baseline = core.store.read(|tx| tx.snapshot()).unwrap();
+    fs::write(
+        root.join("baseline.json"),
+        serde_json::to_vec(&baseline).unwrap(),
+    )
+    .unwrap();
+    let original_provenance = baseline["meta/edition_provenance"].clone();
+    drop(core);
+
+    // Unknown legacy source and both historical and current Platform authority
+    // remain blockers even when the candidate configuration is compatible.
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| tx.delete("meta", "edition_provenance"))
+        .unwrap();
+    drop(store);
+    let (status, legacy) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 5, "{legacy}");
+    assert!(
+        legacy["data"]["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| { issue["resource"] == "meta/edition_provenance" })
+    );
+
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| {
+            tx.put("meta", "edition_provenance", &original_provenance)?;
+            let mut retained = original_provenance.clone();
+            retained["platform_dependencies"] =
+                json!({"clients/retired-app": "Retained Platform policy"});
+            tx.put("meta", "edition_provenance", &retained)
+        })
+        .unwrap();
+    drop(store);
+    let (status, retained) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 5);
+    assert!(
+        retained["data"]["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| { issue["resource"] == "provenance/clients/retired-app" })
+    );
+
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| {
+            tx.put("meta", "edition_provenance", &original_provenance)?;
+            tx.put("mtls_bindings", "binding-1", &json!({"retained": true}))
+        })
+        .unwrap();
+    drop(store);
+    let (status, current) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 5);
+    assert!(
+        current["data"]["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| { issue["resource"] == "mtls_bindings/binding-1" })
+    );
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| tx.delete("mtls_bindings", "binding-1"))
+        .unwrap();
+    drop(store);
+
+    let (status, direct) = run(
+        &config_path,
+        &["transition-preflight", "--target", "essentials"],
+    );
+    assert_eq!(status, 5);
+    assert!(
+        direct["data"]["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| { issue["resource"] == "meta/version_activation" })
+    );
+    let (status, planned) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 0, "{planned}");
+    assert_eq!(planned["data"]["blockers"], json!([]));
+    let stale_token = planned["data"]["transition_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // A changed persisted revision invalidates the token without altering the
+    // recorded source or clearing any user/session record.
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| {
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            tx.put("meta", "revision", &(revision + 1))
+        })
+        .unwrap();
+    drop(store);
+    let (status, stale) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            &stale_token,
+        ],
+    );
+    assert_eq!(status, 5, "{stale}");
+    assert!(
+        stale["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("token")
+    );
+    let (status, planned) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 0, "{planned}");
+    let token = planned["data"]["transition_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_ne!(token, stale_token);
+
+    let mut changed_config = config.clone();
+    changed_config.session_ttl += 1;
+    fs::write(
+        &config_path,
+        toml::to_string_pretty(&changed_config).unwrap(),
+    )
+    .unwrap();
+    let (status, stale) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            &token,
+        ],
+    );
+    assert_eq!(status, 5, "{stale}");
+    fs::write(&config_path, toml::to_string_pretty(&config).unwrap()).unwrap();
+
+    let (status, activated) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            &token,
+        ],
+    );
+    assert_eq!(status, 0, "{activated}");
+    assert_eq!(activated["data"]["activated_edition"], "essentials");
+    let store = Store::from_config(&config).unwrap();
+    let after = store.read(|tx| tx.snapshot()).unwrap();
+    assert_eq!(shared_records(after.clone()), shared_records(baseline));
+    assert_eq!(
+        after["meta/edition_provenance"]["last_activated_edition"],
+        "essentials"
+    );
+    assert_eq!(after["meta/version_activation"]["edition"], "essentials");
+    let history = activated["data"]["history_record"].as_str().unwrap();
+    assert_eq!(
+        after[history]["source_provenance"]["last_activated_edition"],
+        "platform"
+    );
+}
+
+#[cfg(not(feature = "platform"))]
+#[test]
+#[ignore = "run through tests/edition_transition_cross_build.sh"]
+fn marked_compatible_transition_cross_build() {
+    let root = fixture_dir();
+    let config = Config::load(&root.join("riauth.toml")).unwrap();
+    let baseline: BTreeMap<String, Value> =
+        serde_json::from_slice(&fs::read(root.join("baseline.json")).unwrap()).unwrap();
+    let core = Core::open(config).unwrap();
+    core.store.ready().unwrap();
+    let after = core.store.read(|tx| tx.snapshot()).unwrap();
+    assert_eq!(
+        shared_records(after.clone()),
+        shared_records(baseline.clone())
+    );
+    assert_eq!(after["meta/issuer"], baseline["meta/issuer"]);
+    assert_eq!(after["meta/version_activation"]["edition"], "essentials");
+    let session = fs::read_to_string(root.join("session_token")).unwrap();
+    assert!(
+        core.me(&session).is_ok(),
+        "shared session should remain valid"
+    );
+    assert!(
+        core.login("admin".into(), "fixture-password-only".into(), None)
+            .is_ok()
+    );
+}

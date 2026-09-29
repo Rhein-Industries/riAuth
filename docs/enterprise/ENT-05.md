@@ -46,7 +46,7 @@ A certificate from a trusted CA is not a user. An administrator or an agent with
 - `GET /api/certificates` requires `mtls.read`
 - `DELETE /api/certificates/{id}` requires `mtls.bind`
 
-CLI: `riauth certificate bind|list|revoke`.
+CLI: `riauth certificate bind|list|revoke`. Bind and revoke require `--idempotency-key` and `--if-revision` (from `riauth revision`); bearer API callers provide `Idempotency-Key` and `If-Match: "<revision>"`. Reuse the same key, revision and request for an exact retry.
 
 The fingerprint is SHA-256 of the leaf DER, base64url without padding. Re-binding the same user replaces the binding and revokes sessions that were opened with the previous binding. Password sessions are left in place. An unchanged binding is idempotent.
 

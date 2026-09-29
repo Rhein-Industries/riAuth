@@ -40,10 +40,64 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
       - run: cargo test --all-targets --features test-support,fuzzing --locked
+      - name: Check server USB boundary
+        run: |
+          cargo build --no-default-features --features essentials --locked --bins
+          cargo test --no-default-features --features essentials --locked --test cli legacy_usb_commands_fail_locally_with_client_guidance -- --exact
+          python3 - <<'PY'
+          import re, subprocess
+          forbidden = {'webauthn-authenticator-rs', 'fido-hid-rs', 'hidapi',
+                       'rusb', 'libusb1-sys', 'udev', 'libudev-sys'}
+          for edition in ('essentials', 'platform'):
+              tree = subprocess.check_output([
+                  'cargo', 'tree', '--locked', '--no-default-features',
+                  '--features', edition, '--target', 'x86_64-unknown-linux-gnu',
+                  '--edges', 'normal', '--prefix', 'none', '--format', '{p}',
+              ], text=True)
+              packages = {match.group(1) for line in tree.splitlines()
+                          if (match := re.match(r'^(\S+) v\S+', line))}
+              leaked = sorted(packages & forbidden)
+              if leaked:
+                  raise SystemExit(f'{edition} server has terminal USB dependencies: {leaked}')
+          PY
+      - name: Check standalone riauthctl and its dependency closure
+        run: |
+          cargo fmt --manifest-path crates/riauthctl/Cargo.toml --all -- --check
+          cargo test --manifest-path crates/riauthctl/Cargo.toml --no-default-features --all-targets --locked -- --test-threads=1
+          cargo check --manifest-path crates/riauthctl/Cargo.toml --no-default-features --features terminal-usb --locked
+          python3 - <<'PY'
+          import pathlib, re, subprocess, tomllib
+          tree = subprocess.check_output([
+              'cargo', 'tree', '--manifest-path', 'crates/riauthctl/Cargo.toml',
+              '--locked', '--no-default-features', '--target', 'x86_64-unknown-linux-gnu',
+              '--edges', 'normal', '--prefix', 'none', '--format', '{p}',
+          ], text=True)
+          packages = {match.groups() for line in tree.splitlines()
+                      if (match := re.match(r'^(\S+) v(\S+)', line))}
+          forbidden = {'riauth', 'redb', 'postgres', 'tokio-postgres',
+                       'webauthn-authenticator-rs', 'fido-hid-rs', 'hidapi',
+                       'rusb', 'libusb1-sys', 'udev', 'libudev-sys'}
+          leaked = sorted((name, version) for name, version in packages if name in forbidden)
+          if leaked:
+              raise SystemExit(f'riauthctl base build has server/store/USB dependencies: {leaked}')
+          notices = {match.groups() for line in pathlib.Path('THIRD_PARTY_NOTICES.md').read_text().splitlines()
+                     if (match := re.match(r'^\| (\S+) \| (\S+) \|', line))}
+          client = tomllib.loads(pathlib.Path('crates/riauthctl/Cargo.toml').read_text())['package']
+          if (client['name'], client['version']) not in packages:
+              raise SystemExit('Could not parse riauthctl dependency tree')
+          missing = sorted(packages - {(client['name'], client['version'])} - notices)
+          if missing:
+              raise SystemExit(f'riauthctl base dependencies missing from release notices: {missing}')
+          PY
       - name: Check documentation, notices, and delivery scripts
         run: |
           python3 scripts/check-docs.py
           python3 scripts/generate-third-party-notices.py --check
+          python3 -m unittest discover -s tests -p 'test_installed_release_gate.py'
+          python3 -m unittest discover -s tests -p 'test_run_conformance.py'
+          python3 scripts/check-release-evidence.py
+          python3 -m unittest discover -s tests -p 'test_release_evidence.py'
+          python3 -m unittest discover -s tests -p 'test_spdx_sbom.py'
           bash -n scripts/*.sh
       - run: cargo build --release --locked
 
@@ -91,6 +145,34 @@ jobs:
         run: RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_logout_independent_xmlsec -- --ignored
       - name: PostgreSQL replication and service failover
         run: PG_BIN="$(pg_config --bindir)" scripts/test-postgres.sh
+      - name: Shared contracts on isolated PostgreSQL databases
+        run: PG_BIN="$(pg_config --bindir)" bash scripts/test-contracts-postgres.sh
+      - name: Secure first administrator setup in real browsers
+        run: |
+          cargo build --locked --bin riauth
+          npm ci --prefix tools/browser
+          cd tools/browser
+          ./node_modules/.bin/playwright install --with-deps chromium firefox webkit
+          ./node_modules/.bin/playwright test setup.spec.js --reporter=list
+      - name: Headless portal authenticator journeys
+        timeout-minutes: 25
+        run: |
+          cargo build --locked --example portal_fixture
+          cd tools/browser
+          ./node_modules/.bin/playwright test \
+            --project=chromium --project=firefox --project=webkit \
+            --workers=1 --retries=0 \
+            passkey-revocation.spec.js \
+            authenticator-recovery.spec.js \
+            passkey-rename.spec.js \
+            password-reset-replay.spec.js \
+            multi-authenticator.spec.js \
+            invitation-passkey.spec.js \
+            invitation-password.spec.js \
+            invitation-passkey-shim.spec.js \
+            --reporter=list
+      - name: PostgreSQL Q05 replay and lease schedules
+        run: PG_BIN="$(pg_config --bindir)" RIAUTH_PG_TEST_TARGET=q05_replay_concurrency scripts/test-postgres.sh
       - name: OpenLDAP synchronization and authentication
         run: scripts/test-ldap.sh
       - name: Real browser and relying party
@@ -128,3 +210,4 @@ jobs:
           cargo install cargo-audit --locked --version 0.22.2 --root "$RUNNER_TEMP/riauth-audit"
           "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit
           "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit --file fuzz/Cargo.lock
+          "$RUNNER_TEMP/riauth-audit/bin/cargo-audit" audit --file crates/riauthctl/Cargo.lock

@@ -2,9 +2,11 @@
 
 Choose a path for v0.1.1:
 
-- **New to riAuth?** [Get started locally](getting-started.md), then read the [project README](../README.md) and [release notes](release-notes.md).
+- **New Essentials operator or user?** Follow the [Essentials guide](essentials-guide.md). Its small install uses the Essentials binaries and loopback redb. Section 11 is browser invitation acceptance.
+- **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). It walks the same tasks on the Platform binaries, then one configured workflow, SAML, and the LDAP provider listener. Section 14 is that same invitation page.
+- **Undifferentiated local walkthrough?** [Get started locally](getting-started.md) uses the Cargo default feature set, `platform`. Then read the [project README](../README.md) and [release notes](release-notes.md).
 - **Signing in or managing your account?** Use [My applications](PORTAL.md), [passkeys](passkeys.md), and [account lifecycle](lifecycle.md).
-- **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), and [migration](migration.md).
+- **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), [migration](migration.md), and [re-enrollment](reenrollment.md).
 - **Connecting an application?** Follow [OIDC profiles](oidc-profiles.md), [SAML](saml.md), or [proxy SSO](proxy.md), with the [API reference](api.md) when needed.
 - **Contributing?** Read [CONTRIBUTING](../CONTRIBUTING.md), [architecture](architecture.md), and [testing](testing.md).
 
@@ -14,16 +16,39 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 
 | Guide | Purpose |
 | --- | --- |
-| [Getting started](getting-started.md) | Install, start a local instance, sign in, and register an OIDC web application |
+| [Essentials guide](essentials-guide.md) | Essentials operator and user tasks: small install, first administrator, one OIDC app, passkey self-service, backup and recovery entry points, groups, claims, audit review, LDAP import, outbound SCIM, and browser invitation acceptance |
+| [Platform guide](platform-guide.md) | The same tasks on the Platform binaries, with shared semantics and the remote-client split, then a configured workflow, SAML IdP and source, an LDAP provider listener, and the same browser invitation acceptance |
+| [Getting started](getting-started.md) | Undifferentiated local walkthrough; `cargo install --locked --path .` selects the default `platform` feature |
 | [Project README](../README.md) | Install, initialize and try browser and terminal sign-in |
 | [Architecture](architecture.md) | Components, request paths, state and worker boundaries |
 | [Operations](operations.md) | TLS, probes, metrics, backups, restore, maintenance and releases |
+| [Linux image deployments](deployment-examples.md) | Single-owner redb and two-host PostgreSQL Compose examples with operator steps |
+| [Server editions](editions.md) | Essentials and Platform build commands, assembly behavior and preview limits |
+| [Capability matrix](capability-matrix.md) | Compiled Essentials, Platform, and riauthctl inclusion, runtime prerequisites, protocol direction, tested peers, and known limits |
 | [Configuration example](../examples/riauth.toml) | Base configuration; optional feature blocks are in their guides |
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
+| [Process roles](roadmap/o01-process-roles.md) | Integrated default, explicit gateway and worker duty gates, and the limits of that slice |
+| [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |
+| [Operational recovery](operational-recovery.md) | Which recovery procedure to run, including a lost backup key while the store still serves, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
+| [Connector dependency incidents](connector-incidents.md) | Read, stop, and retry boundary for LDAP, outbound SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks |
+| [Administrator lockout](admin-lockout.md) | Attempt locks, lost recovery codes, and browser recovery while a second administrator can still sign in |
+| [Deactivation delivery](deactivation-delivery.md) | Investigate incomplete or ambiguous outbound deactivation with the redacted Platform read |
+| [SSF delivery](ssf-delivery.md) | Investigate stopped, retrying, and cancelled outbound Shared Signals delivery with the redacted Platform read |
+| [Credential compromise](credential-compromise.md) | Serving revocation for a stolen session, a lost passkey, a compromised agent or client credential, and a signing-key concern |
+| [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
-| [Migration](migration.md) | General Authentik import, continuity, cutover and rollback guidance |
+| [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |
+| [Re-enrollment](reenrollment.md) | Authentik operator decision table and copy-ready notices for passkeys, factors, recovery, sessions, and rollback |
 | [Release compatibility](release-notes.md) | Behaviour changes, schema and backup compatibility, artifacts and rollback |
 | [Testing](testing.md) | Local checks and deployment validation |
+| [Q07 parser assurance](q07-parser-assurance.md) | Bounded parser/dependency checks, a local SCIM parser repair, and remaining assurance work |
+| [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | Local Essentials/Platform build, configuration and storage evidence; Linux release artifact gates |
+| [Q08 native ARM64 local run](roadmap/q08-native-arm64-local-6ca4779.md) | Exact-source native Linux ARM64 binaries and local images, smoke results, and open release gates |
+| [Q09 benchmark slice](roadmap/q09-benchmark-slice.md) | One local session-read measurement protocol, its fixture check, and the open benchmark gate |
+| [Q10 installed release gate](roadmap/q10-installed-release-gate.md) | Native packaged-binary transition and recovery gate, local preflight evidence, and remaining external checks |
+| [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake text, a verify-only checker, and a source SPDX producer called from the Linux packager source; a release SBOM, signatures, a review record, and Linux ARM64 execution stay open |
+| [Q03 independent OIDF pilot](roadmap/q03-conformance-pilot.md) | Pinned runner preflight, missing private pilot inputs, and the open independent run gate |
+| [D05 acceptance evidence](roadmap/d05-acceptance-evidence.md) | Evidence classes for the ten category targets; every category and D05 stay unpassed |
 | [Release limitations](limitations.md) | Unsupported profiles and deployment responsibilities |
 
 ## Interfaces and identity
@@ -33,15 +58,25 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Agent administration](agent.md) | Permissions, manifests, plans, atomic mutations and private output |
 | [API](api.md) | HTTP routes, authentication and error contracts |
 | [OIDC profiles](oidc-profiles.md) | OAuth/OIDC grants, claims, keys and upstream sources |
+| [OIDC relying-party recipe](recipes/oidc-relying-party.md) | In-tree public client `rp`, the assertions the ignored browser test makes, and the peer gaps that fixture leaves |
+| [Upstream OIDC recipe](recipes/upstream-oidc.md) | In-process issuer fixture, the assertions that test makes, and the Okta, Entra, and Google gap that fixture leaves |
 | [Portal](PORTAL.md) | Browser and terminal sign-in, passkey management, application launch, policy and event-map page |
 | [Passkeys](passkeys.md) | Browser passkeys, USB and split WebAuthn ceremonies |
 | [Account lifecycle](lifecycle.md) | Invitations, email verification, password recovery and what still needs the terminal |
 | [SAML](saml.md) | IdP/source profiles, signatures, encryption and logout |
+| [Platform SAML IdP recipe](recipes/platform-saml-idp.md) | Fixture SP entity, the assertions the ignored xmlsec1 test makes, and the peer gaps that fixture leaves |
+| [Platform SAML source recipe](recipes/platform-saml-source.md) | In-process IdP fixture, the assertions `exercise` makes, and the named-IdP gap that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
+| [Platform inbound SCIM recipe](recipes/platform-inbound-scim.md) | In-process HTTP fixture, the assertions that test makes, and the named-client gap that fixture leaves |
+| [Platform outbound SCIM recipe](recipes/platform-outbound-scim.md) | Second loopback riAuth, the assertions that test makes, and the named-directory gap that fixture leaves |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
+| [LDAP import recipe](recipes/ldap-import.md) | Disposable OpenLDAP fixture, the assertions the ignored import test makes, and the peer gaps that fixture leaves |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |
+| [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md) | Fixture LDAPS and STARTTLS listener, ldap3 search and denial results, and the peer gaps that fixture leaves |
 | [RADIUS](radius.md) | PAP, RadSec, EAP-TLS, certificate lifecycle and policy |
 | [Proxy SSO](proxy.md) | nginx and Traefik forward auth, shared cookies and the embedded reverse proxy |
+| [Platform forward-auth recipe](recipes/platform-forward-auth.md) | nginx and Traefik fixture configuration, asserted redirect and revocation results, and the peer gaps those fixtures leave |
+| [Workflow model](workflows.md) | Typed definitions, Platform authoring and validation, Essentials defaults, and bounded verifier paths |
 
 ## Advanced features
 
@@ -52,3 +87,5 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | Signals and administration | [Shared Signals](enterprise/ENT-07.md), [audit review](enterprise/ENT-09.md), [Windows device-login protocol](enterprise/ENT-13.md), [Events Map](enterprise/ENT-14.md), [CSV export](enterprise/ENT-15.md), [deployment alert routing](enterprise/PLATFORM-04.md) |
 
 SAML XML handling uses Rhein Industries' maintained [risaml](https://github.com/Rhein-Industries/risaml), [ribergshamra](https://github.com/Rhein-Industries/ribergshamra), [ritsp-ltv](https://github.com/Rhein-Industries/ritsp-ltv), and [riptering](https://github.com/Rhein-Industries/riptering) forks. Their source and licenses are documented in [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+[Connector removal safeguards](removal-safeguards.md) describes snapshot validation, thresholds and exact-plan confirmation.

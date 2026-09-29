@@ -1,116 +1,57 @@
-//! Agent-reviewed Google Workspace and Microsoft Entra ID directory sync.
+//! Bounded Google Workspace and Microsoft Entra ID directory sync.
 //!
-//! The supported token profile is OAuth 2.0 `client_credentials`. Google's
-//! public token endpoint does not issue Admin SDK tokens with that grant;
-//! `token_url` must be an endpoint that implements this profile. A page that
-//! fails, repeats, or leaves the configured host is not a completed sync and
-//! must not disable accounts.
+//! Workspace supports Google's delegated service-account JWT grant or the
+//! existing broker `client_credentials` grant. A page that fails, repeats, or
+//! leaves the configured host is not a completed sync and must not disable accounts.
 use crate::{
     agent::Principal,
-    core::{Core, audit, validate_display, validate_email, validate_name},
+    config::CloudReconciliationQuota,
+    connector_guard::{Pagination, ReconciliationMode, ReviewBinding, reconcile_plan},
+    core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Group, Session, User},
+    model::{Group, User},
     store::Tx,
 };
 use axum::http::StatusCode;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use url::Url;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
-const RETRY_LIMIT: u32 = 5;
-const RETRY_WINDOW: u64 = 900;
-const MAX_PAGES: usize = 20;
-const MAX_OBJECTS: usize = 2000;
-const MAX_PAGE_BYTES: usize = 1024 * 1024;
-const MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
+const MAX_TOKEN_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_PROBE_RESPONSE_BYTES: usize = 1024 * 1024;
 const SYNC_BUDGET: Duration = Duration::from_secs(30);
-const REVIEW_DISABLE_COUNT: usize = 5;
-const REVIEW_PERCENT: usize = 20;
-const REVIEW_SMALL_PERCENT: usize = 50;
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.user.readonly";
+const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
+const GOOGLE_MEMBER_READ: &str =
+    "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
+pub(crate) const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
+pub(crate) const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
+pub(crate) const CLOUD_APPLY_SNAPSHOTS: &str = "cloud_directory_apply_snapshots";
+const MAX_GRAPH_CURSOR_BYTES: usize = 8192;
 
-fn graph_scope() -> String {
-    "https://graph.microsoft.com/.default".into()
-}
-fn workspace_attributes() -> Attributes {
-    Attributes {
-        email: "primaryEmail".into(),
-        display_name: "name.fullName".into(),
-        external_id: "id".into(),
-    }
-}
-fn entra_attributes() -> Attributes {
-    Attributes {
-        email: "mail".into(),
-        display_name: "displayName".into(),
-        external_id: "id".into(),
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Attributes {
-    pub email: String,
-    pub display_name: String,
-    pub external_id: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WorkspaceDirectory {
-    pub customer_id: String,
-    pub domain: String,
-    pub token_url: String,
-    pub client_id: String,
-    pub client_secret_file: PathBuf,
-    /// Admin SDK origin. Production is `https://admin.googleapis.com`.
-    pub directory_url: String,
-    /// Local group name to upstream group id or email. Only these groups are reconciled.
-    #[serde(default)]
-    pub groups: BTreeMap<String, String>,
-    #[serde(default = "workspace_attributes")]
-    pub attributes: Attributes,
-    #[serde(default)]
-    pub username_prefix: String,
-    /// Optional `scope` on the client-credentials token request. Empty omits it.
-    #[serde(default)]
-    pub scope: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EntraDirectory {
-    pub tenant_id: String,
-    pub token_url: String,
-    pub client_id: String,
-    pub client_secret_file: PathBuf,
-    /// Graph origin. Production is `https://graph.microsoft.com`.
-    pub graph_url: String,
-    #[serde(default = "graph_scope")]
-    pub scope: String,
-    /// Local group name to upstream group id or mail.
-    #[serde(default)]
-    pub groups: BTreeMap<String, String>,
-    #[serde(default = "entra_attributes")]
-    pub attributes: Attributes,
-    #[serde(default)]
-    pub username_prefix: String,
-}
+pub use crate::cloud_directory_types::{
+    Attributes, EntraDirectory, WorkspaceDirectAuth, WorkspaceDirectory,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Provider {
+pub(crate) enum Provider {
     Workspace,
     Entra,
 }
 impl Provider {
-    fn parse(value: &str) -> Result<Self> {
+    pub(crate) fn parse(value: &str) -> Result<Self> {
         match value {
             "workspace" => Ok(Self::Workspace),
             "entra" => Ok(Self::Entra),
@@ -130,13 +71,6 @@ fn unavailable(message: &'static str) -> Error {
         StatusCode::SERVICE_UNAVAILABLE,
         "directory_unavailable",
         message,
-    )
-}
-fn budget_exhausted() -> Error {
-    Error::new(
-        StatusCode::TOO_MANY_REQUESTS,
-        "rate_limited",
-        "Cloud directory retry budget exhausted",
     )
 }
 fn valid_label(value: &str, limit: usize) -> bool {
@@ -220,6 +154,33 @@ fn validate_base(value: &str) -> Result<Url> {
     }
     Ok(url)
 }
+#[cfg(feature = "test-support")]
+fn direct_loopback(url: &Url) -> bool {
+    url.scheme() == "http"
+        && match url.host() {
+            Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+            Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+            _ => false,
+        }
+}
+fn validate_direct_workspace_endpoints(directory: &str, _base: &Url, token: &str) -> Result<()> {
+    let official = directory.trim_end_matches('/') == "https://admin.googleapis.com"
+        && (token.is_empty() || token == GOOGLE_TOKEN_URL);
+    #[cfg(feature = "test-support")]
+    let fake_peer = direct_loopback(_base)
+        && Url::parse(token).is_ok_and(|token_url| {
+            direct_loopback(&token_url) && token_url.origin() == _base.origin()
+        });
+    #[cfg(not(feature = "test-support"))]
+    let fake_peer = false;
+    if official || fake_peer {
+        Ok(())
+    } else {
+        Err(Error::bad(
+            "Workspace direct endpoints must be Google's official endpoints or one literal HTTP loopback fake peer",
+        ))
+    }
+}
 fn validate_token_url(value: &str) -> Result<()> {
     crate::config::validate_server_url(value).map_err(|_| {
         Error::bad("Cloud directory token URL must be canonical HTTPS or HTTP loopback")
@@ -248,19 +209,52 @@ impl WorkspaceDirectory {
         if !valid_domain(&self.domain) {
             return Err(Error::bad("Workspace domain must be an explicit DNS name"));
         }
-        validate_token_url(&self.token_url)?;
-        validate_base(&self.directory_url)?;
-        if !valid_secret_id(&self.client_id, 256) || self.client_secret_file.as_os_str().is_empty()
-        {
-            return Err(Error::bad(
-                "Workspace client id and secret file must be explicit",
-            ));
+        let directory_url = validate_base(&self.directory_url)?;
+        if let Some(direct) = &self.direct_auth {
+            if !self.client_id.is_empty() || !self.client_secret_file.as_os_str().is_empty() {
+                return Err(Error::bad(
+                    "Workspace broker and direct credentials cannot be combined",
+                ));
+            }
+            if !self.token_url.is_empty() {
+                validate_token_url(&self.token_url)?;
+            }
+            validate_direct_workspace_endpoints(
+                &self.directory_url,
+                &directory_url,
+                &self.token_url,
+            )?;
+            if direct.key_file.as_os_str().is_empty()
+                || !valid_delegated_subject(&direct.delegated_subject)
+                || !self.scope.is_empty()
+            {
+                return Err(Error::bad(
+                    "Workspace direct authorization requires a key file and delegated user; scopes are fixed to read-only Directory access",
+                ));
+            }
+        } else {
+            validate_token_url(&self.token_url)?;
+            if !valid_secret_id(&self.client_id, 256)
+                || self.client_secret_file.as_os_str().is_empty()
+            {
+                return Err(Error::bad(
+                    "Workspace client id and secret file must be explicit",
+                ));
+            }
+            validate_scope(&self.scope, false)?;
         }
-        validate_scope(&self.scope, false)?;
         validate_groups(&self.groups)?;
         validate_attributes(&self.attributes)?;
         validate_prefix(&self.username_prefix)
     }
+}
+
+fn valid_delegated_subject(subject: &str) -> bool {
+    if subject.len() > 254 || subject.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    let mut parts = subject.split('@');
+    matches!((parts.next(), parts.next(), parts.next()), (Some(local), Some(domain), None) if !local.is_empty() && valid_domain(domain))
 }
 
 impl EntraDirectory {
@@ -269,43 +263,108 @@ impl EntraDirectory {
             return Err(Error::bad("Entra tenant id must be explicit and bounded"));
         }
         validate_token_url(&self.token_url)?;
-        validate_base(&self.graph_url)?;
-        if !valid_secret_id(&self.client_id, 256) || self.client_secret_file.as_os_str().is_empty()
+        let graph = validate_base(&self.graph_url)?;
+        if !valid_secret_id(&self.client_id, 256) {
+            return Err(Error::bad("Entra client id must be explicit"));
+        }
+        let secret = !self.client_secret_file.as_os_str().is_empty();
+        let certificate = self.certificate_file.as_ref();
+        let private_key = self.private_key_file.as_ref();
+        if !(secret && certificate.is_none() && private_key.is_none()
+            || !secret
+                && certificate.is_some_and(|path| !path.as_os_str().is_empty())
+                && private_key.is_some_and(|path| !path.as_os_str().is_empty()))
         {
             return Err(Error::bad(
-                "Entra client id and secret file must be explicit",
+                "Entra requires either one secret file or a certificate and private key pair",
             ));
         }
+        // The configured tenant is part of the immutable local binding. A
+        // secret-file credential must not silently fetch another tenant either.
+        validate_entra_endpoint(self, &graph)?;
         validate_scope(&self.scope, true)?;
         validate_groups(&self.groups)?;
         validate_attributes(&self.attributes)?;
+        // Group membership returns Graph object IDs. A mutable profile field
+        // cannot be joined to those IDs or safely used as a binding key.
+        if self.attributes.external_id != "id" {
+            return Err(Error::bad("Entra external id must be the Graph object id"));
+        }
         validate_prefix(&self.username_prefix)
     }
 }
 
+fn validate_entra_endpoint(directory: &EntraDirectory, graph: &Url) -> Result<()> {
+    if matches!(graph.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+        let token =
+            Url::parse(&directory.token_url).map_err(|_| Error::bad("Invalid Entra token URL"))?;
+        if matches!(token.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")) {
+            return Ok(());
+        }
+        return Err(Error::bad(
+            "Entra loopback Graph requires a loopback token URL",
+        ));
+    }
+    let auth_hosts: &[&str] = match graph.host_str() {
+        Some("graph.microsoft.com") => &["login.microsoftonline.com"],
+        Some("graph.microsoft.us" | "dod-graph.microsoft.us") => &["login.microsoftonline.us"],
+        Some("microsoftgraph.chinacloudapi.cn") => {
+            &["login.chinacloudapi.cn", "login.partner.microsoftonline.cn"]
+        }
+        _ => {
+            return Err(Error::bad(
+                "Entra directory requires a supported Graph cloud",
+            ));
+        }
+    };
+    let token =
+        Url::parse(&directory.token_url).map_err(|_| Error::bad("Invalid Entra token URL"))?;
+    if token.scheme() != "https"
+        || token.port_or_known_default() != Some(443)
+        || !auth_hosts.contains(&token.host_str().unwrap_or_default())
+        || token.path() != format!("/{}/oauth2/v2.0/token", directory.tenant_id)
+        || directory.scope != format!("{}/.default", directory.graph_url.trim_end_matches('/'))
+    {
+        return Err(Error::bad(
+            "Entra token URL, tenant, and Graph scope must match",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
-struct Settings {
-    kind: &'static str,
-    id: String,
+pub(crate) struct Settings {
+    pub(crate) kind: &'static str,
+    pub(crate) id: String,
     tenant: String,
     domain: String,
     token_url: String,
     client_id: String,
     client_secret_file: PathBuf,
+    entra_certificate: Option<(PathBuf, PathBuf)>,
+    direct_auth: Option<WorkspaceDirectAuth>,
     base_url: String,
     scope: String,
     groups: BTreeMap<String, String>,
     attributes: Attributes,
     username_prefix: String,
-    fingerprint: String,
+    pub(crate) fingerprint: String,
     identity_fingerprint: String,
+    quota: CloudReconciliationQuota,
 }
 impl Settings {
-    fn resource(&self) -> String {
+    pub(crate) fn resource(&self) -> String {
         format!("{}/{}", self.kind, self.id)
     }
     fn run_key(&self) -> String {
         self.resource()
+    }
+    fn snapshot_bucket(&self) -> &'static str {
+        if self.kind == "workspace" {
+            WORKSPACE_SNAPSHOTS
+        } else {
+            ENTRA_SNAPSHOTS
+        }
     }
 }
 
@@ -316,6 +375,15 @@ fn fingerprint_of(kind: &str, value: &impl Serialize) -> Result<String> {
     )))
 }
 
+fn quota_fingerprint(base: String, quota: CloudReconciliationQuota) -> Result<String> {
+    if quota == CloudReconciliationQuota::default() {
+        Ok(base)
+    } else {
+        crate::connector_guard::hash(&(base, quota))
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 struct RemoteUser {
     external_id: String,
     email: Option<String>,
@@ -356,11 +424,16 @@ fn endpoint(base: &str, path: &[&str], query: &[(&str, &str)]) -> Result<Url> {
     Ok(url)
 }
 
-fn http_client() -> Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
+fn http_client(direct_workspace: bool) -> Result<reqwest::blocking::Client> {
+    let mut builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
-        .pool_max_idle_per_host(0)
+        .pool_max_idle_per_host(0);
+    if direct_workspace {
+        // A delegated assertion and Admin SDK bearer must never enter an ambient proxy.
+        builder = builder.no_proxy();
+    }
+    builder
         .build()
         .map_err(|_| unavailable("Cloud directory request failed"))
 }
@@ -375,16 +448,88 @@ fn read_secret(path: &std::path::Path) -> Result<Zeroizing<String>> {
     Ok(Zeroizing::new(trimmed.to_owned()))
 }
 
+fn certificate_assertion(
+    settings: &Settings,
+    certificate_file: &Path,
+    key_file: &Path,
+) -> Result<Zeroizing<String>> {
+    let unavailable_credential = || unavailable("Entra certificate credential is unavailable");
+    let file = std::fs::File::open(certificate_file).map_err(|_| unavailable_credential())?;
+    let metadata = file.metadata().map_err(|_| unavailable_credential())?;
+    if !metadata.is_file() || metadata.len() > 32_768 {
+        return Err(unavailable_credential());
+    }
+    let mut bytes = Vec::new();
+    file.take(32_769)
+        .read_to_end(&mut bytes)
+        .map_err(|_| unavailable_credential())?;
+    if bytes.len() > 32_768 {
+        return Err(unavailable_credential());
+    }
+    let mut blocks = pem::parse_many(bytes).map_err(|_| unavailable_credential())?;
+    if blocks.len() != 1 || blocks[0].tag() != "CERTIFICATE" {
+        return Err(unavailable_credential());
+    }
+    let der = blocks.remove(0).into_contents();
+    let (remainder, certificate) =
+        x509_parser::parse_x509_certificate(&der).map_err(|_| unavailable_credential())?;
+    if !remainder.is_empty()
+        || !certificate.validity().is_valid()
+        || !matches!(certificate.public_key().parsed(), Ok(x509_parser::public_key::PublicKey::RSA(ref key)) if (2048..=8192).contains(&key.key_size()))
+    {
+        return Err(unavailable_credential());
+    }
+    let private_key = crate::config::read_private_secret(key_file, 16_384)
+        .map_err(|_| unavailable_credential())?;
+    let mut header = Header::new(Algorithm::PS256);
+    header.x5t_s256 = Some(URL_SAFE_NO_PAD.encode(Sha256::digest(&der)));
+    let issued = now();
+    let claims = json!({
+        "aud": settings.token_url,
+        "iss": settings.client_id,
+        "sub": settings.client_id,
+        "jti": crypto::id(),
+        "iat": issued,
+        "nbf": issued,
+        "exp": issued.saturating_add(300),
+    });
+    let encoding =
+        EncodingKey::from_rsa_pem(private_key.as_bytes()).map_err(|_| unavailable_credential())?;
+    let assertion =
+        jsonwebtoken::encode(&header, &claims, &encoding).map_err(|_| unavailable_credential())?;
+    // A cert/key mismatch during a two-file rotation must stop before any token request.
+    let mut validation = Validation::new(Algorithm::PS256);
+    validation.set_audience(&[settings.token_url.as_str()]);
+    validation.set_issuer(&[settings.client_id.as_str()]);
+    let public_key = DecodingKey::from_rsa_der(&certificate.public_key().subject_public_key.data);
+    jsonwebtoken::decode::<Value>(&assertion, &public_key, &validation)
+        .map_err(|_| unavailable_credential())?;
+    Ok(Zeroizing::new(assertion))
+}
+
 fn access_token(
     settings: &Settings,
     http: &reqwest::blocking::Client,
 ) -> Result<Zeroizing<String>> {
-    let secret = read_secret(&settings.client_secret_file)?;
+    if let Some(direct) = &settings.direct_auth {
+        return direct_access_token(settings, direct, http);
+    }
+    let (field, credential) = if let Some((certificate, key)) = &settings.entra_certificate {
+        (
+            "client_assertion",
+            certificate_assertion(settings, certificate, key)?,
+        )
+    } else {
+        ("client_secret", read_secret(&settings.client_secret_file)?)
+    };
     let mut form = vec![
         ("grant_type", "client_credentials"),
         ("client_id", settings.client_id.as_str()),
-        ("client_secret", secret.as_str()),
+        (field, credential.as_str()),
     ];
+    if settings.entra_certificate.is_some() {
+        form.push(("client_assertion_type", crate::jose::ASSERTION_TYPE));
+    }
     if !settings.scope.is_empty() {
         form.push(("scope", settings.scope.as_str()));
     }
@@ -400,7 +545,7 @@ fn access_token(
         );
         return Err(unavailable("Cloud directory credential request failed"));
     }
-    let bytes = read_body(response)?;
+    let bytes = read_body(response, MAX_TOKEN_RESPONSE_BYTES)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| unavailable("Cloud directory credential request failed"))?;
     let token = value
@@ -418,29 +563,126 @@ fn access_token(
     Ok(Zeroizing::new(token.to_owned()))
 }
 
-fn read_body(response: reqwest::blocking::Response) -> Result<Vec<u8>> {
+#[derive(Deserialize)]
+struct ServiceAccountKey {
+    #[serde(rename = "type")]
+    kind: String,
+    client_email: String,
+    private_key_id: String,
+    private_key: String,
+    token_uri: String,
+}
+impl Drop for ServiceAccountKey {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
+fn direct_access_token(
+    settings: &Settings,
+    direct: &WorkspaceDirectAuth,
+    http: &reqwest::blocking::Client,
+) -> Result<Zeroizing<String>> {
+    let key_json = crate::config::read_private_secret(&direct.key_file, 16 * 1024)
+        .map_err(|_| unavailable("Workspace service-account key is unavailable"))?;
+    let key: ServiceAccountKey = serde_json::from_str(&key_json)
+        .map_err(|_| unavailable("Workspace service-account key is invalid"))?;
+    if key.kind != "service_account"
+        || !valid_delegated_subject(&key.client_email)
+        || !valid_secret_id(&key.private_key_id, 256)
+        || key.token_uri != GOOGLE_TOKEN_URL
+    {
+        return Err(unavailable("Workspace service-account key is invalid"));
+    }
+    let mut scopes = vec![GOOGLE_USER_READ];
+    if !settings.groups.is_empty() {
+        scopes.extend([GOOGLE_GROUP_READ, GOOGLE_MEMBER_READ]);
+    }
+    let now = now();
+    let claims = json!({
+        "iss": key.client_email,
+        "sub": direct.delegated_subject,
+        "scope": scopes.join(" "),
+        "aud": settings.token_url,
+        "iat": now,
+        "exp": now.saturating_add(3600),
+    });
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key.private_key_id.clone());
+    let encoding = EncodingKey::from_rsa_pem(key.private_key.as_bytes())
+        .map_err(|_| unavailable("Workspace service-account key is invalid"))?;
+    let assertion = Zeroizing::new(
+        jsonwebtoken::encode(&header, &claims, &encoding)
+            .map_err(|_| unavailable("Workspace assertion signing failed"))?,
+    );
+    let response = http
+        .post(&settings.token_url)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ])
+        .send()
+        .map_err(|_| unavailable("Cloud directory credential request failed"))?;
+    if !response.status().is_success() {
+        tracing::warn!(
+            status = response.status().as_u16(),
+            "cloud directory credential request failed"
+        );
+        return Err(unavailable("Cloud directory credential request failed"));
+    }
+    let bytes = read_body(response, MAX_TOKEN_RESPONSE_BYTES)?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| unavailable("Cloud directory credential request failed"))?;
+    if value.get("token_type").and_then(Value::as_str) != Some("Bearer")
+        || !value
+            .get("expires_in")
+            .and_then(Value::as_u64)
+            .is_some_and(|seconds| seconds >= 60)
+    {
+        return Err(unavailable("Cloud directory credential request failed"));
+    }
+    let token = value
+        .get("access_token")
+        .and_then(Value::as_str)
+        .filter(|token| valid_secret_id(token, 8192))
+        .ok_or_else(|| unavailable("Cloud directory credential request failed"))?;
+    Ok(Zeroizing::new(token.to_owned()))
+}
+
+fn read_body(response: reqwest::blocking::Response, max_bytes: usize) -> Result<Vec<u8>> {
     if response
         .content_length()
-        .is_some_and(|length| length > MAX_PAGE_BYTES as u64)
+        .is_some_and(|length| length > max_bytes as u64)
     {
         return Err(unavailable("Cloud directory page is too large"));
     }
     let mut bytes = Vec::new();
     response
-        .take((MAX_PAGE_BYTES + 1) as u64)
+        .take((max_bytes + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|_| unavailable("Cloud directory request failed"))?;
-    if bytes.len() > MAX_PAGE_BYTES {
+    if bytes.len() > max_bytes {
         return Err(unavailable("Cloud directory page is too large"));
     }
     Ok(bytes)
 }
 
-fn get_json(http: &reqwest::blocking::Client, token: &str, url: &Url) -> Result<Value> {
-    let response = http
+fn get_json_sized(
+    http: &reqwest::blocking::Client,
+    token: &str,
+    url: &Url,
+    graph_count: bool,
+    max_page_bytes: usize,
+) -> Result<(Value, usize)> {
+    let mut request = http
         .get(url.clone())
         .bearer_auth(token)
-        .header("accept", "application/json")
+        .header("accept", "application/json");
+    if graph_count {
+        // Graph does not carry this advanced-query header into nextLink requests.
+        request = request.header("ConsistencyLevel", "eventual");
+    }
+    let response = request
         .send()
         .map_err(|_| unavailable("Cloud directory request failed"))?;
     if !response.status().is_success() {
@@ -450,9 +692,19 @@ fn get_json(http: &reqwest::blocking::Client, token: &str, url: &Url) -> Result<
         );
         return Err(unavailable("Cloud directory request failed"));
     }
-    let bytes = read_body(response)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|_| unavailable("Cloud directory returned an unreadable page"))
+    let bytes = read_body(response, max_page_bytes)?;
+    let value = serde_json::from_slice(&bytes)
+        .map_err(|_| unavailable("Cloud directory returned an unreadable page"))?;
+    Ok((value, bytes.len()))
+}
+
+fn get_json(
+    http: &reqwest::blocking::Client,
+    token: &str,
+    url: &Url,
+    graph_count: bool,
+) -> Result<Value> {
+    Ok(get_json_sized(http, token, url, graph_count, MAX_PROBE_RESPONSE_BYTES)?.0)
 }
 
 fn same_origin(base: &Url, next: &Url) -> bool {
@@ -462,75 +714,6 @@ fn same_origin(base: &Url, next: &Url) -> bool {
         && next.username().is_empty()
         && next.password().is_none()
         && next.fragment().is_none()
-}
-
-fn paginate(
-    http: &reqwest::blocking::Client,
-    token: &str,
-    first: Url,
-    provider: Provider,
-    collection: &str,
-    started: Instant,
-    mut next_page: impl FnMut(&Value, &Url) -> Result<Option<Url>>,
-) -> Result<Vec<Value>> {
-    let mut url = first;
-    let mut items = Vec::new();
-    let mut seen = BTreeSet::new();
-    let mut total = 0usize;
-    for page_index in 0..MAX_PAGES {
-        if started.elapsed() > SYNC_BUDGET {
-            return Err(unavailable("Cloud directory sync exceeded its time limit"));
-        }
-        if !seen.insert(url.to_string()) {
-            return Err(unavailable("Cloud directory pagination did not finish"));
-        }
-        let body = get_json(http, token, &url)?;
-        total = total.saturating_add(body.to_string().len());
-        if total > MAX_TOTAL_BYTES {
-            return Err(unavailable("Cloud directory page is too large"));
-        }
-        let Some(object) = body.as_object() else {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        };
-        if object.contains_key("error") {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        }
-        let workspace_kind = || {
-            let expected = format!("directory#{collection}");
-            object
-                .get("kind")
-                .and_then(Value::as_str)
-                .is_some_and(|kind| kind == expected || kind == format!("admin#{expected}"))
-        };
-        if provider == Provider::Workspace && object.contains_key("kind") && !workspace_kind() {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        }
-        let page = match object.get(collection) {
-            Some(Value::Array(values)) => values.clone(),
-            None if provider == Provider::Workspace => {
-                if page_index != 0 || !workspace_kind() || object.contains_key("nextPageToken") {
-                    return Err(unavailable("Cloud directory returned an unreadable page"));
-                }
-                Vec::new()
-            }
-            Some(_) => {
-                return Err(unavailable("Cloud directory returned an unreadable page"));
-            }
-            None => return Err(unavailable("Cloud directory returned an unreadable page")),
-        };
-        if items.len().saturating_add(page.len()) > MAX_OBJECTS {
-            return Err(unavailable(
-                "Cloud directory result exceeds the supported size",
-            ));
-        }
-        items.extend(page);
-        match next_page(&body, &url)? {
-            Some(next) => url = next,
-            None => return Ok(items),
-        }
-    }
-    // A capped crawl is not a full directory. Callers must not disable missing users.
-    Err(unavailable("Cloud directory pagination did not finish"))
 }
 
 fn workspace_next(body: &Value, endpoint: &Url) -> Result<Option<Url>> {
@@ -671,204 +854,520 @@ fn select_fields(attributes: &Attributes) -> String {
     fields.into_iter().collect::<Vec<_>>().join(",")
 }
 
-impl Settings {
-    fn fetch(&self) -> Result<Vec<RemoteUser>> {
-        let started = Instant::now();
-        let http = http_client()?;
-        let token = access_token(self, &http)?;
-        let base = Url::parse(&self.base_url).map_err(|_| Error::bad("Invalid directory URL"))?;
-        let users_url = if self.kind == "workspace" {
-            endpoint(
-                &self.base_url,
-                &["admin", "directory", "v1", "users"],
-                &[
-                    ("customer", self.tenant.as_str()),
-                    ("domain", self.domain.as_str()),
-                    ("maxResults", "200"),
-                ],
-            )?
+/// One cloud-directory crawl. Only parsed users, selected group IDs, and the current
+/// collection's object IDs are retained; raw pages never accumulate.
+#[derive(Clone, Serialize, Deserialize)]
+struct CloudSnapshot {
+    phase: usize,
+    cursor: Option<String>,
+    pagination: Pagination,
+    phase_ids: BTreeSet<String>,
+    users: BTreeMap<String, RemoteUser>,
+    selected: BTreeMap<String, String>,
+    chosen: BTreeMap<String, String>,
+    source_bytes: usize,
+    pages: usize,
+}
+
+impl CloudSnapshot {
+    fn new(settings: &Settings) -> Self {
+        Self {
+            phase: 0,
+            cursor: None,
+            pagination: Pagination::new(
+                settings.quota.max_pages_per_collection,
+                settings.quota.max_objects,
+            ),
+            phase_ids: BTreeSet::new(),
+            users: BTreeMap::new(),
+            selected: BTreeMap::new(),
+            chosen: BTreeMap::new(),
+            source_bytes: 0,
+            pages: 0,
+        }
+    }
+
+    fn complete(&self, settings: &Settings) -> bool {
+        if settings.groups.is_empty() {
+            self.phase == 1
         } else {
-            let select = select_fields(&self.attributes);
-            endpoint(
-                &self.base_url,
-                &["v1.0", "users"],
-                &[("$select", select.as_str()), ("$top", "200")],
-            )?
-        };
-        let user_endpoint = users_url.clone();
-        let kind = self.kind;
-        let raw_users = if self.kind == "workspace" {
-            paginate(
-                &http,
-                &token,
-                users_url,
-                Provider::Workspace,
+            self.phase == 2 + self.chosen.len()
+        }
+    }
+
+    fn next_phase(&mut self, settings: &Settings) {
+        self.phase += 1;
+        self.cursor = None;
+        self.pagination = Pagination::new(
+            settings.quota.max_pages_per_collection,
+            settings.quota.max_objects,
+        );
+        self.phase_ids.clear();
+    }
+
+    fn endpoint(&self, settings: &Settings) -> Result<(Url, &'static str)> {
+        if settings.kind == "entra" {
+            return match self.phase {
+                0 => {
+                    let select = select_fields(&settings.attributes);
+                    Ok((
+                        endpoint(
+                            &settings.base_url,
+                            &["v1.0", "users"],
+                            &[("$select", &select), ("$top", "200"), ("$count", "true")],
+                        )?,
+                        "value",
+                    ))
+                }
+                1 => Ok((
+                    endpoint(
+                        &settings.base_url,
+                        &["v1.0", "groups"],
+                        &[
+                            ("$select", "id,displayName,mail"),
+                            ("$top", "200"),
+                            ("$count", "true"),
+                        ],
+                    )?,
+                    "value",
+                )),
+                phase => {
+                    let upstream = self
+                        .chosen
+                        .keys()
+                        .nth(phase - 2)
+                        .ok_or_else(|| Error::internal("Invalid Entra snapshot phase"))?;
+                    Ok((
+                        endpoint(
+                            &settings.base_url,
+                            &["v1.0", "groups", upstream, "transitiveMembers"],
+                            &[("$count", "true")],
+                        )?,
+                        "value",
+                    ))
+                }
+            };
+        }
+        match self.phase {
+            0 => Ok((
+                endpoint(
+                    &settings.base_url,
+                    &["admin", "directory", "v1", "users"],
+                    &[
+                        ("customer", &settings.tenant),
+                        ("domain", &settings.domain),
+                        ("maxResults", "200"),
+                    ],
+                )?,
                 "users",
-                started,
-                |body, _| workspace_next(body, &user_endpoint),
-            )?
-        } else {
-            paginate(
-                &http,
-                &token,
-                users_url,
-                Provider::Entra,
-                "value",
-                started,
-                |body, current| graph_next(body, current, &base),
-            )?
-        };
-        let mut users = Vec::new();
-        let mut ids = BTreeSet::new();
-        for value in raw_users {
-            let user = parse_user(self.kind, &value, &self.attributes)?;
-            if !ids.insert(user.external_id.clone()) {
+            )),
+            1 => Ok((
+                endpoint(
+                    &settings.base_url,
+                    &["admin", "directory", "v1", "groups"],
+                    &[
+                        ("customer", &settings.tenant),
+                        ("domain", &settings.domain),
+                        ("maxResults", "200"),
+                    ],
+                )?,
+                "groups",
+            )),
+            phase => {
+                let upstream = self
+                    .chosen
+                    .keys()
+                    .nth(phase - 2)
+                    .ok_or_else(|| Error::internal("Invalid cloud snapshot phase"))?;
+                Ok((
+                    endpoint(
+                        &settings.base_url,
+                        &["admin", "directory", "v1", "groups", upstream, "members"],
+                        &[("maxResults", "200")],
+                    )?,
+                    "members",
+                ))
+            }
+        }
+    }
+
+    fn bounded(&self, settings: &Settings) -> Result<()> {
+        if self.source_bytes > settings.quota.max_snapshot_bytes
+            || self.users.len() > settings.quota.max_objects
+            || self.selected.len() > 32
+            || self.chosen.len() > 32
+            || serde_json::to_vec(self).map_err(Error::internal)?.len()
+                > settings.quota.max_snapshot_bytes
+        {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    fn advance(&mut self, settings: &Settings, limit: usize) -> Result<()> {
+        let started = Instant::now();
+        let http = http_client(settings.direct_auth.is_some())?;
+        let token = access_token(settings, &http)?;
+        for _ in 0..limit {
+            if self.complete(settings) {
+                break;
+            }
+            if started.elapsed() > SYNC_BUDGET {
+                return Err(unavailable("Cloud directory sync exceeded its time limit"));
+            }
+            let (first, collection) = self.endpoint(settings)?;
+            let graph = settings.kind == "entra";
+            let mut url = first.clone();
+            if let Some(cursor) = &self.cursor {
+                if graph {
+                    if cursor.len() > MAX_GRAPH_CURSOR_BYTES {
+                        return Err(unavailable("Cloud directory pagination did not finish"));
+                    }
+                    let next = Url::parse(cursor).map_err(|_| {
+                        unavailable("Cloud directory pagination left the configured host")
+                    })?;
+                    let base = Url::parse(&settings.base_url)
+                        .map_err(|_| Error::bad("Invalid directory URL"))?;
+                    if !same_origin(&base, &next)
+                        || next.path() != first.path()
+                        || !next.path().starts_with("/v1.0/")
+                    {
+                        return Err(unavailable(
+                            "Cloud directory pagination changed collection; retry a complete snapshot",
+                        ));
+                    }
+                    url = next;
+                } else {
+                    if !valid_secret_id(cursor, 2048) {
+                        return Err(unavailable("Cloud directory pagination did not finish"));
+                    }
+                    url.query_pairs_mut().append_pair("pageToken", cursor);
+                }
+            }
+            let (body, page_bytes) =
+                get_json_sized(&http, &token, &url, graph, settings.quota.max_page_bytes)?;
+            if started.elapsed() > SYNC_BUDGET {
+                return Err(unavailable("Cloud directory sync exceeded its time limit"));
+            }
+            self.source_bytes = self.source_bytes.saturating_add(page_bytes);
+            if self.source_bytes > settings.quota.max_snapshot_bytes {
+                return Err(unavailable(
+                    "Cloud directory snapshot staging quota exceeded",
+                ));
+            }
+            let object = body
+                .as_object()
+                .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
+            if object.contains_key("error") {
                 return Err(unavailable("Cloud directory returned an unreadable page"));
             }
-            users.push(user);
-        }
-        if self.groups.is_empty() {
-            return Ok(users);
-        }
-        let groups_url = if self.kind == "workspace" {
-            endpoint(
-                &self.base_url,
-                &["admin", "directory", "v1", "groups"],
-                &[
-                    ("customer", self.tenant.as_str()),
-                    ("domain", self.domain.as_str()),
-                    ("maxResults", "200"),
-                ],
-            )?
-        } else {
-            endpoint(
-                &self.base_url,
-                &["v1.0", "groups"],
-                &[("$select", "id,displayName,mail"), ("$top", "200")],
-            )?
-        };
-        let group_endpoint = groups_url.clone();
-        let raw_groups = if self.kind == "workspace" {
-            paginate(
-                &http,
-                &token,
-                groups_url,
-                Provider::Workspace,
-                "groups",
-                started,
-                |body, _| workspace_next(body, &group_endpoint),
-            )?
-        } else {
-            paginate(
-                &http,
-                &token,
-                groups_url,
-                Provider::Entra,
-                "value",
-                started,
-                |body, current| graph_next(body, current, &base),
-            )?
-        };
-        let mut groups = Vec::new();
-        for value in raw_groups {
-            groups.push(parse_group(kind, &value)?);
-        }
-        let mut chosen: BTreeMap<String, String> = BTreeMap::new();
-        for (local, selector) in &self.groups {
-            let matched: Vec<_> = groups
-                .iter()
-                .filter(|group| group.matches(selector))
-                .collect();
-            if matched.len() != 1 {
-                return Err(Error::conflict(
-                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+            if graph && self.cursor.is_none() && !object.contains_key("@odata.count") {
+                return Err(unavailable(
+                    "Cloud directory returned an incomplete Graph count",
                 ));
             }
-            if chosen
-                .insert(matched[0].id.clone(), local.clone())
-                .is_some()
-            {
-                return Err(Error::conflict(
-                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+            let expected = format!("directory#{collection}");
+            let valid_kind = object
+                .get("kind")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind == expected || kind == format!("admin#{expected}"));
+            if !graph && object.contains_key("kind") && !valid_kind {
+                return Err(unavailable("Cloud directory returned an unreadable page"));
+            }
+            let rows: &[Value] = match object.get(collection) {
+                Some(Value::Array(rows)) => rows,
+                None if !graph
+                    && self.cursor.is_none()
+                    && valid_kind
+                    && !object.contains_key("nextPageToken") =>
+                {
+                    // The Admin SDK omits an empty collection with a typed kind.
+                    &[]
+                }
+                _ => return Err(unavailable("Cloud directory returned an unreadable page")),
+            };
+            if rows.len() > 200 {
+                return Err(unavailable(
+                    "Cloud directory result exceeds the supported size",
                 ));
             }
-        }
-        let mut members: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (upstream_id, local) in &chosen {
-            let members_url = if self.kind == "workspace" {
-                endpoint(
-                    &self.base_url,
-                    &["admin", "directory", "v1", "groups", upstream_id, "members"],
-                    &[("maxResults", "200")],
-                )?
+            let next_cursor = if graph {
+                let base = Url::parse(&settings.base_url)
+                    .map_err(|_| Error::bad("Invalid directory URL"))?;
+                graph_next(&body, &url, &base)?
+                    .map(|next| {
+                        if next.path() != first.path() || next.as_str().len() > MAX_GRAPH_CURSOR_BYTES {
+                            Err(unavailable("Cloud directory pagination changed collection; retry a complete snapshot"))
+                        } else {
+                            Ok(next.to_string())
+                        }
+                    })
+                    .transpose()?
             } else {
-                endpoint(
-                    &self.base_url,
-                    &["v1.0", "groups", upstream_id, "members"],
-                    &[],
-                )?
+                workspace_next(&body, &first)?.as_ref().and_then(|next| {
+                    next.query_pairs()
+                        .find(|(key, _)| key == "pageToken")
+                        .map(|(_, value)| value.into_owned())
+                })
             };
-            let member_endpoint = members_url.clone();
-            let collection = if self.kind == "workspace" {
-                "members"
-            } else {
-                "value"
-            };
-            let raw_members = if self.kind == "workspace" {
-                paginate(
-                    &http,
-                    &token,
-                    members_url,
-                    Provider::Workspace,
-                    collection,
-                    started,
-                    |body, _| workspace_next(body, &member_endpoint),
-                )?
-            } else {
-                paginate(
-                    &http,
-                    &token,
-                    members_url,
-                    Provider::Entra,
-                    collection,
-                    started,
-                    |body, current| graph_next(body, current, &base),
-                )?
-            };
-            let mut ids = BTreeSet::new();
-            for value in raw_members {
-                let id = required_string(&value, "id")?;
-                if !valid_upstream_id(&id) {
-                    return Err(unavailable("Cloud directory returned an unreadable page"));
-                }
-                if self.kind == "workspace"
-                    && value
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
-                {
-                    continue;
-                }
-                if self.kind == "entra"
-                    && value
-                        .get("@odata.type")
-                        .and_then(Value::as_str)
-                        .is_some_and(|kind| !kind.to_ascii_lowercase().contains("user"))
-                {
-                    continue;
-                }
-                ids.insert(id);
-            }
-            members.insert(local.clone(), ids);
-        }
-        for user in &mut users {
-            for (local, ids) in &members {
-                if ids.contains(&user.external_id) {
-                    user.groups.insert(local.clone());
+            let mut reported_total = None;
+            for key in ["@odata.count", "totalResults"] {
+                if let Some(value) = object.get(key) {
+                    let count = value
+                        .as_u64()
+                        .and_then(|n| usize::try_from(n).ok())
+                        .ok_or_else(|| unavailable("Cloud directory returned an invalid total"))?;
+                    if reported_total.is_some_and(|old| old != count) {
+                        return Err(unavailable("Cloud directory returned inconsistent totals"));
+                    }
+                    reported_total = Some(count);
                 }
             }
+            self.pagination.page(
+                url.as_str(),
+                rows.len(),
+                reported_total,
+                next_cursor.is_some(),
+            )?;
+            for row in rows {
+                let id = row
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| valid_upstream_id(id))
+                    .ok_or_else(|| unavailable("Cloud directory returned an unreadable page"))?;
+                if !self.phase_ids.insert(id.to_owned()) {
+                    return Err(unavailable(
+                        "Cloud directory repeated an object in its snapshot",
+                    ));
+                }
+                match self.phase {
+                    0 => {
+                        let user = parse_user(settings.kind, row, &settings.attributes)?;
+                        if self.users.insert(user.external_id.clone(), user).is_some() {
+                            return Err(unavailable(
+                                "Cloud directory repeated an object in its snapshot",
+                            ));
+                        }
+                    }
+                    1 => {
+                        let group = parse_group(settings.kind, row)?;
+                        for (local, selector) in &settings.groups {
+                            if group.matches(selector)
+                                && self
+                                    .selected
+                                    .insert(local.clone(), group.id.clone())
+                                    .is_some()
+                            {
+                                return Err(Error::conflict(
+                                    "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                                ));
+                            }
+                        }
+                    }
+                    _ => {
+                        let is_user = if graph {
+                            match row.get("@odata.type").and_then(Value::as_str) {
+                                Some("#microsoft.graph.user") => true,
+                                Some(
+                                    "#microsoft.graph.group"
+                                    | "#microsoft.graph.device"
+                                    | "#microsoft.graph.servicePrincipal"
+                                    | "#microsoft.graph.orgContact",
+                                ) => false,
+                                _ => {
+                                    return Err(unavailable(
+                                        "Cloud directory returned an unreadable page",
+                                    ));
+                                }
+                            }
+                        } else {
+                            !row.get("type")
+                                .and_then(Value::as_str)
+                                .is_some_and(|kind| !kind.eq_ignore_ascii_case("user"))
+                        };
+                        if is_user {
+                            // Counted Graph collections can still reflect
+                            // different index moments. A member missing from
+                            // the complete users phase invalidates removals.
+                            if graph && !self.users.contains_key(id) {
+                                return Err(unavailable(
+                                    "Entra group member is missing from the users snapshot",
+                                ));
+                            }
+                            let local = self
+                                .chosen
+                                .keys()
+                                .nth(self.phase - 2)
+                                .and_then(|upstream| self.chosen.get(upstream))
+                                .ok_or_else(|| Error::internal("Invalid cloud snapshot group"))?;
+                            if let Some(user) = self.users.get_mut(id) {
+                                user.groups.insert(local.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            self.pages += 1;
+            if let Some(next_cursor) = next_cursor {
+                self.cursor = Some(next_cursor);
+            } else {
+                if self.phase == 1 {
+                    if self.selected.len() != settings.groups.len() {
+                        return Err(Error::conflict(
+                            "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                        ));
+                    }
+                    for (local, upstream) in &self.selected {
+                        if self
+                            .chosen
+                            .insert(upstream.clone(), local.clone())
+                            .is_some()
+                        {
+                            return Err(Error::conflict(
+                                "Allow-listed cloud directory group was missing or ambiguous; membership was not changed",
+                            ));
+                        }
+                    }
+                }
+                self.next_phase(settings);
+            }
+            self.bounded(settings)?;
         }
-        Ok(users)
+        Ok(())
+    }
+
+    fn into_users(self) -> Vec<RemoteUser> {
+        self.users.into_values().collect()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct CloudSnapshotDraft {
+    pub(crate) id: String,
+    directory: String,
+    actor: String,
+    revision: u64,
+    fingerprint: String,
+    authority_digest: String,
+    pub(crate) expires_at: u64,
+    pub(crate) sequence: u64,
+    snapshot: CloudSnapshot,
+}
+
+impl CloudSnapshotDraft {
+    pub(crate) fn new(
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: String,
+    ) -> Self {
+        Self {
+            id: crypto::id(),
+            directory: settings.id.clone(),
+            actor: actor.id.clone(),
+            revision,
+            fingerprint: settings.fingerprint.clone(),
+            authority_digest,
+            expires_at: now().saturating_add(settings.quota.draft_ttl_seconds),
+            sequence: 0,
+            snapshot: CloudSnapshot::new(settings),
+        }
+    }
+
+    pub(crate) fn resumable_for(
+        &self,
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: &str,
+    ) -> bool {
+        self.directory == settings.id
+            && self.actor == actor.id
+            && self.revision == revision
+            && self.fingerprint == settings.fingerprint
+            && self.authority_digest == authority_digest
+            && self.expires_at > now()
+            && !self.snapshot.complete(settings)
+            && self.snapshot.phase <= settings.groups.len() + 2
+    }
+
+    pub(crate) fn bounded(&self, settings: &Settings) -> Result<()> {
+        self.snapshot.bounded(settings)?;
+        // A 4 MiB serialized draft leaves ample room below the 8 MiB backup
+        // frame ceiling for its stored key and frame wrapper.
+        if serde_json::to_vec(self).map_err(Error::internal)?.len()
+            > settings.quota.max_snapshot_bytes
+        {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn progress(&self, restarted: bool) -> Value {
+        json!({"decision":"snapshot_in_progress", "snapshot_id":self.id,
+            "phase":if self.snapshot.phase == 0 {"users"} else if self.snapshot.phase == 1 {"groups"} else {"members"},
+            "users":self.snapshot.users.len(), "pages":self.snapshot.pages,
+            "expires_at":self.expires_at, "restart":restarted})
+    }
+}
+
+/// The apply crawl is separate from planning. Its cursor is tied to the exact
+/// reviewed plan, so a new plan cannot inherit pages from an older one.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct CloudApplyDraft {
+    pub(crate) plan_id: String,
+    review: ReviewBinding,
+    pub(crate) draft: CloudSnapshotDraft,
+}
+
+impl CloudApplyDraft {
+    pub(crate) fn new(settings: &Settings, actor: &Principal, plan: &Plan) -> Self {
+        Self {
+            plan_id: plan.id.clone(),
+            review: plan.review.clone(),
+            draft: CloudSnapshotDraft::new(
+                settings,
+                actor,
+                plan.revision,
+                plan.review.authority_digest.clone(),
+            ),
+        }
+    }
+
+    pub(crate) fn valid(&self, settings: &Settings, plan: &Plan) -> bool {
+        self.plan_id == plan.id
+            && self.review == plan.review
+            && self.draft.directory == settings.id
+            && self.draft.actor == plan.actor
+            && self.draft.revision == plan.revision
+            && self.draft.fingerprint == settings.fingerprint
+            && self.draft.authority_digest == plan.review.authority_digest
+            && self.draft.expires_at > now()
+            && !self.draft.snapshot.complete(settings)
+            && self.draft.snapshot.phase <= settings.groups.len() + 2
+    }
+
+    pub(crate) fn bounded(&self, settings: &Settings) -> Result<()> {
+        self.draft.bounded(settings)?;
+        if serde_json::to_vec(self).map_err(Error::internal)?.len()
+            > settings.quota.max_snapshot_bytes
+        {
+            return Err(unavailable(
+                "Cloud directory snapshot staging quota exceeded",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn progress(&self, restarted: bool) -> Value {
+        let mut progress = self.draft.progress(restarted);
+        progress["plan_id"] = json!(self.plan_id);
+        progress["operation"] = json!("apply_validation");
+        progress
     }
 }
 
@@ -887,13 +1386,7 @@ pub struct Change {
     pub action: String,
     pub groups: BTreeSet<String>,
 }
-#[derive(schemars::JsonSchema, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct RemovalImpact {
-    pub disabled_users: usize,
-    pub missing_users: usize,
-    pub removed_memberships: usize,
-    pub review_required: bool,
-}
+pub use crate::connector_guard::RemovalImpact;
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 pub struct Plan {
     pub id: String,
@@ -907,28 +1400,29 @@ pub struct Plan {
     pub changes: Vec<Change>,
     #[serde(default)]
     pub removal_impact: RemovalImpact,
+    #[serde(default)]
+    pub review: ReviewBinding,
     pub applied: bool,
 }
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct SyncRun {
-    window_start: u64,
-    attempts: u32,
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct Binding {
+    pub(crate) kind: String,
+    pub(crate) directory: String,
+    pub(crate) tenant: String,
+    pub(crate) identity_fingerprint: String,
+    pub(crate) external_id: String,
+    pub(crate) user_id: String,
+    pub(crate) groups: BTreeSet<String>,
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Binding {
-    kind: String,
-    directory: String,
-    tenant: String,
-    identity_fingerprint: String,
-    external_id: String,
-    user_id: String,
-    groups: BTreeSet<String>,
-}
-fn binding_key(kind: &str, directory: &str, external_id: &str) -> String {
+pub(crate) fn binding_key(kind: &str, directory: &str, external_id: &str) -> String {
     digest(&format!("{kind}\0{directory}\0{external_id}"))
 }
 
-fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Result<RemovalImpact> {
+pub(crate) fn removal_impact(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    snapshot: &[Entry],
+) -> Result<RemovalImpact> {
     let entries: BTreeMap<_, _> = snapshot
         .iter()
         .map(|entry| (entry.external_id.as_str(), entry))
@@ -961,19 +1455,7 @@ fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Resul
             }
         }
     }
-    let all_users_disabled = active_linked > 0 && impact.disabled_users == active_linked;
-    let large_disable = impact.disabled_users >= REVIEW_DISABLE_COUNT
-        && impact.disabled_users.saturating_mul(100)
-            >= active_linked.saturating_mul(REVIEW_PERCENT)
-        || impact.disabled_users >= 2
-            && impact.disabled_users.saturating_mul(100)
-                >= active_linked.saturating_mul(REVIEW_SMALL_PERCENT);
-    // An absent user can also be caused by an upstream page that ended early.
-    // A successful but truncated member page can omit just one linked member.
-    impact.review_required = impact.missing_users > 0
-        || all_users_disabled
-        || large_disable
-        || impact.removed_memberships > 0;
+    impact.assess(active_linked);
     Ok(impact)
 }
 
@@ -1022,19 +1504,23 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
     Ok(entries)
 }
 
-fn revoke_sessions(tx: &Tx<'_>, user: &User) -> Result<()> {
-    for (sid, mut session) in tx.list::<Session>("sessions")? {
-        if session.identity.user_id == user.id && !session.revoked {
-            session.revoked = true;
-            tx.put("sessions", &sid, &session)?;
-        }
-    }
-    crate::logout::queue_user(tx, &user.id)
+pub(crate) fn materialize_completed_draft(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    draft: &CloudSnapshotDraft,
+) -> Result<Vec<Entry>> {
+    materialize(tx, settings, draft.snapshot.clone().into_users())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn membership(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
+    scope: &str,
     uid: &str,
     allow: &BTreeSet<String>,
     old: &BTreeSet<String>,
@@ -1052,31 +1538,76 @@ fn membership(
         .collect();
     let mut changed = false;
     for name in old.union(&desired) {
-        actor.require("group.members", &format!("group/{name}"))?;
-        let mut group = tx.get::<Group>("groups", name)?.ok_or_else(|| {
-            Error::bad("Cloud directory mappings require an existing local group")
-        })?;
-        let updated = if desired.contains(name) {
-            group.members.insert(uid.to_owned())
-        } else {
-            group.members.remove(uid)
-        };
-        if updated {
-            changed = true;
-            tx.put("groups", name, &group)?;
-            audit(tx, &actor.id, "group.cloud_directory_membership", name)?;
+        actor.require_directory_group(scope, name)?;
+        if tx.get::<Group>("groups", name)?.is_none() {
+            return Err(Error::bad(
+                "Cloud directory mappings require an existing local group",
+            ));
         }
+        changed |= crate::management::write_group(
+            config,
+            tx,
+            actor,
+            name,
+            crate::management::GroupIntent::DirectoryMember {
+                user_id: uid,
+                present: desired.contains(name),
+                scope,
+            },
+            crate::management::GroupAudit::Scoped {
+                action: "group.cloud_directory_membership",
+                target: name,
+                scope,
+            },
+        )?
+        .changed;
     }
     Ok(changed)
 }
 
-fn reconcile(
+// Check the resources that reconciliation can touch before reporting plan or
+// snapshot conflicts. Reconcile repeats these checks at each write boundary.
+pub(crate) fn authorize_reconcile(
+    tx: &Tx<'_>,
+    actor: &Principal,
+    settings: &Settings,
+    snapshot: &[Entry],
+) -> Result<()> {
+    actor.require("directory.sync", &settings.resource())?;
+    let scope = settings.resource();
+    for entry in snapshot {
+        actor.require_directory_user(&scope, &entry.username, None)?;
+        for group in &entry.groups {
+            if settings.groups.contains_key(group) {
+                actor.require_directory_group(&scope, group)?;
+            }
+        }
+    }
+    for (_, binding) in tx.list::<Binding>("cloud_directory_bindings")? {
+        if binding.kind != settings.kind || binding.directory != settings.id {
+            continue;
+        }
+        if let Some(user) = tx.get::<User>("users", &binding.user_id)? {
+            actor.require_directory_user(&scope, &user.username, Some(&user.id))?;
+        }
+        for group in &binding.groups {
+            if settings.groups.contains_key(group) {
+                actor.require_directory_group(&scope, group)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn reconcile(
+    config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
     settings: &Settings,
     snapshot: &[Entry],
 ) -> Result<Vec<Change>> {
     actor.require("directory.sync", &settings.resource())?;
+    let scope = settings.resource();
     let allow: BTreeSet<_> = settings.groups.keys().cloned().collect();
     let mut remaining: BTreeMap<_, _> = tx
         .list::<Binding>("cloud_directory_bindings")?
@@ -1095,7 +1626,14 @@ fn reconcile(
     let mut changes = Vec::new();
     for entry in snapshot {
         let old = remaining.remove(&entry.external_id);
-        actor.require("user.write", &format!("user/{}", entry.username))?;
+        actor.require_directory_user(&scope, &entry.username, None)?;
+        let owner = crate::management::CloudUserOwner {
+            kind: settings.kind,
+            directory: &settings.id,
+            tenant: &settings.tenant,
+            identity_fingerprint: &settings.identity_fingerprint,
+            external_id: &entry.external_id,
+        };
         let mut user = if let Some(binding) = &old {
             let user = tx
                 .get::<User>("users", &binding.user_id)?
@@ -1129,39 +1667,28 @@ fn reconcile(
                 recovery_codes: Default::default(),
             }
         };
-        actor.require("user.write", &format!("user/{}", user.username))?;
-        if user.admin {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot manage an administrator",
-            ));
-        }
-        if tx.get::<Value>("directory_users", &user.id)?.is_some() {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot take ownership of an LDAP-linked account",
-            ));
-        }
-        if let Some(link) = tx.get::<Binding>("cloud_directory_users", &user.id)?
-            && (link.kind != settings.kind || link.directory != settings.id)
-        {
-            return Err(Error::conflict(
-                "Account is already linked to a different directory",
-            ));
-        }
-        if tx
-            .get::<String>("usernames", &entry.username)?
-            .is_some_and(|uid| uid != user.id)
-        {
-            return Err(Error::conflict(
-                "Cloud directory username collides with an existing account; accounts are never automatically linked",
-            ));
-        }
         let is_new = old.is_none();
+        let previous = old.as_ref().map(|_| user.clone());
+        // The shared group writer validates members against local user rows.
+        if is_new {
+            crate::management::stage_cloud_user(tx, actor, owner, &user)?;
+        } else {
+            crate::management::check_cloud_user_owner(tx, actor, owner, &user)?;
+        }
         let previous_groups = old
             .as_ref()
             .map(|binding| binding.groups.clone())
             .unwrap_or_default();
-        let groups_changed =
-            membership(tx, actor, &user.id, &allow, &previous_groups, &entry.groups)?;
+        let groups_changed = membership(
+            config,
+            tx,
+            actor,
+            &scope,
+            &user.id,
+            &allow,
+            &previous_groups,
+            &entry.groups,
+        )?;
         let email_changed = user.email != entry.email;
         let display_changed = user.display_name != entry.display_name;
         let enabling = !entry.disabled && !user.enabled;
@@ -1185,13 +1712,15 @@ fn reconcile(
         let changed =
             is_new || email_changed || display_changed || disabling || enabling || groups_changed;
         if changed {
-            if is_new {
-                tx.put("usernames", &user.username, &user.id)?;
-            }
-            tx.put("users", &user.id, &user)?;
-            if security {
-                revoke_sessions(tx, &user)?;
-            }
+            crate::management::write_cloud_user(
+                tx,
+                actor,
+                owner,
+                previous.as_ref(),
+                &user,
+                false,
+                security,
+            )?;
             let action = if is_new {
                 "create"
             } else if disabling {
@@ -1199,7 +1728,6 @@ fn reconcile(
             } else {
                 "update"
             };
-            audit(tx, &actor.id, "user.cloud_directory_sync", &user.username)?;
             changes.push(Change {
                 username: user.username.clone(),
                 action: action.into(),
@@ -1232,34 +1760,39 @@ fn reconcile(
         let mut user = tx
             .get::<User>("users", &binding.user_id)?
             .ok_or_else(|| Error::conflict("Cloud directory owned user is missing"))?;
-        actor.require("user.write", &format!("user/{}", user.username))?;
-        if user.admin {
-            return Err(Error::conflict(
-                "Cloud directory sync cannot manage an administrator",
-            ));
-        }
+        let owner = crate::management::CloudUserOwner {
+            kind: settings.kind,
+            directory: &settings.id,
+            tenant: &settings.tenant,
+            identity_fingerprint: &settings.identity_fingerprint,
+            external_id: &binding.external_id,
+        };
+        crate::management::check_cloud_user_owner(tx, actor, owner, &user)?;
+        let previous = user.clone();
         let groups_changed = membership(
+            config,
             tx,
             actor,
+            &scope,
             &user.id,
             &allow,
             &binding.groups,
             &BTreeSet::new(),
         )?;
         if user.enabled || groups_changed {
-            if user.enabled {
-                user.enabled = false;
+            let security = user.enabled;
+            if security {
                 user.epoch = user.epoch.saturating_add(1);
-                tx.put("users", &user.id, &user)?;
-                revoke_sessions(tx, &user)?;
-            } else if groups_changed {
-                tx.put("users", &user.id, &user)?;
             }
-            audit(
+            user.enabled = false;
+            crate::management::write_cloud_user(
                 tx,
-                &actor.id,
-                "user.cloud_directory_disable",
-                &user.username,
+                actor,
+                owner,
+                Some(&previous),
+                &user,
+                true,
+                security,
             )?;
             changes.push(Change {
                 username: user.username.clone(),
@@ -1282,14 +1815,65 @@ fn reconcile(
     Ok(changes)
 }
 
-fn window_open(run: &SyncRun) -> bool {
-    run.window_start.saturating_add(RETRY_WINDOW) <= now() || run.attempts < RETRY_LIMIT
-}
-
 impl Core {
-    fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
+    /// One read-only upstream page for operational diagnostics. This does not
+    /// create a plan, consume the sync retry budget, or persist connector state.
+    pub(crate) fn cloud_connection_probe(&self, kind: &str, id: &str) -> Result<()> {
+        let settings = self.cloud_settings(kind, id)?;
+        let http = http_client(settings.direct_auth.is_some())?;
+        let token = access_token(&settings, &http)?;
+        let users = if kind == "workspace" {
+            endpoint(
+                &settings.base_url,
+                &["admin", "directory", "v1", "users"],
+                &[
+                    ("customer", settings.tenant.as_str()),
+                    ("domain", settings.domain.as_str()),
+                    ("maxResults", "1"),
+                ],
+            )?
+        } else {
+            endpoint(
+                &settings.base_url,
+                &["v1.0", "users"],
+                &[("$select", "id"), ("$top", "1"), ("$count", "true")],
+            )?
+        };
+        let body = get_json(&http, &token, &users, kind == "entra")?;
+        let valid = if kind == "workspace" {
+            body.get("users").is_some_and(Value::is_array)
+                || (body.get("users").is_none()
+                    && body.get("nextPageToken").is_none()
+                    && body
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| {
+                            matches!(value, "admin#directory#users" | "directory#users")
+                        }))
+        } else {
+            body.get("value").is_some_and(Value::is_array)
+        };
+        if !valid || body.get("error").is_some() {
+            return Err(unavailable("Cloud directory returned an unreadable page"));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
+        let modes = match provider {
+            Provider::Workspace => &self.config.workspace_reconciliation_modes,
+            Provider::Entra => &self.config.entra_reconciliation_modes,
+        };
+        modes.get(id).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
         let provider = Provider::parse(kind)?;
         validate_name(id)?;
+        let quota = self.config.reconciliation_quotas.cloud;
+        quota
+            .validate()
+            .map_err(|error| Error::bad(error.to_string()))?;
         match provider {
             Provider::Workspace => {
                 let directory = self
@@ -1303,21 +1887,34 @@ impl Core {
                     id: id.into(),
                     tenant: directory.customer_id.clone(),
                     domain: directory.domain.clone(),
-                    token_url: directory.token_url.clone(),
+                    token_url: if directory.direct_auth.is_some() && directory.token_url.is_empty()
+                    {
+                        GOOGLE_TOKEN_URL.into()
+                    } else {
+                        directory.token_url.clone()
+                    },
                     client_id: directory.client_id.clone(),
                     client_secret_file: directory.client_secret_file.clone(),
+                    entra_certificate: None,
+                    direct_auth: directory.direct_auth.clone(),
                     base_url: directory.directory_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),
                     attributes: directory.attributes.clone(),
                     username_prefix: directory.username_prefix.clone(),
-                    fingerprint: fingerprint_of(provider.as_str(), directory)?,
+                    fingerprint: self
+                        .cloud_mode(provider, id)
+                        .fingerprint(&quota_fingerprint(
+                            fingerprint_of(provider.as_str(), directory)?,
+                            quota,
+                        )?)?,
                     identity_fingerprint: digest(&format!(
                         "workspace\0{}\0{}\0{}",
                         directory.customer_id,
                         directory.directory_url,
                         directory.attributes.external_id.to_ascii_lowercase()
                     )),
+                    quota,
                 })
             }
             Provider::Entra => {
@@ -1335,185 +1932,137 @@ impl Core {
                     token_url: directory.token_url.clone(),
                     client_id: directory.client_id.clone(),
                     client_secret_file: directory.client_secret_file.clone(),
+                    entra_certificate: directory
+                        .certificate_file
+                        .as_ref()
+                        .zip(directory.private_key_file.as_ref())
+                        .map(|(certificate, key)| (certificate.clone(), key.clone())),
+                    direct_auth: None,
                     base_url: directory.graph_url.clone(),
                     scope: directory.scope.clone(),
                     groups: directory.groups.clone(),
                     attributes: directory.attributes.clone(),
                     username_prefix: directory.username_prefix.clone(),
-                    fingerprint: fingerprint_of(provider.as_str(), directory)?,
+                    fingerprint: self
+                        .cloud_mode(provider, id)
+                        .fingerprint(&quota_fingerprint(
+                            fingerprint_of(provider.as_str(), directory)?,
+                            quota,
+                        )?)?,
                     identity_fingerprint: digest(&format!(
                         "entra\0{}\0{}\0{}",
                         directory.tenant_id,
                         directory.graph_url,
                         directory.attributes.external_id.to_ascii_lowercase()
                     )),
+                    quota,
                 })
             }
         }
     }
-    fn ensure_budget(&self, settings: &Settings) -> Result<()> {
-        self.store.read(|tx| {
-            let run = tx
-                .get::<SyncRun>("cloud_directory_runs", &settings.run_key())?
-                .unwrap_or_default();
-            if window_open(&run) {
-                Ok(())
-            } else {
-                Err(budget_exhausted())
-            }
+    pub fn cloud_plan_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        let provider = Provider::parse(kind)?;
+        self.cloud_plan_get_authorized(token, provider.as_str(), id)
+    }
+    /// Controller trigger for one cloud directory. An in-progress apply crawl
+    /// resumes its exact plan without starting a new planning crawl.
+    pub fn cloud_reconcile(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        let provider = Provider::parse(kind)?;
+        let mode = self.cloud_mode(provider, id);
+        let settings = self.cloud_settings(kind, id)?;
+        let key = digest(&settings.resource());
+        let pending = self.cloud_reconcile_pending(token, &settings, &key, mode)?;
+        let plan = match pending {
+            Some(plan) => plan,
+            None => self.cloud_plan_internal(token, kind, id, true)?,
+        };
+        if plan["decision"] == "snapshot_in_progress" {
+            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
+        }
+        let impact: RemovalImpact =
+            serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
+        reconcile_plan(mode, &impact, plan, |plan_id| {
+            self.cloud_apply_confirmed(token, kind, plan_id, None)
         })
     }
-    fn record_failure(&self, settings: &Settings) -> Result<()> {
-        self.store.write(|tx| {
-            let mut run = tx
-                .get::<SyncRun>("cloud_directory_runs", &settings.run_key())?
-                .unwrap_or_default();
-            if run.window_start.saturating_add(RETRY_WINDOW) <= now() {
-                run.window_start = now();
-                run.attempts = 0;
-            }
-            run.attempts = run.attempts.saturating_add(1);
-            tx.put("cloud_directory_runs", &settings.run_key(), &run)?;
-            Ok(())
-        })
+
+    pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
+        self.cloud_plan_internal(token, kind, id, false)
     }
-    fn reset_budget(&self, settings: &Settings) -> Result<()> {
-        self.store.write(|tx| {
-            tx.put(
-                "cloud_directory_runs",
-                &settings.run_key(),
-                &SyncRun {
-                    window_start: now(),
-                    attempts: 0,
-                },
-            )?;
-            Ok(())
-        })
-    }
-    fn fetch_entries(&self, settings: &Settings) -> Result<Vec<Entry>> {
-        self.ensure_budget(settings)?;
-        let remote = match settings.fetch() {
-            Ok(users) => users,
-            Err(error) => {
+
+    fn cloud_plan_internal(
+        &self,
+        token: &str,
+        kind: &str,
+        id: &str,
+        supersede: bool,
+    ) -> Result<Value> {
+        let settings = self.cloud_settings(kind, id)?;
+        let bucket = settings.snapshot_bucket();
+        let (actor, revision) = self.cloud_snapshot_actor_revision(token, &settings.resource())?;
+        let (entries, snapshot_prior) = {
+            let key = digest(&settings.resource());
+            let (prior, mut draft, restarted, authority_digest) =
+                self.cloud_snapshot_prepare(token, &settings, bucket, &key, &actor, revision)?;
+            self.cloud_budget_ensure(&settings.run_key())?;
+            if let Err(error) = draft
+                .snapshot
+                .advance(&settings, settings.quota.pages_per_call)
+            {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.record_failure(settings)?;
+                    self.cloud_budget_record_failure(&settings.run_key())?;
                 }
                 return Err(error);
             }
-        };
-        self.reset_budget(settings)?;
-        self.store.read(|tx| materialize(tx, settings, remote))
-    }
-    pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        self.store.read(|tx| {
-            let actor = self.principal(tx, token)?;
-            let rows = match provider {
-                Provider::Workspace => self
-                    .config
-                    .workspace_directories
-                    .iter()
-                    .filter(|(id, _)| actor.allows("directory.read", &format!("workspace/{id}")))
-                    .map(|(id, directory)| {
-                        json!({
-                            "id": id,
-                            "kind": "workspace",
-                            "customer_id": directory.customer_id,
-                            "domain": directory.domain,
-                            "directory_url": directory.directory_url,
-                            "groups": directory.groups.keys().collect::<Vec<_>>(),
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-                Provider::Entra => self
-                    .config
-                    .entra_directories
-                    .iter()
-                    .filter(|(id, _)| actor.allows("directory.read", &format!("entra/{id}")))
-                    .map(|(id, directory)| {
-                        json!({
-                            "id": id,
-                            "kind": "entra",
-                            "tenant_id": directory.tenant_id,
-                            "graph_url": directory.graph_url,
-                            "groups": directory.groups.keys().collect::<Vec<_>>(),
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            };
-            Ok(json!(rows))
-        })
-    }
-    pub fn cloud_plan_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        self.store.read(|tx| {
-            let plan = tx
-                .get::<Plan>("cloud_directory_plans", id)?
-                .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-            if plan.kind != provider.as_str() {
-                return Err(Error::missing("Cloud directory plan not found"));
+            self.cloud_budget_reset(&settings.run_key())?;
+            draft.sequence = draft.sequence.saturating_add(1);
+            draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
+            draft.bounded(&settings)?;
+            if !draft.snapshot.complete(&settings) {
+                return self.cloud_snapshot_stage(
+                    token,
+                    &settings,
+                    bucket,
+                    &key,
+                    &actor,
+                    revision,
+                    &authority_digest,
+                    prior,
+                    draft,
+                    restarted,
+                );
             }
-            let actor = self.management(
-                tx,
+            let entries = self.cloud_plan_materialize(
                 token,
-                "directory.read",
-                &format!("{}/{}", plan.kind, plan.directory),
-            )?;
-            if actor.id != plan.actor {
-                return Err(Error::forbidden());
-            }
-            Ok(json!(plan))
-        })
-    }
-    pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        let settings = self.cloud_settings(kind, id)?;
-        let (actor, revision) = self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
-        })?;
-        let entries = self.fetch_entries(&settings)?;
-        let (changes, impact) = self.store.preview(|tx| {
-            let impact = removal_impact(tx, &settings, &entries)?;
-            let changes = reconcile(tx, &actor, &settings, &entries)?;
-            Ok((changes, impact))
-        })?;
-        self.store.write(|tx| {
-            self.management(tx, token, "directory.sync", &settings.resource())?;
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
-                return Err(Error::conflict(
-                    "Local configuration changed during cloud directory search",
-                ));
-            }
-            if tx
-                .list::<Plan>("cloud_directory_plans")?
-                .iter()
-                .filter(|(_, plan)| {
-                    plan.actor == actor.id && plan.expires_at > now() && !plan.applied
-                })
-                .count()
-                >= 16
-            {
-                return Err(Error::conflict(
-                    "At most 16 unexpired cloud directory plans per actor",
-                ));
-            }
-            let plan = Plan {
-                id: crypto::id(),
-                kind: settings.kind.into(),
-                directory: settings.id.clone(),
-                actor: actor.id.clone(),
+                &settings,
+                &actor,
                 revision,
-                expires_at: now() + 300,
-                fingerprint: settings.fingerprint.clone(),
-                entries,
-                changes,
-                removal_impact: impact,
-                applied: false,
-            };
-            tx.put("cloud_directory_plans", &plan.id, &plan)?;
-            audit(tx, &actor.id, "cloud_directory.plan", &settings.resource())?;
-            Ok(json!(plan))
-        })
+                &authority_digest,
+                &draft,
+            )?;
+            (entries, (key, prior, authority_digest))
+        };
+        let (changes, impact) = self.cloud_plan_preview(
+            token,
+            &settings,
+            &actor,
+            revision,
+            &snapshot_prior.2,
+            &entries,
+        )?;
+        self.cloud_plan_commit(
+            token,
+            &settings,
+            bucket,
+            &actor,
+            revision,
+            snapshot_prior,
+            entries,
+            changes,
+            impact,
+            supersede,
+            id,
+        )
     }
     pub fn cloud_apply(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         self.cloud_apply_confirmed(token, kind, id, None)
@@ -1532,78 +2081,151 @@ impl Core {
             return Err(Error::missing("Cloud directory plan not found"));
         }
         let settings = self.cloud_settings(kind, &plan.directory)?;
-        self.store.read(|tx| {
-            self.management(tx, token, "directory.sync", &settings.resource())
-                .map(|_| ())
-        })?;
-        if !plan.applied {
-            if plan.expires_at <= now() || plan.fingerprint != settings.fingerprint {
-                return Err(Error::conflict(
-                    "Cloud directory plan expired or directory configuration changed",
-                ));
+        let key = digest(&settings.resource());
+        let initially_applied = plan.applied;
+        let snapshot_prior = if initially_applied {
+            self.cloud_applied_plan_sync_authorized(token, &settings.resource(), &plan.actor)?;
+            None
+        } else {
+            let (prior, mut apply, restarted) =
+                self.cloud_apply_snapshot_prepare(token, &settings, &plan, reviewed_plan, &key)?;
+            self.cloud_budget_ensure(&settings.run_key())?;
+            if let Err(error) = apply
+                .draft
+                .snapshot
+                .advance(&settings, settings.quota.pages_per_call)
+            {
+                if error.status == StatusCode::SERVICE_UNAVAILABLE {
+                    self.cloud_budget_record_failure(&settings.run_key())?;
+                }
+                return Err(error);
             }
-            let entries = self.fetch_entries(&settings)?;
+            self.cloud_budget_reset(&settings.run_key())?;
+            apply.draft.sequence = apply.draft.sequence.saturating_add(1);
+            apply.draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
+            apply.bounded(&settings)?;
+            if !apply.draft.snapshot.complete(&settings) {
+                return self.cloud_apply_snapshot_stage(
+                    token,
+                    &settings,
+                    &plan,
+                    reviewed_plan,
+                    &key,
+                    prior,
+                    apply,
+                    restarted,
+                );
+            }
+            let entries =
+                self.cloud_apply_materialize(token, &settings, &plan, reviewed_plan, &apply)?;
             if entries != plan.entries {
                 return Err(Error::conflict(
                     "Cloud directory changed after planning; create a new plan",
                 ));
             }
-        }
-        self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            let mut plan = tx
-                .get::<Plan>("cloud_directory_plans", id)?
-                .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-            if plan.kind != settings.kind || plan.directory != settings.id {
-                return Err(Error::missing("Cloud directory plan not found"));
-            }
-            if plan.applied {
-                return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
-            }
-            if actor.id != plan.actor
-                || plan.expires_at <= now()
-                || plan.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-                || plan.fingerprint != settings.fingerprint
-            {
-                return Err(Error::conflict(
-                    "Cloud directory plan expired or local revision changed",
-                ));
-            }
-            let impact = removal_impact(tx, &settings, &plan.entries)?;
-            if impact != plan.removal_impact {
-                return Err(Error::conflict(
-                    "Cloud directory removal impact changed; create a new plan",
-                ));
-            }
-            if impact.review_required && reviewed_plan != Some(id) {
-                return Err(Error::conflict(
-                    "Cloud directory removals require review and confirmation with the plan ID",
-                ));
-            }
-            let changes = reconcile(tx, &actor, &settings, &plan.entries)?;
-            if changes != plan.changes {
-                return Err(Error::conflict(
-                    "Cloud directory plan no longer matches local state",
-                ));
-            }
-            plan.applied = true;
-            tx.put("cloud_directory_plans", id, &plan)?;
-            audit(tx, &actor.id, "cloud_directory.apply", &settings.resource())?;
-            Ok(json!({"id": id, "applied": true, "changes": changes}))
-        })
+            Some(prior)
+        };
+        let observed_review = plan.review.clone();
+        self.cloud_apply_commit(
+            token,
+            &settings,
+            id,
+            reviewed_plan,
+            &key,
+            snapshot_prior,
+            initially_applied,
+            observed_review,
+        )
     }
 }
 
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, plan) in tx.maintenance_page::<Plan>("cloud_directory_plans")? {
-        if plan.expires_at.saturating_add(86_400) < at {
-            tx.delete("cloud_directory_plans", &id)?;
-        }
-    }
-    for (id, run) in tx.maintenance_page::<SyncRun>("cloud_directory_runs")? {
-        if run.window_start.saturating_add(86_400) < at {
-            tx.delete("cloud_directory_runs", &id)?;
-        }
-    }
+    crate::assembly::cloud_snapshot_cleanup(tx, at)?;
+    crate::assembly::cloud_plan_cleanup(tx, at)?;
+    crate::assembly::cloud_budget_cleanup(tx, at)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Store;
+
+    fn draft(expires_at: u64) -> CloudSnapshotDraft {
+        CloudSnapshotDraft {
+            id: "draft".into(),
+            directory: "corp".into(),
+            actor: "admin".into(),
+            revision: 1,
+            fingerprint: "source".into(),
+            authority_digest: "authority".into(),
+            expires_at,
+            sequence: 0,
+            snapshot: CloudSnapshot {
+                phase: 0,
+                cursor: None,
+                pagination: Pagination::new(1, 1),
+                phase_ids: BTreeSet::new(),
+                users: BTreeMap::new(),
+                selected: BTreeMap::new(),
+                chosen: BTreeMap::new(),
+                source_bytes: 0,
+                pages: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn snapshot_cleanup_keeps_unexpired_plan_and_apply_drafts() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("state.redb")).unwrap();
+        store
+            .write(|tx| {
+                for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
+                    tx.put(bucket, "expired", &draft(10))?;
+                    tx.put(bucket, "retained", &draft(11))?;
+                }
+                for (key, expires_at) in [("expired", 10), ("retained", 11)] {
+                    tx.put(
+                        CLOUD_APPLY_SNAPSHOTS,
+                        key,
+                        &CloudApplyDraft {
+                            plan_id: "plan".into(),
+                            review: ReviewBinding::default(),
+                            draft: draft(expires_at),
+                        },
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        store.write(|tx| cleanup(tx, 10)).unwrap();
+        for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
+            assert!(
+                store
+                    .get::<CloudSnapshotDraft>(bucket, "expired")
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                store
+                    .get::<CloudSnapshotDraft>(bucket, "retained")
+                    .unwrap()
+                    .is_some()
+            );
+        }
+        assert!(
+            store
+                .get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, "expired")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, "retained")
+                .unwrap()
+                .is_some()
+        );
+    }
 }

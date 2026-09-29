@@ -1,17 +1,24 @@
 pub mod maintenance;
+mod ownership;
 mod prepared;
+#[doc(hidden)]
+pub use ownership::{lock_support_in, open_owner_in, require_local_in, shared_filesystem};
+#[cfg(feature = "test-support")]
+pub use prepared::with_prepared_pause;
 use prepared::{Prepared, Range};
 
 use crate::{
     crypto,
     error::{Error, Result},
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use redb::{
     Database, ReadTransaction, ReadableDatabase, ReadableTable, ReadableTableMetadata,
     TableDefinition, WriteTransaction,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
@@ -25,11 +32,27 @@ const FORMAT: TableDefinition<&str, &str> = TableDefinition::new("storage_format
 /// Rate-limit windows kept per node (in memory) and in the shared PostgreSQL table.
 pub(crate) const RATE_WINDOWS: usize = 100_000;
 
+/// Record effects supplied by server assembly for every writable transaction.
+/// Storage owns the write order; the hook owns account security semantics.
+pub(crate) trait RecordTransitions: Send + Sync {
+    fn prepare_record(&self, bucket: &str, before: Option<&Value>, after: &mut Value);
+    fn public_agent(&self, value: &Value) -> Result<Value>;
+    fn record_transition(
+        &self,
+        tx: &Tx<'_>,
+        bucket: &str,
+        key: &str,
+        before: Option<&Value>,
+        after: Option<&Value>,
+    ) -> Result<()>;
+}
+
 #[derive(Clone)]
 pub struct Store {
     db: Backend,
     key: Option<Arc<Zeroizing<[u8; 32]>>>,
     telemetry: Arc<crate::telemetry::Telemetry>,
+    transitions: Arc<dyn RecordTransitions>,
 }
 #[derive(Clone)]
 enum Backend {
@@ -49,6 +72,8 @@ pub struct Tx<'a> {
     security_events: RefCell<BTreeSet<(String, String, String)>>,
     telemetry: &'a crate::telemetry::Telemetry,
     prepared: RefCell<Option<Prepared>>,
+    /// Absent only on read-only inspection handles.
+    transitions: Option<&'a dyn RecordTransitions>,
 }
 
 macro_rules! read_table {
@@ -70,24 +95,13 @@ macro_rules! read_table {
 }
 
 impl Store {
+    #[cfg(feature = "platform")]
     pub(crate) fn encrypted_at_rest(&self) -> bool {
         self.key.is_some()
     }
 
     pub fn telemetry(&self) -> &crate::telemetry::Telemetry {
         &self.telemetry
-    }
-    pub fn from_config(config: &crate::config::Config) -> Result<Self> {
-        let key = config
-            .database_key_file
-            .as_deref()
-            .map(crypto::read_key)
-            .transpose()?;
-        if let Some(pg) = &config.postgres {
-            Self::open_postgres(pg.clone(), key)
-        } else {
-            Self::open_with_key(&config.data_dir.join("riauth.redb"), key)
-        }
     }
     pub fn backend(&self) -> &'static str {
         match self.db {
@@ -106,10 +120,8 @@ impl Store {
                 return Err(Error::internal("Storage is not writable"));
             }
         }
-        if self.get::<u32>("meta", "schema")? != Some(crate::upgrade::SCHEMA) {
-            return Err(Error::internal("Storage schema is not ready"));
-        }
-        Ok(())
+        crate::upgrade::require_active(self)?;
+        crate::recovery::require_serving(self)
     }
     pub fn shared_rate_limit(
         &self,
@@ -146,9 +158,10 @@ impl Store {
             Ok(count >= limit)
         })
     }
-    pub fn open_postgres(
+    pub(crate) fn open_postgres_raw(
         config: crate::postgres_store::PostgresConfig,
         key: Option<Zeroizing<[u8; 32]>>,
+        transitions: Arc<dyn RecordTransitions>,
     ) -> Result<Self> {
         use crate::postgres_store::{WRITE_LOCK, unavailable};
         let telemetry = Arc::new(crate::telemetry::Telemetry::default());
@@ -197,13 +210,15 @@ impl Store {
             db: Backend::Postgres(pool),
             key: key.map(Arc::new),
             telemetry,
+            transitions,
         })
     }
-    pub fn open(path: &Path) -> Result<Self> {
-        Self::open_with_key(path, None)
-    }
-    pub fn open_with_key(path: &Path, key: Option<Zeroizing<[u8; 32]>>) -> Result<Self> {
-        let db = Database::create(path).map_err(Error::internal)?;
+    pub(crate) fn open_with_key_raw(
+        path: &Path,
+        key: Option<Zeroizing<[u8; 32]>>,
+        transitions: Arc<dyn RecordTransitions>,
+    ) -> Result<Self> {
+        let db = ownership::open_owner(path)?;
         let tx = db.begin_write().map_err(Error::internal)?;
         {
             let records = tx.open_table(RECORDS).map_err(Error::internal)?;
@@ -245,7 +260,133 @@ impl Store {
             db: Backend::Redb(Arc::new(db)),
             key: key.map(Arc::new),
             telemetry: Arc::default(),
+            transitions,
         })
+    }
+    /// Read the configured store without creating, formatting or writing it.
+    /// `f` receives `None` when no riAuth store exists at that location. The
+    /// encryption format is checked as on open.
+    pub fn inspect<T>(
+        config: &crate::config::Config,
+        f: impl FnOnce(&'static str, Option<&Tx<'_>>) -> Result<T>,
+    ) -> Result<T> {
+        let key = config
+            .database_key_file
+            .as_deref()
+            .map(crypto::read_key)
+            .transpose()?;
+        let expected = if key.is_some() {
+            "aes256gcm-v1"
+        } else {
+            "plain-v1"
+        };
+        let mismatch =
+            || Error::bad("Database encryption configuration does not match its storage format");
+        let telemetry = Arc::new(crate::telemetry::Telemetry::default());
+        let tx = |transaction| Tx {
+            transaction,
+            key: key.as_deref(),
+            changes: RefCell::default(),
+            security_events: RefCell::default(),
+            telemetry: &telemetry,
+            prepared: RefCell::default(),
+            transitions: None,
+        };
+        if let Some(pg) = &config.postgres {
+            use crate::postgres_store::unavailable;
+            let pool = crate::postgres_store::Pool::with_telemetry(pg.clone(), telemetry.clone());
+            let mut connection = pool.get()?;
+            let mut transaction = connection
+                .build_transaction()
+                .isolation_level(postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .map_err(unavailable)?;
+            let row = transaction
+                .query_one(
+                    "SELECT to_regclass('riauth_store.records_v1') IS NOT NULL, to_regclass('riauth_store.storage_format') IS NOT NULL",
+                    &[],
+                )
+                .map_err(unavailable)?;
+            if !row.get::<_, bool>(0) {
+                return f("postgresql", None);
+            }
+            let encoding = if row.get::<_, bool>(1) {
+                transaction
+                    .query_opt(
+                        "SELECT encoding FROM riauth_store.storage_format WHERE singleton",
+                        &[],
+                    )
+                    .map_err(unavailable)?
+                    .map(|row| row.get::<_, String>(0))
+            } else {
+                None
+            };
+            match encoding {
+                Some(encoding) if encoding != expected => return Err(mismatch()),
+                Some(_) => {}
+                None => {
+                    let empty: bool = transaction
+                        .query_one(
+                            "SELECT NOT EXISTS (SELECT 1 FROM riauth_store.records_v1)",
+                            &[],
+                        )
+                        .map_err(unavailable)?
+                        .get(0);
+                    if !empty {
+                        return Err(Error::bad("Missing database storage format"));
+                    }
+                    return f("postgresql", None);
+                }
+            }
+            return f(
+                "postgresql",
+                Some(&tx(Transaction::Postgres(RefCell::new(transaction), false))),
+            );
+        }
+        let path = config.data_dir.join("riauth.redb");
+        // Only an absent entry is a missing store. A dangling link goes on to
+        // the check below, which refuses it as startup does.
+        match path.symlink_metadata() {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return f("redb", None),
+            Err(error) => return Err(Error::internal(error)),
+            Ok(_) => {}
+        }
+        let checked = ownership::require_local(&path)?;
+        let store = ownership::require_lock_support(&path, &checked)?;
+        // Read-only: never repairs, formats or re-permissions the file.
+        let db = redb::ReadOnlyDatabase::open(&path).map_err(|error| match error {
+            redb::DatabaseError::RepairAborted => Error::conflict(
+                "The redb store was not closed cleanly; open it with riauth to repair it first",
+            ),
+            error => ownership::open_error(&path, error),
+        })?;
+        ownership::reopened(&path, &checked, Some(&store))?;
+        let transaction = db.begin_read().map_err(Error::internal)?;
+        let encoding = match transaction.open_table(FORMAT) {
+            Ok(table) => table
+                .get("encoding")
+                .map_err(Error::internal)?
+                .map(|value| value.value().to_owned()),
+            Err(redb::TableError::TableDoesNotExist(_)) => None,
+            Err(error) => return Err(Error::internal(error)),
+        };
+        let empty = match transaction.open_table(RECORDS) {
+            Ok(table) => table.is_empty().map_err(Error::internal)?,
+            Err(redb::TableError::TableDoesNotExist(_)) => return f("redb", None),
+            Err(error) => return Err(Error::internal(error)),
+        };
+        match encoding {
+            Some(encoding) if encoding != expected => return Err(mismatch()),
+            // Open would stamp a plaintext format on existing records.
+            None if key.is_some() && !empty => {
+                return Err(Error::bad(
+                    "Use encrypted backup/restore to convert a plaintext database",
+                ));
+            }
+            _ => {}
+        }
+        f("redb", Some(&tx(Transaction::Read(&transaction))))
     }
     fn key(&self) -> Option<&[u8; 32]> {
         self.key.as_ref().map(|k| &***k)
@@ -266,6 +407,7 @@ impl Store {
                 security_events: RefCell::default(),
                 telemetry: &self.telemetry,
                 prepared: RefCell::default(),
+                transitions: Some(self.transitions.as_ref()),
             });
         }
         let Backend::Redb(db) = &self.db else {
@@ -279,6 +421,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })
     }
     pub fn get<T: DeserializeOwned>(&self, bucket: &str, key: &str) -> Result<Option<T>> {
@@ -294,10 +437,10 @@ impl Store {
         let Backend::Redb(db) = &self.db else {
             unreachable!()
         };
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         let transaction = db.begin_write().map_err(Error::internal)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let output = f(&Tx {
             transaction: Transaction::Write(&transaction),
             key: self.key(),
@@ -305,8 +448,11 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })?;
+        let committing = self.telemetry.commit.timer();
         transaction.commit().map_err(Error::internal)?;
+        drop(committing);
         Ok(output)
     }
     pub fn preview<T>(&self, f: impl FnOnce(&Tx<'_>) -> Result<T>) -> Result<T> {
@@ -316,10 +462,10 @@ impl Store {
         let Backend::Redb(db) = &self.db else {
             unreachable!()
         };
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         let transaction = db.begin_write().map_err(Error::internal)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let output = f(&Tx {
             transaction: Transaction::Write(&transaction),
             key: self.key(),
@@ -327,6 +473,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         })?;
         transaction.abort().map_err(Error::internal)?;
         Ok(output)
@@ -346,12 +493,12 @@ impl Store {
             .isolation_level(postgres::IsolationLevel::ReadCommitted)
             .start()
             .map_err(unavailable)?;
-        let waiting = self.telemetry.write_wait.timer();
+        let waiting = self.telemetry.writer_wait();
         transaction
             .query_one("SELECT pg_advisory_xact_lock($1)", &[&WRITE_LOCK])
             .map_err(unavailable)?;
         drop(waiting);
-        let _holding = self.telemetry.write_hold.timer();
+        let _holding = self.telemetry.writer_hold();
         let tx = Tx {
             transaction: Transaction::Postgres(RefCell::new(transaction), true),
             key: self.key(),
@@ -359,6 +506,7 @@ impl Store {
             security_events: RefCell::default(),
             telemetry: &self.telemetry,
             prepared: RefCell::default(),
+            transitions: Some(self.transitions.as_ref()),
         };
         let output = f(&tx)?;
         let Transaction::Postgres(transaction, _) = tx.transaction else {
@@ -367,6 +515,7 @@ impl Store {
         if preview {
             transaction.into_inner().rollback().map_err(unavailable)?;
         } else {
+            let _committing = self.telemetry.commit.timer();
             transaction.into_inner().commit().map_err(unavailable)?;
         }
         Ok(output)
@@ -376,12 +525,33 @@ impl Store {
 fn record_key(bucket: &str, key: &str) -> String {
     format!("{bucket}/{key}")
 }
+// Bind the LDAP projection to the fields of the persisted Group, irrespective
+// of JSON field order or unknown fields in a restored source record.
+fn group_source_digest<T: Serialize>(value: &T) -> Result<String> {
+    let value = serde_json::to_value(value).map_err(Error::internal)?;
+    let group: crate::model::Group = serde_json::from_value(value).map_err(Error::internal)?;
+    let bytes = serde_json::to_vec(&group).map_err(Error::internal)?;
+    Ok(URL_SAFE_NO_PAD.encode(Sha256::digest(&bytes)))
+}
 fn decode<T: DeserializeOwned>(key: Option<&[u8; 32]>, name: &str, value: &[u8]) -> Result<T> {
     match key {
         Some(key) => serde_json::from_slice(&crypto::unseal(key, name.as_bytes(), value)?)
             .map_err(Error::internal),
         None => serde_json::from_slice(value).map_err(Error::internal),
     }
+}
+
+fn oversized_snapshot_record(max_raw_bytes: usize) -> Error {
+    let size = if max_raw_bytes.is_multiple_of(1024 * 1024) {
+        format!("{} MiB", max_raw_bytes / (1024 * 1024))
+    } else if max_raw_bytes.is_multiple_of(1024) {
+        format!("{} KiB", max_raw_bytes / 1024)
+    } else {
+        format!("{max_raw_bytes} bytes")
+    };
+    Error::bad(format!(
+        "Backup record exceeds snapshot page limit of {max_raw_bytes} bytes ({size})"
+    ))
 }
 
 /// Replace values whose names carry secrets, passwords, tokens, hashes, or key
@@ -444,7 +614,11 @@ pub(crate) fn sensitive_audit_name(name: &str) -> bool {
         || name.contains("auth_header")
 }
 
-fn public_record(bucket: &str, value: Option<&Value>) -> Result<Value> {
+fn public_record(
+    bucket: &str,
+    value: Option<&Value>,
+    transitions: &dyn RecordTransitions,
+) -> Result<Value> {
     let Some(value) = value else {
         return Ok(Value::Null);
     };
@@ -456,9 +630,7 @@ fn public_record(bucket: &str, value: Option<&Value>) -> Result<Value> {
         "clients" => serde_json::from_value::<crate::model::Client>(value.clone())
             .map_err(Error::internal)?
             .view(),
-        "agents" => serde_json::from_value::<crate::agent::Agent>(value.clone())
-            .map_err(Error::internal)?
-            .view(),
+        "agents" => transitions.public_agent(value)?,
         _ => value.clone(),
     })
 }
@@ -543,7 +715,14 @@ impl Tx<'_> {
     pub fn changes(&self) -> Value {
         serde_json::json!(self.changes.borrow().values().collect::<Vec<_>>())
     }
-    fn record_change(&self, bucket: &str, key: &str, after: Option<Value>) -> Result<()> {
+    fn record_change(
+        &self,
+        bucket: &str,
+        key: &str,
+        group_before: Option<&Value>,
+        after: Option<Value>,
+        transitions: &dyn RecordTransitions,
+    ) -> Result<()> {
         if bucket == "source_secrets" {
             return self.record_redacted_secret(key, after.is_some());
         }
@@ -560,14 +739,25 @@ impl Tx<'_> {
             return Ok(());
         }
         let name = record_key(bucket, key);
-        let before_raw = self.get::<Value>(bucket, key)?;
-        let mut before_view = public_record(bucket, before_raw.as_ref())?;
-        let mut after_view = public_record(bucket, after.as_ref())?;
+        // Group writes already fetched the source before index maintenance.
+        // No Group source mutation occurs before this audit projection.
+        let fetched_before = if bucket == "groups" {
+            None
+        } else {
+            self.get::<Value>(bucket, key)?
+        };
+        let before_raw = if bucket == "groups" {
+            group_before
+        } else {
+            fetched_before.as_ref()
+        };
+        let mut before_view = public_record(bucket, before_raw, transitions)?;
+        let mut after_view = public_record(bucket, after.as_ref(), transitions)?;
         redact_audit_value(&mut before_view);
         redact_audit_value(&mut after_view);
         let changed = credential_markers(
             bucket,
-            before_raw.as_ref(),
+            before_raw,
             after.as_ref(),
             &mut before_view,
             &mut after_view,
@@ -632,10 +822,26 @@ impl Tx<'_> {
             .map(|bytes| decode(self.key, &name, &bytes))
             .transpose()
     }
-    fn raw_get_base(&self, name: &str) -> Result<Option<Vec<u8>>> {
-        if let Transaction::Prepared(store) = self.transaction {
-            return store.read(|tx| tx.raw_get_base(name));
+    fn read_context(&self) -> crate::telemetry::ReadContext {
+        use crate::telemetry::ReadContext;
+        match self.transaction {
+            Transaction::Prepared(_) => ReadContext::Prepared,
+            Transaction::Write(_) | Transaction::Postgres(_, true) => ReadContext::Writer,
+            Transaction::Read(_) | Transaction::Postgres(_, false) => ReadContext::Read,
         }
+    }
+    fn raw_get_base(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let bytes = if let Transaction::Prepared(store) = self.transaction {
+            store.read(|tx| tx.raw_get_fetch(name))?
+        } else {
+            self.raw_get_fetch(name)?
+        };
+        self.telemetry
+            .reads
+            .point(self.read_context(), bytes.as_ref().map_or(0, Vec::len));
+        Ok(bytes)
+    }
+    fn raw_get_fetch(&self, name: &str) -> Result<Option<Vec<u8>>> {
         if let Transaction::Postgres(transaction, _) = &self.transaction {
             return transaction
                 .borrow_mut()
@@ -655,29 +861,26 @@ impl Tx<'_> {
         })
     }
     pub fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
+        let transitions = self
+            .transitions
+            .ok_or_else(|| Error::internal("Mutation attempted inside a read transaction"))?;
         let mut public = serde_json::to_value(value).map_err(Error::internal)?;
-        let before = if matches!(bucket, "users" | "passkeys") {
+        let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None
         };
-        if bucket == "users"
-            && let Some(old) = &before
-            && old["enabled"] != public["enabled"]
-        {
-            // Account state changes revoke sessions even if a caller omitted its
-            // epoch bump. Re-enabling a legacy snapshot cannot revive sessions.
-            public["epoch"] = Value::from(
-                public["epoch"]
-                    .as_u64()
-                    .unwrap_or(0)
-                    .max(old["epoch"].as_u64().unwrap_or(0).saturating_add(1)),
-            );
-        }
-        self.update_indexes(bucket, key, Some(&public))?;
-        self.record_change(bucket, key, Some(public.clone()))?;
+        transitions.prepare_record(bucket, before.as_ref(), &mut public);
+        self.update_indexes(bucket, key, before.as_ref(), Some(&public))?;
+        self.record_change(
+            bucket,
+            key,
+            before.as_ref(),
+            Some(public.clone()),
+            transitions,
+        )?;
         self.import_record(bucket, key, &public)?;
-        self.security_transition(bucket, key, before.as_ref(), Some(&public))
+        transitions.record_transition(self, bucket, key, before.as_ref(), Some(&public))
     }
     pub(crate) fn import_record<T: Serialize>(
         &self,
@@ -685,24 +888,37 @@ impl Tx<'_> {
         key: &str,
         value: &T,
     ) -> Result<()> {
+        let group_digest = (bucket == "groups")
+            .then(|| group_source_digest(value))
+            .transpose()?;
         let name = record_key(bucket, key);
         let plain = Zeroizing::new(serde_json::to_vec(value).map_err(Error::internal)?);
         let bytes = match self.key {
             Some(key) => crypto::seal(key, name.as_bytes(), &plain)?,
             None => plain.to_vec(),
         };
-        self.raw_put(&name, Some(bytes))
+        if group_digest.is_some() {
+            self.raw_put(&record_key(maintenance::GROUP_SOURCE_DIGESTS, key), None)?;
+        }
+        self.raw_put(&name, Some(bytes))?;
+        if let Some(digest) = group_digest {
+            self.import_record(maintenance::GROUP_SOURCE_DIGESTS, key, &digest)?;
+        }
+        Ok(())
     }
     pub fn delete(&self, bucket: &str, key: &str) -> Result<()> {
-        let before = if matches!(bucket, "users" | "passkeys") {
+        let transitions = self
+            .transitions
+            .ok_or_else(|| Error::internal("Mutation attempted inside a read transaction"))?;
+        let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
             None
         };
-        self.update_indexes(bucket, key, None)?;
-        self.record_change(bucket, key, None)?;
+        self.update_indexes(bucket, key, before.as_ref(), None)?;
+        self.record_change(bucket, key, before.as_ref(), None, transitions)?;
         self.raw_put(&record_key(bucket, key), None)?;
-        self.security_transition(bucket, key, before.as_ref(), None)
+        transitions.record_transition(self, bucket, key, before.as_ref(), None)
     }
 
     pub(crate) fn mark_security_event(&self, user: &str, event: &str, credential: &str) -> bool {
@@ -711,27 +927,6 @@ impl Tx<'_> {
             .insert((user.into(), event.into(), credential.into()))
     }
 
-    /// Security effects belong to the durable transition, irrespective of its API.
-    /// Offline import_record deliberately bypasses this hook when restoring a snapshot.
-    fn security_transition(
-        &self,
-        bucket: &str,
-        key: &str,
-        before: Option<&Value>,
-        after: Option<&Value>,
-    ) -> Result<()> {
-        if bucket == "users" {
-            if let Some(before) = before {
-                crate::core::user_security_transition(self, key, before, after)?;
-            }
-        } else if bucket == "passkeys"
-            && before.is_some() != after.is_some()
-            && let Some(user) = after.or(before).and_then(|v| v["user_id"].as_str())
-        {
-            crate::ssf::enqueue(self, user, crate::ssf::CREDENTIAL_CHANGE, "public-key")?;
-        }
-        Ok(())
-    }
     fn raw_put(&self, name: &str, bytes: Option<Vec<u8>>) -> Result<()> {
         if self.stage(name, &bytes)? {
             return Ok(());
@@ -834,17 +1029,31 @@ impl Tx<'_> {
         .collect()
     }
     fn raw_scan_base(&self, range: &Range) -> Result<Vec<(String, Vec<u8>)>> {
-        if let Transaction::Prepared(store) = self.transaction {
-            return store.read(|tx| tx.raw_scan_base(range));
-        }
-        let records = if let Transaction::Postgres(transaction, _) = &self.transaction {
+        let records = if let Transaction::Prepared(store) = self.transaction {
+            store.read(|tx| tx.raw_scan_fetch(range))?
+        } else {
+            self.raw_scan_fetch(range)?
+        };
+        self.telemetry
+            .scanned_records
+            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        self.telemetry.reads.scan(
+            self.read_context(),
+            range.limit != usize::MAX,
+            records.len(),
+            records.iter().map(|(_, bytes)| bytes.len()).sum(),
+        );
+        Ok(records)
+    }
+    fn raw_scan_fetch(&self, range: &Range) -> Result<Vec<(String, Vec<u8>)>> {
+        if let Transaction::Postgres(transaction, _) = &self.transaction {
             let limit = i64::try_from(range.limit).unwrap_or(i64::MAX);
             let query = if range.reverse {
                 "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key < $2 ORDER BY key DESC LIMIT $3"
             } else {
                 "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key < $2 ORDER BY key LIMIT $3"
             };
-            transaction
+            return transaction
                 .borrow_mut()
                 .query(
                     query,
@@ -858,79 +1067,270 @@ impl Tx<'_> {
                         row.get(1),
                     ))
                 })
-                .collect::<Result<Vec<_>>>()?
-        } else {
-            read_table!(self, table, {
-                let iter = table
-                    .range(range.start.as_str()..range.end.as_str())
-                    .map_err(Error::internal)?;
-                let iter: Box<dyn Iterator<Item = _>> = if range.reverse {
-                    Box::new(iter.rev().take(range.limit))
-                } else {
-                    Box::new(iter.take(range.limit))
-                };
-                iter.map(|entry| {
-                    let (key, value) = entry.map_err(Error::internal)?;
-                    Ok((key.value().to_owned(), value.value().to_vec()))
-                })
-                .collect::<Result<Vec<_>>>()?
+                .collect();
+        }
+        read_table!(self, table, {
+            let iter = table
+                .range(range.start.as_str()..range.end.as_str())
+                .map_err(Error::internal)?;
+            let iter: Box<dyn Iterator<Item = _>> = if range.reverse {
+                Box::new(iter.rev().take(range.limit))
+            } else {
+                Box::new(iter.take(range.limit))
+            };
+            iter.map(|entry| {
+                let (key, value) = entry.map_err(Error::internal)?;
+                Ok((key.value().to_owned(), value.value().to_vec()))
             })
-        };
-        self.telemetry
-            .scanned_records
-            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        Ok(records)
+            .collect()
+        })
     }
-    /// One page of the whole keyspace, strictly after `after`.
+    /// Read only the next record key in storage order. Recovery uses this to
+    /// discover collections without materializing an unbounded record value.
+    pub(crate) fn snapshot_next_key(&self, after: Option<&str>) -> Result<Option<String>> {
+        if let Transaction::Postgres(transaction, _) = &self.transaction {
+            let rows = if let Some(after) = after {
+                transaction.borrow_mut().query(
+                    "SELECT key FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT 1",
+                    &[&after.as_bytes()],
+                )
+            } else {
+                transaction.borrow_mut().query(
+                    "SELECT key FROM riauth_store.records_v1 ORDER BY key LIMIT 1",
+                    &[],
+                )
+            }
+            .map_err(crate::postgres_store::unavailable)?;
+            return rows
+                .into_iter()
+                .next()
+                .map(|row| String::from_utf8(row.get(0)).map_err(Error::internal))
+                .transpose();
+        }
+        if matches!(&self.transaction, Transaction::Prepared(_)) {
+            return Err(Error::internal(
+                "Recovery collection scan requires a storage transaction",
+            ));
+        }
+        read_table!(self, table, {
+            let start = after.map(|key| format!("{key}\0")).unwrap_or_default();
+            let mut entries = table.range(start.as_str()..).map_err(Error::internal)?;
+            entries
+                .next()
+                .map(|entry| {
+                    let (key, _) = entry.map_err(Error::internal)?;
+                    Ok(key.value().to_owned())
+                })
+                .transpose()
+        })
+    }
+    /// PostgreSQL identity of this record table; `None` on redb. A physical copy
+    /// or PITR of the same cluster keeps every value, so this detects only
+    /// logical restores into another cluster, database or table.
+    pub(crate) fn postgres_lineage(&self) -> Result<Option<crate::recovery::Lineage>> {
+        use crate::postgres_store::unavailable;
+        let Transaction::Postgres(transaction, _) = &self.transaction else {
+            return Ok(None);
+        };
+        let mut transaction = transaction.borrow_mut();
+        let row = transaction
+            .query_one(
+                "SELECT (SELECT oid FROM pg_database WHERE datname = current_database()), 'riauth_store.records_v1'::regclass::oid",
+                &[],
+            )
+            .map_err(unavailable)?;
+        let (database_oid, records_oid): (u32, u32) = (row.get(0), row.get(1));
+        // Managed services may revoke or omit pg_control_system(); record it as unavailable.
+        let mut probe = transaction.transaction().map_err(unavailable)?;
+        let system_identifier = match probe.query_one(
+            "SELECT system_identifier::text FROM pg_control_system()",
+            &[],
+        ) {
+            Ok(row) => {
+                let value: String = row.get(0);
+                probe.commit().map_err(unavailable)?;
+                Some(value)
+            }
+            // Any server-reported refusal; a lost connection still fails below.
+            Err(error) if error.code().is_some() => {
+                probe.rollback().map_err(unavailable)?;
+                None
+            }
+            Err(error) => return Err(unavailable(error)),
+        };
+        Ok(Some(crate::recovery::Lineage {
+            system_identifier,
+            database_oid,
+            records_oid,
+        }))
+    }
+    /// Other riAuth sessions connected to this database; `None` on redb, whose file
+    /// lock already excludes a concurrent server.
+    pub(crate) fn postgres_other_clients(&self) -> Result<Option<i64>> {
+        let Transaction::Postgres(transaction, _) = &self.transaction else {
+            return Ok(None);
+        };
+        Ok(Some(
+            transaction
+                .borrow_mut()
+                .query_one(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = 'riauth' AND pid <> pg_backend_pid()",
+                    &[],
+                )
+                .map_err(crate::postgres_store::unavailable)?
+                .get(0),
+        ))
+    }
+    /// Freeze the PostgreSQL record table while an offline edition transition
+    /// compares its planned snapshot and stamps both activation markers. The
+    /// ordinary riAuth writer lock excludes cooperating processes; this table
+    /// lock also excludes direct SQL writes until the transaction commits.
+    pub(crate) fn lock_records_for_transition(&self) -> Result<()> {
+        if let Transaction::Postgres(transaction, true) = &self.transaction {
+            transaction
+                .borrow_mut()
+                .batch_execute("LOCK TABLE riauth_store.records_v1 IN SHARE ROW EXCLUSIVE MODE")
+                .map_err(crate::postgres_store::unavailable)?;
+        }
+        Ok(())
+    }
+
+    /// Bounded-memory fingerprint of every persisted record, including opaque
+    /// authority and revision data. Read inspection has one consistent snapshot;
+    /// a transition writer calls this only after locking out other writers.
+    pub(crate) fn snapshot_digest(&self) -> Result<String> {
+        let mut hash = Sha256::new();
+        hash.update(b"riauth.edition-transition-store/v1\0");
+        let mut after = None;
+        while let Some(name) = self.snapshot_next_key(after.as_deref())? {
+            let value = self.raw_get_base(&name)?.ok_or_else(|| {
+                Error::conflict("Store changed during edition transition inspection")
+            })?;
+            hash.update((name.len() as u64).to_be_bytes());
+            hash.update(name.as_bytes());
+            hash.update((value.len() as u64).to_be_bytes());
+            hash.update(&value);
+            after = Some(name);
+        }
+        Ok(URL_SAFE_NO_PAD.encode(hash.finalize()))
+    }
+    /// One page of the whole keyspace, strictly after `after`. The sum of
+    /// stored key and value bytes never exceeds `max_raw_bytes`; an oversized
+    /// first record is an error, so callers cannot mistake it for EOF.
     /// Repeat inside the same read transaction for a consistent scan.
-    pub(crate) fn snapshot_page(
+    pub(crate) fn snapshot_page_bounded(
         &self,
         after: Option<&str>,
         limit: usize,
+        max_raw_bytes: usize,
     ) -> Result<Vec<(String, Value)>> {
-        self.snapshot_page_raw(after, limit)?
-            .into_iter()
+        self.snapshot_page_bounded_inner(after, limit, max_raw_bytes, false)
+    }
+    /// Migration verifies its target under a PostgreSQL table lock in a writer
+    /// transaction. The lock keeps these pages stable across READ COMMITTED
+    /// statements while the ordinary writer lock excludes other riAuth writers.
+    pub(crate) fn snapshot_page_bounded_locked_writer(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+        max_raw_bytes: usize,
+    ) -> Result<Vec<(String, Value)>> {
+        if !matches!(self.transaction, Transaction::Postgres(_, true)) {
+            return Err(Error::internal(
+                "Locked snapshot requires a PostgreSQL writer",
+            ));
+        }
+        self.snapshot_page_bounded_inner(after, limit, max_raw_bytes, true)
+    }
+    fn snapshot_page_bounded_inner(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+        max_raw_bytes: usize,
+        locked_writer: bool,
+    ) -> Result<Vec<(String, Value)>> {
+        let page = self.snapshot_page_raw_bounded(after, limit, max_raw_bytes, locked_writer)?;
+        self.telemetry
+            .snapshot_records
+            .fetch_add(page.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        page.into_iter()
             .map(|(name, bytes)| {
                 let value = decode(self.key, &name, &bytes)?;
                 Ok((name, value))
             })
             .collect()
     }
-    fn snapshot_page_raw(
+    fn snapshot_page_raw_bounded(
         &self,
         after: Option<&str>,
         limit: usize,
+        max_raw_bytes: usize,
+        locked_writer: bool,
     ) -> Result<Vec<(String, Vec<u8>)>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
-        if self.prepared.borrow().is_some() {
+        if max_raw_bytes == 0 {
+            return Err(Error::bad("Snapshot page byte limit must be positive"));
+        }
+        let ordinary_read = matches!(
+            self.transaction,
+            Transaction::Read(_) | Transaction::Postgres(_, false)
+        );
+        let locked_postgres_writer =
+            locked_writer && matches!(self.transaction, Transaction::Postgres(_, true));
+        if self.prepared.borrow().is_some() || !(ordinary_read || locked_postgres_writer) {
             return Err(Error::internal(
                 "Paged snapshots require an ordinary read transaction",
             ));
         }
         if let Transaction::Postgres(transaction, _) = &self.transaction {
-            let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+            // Read metadata first. A LIMIT-only value query could materialize
+            // 128 arbitrarily large legacy values before Rust can reject them.
+            // Store::read holds a REPEATABLE READ transaction across both queries.
+            let limit = i64::try_from(limit.min(maintenance::PAGE)).map_err(Error::internal)?;
+            let max_bytes = i64::try_from(max_raw_bytes).map_err(Error::internal)?;
             let mut transaction = transaction.borrow_mut();
-            let rows = if let Some(after) = after {
+            let metadata = if let Some(after) = after {
                 transaction.query(
-                    "SELECT key,value FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT $2",
-                    &[&after.as_bytes(), &limit],
+                    "WITH candidates AS MATERIALIZED (SELECT key, octet_length(key)::bigint + octet_length(value)::bigint AS record_bytes FROM riauth_store.records_v1 WHERE key > $1 ORDER BY key LIMIT $2), sized AS (SELECT key, record_bytes, sum(record_bytes) OVER (ORDER BY key) AS total_bytes, row_number() OVER (ORDER BY key) AS ordinal FROM candidates) SELECT CASE WHEN total_bytes <= $3::bigint THEN key ELSE NULL END, record_bytes FROM sized WHERE total_bytes <= $3::bigint OR ordinal = 1 ORDER BY ordinal",
+                    &[&after.as_bytes(), &limit, &max_bytes],
                 )
             } else {
                 transaction.query(
-                    "SELECT key,value FROM riauth_store.records_v1 ORDER BY key LIMIT $1",
-                    &[&limit],
+                    "WITH candidates AS MATERIALIZED (SELECT key, octet_length(key)::bigint + octet_length(value)::bigint AS record_bytes FROM riauth_store.records_v1 ORDER BY key LIMIT $1), sized AS (SELECT key, record_bytes, sum(record_bytes) OVER (ORDER BY key) AS total_bytes, row_number() OVER (ORDER BY key) AS ordinal FROM candidates) SELECT CASE WHEN total_bytes <= $2::bigint THEN key ELSE NULL END, record_bytes FROM sized WHERE total_bytes <= $2::bigint OR ordinal = 1 ORDER BY ordinal",
+                    &[&limit, &max_bytes],
                 )
             }
             .map_err(crate::postgres_store::unavailable)?;
-            return rows
+            let keys: Vec<Vec<u8>> = metadata
                 .into_iter()
                 .map(|row| {
-                    Ok((
-                        String::from_utf8(row.get(0)).map_err(Error::internal)?,
-                        row.get(1),
-                    ))
+                    row.get::<_, Option<Vec<u8>>>(0)
+                        .ok_or_else(|| oversized_snapshot_record(max_raw_bytes))
+                })
+                .collect::<Result<_>>()?;
+            let (Some(first), Some(last)) = (keys.first(), keys.last()) else {
+                return Ok(Vec::new());
+            };
+            let rows = transaction
+                .query(
+                    "SELECT key,value FROM riauth_store.records_v1 WHERE key >= $1 AND key <= $2 ORDER BY key",
+                    &[first, last],
+                )
+                .map_err(crate::postgres_store::unavailable)?;
+            if rows.len() != keys.len() {
+                return Err(Error::internal("Snapshot changed during page read"));
+            }
+            return rows
+                .into_iter()
+                .zip(keys)
+                .map(|(row, expected)| {
+                    let key: Vec<u8> = row.get(0);
+                    if key != expected {
+                        return Err(Error::internal("Snapshot changed during page read"));
+                    }
+                    Ok((String::from_utf8(key).map_err(Error::internal)?, row.get(1)))
                 })
                 .collect();
         }
@@ -938,15 +1338,36 @@ impl Tx<'_> {
             // `\0` is the inclusive successor used by bucket scans; it excludes `after`.
             let start = after.map(|key| format!("{key}\0")).unwrap_or_default();
             let iter = table.range(start.as_str()..).map_err(Error::internal)?;
-            iter.take(limit)
-                .map(|entry| {
-                    let (key, value) = entry.map_err(Error::internal)?;
-                    Ok((key.value().to_owned(), value.value().to_vec()))
-                })
-                .collect::<Result<Vec<_>>>()
+            let mut page = Vec::new();
+            let mut used = 0usize;
+            for entry in iter.take(limit.min(maintenance::PAGE)) {
+                let (key, value) = entry.map_err(Error::internal)?;
+                let bytes = key
+                    .value()
+                    .len()
+                    .checked_add(value.value().len())
+                    .and_then(|bytes| used.checked_add(bytes))
+                    .ok_or_else(|| oversized_snapshot_record(max_raw_bytes))?;
+                if bytes > max_raw_bytes {
+                    if page.is_empty() {
+                        return Err(oversized_snapshot_record(max_raw_bytes));
+                    }
+                    break;
+                }
+                used = bytes;
+                page.push((key.value().to_owned(), value.value().to_vec()));
+            }
+            Ok(page)
         })
     }
     pub fn snapshot(&self) -> Result<BTreeMap<String, Value>> {
+        let records = self.snapshot_all()?;
+        self.telemetry
+            .snapshot_records
+            .fetch_add(records.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(records)
+    }
+    fn snapshot_all(&self) -> Result<BTreeMap<String, Value>> {
         if self.prepared.borrow().is_some() {
             return Err(Error::internal(
                 "Full snapshots require an ordinary read transaction",
@@ -984,5 +1405,99 @@ impl Tx<'_> {
                 })
                 .collect()
         })
+    }
+}
+
+#[cfg(test)]
+mod snapshot_paging_tests {
+    use super::*;
+
+    #[test]
+    fn page_budget_counts_keys_and_values_before_decoding() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        store
+            .write(|tx| {
+                tx.put("page", "a", &"alpha")?;
+                tx.put("page", "b", &"bravo")?;
+                Ok(())
+            })
+            .unwrap();
+        let first_bytes = "page/a".len() + serde_json::to_vec("alpha").unwrap().len();
+        let second_bytes = "page/b".len() + serde_json::to_vec("bravo").unwrap().len();
+        store
+            .read(|tx| {
+                let first = tx.snapshot_page_bounded(None, 128, first_bytes)?;
+                assert_eq!(
+                    first,
+                    vec![("page/a".into(), Value::String("alpha".into()))]
+                );
+                let second = tx.snapshot_page_bounded(Some("page/a"), 128, second_bytes)?;
+                assert_eq!(
+                    second,
+                    vec![("page/b".into(), Value::String("bravo".into()))]
+                );
+                let both = tx.snapshot_page_bounded(None, 128, first_bytes + second_bytes)?;
+                assert_eq!(both.len(), 2);
+                assert!(tx.snapshot_page_bounded(Some("page/b"), 128, 1)?.is_empty());
+                Ok(())
+            })
+            .unwrap();
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(None, 128, first_bytes - 1))
+            .unwrap_err();
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(error.message.contains("snapshot page limit"));
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(Some("page/a"), 128, second_bytes - 1))
+            .unwrap_err();
+        assert!(error.message.contains("snapshot page limit"));
+    }
+
+    #[test]
+    fn oversized_legacy_value_is_rejected_before_json_decode() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        let Backend::Redb(db) = &store.db else {
+            unreachable!()
+        };
+        let transaction = db.begin_write().unwrap();
+        {
+            let mut table = transaction.open_table(RECORDS).unwrap();
+            table
+                .insert("legacy/oversized", vec![b'!'; 4096].as_slice())
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        let error = store
+            .read(|tx| tx.snapshot_page_bounded(None, 128, 1024))
+            .unwrap_err();
+        assert_eq!(error.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(error.message.contains("snapshot page limit"));
+    }
+
+    #[test]
+    fn pages_keep_one_read_snapshot_during_a_concurrent_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("store.redb")).unwrap();
+        store.write(|tx| tx.put("page", "a", &1u8)).unwrap();
+        store.write(|tx| tx.put("page", "c", &3u8)).unwrap();
+        store
+            .read(|tx| {
+                let first = tx.snapshot_page_bounded(None, 1, 1024)?;
+                assert_eq!(first[0].0, "page/a");
+                store.write(|writer| writer.put("page", "b", &2u8))?;
+                let second = tx.snapshot_page_bounded(Some(&first[0].0), 1, 1024)?;
+                assert_eq!(second[0].0, "page/c");
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            store
+                .read(|tx| tx.snapshot_page_bounded(Some("page/a"), 1, 1024))
+                .unwrap()[0]
+                .0,
+            "page/b"
+        );
     }
 }

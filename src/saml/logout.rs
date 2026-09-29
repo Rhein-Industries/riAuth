@@ -1,22 +1,57 @@
 //! Browser SLO coordinator. Revocation commits before any participant is contacted.
 //! Tickets can only finish cleanup of sessions that have already been revoked.
 use super::{
-    Reply, RpSession,
+    Reply, RpSession, SamlTx, Settings,
     wire::{self, ASSERTION, PROTOCOL},
 };
 use crate::{
-    core::{Core, audit},
     crypto::{self, SigningKey, digest, now},
     error::{Error, Result},
-    model::Session,
+    model::{Client, Session},
     response::escape,
+    session_protocol::PostLogoutReturn,
     source::Source,
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+
+/// The caller supplies one transaction for replay checks, local revocation and
+/// fanout persistence. Assembly maps these operations to concrete collections.
+pub(crate) trait SamlLogoutTx: SamlTx {
+    fn session_record(&self, id: &str) -> Result<Option<Session>>;
+    fn rp_sessions(&self) -> Result<Vec<(String, RpSession)>>;
+    fn upstream_session(&self, id: &str) -> Result<Option<crate::source::saml::UpstreamSession>>;
+    fn upstream_sessions(&self) -> Result<Vec<(String, crate::source::saml::UpstreamSession)>>;
+    fn source_record(&self, id: &str) -> Result<Option<Source>>;
+    fn source_key(&self, source: &Source) -> Result<SigningKey>;
+    fn flow_record(&self, id: &str) -> Result<Option<Flow>>;
+    fn flows(&self) -> Result<Vec<(String, Flow)>>;
+    fn put_flow(&self, id: &str, flow: &Flow) -> Result<()>;
+    fn flow_page(&self) -> Result<Vec<(String, Flow)>>;
+    fn delete_flow(&self, id: &str) -> Result<()>;
+    fn session_ticket(&self, id: &str) -> Result<Option<String>>;
+    fn put_session_ticket(&self, id: &str, ticket: &str) -> Result<()>;
+    fn ticket_page(&self) -> Result<Vec<(String, String)>>;
+    fn delete_session_ticket(&self, id: &str) -> Result<()>;
+    fn replay_record(&self, id: &str) -> Result<Option<u64>>;
+    fn replay_count(&self) -> Result<usize>;
+    fn put_replay(&self, id: &str, expires_at: u64) -> Result<()>;
+    fn revoke_source_session(
+        &self,
+        id: &str,
+        session: Session,
+        issuer: &str,
+        source_id: &str,
+    ) -> Result<Vec<String>>;
+    fn audit_confirmation(&self, peer_id: &str) -> Result<()>;
+}
+
+pub(crate) trait SamlLogoutCore {
+    fn logout_issuer(&self) -> &str;
+    fn client_issuer(&self, settings: &Settings, client: &Client) -> String;
+}
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -33,7 +68,7 @@ impl Peer {
     fn same_entity(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other) && self.id() == other.id()
     }
-    fn current(&self, core: &Core, tx: &Tx<'_>) -> Result<Current> {
+    fn current(&self, core: &impl SamlLogoutCore, tx: &impl SamlLogoutTx) -> Result<Current> {
         match self {
             Self::Client { id, fingerprint } => {
                 let (client, settings) = super::client(tx, id)?;
@@ -41,7 +76,7 @@ impl Peer {
                     return Err(Error::conflict("SAML logout client changed"));
                 }
                 super::validate_key(tx, &client)?;
-                let own = settings.issuer(core, &client);
+                let own = core.client_issuer(&settings, &client);
                 Ok(Current {
                     issuer: own.clone(),
                     peer: settings.sp_entity_id.clone(),
@@ -49,18 +84,18 @@ impl Peer {
                     sp_qualifier: settings.sp_entity_id,
                     callback: format!(
                         "{}/saml/{id}/sso",
-                        super::endpoint_base(&core.config.issuer)
+                        super::endpoint_base(core.logout_issuer())
                     ),
                     redirect: settings.slo_redirect_url,
                     post: settings.slo_post_url,
                     certificate: settings.idp_certificate_pem,
                     trusted: settings.sp_certificates_pem,
-                    key: crate::keyring::for_client(tx, &client)?.active,
+                    key: tx.signing_key(&client)?,
                 })
             }
             Self::Source { id, fingerprint } => {
                 let source = tx
-                    .get::<Source>("sources", id)?
+                    .source_record(id)?
                     .filter(|s| s.enabled)
                     .ok_or_else(Error::forbidden)?;
                 if *fingerprint != source.fingerprint()? {
@@ -75,13 +110,13 @@ impl Peer {
                     sp_qualifier: source.client_id.clone(),
                     callback: format!(
                         "{}/saml/sources/{id}/slo",
-                        super::endpoint_base(&core.config.issuer)
+                        super::endpoint_base(core.logout_issuer())
                     ),
                     redirect: settings.slo_redirect_url.clone(),
                     post: settings.slo_post_url.clone(),
                     certificate: settings.sp_certificate_pem.clone(),
                     trusted: settings.idp_certificates_pem.clone(),
-                    key: settings.key(tx)?,
+                    key: tx.source_key(&source)?,
                 })
             }
         }
@@ -145,6 +180,10 @@ pub(crate) struct ReturnResponse {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(crate) struct Finish {
     pub redirect: Option<String>,
+    /// Exact OIDC registration for an external return. Old flows lack it and
+    /// cannot safely deliver their cached redirect.
+    #[serde(default)]
+    pub return_binding: Option<PostLogoutReturn>,
     pub response: Option<ReturnResponse>,
     pub frontchannel_urls: BTreeSet<String>,
 }
@@ -156,7 +195,7 @@ struct Pending {
     deadline: u64,
 }
 #[derive(Clone, Serialize, Deserialize)]
-struct Flow {
+pub(crate) struct Flow {
     id: String,
     expires_at: u64,
     targets: Vec<Target>,
@@ -167,22 +206,55 @@ struct Flow {
     finish: Finish,
 }
 impl Flow {
-    fn status(&self, core: &Core) -> Value {
+    fn status(&self, core: &impl SamlLogoutCore) -> Value {
         let completed = self.position == self.targets.len();
         json!({"protocol":"saml","logged_out":true,"status":if completed {if self.failed==0 {"complete"} else {"partial_logout"}}else if self.expires_at<=now(){"expired"}else{"pending"},"confirmed":self.confirmed,"failed":self.failed,"remaining":self.targets.len()-self.position,"expires_at":self.expires_at,"resume_uri":flow_url(core,&self.id),"retry_after":self.pending.as_ref().map(|p|p.deadline.saturating_sub(now()))})
     }
 }
-fn flow_url(core: &Core, id: &str) -> String {
+fn flow_url(core: &impl SamlLogoutCore, id: &str) -> String {
     format!(
         "{}/saml/logout/{id}",
-        super::endpoint_base(&core.config.issuer)
+        super::endpoint_base(core.logout_issuer())
     )
+}
+
+/// Only a stored ticket at our canonical SAML logout URL is an internal
+/// continuation. The confirmation may keep this URL when its external return
+/// registration has been removed.
+pub(crate) fn is_continuation(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    sid: &str,
+    uri: &str,
+) -> Result<bool> {
+    let prefix = format!(
+        "{}/saml/logout/",
+        super::endpoint_base(core.logout_issuer())
+    );
+    let Some(ticket) = uri.strip_prefix(&prefix) else {
+        return Ok(false);
+    };
+    if ticket.len() != 43
+        || !ticket
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+    {
+        return Ok(false);
+    }
+    if tx.session_ticket(sid)?.as_deref() != Some(ticket) {
+        return Ok(false);
+    }
+    Ok(tx.flow_record(&digest(ticket))?.is_some_and(|flow| {
+        flow.id == ticket
+            && flow.expires_at.saturating_add(86400) > now()
+            && uri == flow_url(core, &flow.id)
+    }))
 }
 
 // The optional response sender is excluded, preventing source/SP logout loops.
 pub(crate) fn begin(
-    core: &Core,
-    tx: &Tx<'_>,
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
     session_ids: &BTreeSet<String>,
     finish: Finish,
 ) -> Result<Reply> {
@@ -190,16 +262,13 @@ pub(crate) fn begin(
     let mut targets = Vec::new();
     let mut failed = 0;
     for sid in session_ids {
-        if tx
-            .get::<Session>("sessions", sid)?
-            .is_some_and(|s| !s.revoked)
-        {
+        if tx.session_record(sid)?.is_some_and(|s| !s.revoked) {
             return Err(Error::internal(
                 "SAML propagation requires local revocation",
             ));
         }
     }
-    for (_, rp) in tx.list::<RpSession>("saml_sessions")? {
+    for (_, rp) in tx.rp_sessions()? {
         if !session_ids.contains(&rp.identity.session_id) || rp.expires_at <= now() {
             continue;
         }
@@ -222,15 +291,13 @@ pub(crate) fn begin(
         }
     }
     for sid in session_ids {
-        let Some(session) = tx.get::<Session>("sessions", sid)? else {
+        let Some(session) = tx.session_record(sid)? else {
             continue;
         };
         let Some(context) = &session.identity.source else {
             continue;
         };
-        let Some(upstream) =
-            tx.get::<crate::source::saml::UpstreamSession>("saml_source_sessions", sid)?
-        else {
+        let Some(upstream) = tx.upstream_session(sid)? else {
             continue;
         };
         if upstream.expires_at.is_some_and(|at| at <= now()) {
@@ -243,7 +310,7 @@ pub(crate) fn begin(
         if exclude.is_some_and(|p| p.same_entity(&peer)) {
             continue;
         }
-        let source = tx.get::<Source>("sources", &context.id)?;
+        let source = tx.source_record(&context.id)?;
         let settings = source.as_ref().and_then(|s| s.saml.as_ref());
         if let (Some(subject), Some(settings)) = (upstream.subject, settings) {
             targets.push(Target {
@@ -282,24 +349,24 @@ pub(crate) fn begin(
         return finish_reply(core, tx, &flow);
     }
     cleanup(tx, now())?;
-    if tx.list::<Flow>("saml_logout_flows")?.len() >= 5000 {
+    if tx.flows()?.len() >= 5000 {
         // Reaching an outbox limit cannot roll back the already requested logout.
         flow.failed += flow.targets.len();
         flow.position = flow.targets.len();
         return finish_reply(core, tx, &flow);
     }
-    tx.put("saml_logout_flows", &digest(&flow.id), &flow)?;
+    tx.put_flow(&digest(&flow.id), &flow)?;
     Ok(Reply::LogoutPage(
         json!({"logged_out":true,"redirect_uri":flow_url(core,&flow.id),"frontchannel_urls":flow.finish.frontchannel_urls}),
     ))
 }
 pub(crate) fn redirect(
-    core: &Core,
-    tx: &Tx<'_>,
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
     sid: &str,
-    original: Option<String>,
+    original: Option<PostLogoutReturn>,
 ) -> Result<Value> {
-    if let Some(ticket) = tx.get::<String>("saml_logout_sessions", sid)?
+    if let Some(ticket) = tx.session_ticket(sid)?
         && lookup(tx, &ticket).is_ok()
     {
         return Ok(json!({"redirect_uri":flow_url(core,&ticket)}));
@@ -309,7 +376,8 @@ pub(crate) fn redirect(
         tx,
         &BTreeSet::from([sid.into()]),
         Finish {
-            redirect: original,
+            redirect: original.as_ref().map(|target| target.rendered_uri.clone()),
+            return_binding: original,
             ..Default::default()
         },
     )?;
@@ -321,16 +389,16 @@ pub(crate) fn redirect(
     if let Some(ticket) = value["redirect_uri"].as_str().and_then(|u| {
         u.strip_prefix(&format!(
             "{}/saml/logout/",
-            super::endpoint_base(&core.config.issuer)
+            super::endpoint_base(core.logout_issuer())
         ))
     }) && ticket.len() == 43
         && lookup(tx, ticket).is_ok()
     {
-        tx.put("saml_logout_sessions", sid, &ticket)?;
+        tx.put_session_ticket(sid, ticket)?;
     }
     Ok(value)
 }
-fn finish_reply(core: &Core, tx: &Tx<'_>, flow: &Flow) -> Result<Reply> {
+fn finish_reply(core: &impl SamlLogoutCore, tx: &impl SamlLogoutTx, flow: &Flow) -> Result<Reply> {
     if let Some(end) = &flow.finish.response {
         let current = end.peer.current(core, tx)?;
         let target = current.endpoint(end.post)?;
@@ -353,13 +421,16 @@ fn finish_reply(core: &Core, tx: &Tx<'_>, flow: &Flow) -> Result<Reply> {
             end.post,
             "SAMLResponse",
         )
-    } else if let Some(uri) = &flow.finish.redirect {
-        Ok(Reply::Redirect(uri.clone()))
+    } else if let Some(binding) = &flow.finish.return_binding
+        && flow.finish.redirect.as_deref() == Some(binding.rendered_uri.as_str())
+        && binding.allowed_by(tx.client_record(&binding.client_id)?.as_ref())
+    {
+        Ok(Reply::Redirect(binding.rendered_uri.clone()))
     } else {
         Ok(Reply::LogoutPage(flow.status(core)))
     }
 }
-fn lookup(tx: &Tx<'_>, ticket: &str) -> Result<Flow> {
+fn lookup(tx: &impl SamlLogoutTx, ticket: &str) -> Result<Flow> {
     if ticket.len() != 43
         || !ticket
             .bytes()
@@ -367,201 +438,227 @@ fn lookup(tx: &Tx<'_>, ticket: &str) -> Result<Flow> {
     {
         return Err(Error::missing("SAML logout not found"));
     }
-    tx.get::<Flow>("saml_logout_flows", &digest(ticket))?
+    tx.flow_record(&digest(ticket))?
         .filter(|f| f.expires_at + 86400 > now())
         .ok_or_else(|| Error::missing("SAML logout expired"))
 }
-impl Core {
-    pub fn saml_logout_status(&self, ticket: &str) -> Result<Value> {
-        self.store.read(|tx| Ok(lookup(tx, ticket)?.status(self)))
-    }
-    pub fn saml_logout_next(&self, ticket: &str) -> Result<Reply> {
-        self.store.write(|tx|{
-            let mut flow=lookup(tx,ticket)?;
-            while flow.position<flow.targets.len() {
-                if flow.expires_at<=now() {
-                    flow.failed+=flow.targets.len()-flow.position;flow.position=flow.targets.len();flow.pending=None;break;
-                }
-                let target=&flow.targets[flow.position];
-                let current=target.peer.current(self,tx);
-                if current.is_err() || flow.pending.as_ref().is_some_and(|p|p.deadline<=now()) {
-                    flow.failed+=1;flow.position+=1;flow.pending=None;continue;
-                }
-                let current=current?;
-                if flow.pending.is_none() {
-                    let post=current.redirect.is_none();
-                    let Ok(endpoint)=current.endpoint(post) else {flow.failed+=1;flow.position+=1;continue;};
-                    let id=format!("_{}",crypto::id());
-                    let xml=format!(r#"<samlp:LogoutRequest xmlns:samlp="{PROTOCOL}" xmlns:saml="{ASSERTION}" ID="{id}" Version="2.0" IssueInstant="{}" Destination="{}" NotOnOrAfter="{}" Reason="urn:oasis:names:tc:SAML:2.0:logout:user"><saml:Issuer>{}</saml:Issuer><saml:NameID Format="{}" NameQualifier="{}" SPNameQualifier="{}">{}</saml:NameID><samlp:SessionIndex>{}</samlp:SessionIndex></samlp:LogoutRequest>"#,wire::timestamp(now())?,escape(endpoint),wire::timestamp((now()+300).min(flow.expires_at))?,escape(&current.issuer),escape(&target.format),escape(&current.name_qualifier),escape(&current.sp_qualifier),escape(&target.name_id),escape(&target.index));
-                    flow.pending=Some(Pending{id,xml,post,deadline:(now()+30).min(flow.expires_at)});
-                }
-                let pending=flow.pending.as_ref().unwrap();
-                match current.message(&pending.xml,Some(&flow.id),pending.post,"SAMLRequest") {
-                    Ok(reply)=>{tx.put("saml_logout_flows",&digest(ticket),&flow)?;return Ok(reply);}
-                    Err(_)=>{flow.failed+=1;flow.position+=1;flow.pending=None;}
-                }
-            }
-            tx.put("saml_logout_flows",&digest(ticket),&flow)?;
-            finish_reply(self,tx,&flow)
-        })
-    }
-    pub(crate) fn saml_logout_response_in(
-        &self,
-        tx: &Tx<'_>,
-        peer: Peer,
-        raw: &str,
-        post: bool,
-    ) -> Result<Reply> {
-        let current = peer.current(self, tx)?;
-        let response = wire::receive_logout_response(
-            &current.trusted,
-            &current.callback,
-            &current.peer,
-            raw,
-            post,
-        )?;
-        let mut flow = lookup(tx, &response.relay_state)?;
-        let pending = flow
-            .pending
-            .as_ref()
-            .ok_or_else(|| Error::conflict("SAML logout response already consumed"))?;
-        if flow.expires_at <= now()
-            || pending.deadline <= now()
-            || pending.id != response.request
-            || flow
-                .targets
-                .get(flow.position)
-                .is_none_or(|t| t.peer != peer)
-        {
-            return Err(Error::forbidden());
-        }
-        if response.success {
-            flow.confirmed += 1;
-        } else {
-            flow.failed += 1;
-        }
-        flow.position += 1;
-        flow.pending = None;
-        tx.put("saml_logout_flows", &digest(&flow.id), &flow)?;
-        audit(tx, "saml-peer", "saml.logout.confirmation", peer.id())?;
-        Ok(Reply::Redirect(flow_url(self, &flow.id)))
-    }
-    pub fn saml_source_logout(&self, id: &str, raw: &str, post: bool) -> Result<Reply> {
-        self.store.write(|tx| {
-            let source = tx
-                .get::<Source>("sources", id)?
-                .filter(|s| s.enabled)
-                .ok_or_else(Error::forbidden)?;
-            let fingerprint = source.fingerprint()?;
-            let peer = Peer::Source {
-                id: id.into(),
-                fingerprint: fingerprint.clone(),
-            };
-            let current = peer.current(self, tx)?;
-            if wire::is_response(raw) {
-                return self.saml_logout_response_in(tx, peer, raw, post);
-            }
-            current.endpoint(post)?;
-            let request = wire::receive_logout(
-                &current.trusted,
-                &current.callback,
-                &current.peer,
-                &current.name_qualifier,
-                &current.sp_qualifier,
-                raw,
-                post,
-            )?;
-            let replay = digest(&format!("source/{id}\0{}", request.id));
-            if tx
-                .get::<u64>("saml_replays", &replay)?
-                .is_some_and(|e| e > now())
-            {
-                return Err(Error::conflict("SAML logout request replay"));
-            }
-            let format = source.saml.as_ref().unwrap().name_id_format.uri();
-            if request.format.as_deref().is_some_and(|f| f != format) {
-                return Err(Error::forbidden());
-            }
-            let mut sessions = BTreeSet::new();
-            let mut found = BTreeSet::new();
-            for (sid, upstream) in
-                tx.list::<crate::source::saml::UpstreamSession>("saml_source_sessions")?
-            {
-                if upstream.subject.as_deref() != Some(&request.name_id)
-                    || !request.indices.contains(&upstream.index)
-                    || upstream.expires_at.is_some_and(|at| at <= now())
-                {
-                    continue;
-                }
-                if let Some(session) = tx.get::<Session>("sessions", &sid)?
-                    && session.expires_at > now()
-                    && session
-                        .identity
-                        .source
-                        .as_ref()
-                        .is_some_and(|s| s.id == id && s.fingerprint == fingerprint)
-                {
-                    sessions.insert(sid);
-                    found.insert(upstream.index);
-                }
-            }
-            if found.len() != request.indices.len() {
-                return Err(Error::forbidden());
-            }
-            if tx.list::<u64>("saml_replays")?.len() >= 20000 {
-                return Err(Error::conflict("Too many SAML requests"));
-            }
-            tx.put("saml_replays", &replay, &(now() + 630))?;
-            let mut fronts = BTreeSet::new();
-            for sid in &sessions {
-                if let Some(mut session) = tx.get::<Session>("sessions", sid)? {
-                    fronts.extend(crate::session_protocol::frontchannel_urls(
-                        tx,
-                        sid,
-                        &self.config.issuer,
-                    )?);
-                    session.revoked = true;
-                    tx.put("sessions", sid, &session)?;
-                    crate::logout::queue_session(tx, sid)?;
-                    crate::ssf::enqueue(
-                        tx,
-                        &session.identity.user_id,
-                        crate::ssf::SESSION_REVOKED,
-                        "",
-                    )?;
-                    audit(tx, &session.identity.user_id, "saml.source.logout", id)?;
-                }
-            }
-            begin(
-                self,
-                tx,
-                &sessions,
-                Finish {
-                    redirect: None,
-                    response: Some(ReturnResponse {
-                        peer,
-                        request,
-                        post,
-                    }),
-                    frontchannel_urls: fronts,
-                },
-            )
-        })
-    }
+pub(crate) fn status(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    ticket: &str,
+) -> Result<Value> {
+    Ok(lookup(tx, ticket)?.status(core))
 }
 
-pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, flow) in tx.maintenance_page::<Flow>("saml_logout_flows")? {
-        if flow.expires_at + 86400 <= at {
-            tx.delete("saml_logout_flows", &id)?;
+pub(crate) fn next(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    ticket: &str,
+) -> Result<Reply> {
+    let mut flow = lookup(tx, ticket)?;
+    while flow.position < flow.targets.len() {
+        if flow.expires_at <= now() {
+            flow.failed += flow.targets.len() - flow.position;
+            flow.position = flow.targets.len();
+            flow.pending = None;
+            break;
+        }
+        let target = &flow.targets[flow.position];
+        let current = target.peer.current(core, tx);
+        if current.is_err() || flow.pending.as_ref().is_some_and(|p| p.deadline <= now()) {
+            flow.failed += 1;
+            flow.position += 1;
+            flow.pending = None;
+            continue;
+        }
+        let current = current?;
+        if flow.pending.is_none() {
+            let post = current.redirect.is_none();
+            let Ok(endpoint) = current.endpoint(post) else {
+                flow.failed += 1;
+                flow.position += 1;
+                continue;
+            };
+            let id = format!("_{}", crypto::id());
+            let xml = format!(
+                r#"<samlp:LogoutRequest xmlns:samlp="{PROTOCOL}" xmlns:saml="{ASSERTION}" ID="{id}" Version="2.0" IssueInstant="{}" Destination="{}" NotOnOrAfter="{}" Reason="urn:oasis:names:tc:SAML:2.0:logout:user"><saml:Issuer>{}</saml:Issuer><saml:NameID Format="{}" NameQualifier="{}" SPNameQualifier="{}">{}</saml:NameID><samlp:SessionIndex>{}</samlp:SessionIndex></samlp:LogoutRequest>"#,
+                wire::timestamp(now())?,
+                escape(endpoint),
+                wire::timestamp((now() + 300).min(flow.expires_at))?,
+                escape(&current.issuer),
+                escape(&target.format),
+                escape(&current.name_qualifier),
+                escape(&current.sp_qualifier),
+                escape(&target.name_id),
+                escape(&target.index)
+            );
+            flow.pending = Some(Pending {
+                id,
+                xml,
+                post,
+                deadline: (now() + 30).min(flow.expires_at),
+            });
+        }
+        let pending = flow.pending.as_ref().unwrap();
+        match current.message(&pending.xml, Some(&flow.id), pending.post, "SAMLRequest") {
+            Ok(reply) => {
+                tx.put_flow(&digest(ticket), &flow)?;
+                return Ok(reply);
+            }
+            Err(_) => {
+                flow.failed += 1;
+                flow.position += 1;
+                flow.pending = None;
+            }
         }
     }
-    for (sid, ticket) in tx.maintenance_page::<String>("saml_logout_sessions")? {
-        if tx
-            .get::<Flow>("saml_logout_flows", &digest(&ticket))?
-            .is_none()
+    tx.put_flow(&digest(ticket), &flow)?;
+    finish_reply(core, tx, &flow)
+}
+
+pub(crate) fn response_in(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    peer: Peer,
+    raw: &str,
+    post: bool,
+) -> Result<Reply> {
+    let current = peer.current(core, tx)?;
+    let response = wire::receive_logout_response(
+        &current.trusted,
+        &current.callback,
+        &current.peer,
+        raw,
+        post,
+    )?;
+    let mut flow = lookup(tx, &response.relay_state)?;
+    let pending = flow
+        .pending
+        .as_ref()
+        .ok_or_else(|| Error::conflict("SAML logout response already consumed"))?;
+    if flow.expires_at <= now()
+        || pending.deadline <= now()
+        || pending.id != response.request
+        || flow
+            .targets
+            .get(flow.position)
+            .is_none_or(|t| t.peer != peer)
+    {
+        return Err(Error::forbidden());
+    }
+    if response.success {
+        flow.confirmed += 1;
+    } else {
+        flow.failed += 1;
+    }
+    flow.position += 1;
+    flow.pending = None;
+    tx.put_flow(&digest(&flow.id), &flow)?;
+    tx.audit_confirmation(peer.id())?;
+    Ok(Reply::Redirect(flow_url(core, &flow.id)))
+}
+
+pub(crate) fn source_logout(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    id: &str,
+    raw: &str,
+    post: bool,
+) -> Result<Reply> {
+    let source = tx
+        .source_record(id)?
+        .filter(|s| s.enabled)
+        .ok_or_else(Error::forbidden)?;
+    let fingerprint = source.fingerprint()?;
+    let peer = Peer::Source {
+        id: id.into(),
+        fingerprint: fingerprint.clone(),
+    };
+    let current = peer.current(core, tx)?;
+    if wire::is_response(raw) {
+        return response_in(core, tx, peer, raw, post);
+    }
+    current.endpoint(post)?;
+    let request = wire::receive_logout(
+        &current.trusted,
+        &current.callback,
+        &current.peer,
+        &current.name_qualifier,
+        &current.sp_qualifier,
+        raw,
+        post,
+    )?;
+    let replay = digest(&format!("source/{id}\0{}", request.id));
+    if tx.replay_record(&replay)?.is_some_and(|e| e > now()) {
+        return Err(Error::conflict("SAML logout request replay"));
+    }
+    let format = source.saml.as_ref().unwrap().name_id_format.uri();
+    if request.format.as_deref().is_some_and(|f| f != format) {
+        return Err(Error::forbidden());
+    }
+    let mut sessions = BTreeSet::new();
+    let mut found = BTreeSet::new();
+    for (sid, upstream) in tx.upstream_sessions()? {
+        if upstream.subject.as_deref() != Some(&request.name_id)
+            || !request.indices.contains(&upstream.index)
+            || upstream.expires_at.is_some_and(|at| at <= now())
         {
-            tx.delete("saml_logout_sessions", &sid)?;
+            continue;
+        }
+        // pin_retired is set only by the certificate-pin write that revokes the
+        // row. Any other revoked row keeps the old fingerprint unmatched, so a
+        // current signer cannot spend an old request through it.
+        if let Some(session) = tx.session_record(&sid)?
+            && session.expires_at > now()
+            && session.identity.source.as_ref().is_some_and(|linked| {
+                linked.id == id
+                    && (linked.fingerprint == fingerprint
+                        || (session.revoked && linked.pin_retired))
+            })
+        {
+            sessions.insert(sid);
+            found.insert(upstream.index);
+        }
+    }
+    if found.len() != request.indices.len() {
+        return Err(Error::forbidden());
+    }
+    if tx.replay_count()? >= 20000 {
+        return Err(Error::conflict("Too many SAML requests"));
+    }
+    tx.put_replay(&replay, now() + 630)?;
+    let mut fronts = BTreeSet::new();
+    for sid in &sessions {
+        if let Some(session) = tx.session_record(sid)? {
+            fronts.extend(tx.revoke_source_session(sid, session, core.logout_issuer(), id)?);
+        }
+    }
+    begin(
+        core,
+        tx,
+        &sessions,
+        Finish {
+            redirect: None,
+            return_binding: None,
+            response: Some(ReturnResponse {
+                peer,
+                request,
+                post,
+            }),
+            frontchannel_urls: fronts,
+        },
+    )
+}
+
+pub(crate) fn cleanup(tx: &impl SamlLogoutTx, at: u64) -> Result<()> {
+    for (id, flow) in tx.flow_page()? {
+        if flow.expires_at + 86400 <= at {
+            tx.delete_flow(&id)?;
+        }
+    }
+    for (sid, ticket) in tx.ticket_page()? {
+        if tx.flow_record(&digest(&ticket))?.is_none() {
+            tx.delete_session_ticket(&sid)?;
         }
     }
     Ok(())

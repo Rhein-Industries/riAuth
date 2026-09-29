@@ -1,53 +1,22 @@
 //! Pinned JOSE trust. No token-controlled URL is ever fetched.
+pub use crate::model::client_config::{ClientAuthMethod, MachineTrust};
+pub use crate::model::jwk::{PublicJwk, PublicJwks};
 use crate::{
     crypto::{digest, now},
     error::{Error, Result},
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
 pub const ASSERTION_TYPE: &str = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 pub const JWT_GRANT: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ClientAuthMethod {
-    None,
-    ClientSecretBasic,
-    ClientSecretPost,
-    PrivateKeyJwt,
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct PublicJwks {
-    pub keys: Vec<PublicJwk>,
-}
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct PublicJwk {
-    pub kty: String,
-    pub kid: String,
-    pub alg: String,
-    #[serde(rename = "use", skip_serializing_if = "Option::is_none")]
-    pub usage: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub key_ops: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub n: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub e: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub crv: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub y: Option<String>,
+/// Assertion replay state in the transaction that consumes the assertion.
+pub trait AssertionTx {
+    fn assertion_replay_expiry(&self, assertion_id: &str) -> Result<Option<u64>>;
+    fn record_assertion_replay(&self, assertion_id: &str, expires_at: u64) -> Result<()>;
 }
 
 impl PublicJwk {
@@ -161,6 +130,7 @@ impl PublicJwks {
 
     /// Verify a SET's signature without claim validation, only to select the
     /// RFC 8935 delivery error after normal stream validation has failed.
+    #[cfg(feature = "platform")]
     pub(crate) fn verify_set_signature(&self, token: &str) -> bool {
         let Ok(header) = jsonwebtoken::decode_header(token) else {
             return false;
@@ -232,17 +202,26 @@ impl PublicJwks {
     }
 }
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct MachineTrust {
-    pub issuer: String,
-    pub subject: String,
-    pub jwks: PublicJwks,
-    pub scopes: BTreeSet<String>,
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_verify_claims(token: &str) {
+    use std::sync::OnceLock;
+
+    // The same pinned-key verification used by client/workload assertions.
+    // Only JWT-shaped inputs enter the bounded 16 KiB production verifier.
+    if token.len() > 16_384 || token.bytes().filter(|b| *b == b'.').count() != 2 {
+        return;
+    }
+    static KEYS: OnceLock<PublicJwks> = OnceLock::new();
+    let keys = KEYS.get_or_init(|| {
+        serde_json::from_str(include_str!("jose/fixtures/q07-public-jwks.json"))
+            .expect("static Q07 public JWK fixture")
+    });
+    let _ = keys.verify(token, "https://q07.example.test", "q07-client");
+    let _ = keys.verify_set(token, "https://q07.example.test", "q07-client");
 }
 
 /// Consume a short-lived assertion inside the same transaction as its result.
-pub fn consume_assertion(tx: &Tx<'_>, claims: &Value, namespace: &str) -> Result<()> {
+pub fn consume_assertion(tx: &impl AssertionTx, claims: &Value, namespace: &str) -> Result<()> {
     let at = now();
     let iat = claims["iat"]
         .as_u64()
@@ -260,11 +239,75 @@ pub fn consume_assertion(tx: &Tx<'_>, claims: &Value, namespace: &str) -> Result
         ));
     }
     let key = digest(&format!("{namespace}\0{}\0{jti}", claims["iss"]));
-    if tx
-        .get::<u64>("assertion_replays", &key)?
-        .is_some_and(|e| e > at)
-    {
+    if tx.assertion_replay_expiry(&key)?.is_some_and(|e| e > at) {
         return Err(Error::bad("Assertion already used"));
     }
-    tx.put("assertion_replays", &key, &exp)
+    tx.record_assertion_replay(&key, exp)
+}
+
+#[cfg(test)]
+mod signed_claim_tests {
+    use super::PublicJwks;
+
+    #[test]
+    fn pinned_signature_issuer_audience_expiry_and_set_rules() {
+        let keys: PublicJwks =
+            serde_json::from_str(include_str!("jose/fixtures/q07-public-jwks.json")).unwrap();
+        keys.validate().unwrap();
+        let verify = |token: &str| keys.verify(token, "https://q07.example.test", "q07-client");
+        let valid = include_str!("../fuzz/corpus/parsers/jose-signed-valid-claims");
+        assert_eq!(verify(valid).unwrap()["sub"], "q07-subject");
+        for (name, token) in [
+            (
+                "issuer",
+                include_str!("../fuzz/corpus/parsers/jose-signed-wrong-issuer"),
+            ),
+            (
+                "audience",
+                include_str!("../fuzz/corpus/parsers/jose-signed-wrong-audience"),
+            ),
+            (
+                "expiry",
+                include_str!("../fuzz/corpus/parsers/jose-signed-expired"),
+            ),
+            (
+                "key",
+                include_str!("../fuzz/corpus/parsers/jose-signed-unknown-kid"),
+            ),
+            (
+                "embedded-key",
+                include_str!("../fuzz/corpus/parsers/jose-signed-embedded-jwk"),
+            ),
+            (
+                "signature",
+                include_str!("../fuzz/corpus/parsers/jose-bad-signature"),
+            ),
+            (
+                "claims",
+                include_str!("../fuzz/corpus/parsers/jose-malformed-claims"),
+            ),
+            (
+                "set-no-exp",
+                include_str!("../fuzz/corpus/parsers/jose-signed-set-no-exp"),
+            ),
+        ] {
+            assert!(verify(token).is_err(), "{name}");
+        }
+        // Subject binding belongs to the authenticated client/workload path.
+        assert_eq!(
+            verify(include_str!(
+                "../fuzz/corpus/parsers/jose-signed-wrong-subject"
+            ))
+            .unwrap()["sub"],
+            "attacker"
+        );
+        assert!(
+            keys.verify_set(
+                include_str!("../fuzz/corpus/parsers/jose-signed-set-no-exp"),
+                "https://q07.example.test",
+                "q07-client"
+            )
+            .is_ok()
+        );
+    }
 }

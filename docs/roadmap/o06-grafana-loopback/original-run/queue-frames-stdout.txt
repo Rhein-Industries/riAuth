@@ -1,0 +1,21 @@
+EXPR riauth_queue_pending frames 6
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'logout_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'mail_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'offboard_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_deactivations'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_pending', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'ssf_deliveries'} [1790707706525, 0]
+EXPR riauth_queue_failed frames 6
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'logout_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'mail_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'offboard_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_deactivations'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_failed', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'ssf_deliveries'} [1790707706525, 0]
+EXPR riauth_queue_oldest_pending_seconds frames 6
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'logout_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'mail_deliveries'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'offboard_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_deactivations'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'provisioning_jobs'} [1790707706525, 0]
+  {'__name__': 'riauth_queue_oldest_pending_seconds', 'instance': 'host.docker.internal:59691', 'job': 'riauth', 'queue': 'ssf_deliveries'} [1790707706525, 0]

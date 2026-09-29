@@ -1,0 +1,556 @@
+{
+  "schema": "riauth.acceptance-evidence/v1",
+  "d05_status": "not_passed",
+  "d05_passed": false,
+  "snapshot_date": "2026-09-29",
+  "prior_snapshot": "09e68460d7836be8227568fbc84d8516d2d23e84",
+  "acceptance_rule": "A status other than not_passed is outside this slice. This file does not authorize a pass.",
+  "read_on": "2026-09-29",
+  "assignment": {
+    "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+    "task_id": "6a2381ab-0f2f-48c6-adf9-8115b78cc143",
+    "worktree_id": "53b2f5d3-0454-4348-9db7-0ed7d55556a5"
+  },
+  "source": {
+    "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24",
+    "branch": "roadmap/d05-acceptance-evidence-wave24",
+    "commit": "328a3ac9e9522ac5984783a653ca36d2e53bc07b",
+    "named_task_head": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
+    "note": "This D05 branch was not reset. The snapshot is committed on top of 328a3ac. Accepted files were read from the ledger head and were not edited."
+  },
+  "accepted_integration": {
+    "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted",
+    "branch": "roadmap/integration-accepted",
+    "ledger_head": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "ledger_head_string": "0312427",
+    "named_task_head": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
+    "checkout_read": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "checkout_note": "Read at the same commit as the ledger head. The ledger stores the seven-character prefix 0312427. This slice did not edit, merge, or push that checkout.",
+    "edited_by_this_slice": false
+  },
+  "ledger": {
+    "path": "/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json",
+    "integration_head": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "integration_head_string": "0312427",
+    "head_matches_this_branch_base": false,
+    "integration_status": "local_commits_only_no_merge_to_main",
+    "reviewed_slices": 456,
+    "validation_checks": 436,
+    "d05_integration_commit": "09e68460d7836be8227568fbc84d8516d2d23e84",
+    "d05_status": "task_in_progress",
+    "open_checks": 17
+  },
+  "cargo_run_by_this_slice": false,
+  "classes": {
+    "source-only": "File in the tree, or a recorded run of riAuth against itself or a disposable redb or PostgreSQL cluster. A passing command stays source-only.",
+    "local peer": "Third-party program on this host, loopback only. OpenLDAP ldapsearch and FreeRADIUS radclient. Not a named tenant or deployment.",
+    "release/deployment": "Release-workflow artifact, an installed copy, or a rehearsal outside disposable fixtures."
+  },
+  "class_map_from_09e6846": {
+    "source-only": "source-only",
+    "accepted-head local": "source-only",
+    "ancestor-local": "source-only, except the FreeRADIUS radclient run which is local peer",
+    "actual peer/tenant": "no completed named tenant was recorded",
+    "release artifacts": "release/deployment",
+    "missing measurements": "gap, not a passing evidence kind"
+  },
+  "newer_slices": [
+    {
+      "code": "W02",
+      "evidence": "source-only",
+      "integration_commit": "a3ccbf1dd47a8e25f35ad8d5d505768f32c1b942",
+      "run_head": "a3ccbf1",
+      "result": "pass; existing consent 8/8, new TOTP consent 1/1",
+      "category_effect": "workflows stays not_passed",
+      "remaining": "Browser-initiated and remembered-consent adapters, TOTP-only and recovery-code reauthentication remain unsupported."
+    },
+    {
+      "code": "A03",
+      "evidence": "source-only",
+      "integration_commits": [
+        "97511e4099d0824c0ad069a89168210036821a42",
+        "3aa997b4db68f6f2a4f3ceca4ba0074e58bb1da2",
+        "8704bb88dbc650cc45e675fc589196efabf2827c",
+        "1535cdcfce622f9422f59572d7f6e9b31c597e56"
+      ],
+      "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc", "ee88af0"],
+      "result": "probe recheck 1/1, preflight 1/1, credential write recheck 2/2, source configuration boundary 1/1, browser source finish 1/1",
+      "source_configuration_command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test source_boundary -- --quiet; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short",
+      "source_configuration_test": "source_configuration_keeps_scoped_receipt_revision_and_audit_order",
+      "source_finish_command": "CARGO_BUILD_JOBS=2 cargo test --locked --offline --features test-support --test identity browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole -- --test-threads=1; python3 scripts/check-module-boundaries.py; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "source_finish_test": "browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole",
+      "source_finish_commit": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
+      "category_effect": "security and administration stay not_passed",
+      "remaining": "Wider A03 module-boundary work remains. Open check 7 still says seven protocol files refer to Core and seven refer to storage, and cloud plan, apply, and snapshot cleanup remain in the protocol surface."
+    },
+    {
+      "code": "Q04",
+      "evidence": "local peer",
+      "integration_commit": "fcba8a5e81037edb365c02c291b512576817e920",
+      "run_heads": ["1caa093", "fcba8a5"],
+      "command": "LDAPSEARCH=/opt/homebrew/opt/openldap/bin/ldapsearch scripts/test-ldap-provider.sh",
+      "result": "OpenLDAP ldapsearch 2.7.1 STARTTLS 1/1, then LDAPS+STARTTLS ignored peer test 1/1",
+      "test": "ldapsearch_starttls_bind_scoped_paging_disable_and_revoke",
+      "category_effect": "interoperability stays not_passed",
+      "remaining": "No Active Directory, named production directory application, SAML service provider, hardware NAS, or supplicant."
+    },
+    {
+      "code": "O03",
+      "evidence": "source-only",
+      "integration_commit": "7e07e748a80b9cb39ffed3da8ce90690d72ab18c",
+      "run_head": "7e07e748",
+      "command": "cargo test --locked --offline --lib node_security:: ; RIAUTH_PG_TEST_TARGET=node_security_postgres bash scripts/test-postgres.sh",
+      "result": "pass; redb 2/2, disposable PostgreSQL separate-process 1/1",
+      "category_effect": "availability stays not_passed",
+      "later_run_heads": ["acf1d7c", "75def67"],
+      "later_result": "acf1d7c logout lease focused pass and full operations 11/15; 75def67 redb 4/4 and disposable PostgreSQL 3/3",
+      "remaining": "acf1d7c records one logout lease and leaves other shared-job families open. Distributed rate limit, peer health, policy and trust and key agreement, native TLS, deployment, rollback, and real multi-node evidence remain open. The full operations suite at acf1d7c was 11/15."
+    },
+    {
+      "code": "S04",
+      "evidence": "source-only",
+      "integration_commit": "cf4529e6bbd856add247bec43a7b70d793fa2add",
+      "earlier_run_head": "e3c26eb",
+      "earlier_result": "disposable PostgreSQL reviewed-membership suite 6/6 including fenced standby promotion",
+      "run_heads": ["60e69f3", "ef496c8", "cf4529e"],
+      "command": "cargo test --locked --offline --test state_reconciliation -- --test-threads=8 --skip desired_state_client_and_password_disables_require_review; RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres ./scripts/test-postgres.sh",
+      "result": "pass; redb 11/11 with that skip, disposable PostgreSQL 9/9 including encrypted reopen and fenced promotion",
+      "test": "postgres_z_fenced_standby_promotion_replays_reviewed_membership",
+      "category_effect": "administration and availability stay not_passed",
+      "remaining": "Broader dependency families and real deployment evidence remain open. No leader election, recovery objective, failback, partition, or PITR. Open check 14 still says PostgreSQL 3/3 and that promotion and encrypted PostgreSQL remain open."
+    },
+    {
+      "code": "G05",
+      "evidence": "source-only",
+      "integration_commit": "cf827a9ee103672b329907a433fb96ac868fe178",
+      "run_head": "cf827a9",
+      "status": "task_in_progress",
+      "command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test g05_reference_oidc -- --nocapture; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git show --format= --check HEAD; git status --short",
+      "result": "pass; synthetic reference OIDC rehearsal 1/1 with eight asserted case IDs",
+      "test": "local_reference_rp_cutover_rehearsal",
+      "test_source_sha256": "64e43530f6c6e69c2fe4f7f9d45fabb2cfb5b1843a6b022eec2a418008602ba6",
+      "cases": ["G05-01", "G05-02", "G05-03", "G05-04", "G05-05", "G05-06", "G05-07", "G05-08"],
+      "category_effect": "migration stays not_passed",
+      "remaining": "No real Authentik export, named relying party, browser or network callback, production route, or rollback sign-in. The page says this local case does not mark G05 complete."
+    },
+    {
+      "code": "O06",
+      "evidence": "source-only",
+      "run_heads": ["7949aeb", "644242f", "9a575d5"],
+      "result": "offboarding diagnostics focused 1/1; an earlier full offboarding run failed 24/30; reconciliation diagnostics 1/1; deactivation diagnostics 2/2 and later offboarding 31/31",
+      "category_effect": "administration stays not_passed",
+      "remaining": "Dashboards, connector lag, node mismatch, storage and key pressure, mail, doctor and readiness, a production backlog deadline, an Essentials redacted deactivation aggregate, and a deactivation value size cap remain open. O06 status stays task_in_progress."
+    },
+    {
+      "code": "Q06",
+      "evidence": "source-only",
+      "integration_commits": ["58e5ef3c0b15a8ab2e76e423bb6c592982041dc6", "03124272a6cfe14ac48227c504cc896c2f11d9aa"],
+      "command": "(cd tools/browser && npx playwright test invitation-password.spec.js --reporter=line); node --check tools/browser/invitation-password.spec.js; git diff --check b77e637..a4d0a1f",
+      "result": "pass; Chromium, Firefox, and WebKit password invitation 3/3",
+      "passkey_command": "(cd tools/browser && npx playwright test invitation-passkey-shim.spec.js --reporter=line); node --check tools/browser/invitation-passkey-shim.spec.js; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "passkey_result": "pass; simulated passkey invitation Chromium/Firefox/WebKit 3/3",
+      "category_effect": "usability and workflows stay not_passed",
+      "remaining": "The passkey shim sets user verification itself. It does not prove browser-native, hardware, synced, phone, mobile OS, screen reader, or external mailbox behavior."
+    },
+    {
+      "code": "W07",
+      "evidence": "source-only",
+      "integration_commit": "3cfe28b592f0167d93ad8e79e7e3a26ab0927233",
+      "run_heads": ["f911e85", "3cfe28b"],
+      "result": "Platform extension_gate 9/9 then 10/10; Essentials 3/3. Guest label copy is capped at 32 bytes.",
+      "category_effect": "workflows and security stay not_passed",
+      "remaining": "Pinned Wasmi has no safe wall-clock interruption for a pure guest call. The native host and other custom graphs remain held."
+    },
+    {
+      "code": "Q11",
+      "evidence": "source-only",
+      "integration_commit": "b759216",
+      "command": "python3 -m unittest discover -s tests -p test_spdx_sbom.py -v; python3 -m unittest discover -s tests -p test_release_evidence.py -v; python3 -m unittest discover -s tests -p test_installed_release_gate.py -v; python3 scripts/check-release-evidence.py; bash -n scripts/package-release.sh; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "result": "pass; SPDX 33/33, release evidence 14/14, installed gate 6/6; source audit reports no release execution or produced release SBOM",
+      "category_effect": "security, footprint, and recovery stay not_passed",
+      "remaining": "No signature, release SBOM from a packaged artifact run, independent review record, published asset set for a named tag, or Linux ARM64 execution."
+    }
+  ],
+  "categories": [
+    {
+      "id": "usability",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "A02 E04-E11 browser and admin journeys, assistive technology, and an independent new-user completion.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/essentials-guide.md; docs/platform-guide.md",
+          "shows": "Both guides say a human completion of the documented tasks on this revision needs a run and that the page does not supply one."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "d039306",
+          "command": "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --locked --example portal_fixture; CARGO_TARGET_DIR=target ./node_modules/.bin/playwright test multi-authenticator.spec.js --project=chromium --project=firefox --project=webkit --reporter=line; node --check tools/browser/multi-authenticator.spec.js; python3 scripts/check-docs.py; git diff 9065f59..HEAD --check",
+          "result": "pass; headless two-passkey journey Chromium/Firefox/WebKit 3/3",
+          "shows": "Playwright WebAuthn shims and a CSS viewport. Q06 ledger note says hardware, phone, real mobile OS, and a screen reader are outside that run."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "183915d",
+          "command": "U01 isolated two-node PostgreSQL bootstrap and Playwright setup.spec.js across Chromium/Firefox/WebKit",
+          "result": "pass; PG 1, browsers 9",
+          "shows": "Ledger command field is prose, not a shell line re-run by this slice."
+        },
+        {
+          "class": "ancestor-local",
+          "artifact": "/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/u01/evidence.txt",
+          "run_head": "14de533",
+          "shows": "2026-09-28 Cua.ai Driver session reached a backup Touch ID prompt. Backup completion was not claimed."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No 320/768/1440, 200% text, keyboard-only, screen-reader, physical key, or independent new-user result at 52df9a3."
+        }
+      ],
+      "blockers": [
+        "Guides withhold the human-completion claim.",
+        "Browser runs are ancestor-local shims.",
+        "U10 ledger note at integration commit 5892563 records a focused 320px sign-in and leaves physical mobile and a real screen reader open."
+      ]
+    },
+    {
+      "id": "workflows",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "A02 P01 versioned workflows and G05-G06 bound proofs.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/workflows.md",
+          "commit": "6d9b72bc30523d4310c28ac9348ab7fcd7a6ad46",
+          "shows": "Describes configured consent and eight enrollment shapes. Description is not a run at 52df9a3."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "6d9b72b",
+          "command": "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --locked --test workflow_configured_consent -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-module-boundaries.py; git diff bc3c324..HEAD --check",
+          "result": "pass; configured consent suite 8/8",
+          "shows": "52df9a3 does not change workflow tests. The suite is repeated at a3ccbf1, together with the TOTP consent test."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No reviewed-pin concurrency count on both backends and no operator completion at accepted HEAD."
+        }
+      ],
+      "blockers": [
+        "Ledger open check: unfinished W02 configured shapes, invitation, browser consent, and custom stages.",
+        "Ledger open check: W05 pin lacks multi-party approval, safe resume, environment binding, and end-to-end concurrency on both backends."
+      ]
+    },
+    {
+      "id": "administration",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "A02 E12-E14 and P14-P16 administration with G07 management equivalence.",
+      "records": [
+        {
+          "class": "accepted-head local",
+          "run_head": "52df9a3",
+          "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh; bash -n scripts/test-postgres.sh; python3 scripts/check-docs.py; git diff 6d9b72b..HEAD --check",
+          "result": "pass; disposable PostgreSQL suite 5/5, TLSv1.3 plus aes256gcm-v1 sealed record and encrypted race/reopen",
+          "tests": [
+            "postgres_unrelated_revision_still_applies_reviewed_membership",
+            "postgres_affected_membership_user_and_policy_deny_stale_apply",
+            "postgres_reviewed_membership_reopen_and_receipt_replay",
+            "postgres_reviewed_membership_http_execute_race_replays_after_reopen",
+            "postgres_encrypted_reviewed_membership_replays_across_reopen"
+          ]
+        },
+        {
+          "class": "source-only",
+          "artifact": "docs/testing.md at 6d9b72b versus docs/testing.md and docs/reviewed-group-memberships.md at 52df9a3",
+          "shows": "6d9b72b says the target does not open an encrypted PostgreSQL connection. 52df9a3 documents the TLS and aes256gcm-v1 test. Those sentences are not in the 6d9b72b tree."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "4357f6b",
+          "command": "cargo check; cargo test --test admin_ui",
+          "result": "pass; six admin UI cases",
+          "shows": "Later ancestor-local admin_ui checks include 91f66d6, 74ee172, 567ea3e, dbcdce2, d790f69, and 5e47d00. None is 52df9a3."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No human completion of Applications, People, Groups, or Security administration at 52df9a3."
+        }
+      ],
+      "blockers": [
+        "Accepted-head suite is reviewed group membership on a disposable primary.",
+        "e3c26eb records fenced standby promotion for one reviewed membership. That drill does not complete a human administration journey.",
+        "Ledger open check: advanced client, user, group, agent, federation, key, session, device, and recovery resources remain outside exact multi-party approval."
+      ]
+    },
+    {
+      "id": "interoperability",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "EG01 named peer or tenant, plus Q04 Test real peers.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/recipes/; docs/capability-matrix.md",
+          "shows": "Recipes name in-tree or loopback fixtures: axum relying party, xmlsec1, disposable OpenLDAP, in-process upstream OIDC, oneshot inbound SCIM, in-process SAML source, second loopback riAuth for outbound SCIM."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "38f82fe",
+          "command": "RADCLIENT=/private/tmp/riauth-fr-prefix/bin/radclient CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-radius.sh; bash -n scripts/test-radius.sh; python3 scripts/check-docs.py; git diff d039306..HEAD --check",
+          "result": "pass; FreeRADIUS radclient 3.2.10 real loopback PAP accept/reject/replay 1/1",
+          "shows": "Loopback program result. Not a deployed NAS or tenant."
+        },
+        {
+          "class": "source-only",
+          "artifact": "docs/roadmap/q03-conformance-pilot.md",
+          "commit": "19a69c66b473480c8b570498231fad4d4edb7a31",
+          "shows": "The page says the pinned suite checkout, private config, CONFORMANCE_SERVER, and CONFORMANCE_TOKEN were absent at this commit, and that no independent OIDF plan was run. This commit is not an ancestor of 52df9a3."
+        },
+        {
+          "class": "actual peer/tenant",
+          "shows": "No completed Okta, Entra, Google, Active Directory, Workspace tenant, Vault, named relying party, named service provider, or named SCIM client run at 52df9a3."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "Q04 is a reviewed slice at fcba8a5. It is local peer OpenLDAP ldapsearch 2.7.1, not a named tenant. No conformance result for a named tenant at 0312427."
+        }
+      ],
+      "blockers": [
+        "D03 ledger note: OpenLDAP 2.7.1 local import was reviewed; named deployment peers remain open.",
+        "I10 open check still asks for a real Workspace or Entra tenant lifecycle.",
+        "Q03 ledger note: pinned suite, private config, endpoint, token, and exact plan are still required."
+      ]
+    },
+    {
+      "id": "footprint",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "G04 and G09 exact artifacts without weakened credential protection. EG02 native Linux packages.",
+      "records": [
+        {
+          "class": "ancestor-local",
+          "artifact": "docs/roadmap/q08-exact-edition-bundles.md",
+          "commit": "4ca7558ee8563a0c5eedc1f13d4a9a6faa6a8d4a",
+          "command": "python3 scripts/check-exact-edition-matrix.py",
+          "shows": "Ancestor macOS ARM64 local builds. Essentials 60 compiled / 26 excluded. Platform 86 compiled / 0 excluded. Direct dependencies 38 and 52. Fresh redb and PostgreSQL readiness and admin login 200. target/dist had none of the nine Linux files per architecture. This slice did not rerun the script."
+        },
+        {
+          "class": "release artifacts",
+          "shows": "No Linux x86-64 or ARM64 archive, container, checksum, or provenance for 52df9a3. Q08 ledger note says shipped bundles remain unavailable."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No byte size or peak RSS for a binary built from 52df9a3. Debug sizes 202086936 and 285351464 in the Q09 page belong to 47aa248, which is not an ancestor of 52df9a3."
+        }
+      ],
+      "blockers": [
+        "Local macOS dev builds at an ancestor are not the release footprint.",
+        "Linux artifact size and an accepted-head memory bound are absent."
+      ]
+    },
+    {
+      "id": "performance",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "EG04 workload, latency, RSS, throughput, errors, and interference. No promised numeric speed.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/roadmap/q09-benchmark-slice.md; scripts/q09_benchmark_slice.py",
+          "command": "python3 scripts/q09_benchmark_slice.py --self-check",
+          "shows": "Protocol for GET /api/me. Reports set observations_only and performance_claim false. Self-check uses a fixture server."
+        },
+        {
+          "class": "ancestor-local",
+          "commit": "7aea083b3894cc964e75786200c9e7d952e8ab01",
+          "artifact": "/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/q09-8u-8g-*-accepted-7aea083.json",
+          "shows": "Four files have source.commit 7aea083b3894, product_run true, observations_only true, performance_claim false, dataset q09-8u-8g. 7aea083 is an ancestor of 52df9a3. Latency numbers were not adopted as a target."
+        },
+        {
+          "class": "source-only",
+          "commit": "47aa248ce1c68284773746bbb5fd59c6098afdea",
+          "artifact": "docs/roadmap/q09-benchmark-slice.md",
+          "shows": "Published numeric table. Commit object exists and is not an ancestor of 52df9a3."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No report with source.commit 52df9a3. No TLS, database-encryption, or external-signing variant. No maintenance-cadence overlap. No named operator RPO or RTO. No accepted-head output for characterize-contention.sh or measure-backup-memory.sh."
+        }
+      ],
+      "blockers": [
+        "performance_claim is false on the inspected reports.",
+        "S02 ledger note: held v9 Group chunk mirror stays unaccepted because 4 MiB lookups regressed and strict memory and performance gates are unmet.",
+        "Q09 open check: sustained cadence, named thresholds, secure variants, and Linux ARM64 release artifacts remain outstanding."
+      ]
+    },
+    {
+      "id": "availability",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "Probes, single redb owner, fenced PostgreSQL promotion, measured outage.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/availability.md",
+          "shows": "readyz 503 when storage is unavailable; livez independent of storage. Local harness text includes fencing and promotion. The page says the fixture does not set a deployment RTO or RPO."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "f8c3602",
+          "command": "CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh",
+          "result": "pass; fenced primary/standby failover"
+        },
+        {
+          "class": "accepted-head local",
+          "run_head": "52df9a3",
+          "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh",
+          "shows": "52df9a3 did not promote the standby. e3c26eb later does, as a loopback trust drill, and records no RTO. cf4529e records redb 11/11 and PostgreSQL 9/9 including encrypted reopen and promotion, still with no RTO."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No outage duration, failed-request count, RTO, or RPO at 52df9a3."
+        }
+      ],
+      "blockers": [
+        "Failover pass is an ancestor-local disposable cluster.",
+        "cf4529e promotes a disposable standby inside PostgreSQL 9/9 and records no deployment RTO or RPO. e3c26eb was the earlier 6/6 promotion run."
+      ]
+    },
+    {
+      "id": "recovery",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "G12 and EG03 restored-state invalidation, with measured recovery time and data loss.",
+      "records": [
+        {
+          "class": "ancestor-local",
+          "artifact": "docs/roadmap/evidence/r05-local-2026-09-29.json",
+          "schema": "riauth.recovery-drill/v1",
+          "result": "passed",
+          "binary_sha256": "c125134b04154c39d58f953342cc20c2b50b512ebfc58e6fa6cf240a84aa2400",
+          "shows": "16 checks. Scope: disposable localhost redb. No source commit field. Command cited by docs/roadmap/recovery-drill-r05.md: python3 scripts/recovery-drill.py. Not re-run here."
+        },
+        {
+          "class": "ancestor-local",
+          "artifact": "docs/roadmap/evidence/r05-postgres-local-2026-09-29.json",
+          "schema": "riauth.postgres-recovery-drill/v1",
+          "result": "passed",
+          "binary_sha256": "8e26d768ce419a6b31fc22bd517aaf7b07c359a74fc5801990b1b33271333ffa",
+          "shows": "16 checks. Scope: disposable loopback PostgreSQL. No source commit field. External gates include key escrow, secret files, PITR, multi-node failover, TLS PostgreSQL, external services, and a real relying party."
+        },
+        {
+          "class": "release artifacts",
+          "run_head": "679f2927885d9dc4dcc1c881fd972bcade70e07a",
+          "command": "python3 scripts/check-installed-release-gate.py target/dist 679f2927885d9dc4dcc1c881fd972bcade70e07a Rhein-Industries/riAuth 1 1",
+          "result": "exited 1; target/dist did not exist",
+          "shows": "Ancestor of 52df9a3. Q10 ledger note says Linux x86-64 and ARM64 runner execution remains outstanding."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No recovery time or data-loss figure for 52df9a3, and no restore of a release artifact."
+        }
+      ],
+      "blockers": [
+        "Drill JSON files omit the source commit and list external gates that are still open.",
+        "docs/operational-recovery.md says that page does not finish D04.",
+        "No installed release assets for 52df9a3."
+      ]
+    },
+    {
+      "id": "migration",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "Preflight, identity continuity, rehearsed cutover, and rollback.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/migration.md",
+          "command": "riauth migration-preflight --file <input>",
+          "shows": "Authentik bundle conversion is documented. Other inventories keep ready_for_plan false. Classifications are not post-cutover evidence."
+        },
+        {
+          "class": "source-only",
+          "shows": "G01 ledger source commits 6dccbdf and 97f27ec are not ancestors of 52df9a3. Integration commits c12bffe and 248207d are ancestors. Remaining text: real source-export peer migration and identity continuity are separate G02/G03. This slice did not re-run a migration there."
+        },
+        {
+          "class": "source-only",
+          "shows": "G02 ledger note: a real Authentik export and application cutover remain open. G04 ledger note: no real Authentik export was run. This slice did not re-run those checks at 52df9a3."
+        },
+        {
+          "class": "source-only",
+          "artifact": "docs/roadmap/g05-local-reference-oidc.md",
+          "run_head": "cf827a9",
+          "command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test g05_reference_oidc -- --nocapture; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git show --format= --check HEAD; git status --short",
+          "result": "pass; synthetic reference OIDC rehearsal 1/1 with eight asserted case IDs",
+          "shows": "In-process reference relying party on disposable redb. Not a named relying party, production route, or Authentik rollback sign-in. G05 ledger status stays task_in_progress."
+        },
+        {
+          "class": "release/deployment",
+          "shows": "No cutover duration, export byte count, live relying-party subject, production route change, or Authentik rollback sign-in at 0312427. The cf827a9 rehearsal does not supply them either."
+        }
+      ],
+      "blockers": [
+        "Source preflight and the synthetic reference relying party do not move a directory.",
+        "G05 stays task_in_progress until a named application supplies export, browser callback, route change, and rollback sign-in.",
+        "Edition transition still needs the exact artifacts named under footprint and recovery."
+      ]
+    },
+    {
+      "id": "security",
+      "status": "not_passed",
+      "category_passed": false,
+      "target": "Q01 contracts, EG03 on installed artifacts, signed release evidence.",
+      "records": [
+        {
+          "class": "source-only",
+          "artifact": "docs/security/invariants.md; docs/security/threat-model.md",
+          "shows": "35 invariant contracts. The invariants page says existing tests were read, not run."
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "7edfc42",
+          "command": "cargo test --locked --features test-support,fuzzing --test contracts --test identity_boundary --test bootstrap --test q05_replay_concurrency --test scim_oauth --test removal_safeguards --test workflow_model -- --quiet",
+          "result": "pass; 54 redb shared contracts, focused suites pass"
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "7edfc42",
+          "command": "CARGO_BUILD_JOBS=2 bash scripts/test-contracts-postgres.sh",
+          "result": "pass; 54 PostgreSQL shared contracts in disposable cluster"
+        },
+        {
+          "class": "ancestor-local",
+          "run_head": "f8c3602",
+          "command": "RIAUTH_PG_TEST_TARGET=q05_replay_concurrency CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh",
+          "result": "pass; Q05 PostgreSQL replay binding"
+        },
+        {
+          "class": "source-only",
+          "artifact": "docs/roadmap/q11-release-evidence.md",
+          "shows": "Release workflow, packager, and bundle checker do not sign artifacts. Q11 ledger note records a 355-package source SPDX document at integration commit 281493d. A source SPDX file is not a release SBOM. This slice did not open that file."
+        },
+        {
+          "class": "source-only",
+          "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc"],
+          "shows": "A03 assembly moves for cloud probe, credential preflight, credential write, and source configuration. Protocol-boundary open check remains."
+        },
+        {
+          "class": "release/deployment",
+          "shows": "No signature, published GitHub release, or packaged release SBOM for 0312427. b759216 source SPDX binding keeps release_executed and release_sbom_produced false. The same release gap was already recorded for 52df9a3."
+        },
+        {
+          "class": "missing measurements",
+          "shows": "No certification result and no EG03 run of installed 52df9a3 artifacts."
+        }
+      ],
+      "blockers": [
+        "Q03 pilot inputs are absent and no independent plan was run.",
+        "Ledger open check: Q11 still requires signing, an SBOM, an independent release review, publication, a checked asset set, and Linux ARM64 execution.",
+        "Ledger independent_review notes are slice comments and are not a D05 category result."
+      ]
+    }
+  ]
+}

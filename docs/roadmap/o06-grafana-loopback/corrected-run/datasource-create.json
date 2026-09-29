@@ -1,0 +1,10 @@
+{
+  "http": 200,
+  "uid": "riauth-o06-prom",
+  "name": "riauth-o06-scale-prometheus",
+  "type": "prometheus",
+  "access": "proxy",
+  "url": "http://riauth-o06-scale-prometheus:9090",
+  "isDefault": true,
+  "message": "Datasource added"
+}

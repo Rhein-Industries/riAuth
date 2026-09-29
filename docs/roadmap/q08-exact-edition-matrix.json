@@ -1,0 +1,370 @@
+{
+  "build_source_dirty": false,
+  "builds": {
+    "essentials": {
+      "binaries": {
+        "riauth": {
+          "bytes": 176065248,
+          "sha256": "59676422a1d7597daf4a41a6e3544d4740a61291362bd68f39e0908f4553d220"
+        },
+        "riauth-maintenance": {
+          "bytes": 53927248,
+          "sha256": "135ebfbdd172491adbab1744035e752306e939e99bcdcaefb655bf4f7a1853d7"
+        }
+      },
+      "command": "cargo build --locked --no-default-features --features essentials --bins",
+      "environment": {
+        "CARGO_BUILD_JOBS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_TARGET_DIR": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/q08-exact-bundles"
+      },
+      "status": "passed"
+    },
+    "platform": {
+      "binaries": {
+        "riauth": {
+          "bytes": 241017920,
+          "sha256": "a520836f2258e9416c898047ed6f9773a21e2fb3ece7bd4b9844729e91c3e4cb"
+        },
+        "riauth-maintenance": {
+          "bytes": 63815216,
+          "sha256": "5bb13a25b887e15811964a6b8da9de117ffd740af33912c5f9ab5c2ddb9cfd22"
+        }
+      },
+      "command": "cargo build --locked --no-default-features --features platform --bins",
+      "environment": {
+        "CARGO_BUILD_JOBS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_TARGET_DIR": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/q08-exact-bundles"
+      },
+      "status": "passed"
+    }
+  },
+  "captured_at_utc": "2026-09-29T00:43:19.891576+00:00",
+  "cargo_lock_sha256": "f3c9de0e5c5bd7b5bea6aa1f7ce1e2fc827815b94838f1aec2f8231e1f9fc347",
+  "checks": {
+    "capabilities": {
+      "essentials": {
+        "compiled_count": 60,
+        "compiled_features": [
+          "portal.user_applications",
+          "portal.terminal_sign_in",
+          "directory.ldap_sync",
+          "identity.ldap_authentication",
+          "identity.passkeys",
+          "identity.email_verification",
+          "identity.invitations",
+          "identity.email_password_reset",
+          "operations.postgresql",
+          "operations.shared_rate_limits",
+          "operations.native_tls",
+          "oidc.par",
+          "oidc.jar",
+          "oidc.jarm",
+          "oidc.claims_requests",
+          "oidc.dpop",
+          "oidc.bound_key",
+          "oidc.pairwise_subjects",
+          "oidc.resource_indicators",
+          "oidc.key_domains",
+          "oidc.jwe",
+          "oidc.provider_issuers",
+          "oidc.frontchannel_logout",
+          "oidc.session_management",
+          "identity.oidc_sources",
+          "identity.oauth_sources",
+          "identity.source_linking",
+          "identity.totp_import",
+          "agents.source_manifests",
+          "directory.scim_outbound",
+          "operations.prometheus",
+          "operations.schema_migrations",
+          "oidc.private_key_jwt",
+          "oidc.federated_machine_grants",
+          "oidc.token_exchange",
+          "oidc.dynamic_registration",
+          "oidc.code.pkce_s256",
+          "oidc.device",
+          "oidc.refresh_rotation",
+          "oidc.native_redirects",
+          "oidc.request_bound_reauthentication",
+          "agents.scoped_credentials",
+          "agents.plan_apply",
+          "agents.atomic_idempotency",
+          "agents.conditional_mutations",
+          "agents.audit_run_id",
+          "agents.schema",
+          "oidc.browser_terminal_handoff",
+          "oidc.rp_logout",
+          "oidc.backchannel_logout",
+          "oidc.claim_mappings",
+          "oidc.scope_policies",
+          "oidc.provider_settings",
+          "oidc.cors",
+          "operations.encrypted_backup_restore",
+          "operations.encrypted_storage",
+          "identity.recovery_codes",
+          "identity.self_password_change",
+          "operations.audit_review",
+          "operations.csv_export"
+        ],
+        "excluded_features": [
+          "access.temporary_entitlements",
+          "agents.certificate_bindings",
+          "agents.parent_ownership",
+          "audit.self_hosted_event_map",
+          "directory.entra_sync",
+          "directory.ldap_provider",
+          "directory.scim_inbound",
+          "directory.workspace_sync",
+          "identity.device_trust",
+          "identity.https_client_certificates",
+          "identity.saml_sources",
+          "identity.scheduled_offboarding",
+          "identity.windows_device_login",
+          "operations.vault_transit_signing",
+          "proxy.forward_auth_sso",
+          "proxy.reverse_proxy",
+          "proxy.shared_domain_sso",
+          "radius.eap_tls",
+          "radius.pap",
+          "radius.radsec",
+          "saml.assertion_encryption",
+          "saml.idp_signed_browser_sso",
+          "saml.logout_fanout",
+          "saml.sp_initiated_logout",
+          "saml.upstream_logout",
+          "ssf.push"
+        ]
+      },
+      "platform": {
+        "compiled_count": 86,
+        "compiled_features": [
+          "portal.user_applications",
+          "portal.terminal_sign_in",
+          "audit.self_hosted_event_map",
+          "saml.idp_signed_browser_sso",
+          "saml.sp_initiated_logout",
+          "saml.logout_fanout",
+          "saml.upstream_logout",
+          "saml.assertion_encryption",
+          "radius.pap",
+          "radius.radsec",
+          "radius.eap_tls",
+          "agents.certificate_bindings",
+          "directory.ldap_provider",
+          "proxy.forward_auth_sso",
+          "proxy.shared_domain_sso",
+          "proxy.reverse_proxy",
+          "directory.ldap_sync",
+          "identity.ldap_authentication",
+          "identity.passkeys",
+          "identity.email_verification",
+          "identity.invitations",
+          "identity.email_password_reset",
+          "operations.postgresql",
+          "operations.shared_rate_limits",
+          "operations.native_tls",
+          "operations.vault_transit_signing",
+          "oidc.par",
+          "oidc.jar",
+          "oidc.jarm",
+          "oidc.claims_requests",
+          "oidc.dpop",
+          "oidc.bound_key",
+          "oidc.pairwise_subjects",
+          "oidc.resource_indicators",
+          "oidc.key_domains",
+          "oidc.jwe",
+          "oidc.provider_issuers",
+          "oidc.frontchannel_logout",
+          "oidc.session_management",
+          "identity.oidc_sources",
+          "identity.saml_sources",
+          "identity.oauth_sources",
+          "identity.source_linking",
+          "identity.totp_import",
+          "agents.source_manifests",
+          "directory.scim_inbound",
+          "directory.scim_outbound",
+          "operations.prometheus",
+          "operations.schema_migrations",
+          "oidc.private_key_jwt",
+          "oidc.federated_machine_grants",
+          "oidc.token_exchange",
+          "oidc.dynamic_registration",
+          "oidc.code.pkce_s256",
+          "oidc.device",
+          "oidc.refresh_rotation",
+          "oidc.native_redirects",
+          "oidc.request_bound_reauthentication",
+          "agents.scoped_credentials",
+          "agents.plan_apply",
+          "agents.atomic_idempotency",
+          "agents.conditional_mutations",
+          "agents.audit_run_id",
+          "agents.schema",
+          "oidc.browser_terminal_handoff",
+          "oidc.rp_logout",
+          "oidc.backchannel_logout",
+          "oidc.claim_mappings",
+          "oidc.scope_policies",
+          "oidc.provider_settings",
+          "oidc.cors",
+          "operations.encrypted_backup_restore",
+          "operations.encrypted_storage",
+          "identity.recovery_codes",
+          "identity.self_password_change",
+          "access.temporary_entitlements",
+          "identity.scheduled_offboarding",
+          "operations.audit_review",
+          "operations.csv_export",
+          "identity.windows_device_login",
+          "agents.parent_ownership",
+          "directory.workspace_sync",
+          "directory.entra_sync",
+          "identity.https_client_certificates",
+          "identity.device_trust",
+          "ssf.push"
+        ],
+        "excluded_features": []
+      }
+    },
+    "config_rejection": {
+      "device_trust_activation": {
+        "exit_code": 1,
+        "message": "Disabled capability identity.device_trust requires the Platform build",
+        "platform_same_setting": "accepted_and_ready"
+      },
+      "saml_rate_limit": {
+        "exit_code": 1,
+        "message": "rate_limits.saml requires the Platform build",
+        "platform_same_setting": "accepted_and_ready"
+      }
+    },
+    "direct_dependencies": {
+      "essentials_direct_count": 38,
+      "platform_direct_count": 52,
+      "platform_only": [
+        "flate2",
+        "hmac",
+        "hyper",
+        "hyper-util",
+        "ldap3_proto",
+        "md-5",
+        "psl",
+        "risaml",
+        "roxmltree",
+        "sha1",
+        "time",
+        "tokio-rustls",
+        "tokio-util",
+        "x509-parser"
+      ]
+    },
+    "storage": {
+      "essentials/postgresql": {
+        "capabilities": 200,
+        "edition": "essentials",
+        "login": 200,
+        "readyz": 200,
+        "storage": "opened"
+      },
+      "essentials/redb": {
+        "capabilities": 200,
+        "edition": "essentials",
+        "login": 200,
+        "readyz": 200,
+        "storage": "opened"
+      },
+      "platform/postgresql": {
+        "capabilities": 200,
+        "edition": "platform",
+        "login": 200,
+        "readyz": 200,
+        "storage": "opened"
+      },
+      "platform/redb": {
+        "capabilities": 200,
+        "edition": "platform",
+        "login": 200,
+        "readyz": 200,
+        "storage": "opened"
+      }
+    }
+  },
+  "host": {
+    "machine": "arm64",
+    "os": "Darwin",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "release_assets": {
+    "aarch64": {
+      "files": {
+        "SHA256SUMS-linux-aarch64": {
+          "status": "unavailable"
+        },
+        "build-provenance-linux-aarch64.json": {
+          "status": "unavailable"
+        },
+        "riauth-essentials-linux-aarch64.docker.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-essentials-linux-aarch64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-maintenance-essentials-linux-aarch64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-maintenance-platform-linux-aarch64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-platform-linux-aarch64.docker.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-platform-linux-aarch64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauthctl-linux-aarch64.tar.gz": {
+          "status": "unavailable"
+        }
+      },
+      "status": "unavailable_incomplete"
+    },
+    "x86_64": {
+      "files": {
+        "SHA256SUMS-linux-x86_64": {
+          "status": "unavailable"
+        },
+        "build-provenance-linux-x86_64.json": {
+          "status": "unavailable"
+        },
+        "riauth-essentials-linux-x86_64.docker.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-essentials-linux-x86_64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-maintenance-essentials-linux-x86_64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-maintenance-platform-linux-x86_64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-platform-linux-x86_64.docker.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauth-platform-linux-x86_64.tar.gz": {
+          "status": "unavailable"
+        },
+        "riauthctl-linux-x86_64.tar.gz": {
+          "status": "unavailable"
+        }
+      },
+      "status": "unavailable_incomplete"
+    }
+  },
+  "schema": "riauth.exact-edition-matrix/v1",
+  "script_sha256": "d7b9315b894905c8e033f81eeeb69a68d3016259558a59dde9fb0e237b744b9e",
+  "source_revision": "4ca7558ee8563a0c5eedc1f13d4a9a6faa6a8d4a"
+}

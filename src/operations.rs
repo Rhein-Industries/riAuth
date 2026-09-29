@@ -7,7 +7,7 @@ use crate::{
     store::Store,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -15,6 +15,8 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+
+pub mod stream;
 
 const BACKUP_V1: &str = "riauth.backup/v1";
 const BACKUP_V2: &str = "riauth.backup/v2";
@@ -80,14 +82,35 @@ impl Core {
     pub fn doctor(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             self.management(tx, token, "operations.read", "operations/health")?;
-            let keys = keys(tx)?; keys.active.jwk()?;
-            let users = tx.list::<User>("users")?;
-            let clients = tx.list::<Client>("clients")?;
-            let administrators = users.iter().filter(|(_, u)| u.admin && u.enabled).count();
-            let pending = tx.list::<crate::logout::Delivery>("logout_deliveries")?.into_iter().filter(|(_, d)| d.delivered_at.is_none()).count();
-            Ok(json!({"healthy": administrators > 0, "schema_version": tx.get::<u32>("meta", "schema")?, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
-                "issuer": self.config.issuer, "storage": self.store.backend(), "encrypted_at_rest": self.config.database_key_file.is_some(), "active_signing_key": keys.active.kid,
-                "users": users.len(), "enabled_administrators": administrators, "clients": clients.len(), "pending_logout_deliveries": pending, "tls": if self.config.tls_cert_file.is_some(){"native_rustls"}else{"reverse_proxy"}, "checked_at": now()}))
+            let keys = keys(tx)?;
+            keys.active.jwk()?;
+            let (users, administrators) =
+                count_bucket::<User>(tx, "users", |user| user.admin && user.enabled)?;
+            let (clients, _) = count_bucket::<Client>(tx, "clients", |_| false)?;
+            let (_, pending) =
+                count_bucket::<crate::logout::Delivery>(tx, "logout_deliveries", |delivery| {
+                    delivery.delivered_at.is_none()
+                })?;
+            let tls = if self.config.tls_cert_file.is_some() {
+                "native_rustls"
+            } else {
+                "reverse_proxy"
+            };
+            Ok(json!({
+                "healthy": administrators > 0,
+                "schema_version": tx.get::<u32>("meta", "schema")?,
+                "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+                "issuer": self.config.issuer,
+                "storage": self.store.backend(),
+                "encrypted_at_rest": self.config.database_key_file.is_some(),
+                "active_signing_key": keys.active.kid,
+                "users": users,
+                "enabled_administrators": administrators,
+                "clients": clients,
+                "pending_logout_deliveries": pending,
+                "tls": tls,
+                "checked_at": now()
+            }))
         })
     }
     pub fn backup(&self, token: &str, encryption_key: &str) -> Result<Value> {
@@ -107,7 +130,11 @@ impl Core {
             let mut archive_bytes = 512usize;
             let mut after: Option<String> = None;
             loop {
-                let page = tx.snapshot_page(after.as_deref(), crate::store::maintenance::PAGE)?;
+                let page = tx.snapshot_page_bounded(
+                    after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?;
                 if page.is_empty() {
                     break;
                 }
@@ -229,6 +256,49 @@ impl Core {
     }
 }
 
+/// Count one bucket inside the caller's snapshot. Each page is released
+/// before the next read. A stored value is still decoded in full; this path
+/// does not size-cap it. An exact multiple of the page size reads one extra
+/// empty page. A cursor that does not advance is an internal error.
+fn count_bucket<T: DeserializeOwned>(
+    tx: &crate::store::Tx<'_>,
+    bucket: &str,
+    mut matches: impl FnMut(&T) -> bool,
+) -> Result<(u64, u64)> {
+    let mut after: Option<String> = None;
+    let mut total = 0u64;
+    let mut matched = 0u64;
+    loop {
+        let page = tx.scan::<T>(bucket, after.as_deref(), crate::store::maintenance::PAGE)?;
+        let Some((last_key, _)) = page.last() else {
+            break;
+        };
+        let last_key = last_key.clone();
+        if after
+            .as_ref()
+            .is_some_and(|previous| last_key.as_str() <= previous.as_str())
+        {
+            return Err(Error::internal("Doctor page did not advance"));
+        }
+        let full = page.len() == crate::store::maintenance::PAGE;
+        after = Some(last_key);
+        for (_, row) in &page {
+            if matches(row) {
+                matched = matched
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("Doctor count overflowed"))?;
+            }
+        }
+        total = total
+            .checked_add(u64::try_from(page.len()).map_err(Error::internal)?)
+            .ok_or_else(|| Error::internal("Doctor count overflowed"))?;
+        if !full {
+            break;
+        }
+    }
+    Ok((total, matched))
+}
+
 fn bounded_backup_json(
     value: &impl Serialize,
     limit: usize,
@@ -272,12 +342,46 @@ fn decode_key(encoded: &str) -> Result<zeroize::Zeroizing<[u8; 32]>> {
     ))
 }
 
+/// The offline destination for an authenticated backup. PostgreSQL must be a
+/// dedicated, empty database; restore never replaces records in an existing one.
+#[derive(Clone)]
+pub enum RestoreTarget {
+    Redb,
+    Postgres(crate::postgres_store::PostgresConfig),
+}
+
 pub fn restore(
     backup_file: &Path,
     key_file: &Path,
     output: &Path,
     database_key_file: Option<PathBuf>,
 ) -> Result<Value> {
+    restore_into(
+        backup_file,
+        key_file,
+        output,
+        database_key_file,
+        RestoreTarget::Redb,
+    )
+}
+
+pub fn restore_into(
+    backup_file: &Path,
+    key_file: &Path,
+    output: &Path,
+    database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
+) -> Result<Value> {
+    if stream::is_stream_archive(backup_file)? {
+        return stream::restore_stream_into(
+            backup_file,
+            key_file,
+            output,
+            database_key_file,
+            target,
+            stream::StreamOptions::default(),
+        );
+    }
     let file = std::fs::File::open(backup_file).map_err(Error::internal)?;
     if file.metadata().map_err(Error::internal)?.len() > MAX_BACKUP_BYTES as u64 {
         return Err(Error::bad("Backup archive exceeds 64 MiB"));
@@ -297,8 +401,8 @@ pub fn restore(
     }
     let key = crypto::read_key(key_file)?;
     match version {
-        BACKUP_V1 => restore_v1(&envelope, &key, output, database_key_file),
-        _ => restore_v2(&envelope, &key, output, database_key_file),
+        BACKUP_V1 => restore_v1(&envelope, &key, output, database_key_file, target),
+        _ => restore_v2(&envelope, &key, output, database_key_file, target),
     }
 }
 
@@ -307,6 +411,7 @@ fn restore_v1(
     key: &[u8; 32],
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
 ) -> Result<Value> {
     let ciphertext = URL_SAFE_NO_PAD
         .decode(
@@ -325,17 +430,27 @@ fn restore_v1(
         return Err(Error::bad("Backup issuer mismatch"));
     }
     let records = backup.records;
-    commit_restore(backup.config, output, database_key_file, move |tx| {
-        for (name, value) in records {
-            let (bucket, id) = split_record_key(&name)?;
-            tx.import_record(bucket, id, &value)?;
-        }
-        Ok(())
-    })
+    commit_restore(
+        backup.config,
+        // v1 does not authenticate its creation time.
+        None,
+        output,
+        database_key_file,
+        target,
+        move |tx| {
+            for (name, value) in records {
+                let (bucket, id) = split_record_key(&name)?;
+                tx.import_record(bucket, id, &value)?;
+            }
+            Ok(())
+        },
+        || Ok(()),
+    )
 }
 
 struct ChunkedBackup {
     config: Config,
+    created_at: u64,
     record_count: u64,
 }
 
@@ -344,6 +459,7 @@ fn restore_v2(
     key: &[u8; 32],
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
 ) -> Result<Value> {
     if envelope["encrypted"] != true {
         return Err(Error::bad("Unsupported backup format"));
@@ -352,32 +468,41 @@ fn restore_v2(
     let chunks = envelope["chunks"].as_array().unwrap();
     let record_count = loaded.record_count;
     let key = *key;
-    commit_restore(loaded.config, output, database_key_file, move |tx| {
-        let mut imported = 0u64;
-        for (index, encoded) in chunks[..chunks.len() - 1].iter().enumerate() {
-            let ciphertext = URL_SAFE_NO_PAD
-                .decode(encoded.as_str().unwrap())
-                .map_err(|_| Error::bad("Invalid backup ciphertext"))?;
-            let plaintext = crypto::unseal(&key, record_chunk_aad(index).as_bytes(), &ciphertext)?;
-            let chunk: RecordsChunk = serde_json::from_slice(&plaintext)
-                .map_err(|_| Error::bad("Backup payload is invalid"))?;
-            if chunk.kind != "records" || chunk.index != index as u64 {
-                return Err(Error::bad("Backup payload is invalid"));
-            }
-            for (name, value) in chunk.records {
-                let (bucket, id) = split_record_key(&name)?;
-                if tx.get::<Value>(bucket, id)?.is_some() {
+    commit_restore(
+        loaded.config,
+        Some(loaded.created_at),
+        output,
+        database_key_file,
+        target,
+        move |tx| {
+            let mut imported = 0u64;
+            for (index, encoded) in chunks[..chunks.len() - 1].iter().enumerate() {
+                let ciphertext = URL_SAFE_NO_PAD
+                    .decode(encoded.as_str().unwrap())
+                    .map_err(|_| Error::bad("Invalid backup ciphertext"))?;
+                let plaintext =
+                    crypto::unseal(&key, record_chunk_aad(index).as_bytes(), &ciphertext)?;
+                let chunk: RecordsChunk = serde_json::from_slice(&plaintext)
+                    .map_err(|_| Error::bad("Backup payload is invalid"))?;
+                if chunk.kind != "records" || chunk.index != index as u64 {
                     return Err(Error::bad("Backup payload is invalid"));
                 }
-                tx.import_record(bucket, id, &value)?;
-                imported += 1;
+                for (name, value) in chunk.records {
+                    let (bucket, id) = split_record_key(&name)?;
+                    if tx.get::<Value>(bucket, id)?.is_some() {
+                        return Err(Error::bad("Backup payload is invalid"));
+                    }
+                    tx.import_record(bucket, id, &value)?;
+                    imported += 1;
+                }
             }
-        }
-        if imported != record_count {
-            return Err(Error::bad("Backup payload is invalid"));
-        }
-        Ok(())
-    })
+            if imported != record_count {
+                return Err(Error::bad("Backup payload is invalid"));
+            }
+            Ok(())
+        },
+        || Ok(()),
+    )
 }
 
 /// Authenticate every chunk before creating a directory. Plaintext pages are dropped.
@@ -444,19 +569,22 @@ fn load_chunked(envelope: &Value, key: &[u8; 32]) -> Result<ChunkedBackup> {
     }
     Ok(ChunkedBackup {
         config: manifest.config,
+        created_at: manifest.created_at,
         record_count: manifest.record_count,
     })
 }
 
+/// Every restore format must call this: it applies the restored-state policy
+/// (`crate::recovery`) in the same transaction as the import.
 fn commit_restore(
     mut config: Config,
+    snapshot_created_at: Option<u64>,
     output: &Path,
     database_key_file: Option<PathBuf>,
+    target: RestoreTarget,
     import: impl FnOnce(&crate::store::Tx<'_>) -> Result<()>,
+    check: impl Fn() -> Result<()>,
 ) -> Result<Value> {
-    config
-        .validate()
-        .map_err(|_| Error::bad("Invalid backup configuration"))?;
     let database_key_file = database_key_file
         .map(|p| p.canonicalize().map_err(Error::internal))
         .transpose()?;
@@ -464,53 +592,164 @@ fn commit_restore(
         .as_deref()
         .map(crypto::read_key)
         .transpose()?;
-    std::fs::create_dir(output)
-        .map_err(|e| Error::bad(format!("Restore requires a new output directory: {e}")))?;
+    config.data_dir = "data".into();
+    config.postgres = match target {
+        RestoreTarget::Redb => None,
+        RestoreTarget::Postgres(mut postgres) => {
+            // Public API callers may pass relative files. Persist absolute
+            // references so the output config opens the database we inspected.
+            postgres.connection_file = postgres
+                .connection_file
+                .canonicalize()
+                .map_err(Error::internal)?;
+            postgres.ca_file = postgres
+                .ca_file
+                .map(|path| path.canonicalize().map_err(Error::internal))
+                .transpose()?;
+            Some(postgres)
+        }
+    };
+    config.database_key_file = database_key_file;
+    config
+        .validate()
+        .map_err(|_| Error::bad("Invalid backup configuration"))?;
+    let config_bytes = toml::to_string_pretty(&config).map_err(Error::internal)?;
+    check()?;
+    if config.postgres.is_some() {
+        // Read-only preflight keeps an occupied target and the output directory
+        // untouched. The writer repeats this check under PostgreSQL's lock.
+        Store::inspect(&config, |_, tx| {
+            if tx
+                .map(|tx| tx.snapshot_next_key(None))
+                .transpose()?
+                .flatten()
+                .is_some()
+            {
+                return Err(Error::conflict(
+                    "Restore requires an empty PostgreSQL target",
+                ));
+            }
+            Ok(())
+        })?;
+    }
+    std::fs::create_dir(output).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            Error::conflict("Restore requires a new output directory")
+        } else {
+            Error::bad(format!("Restore requires a new output directory: {error}"))
+        }
+    })?;
     private_dir(output).map_err(Error::internal)?;
-    let data_dir = output.join("data");
-    private_dir(&data_dir).map_err(Error::internal)?;
-    let store = Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?;
-    store.write(|tx| {
+    let store = if let Some(postgres) = &config.postgres {
+        Store::open_postgres(postgres.clone(), storage_key)?
+    } else {
+        let data_dir = output.join("data");
+        private_dir(&data_dir).map_err(Error::internal)?;
+        Store::open_with_key(&data_dir.join("riauth.redb"), storage_key)?
+    };
+    let recovery = store.write(|tx| {
+        check()?;
+        if config.postgres.is_some() {
+            if tx.snapshot_next_key(None)?.is_some() {
+                return Err(Error::conflict(
+                    "Restore requires an empty PostgreSQL target",
+                ));
+            }
+            if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+                return Err(Error::conflict(
+                    "Stop every riAuth process connected to the PostgreSQL target before restore",
+                ));
+            }
+        }
         import(tx)?;
-        tx.rebuild_indexes()?;
-        keys(tx)?.active.jwk()?;
+        check()?;
+        // Invalidation and the serving gate must commit with the imported state.
+        let recovery = crate::recovery::invalidate(
+            tx,
+            crate::recovery::Cause::BackupRestore,
+            snapshot_created_at,
+            None,
+        )?;
+        check()?;
+        tx.rebuild_indexes_checked(&check)?;
+        check()?;
+        if tx.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer)
+            || !schema_supported(tx.get::<Value>("meta", "schema")?.as_ref())
+            || tx.get::<String>("meta", "dummy_hash")?.is_none()
+        {
+            return Err(Error::bad("Backup state is incomplete"));
+        }
+        crate::keyring::public_keys(tx)?;
         let mut after = None;
         let mut enabled_administrator = false;
         loop {
-            let users =
-                tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+            check()?;
+            // Imported users can approach the frame limit; one decoded record
+            // is the predictable bound for this validation loop.
+            let users = tx.scan::<User>("users", after.as_deref(), 1)?;
             if users.is_empty() {
                 break;
             }
             for (id, user) in users {
-                enabled_administrator |= user.admin && user.enabled;
-                crate::claims::validate_user(tx, &user)?;
+                check()?;
+                if user.admin && user.enabled {
+                    enabled_administrator |=
+                        tx.get::<String>("usernames", &user.username)? == Some(user.id.clone());
+                }
+                crate::claims::validate_user_checked(tx, &user, &check)?;
                 after = Some(id);
             }
         }
         if !enabled_administrator {
             return Err(Error::bad("Backup has no enabled administrator"));
         }
-        Ok(())
+        let mut after = None;
+        loop {
+            check()?;
+            let clients = tx.scan::<Client>("clients", after.as_deref(), 1)?;
+            let Some((id, client)) = clients.into_iter().next() else {
+                break;
+            };
+            crate::core::validate_client(tx, &client)?;
+            after = Some(id);
+        }
+        // A copied PostgreSQL lineage belongs to the source. Stamp a new
+        // PostgreSQL target, or remove it when the target is redb.
+        if config.postgres.is_some() {
+            crate::recovery::stamp_lineage(tx)?;
+        } else {
+            tx.delete("meta", "storage_lineage")?;
+        }
+        check()?;
+        Ok(recovery)
     })?;
     drop(store);
-    config.data_dir = "data".into();
-    config.postgres = None;
-    config.database_key_file = database_key_file;
-    let config_path = output.join("riauth.toml");
-    write_private(
-        &config_path,
-        toml::to_string_pretty(&config)
-            .map_err(Error::internal)?
-            .as_bytes(),
-        false,
-    )
-    .map_err(Error::internal)?;
-    let config = Config::load(&config_path).map_err(Error::internal)?;
+    // Reopen from the exact configuration that will be published. A failed
+    // schema upgrade or key check leaves only a private candidate, not the
+    // configuration an operator would use to activate the restored instance.
+    let candidate_path = output.join(".riauth.restore-pending.toml");
+    write_private(&candidate_path, config_bytes.as_bytes(), false).map_err(Error::internal)?;
+    let config = Config::load(&candidate_path).map_err(Error::internal)?;
     let core = Core::open(config)?;
     core.jwks()?;
+    if core.store.get::<u32>("meta", "schema")? != Some(crate::upgrade::SCHEMA)
+        || core
+            .store
+            .read(crate::recovery::pending)?
+            .as_ref()
+            .map(|pending| pending.id.as_str())
+            != Some(recovery.id.as_str())
+    {
+        return Err(Error::internal("Restored storage verification failed"));
+    }
+    let config_path = output.join("riauth.toml");
+    write_private(&config_path, config_bytes.as_bytes(), false).map_err(Error::internal)?;
+    let _ = std::fs::remove_file(candidate_path);
     Ok(
-        json!({"restored": true, "verified": true, "config": config_path, "issuer": core.config.issuer, "encrypted_at_rest": core.config.database_key_file.is_some()}),
+        json!({"restored": true, "verified": true, "config": config_path, "issuer": core.config.issuer, "encrypted_at_rest": core.config.database_key_file.is_some(),
+            "storage": core.store.backend(),
+            "serving_allowed": false, "recovery": recovery,
+            "next": "Reconcile or rotate the listed persistent credentials, then run `riauth recovery complete --recovery-id <recovery.id> --persistent-credentials-reconciled`"}),
     )
 }
 
@@ -535,55 +774,206 @@ pub fn migrate_postgres(
     target: crate::postgres_store::PostgresConfig,
     output: &Path,
 ) -> Result<Value> {
+    migrate_postgres_checkpointed(config, target, output, |_| Ok(()))
+}
+
+/// A target prefix is the checkpoint: each page commits atomically, and a retry
+/// compares that prefix with the exclusively opened source before appending.
+/// The callback runs only after a page commit (also used by the interruption
+/// regression); production has no callback side effects.
+fn migrate_postgres_checkpointed(
+    config: Config,
+    mut target: crate::postgres_store::PostgresConfig,
+    output: &Path,
+    mut checkpoint: impl FnMut(u64) -> Result<()>,
+) -> Result<Value> {
     if output.exists() {
         return Err(Error::conflict("Output configuration already exists"));
     }
     if config.postgres.is_some() {
         return Err(Error::bad("This migration requires an offline redb source"));
     }
+    // The published file must reopen the same target that was verified, even
+    // when a caller supplied paths relative to its current directory.
+    target.connection_file = target
+        .connection_file
+        .canonicalize()
+        .map_err(Error::internal)?;
+    target.ca_file = target
+        .ca_file
+        .map(|file| file.canonicalize().map_err(Error::internal))
+        .transpose()?;
+    let mut migrated_config = config.clone();
+    migrated_config.postgres = Some(target.clone());
+    migrated_config.validate().map_err(Error::internal)?;
+    let config_bytes = toml::to_string_pretty(&migrated_config).map_err(Error::internal)?;
     let core = Core::open(config.clone())?;
-    let snapshot = core.store.read(|tx| tx.snapshot())?;
+    core.jwks()?;
     let target_key = config
         .database_key_file
         .as_deref()
         .map(crypto::read_key)
         .transpose()?;
-    let store = Store::open_postgres(target.clone(), target_key)?;
-    store.write(|tx| {
-        let existing = tx.snapshot()?;
-        if !existing.is_empty() {
-            if existing == snapshot {
-                return Ok(());
+    let store = Store::open_postgres(target, target_key)?;
+    let count = core.store.read(|source| {
+        let (mut after, mut copied) = store.read(|destination| {
+            require_isolated_migration_target(destination)?;
+            let prefix = compare_migration_records(source, destination, false, false)?;
+            let _ = destination.get::<crate::recovery::Lineage>("meta", "storage_lineage")?;
+            Ok(prefix)
+        })?;
+        loop {
+            let page = source.snapshot_page_bounded(
+                after.as_deref(),
+                crate::store::maintenance::PAGE,
+                MAX_BACKUP_PAGE_BYTES,
+            )?;
+            let Some((next, _)) = page.last() else {
+                break;
+            };
+            let next = next.clone();
+            if after
+                .as_ref()
+                .is_some_and(|previous| next.as_str() <= previous.as_str())
+            {
+                return Err(Error::internal("Migration page did not advance"));
             }
-            return Err(Error::conflict(
-                "Target database is not empty and does not match this migration",
-            ));
+            store.write(|destination| {
+                require_isolated_migration_target(destination)?;
+                for (name, value) in &page {
+                    let (bucket, key) = split_record_key(name)?;
+                    match destination.get::<Value>(bucket, key)? {
+                        Some(existing) if existing == *value => {}
+                        Some(_) => {
+                            return Err(Error::conflict(
+                                "Target database does not match this migration",
+                            ));
+                        }
+                        None => destination.import_record(bucket, key, value)?,
+                    }
+                }
+                Ok(())
+            })?;
+            copied += page.len() as u64;
+            after = Some(next);
+            checkpoint(copied)?;
         }
-        for (name, value) in &snapshot {
-            let (bucket, key) = name
-                .split_once('/')
-                .ok_or_else(|| Error::bad("Invalid source record key"))?;
-            tx.import_record(bucket, key, value)?;
-        }
-        Ok(())
+        // The PostgreSQL table lock fences direct SQL writers as well as the
+        // ordinary riAuth writer lock for this complete, bounded comparison.
+        store.write(|destination| {
+            require_isolated_migration_target(destination)?;
+            destination.lock_records_for_transition()?;
+            let (_, verified) = compare_migration_records(source, destination, true, true)?;
+            let _ = destination.get::<crate::recovery::Lineage>("meta", "storage_lineage")?;
+            if verified != copied {
+                return Err(Error::internal("Migrated storage verification failed"));
+            }
+            Ok(())
+        })?;
+        Ok(copied)
     })?;
-    let count = snapshot.len();
-    if store.read(|tx| tx.snapshot())? != snapshot {
-        return Err(Error::internal("Migrated storage verification failed"));
-    }
-    let mut config = config;
-    config.postgres = Some(target);
-    write_private(
-        output,
-        toml::to_string_pretty(&config)
-            .map_err(Error::internal)?
-            .as_bytes(),
-        false,
-    )
-    .map_err(Error::internal)?;
+    // Keep PostgreSQL lineage out of the copy. On first Core open, its normal
+    // lineage gate stamps a new target or applies recovery to a changed one.
+    write_private(output, config_bytes.as_bytes(), false).map_err(Error::internal)?;
     Ok(
         json!({"migrated":true,"records":count,"config":output,"issuer":config.issuer,"source_preserved":true}),
     )
+}
+
+fn require_isolated_migration_target(tx: &crate::store::Tx<'_>) -> Result<()> {
+    if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+        return Err(Error::conflict(
+            "Stop every riAuth process connected to the PostgreSQL target before migration",
+        ));
+    }
+    Ok(())
+}
+
+struct MigrationCursor<'tx, 'db> {
+    tx: &'tx crate::store::Tx<'db>,
+    after: Option<String>,
+    page: std::vec::IntoIter<(String, Value)>,
+    locked_writer: bool,
+    skip_lineage: bool,
+}
+
+impl MigrationCursor<'_, '_> {
+    fn next(&mut self) -> Result<Option<(String, Value)>> {
+        loop {
+            if let Some((name, value)) = self.page.next() {
+                if self.skip_lineage && name == "meta/storage_lineage" {
+                    continue;
+                }
+                return Ok(Some((name, value)));
+            }
+            let page = if self.locked_writer {
+                self.tx.snapshot_page_bounded_locked_writer(
+                    self.after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?
+            } else {
+                self.tx.snapshot_page_bounded(
+                    self.after.as_deref(),
+                    crate::store::maintenance::PAGE,
+                    MAX_BACKUP_PAGE_BYTES,
+                )?
+            };
+            let Some((last, _)) = page.last() else {
+                return Ok(None);
+            };
+            if self.after.as_ref().is_some_and(|previous| last <= previous) {
+                return Err(Error::internal("Migration page did not advance"));
+            }
+            self.after = Some(last.clone());
+            self.page = page.into_iter();
+        }
+    }
+}
+
+/// Return the last matching source key and count. Existing target records must
+/// form a prefix of the source (apart from backend-specific lineage).
+fn compare_migration_records(
+    source: &crate::store::Tx<'_>,
+    destination: &crate::store::Tx<'_>,
+    complete: bool,
+    locked_writer: bool,
+) -> Result<(Option<String>, u64)> {
+    let mut source = MigrationCursor {
+        tx: source,
+        after: None,
+        page: Vec::new().into_iter(),
+        locked_writer: false,
+        skip_lineage: false,
+    };
+    let mut destination = MigrationCursor {
+        tx: destination,
+        after: None,
+        page: Vec::new().into_iter(),
+        locked_writer,
+        skip_lineage: true,
+    };
+    let mut last = None;
+    let mut count = 0u64;
+    while let Some((target_name, target_value)) = destination.next()? {
+        let Some((source_name, source_value)) = source.next()? else {
+            return Err(Error::conflict(
+                "Target database does not match this migration",
+            ));
+        };
+        split_record_key(&source_name)?;
+        if target_name != source_name || target_value != source_value {
+            return Err(Error::conflict(
+                "Target database does not match this migration",
+            ));
+        }
+        last = Some(source_name);
+        count += 1;
+    }
+    if complete && source.next()?.is_some() {
+        return Err(Error::conflict("Migrated storage verification failed"));
+    }
+    Ok((last, count))
 }
 
 struct AlertPost {
@@ -605,9 +995,13 @@ pub async fn dispatch_alerts(core: &Core) -> Result<Value> {
         return Ok(json!({"delivered": false, "signals": []}));
     }
     let probe = core.clone();
-    let prepared = tokio::task::spawn_blocking(move || prepare_alert(&probe))
-        .await
-        .map_err(Error::internal)?;
+    let prepared = tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+            prepare_alert(&probe)
+        })
+    })
+    .await
+    .map_err(Error::internal)?;
     match prepared {
         AlertPrep::Quiet => Ok(json!({"delivered": false, "signals": []})),
         AlertPrep::Failed { signals } => {
@@ -724,4 +1118,134 @@ fn note_alert_failure(core: &Core, reason: &'static str) {
         .alert_delivery_errors
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     tracing::warn!(reason, "alert webhook delivery failed");
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    use crate::{model::NewUser, postgres_store::PostgresConfig};
+
+    #[test]
+    #[ignore = "requires a disposable PostgreSQL cluster in RIAUTH_TEST_PG_CONNECTION"]
+    fn interrupted_postgres_migration_checks_its_checkpoint_before_resuming() {
+        let shared = std::fs::read_to_string(
+            std::env::var_os("RIAUTH_TEST_PG_CONNECTION")
+                .expect("set RIAUTH_TEST_PG_CONNECTION to a disposable cluster"),
+        )
+        .unwrap();
+        let database = format!("riauth_s06_{}", uuid::Uuid::new_v4().simple());
+        let mut admin = postgres::Client::connect(shared.trim(), postgres::NoTls).unwrap();
+        admin
+            .batch_execute(&format!("CREATE DATABASE {database}"))
+            .unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let connection_file = local.path().join("connection");
+        let connection = shared.replace("dbname=postgres", &format!("dbname={database}"));
+        assert_ne!(connection, shared);
+        write_private(&connection_file, connection.as_bytes(), false).unwrap();
+        let postgres = PostgresConfig {
+            connection_file,
+            ca_file: None,
+            local_unencrypted: true,
+            pool_size: 2,
+        };
+        let config = Config {
+            data_dir: local.path().join("data"),
+            ..Default::default()
+        };
+        let source = Core::initialize(
+            config.clone(),
+            NewUser {
+                username: "admin".into(),
+                password: "migration-interruption-password".into(),
+                email: None,
+                display_name: "Admin".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = source
+            .login(
+                "admin".into(),
+                "migration-interruption-password".into(),
+                None,
+            )
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        source
+            .store
+            .write(|tx| {
+                for index in 0..300 {
+                    tx.put(
+                        "audit",
+                        &format!("migration-{index:04}"),
+                        &json!({"index":index}),
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        let before = source.store.read(|tx| tx.snapshot()).unwrap();
+        drop(source);
+
+        let output = local.path().join("postgres.toml");
+        let error =
+            migrate_postgres_checkpointed(config.clone(), postgres.clone(), &output, |_| {
+                Err(Error::conflict(
+                    "simulated interruption after a committed page",
+                ))
+            })
+            .unwrap_err();
+        assert!(error.message.contains("simulated interruption"));
+        assert!(!output.exists());
+        let source = Core::open(config.clone()).unwrap();
+        assert_eq!(source.store.read(|tx| tx.snapshot()).unwrap(), before);
+        drop(source);
+        let target = Store::open_postgres(postgres.clone(), None).unwrap();
+        let partial = target.read(|tx| tx.snapshot()).unwrap();
+        assert!(partial.len() >= crate::store::maintenance::PAGE);
+        assert!(partial.len() < before.len());
+        drop(target);
+
+        let first = before.keys().next().unwrap();
+        let mut raw = postgres::Client::connect(connection.trim(), postgres::NoTls).unwrap();
+        raw.execute(
+            "UPDATE riauth_store.records_v1 SET value=$2 WHERE key=$1",
+            &[&first.as_bytes(), &b"null".as_slice()],
+        )
+        .unwrap();
+        let error = migrate_postgres(config.clone(), postgres.clone(), &output).unwrap_err();
+        assert!(error.message.contains("does not match this migration"));
+        assert!(!output.exists());
+        let value: Vec<u8> = raw
+            .query_one(
+                "SELECT value FROM riauth_store.records_v1 WHERE key=$1",
+                &[&first.as_bytes()],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(value, b"null");
+        raw.execute(
+            "UPDATE riauth_store.records_v1 SET value=$2 WHERE key=$1",
+            &[
+                &first.as_bytes(),
+                &serde_json::to_vec(&before[first]).unwrap(),
+            ],
+        )
+        .unwrap();
+
+        let result = migrate_postgres(config.clone(), postgres.clone(), &output).unwrap();
+        assert_eq!(result["migrated"], true);
+        assert_eq!(result["records"], before.len());
+        let target = Core::open(Config::load(&output).unwrap()).unwrap();
+        let mut after = target.store.read(|tx| tx.snapshot()).unwrap();
+        after.remove("meta/storage_lineage");
+        assert_eq!(after, before);
+        assert_eq!(target.me(&token).unwrap()["user"]["username"], "admin");
+        drop(target);
+        let source = Core::open(config).unwrap();
+        assert_eq!(source.store.read(|tx| tx.snapshot()).unwrap(), before);
+    }
 }

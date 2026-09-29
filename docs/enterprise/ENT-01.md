@@ -71,9 +71,12 @@ riauth audit
 
 An agent reader, and not a decider (run from the repository root, where `deployment-private/` is ignored by Git, or use a private operator directory):
 
+Read the current numeric revision with `riauth revision` before the human administrator creates this agent. The operation key is unique to this request; a server-side exact retry returns 409 `credential_already_issued` without disclosing the credential again. The CLI needs a new unused `--out` path to send a retry if the first file exists.
+
 ```sh
 mkdir -p deployment-private
-riauth agent create reader --permission access.read='*' --ttl 3600 --out deployment-private/reader.json
+riauth --if-revision '<revision>' --idempotency-key pam-reader-create-001 \
+  agent create reader --permission access.read='*' --ttl 3600 --out deployment-private/reader.json
 riauth --agent-file deployment-private/reader.json access requests
 riauth --agent-file deployment-private/reader.json access grants
 ```

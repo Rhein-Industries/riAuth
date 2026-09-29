@@ -1,0 +1,6 @@
+{
+  "http": 200,
+  "final": "http://127.0.0.1:49877/d/riauth-alert-metrics/riauth-alert-metrics?orgId=1&from=now-15m&to=now&refresh=10s&var-datasource=riauth-o06-prom&viewPanel=2&kiosk=true",
+  "has_title": true,
+  "login_redirect": false
+}

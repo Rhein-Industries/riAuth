@@ -1,0 +1,275 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "postgres",
+    "operation": "pg_basebackup_same_cluster",
+    "loopback": true,
+    "local_unencrypted": true,
+    "physical_copy": true,
+    "base_backup": true,
+    "pitr": false,
+    "logical_restore": false,
+    "recovery_complete_run": false,
+    "cargo_build": false,
+    "production_files": false,
+    "temporary_files_removed": true,
+    "server_process_stopped": true,
+    "issuer": "http://127.0.0.1:62103",
+    "postgres_port": 62102
+  },
+  "outcome": "observed",
+  "detail": "Plain pg_basebackup of one temporary PostgreSQL 16.14 cluster, started as the replacement data directory, kept timeline 1, the system identifier, and database oid 16384 / records oid 16386. recovery status before any open reported serving_allowed true and no pending gate. serve reached /readyz 200 and the pre-backup session doctor returned healthy. recovery invalidate --database-restored wrote cause database_restore, removed one session and one session token, and left passwords 1 and signing_keys 1 in reconcile. The next serve exited 5 before a listener. The follow-up doctor was connection refused. recovery complete was not run. The production gate stays open.",
+  "checks": [
+    {
+      "id": "binary",
+      "exit_code": 0,
+      "observed": {
+        "sha256": "de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069",
+        "bytes": 289661864,
+        "edition": "platform",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials",
+          "platform"
+        ],
+        "copied_from_snapshot": true
+      }
+    },
+    {
+      "id": "source",
+      "exit_code": 0,
+      "observed": {
+        "readyz_http_status": 200,
+        "login_user": "drill-admin",
+        "login_admin": true,
+        "session_file_mode": "0600",
+        "doctor": {
+          "healthy": true,
+          "schema_version": 3,
+          "revision": 0,
+          "issuer": "http://127.0.0.1:62103",
+          "storage": "postgresql",
+          "encrypted_at_rest": false,
+          "users": 1,
+          "enabled_administrators": 1,
+          "clients": 0,
+          "pending_logout_deliveries": 0,
+          "tls": "reverse_proxy"
+        },
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": true,
+          "pending_present": false,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true
+        },
+        "records": 25,
+        "database_oid": 16384,
+        "records_oid": 16386,
+        "timeline_id": 1,
+        "server_version": "16.14 (Homebrew)"
+      }
+    },
+    {
+      "id": "base_backup",
+      "exit_code": 0,
+      "observed": {
+        "tool": "pg_basebackup",
+        "format": "plain",
+        "wal_method": "stream",
+        "checkpoint": "fast",
+        "backup_label_present": true,
+        "backup_manifest_present": true,
+        "backup_kib": 47152,
+        "pg_version_file": "16"
+      }
+    },
+    {
+      "id": "copy_before_open",
+      "exit_code": 0,
+      "observed": {
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": true,
+          "pending_present": false,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true
+        },
+        "records": 25,
+        "records_equal": true,
+        "database_oid": 16384,
+        "records_oid": 16386,
+        "database_oid_equal": true,
+        "records_oid_equal": true,
+        "system_identifier_equal": true,
+        "timeline_id": 1,
+        "timeline_equal": true,
+        "server_version": "16.14 (Homebrew)",
+        "pg_is_in_recovery": "f",
+        "backup_label_still_present": false
+      }
+    },
+    {
+      "id": "copy_served_before_invalidate",
+      "exit_code": 0,
+      "observed": {
+        "listener_started": true,
+        "listening_log": true,
+        "readyz_http_status": 200,
+        "old_session": {
+          "exit_code": 0,
+          "ok": true,
+          "doctor": {
+            "healthy": true,
+            "schema_version": 3,
+            "revision": 0,
+            "issuer": "http://127.0.0.1:62103",
+            "storage": "postgresql",
+            "encrypted_at_rest": false,
+            "users": 1,
+            "enabled_administrators": 1,
+            "clients": 0,
+            "pending_logout_deliveries": 0,
+            "tls": "reverse_proxy"
+          }
+        }
+      }
+    },
+    {
+      "id": "invalidate",
+      "exit_code": 0,
+      "observed": {
+        "serving_allowed": false,
+        "pending": {
+          "id": "d60df2ea-b218-41e6-b972-2cdd6dd74539",
+          "cause": "database_restore",
+          "policy": "riauth.recovery/v1",
+          "invalidated": {
+            "session_tokens": 1,
+            "sessions": 1
+          },
+          "reconcile": {
+            "enabled_accounts": 1,
+            "passwords": 1,
+            "signing_keys": 1
+          },
+          "epoch_advanced_users": 1,
+          "completed_at": null,
+          "lineage_present": false
+        }
+      }
+    },
+    {
+      "id": "status_after_invalidate",
+      "exit_code": 0,
+      "observed": {
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": false,
+          "pending_present": true,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true,
+          "pending": {
+            "id": "d60df2ea-b218-41e6-b972-2cdd6dd74539",
+            "cause": "database_restore",
+            "policy": "riauth.recovery/v1",
+            "invalidated": {
+              "session_tokens": 1,
+              "sessions": 1
+            },
+            "reconcile": {
+              "enabled_accounts": 1,
+              "passwords": 1,
+              "signing_keys": 1
+            },
+            "epoch_advanced_users": 1,
+            "completed_at": null,
+            "lineage_present": false
+          }
+        },
+        "records": 28
+      }
+    },
+    {
+      "id": "serve_after_invalidate",
+      "exit_code": 5,
+      "observed": {
+        "listener_started": false,
+        "serve_exit": 5,
+        "serve_error_lines": [
+          "error: Restored state requires reconciliation; run `riauth recovery status`"
+        ],
+        "listening_log": false,
+        "old_session": {
+          "exit_code": 1,
+          "ok": false,
+          "code": "operation_failed",
+          "http_status": 0,
+          "message": "error sending request for url (http://127.0.0.1:62103/api/operations/doctor): client error (Connect): tcp connect error: Connection refused (os error 61)"
+        },
+        "recovery_complete_run": false
+      }
+    }
+  ],
+  "commands": [
+    "initdb --auth-local=trust --auth-host=reject --encoding=UTF8 --locale=C --no-instructions",
+    "pg_ctl -D pgdata -l postgres.log -w -t 30 start",
+    "riauth init --issuer http://127.0.0.1:62103 --listen 127.0.0.1:62103 --admin drill-admin --password-stdin --postgres-config src-postgres.json",
+    "riauth serve",
+    "riauth login drill-admin --password-stdin --session-file session.json",
+    "riauth doctor --session-file session.json",
+    "riauth recovery status",
+    "pg_basebackup -D base -h lab-socket -p 62102 -X stream --checkpoint=fast --no-password -l riauth-d04-base",
+    "pg_ctl -D pgdata -m fast -t 20 stop",
+    "pg_ctl -D base -l base.log -w -t 40 start",
+    "riauth recovery status",
+    "riauth serve",
+    "riauth doctor --session-file session.json",
+    "riauth recovery invalidate --database-restored",
+    "riauth recovery status",
+    "riauth serve",
+    "riauth doctor --session-file session.json"
+  ]
+}

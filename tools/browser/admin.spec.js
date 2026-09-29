@@ -1,0 +1,206 @@
+import { test, expect } from '@playwright/test';
+import { fixtureStartupMs, startFixture } from './fixture.js';
+let stopFixture, fixture;
+test.beforeAll(async () => {
+  test.setTimeout(fixtureStartupMs + 5000);
+  ({ fixture, stop: stopFixture } = await startFixture());
+});
+test.afterAll(async () => { await stopFixture?.(); });
+
+const bearer = () => ({ authorization: `Bearer ${fixture.token}` });
+async function portalSignIn(page, user) {
+  await page.goto(`${fixture.issuer}/apps`);
+  await page.locator('#login-username').fill(user.username);
+  await page.locator('#login-password').fill(user.password);
+  await page.locator('#password-login').click();
+  await expect(page.locator('#catalogue')).toBeVisible();
+}
+async function portalSignOut(page) {
+  await page.goto(`${fixture.issuer}/apps`);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.locator('#login-username')).toBeVisible();
+}
+const stepTitle = (page) => page.locator('#wizard-step-title');
+const next = (page) => page.getByRole('button', { name: 'Continue' }).click();
+async function openWizard(page) {
+  // A fresh document: a hash-only goto would keep the previous view's state.
+  await page.goto('about:blank');
+  await page.goto(`${fixture.issuer}/admin#/applications/new`);
+  await expect(stepTitle(page)).toHaveText('Step 1 of 6: Application');
+}
+async function storedClient(page, id) {
+  const response = await page.request.get(`${fixture.issuer}/api/clients`, { headers: bearer() });
+  expect(response.ok()).toBe(true);
+  return (await response.json()).find((client) => client.client_id === id);
+}
+// Creates a web application and returns the one-time secret the wizard shows.
+async function createWebApp(page, name, callback) {
+  await openWizard(page);
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await next(page);
+  await expect(stepTitle(page)).toHaveText('Step 2 of 6: Sign-in URLs');
+  await page.getByLabel('Redirect URIs').fill(callback);
+  await next(page);
+  for (const title of ['Step 3 of 6: Access', 'Step 4 of 6: Claims', 'Step 5 of 6: Credentials']) {
+    await expect(stepTitle(page)).toHaveText(title);
+    await next(page);
+  }
+  await expect(stepTitle(page)).toHaveText('Step 6 of 6: Review');
+  await page.getByRole('button', { name: 'Create application' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: `Connect ${name}` })).toBeVisible();
+  const secret = (await page.locator('.connection-facts code', { hasText: /^ri_client_/ }).innerText()).trim();
+  expect(secret).toMatch(/^ri_client_/);
+  return secret;
+}
+const secretGone = async (page, secret) => {
+  expect(await page.content()).not.toContain(secret);
+  await expect(page.locator('#secret-value')).toHaveValue('');
+};
+
+test('a service is set up step by step with the API scopes it was given', async ({ page }) => {
+  await portalSignIn(page, fixture.admin);
+  await openWizard(page);
+  await page.getByLabel('Name', { exact: true }).fill('Billing sync');
+  await page.getByRole('radio', { name: /^Service/ }).check();
+  // The Application step is checked before any API scope has been collected.
+  await next(page);
+  await expect(stepTitle(page)).toHaveText('Step 2 of 4: API access');
+  await next(page);
+  await expect(page.getByRole('alert')).toContainText('Enter at least one API scope');
+  await page.getByLabel('API scopes').fill('billing.read billing.write');
+  await next(page);
+  await expect(stepTitle(page)).toHaveText('Step 3 of 4: Credentials');
+  await next(page);
+  await expect(stepTitle(page)).toHaveText('Step 4 of 4: Review');
+  const review = page.locator('.review-facts');
+  await expect(review).toContainText('billing.read');
+  await expect(page.locator('#view')).not.toContainText('setup.pending');
+  await page.getByRole('button', { name: 'Create application' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Connect Billing sync' })).toBeVisible();
+  const client = await storedClient(page, 'billing-sync');
+  expect(client.service).toBe(true);
+  expect([...client.scopes].sort()).toEqual(['billing.read', 'billing.write']);
+});
+
+test('the one-time secret is dropped when the session ends or the account changes', async ({ page, context }) => {
+  // Session loss in this tab: the next refresh shows the sign-in gate without the secret.
+  await portalSignIn(page, fixture.admin);
+  let secret = await createWebApp(page, 'Reports one', 'https://reports-one.example.com/callback');
+  await context.clearCookies();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.locator('#gate-title')).toHaveText('Sign in to administer riAuth');
+  await secretGone(page, secret);
+
+  // Another person signs in from a second tab; this tab then sees a non-administrator.
+  await portalSignIn(page, fixture.admin);
+  secret = await createWebApp(page, 'Reports two', 'https://reports-two.example.com/callback');
+  const other = await context.newPage();
+  await portalSignOut(other);
+  await portalSignIn(other, fixture.users.bob);
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.locator('#gate-title')).toHaveText('Administrator access required');
+  await secretGone(page, secret);
+  await page.evaluate(() => { location.hash = '#/applications'; location.hash = '#/applications/new'; });
+  await secretGone(page, secret);
+
+  // Another administrator: the new session never renders the previous one's secret.
+  const ops = { username: 'ops', password: 'another fixture administrator 2026' };
+  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...ops, admin: true } });
+  expect(created.ok()).toBe(true);
+  await portalSignOut(other);
+  await portalSignIn(other, fixture.admin);
+  secret = await createWebApp(other, 'Reports three', 'https://reports-three.example.com/callback');
+  await portalSignOut(page);
+  await portalSignIn(page, ops);
+  await other.getByRole('button', { name: 'Refresh' }).click();
+  await expect(stepTitle(other)).toHaveText('Step 1 of 6: Application');
+  await secretGone(other, secret);
+
+  // Explicit sign-out from the administration page.
+  await portalSignOut(other);
+  await portalSignIn(other, fixture.admin);
+  secret = await createWebApp(other, 'Reports four', 'https://reports-four.example.com/callback');
+  await other.locator('#sign-out').click();
+  await expect(other.locator('#gate-title')).toHaveText('Sign in to administer riAuth');
+  await secretGone(other, secret);
+});
+
+test('a refresh keeps the fields typed on the open step', async ({ page }) => {
+  await portalSignIn(page, fixture.admin);
+  await openWizard(page);
+  await page.getByLabel('Name', { exact: true }).fill('Unsaved name');
+  // Mark the rendered form so the assertion runs on the re-rendered one.
+  await page.locator('.wizard-form').evaluate((form) => { form.dataset.before = 'refresh'; });
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.locator('.wizard-form[data-before]')).toHaveCount(0);
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Unsaved name');
+});
+
+// Non-retrying: the secret must already be gone when the event handler returns.
+async function secretErasedNow(page, secret) {
+  expect(await page.content()).not.toContain(secret);
+  expect(await page.locator('#secret-value').inputValue()).toBe('');
+}
+const dispatch = (page, type) => page.evaluate((type) => {
+  if (type === 'visibilitychange') {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event(type));
+    delete document.visibilityState;
+  } else window.dispatchEvent(new Event(type));
+}, type);
+
+test('a one-time secret is erased as soon as the tab loses focus or is hidden', async ({ page }) => {
+  await portalSignIn(page, fixture.admin);
+  let secret = await createWebApp(page, 'Blur one', 'https://blur-one.example.com/callback');
+  await dispatch(page, 'blur');
+  await secretErasedNow(page, secret);
+  await expect(page.getByText('The client secret was erased when this page lost focus.')).toBeVisible();
+
+  secret = await createWebApp(page, 'Hidden one', 'https://hidden-one.example.com/callback');
+  await dispatch(page, 'visibilitychange');
+  await secretErasedNow(page, secret);
+
+  // A rotated secret in the dialog goes the same way.
+  await page.goto(`${fixture.issuer}/admin#/applications/hidden-one`);
+  await page.getByRole('button', { name: 'Rotate secret' }).click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#secret-dialog')).toBeVisible();
+  secret = await page.locator('#secret-value').inputValue();
+  expect(secret).toMatch(/^ri_client_/);
+  await dispatch(page, 'blur');
+  await secretErasedNow(page, secret);
+  await expect(page.locator('#secret-dialog')).toBeHidden();
+});
+
+test('focus erases a one-time secret before the session check answers', async ({ page, context }) => {
+  await portalSignIn(page, fixture.admin);
+  // A stalled, then failed, session check never exposes the secret.
+  let secret = await createWebApp(page, 'Stall one', 'https://stall-one.example.com/callback');
+  let release;
+  let held = new Promise((done) => { release = done; });
+  await page.route('**/api/admin/session', async (route) => { await held; await route.abort(); });
+  await dispatch(page, 'focus');
+  await secretErasedNow(page, secret);
+  release();
+  await expect(page.getByText('The client secret was erased when this page lost focus.')).toBeVisible();
+  await secretErasedNow(page, secret);
+  await page.unroute('**/api/admin/session');
+
+  // An idle tab returns after another administrator signed in from a second tab.
+  secret = await createWebApp(page, 'Idle one', 'https://idle-one.example.com/callback');
+  const idle = { username: 'idle-admin', password: 'idle tab fixture administrator 2026' };
+  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...idle, admin: true } });
+  expect(created.ok()).toBe(true);
+  const other = await context.newPage();
+  await portalSignOut(other);
+  await portalSignIn(other, idle);
+  held = new Promise((done) => { release = done; });
+  await page.route('**/api/admin/session', async (route) => { await held; await route.continue(); });
+  await dispatch(page, 'focus');
+  await secretErasedNow(page, secret);
+  release();
+  await expect(stepTitle(page)).toHaveText('Step 1 of 6: Application');
+  await expect(page.locator('#account-detail')).toContainText('idle-admin');
+  await page.unroute('**/api/admin/session');
+  await secretErasedNow(page, secret);
+});

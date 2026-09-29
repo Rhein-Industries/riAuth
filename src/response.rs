@@ -1,15 +1,13 @@
 use crate::{
-    core::Core,
     crypto,
     error::{Error, Result},
     model::Client,
-    store::Tx,
 };
 use axum::{
     http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 pub const MODES: &[&str] = &[
     "query",
@@ -30,59 +28,53 @@ const FIELDS: &[&str] = &[
     "session_state",
 ];
 
-impl Core {
-    pub(crate) fn secure_authorization_response(
-        &self,
-        tx: &Tx<'_>,
-        client: &Client,
-        mode: Option<&str>,
-        callback: String,
-    ) -> Result<String> {
-        let mode = mode.unwrap_or("query");
-        if mode == "query" || mode == "form_post" {
-            return Ok(callback);
-        }
-        let mut url = url::Url::parse(&callback).map_err(Error::internal)?;
-        let (fields, original): (Vec<_>, Vec<_>) = url
-            .query_pairs()
-            .into_owned()
-            .partition(|(k, _)| FIELDS.contains(&k.as_str()));
-        url.set_query(None);
-        if !original.is_empty() {
-            url.query_pairs_mut().extend_pairs(original);
-        }
-        let response = if mode == "jwt" || mode.ends_with(".jwt") {
-            let mut claims = json!({"iss": crate::issuer::for_client(&self.config.issuer,client), "aud": client.id, "iat":crypto::now(), "exp":crypto::now()+60});
-            for (name, value) in fields {
-                if name != "iss" {
-                    claims[&name] = json!(value);
-                }
-            }
-            let signed = self.sign_jwt(
-                &crate::keyring::for_client(tx, client)?.active,
-                &claims,
-                "oauth-authz-resp+jwt",
-            )?;
-            let response = if let Some(key) = &client.settings.authorization_encryption {
-                key.encrypt(&signed)?
-            } else {
-                signed
-            };
-            vec![("response".into(), response)]
-        } else {
-            fields
-        };
-        if mode.starts_with("fragment") {
-            url.set_fragment(Some(
-                &url::form_urlencoded::Serializer::new(String::new())
-                    .extend_pairs(response)
-                    .finish(),
-            ));
-        } else {
-            url.query_pairs_mut().extend_pairs(response);
-        }
-        Ok(url.into())
+pub(crate) fn secure_authorization_response(
+    issuer: &str,
+    client: &Client,
+    mode: Option<&str>,
+    callback: String,
+    sign: impl FnOnce(&Value) -> Result<String>,
+) -> Result<String> {
+    let mode = mode.unwrap_or("query");
+    if mode == "query" || mode == "form_post" {
+        return Ok(callback);
     }
+    let mut url = url::Url::parse(&callback).map_err(Error::internal)?;
+    let (fields, original): (Vec<_>, Vec<_>) = url
+        .query_pairs()
+        .into_owned()
+        .partition(|(k, _)| FIELDS.contains(&k.as_str()));
+    url.set_query(None);
+    if !original.is_empty() {
+        url.query_pairs_mut().extend_pairs(original);
+    }
+    let response = if mode == "jwt" || mode.ends_with(".jwt") {
+        let mut claims = json!({"iss": crate::issuer::for_client(issuer,client), "aud": client.id, "iat":crypto::now(), "exp":crypto::now()+60});
+        for (name, value) in fields {
+            if name != "iss" {
+                claims[&name] = json!(value);
+            }
+        }
+        let signed = sign(&claims)?;
+        let response = if let Some(key) = &client.settings.authorization_encryption {
+            key.encrypt(&signed)?
+        } else {
+            signed
+        };
+        vec![("response".into(), response)]
+    } else {
+        fields
+    };
+    if mode.starts_with("fragment") {
+        url.set_fragment(Some(
+            &url::form_urlencoded::Serializer::new(String::new())
+                .extend_pairs(response)
+                .finish(),
+        ));
+    } else {
+        url.query_pairs_mut().extend_pairs(response);
+    }
+    Ok(url.into())
 }
 
 pub fn is_form(mode: Option<&str>) -> bool {

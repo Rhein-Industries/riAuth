@@ -391,6 +391,584 @@ fn crl(dir: &Path, ca: &X509, ca_key: &PKey<Private>, revoked: Option<&X509>) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn eap_capability_requires_eligible_nas_client_and_usable_verifier() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut core = Core::initialize(
+        Config {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: "radius-capability-password".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core
+        .login("admin".into(), "radius-capability-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (ca, ca_key) = cert("EAP private CA", 1, None);
+    let (server, server_key) = cert("localhost", 2, Some((&ca, &ca_key)));
+    crl(dir.path(), &ca, &ca_key, None);
+    std::fs::write(dir.path().join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.path().join("server.key"),
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    riauth::config::write_private(&dir.path().join("radius.secret"), SECRET, false).unwrap();
+    for (id, eap_tls) in [("eap-client", true), ("pap-client", false)] {
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: id.into(),
+                name: id.into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["openid", "radius"]),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    radius: Some(Settings {
+                        eap_tls,
+                        reply: vec![],
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    }
+    core.config.radius_listeners.insert(
+        "wifi".into(),
+        Listener {
+            eap_tls: Some(EapConfig {
+                certificate_file: dir.path().join("server.pem"),
+                key_file: dir.path().join("server.key"),
+                client_ca_file: dir.path().join("ca.pem"),
+                client_crl_file: dir.path().join("clients.crl.pem"),
+                ocsp_response_file: None,
+                tls12: false,
+                fragment_size: 1024,
+            }),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer: "127.0.0.1".parse().unwrap(),
+                    client_id: "eap-client".into(),
+                    shared_secret_file: Some(dir.path().join("radius.secret")),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    core.config.validate().unwrap();
+    riauth::capability::validate_store(&core.config, &core.store).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in [
+        "radius.eap_tls",
+        "agents.certificate_bindings",
+        "radius.pap",
+    ] {
+        assert_eq!(states["feature_states"][name]["configured"], true);
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
+    let servers = riauth::radius::start(core.clone()).await.unwrap();
+    assert_eq!(servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.eap_tls"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in [
+        "radius.eap_tls",
+        "agents.certificate_bindings",
+        "radius.pap",
+    ] {
+        assert_eq!(states["feature_states"][name]["runtime_ready"], true);
+        assert_eq!(states["feature_states"][name]["usable"], true);
+    }
+    drop(servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in [
+        "radius.eap_tls",
+        "agents.certificate_bindings",
+        "radius.pap",
+    ] {
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
+
+    let secret_file = dir.path().join("radius.secret");
+    std::fs::remove_file(&secret_file).unwrap();
+    assert_eq!(
+        riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.eap_tls"]["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("NAS material")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "eap-client",
+            ClientPatch {
+                name: Some("Renamed Wi-Fi".into()),
+                ..Default::default()
+            }
+        )
+        .unwrap_err()
+        .message
+        .contains("NAS material")
+    );
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+
+    let error = core
+        .update_client(
+            &admin,
+            "eap-client",
+            ClientPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+    let mut settings = core
+        .store
+        .read(|tx| tx.get::<Client>("clients", "eap-client"))
+        .unwrap()
+        .unwrap()
+        .settings;
+    settings.radius.as_mut().unwrap().eap_tls = false;
+    let error = core
+        .update_client(
+            &admin,
+            "eap-client",
+            ClientPatch {
+                settings: Some(settings),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+    let stored = core
+        .store
+        .read(|tx| tx.get::<Client>("clients", "eap-client"))
+        .unwrap()
+        .unwrap();
+    assert!(stored.enabled);
+    assert!(stored.settings.radius.unwrap().eap_tls);
+
+    let mut wrong_nas = core.clone();
+    wrong_nas
+        .config
+        .radius_listeners
+        .get_mut("wifi")
+        .unwrap()
+        .nas
+        .get_mut("nas")
+        .unwrap()
+        .client_id = "pap-client".into();
+    let states = riauth::capability::runtime(&wrong_nas).unwrap();
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
+    assert!(
+        riauth::capability::validate_store(&wrong_nas.config, &wrong_nas.store)
+            .unwrap_err()
+            .message
+            .contains("no NAS")
+    );
+
+    let mut pap_only = wrong_nas.clone();
+    pap_only
+        .config
+        .radius_listeners
+        .get_mut("wifi")
+        .unwrap()
+        .eap_tls = None;
+    riauth::capability::validate_store(&pap_only.config, &pap_only.store).unwrap();
+    let states = riauth::capability::runtime(&pap_only).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+
+    let mut bad_verifier = core.clone();
+    bad_verifier
+        .config
+        .radius_listeners
+        .get_mut("wifi")
+        .unwrap()
+        .eap_tls
+        .as_mut()
+        .unwrap()
+        .client_crl_file = dir.path().join("missing.crl");
+    let states = riauth::capability::runtime(&bad_verifier).unwrap();
+    assert_eq!(states["feature_states"]["radius.eap_tls"]["usable"], false);
+    assert!(
+        riauth::capability::validate_store(&bad_verifier.config, &bad_verifier.store)
+            .unwrap_err()
+            .message
+            .contains("unusable verifier")
+    );
+    assert!(
+        bad_verifier
+            .update_client(
+                &admin,
+                "eap-client",
+                ClientPatch {
+                    name: Some("Renamed Wi-Fi".into()),
+                    ..Default::default()
+                }
+            )
+            .unwrap_err()
+            .message
+            .contains("unusable verifier")
+    );
+    let config = bad_verifier.config.clone();
+    drop(bad_verifier);
+    drop(pap_only);
+    drop(wrong_nas);
+    drop(core);
+    let error = match Core::open(config) {
+        Ok(_) => panic!("missing EAP verifier material must block startup"),
+        Err(error) => error,
+    };
+    assert!(error.message.contains("RADIUS EAP-TLS listener"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn radius_pap_radsec_capabilities_require_transport_material_and_bound_client() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut core = Core::initialize(
+        Config {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: "radius-capability-password".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core
+        .login("admin".into(), "radius-capability-password".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.create_client(
+        &admin,
+        NewClient {
+            client_id: "network".into(),
+            name: "Network".into(),
+            confidential: false,
+            redirect_uris: vec![],
+            scopes: strings(&["openid", "radius"]),
+            allowed_groups: BTreeSet::new(),
+            require_mfa: false,
+            service: false,
+            settings: ProviderSettings {
+                radius: Some(Settings {
+                    eap_tls: false,
+                    reply: vec![],
+                }),
+                ..Default::default()
+            },
+        },
+    )
+    .unwrap();
+
+    let secret_file = dir.path().join("radius.secret");
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+    let (ca, ca_key) = cert("RADIUS private CA", 10, None);
+    let (server, server_key) = cert("localhost", 11, Some((&ca, &ca_key)));
+    let ca_file = dir.path().join("ca.pem");
+    let cert_file = dir.path().join("server.pem");
+    let key_file = dir.path().join("server.key");
+    std::fs::write(&ca_file, ca.to_pem().unwrap()).unwrap();
+    std::fs::write(&cert_file, server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &key_file,
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    let peer = "127.0.0.1".parse().unwrap();
+    core.config.radius_listeners.insert(
+        "udp".into(),
+        Listener {
+            eap_tls: None,
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer,
+                    client_id: "network".into(),
+                    shared_secret_file: Some(secret_file.clone()),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    core.config.radius_listeners.insert(
+        "tls".into(),
+        Listener {
+            eap_tls: None,
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Tls,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer,
+                    client_id: "network".into(),
+                    shared_secret_file: None,
+                    certificate_sha256: Some(URL_SAFE_NO_PAD.encode([42u8; 32])),
+                },
+            )]
+            .into(),
+            tls_cert_file: Some(cert_file),
+            tls_key_file: Some(key_file.clone()),
+            client_ca_file: Some(ca_file),
+        },
+    );
+    riauth::capability::validate_store(&core.config, &core.store).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    for name in ["radius.pap", "radius.radsec"] {
+        assert_eq!(states["feature_states"][name]["configured"], true);
+        assert_eq!(states["feature_states"][name]["runtime_ready"], false);
+        assert_eq!(states["feature_states"][name]["usable"], false);
+    }
+
+    let mut tls_only = core.clone();
+    tls_only.config.radius_listeners.remove("udp");
+    let states = riauth::capability::runtime(&tls_only).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(
+        states["feature_states"]["radius.radsec"]["configured"],
+        true
+    );
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+    let mut udp_only = core.clone();
+    udp_only.config.radius_listeners.remove("tls");
+    assert_eq!(
+        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.radsec"]["configured"],
+        false
+    );
+
+    let udp_servers = riauth::radius::start(udp_only.clone()).await.unwrap();
+    assert_eq!(udp_servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.pap"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(
+        states["feature_states"]["radius.radsec"]["configured"],
+        true
+    );
+    assert_eq!(
+        states["feature_states"]["radius.radsec"]["runtime_ready"],
+        false
+    );
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+
+    let tls_servers = riauth::radius::start(tls_only.clone()).await.unwrap();
+    assert_eq!(tls_servers.addresses.len(), 1);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while riauth::capability::runtime(&core).unwrap()["feature_states"]["radius.radsec"]
+            ["runtime_ready"] != true
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], true);
+    drop(tls_servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], true);
+    assert_eq!(states["feature_states"]["radius.radsec"]["usable"], false);
+    drop(udp_servers);
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(
+        states["feature_states"]["radius.pap"]["runtime_ready"],
+        false
+    );
+    assert_eq!(states["feature_states"]["radius.pap"]["usable"], false);
+
+    std::fs::remove_file(&secret_file).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(
+        states["feature_states"]["radius.radsec"]["configured"],
+        true
+    );
+    assert_eq!(
+        riauth::capability::runtime(&udp_only).unwrap()["feature_states"]["radius.pap"]["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("NAS material")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                name: Some("Still network".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("NAS material")
+    );
+    riauth::config::write_private(&secret_file, SECRET, false).unwrap();
+
+    std::fs::remove_file(&key_file).unwrap();
+    let states = riauth::capability::runtime(&core).unwrap();
+    assert_eq!(states["feature_states"]["radius.pap"]["configured"], true);
+    assert_eq!(
+        states["feature_states"]["radius.radsec"]["configured"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&core.config, &core.store)
+            .unwrap_err()
+            .message
+            .contains("TLS material")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                name: Some("Still network".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("TLS material")
+    );
+    riauth::config::write_private(
+        &key_file,
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .message
+        .contains("requires client")
+    );
+    assert!(
+        core.update_client(
+            &admin,
+            "network",
+            ClientPatch {
+                scopes: Some(strings(&["openid"])),
+                ..Default::default()
+            }
+        )
+        .unwrap_err()
+        .message
+        .contains("requires client")
+    );
+    assert!(
+        core.store
+            .read(|tx| tx.get::<Client>("clients", "network"))
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
+
+    let mut missing_client = core.clone();
+    missing_client
+        .config
+        .radius_listeners
+        .get_mut("tls")
+        .unwrap()
+        .nas
+        .get_mut("nas")
+        .unwrap()
+        .client_id = "missing".into();
+    assert_eq!(
+        riauth::capability::runtime(&missing_client).unwrap()["feature_states"]["radius.radsec"]["usable"],
+        false
+    );
+    assert!(
+        riauth::capability::validate_store(&missing_client.config, &missing_client.store)
+            .unwrap_err()
+            .message
+            .contains("eligible RADIUS client")
+    );
+
+    std::fs::remove_file(&key_file).unwrap();
+    let config = core.config.clone();
+    drop(missing_client);
+    drop(udp_only);
+    drop(tls_only);
+    drop(core);
+    let error = match Core::open(config) {
+        Ok(_) => panic!("unusable RadSec material must block startup"),
+        Err(error) => error,
+    };
+    assert!(error.message.contains("TLS material"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocation() {
     let mut f = Fixture::new();
     f.user("network-user");
@@ -566,32 +1144,14 @@ async fn openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocatio
         3
     );
     // A local certificate is not silently treated as either a password or MFA proof.
-    f.core
-        .update_client(
-            &f.admin,
-            "network",
-            ClientPatch {
-                require_mfa: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&f.core, &f.admin, "network", None, Some(true));
     assert_eq!(
         handshake(&mut nas, TlsPeer::new(&ca, Some((&user, &user_key)), true))
             .await
             .0[0],
         3
     );
-    f.core
-        .update_client(
-            &f.admin,
-            "network",
-            ClientPatch {
-                require_mfa: Some(false),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(&f.core, &f.admin, "network", None, Some(false));
     let (accepted, last, _) =
         handshake(&mut nas, TlsPeer::new(&ca, Some((&user, &user_key)), true)).await;
     assert_eq!(accepted[0], 2);
@@ -772,6 +1332,273 @@ async fn eap_tls_fragment_bounds_reject_oversized_and_inconsistent_flights() {
     assert_eq!(reply[0], 3);
     assert_eq!(message(&attrs)[0], 4);
     drop(servers);
+}
+
+#[test]
+fn agent_eap_bind_cannot_capture_temporary_access_and_replays_existing_binding() {
+    use riauth::{
+        agent::{NewAgent, Permission},
+        pam::{AccessGrant, NewAccessRequest},
+    };
+
+    let mut f = Fixture::new();
+    let subject = f.user("subject");
+    let expired = f.user("expired");
+    f.user("parent");
+    let approver = f.user("approver");
+    f.core.create_group(&f.admin, "ops").unwrap();
+    f.core
+        .config
+        .pam_approvers
+        .insert("ops".into(), strings(&["approver"]));
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "wifi".into(),
+                name: "Wi-Fi".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["openid", "radius"]),
+                allowed_groups: strings(&["ops"]),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    radius: Some(Settings {
+                        eap_tls: true,
+                        reply: vec![],
+                    }),
+                    default_acr_values: vec![CERTIFICATE_ACR.into()],
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let (ca, ca_key) = cert("EAP private CA", 51, None);
+    let (server, server_key) = cert("localhost", 52, Some((&ca, &ca_key)));
+    let (existing_cert, _) = cert("existing", 53, Some((&ca, &ca_key)));
+    let (active_cert, _) = cert("active", 54, Some((&ca, &ca_key)));
+    let (expired_cert, _) = cert("expired", 55, Some((&ca, &ca_key)));
+    let dir = f._dir.path();
+    crl(dir, &ca, &ca_key, None);
+    std::fs::write(dir.join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.join("server.key"),
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    riauth::config::write_private(&dir.join("radius.secret"), SECRET, false).unwrap();
+    f.core.config.radius_listeners.insert(
+        "wifi".into(),
+        Listener {
+            eap_tls: Some(EapConfig {
+                certificate_file: dir.join("server.pem"),
+                key_file: dir.join("server.key"),
+                client_ca_file: dir.join("ca.pem"),
+                client_crl_file: dir.join("clients.crl.pem"),
+                ocsp_response_file: None,
+                tls12: false,
+                fragment_size: 1024,
+            }),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer: "127.0.0.1".parse().unwrap(),
+                    client_id: "wifi".into(),
+                    shared_secret_file: Some(dir.join("radius.secret")),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "eap-manager".into(),
+                permissions: vec!["subject", "expired"]
+                    .into_iter()
+                    .map(|name| Permission {
+                        action: "certificate.write".into(),
+                        resource: format!("user/{name}"),
+                    })
+                    .chain(std::iter::once(Permission {
+                        action: "radius.enroll".into(),
+                        resource: "radius/wifi".into(),
+                    }))
+                    .collect(),
+                ttl: 3600,
+                parent: Some("parent".into()),
+            },
+        )
+        .unwrap();
+    let agent = text(&created["credential"], "token");
+    let input = |username: &str, cert: &X509| CertificateInput {
+        username: username.into(),
+        listener: "wifi".into(),
+        certificate_chain_pem: String::from_utf8(cert.to_pem().unwrap()).unwrap(),
+    };
+
+    let existing = input("subject", &existing_cert);
+    let admin_binding = f
+        .core
+        .radius_certificate_bind(&f.admin, existing.clone())
+        .unwrap();
+    let request = f
+        .core
+        .request_access(
+            &subject,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Temporary network access".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = f
+        .core
+        .decide_access(&approver, &text(&request, "id"), true)
+        .unwrap();
+    let grant_id = text(&decision["grant"], "id");
+    let subject_id = text(&f.core.me(&subject).unwrap()["user"], "id");
+    assert_eq!(f.core.me(&subject).unwrap()["groups"], json!(["ops"]));
+    // A duplicate binding returns its original result without changing exposure.
+    assert_eq!(
+        f.core.radius_certificate_bind(&agent, existing).unwrap(),
+        admin_binding
+    );
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, input("subject", &active_cert))
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+    f.assert_snapshot(&before);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &subject_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !f.core
+            .store
+            .get::<Group>("groups", "ops")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&subject_id)
+    );
+
+    f.core.revoke_access(&approver, &grant_id).unwrap();
+    assert_eq!(f.core.me(&subject).unwrap()["groups"], json!([]));
+    let after_revoke = input("subject", &active_cert);
+    let bound = f
+        .core
+        .radius_certificate_bind(&agent, after_revoke.clone())
+        .unwrap();
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, after_revoke)
+            .unwrap(),
+        bound
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &subject_id)
+            .unwrap()
+            .is_some()
+    );
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "certificate.bind" && event["target"] == bound["id"]
+            })
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "agent.credential_exposure" && event["target"] == subject_id
+            })
+            .count(),
+        1
+    );
+    let exposed_request = f
+        .core
+        .request_access(
+            &subject,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Prior credential exposure".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.core
+            .decide_access(&approver, &text(&exposed_request, "id"), true)
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::CONFLICT
+    );
+
+    let expired_request = f
+        .core
+        .request_access(
+            &expired,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Short access".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let expired_decision = f
+        .core
+        .decide_access(&approver, &text(&expired_request, "id"), true)
+        .unwrap();
+    let expired_id = text(&expired_decision["grant"], "id");
+    let expired_input = input("expired", &expired_cert);
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, expired_input.clone())
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &expired_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &expired_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&expired).unwrap()["groups"], json!([]));
+    f.core
+        .radius_certificate_bind(&agent, expired_input)
+        .unwrap();
 }
 
 fn cert(name: &str, serial: u32, issuer: Option<(&X509, &PKey<Private>)>) -> (X509, PKey<Private>) {

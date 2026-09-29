@@ -1,9 +1,15 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
+#[cfg(feature = "platform")]
+pub mod access_review;
+pub mod admin;
 pub mod http;
+mod mfa;
+pub mod self_service;
+pub mod sources;
 
 use crate::{
     browser::BrowserReply,
-    core::{Core, audit},
+    core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
     model::{Client, Session, User},
@@ -18,20 +24,7 @@ use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
 /// The per-user passkey limit enforced by enrollment.
 const PASSKEY_LIMIT: usize = 16;
 
-#[derive(schemars::JsonSchema, Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, deny_unknown_fields)]
-pub struct Settings {
-    pub description: String,
-    pub category: String,
-    /// Application home/login URL, never an OAuth callback URL.
-    pub launch_url: Option<String>,
-    pub hidden: bool,
-    /// Built-in icon; no remote image requests are made by the portal.
-    pub icon: String,
-    pub accent: String,
-    /// Scopes the application's login requests, in addition to protocol minimums.
-    pub launch_scopes: BTreeSet<String>,
-}
+pub use crate::model::client_settings::portal::Settings;
 
 impl Settings {
     pub fn validate(&self, client: &Client) -> Result<()> {
@@ -80,16 +73,16 @@ impl Settings {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Pending {
-    id: String,
-    code: String,
-    binding_hash: String,
-    expires_at: u64,
-    session_id: Option<String>,
-    denied: bool,
+pub(crate) struct Pending {
+    pub(crate) id: String,
+    pub(crate) code: String,
+    pub(crate) binding_hash: String,
+    pub(crate) expires_at: u64,
+    pub(crate) session_id: Option<String>,
+    pub(crate) denied: bool,
     /// Shown to the approving terminal.
     #[serde(default)]
-    requested_from: Option<Value>,
+    pub(crate) requested_from: Option<Value>,
 }
 
 impl Core {
@@ -180,8 +173,17 @@ impl Core {
                 }));
             }
             apps.sort_by(|a,b| a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase()).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
-            Ok(json!({"user":{"id":user.id,"username":user.username,"display_name":user.display_name},"apps":apps,"expires_at":session.expires_at,"mfa":session.identity.mfa,
-                "mfa_available":user.totp_secret.is_some() || user.has_passkeys}))
+            let access_review_available = cfg!(feature = "platform")
+                && (user.admin
+                    || self
+                        .config
+                        .pam_approvers
+                        .values()
+                        .any(|names| names.contains(&user.username)));
+            Ok(json!({"user":{"id":user.id,"username":user.username,"display_name":user.display_name,"admin":user.admin,
+                "email_verified":user.email_verified,"has_email":user.email.is_some()},"apps":apps,"expires_at":session.expires_at,"mfa":session.identity.mfa,
+                "mfa_available":user.totp_secret.is_some() || user.has_passkeys,
+                "access_review_available":access_review_available}))
         })
     }
 
@@ -200,22 +202,18 @@ impl Core {
     }
 
     pub fn portal_sign_in(&self) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            cleanup(tx, now())?;
-            if tx.list::<Pending>("portal_requests")?.len() >= 1000 {
-                return Err(Error::conflict("Too many pending portal sign-ins; try again shortly"));
-            }
-            let binding = crypto::random_token("ri_portal_");
-            let code = loop {
-                let code = crypto::user_code();
-                if tx.get::<String>("portal_codes", &digest(&crypto::normalize_code(&code)?))?.is_none() { break code; }
-            };
-            let pending = Pending { id:crypto::id(),code,binding_hash:digest(&binding),expires_at:now()+600,session_id:None,denied:false,requested_from:crate::context::requester() };
-            tx.put("portal_codes", &digest(&crypto::normalize_code(&pending.code)?), &pending.id)?;
-            tx.put("portal_requests", &pending.id, &pending)?;
-            Ok(BrowserReply { form_post:false, location:None, refresh:None,
-                cookies:vec![self.browser_cookie("riauth_portal", &binding, &self.portal_poll_path(&pending.id), 600)],
-                body:json!({"id":pending.id,"code":pending.code,"expires_at":pending.expires_at,"issuer":self.config.issuer}) })
+        let started = self.store.write(crate::management::start_portal_sign_in)?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            cookies: vec![self.browser_cookie(
+                "riauth_portal",
+                &started.binding,
+                &self.portal_poll_path(&started.id),
+                600,
+            )],
+            body: json!({"id":started.id,"code":started.code,"expires_at":started.expires_at,"issuer":self.config.issuer}),
         })
     }
 
@@ -232,30 +230,8 @@ impl Core {
     }
 
     pub fn portal_decide(&self, token: &str, code: &str, approve: bool) -> Result<Value> {
-        self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            let mut pending = pending_by_code(tx, code)?;
-            if pending.session_id.is_some() || pending.denied {
-                return Err(Error::conflict("Request already decided"));
-            }
-            if approve && now().saturating_sub(session.identity.auth_time) > 300 {
-                return Err(Error::forbidden());
-            }
-            pending.session_id = approve.then_some(session.id);
-            pending.denied = !approve;
-            tx.put("portal_requests", &pending.id, &pending)?;
-            audit(
-                tx,
-                &user.id,
-                if approve {
-                    "portal.sign_in.approve"
-                } else {
-                    "portal.sign_in.deny"
-                },
-                &pending.id,
-            )?;
-            Ok(json!({"approved":approve,"delivery":"original_browser"}))
-        })
+        self.store
+            .write(|tx| crate::management::decide_portal_sign_in(self, tx, token, code, approve))
     }
 
     pub fn portal_poll(&self, id: &str, binding: Option<&str>) -> Result<BrowserReply> {
@@ -270,48 +246,38 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let pending = tx
-                .get::<Pending>("portal_requests", id)?
-                .filter(|p| p.expires_at > now())
-                .ok_or_else(|| Error::missing("Sign-in expired; start again"))?;
-            if !binding.is_some_and(|b| crypto::constant_eq(&digest(b), &pending.binding_hash)) {
-                return Err(Error::unauthorized());
-            }
-            let mut reply = BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                cookies: vec![],
-                body: json!({"status":"pending"}),
-            };
-            if pending.denied || pending.session_id.is_some() {
-                reply.cookies.push(self.browser_cookie(
+        let outcome = self
+            .store
+            .write(|tx| crate::management::poll_portal_sign_in(self, tx, id, binding, sso))?;
+        let mut cookies = vec![];
+        let status = match outcome {
+            crate::management::PortalPollOutcome::Pending => "pending",
+            crate::management::PortalPollOutcome::Approved(sso_cookies) => {
+                cookies.push(self.browser_cookie(
                     "riauth_portal",
                     "",
                     &self.portal_poll_path(id),
                     0,
                 ));
-                if let Some(sid) = &pending.session_id {
-                    let approver = tx
-                        .get::<Session>("sessions", sid)?
-                        .ok_or_else(Error::unauthorized)?
-                        .identity
-                        .user_id;
-                    reply
-                        .cookies
-                        .extend(self.point_browser(tx, sso, sid, &approver)?);
-                    reply.body = json!({"status":"approved"});
-                } else {
-                    reply.body = json!({"status":"denied"});
-                }
-                tx.delete(
-                    "portal_codes",
-                    &digest(&crypto::normalize_code(&pending.code)?),
-                )?;
-                tx.delete("portal_requests", id)?;
+                cookies.extend(sso_cookies);
+                "approved"
             }
-            Ok(reply)
+            crate::management::PortalPollOutcome::Denied => {
+                cookies.push(self.browser_cookie(
+                    "riauth_portal",
+                    "",
+                    &self.portal_poll_path(id),
+                    0,
+                ));
+                "denied"
+            }
+        };
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            cookies,
+            body: json!({"status":status}),
         })
     }
 
@@ -320,30 +286,14 @@ impl Core {
     }
 
     pub fn portal_cancel(&self, id: &str, binding: Option<&str>) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let pending = tx
-                .get::<Pending>("portal_requests", id)?
-                .ok_or_else(|| Error::missing("Sign-in request ended"))?;
-            if !binding.is_some_and(|b| crypto::constant_eq(&digest(b), &pending.binding_hash)) {
-                return Err(Error::unauthorized());
-            }
-            tx.delete("portal_requests", id)?;
-            tx.delete(
-                "portal_codes",
-                &digest(&crypto::normalize_code(&pending.code)?),
-            )?;
-            Ok(BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                body: json!({"cancelled":true}),
-                cookies: vec![self.browser_cookie(
-                    "riauth_portal",
-                    "",
-                    &self.portal_poll_path(id),
-                    0,
-                )],
-            })
+        self.store
+            .write(|tx| crate::management::cancel_portal_sign_in(tx, id, binding))?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            body: json!({"cancelled":true}),
+            cookies: vec![self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0)],
         })
     }
 
@@ -358,38 +308,26 @@ impl Core {
         cookie: Option<&str>,
         browser_only: bool,
     ) -> Result<BrowserReply> {
-        self.store.write(|tx| {
-            let mut body = json!({"revoked":true});
-            let session = self.browser_session(tx, cookie)?;
-            if let Some(session) = &session
-                && browser_only
-                && bearer_backed(tx, session)?
-            {
-                body["revoked"] = json!(false);
-            } else if let Some(mut session) = session {
-                session.revoked = true;
-                tx.put("sessions", &session.id, &session)?;
-                crate::logout::queue_session(tx, &session.id)?;
-                crate::ssf::enqueue(
-                    tx,
-                    &session.identity.user_id,
-                    crate::ssf::SESSION_REVOKED,
-                    "",
-                )?;
-                audit(tx, &session.identity.user_id, "session.revoke", &session.id)?;
-                let propagation = crate::saml::logout::redirect(self, tx, &session.id, None)?;
-                body["saml_logout_url"] = propagation["redirect_uri"].clone();
-            }
-            if let Some(cookie) = cookie {
-                tx.delete("browser_sessions", &digest(cookie))?;
-            }
-            Ok(BrowserReply {
-                form_post: false,
-                location: None,
-                refresh: None,
-                body,
-                cookies: self.sso_cookies("", 0),
-            })
+        let outcome = self.store.write(|tx| {
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::BrowserSignOut {
+                    cookie,
+                    browser_only,
+                },
+            )
+        })?;
+        Ok(BrowserReply {
+            form_post: false,
+            location: None,
+            refresh: None,
+            body: outcome.body,
+            cookies: if outcome.clear_browser_cookie {
+                self.sso_cookies("", 0)
+            } else {
+                vec![]
+            },
         })
     }
 
@@ -415,16 +353,30 @@ impl Core {
         sso: Option<&str>,
         reauthenticate: bool,
     ) -> Result<BrowserReply> {
-        let pin = self.portal_pin(sso, reauthenticate)?;
+        let session = if reauthenticate {
+            Some(
+                self.store
+                    .read(|tx| self.portal_session(tx, sso).map(|(_, session)| session))?,
+            )
+        } else {
+            None
+        };
         let binding = crypto::random_token("ri_passkey_bind_");
-        let body = self.browser_passkey_start(pin.as_deref(), "portal", &digest(&binding))?;
+        let body = self.browser_passkey_start_for_session(
+            session
+                .as_ref()
+                .map(|session| session.identity.user_id.as_str()),
+            "portal",
+            &digest(&binding),
+            session.as_ref().map(|session| session.id.clone()),
+        )?;
         Ok(reply(
             body,
             vec![self.browser_cookie("riauth_passkey", &binding, &self.portal_passkey_path(), 300)],
         ))
     }
 
-    /// A pinned ceremony lists only the pinned user's keys, so finish needs no pin of its own.
+    /// Re-authentication also checks that the initiating browser session is still current.
     pub fn portal_passkey_finish(
         &self,
         sso: Option<&str>,
@@ -432,9 +384,38 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
-        let staged = self.browser_passkey_finish(ceremony, response, "portal", binding, None)?;
-        let clear = self.browser_cookie("riauth_passkey", "", &self.portal_passkey_path(), 0);
-        self.portal_attach(&staged, sso, None, vec![clear])
+        self.store.write(|tx| {
+            let session = self.browser_session(tx, sso)?;
+            let staged = match self.browser_passkey_finish_in(
+                tx,
+                ceremony,
+                response,
+                crate::passkey::BrowserPasskeyContext {
+                    interaction: "portal",
+                    binding,
+                    pinned_user: None,
+                    session_id: session.as_ref().map(|session| session.id.as_str()),
+                },
+            )? {
+                Ok(staged) => staged,
+                Err(error) => return Ok(Err(error)),
+            };
+            // The session binding check, ceremony consumption and attachment share a
+            // transaction, so concurrent sign-out or account switching cannot revive it.
+            let attached = match self.attach_browser_login(tx, &staged, sso, None)? {
+                Ok(attached) => attached,
+                Err(error) => return Ok(Err(error)),
+            };
+            let mut cookies = attached.cookies;
+            cookies.push(self.browser_cookie("riauth_passkey", "", &self.portal_passkey_path(), 0));
+            Ok(Ok(reply(json!({"status":"signed_in"}), cookies)))
+        })?
+    }
+
+    pub fn portal_passkey_cancel(&self, binding: Option<&str>, ceremony: &str) -> Result<Value> {
+        // Leave the short-lived cookie alone: a delayed cancellation response must not
+        // clear the binding of a ceremony started in another tab in the meantime.
+        self.browser_passkey_cancel(ceremony, "portal", binding)
     }
 
     /// `terminal`: this browser shares a terminal session, so it must sign in here before
@@ -442,26 +423,57 @@ impl Core {
     pub fn portal_passkeys(&self, sso: Option<&str>) -> Result<Value> {
         self.store.read(|tx| {
             let (user, session) = self.portal_session(tx, sso)?;
-            let passkeys = crate::passkey::passkey_list_in(tx, &user.id)?;
+            let mut passkeys = crate::passkey::passkey_list_in(tx, &user.id)?;
+            let password_available = !user.password_hash.is_empty();
+            let removable = password_available || passkeys.len() > if user.admin { 2 } else { 1 };
+            for passkey in &mut passkeys {
+                passkey["removable"] = json!(removable);
+            }
             let terminal = bearer_backed(tx, &session)?;
             let (factor, mfa) = (
                 user.totp_secret.is_some() || user.has_passkeys,
                 session.identity.mfa,
             );
+            let fresh = now().saturating_sub(session.identity.auth_time) <= FRESH_SECONDS;
+            let password = crate::password::Kind::of(tx, &user)?;
             Ok(json!({
+                "user_id": user.id,
                 "can_register": !terminal && passkeys.len() < PASSKEY_LIMIT && (!factor || mfa),
                 "passkeys": passkeys,
-                "fresh": now().saturating_sub(session.identity.auth_time) <= FRESH_SECONDS,
+                "fresh": fresh,
                 "terminal": terminal,
-                "mfa": mfa, "can_remove": !terminal && mfa, "limit": PASSKEY_LIMIT
+                "mfa": mfa, "can_remove": !terminal && mfa, "limit": PASSKEY_LIMIT,
+                "can_rename": !terminal && mfa,
+                "password_available": password_available, "passkey_only": !password_available,
+                // The change form itself proves the current password; enrolled factors
+                // also need this session's recent MFA.
+                "password": password.name(),
+                "can_change_password": password == crate::password::Kind::Local
+                    && !terminal && (!factor || mfa && fresh)
             }))
         })
     }
 
     /// Enrollment from the browser asks for a discoverable (resident) credential.
     pub fn portal_passkey_register_start(&self, sso: Option<&str>, name: String) -> Result<Value> {
+        self.portal_passkey_register_start_bound(sso, name, None)
+    }
+
+    pub(crate) fn portal_passkey_register_start_bound(
+        &self,
+        sso: Option<&str>,
+        name: String,
+        expected_user_id: Option<&str>,
+    ) -> Result<Value> {
         self.store.write(|tx| {
             let (user, session) = self.portal_factor_session(tx, sso)?;
+            if expected_user_id.is_some_and(|expected| expected != user.id) {
+                return Err(Error::new(
+                    axum::http::StatusCode::CONFLICT,
+                    "account_mismatch",
+                    "Your signed-in account changed. Reload before adding a passkey.",
+                ));
+            }
             self.passkey_register_start_in(tx, &user, &session, name, true)
         })
     }
@@ -494,8 +506,85 @@ impl Core {
         })
     }
 
+    pub fn portal_passkey_register_cancel(
+        &self,
+        sso: Option<&str>,
+        ceremony: &str,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_session(tx, sso)?;
+            self.passkey_register_cancel_in(tx, &user, &session, ceremony)
+        })
+    }
+
+    pub fn portal_passkey_rename(
+        &self,
+        sso: Option<&str>,
+        id: &str,
+        name: String,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_factor_session(tx, sso)?;
+            self.passkey_rename_in(tx, &user, &session, id, name)
+        })
+    }
+
+    /// Changes the local password from this browser's own session. The request proves
+    /// the current password again; with TOTP or a passkey enrolled, the session also needs
+    /// MFA from the last five minutes. Every session and grant ends, including this
+    /// browser's, and enrolled factors stay as they are.
+    pub fn portal_password_change(
+        &self,
+        sso: Option<&str>,
+        current: String,
+        password: String,
+    ) -> Result<BrowserReply> {
+        let current = zeroize::Zeroizing::new(current);
+        let password = zeroize::Zeroizing::new(password);
+        if current.len() > 1024 {
+            return Err(Error::bad("Password or code is too long"));
+        }
+        let eligible = |tx: &Tx<'_>| {
+            let (user, session) = self.portal_factor_session(tx, sso)?;
+            crate::password::require_local(tx, &user)?;
+            crate::password::require_fresh_mfa(&user, &session, false)?;
+            Ok((user, session))
+        };
+        // Refuse cheaply before hashing; the write below checks everything again.
+        self.store.read(|tx| eligible(tx).map(drop))?;
+        let hash = crypto::password_hash(&password)?;
+        let mut verified: Option<(String, bool)> = None;
+        // Hashing runs outside the writer; a failed check still commits its lockout count.
+        self.store.prepared_write(|tx| {
+            let (mut user, _) = eligible(tx)?;
+            if let Err(locked) = crate::password::unlocked(tx, &user)? {
+                return Ok(Err(locked));
+            }
+            if verified
+                .as_ref()
+                .is_none_or(|(checked, _)| checked != &user.password_hash)
+            {
+                let _timer = self.store.telemetry().password.timer();
+                let matches = crypto::password_matches(&current, &user.password_hash);
+                verified = Some((user.password_hash.clone(), matches));
+            }
+            if !verified.as_ref().is_some_and(|(_, matches)| *matches) {
+                return Ok(Err(crate::password::record_failure(tx, &user)?));
+            }
+            crate::password::replace(
+                tx,
+                self.config.password_history,
+                &mut user,
+                &password,
+                hash.clone(),
+            )?;
+            self.portal_factor_changed(tx, sso, json!({"changed":true,"sessions_revoked":true}))
+                .map(Ok)
+        })?
+    }
+
     /// The browser session behind the SSO cookie, never a bearer token, and its user.
-    fn portal_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
+    pub(crate) fn portal_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
         let session = self
             .browser_session(tx, sso)?
             .ok_or_else(Error::unauthorized)?;
@@ -503,15 +592,19 @@ impl Core {
     }
 
     /// A browser that collected a terminal approval shares that terminal session, and an
-    /// approval can be phished. Changing factors needs this browser's own sign-in: the
-    /// re-authentication this 403 asks for gives the browser a session of its own.
-    fn portal_factor_session(&self, tx: &Tx<'_>, sso: Option<&str>) -> Result<(User, Session)> {
+    /// approval can be phished. Changing the password or factors needs this browser's own
+    /// sign-in: the re-authentication this 403 asks for gives it a session of its own.
+    pub(crate) fn portal_factor_session(
+        &self,
+        tx: &Tx<'_>,
+        sso: Option<&str>,
+    ) -> Result<(User, Session)> {
         let (user, session) = self.portal_session(tx, sso)?;
         if bearer_backed(tx, &session)? {
             return Err(Error::new(
                 axum::http::StatusCode::FORBIDDEN,
                 "reauthentication_required",
-                "This browser uses your terminal's sign-in. Sign in here before changing your passkeys.",
+                "This browser uses your terminal's sign-in. Sign in here before changing your password, passkeys or authenticator app.",
             ));
         }
         Ok((user, session))
@@ -543,7 +636,7 @@ impl Core {
 
     /// A factor change bumps the epoch and ends every session, so this browser's mapping
     /// goes and its SSO cookie is cleared.
-    fn portal_factor_changed(
+    pub(crate) fn portal_factor_changed(
         &self,
         tx: &Tx<'_>,
         sso: Option<&str>,
@@ -570,7 +663,7 @@ fn reply(body: Value, cookies: Vec<String>) -> BrowserReply {
     }
 }
 
-fn pending_by_code(tx: &Tx<'_>, code: &str) -> Result<Pending> {
+pub(crate) fn pending_by_code(tx: &Tx<'_>, code: &str) -> Result<Pending> {
     let id = tx
         .get::<String>("portal_codes", &digest(&crypto::normalize_code(code)?))?
         .ok_or_else(|| Error::missing("Sign-in code not found"))?;

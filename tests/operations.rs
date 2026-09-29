@@ -229,6 +229,68 @@ async fn readiness_fails_when_storage_is_invalid_while_liveness_stays_available(
     }
 }
 
+#[test]
+fn newer_activation_evidence_blocks_rollback_without_mutating_identity_state() {
+    for future in ["release", "index", "capability", "revision"] {
+        let fixture = Fixture::new();
+        fixture.core.store.ready().unwrap();
+        let config = fixture.core.config.clone();
+        fixture
+            .core
+            .store
+            .write(|tx| {
+                if future == "release" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    activation["version"] = serde_json::json!("999.0.0");
+                    tx.put("meta", "version_activation", &activation)?;
+                } else if future == "capability" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    activation["compiled_capabilities"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(serde_json::json!("future.capability"));
+                    tx.put("meta", "version_activation", &activation)?;
+                } else if future == "revision" {
+                    let mut activation: serde_json::Value = tx
+                        .get("meta", "version_activation")?
+                        .expect("initialized store has activation evidence");
+                    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                    activation["at_revision"] = serde_json::json!(revision + 1);
+                    tx.put("meta", "version_activation", &activation)?;
+                } else {
+                    tx.put(
+                        "meta",
+                        "index_version",
+                        &(riauth::store::maintenance::INDEX_VERSION + 1),
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert!(fixture.core.store.ready().is_err(), "{future}");
+        let before = fixture.snapshot().unwrap();
+        let common::Fixture { _dir, core, .. } = fixture;
+        drop(core);
+        let error = riauth::core::Core::open(config.clone()).err().unwrap();
+        let expected = match future {
+            "capability" => "compiled capability",
+            "revision" => "predates its last activation",
+            _ => "newer release",
+        };
+        assert!(error.message.contains(expected), "{future}: {error}");
+        let store = riauth::store::Store::from_config(&config).unwrap();
+        let after = store.read(|tx| tx.snapshot()).unwrap();
+        assert!(
+            before == after,
+            "failed {future} activation mutated stored records"
+        );
+    }
+}
+
 #[tokio::test]
 async fn metrics_distinguish_client_and_server_errors_without_unbounded_path_labels() {
     let fixture = Fixture::new();
@@ -297,6 +359,8 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
     f.core
         .store
         .write(|tx| {
+            // This fixture represents a store written before activation records existed.
+            tx.delete("meta", "version_activation")?;
             tx.put("meta", "schema", &2u32)?;
             tx.put("http_rates", "prior", &(100u64, 1u32))?;
             tx.delete("index_counts", "http_rates")
@@ -314,6 +378,13 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
         riauth::config::Config::load(&output.join("riauth.toml")).unwrap(),
     )
     .unwrap();
+    assert!(restored.store.ready().is_err());
+    let pending = restored
+        .store
+        .read(riauth::recovery::pending)
+        .unwrap()
+        .unwrap();
+    riauth::recovery::complete(&restored.store, &pending.id, true).unwrap();
     restored.store.ready().unwrap();
     assert_eq!(
         restored
@@ -322,7 +393,14 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
             .unwrap(),
         1
     );
-    assert!(restored.me(&f.admin).is_ok());
+    let admin = common::text(
+        &restored
+            .login("admin".into(), common::PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert!(restored.me(&f.admin).is_err());
+    assert!(restored.me(&admin).is_ok());
 }
 
 #[test]
@@ -341,6 +419,8 @@ fn logout_network_failures_are_visible_and_clear_after_success() {
         delivered_at: None,
         last_status: None,
         last_failed: false,
+        lease: None,
+        dispatch_started: None,
     };
     f.core
         .store
@@ -412,48 +492,100 @@ impl GrantFixture {
         }
     }
 
+    /// R04: identity, clients and keys continue; restored sessions and grants do not.
     fn assert_restored(
         &self,
         restored: &riauth::core::Core,
         before: &std::collections::BTreeMap<String, serde_json::Value>,
     ) {
+        use riauth::recovery::{self, Class};
+        let class = |key: &str| recovery::classify(key.split('/').next().unwrap());
         let after = restored.store.read(|tx| tx.snapshot()).unwrap();
         let mut missing = Vec::new();
         let mut extra = Vec::new();
         let mut changed = Vec::new();
         for (key, value) in before {
             match after.get(key) {
-                None => missing.push(key.clone()),
-                Some(other) if other != value => changed.push(key.clone()),
+                None if class(key) != Some(Class::Invalidated) => missing.push(key.clone()),
+                None => {}
+                Some(other) if key.starts_with("users/") => {
+                    let mut expected = value.clone();
+                    expected["epoch"] =
+                        serde_json::json!(value["epoch"].as_u64().unwrap() + recovery::STRIDE);
+                    if *other != expected {
+                        changed.push(key.clone());
+                    }
+                }
+                Some(other)
+                    if other != value
+                        && key != "meta/revision"
+                        && key != "meta/user_listing_cursor_epoch"
+                        && class(key) != Some(Class::LoggedOut) =>
+                {
+                    changed.push(key.clone())
+                }
                 _ => {}
             }
         }
         for key in after.keys() {
-            if !before.contains_key(key) {
+            if !before.contains_key(key)
+                && !(key.starts_with("index_")
+                    || key.starts_with("audit/")
+                    || key == "meta/recovery"
+                    || key == "meta/user_listing_cursor_epoch")
+            {
                 extra.push(key.clone());
             }
         }
         assert!(
-            missing.is_empty()
-                && changed.is_empty()
-                && extra.iter().all(|key| key.starts_with("index_")),
+            missing.is_empty() && changed.is_empty() && extra.is_empty(),
             "missing={missing:?} extra={extra:?} changed={changed:?}"
         );
-        assert_eq!(restored.userinfo(&self.access).unwrap(), self.userinfo);
-        assert_eq!(
-            restored
-                .get_resource(&self.fixture.admin, "client", "app")
+        // Restore stamps a fresh epoch so a cursor from the previous timeline
+        // cannot be presented again. Identity records themselves stay put.
+        let epoch = after
+            .get("meta/user_listing_cursor_epoch")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty());
+        assert!(
+            epoch.is_some(),
+            "restore must stamp a user-listing cursor epoch"
+        );
+        if let Some(previous) = before.get("meta/user_listing_cursor_epoch") {
+            assert_ne!(
+                after.get("meta/user_listing_cursor_epoch"),
+                Some(previous),
+                "restore must rotate the user-listing cursor epoch"
+            );
+        }
+        assert!(restored.userinfo(&self.access).is_err());
+        assert!(restored.me(&self.alice).is_err());
+        assert!(restored.me(&self.fixture.admin).is_err());
+        let admin = common::text(
+            &restored
+                .login("admin".into(), common::PASSWORD.into(), None)
                 .unwrap(),
+            "session_token",
+        );
+        assert_eq!(
+            restored.get_resource(&admin, "client", "app").unwrap(),
             self.client
         );
         assert_eq!(
-            restored
-                .get_resource(&self.fixture.admin, "user", "alice")
-                .unwrap(),
+            restored.get_resource(&admin, "user", "alice").unwrap(),
             self.user
         );
-        assert!(restored.me(&self.alice).is_ok());
-        assert!(restored.me(&self.fixture.admin).is_ok());
+        let alice = common::text(
+            &restored
+                .login("alice".into(), common::PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        assert_eq!(
+            restored.me(&alice).unwrap()["user"]["id"],
+            self.userinfo["sub"]
+        );
+        assert!(restored.store.ready().is_err());
     }
 }
 
@@ -471,7 +603,7 @@ fn write_backup(
 }
 
 #[test]
-fn chunked_backup_restore_preserves_user_client_and_grant() {
+fn chunked_backup_restore_preserves_identity_and_invalidates_grants() {
     let seed = GrantFixture::new();
     seed.fixture
         .core
@@ -501,20 +633,70 @@ fn chunked_backup_restore_preserves_user_client_and_grant() {
     assert!(!rendered.contains("PRIVATE KEY"));
     let directory = tempfile::tempdir().unwrap();
     let (backup_file, key_file) = write_backup(directory.path(), "chunked", &backup, &key);
-    let mut truncated = backup.clone();
-    let mut chunks = truncated["chunks"].as_array().unwrap().clone();
-    chunks.remove(0);
-    truncated["chunks"] = serde_json::json!(chunks);
-    let (truncated_file, _) = write_backup(directory.path(), "truncated", &truncated, &key);
-    assert!(
-        riauth::operations::restore(
-            &truncated_file,
-            &key_file,
-            &directory.path().join("truncated-out"),
-            None
-        )
-        .is_err()
-    );
+    let original = backup["chunks"].as_array().unwrap();
+    let mut malformed = Vec::new();
+    for (name, index) in [
+        ("corrupt-record", 0),
+        ("corrupt-manifest", original.len() - 1),
+    ] {
+        let mut envelope = backup.clone();
+        let mut encoded = original[index].as_str().unwrap().as_bytes().to_vec();
+        encoded[0] = if encoded[0] == b'A' { b'B' } else { b'A' };
+        envelope["chunks"][index] = serde_json::json!(String::from_utf8(encoded).unwrap());
+        malformed.push((name, envelope));
+    }
+    for name in [
+        "truncated",
+        "missing-manifest",
+        "reordered",
+        "duplicate-record",
+    ] {
+        let mut envelope = backup.clone();
+        let mut chunks = original.clone();
+        match name {
+            "truncated" => {
+                chunks.remove(0);
+            }
+            "missing-manifest" => {
+                chunks.pop();
+            }
+            "reordered" => chunks.swap(0, 1),
+            "duplicate-record" => {
+                chunks.insert(0, chunks[0].clone());
+            }
+            _ => unreachable!(),
+        }
+        envelope["chunks"] = serde_json::json!(chunks);
+        malformed.push((name, envelope));
+    }
+    let mut wrong_time = backup.clone();
+    wrong_time["created_at"] = serde_json::json!(backup["created_at"].as_u64().unwrap() + 1);
+    malformed.push(("changed-time", wrong_time));
+    let mut wrong_type = backup.clone();
+    wrong_type["chunks"][0] = serde_json::json!(42);
+    malformed.push(("non-string-chunk", wrong_type));
+    let mut invalid_encoding = backup.clone();
+    let last = original.len() - 1;
+    invalid_encoding["chunks"][last] = serde_json::json!("%%%not-base64");
+    malformed.push(("invalid-base64-manifest", invalid_encoding));
+    let source_before = seed.fixture.core.store.read(|tx| tx.snapshot()).unwrap();
+    for (name, envelope) in malformed {
+        let (input, _) = write_backup(directory.path(), name, &envelope, &key);
+        let rejected_output = directory.path().join(format!("{name}-out"));
+        assert!(
+            riauth::operations::restore(&input, &key_file, &rejected_output, None).is_err(),
+            "{name}"
+        );
+        assert!(
+            !rejected_output.exists(),
+            "{name} created output before authentication"
+        );
+        assert_eq!(
+            seed.fixture.core.store.read(|tx| tx.snapshot()).unwrap(),
+            source_before,
+            "{name}"
+        );
+    }
     let output = directory.path().join("restore");
     riauth::operations::restore(&backup_file, &key_file, &output, None).unwrap();
     let restored = riauth::core::Core::open(
@@ -722,7 +904,11 @@ fn schema_migrated_restore_still_logs_in_the_same_user() {
     let user_id = before["user"]["id"].as_str().unwrap().to_owned();
     f.core
         .store
-        .write(|tx| tx.put("meta", "schema", &2u32))
+        .write(|tx| {
+            // This fixture represents a store written before activation records existed.
+            tx.delete("meta", "version_activation")?;
+            tx.put("meta", "schema", &2u32)
+        })
         .unwrap();
     let key = riauth::crypto::random_token("");
     let backup = f.core.backup(&f.admin, &key).unwrap();

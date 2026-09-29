@@ -1,12 +1,21 @@
 //! Upstream federation with explicit account linking and terminal completion.
+#[cfg(feature = "platform")]
 pub mod saml;
+#[cfg(not(feature = "platform"))]
+#[path = "source/saml_essentials.rs"]
+pub mod saml;
+mod saml_types;
+#[cfg(feature = "platform")]
+pub(crate) mod workflow;
+pub use crate::assembly::source_validate_identity as validate_identity;
+pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
-    core::{Core, audit, make_user, validate_display, validate_email, validate_name},
+    core::{Core, audit, require_factor_session, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::{ClientAuthMethod, PublicJwks},
-    model::{AuthenticationTransaction, Group, Identity, NewUser, Session, User, UserView},
+    model::{AuthenticationTransaction, Identity, Session, User},
     store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -78,19 +87,12 @@ pub struct SourceSpec {
     pub secret_version: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SourceIdentity {
-    pub id: String,
-    pub fingerprint: String,
-    pub link: String,
-}
-
 #[derive(Serialize, Deserialize)]
-struct Link {
-    source: String,
-    issuer: String,
-    subject: String,
-    user_id: String,
+pub(crate) struct Link {
+    pub(crate) source: String,
+    pub(crate) issuer: String,
+    pub(crate) subject: String,
+    pub(crate) user_id: String,
 }
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,46 +100,41 @@ pub struct LinkSpec {
     pub source: String,
     pub username: String,
     pub subject: String,
+    /// Issuer stored on the link. Omitted on older manifests and on a fresh conversion;
+    /// exports copy it. When set, it must equal the source's current issuer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
 }
 pub(crate) fn reconcile_link(
     tx: &Tx<'_>,
     actor: &Principal,
     spec: &LinkSpec,
 ) -> Result<Option<crate::state::Change>> {
-    let source = enabled(tx, &spec.source)?;
-    actor.require("source.write", &format!("source/{}", spec.source))?;
-    actor.require("user.write", &format!("user/{}", spec.username))?;
-    let user = crate::core::user_by_name(tx, &spec.username)?;
-    if user.admin && (actor.agent || !source.allow_admin_login) {
-        return Err(Error::forbidden());
+    let written = crate::management::write_source_link(
+        tx,
+        crate::management::SourceLinkAuthority::Plan { actor, spec },
+    )?;
+    if let Some(previous_issuer) = written.previous_issuer {
+        let before = LinkSpec {
+            source: spec.source.clone(),
+            username: spec.username.clone(),
+            subject: spec.subject.clone(),
+            issuer: Some(previous_issuer),
+        };
+        return Ok(Some(crate::state::Change {
+            resource: format!("source_link/{}", written.id),
+            action: "update".into(),
+            before: json!(before),
+            after: json!(spec),
+            credential_change: true,
+            secret_references: BTreeSet::new(),
+        }));
     }
-    if spec.subject.is_empty()
-        || spec.subject.len() > 255
-        || spec.subject.chars().any(char::is_control)
-    {
-        return Err(Error::bad("Invalid source subject"));
-    }
-    let id = link_key(&spec.source, &source.issuer, &spec.subject);
-    if let Some(link) = tx.get::<Link>("source_links", &id)? {
-        if link.user_id != user.id {
-            return Err(Error::conflict(
-                "Source identity already belongs to another local account",
-            ));
-        }
+    if !written.created {
         return Ok(None);
     }
-    tx.put(
-        "source_links",
-        &id,
-        &Link {
-            source: spec.source.clone(),
-            issuer: source.issuer,
-            subject: spec.subject.clone(),
-            user_id: user.id,
-        },
-    )?;
     Ok(Some(crate::state::Change {
-        resource: format!("source_link/{id}"),
+        resource: format!("source_link/{}", written.id),
         action: "create".into(),
         before: Value::Null,
         after: json!(spec),
@@ -145,55 +142,94 @@ pub(crate) fn reconcile_link(
         secret_references: BTreeSet::new(),
     }))
 }
+pub(crate) fn export_all_links(tx: &Tx<'_>) -> Result<Vec<LinkSpec>> {
+    crate::assembly::source_export_all_links(tx)
+}
 pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpec>> {
-    let mut output = Vec::new();
-    for (_, link) in tx.list::<Link>("source_links")? {
-        let user = tx
-            .get::<User>("users", &link.user_id)?
-            .ok_or_else(|| Error::internal("Linked user missing"))?;
-        if actor.allows("source.read", &format!("source/{}", link.source))
-            && actor.allows("user.read", &format!("user/{}", user.username))
-        {
-            output.push(LinkSpec {
-                source: link.source,
-                subject: link.subject,
-                username: user.username,
-            });
-        }
-    }
-    Ok(output)
+    crate::assembly::source_export_links(tx, actor)
+}
+
+/// Persisted reservation metadata is shared by both editions. Essentials must
+/// recognize and reject a workflow-bound login rather than deserialize it as a
+/// standalone login. Only the Platform adapter may create or consume a binding.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WorkflowBinding {
+    pub run: String,
+    pub account: String,
+    pub account_epoch: u64,
+    pub session: String,
+    pub request: String,
+    pub definition: crate::workflow::RunBinding,
+    pub step: crate::workflow::Id,
+    pub attempt: u8,
+    pub reservation: String,
+    pub started_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Login {
-    source: String,
-    fingerprint: String,
-    poll_hash: String,
+pub(crate) struct Login {
+    pub(crate) source: String,
+    pub(crate) fingerprint: String,
+    pub(crate) poll_hash: String,
     verifier: String,
-    nonce: String,
+    pub(crate) nonce: String,
     started_at: u64,
-    expires_at: u64,
-    target: Option<Identity>,
-    authentication: Option<String>,
-    claimed: bool,
-    result: Option<UpstreamIdentity>,
-    failed: bool,
-    attempts: u32,
+    pub(crate) expires_at: u64,
+    pub(crate) target: Option<Identity>,
+    pub(crate) authentication: Option<String>,
+    pub(crate) claimed: bool,
+    pub(crate) result: Option<UpstreamIdentity>,
+    pub(crate) failed: bool,
+    pub(crate) attempts: u32,
     /// Embedded authorization stage that must resume this login. Standalone logins leave this empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    stage: Option<String>,
+    pub(crate) stage: Option<String>,
+    /// Server-owned workflow reservation; never accepted from a source API body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) workflow: Option<WorkflowBinding>,
+    /// Digest of the full browser binding cookie (`credential.digest(state)`).
+    /// CLI, embedded-stage and workflow logins leave this empty, as do records
+    /// written before the cookie was required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) browser_binding: Option<String>,
+    /// Digest of the one-time SAML return token. Present only after a browser-started
+    /// ACS accepts the assertion, until the same-site return confirms or ends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) browser_return: Option<String>,
+    /// False only while a browser-started SAML login is waiting for its return.
+    /// Older rows omit it and were not waiting on that return.
+    #[serde(default = "legacy_browser_return_confirmed")]
+    pub(crate) browser_return_confirmed: bool,
+}
+
+fn legacy_browser_return_confirmed() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct UpstreamIdentity {
+pub(crate) struct UpstreamIdentity {
     #[serde(default)]
-    saml_session: Option<saml::UpstreamSession>,
-    subject: String,
-    name: String,
-    email: Option<String>,
-    email_verified: bool,
-    mfa: bool,
-    auth_time: u64,
+    pub(crate) saml_session: Option<saml::UpstreamSession>,
+    pub(crate) subject: String,
+    pub(crate) name: String,
+    pub(crate) email: Option<String>,
+    pub(crate) email_verified: bool,
+    pub(crate) mfa: bool,
+    pub(crate) auth_time: u64,
+    /// Original signed assertion expiry, preserved for delayed workflow use.
+    #[serde(default)]
+    expires_at: Option<u64>,
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Short lived transaction state remains inline"
+)]
+pub(crate) enum CallbackClaim {
+    Ready(Source, Login, Option<zeroize::Zeroizing<String>>),
+    Mismatch,
+    Retired,
 }
 
 #[derive(Deserialize)]
@@ -215,6 +251,7 @@ pub struct Finish {
 
 impl Source {
     pub fn validate(&self) -> Result<()> {
+        crate::edition::validate_source(self)?;
         validate_name(&self.id)?;
         validate_display(&self.name)?;
         if let Some(settings) = &self.saml {
@@ -325,10 +362,8 @@ impl Source {
         if let Some(settings) = &self.saml {
             settings.key(tx)?;
         }
-        let old = tx.get::<Source>("sources", &self.id)?;
-        if actor.agent
-            && (self.allow_admin_login || old.as_ref().is_some_and(|s| s.allow_admin_login))
-        {
+        let prior = crate::assembly::source_write_prior(tx, self)?;
+        if actor.agent && (self.allow_admin_login || prior.admin_login_was_allowed) {
             return Err(Error::forbidden());
         }
         if self.auto_provision {
@@ -337,70 +372,15 @@ impl Source {
         for group in &self.groups {
             validate_name(group)?;
             actor.require("group.members", &format!("group/{group}"))?;
-            if tx.get::<Group>("groups", group)?.is_none() {
-                return Err(Error::bad("Source references an unknown group"));
-            }
+            crate::assembly::require_source_group(tx, group)?;
         }
-        if old.as_ref().is_some_and(|s| {
-            s.issuer != self.issuer
-                || s.client_id != self.client_id
-                || s.oauth_profile != self.oauth_profile
-                || s.saml.as_ref().map(|v| &v.name_id_format)
-                    != self.saml.as_ref().map(|v| &v.name_id_format)
-        }) && tx
-            .list::<Link>("source_links")?
-            .iter()
-            .any(|(_, l)| l.source == self.id)
-        {
+        if prior.identity_binding_changed && crate::assembly::source_has_links(tx, &self.id)? {
             return Err(Error::conflict(
                 "Issuer, upstream client ID and OAuth identity mapping are immutable while accounts are linked",
             ));
         }
         Ok(())
     }
-}
-
-pub(crate) fn put(tx: &Tx<'_>, source: &Source, secret: Option<&str>, preview: bool) -> Result<()> {
-    if source.token_endpoint_auth_method == ClientAuthMethod::None {
-        if secret.is_some() {
-            return Err(Error::bad("A public source cannot have a client secret"));
-        }
-        tx.delete("source_secrets", &source.id)?;
-    } else {
-        if let Some(secret) = secret {
-            if !preview && (secret.is_empty() || secret.len() > 4096) {
-                return Err(Error::bad("Invalid upstream client secret"));
-            }
-            tx.put("source_secrets", &source.id, &secret)?;
-        }
-        if tx.get::<String>("source_secrets", &source.id)?.is_none() {
-            return Err(Error::bad("Confidential source requires a secret"));
-        }
-    }
-    let changed = tx.get::<Source>("sources", &source.id)?.as_ref() != Some(source);
-    tx.put("sources", &source.id, source)?;
-    if changed {
-        for (_, mut session) in tx.list::<Session>("sessions")? {
-            if session
-                .identity
-                .source
-                .as_ref()
-                .is_some_and(|s| s.id == source.id)
-                && !session.revoked
-            {
-                session.revoked = true;
-                tx.put("sessions", &session.id, &session)?;
-                crate::logout::queue_session(tx, &session.id)?;
-                crate::ssf::enqueue(
-                    tx,
-                    &session.identity.user_id,
-                    crate::ssf::SESSION_REVOKED,
-                    "",
-                )?;
-            }
-        }
-    }
-    Ok(())
 }
 
 pub(crate) struct StageStart {
@@ -428,79 +408,75 @@ impl StageStarted {
         })
     }
 }
-struct StartedLogin {
+/// Who a link start targets: the bearer session presenting `token`, or a browser's session.
+enum Linker<'a> {
+    Token(Option<&'a str>),
+    Browser(&'a User, &'a Session),
+}
+pub(crate) struct StartedLogin {
     authorization_url: String,
     state: String,
     nonce: String,
     expires_at: u64,
-    body: Value,
+    pub(crate) body: Value,
 }
 #[derive(Clone, Serialize, Deserialize)]
-struct SourceStage {
-    id: String,
-    authorization_id: String,
+pub(crate) struct SourceStage {
+    pub(crate) id: String,
+    pub(crate) authorization_id: String,
     request_hash: String,
-    suspension_hash: String,
-    request: crate::oidc::Authorization,
-    source_id: String,
+    pub(crate) suspension_hash: String,
+    pub(crate) request: crate::oidc::Authorization,
+    pub(crate) source_id: String,
     user_id: Option<String>,
-    nonce: String,
-    expires_at: u64,
-    used: bool,
-    cancelled: bool,
-    login_key: String,
-    transaction: String,
+    pub(crate) nonce: String,
+    pub(crate) expires_at: u64,
+    pub(crate) used: bool,
+    pub(crate) cancelled: bool,
+    pub(crate) login_key: String,
+    pub(crate) transaction: String,
     browser_id: Option<String>,
 }
 
 impl Core {
-    pub fn source_put(&self, token: &str, input: SourceInput) -> Result<Value> {
-        let secret = input.client_secret.map(zeroize::Zeroizing::new);
-        self.mutation(token, |tx| {
-            let actor = self.principal(tx, token)?;
-            input.source.require_write(tx, &actor)?;
-            put(
-                tx,
-                &input.source,
-                secret.as_deref().map(String::as_str),
-                false,
-            )?;
-            // Direct mutations invalidate declarative credential receipts.
-            if secret.is_some() {
-                tx.delete(
-                    "credential_versions",
-                    &format!("source/{}", input.source.id),
-                )?;
-            }
-            audit(tx, &actor.id, "source.configure", &input.source.id)?;
-            Ok(json!(input.source))
-        })
+    /// Starts a login for a browser. Its credential belongs in an HttpOnly cookie, never in a
+    /// page, and a link targets the session behind the browser's SSO cookie, which has no
+    /// bearer token to present.
+    pub(crate) fn source_start_browser(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        linking: Option<(&User, &Session)>,
+    ) -> Result<Value> {
+        let input = Start {
+            link: linking.is_some(),
+            authentication_transaction: None,
+        };
+        let linker = match linking {
+            Some((user, session)) => Linker::Browser(user, session),
+            None => Linker::Token(None),
+        };
+        self.source_start_for(tx, id, &input, linker, None, true)
+            .map(|started| started.body)
     }
-    pub fn source_list(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| {
-            let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<Source>("sources")?
-                    .into_iter()
-                    .filter(|(_, s)| actor.allows("source.read", &format!("source/{}", s.id)))
-                    .map(|(_, s)| s)
-                    .collect::<Vec<_>>()
-            ))
-        })
-    }
-    pub fn source_start(&self, id: &str, input: Start, token: Option<&str>) -> Result<Value> {
-        self.store.write(|tx| {
-            self.source_start_in(tx, id, &input, token, None)
-                .map(|started| started.body)
-        })
-    }
-    fn source_start_in(
+    pub(crate) fn source_start_in(
         &self,
         tx: &Tx<'_>,
         id: &str,
         input: &Start,
         token: Option<&str>,
         stage: Option<&str>,
+    ) -> Result<StartedLogin> {
+        self.source_start_for(tx, id, input, Linker::Token(token), stage, false)
+    }
+    fn source_start_for(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        input: &Start,
+        linker: Linker<'_>,
+        stage: Option<&str>,
+        browser_bound: bool,
     ) -> Result<StartedLogin> {
         let source = enabled(tx, id)?;
         if source.oauth_profile.is_some() && input.authentication_transaction.is_some() {
@@ -509,23 +485,23 @@ impl Core {
             ));
         }
         let target = if input.link {
-            let (user, session) = self.session(tx, token.ok_or_else(Error::unauthorized)?)?;
+            let (user, session) = match linker {
+                Linker::Token(token) => self.session(tx, token.ok_or_else(Error::unauthorized)?)?,
+                Linker::Browser(user, session) => (user.clone(), session.clone()),
+            };
             if session.identity.source.is_some()
                 || now().saturating_sub(session.identity.auth_time) > 300
                 || user.admin && !source.allow_admin_login
             {
                 return Err(Error::forbidden());
             }
+            require_factor_session(&user, &session)?;
             Some(session.identity)
         } else {
             None
         };
         if let Some(challenge) = &input.authentication_transaction {
-            let record = tx
-                .get::<AuthenticationTransaction>("authentication", &digest(challenge))?
-                .filter(|c| c.expires_at > now() && c.authenticated_session.is_none())
-                .ok_or_else(|| Error::bad("Authentication transaction expired or used"))?;
-            crate::oidc::reject_embedded_stage(&record)?;
+            crate::assembly::validate_source_start_authentication(tx, challenge)?;
         }
         let state = crypto::random_token("");
         let credential = crypto::random_token("ri_source_");
@@ -544,6 +520,14 @@ impl Core {
             failed: false,
             attempts: 0,
             stage: stage.map(str::to_owned),
+            workflow: None,
+            browser_binding: browser_bound
+                .then(|| digest(&format!("{credential}.{}", digest(&state)))),
+            browser_return: None,
+            // The Lax start cookie is absent from a cross-site SAML POST, so that
+            // login stays unfinished until the same-site return. OIDC checks the
+            // cookie on its callback and is finishable immediately.
+            browser_return_confirmed: !(browser_bound && source.saml.is_some()),
         };
         let started = |authorization_url: String, pending: &Login| StartedLogin {
             body: json!({"authorization_url": &authorization_url, "credential": {"issuer":self.config.issuer,"source":id,"token":&credential,"expires_at":pending.expires_at}, "instruction":"Authenticate at the upstream provider, then inspect and finish this request in the CLI"}),
@@ -553,9 +537,17 @@ impl Core {
             expires_at: pending.expires_at,
         };
         if let Some(settings) = &source.saml {
+            #[cfg(feature = "platform")]
+            let authorization = settings.authorization(
+                &crate::assembly::SamlSigningKeyRead::new(tx),
+                self,
+                &source,
+                &pending,
+                &state,
+            )?;
+            #[cfg(not(feature = "platform"))]
             let authorization = settings.authorization(tx, self, &source, &pending, &state)?;
-            tx.put("source_logins", &digest(&state), &pending)?;
-            tx.put("source_polls", &pending.poll_hash, &digest(&state))?;
+            self.persist_source_start(tx, &state, &pending)?;
             let mut started = started(authorization, &pending);
             started.body["instruction"] = json!(
                 "Authenticate at the upstream provider, then inspect and finish this request in the CLI"
@@ -581,8 +573,7 @@ impl Core {
                 .query_pairs_mut()
                 .extend_pairs([("nonce", pending.nonce.as_str()), ("max_age", "0")]);
         }
-        tx.put("source_logins", &digest(&state), &pending)?;
-        tx.put("source_polls", &pending.poll_hash, &digest(&state))?;
+        self.persist_source_start(tx, &state, &pending)?;
         Ok(started(authorize.to_string(), &pending))
     }
     pub fn source_callback_url(&self, id: &str) -> String {
@@ -591,7 +582,19 @@ impl Core {
             self.config.issuer.trim_end_matches('/')
         )
     }
-    pub async fn source_callback(&self, id: &str, pairs: Vec<(String, String)>) -> Result<Value> {
+    /// Redeems an upstream authorization code.
+    ///
+    /// `browser_binding` is the full cookie set when the login started in a browser.
+    /// CLI, embedded-stage and workflow logins pass `None`. A browser login whose
+    /// callback does not present that cookie is ended before the token request.
+    /// A login whose pinned source changed is ended in the same write, so restoring
+    /// the previous keys does not finish it or redeem its code.
+    pub async fn source_callback(
+        &self,
+        id: &str,
+        pairs: Vec<(String, String)>,
+        browser_binding: Option<&str>,
+    ) -> Result<Value> {
         let mut seen = BTreeSet::new();
         if pairs
             .iter()
@@ -611,41 +614,30 @@ impl Core {
             .filter(|v| v.len() == 43)
             .ok_or_else(|| Error::bad("Missing source state"))?;
         // Claim before network I/O. Ambiguous network failures require a new login, never code replay.
+        // Own only a bounded cookie. A longer value cannot match and is treated as absent.
+        let presented = browser_binding
+            .filter(|value| value.len() <= 256)
+            .map(str::to_owned);
         let worker = self.clone();
         let source_id = id.to_owned();
         let request_state = state.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
-        let (source, pending, secret) = tokio::task::spawn_blocking(move || {
+        let claim = tokio::task::spawn_blocking(move || {
             crate::context::scope(context, || {
-                worker.store.write(|tx| {
-                    let id = source_id.as_str();
-                    let state = request_state.as_str();
-                    let source = enabled(tx, id)?;
-                    if source.saml.is_some() {
-                        return Err(Error::bad("SAML sources require the signed POST ACS"));
-                    }
-                    let mut pending = tx
-                        .get::<Login>("source_logins", &digest(state))?
-                        .filter(|p| {
-                            p.source == id
-                                && p.expires_at > now()
-                                && !p.claimed
-                                && p.fingerprint == source.fingerprint().unwrap_or_default()
-                        })
-                        .ok_or_else(|| {
-                            Error::bad("Source request expired, changed or already used")
-                        })?;
-                    pending.claimed = true;
-                    tx.put("source_logins", &digest(state), &pending)?;
-                    let secret = tx
-                        .get::<String>("source_secrets", id)?
-                        .map(zeroize::Zeroizing::new);
-                    Ok((source, pending, secret))
-                })
+                worker.source_callback_claim(source_id, request_state, presented)
             })
         })
         .await
         .map_err(Error::internal)??;
+        let (source, pending, secret) = match claim {
+            CallbackClaim::Mismatch => return Err(browser_mismatch()),
+            CallbackClaim::Retired => {
+                return Err(Error::bad(
+                    "Source request expired, changed or already used",
+                ));
+            }
+            CallbackClaim::Ready(source, pending, secret) => (source, pending, secret),
+        };
         let result = async {
             if get("iss").is_some_and(|v| v != source.issuer) {
                 return Err(Error::bad("Upstream response issuer mismatch"));
@@ -741,259 +733,10 @@ impl Core {
         let id = id.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
         tokio::task::spawn_blocking(move || {
-            crate::context::scope(context, || {
-                worker.store.write(|tx| {
-                    let mut current = tx
-                        .get::<Login>("source_logins", &digest(&state))?
-                        .ok_or_else(|| Error::bad("Source request expired"))?;
-                    match result {
-                        Ok(identity) => current.result = Some(identity),
-                        Err(_) => current.failed = true,
-                    }
-                    tx.put("source_logins", &digest(&state), &current)?;
-                    audit(
-                        tx,
-                        "upstream",
-                        if current.failed {
-                            "source.login_failed"
-                        } else {
-                            "source.authenticated"
-                        },
-                        &id,
-                    )?;
-                    // Never put a CLI session or completion credential in a browser response.
-                    callback_body(tx, &current, &digest(&state))
-                })
-            })
+            crate::context::scope(context, || worker.source_callback_record(state, id, result))
         })
         .await
         .map_err(Error::internal)?
-    }
-    pub fn source_finish(&self, input: Finish) -> Result<Value> {
-        let credential = zeroize::Zeroizing::new(input.credential);
-        self.store.write(|tx| {
-            let state = tx
-                .get::<String>("source_polls", &digest(&credential))?
-                .ok_or_else(Error::unauthorized)?;
-            let mut pending = tx
-                .get::<Login>("source_logins", &state)?
-                .filter(|p| p.expires_at > now() && !p.failed && p.attempts < 5)
-                .ok_or_else(Error::unauthorized)?;
-            if pending.stage.is_some() {
-                return Err(Error::bad(
-                    "Resume the embedded source stage for this login",
-                ));
-            }
-            self.complete_source_login(
-                tx,
-                &state,
-                &mut pending,
-                input.approve,
-                input.otp.as_deref(),
-                None,
-            )
-        })?
-    }
-    fn complete_source_login(
-        &self,
-        tx: &Tx<'_>,
-        state: &str,
-        pending: &mut Login,
-        approve: bool,
-        otp: Option<&str>,
-        expected_user: Option<&str>,
-    ) -> Result<Result<Value>> {
-        let source = enabled(tx, &pending.source)?;
-        if pending.fingerprint != source.fingerprint()? {
-            return Err(Error::bad("Source configuration changed; restart login"));
-        }
-        let Some(identity) = pending.result.clone() else {
-            return Ok(Ok(json!({"status":"pending"})));
-        };
-        let link_id = link_key(&source.id, &source.issuer, &identity.subject);
-        let link = tx.get::<Link>("source_links", &link_id)?;
-        let mut user = if let Some(target) = &pending.target {
-            if expected_user.is_some() {
-                return Err(Error::forbidden());
-            }
-            let user = self.identity_user(tx, target)?;
-            if tx
-                .get::<Session>("sessions", &target.session_id)?
-                .is_none_or(|s| s.expires_at <= now())
-                || target.auth_time + 900 < now()
-                || link.as_ref().is_some_and(|l| l.user_id != user.id)
-            {
-                return Err(Error::forbidden());
-            }
-            Some(user)
-        } else {
-            link.as_ref()
-                .map(|l| tx.get::<User>("users", &l.user_id))
-                .transpose()?
-                .flatten()
-        };
-        if expected_user.is_some_and(|id| user.as_ref().map(|u| u.id.as_str()) != Some(id)) {
-            // A bound authorization may use only the explicit link. Do not provision or reattach.
-            return Err(Error::forbidden());
-        }
-        if user
-            .as_ref()
-            .is_some_and(|u| !u.enabled || u.admin && !source.allow_admin_login)
-        {
-            return Err(Error::forbidden());
-        }
-        if !approve {
-            return Ok(Ok(
-                json!({"status":"review", "issuer":source.issuer,"subject":identity.subject,"name":identity.name,"email":identity.email,"email_verified":identity.email_verified,"mfa":identity.mfa,"linking":pending.target.is_some(),"local_user":user.as_ref().map(UserView::from),"local_otp_required":user.as_ref().is_some_and(|u| u.totp_secret.is_some()) && !identity.mfa,"auto_provision":source.auto_provision}),
-            ));
-        }
-        if user.is_none() {
-            if !source.auto_provision || link.is_some() {
-                return Err(Error::forbidden());
-            }
-            let mut created = make_user(NewUser {
-                username: format!("oidc-{}", digest(&link_id)),
-                password: crypto::random_token(""),
-                email: identity.email.clone(),
-                display_name: identity.name.clone(),
-                admin: false,
-            })?;
-            // Generated password is discarded: this account authenticates at its source.
-            created.password_hash.clear();
-            created.email_verified = identity.email_verified;
-            if tx.get::<String>("usernames", &created.username)?.is_some() {
-                return Err(Error::conflict(
-                    "Provisioned username already exists; explicit linking is required",
-                ));
-            }
-            for name in &source.groups {
-                let mut group = tx
-                    .get::<Group>("groups", name)?
-                    .ok_or_else(|| Error::bad("Source group was removed"))?;
-                group.members.insert(created.id.clone());
-                tx.put("groups", name, &group)?;
-            }
-            audit(
-                tx,
-                &format!("source:{}", source.id),
-                "user.provision",
-                &created.username,
-            )?;
-            user = Some(created);
-        }
-        let mut user = user.unwrap();
-        let local_mfa = user.totp_secret.is_some() && !identity.mfa;
-        if local_mfa {
-            let valid = if let Some(code) = otp.filter(|c| c.starts_with("ri_recovery_")) {
-                user.recovery_codes.remove(&digest(code))
-            } else {
-                let step = crypto::totp_step_with(
-                    user.totp_secret.as_deref().unwrap(),
-                    &user.username,
-                    otp.unwrap_or(""),
-                    now(),
-                    user.totp_last_step,
-                    &user.totp_settings,
-                )?;
-                if let Some(step) = step {
-                    user.totp_last_step = Some(step);
-                    true
-                } else {
-                    false
-                }
-            };
-            if !valid {
-                pending.attempts += 1;
-                tx.put("source_logins", state, &pending)?;
-                return Ok(Err(Error::unauthorized()));
-            }
-        }
-        tx.put("users", &user.id, &user)?;
-        tx.put("usernames", &user.username, &user.id)?;
-        tx.put(
-            "source_links",
-            &link_id,
-            &Link {
-                source: source.id.clone(),
-                issuer: source.issuer.clone(),
-                subject: identity.subject.clone(),
-                user_id: user.id.clone(),
-            },
-        )?;
-        let session_token = crypto::random_token("ri_session_");
-        let sid = crypto::id();
-        let mut amr = vec!["federated".into()];
-        if identity.mfa {
-            amr.push("mfa".into());
-        }
-        if local_mfa {
-            amr.push("otp".into());
-        }
-        let session = Session {
-            id: sid.clone(),
-            token_hash: digest(&session_token),
-            identity: Identity {
-                user_id: user.id.clone(),
-                epoch: user.epoch,
-                mfa: identity.mfa || local_mfa,
-                auth_time: identity.auth_time,
-                session_id: sid.clone(),
-                amr,
-                source: Some(SourceIdentity {
-                    id: source.id.clone(),
-                    fingerprint: pending.fingerprint.clone(),
-                    link: link_id,
-                }),
-            },
-            expires_at: (now() + self.config.session_ttl).min(
-                identity
-                    .saml_session
-                    .as_ref()
-                    .and_then(|s| s.expires_at)
-                    .unwrap_or(u64::MAX),
-            ),
-            revoked: false,
-        };
-        if let Some(challenge) = &pending.authentication {
-            let mut transaction = tx
-                .get::<AuthenticationTransaction>("authentication", &digest(challenge))?
-                .filter(|c| {
-                    c.expires_at > now()
-                        && c.authenticated_session.is_none()
-                        && c.user_id.as_ref().is_none_or(|id| id == &user.id)
-                })
-                .ok_or_else(Error::forbidden)?;
-            if transaction.source_stage.as_deref() != pending.stage.as_deref()
-                && transaction.source_stage.is_some()
-            {
-                return Err(Error::forbidden());
-            }
-            transaction.authenticated_session = Some(sid.clone());
-            tx.put("authentication", &digest(challenge), &transaction)?;
-        }
-        if let Some(upstream) = &identity.saml_session {
-            if upstream.expires_at.is_some_and(|at| at <= now()) {
-                return Err(Error::forbidden());
-            }
-            tx.put("saml_source_sessions", &sid, upstream)?;
-        }
-        tx.put("sessions", &sid, &session)?;
-        tx.put("session_tokens", &session.token_hash, &sid)?;
-        tx.delete("source_polls", &pending.poll_hash)?;
-        tx.delete("source_logins", state)?;
-        audit(
-            tx,
-            &user.id,
-            if pending.target.is_some() {
-                "source.link"
-            } else {
-                "source.login"
-            },
-            &source.id,
-        )?;
-        Ok(Ok(
-            json!({"status":"complete","session_token":session_token,"expires_at":session.expires_at,"user":UserView::from(&user)}),
-        ))
     }
     pub(crate) fn begin_source_stage(
         &self,
@@ -1015,15 +758,7 @@ impl Core {
         }
         let request_hash = start.request.request_hash()?;
         let suspension = suspension_hash(&start.request)?;
-        if let Some(existing) = tx.get::<String>("source_stage_requests", &suspension)?
-            && tx
-                .get::<SourceStage>("source_stages", &existing)?
-                .is_some_and(|stage| !stage.used && !stage.cancelled && stage.expires_at > now())
-        {
-            return Err(Error::conflict(
-                "An embedded source stage is already pending for this authorization request",
-            ));
-        }
+        crate::assembly::ensure_stage_request_available(tx, &suspension)?;
         let stage_id = crypto::random_token("ri_stage_");
         let started = self.source_start_in(
             tx,
@@ -1040,9 +775,9 @@ impl Core {
             return Err(Error::internal("source stage expiry exceeds 10 minutes"));
         }
         let transaction = crypto::random_token("ri_auth_");
-        tx.put(
-            "authentication",
-            &digest(&transaction),
+        self.persist_source_stage_authentication(
+            tx,
+            &transaction,
             &AuthenticationTransaction {
                 request_hash: request_hash.clone(),
                 user_id: start.user_id.clone(),
@@ -1067,18 +802,8 @@ impl Core {
             transaction: transaction.clone(),
             browser_id: start.browser_id,
         };
-        let login = tx
-            .get::<Login>("source_logins", &stage.login_key)?
-            .ok_or_else(|| Error::internal("source login missing"))?;
-        if login.nonce != stage.nonce
-            || login.stage.as_deref() != Some(stage.id.as_str())
-            || login.source != stage.source_id
-            || login.expires_at > now() + 600
-        {
-            return Err(Error::internal("source stage binding failed"));
-        }
-        tx.put("source_stages", &stage.id, &stage)?;
-        tx.put("source_stage_requests", &suspension, &stage.id)?;
+        crate::assembly::verify_stage_start_login(tx, &stage)?;
+        self.persist_source_stage_binding(tx, &stage, &suspension)?;
         audit(
             tx,
             stage.user_id.as_deref().unwrap_or("anonymous"),
@@ -1094,27 +819,14 @@ impl Core {
             nonce: stage.nonce,
         })
     }
-    pub fn source_stage_resume(
-        &self,
-        stage_id: &str,
-        authorization_id: &str,
-        otp: Option<String>,
-    ) -> Result<Value> {
-        self.store
-            .write(|tx| self.resume_stage(tx, stage_id, authorization_id, otp.as_deref()))?
-    }
-    pub fn source_stage_cancel(&self, stage_id: &str, authorization_id: &str) -> Result<Value> {
-        self.store
-            .write(|tx| self.cancel_stage(tx, stage_id, authorization_id))
-    }
-    fn resume_stage(
+    pub(crate) fn resume_stage(
         &self,
         tx: &Tx<'_>,
         stage_id: &str,
         authorization_id: &str,
         otp: Option<&str>,
     ) -> Result<Result<Value>> {
-        let mut stage = load_stage(tx, stage_id, authorization_id)?;
+        let mut stage = crate::assembly::load_source_stage(tx, stage_id, authorization_id)?;
         if stage.used || stage.cancelled {
             return Err(Error::bad("Source stage already used"));
         }
@@ -1129,16 +841,7 @@ impl Core {
                 "Source stage is not bound to its authorization request",
             ));
         }
-        let mut pending = tx
-            .get::<Login>("source_logins", &stage.login_key)?
-            .filter(|login| {
-                login.stage.as_deref() == Some(stage.id.as_str())
-                    && login.nonce == stage.nonce
-                    && login.source == stage.source_id
-                    && login.expires_at > now()
-                    && !login.failed
-            })
-            .ok_or_else(|| Error::bad("Source stage login expired or is not bound"))?;
+        let mut pending = crate::assembly::stage_resume_login(tx, &stage)?;
         let Some(identity) = pending.result.clone() else {
             return Ok(Ok(json!({
                 "status": "pending",
@@ -1148,15 +851,10 @@ impl Core {
             })));
         };
         let source = enabled(tx, &stage.source_id)?;
-        let link = tx.get::<Link>(
-            "source_links",
+        let linked_user = crate::assembly::stage_linked_user(
+            tx,
             &link_key(&source.id, &source.issuer, &identity.subject),
         )?;
-        let linked_user = link
-            .as_ref()
-            .map(|link| tx.get::<User>("users", &link.user_id))
-            .transpose()?
-            .flatten();
         let mismatch = stage
             .user_id
             .as_ref()
@@ -1215,21 +913,16 @@ impl Core {
         let token = body["session_token"]
             .as_str()
             .ok_or_else(|| Error::internal("missing session"))?;
-        let sid = tx
-            .get::<String>("session_tokens", &digest(token))?
-            .ok_or_else(|| Error::internal("missing session"))?;
-        let session = tx
-            .get::<Session>("sessions", &sid)?
-            .ok_or_else(|| Error::internal("missing session"))?;
+        let session = crate::assembly::stage_resume_session(tx, token)?;
         // The bearer token was never returned, so the session is reachable only by its browser.
-        tx.delete("session_tokens", &digest(token))?;
+        self.discard_stage_resume_bearer(tx, token)?;
         let mut request = stage.request.clone();
         request.decision = Some("approve".into());
         request.transaction_id = Some(stage.transaction.clone());
         // Only this resume flow may authorize the suspended request. Mark the stage
         // within the same store transaction before the authorization gate checks it.
         stage.used = true;
-        tx.put("source_stages", &stage.id, &stage)?;
+        self.persist_stage_resume_use(tx, &stage)?;
         let redirect = match self.authorize_session(tx, session.clone(), request) {
             Ok(redirect) => redirect,
             Err(_) => {
@@ -1259,8 +952,13 @@ impl Core {
             "authorization_id": stage.authorization_id
         })))
     }
-    fn cancel_stage(&self, tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<Value> {
-        let mut stage = load_stage(tx, stage_id, authorization_id)?;
+    pub(crate) fn cancel_stage(
+        &self,
+        tx: &Tx<'_>,
+        stage_id: &str,
+        authorization_id: &str,
+    ) -> Result<Value> {
+        let mut stage = crate::assembly::load_source_stage(tx, stage_id, authorization_id)?;
         if stage.used || stage.cancelled {
             return Err(Error::conflict("Source stage already completed"));
         }
@@ -1293,12 +991,7 @@ impl Core {
         stage.used = true;
         // Terminal failure keeps this exact request from being completed by another session.
         stage.cancelled = true;
-        tx.put("source_stages", &stage.id, &stage)?;
-        if let Some(mut pending) = tx.get::<Login>("source_logins", &stage.login_key)? {
-            pending.failed = true;
-            tx.delete("source_polls", &pending.poll_hash)?;
-            tx.put("source_logins", &stage.login_key, &pending)?;
-        }
+        self.persist_stage_rejection(tx, stage)?;
         let redirect = self.stage_denial(tx, stage, error, description)?;
         Ok(json!({
             "status": "rejected",
@@ -1343,91 +1036,28 @@ impl Core {
         }
         Ok(location)
     }
-    pub fn source_links(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| {
-            let (user, _) = self.session(tx, token)?;
-            Ok(json!(tx.list::<Link>("source_links")?.into_iter().filter(|(_, l)| l.user_id == user.id).map(|(id,l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject})).collect::<Vec<_>>()))
-        })
-    }
-    pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
-        self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            if session.identity.source.is_some()
-                || now().saturating_sub(session.identity.auth_time) > 300
-            {
-                return Err(Error::forbidden());
-            }
-            let link = tx
-                .get::<Link>("source_links", link_id)?
-                .filter(|l| l.user_id == user.id)
-                .ok_or_else(Error::forbidden)?;
-            tx.delete("source_links", link_id)?;
-            for (_, mut session) in tx.list::<Session>("sessions")? {
-                if session
-                    .identity
-                    .source
-                    .as_ref()
-                    .is_some_and(|s| s.link == link_id)
-                    && !session.revoked
-                {
-                    session.revoked = true;
-                    tx.put("sessions", &session.id, &session)?;
-                    crate::logout::queue_session(tx, &session.id)?;
-                    crate::ssf::enqueue(
-                        tx,
-                        &session.identity.user_id,
-                        crate::ssf::SESSION_REVOKED,
-                        "",
-                    )?;
-                }
-            }
-            audit(tx, &user.id, "source.unlink", &link.source)?;
-            Ok(json!({"unlinked":true}))
-        })
-    }
 }
 
-fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
-    tx.get::<Source>("sources", id)?
-        .filter(|s| s.enabled)
-        .ok_or_else(|| Error::missing("Enabled source not found"))
+pub(crate) fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
+    crate::assembly::source_enabled(tx, id)
 }
-fn link_key(source: &str, issuer: &str, subject: &str) -> String {
+
+/// A presented login ends when its stored source is missing or no longer has
+/// the fingerprint captured at start. `enabled` is part of that fingerprint, so
+/// a disabled source must be loaded here: `enabled` would roll the write back
+/// and let the same code, response, or return succeed after re-enable.
+pub(crate) fn presented_source_retired(source: Option<&Source>, pending_fingerprint: &str) -> bool {
+    match source {
+        Some(source) => source
+            .fingerprint()
+            .map(|fingerprint| fingerprint != pending_fingerprint)
+            .unwrap_or(true),
+        None => true,
+    }
+}
+pub(crate) fn link_key(source: &str, issuer: &str, subject: &str) -> String {
     digest(&format!("{source}\0{issuer}\0{subject}"))
 }
-pub fn validate_identity(tx: &Tx<'_>, identity: &Identity) -> Result<()> {
-    if let Some(context) = &identity.source {
-        if context.id.starts_with("ldap/") {
-            return Ok(());
-        } // Validated against server configuration by Core.
-        let source = enabled(tx, &context.id).map_err(|_| Error::unauthorized())?;
-        let link = tx
-            .get::<Link>("source_links", &context.link)?
-            .ok_or_else(Error::unauthorized)?;
-        if context.fingerprint != source.fingerprint()?
-            || link.user_id != identity.user_id
-            || link.source != context.id
-        {
-            return Err(Error::unauthorized());
-        }
-        if source.saml.is_some()
-            && tx
-                .get::<saml::UpstreamSession>("saml_source_sessions", &identity.session_id)?
-                .is_none_or(|s| s.expires_at.is_some_and(|at| at <= now()))
-        {
-            return Err(Error::unauthorized());
-        }
-        if !source.allow_admin_login
-            && tx
-                .get::<User>("users", &identity.user_id)?
-                .is_some_and(|u| u.admin)
-        {
-            return Err(Error::unauthorized());
-        }
-    }
-    Ok(())
-}
-
 async fn bounded_json(mut response: reqwest::Response) -> Result<Value> {
     if !response.status().is_success() || response.content_length().is_some_and(|n| n > 65536) {
         return Err(Error::bad(
@@ -1519,6 +1149,7 @@ fn verify_identity(source: &Source, pending: &Login, tokens: &Value) -> Result<U
             .as_str()
             .is_some_and(|v| source.trusted_mfa_acr.contains(v)),
         auth_time,
+        expires_at: claims["exp"].as_u64(),
     })
 }
 
@@ -1549,60 +1180,7 @@ pub(crate) fn stage_authentication_required(
         }
     }
 }
-pub(crate) fn enforce_pending_stage(
-    tx: &Tx<'_>,
-    request: &crate::oidc::Authorization,
-    session: &Session,
-) -> Result<()> {
-    let key = suspension_hash(request)?;
-    let Some(id) = tx.get::<String>("source_stage_requests", &key)? else {
-        return Ok(());
-    };
-    let Some(stage) = tx.get::<SourceStage>("source_stages", &id)? else {
-        return Ok(());
-    };
-    if stage.expires_at <= now()
-        || stage.suspension_hash != key
-        || stage.request.client_id != request.client_id
-    {
-        return Ok(());
-    }
-    if stage.cancelled {
-        return Err(Error::oauth(
-            "access_denied",
-            "The source stage was cancelled",
-        ));
-    }
-    if !stage.used {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    }
-    let hash = request.request_hash()?;
-    let Some(token) = request.transaction_id.as_deref() else {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    };
-    if !crypto::constant_eq(token, &stage.transaction) {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    }
-    tx.get::<AuthenticationTransaction>("authentication", &digest(token))?
-        .filter(|record| {
-            record.expires_at > now()
-                && record.source_stage.as_deref() == Some(stage.id.as_str())
-                && record.request_hash == hash
-                && record.authenticated_session.as_deref() == Some(session.id.as_str())
-        })
-        .ok_or_else(|| Error::oauth("login_required", "Complete the embedded source stage"))?;
-    Ok(())
-}
-fn suspension_hash(request: &crate::oidc::Authorization) -> Result<String> {
+pub(crate) fn suspension_hash(request: &crate::oidc::Authorization) -> Result<String> {
     let mut request = request.clone();
     request.decision = None;
     request.transaction_id = None;
@@ -1612,59 +1190,39 @@ fn suspension_hash(request: &crate::oidc::Authorization) -> Result<String> {
 fn requires_fresh_proof(request: &crate::oidc::Authorization) -> bool {
     request.has_prompt("login") || request.has_prompt("select_account") || request.max_age.is_some()
 }
-fn load_stage(tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<SourceStage> {
-    let stage = tx
-        .get::<SourceStage>("source_stages", stage_id)?
-        .ok_or_else(|| Error::bad("Source stage not found"))?;
-    if !crypto::constant_eq(&stage.id, stage_id)
-        || !crypto::constant_eq(&stage.authorization_id, authorization_id)
-    {
-        return Err(Error::forbidden());
-    }
-    Ok(stage)
+/// `expected` is the stored digest of the full binding cookie. A missing, oversized
+/// or different cookie fails closed. The compare covers both cookie halves at once.
+pub(crate) fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
+    let presented = presented.unwrap_or("");
+    presented.len() <= 256
+        && expected.len() == 43
+        && crypto::constant_eq(&digest(presented), expected)
 }
-fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
+
+fn browser_mismatch() -> Error {
+    Error::new(
+        axum::http::StatusCode::FORBIDDEN,
+        "source_browser_mismatch",
+        "This provider returned to a different browser than the one that started sign-in. Start again in that browser.",
+    )
+}
+
+pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
     let mut body = json!({
         "completed": !pending.failed,
         "instruction": "Return to the CLI to inspect and finish the request"
     });
-    if let Some(id) = &pending.stage
-        && let Some(stage) = tx.get::<SourceStage>("source_stages", id)?
-        && !stage.used
-        && !stage.cancelled
-        && stage.expires_at > now()
-        && stage.login_key == login_key
-        && stage.nonce == pending.nonce
-        && stage.source_id == pending.source
-    {
-        body["source_stage"] = json!({
-            "stage_id": stage.id,
-            "authorization_id": stage.authorization_id
-        });
+    if let Some(stage) = crate::assembly::callback_source_stage(tx, pending, login_key)? {
+        body["source_stage"] = stage;
     }
     Ok(body)
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    #[cfg(feature = "platform")]
+    crate::assembly::cleanup_source_saml(tx, at)?;
+    #[cfg(not(feature = "platform"))]
     saml::cleanup(tx, at)?;
-    for (id, pending) in tx.maintenance_page::<Login>("source_logins")? {
-        if pending.expires_at < at {
-            tx.delete("source_polls", &pending.poll_hash)?;
-            tx.delete("source_logins", &id)?;
-        }
-    }
-    for (id, stage) in tx.maintenance_page::<SourceStage>("source_stages")? {
-        if stage.expires_at < at {
-            if tx
-                .get::<String>("source_stage_requests", &stage.suspension_hash)?
-                .as_deref()
-                == Some(id.as_str())
-            {
-                tx.delete("source_stage_requests", &stage.suspension_hash)?;
-            }
-            tx.delete("source_stages", &id)?;
-        }
-    }
-    Ok(())
+    crate::assembly::cleanup_expired_source_state(tx, at)
 }
 
 fn oauth_identity(profile: &OAuthProfile, claims: &Value) -> Result<UpstreamIdentity> {
@@ -1713,5 +1271,6 @@ fn oauth_identity(profile: &OAuthProfile, claims: &Value) -> Result<UpstreamIden
         email_verified,
         mfa: false,
         auth_time: 0,
+        expires_at: None,
     })
 }

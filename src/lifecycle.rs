@@ -1,16 +1,21 @@
 //! Purpose-bound account proofs and a leased, durable SMTP outbox.
 use crate::{
     agent::{Agent, Principal},
-    core::{Core, audit, make_user, user_by_name, validate_display, validate_name},
+    core::{Core, audit, user_by_name, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Group, NewUser, User, UserView},
+    model::{Session, User, UserView},
     store::Tx,
 };
+use axum::http::StatusCode;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, path::PathBuf, time::Duration};
+
+pub(crate) mod invitation;
+#[cfg(feature = "platform")]
+pub(crate) mod workflow;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +65,29 @@ impl MailConfig {
         }
         Ok(())
     }
+    /// Validate local SMTP material without contacting the remote server.
+    /// Config loading checks the shape before resolving relative paths; the
+    /// serving preflight and capability assembly call this on resolved paths.
+    pub(crate) fn require_local_material(&self) -> Result<()> {
+        self.validate().map_err(Error::internal)?;
+        self.password().map(|_| ())
+    }
+
+    fn password(&self) -> Result<Option<zeroize::Zeroizing<String>>> {
+        let Some(path) = &self.password_file else {
+            return Ok(None);
+        };
+        let mut password = crate::config::read_private_secret(path, 4096).map_err(|_| {
+            Error::bad("SMTP credential must be a private file of at most 4096 bytes")
+        })?;
+        let len = password.trim_end_matches(['\r', '\n']).len();
+        password.truncate(len);
+        if password.is_empty() {
+            return Err(Error::bad("Invalid SMTP credential file"));
+        }
+        Ok(Some(password))
+    }
+
     fn transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>> {
         self.validate().map_err(Error::internal)?;
         let builder = match self.security {
@@ -76,17 +104,10 @@ impl MailConfig {
         }
         .port(self.port)
         .timeout(Some(Duration::from_secs(10)));
-        let builder = if let (Some(username), Some(path)) = (&self.username, &self.password_file) {
-            let password = crate::config::read_private_secret(path, 4096).map_err(|_| {
-                Error::bad("SMTP credential must be a private file of at most 4096 bytes")
-            })?;
-            let password = password.trim_end_matches(['\r', '\n']);
-            if password.is_empty() || password.len() > 4096 {
-                return Err(Error::bad("Invalid SMTP credential file"));
-            }
+        let builder = if let (Some(username), Some(password)) = (&self.username, self.password()?) {
             builder.credentials(lettre::transport::smtp::authentication::Credentials::new(
                 username.clone(),
-                password.into(),
+                password.as_str().to_owned(),
             ))
         } else {
             builder
@@ -95,7 +116,7 @@ impl MailConfig {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Purpose {
     Verify,
@@ -111,7 +132,7 @@ impl Purpose {
         }
     }
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Proof {
     purpose: Purpose,
     user_id: String,
@@ -121,6 +142,29 @@ struct Proof {
     #[serde(default)]
     groups: BTreeSet<String>,
     creator: Option<String>,
+}
+/// A disabled invited account remains identifiable after its proof expires or is revoked.
+/// The immutable user ID prevents a later account with the same username from inheriting it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InvitationReservation {
+    pub(crate) username: String,
+    pub(crate) created_by: String,
+    pub(crate) epoch: u64,
+}
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ProofEnd {
+    Used,
+    Revoked,
+    Replaced,
+    Expired,
+}
+#[derive(Serialize, Deserialize)]
+struct ProofOutcome {
+    purpose: Purpose,
+    reason: ProofEnd,
+    retain_until: u64,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Delivery {
@@ -137,6 +181,8 @@ struct Delivery {
     delivered_at: Option<u64>,
     stopped: bool,
 }
+/// How long an invitation link stays valid.
+const INVITATION_SECONDS: u64 = 7 * 86400;
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Invitation {
@@ -146,7 +192,7 @@ pub struct Invitation {
     #[serde(default)]
     pub groups: BTreeSet<String>,
 }
-fn require_mail(core: &Core) -> Result<()> {
+pub(crate) fn require_mail(core: &Core) -> Result<()> {
     if core.config.mail.is_none() {
         return Err(Error::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -156,7 +202,7 @@ fn require_mail(core: &Core) -> Result<()> {
     }
     Ok(())
 }
-fn email(value: &str) -> Result<()> {
+pub(crate) fn email(value: &str) -> Result<()> {
     crate::core::validate_email(value)?;
     value
         .parse::<lettre::Address>()
@@ -166,7 +212,159 @@ fn email(value: &str) -> Result<()> {
 fn proof_key(user: &User, purpose: Purpose) -> String {
     format!("{}:{}", user.id, purpose.name())
 }
-fn enqueue(
+
+/// The recovery request, proof and live account must still name the same
+/// credential epoch. A replaced proof cannot consume another request's index.
+fn reset_authority(tx: &Tx<'_>, hash: &str, proof: &Proof, at: u64) -> Result<User> {
+    let user: User = tx
+        .get("users", &proof.user_id)?
+        .ok_or_else(Error::forbidden)?;
+    let exposure = crate::delegation::credential_exposure(tx, &user.id)?;
+    let address_matches = match &exposure {
+        Some(exposure) => exposure.allows_recovery(&user, &proof.email),
+        None => user.email_verified && user.email.as_deref() == Some(proof.email.as_str()),
+    };
+    if proof.purpose != Purpose::Reset
+        || proof.expires_at <= at
+        || !user.enabled
+        || user.epoch != proof.epoch
+        || !address_matches
+        || tx
+            .get::<String>("account_latest", &proof_key(&user, Purpose::Reset))?
+            .as_deref()
+            != Some(hash)
+        || crate::password::Kind::of(tx, &user)? != crate::password::Kind::Local
+    {
+        return Err(Error::forbidden());
+    }
+    Ok(user)
+}
+
+/// Preserve assisted-recovery policy in both ordinary and workflow completion.
+/// Call only in the same writer after verifying the original recovery address.
+fn reset_exposed_factors(tx: &Tx<'_>, user: &mut User) -> Result<bool> {
+    let Some(exposure) = crate::delegation::credential_exposure(tx, &user.id)? else {
+        return Ok(false);
+    };
+    let verified_email = exposure.verified_email.ok_or_else(Error::forbidden)?;
+    crate::passkey::clear(tx, &user.id)?;
+    #[cfg(feature = "platform")]
+    crate::assembly::clear_user_binding(tx, &user.id)?;
+    user.email = Some(verified_email);
+    user.email_verified = true;
+    user.has_passkeys = false;
+    user.recovery_codes.clear();
+    user.totp_secret = None;
+    user.totp_pending = None;
+    user.totp_last_step = None;
+    user.totp_settings = Default::default();
+    tx.delete(crate::delegation::CREDENTIAL_EXPOSURE, &user.id)?;
+    Ok(true)
+}
+fn retire_proof(tx: &Tx<'_>, hash: &str, reason: ProofEnd) -> Result<()> {
+    if let Some(proof) = tx.get::<Proof>("account_proofs", hash)? {
+        if proof.purpose == Purpose::Invite {
+            tx.delete("invitation_passkey_registration", hash)?;
+        }
+        tx.delete("account_proofs", hash)?;
+        tx.put(
+            "account_proof_outcomes",
+            hash,
+            &ProofOutcome {
+                purpose: proof.purpose,
+                reason,
+                retain_until: proof.expires_at.max(now()).saturating_add(8 * 86400),
+            },
+        )?;
+    }
+    Ok(())
+}
+/// Retire the current invitation proof while retaining its revoked outcome.
+/// A missing current proof is an idempotent no-op.
+pub(crate) fn revoke_invitation_proof(tx: &Tx<'_>, user: &User) -> Result<bool> {
+    let key = proof_key(user, Purpose::Invite);
+    let Some(hash) = tx.get::<String>("account_latest", &key)? else {
+        return Ok(false);
+    };
+    retire_proof(tx, &hash, ProofEnd::Revoked)?;
+    tx.delete("account_latest", &key)?;
+    Ok(true)
+}
+fn proof_error(reason: Option<ProofEnd>) -> Error {
+    match reason {
+        Some(ProofEnd::Expired) => Error::new(
+            StatusCode::GONE,
+            "account_code_expired",
+            "Account link expired; request a new one",
+        ),
+        Some(ProofEnd::Revoked) => Error::new(
+            StatusCode::GONE,
+            "account_code_revoked",
+            "Invitation was revoked; contact your administrator",
+        ),
+        Some(ProofEnd::Replaced) => Error::new(
+            StatusCode::GONE,
+            "account_code_replaced",
+            "Account link was replaced by a newer one",
+        ),
+        Some(ProofEnd::Used) => Error::new(
+            StatusCode::GONE,
+            "account_code_used",
+            "Account link was already used",
+        ),
+        None => Error::new(
+            StatusCode::BAD_REQUEST,
+            "account_code_invalid",
+            "Invalid account link",
+        ),
+    }
+}
+
+fn completion_proof(tx: &Tx<'_>, hash: &str, purpose: Purpose, at: u64) -> Result<Proof> {
+    match tx.get::<Proof>("account_proofs", hash)? {
+        Some(proof) if proof.purpose != purpose => Err(proof_error(None)),
+        Some(proof) if proof.expires_at <= at => Err(proof_error(Some(ProofEnd::Expired))),
+        Some(proof) => Ok(proof),
+        None => {
+            let reason = tx
+                .get::<ProofOutcome>("account_proof_outcomes", hash)?
+                .filter(|outcome| outcome.purpose == purpose && outcome.retain_until > at)
+                .map(|outcome| outcome.reason);
+            Err(proof_error(reason))
+        }
+    }
+}
+
+fn completion_user(tx: &Tx<'_>, proof: &Proof) -> Result<User> {
+    let user = tx
+        .get::<User>("users", &proof.user_id)?
+        .filter(|user| user.epoch == proof.epoch)
+        .ok_or_else(|| {
+            Error::new(
+                StatusCode::CONFLICT,
+                "account_changed",
+                "Account changed; request a new link",
+            )
+        })?;
+    let address_matches = if proof.purpose == Purpose::Reset {
+        match crate::delegation::credential_exposure(tx, &user.id)? {
+            Some(exposure) => exposure.allows_recovery(&user, &proof.email),
+            None => user.email.as_deref() == Some(proof.email.as_str()),
+        }
+    } else {
+        user.email.as_deref() == Some(proof.email.as_str())
+    };
+    if !address_matches {
+        return Err(Error::new(
+            StatusCode::CONFLICT,
+            "account_changed",
+            "Account changed; request a new link",
+        ));
+    }
+    Ok(user)
+}
+
+pub(crate) fn enqueue(
     core: &Core,
     tx: &Tx<'_>,
     user: &User,
@@ -181,7 +379,15 @@ fn enqueue(
     email(recipient)?;
     let key = proof_key(user, purpose);
     if let Some(old) = tx.get::<String>("account_latest", &key)? {
-        tx.delete("account_proofs", &old)?;
+        let reason = if tx
+            .get::<Proof>("account_proofs", &old)?
+            .is_some_and(|proof| proof.expires_at <= now())
+        {
+            ProofEnd::Expired
+        } else {
+            ProofEnd::Replaced
+        };
+        retire_proof(tx, &old, reason)?;
     }
     let token = zeroize::Zeroizing::new(crypto::random_token("ri_mail_"));
     let hash = digest(&token);
@@ -189,7 +395,7 @@ fn enqueue(
         + match purpose {
             Purpose::Reset => 1800,
             Purpose::Verify => 86400,
-            Purpose::Invite => 7 * 86400,
+            Purpose::Invite => INVITATION_SECONDS,
         };
     tx.put(
         "account_proofs",
@@ -210,8 +416,15 @@ fn enqueue(
         Purpose::Reset => "Reset your riAuth password",
         Purpose::Invite => "Your riAuth account invitation",
     };
+    // The proof travels in the fragment: opening or scanning the link never sends it.
+    let browser_link = format!(
+        "Open in your browser: {}/account/{}#token={}\n\n",
+        core.config.issuer.trim_end_matches('/'),
+        purpose.name(),
+        token.as_str()
+    );
     let body = format!(
-        "{subject}\n\nServer: {}\nAccount: {}\n\nRun: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. A password reset keeps your enrolled MFA factors. If you did not request this message, ignore it.\n",
+        "{subject}\n\nServer: {}\nAccount: {}\n\n{browser_link}Run: riauth --server {} account {} --token-stdin\nPaste this one-use code when asked:\n{}\n\nExpires at Unix time {expires_at}. Assisted recovery removes enrolled MFA factors; ordinary password reset keeps them. If you did not request this message, ignore it.\n",
         core.config.issuer,
         user.username,
         core.config.issuer,
@@ -257,6 +470,137 @@ fn request_allowed(tx: &Tx<'_>, username: &str, purpose: Purpose) -> Result<bool
     tx.put("mail_limits", &key, &(start, count + 1, now()))?;
     Ok(true)
 }
+fn verify_request_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    user: &User,
+    session: &Session,
+) -> Result<&'static str> {
+    if now().saturating_sub(session.identity.auth_time) > 300 {
+        return Err(Error::forbidden());
+    }
+    let allowed = request_allowed(tx, &user.username, Purpose::Verify)?;
+    if user.email_verified {
+        return Ok("already_verified");
+    }
+    if !allowed {
+        return Ok("cooldown");
+    }
+    enqueue(core, tx, user, Purpose::Verify, BTreeSet::new(), None)?;
+    audit(tx, &user.id, "account.verification.request", &user.id)?;
+    Ok("queued")
+}
+pub(crate) fn pending_invitation_reservation(
+    tx: &Tx<'_>,
+    user: &User,
+) -> Result<Option<InvitationReservation>> {
+    if user.enabled
+        || user.admin
+        || !user.password_hash.is_empty()
+        || user.email_verified
+        || user.has_passkeys
+        || user.totp_secret.is_some()
+        || user.totp_pending.is_some()
+        || !user.recovery_codes.is_empty()
+    {
+        return Ok(None);
+    }
+    if let Some(reservation) =
+        tx.get::<InvitationReservation>("invitation_reservations", &user.id)?
+    {
+        return Ok((reservation.username == user.username
+            && reservation.epoch == user.epoch
+            && !reservation.created_by.is_empty())
+        .then_some(reservation));
+    }
+    // Legacy invitations predate the durable reservation. A still-stored proof,
+    // including one past expiry, can establish their provenance for migration.
+    let Some(hash) = tx.get::<String>("account_latest", &proof_key(user, Purpose::Invite))? else {
+        return Ok(None);
+    };
+    let Some(proof) = tx.get::<Proof>("account_proofs", &hash)? else {
+        return Ok(None);
+    };
+    if proof.purpose != Purpose::Invite
+        || proof.user_id != user.id
+        || proof.epoch != user.epoch
+        || user.email.as_deref() != Some(proof.email.as_str())
+    {
+        return Ok(None);
+    }
+    Ok(proof
+        .creator
+        .filter(|creator| !creator.is_empty())
+        .map(|created_by| InvitationReservation {
+            username: user.username.clone(),
+            created_by,
+            epoch: user.epoch,
+        }))
+}
+
+/// Recovery advances account epochs to revoke restored authority. Keep the
+/// durable provenance of a still-pending invitation bound to that same account
+/// so an authorized administrator can reissue it after restore. An already
+/// mismatched reservation remains mismatched and cannot be revived.
+pub(crate) fn rebase_invitation_reservation(
+    tx: &Tx<'_>,
+    user_id: &str,
+    username: &str,
+    old_epoch: u64,
+    new_epoch: u64,
+) -> Result<()> {
+    if let Some(mut reservation) =
+        tx.get::<InvitationReservation>("invitation_reservations", user_id)?
+        && reservation.username == username
+        && reservation.epoch == old_epoch
+    {
+        reservation.epoch = new_epoch;
+        tx.put("invitation_reservations", user_id, &reservation)?;
+    }
+    Ok(())
+}
+/// An invitation's creator as `actor` may see it. Administrators may list every person and
+/// agent, and an agent knows itself; otherwise a person needs `user.read` and another
+/// agent stays hidden, since agents cannot list agents.
+fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<String>> {
+    if (!actor.agent && !actor.delegated) || actor.id == id {
+        return Ok(Some(id.into()));
+    }
+    if id.starts_with("agent:") {
+        return Ok(None);
+    }
+    Ok(tx
+        .get::<User>("users", id)?
+        .filter(|user| actor.allows("user.read", &format!("user/{}", user.username)))
+        .map(|_| id.into()))
+}
+/// Whether acceptance could complete now: the checks `account_complete` makes through
+/// `creator` and `management::accept_invitation`, without writing. The creator must still
+/// be an enabled administrator or active agent with `user.write` on the invitee and
+/// `group.members` on every group, and each group must still exist.
+fn acceptance_authorized(tx: &Tx<'_>, user: &User, proof: &Proof) -> Result<bool> {
+    let Some(id) = proof.creator.as_deref() else {
+        return Ok(false);
+    };
+    let actor = match creator(tx, id) {
+        Ok(actor) => actor,
+        Err(error) if error.status == StatusCode::FORBIDDEN => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if !actor.allows("user.write", &format!("user/{}", user.username)) {
+        return Ok(false);
+    }
+    for name in &proof.groups {
+        if !actor.allows("group.members", &format!("group/{name}"))
+            || !tx
+                .get::<crate::model::Group>("groups", name)?
+                .is_some_and(|group| &group.name == name)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
 fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
@@ -268,6 +612,8 @@ fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: true,
+            delegated: false,
+            grants: vec![],
             permissions: agent.permissions,
         })
     } else {
@@ -277,6 +623,8 @@ fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
         Ok(Principal {
             id: id.into(),
             agent: false,
+            delegated: false,
+            grants: vec![],
             permissions: vec![],
         })
     }
@@ -286,14 +634,23 @@ impl Core {
         require_mail(self)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
-            if now().saturating_sub(session.identity.auth_time) > 300 {
-                return Err(Error::forbidden());
-            }
-            if request_allowed(tx, &user.username, Purpose::Verify)? && !user.email_verified {
-                enqueue(self, tx, &user, Purpose::Verify, BTreeSet::new(), None)?;
-                audit(tx, &user.id, "account.verification.request", &user.id)?;
-            }
+            verify_request_in(self, tx, &user, &session)?;
             Ok(json!({"accepted":true}))
+        })
+    }
+    pub fn portal_verify_request(&self, sso: Option<&str>) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.portal_session(tx, sso)?;
+            require_mail(self)?;
+            if now().saturating_sub(session.identity.auth_time) > 300 {
+                return Err(Error::new(
+                    StatusCode::FORBIDDEN,
+                    "reauthentication_required",
+                    "Sign in again before requesting a verification email",
+                ));
+            }
+            let status = verify_request_in(self, tx, &user, &session)?;
+            Ok(json!({"accepted":true,"status":status}))
         })
     }
     pub fn account_reset_request(&self, username: &str) -> Result<Value> {
@@ -306,65 +663,152 @@ impl Core {
                     Err(e) if e.status == axum::http::StatusCode::NOT_FOUND => None,
                     Err(e) => return Err(e),
                 };
-                if let Some(user) =
-                    user.filter(|u| u.enabled && u.email_verified && !u.password_hash.is_empty())
+                // Only a local password can be recovered here. Directory, passkey-only and
+                // upstream-only accounts get the same answer and no local password.
+                if let Some(user) = user.filter(|u| u.enabled)
+                    && crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local
                 {
-                    enqueue(self, tx, &user, Purpose::Reset, BTreeSet::new(), None)?;
+                    let recipient = match crate::delegation::credential_exposure(tx, &user.id)? {
+                        Some(exposure) => exposure.recovery_email(&user),
+                        None if user.email_verified => user.email.clone(),
+                        None => None,
+                    };
+                    if let Some(recipient) = recipient {
+                        let mut recovery_user = user;
+                        recovery_user.email = Some(recipient);
+                        enqueue(
+                            self,
+                            tx,
+                            &recovery_user,
+                            Purpose::Reset,
+                            BTreeSet::new(),
+                            None,
+                        )?;
+                    }
                 }
             }
             Ok(json!({"accepted":true}))
         })
     }
     pub fn account_invite(&self, token: &str, input: Invitation) -> Result<Value> {
+        Self::require_invitation_retry_binding()?;
         require_mail(self)?;
-        validate_name(&input.username)?;
-        validate_display(&input.display_name)?;
-        email(&input.email)?;
         self.mutation(token, |tx| {
-            let actor =
-                self.management(tx, token, "user.write", &format!("user/{}", input.username))?;
-            for group in &input.groups {
-                actor.require("group.members", &format!("group/{group}"))?;
-                tx.get::<Group>("groups", group)?
-                    .ok_or_else(|| Error::missing("Invitation group not found"))?;
-            }
-            if tx.get::<String>("usernames", &input.username)?.is_some() {
-                return Err(Error::conflict("User already exists"));
-            }
-            let mut user = make_user(NewUser {
-                username: input.username,
-                email: Some(input.email),
-                display_name: input.display_name,
-                password: crypto::random_token(""),
-                admin: false,
-            })?;
-            user.password_hash.clear();
-            user.enabled = false;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            enqueue(
-                self,
-                tx,
-                &user,
-                Purpose::Invite,
-                input.groups,
-                Some(actor.id.clone()),
-            )?;
-            audit(tx, &actor.id, "user.invite", &user.id)?;
-            Ok(json!({"user":UserView::from(&user),"delivery_queued":true}))
+            let actor = self.principal(tx, token)?;
+            crate::management::invite_user(self, tx, &actor, input)
         })
     }
     pub fn account_invitation_revoke(&self, token: &str, username: &str) -> Result<Value> {
+        Self::require_invitation_retry_binding()?;
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
-            let user = user_by_name(tx, username)?;
-            if let Some(hash) =
-                tx.get::<String>("account_latest", &proof_key(&user, Purpose::Invite))?
-            {
-                tx.delete("account_proofs", &hash)?;
+            let actor = self.principal(tx, token)?;
+            crate::management::revoke_invitation(tx, &actor, username)
+        })
+    }
+    fn require_invitation_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Invitation writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
+    /// Invited accounts that have not accepted yet, with the state of their current link.
+    /// Each part obeys the reader's own read permissions: people by `user.read`, groups by
+    /// `group.read`, the inviter by `visible_inviter` and delivery state by the permission
+    /// `mail_deliveries` needs. Codes and message bodies are never returned.
+    pub fn account_invitations(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.principal(tx, token)?;
+            let deliveries: std::collections::BTreeMap<String, Delivery> =
+                if actor.allows("operations.read", "operations/mail") {
+                    tx.list::<Delivery>("mail_deliveries")?
+                        .into_iter()
+                        .map(|(_, delivery)| (delivery.proof.clone(), delivery))
+                        .collect()
+                } else {
+                    Default::default()
+                };
+            let mut invitations = Vec::new();
+            for (_, user) in tx.list::<User>("users")? {
+                if !actor.allows("user.read", &format!("user/{}", user.username)) {
+                    continue;
+                }
+                let Some(reservation) = pending_invitation_reservation(tx, &user)? else {
+                    continue;
+                };
+                // The same conditions account_complete checks before accepting the code.
+                let key = proof_key(&user, Purpose::Invite);
+                let current = match tx.get::<String>("account_latest", &key)? {
+                    Some(hash) => tx
+                        .get::<Proof>("account_proofs", &hash)?
+                        .filter(|proof| {
+                            proof.purpose == Purpose::Invite
+                                && proof.user_id == user.id
+                                && proof.epoch == user.epoch
+                                && user.email.as_deref() == Some(proof.email.as_str())
+                        })
+                        .map(|proof| (hash, proof)),
+                    None => None,
+                };
+                // Without a current code the last link was revoked, or expired and was
+                // cleaned up; either way it no longer works. An unexpired code whose
+                // acceptance would be refused is blocked, without saying whose authority failed.
+                let status = match &current {
+                    Some((_, proof)) if proof.expires_at <= now() => "expired",
+                    Some((_, proof)) if !acceptance_authorized(tx, &user, proof)? => "blocked",
+                    Some(_) => "pending",
+                    None => "inactive",
+                };
+                let delivery = current
+                    .as_ref()
+                    .and_then(|(hash, _)| deliveries.get(hash))
+                    .map(|d| {
+                        let state = if d.delivered_at.is_some() {
+                            "sent"
+                        } else if d.stopped {
+                            "stopped"
+                        } else {
+                            "queued"
+                        };
+                        json!({
+                            "status": state,
+                            "queued_at": d.created_at,
+                            "attempts": d.attempts,
+                            "delivered_at": d.delivered_at,
+                        })
+                    });
+                let (invited_by, expires_at, groups) = match current {
+                    Some((_, proof)) => (
+                        proof.creator.unwrap_or(reservation.created_by),
+                        Some(proof.expires_at),
+                        proof.groups,
+                    ),
+                    None => (reservation.created_by, None, BTreeSet::new()),
+                };
+                // Groups follow list_groups: a scoped reader sees only the ones it may read.
+                let groups: Vec<_> = groups
+                    .into_iter()
+                    .filter(|name| actor.allows("group.read", &format!("group/{name}")))
+                    .collect();
+                invitations.push(json!({
+                    "user": UserView::from(&user),
+                    "status": status,
+                    "expires_at": expires_at,
+                    "groups": groups,
+                    "invited_by": visible_inviter(tx, &actor, &invited_by)?,
+                    "delivery": delivery,
+                }));
             }
-            audit(tx, &actor.id, "user.invitation.revoke", &user.id)?;
-            Ok(json!({"revoked":true}))
+            Ok(json!({
+                "delivery_configured": self.config.mail.is_some(),
+                "lifetime": INVITATION_SECONDS,
+                "invitations": invitations,
+            }))
         })
     }
     pub fn account_complete(
@@ -373,15 +817,56 @@ impl Core {
         purpose: Purpose,
         password: Option<String>,
     ) -> Result<Value> {
+        self.account_complete_selected(token, purpose, password, None)
+    }
+
+    /// Select an active configured recovery definition only for an explicit
+    /// reset-mail submission. The mail token still determines the account.
+    #[cfg(feature = "platform")]
+    pub fn account_complete_configured_reset(
+        &self,
+        workflow: &str,
+        token: String,
+        password: String,
+    ) -> Result<Value> {
+        self.account_complete_selected(token, Purpose::Reset, Some(password), Some(workflow))
+    }
+
+    fn account_complete_selected(
+        &self,
+        token: String,
+        purpose: Purpose,
+        password: Option<String>,
+        configured: Option<&str>,
+    ) -> Result<Value> {
+        #[cfg(not(feature = "platform"))]
+        let _ = configured;
         let token = zeroize::Zeroizing::new(token);
         if !token.starts_with("ri_mail_") || token.len() > 128 {
-            return Err(Error::bad("Invalid account code"));
+            return Err(proof_error(None));
         }
         let password = password.map(zeroize::Zeroizing::new);
-        let password_hash = match purpose {
+        match purpose {
             Purpose::Verify if password.is_some() => {
                 return Err(Error::bad("Verification does not accept a password"));
             }
+            Purpose::Verify => {}
+            _ if password.is_none() => return Err(Error::bad("New password required")),
+            _ => {}
+        }
+        let hash = digest(&token);
+        // Reject missing, spent, expired or unbound proofs before Argon2. This
+        // read is only an admission check: the writer rechecks the same facts
+        // after hashing, so a concurrent replacement cannot authorize a reset.
+        self.store.read(|tx| {
+            let proof = completion_proof(tx, &hash, purpose, now())?;
+            completion_user(tx, &proof)?;
+            if purpose == Purpose::Reset {
+                reset_authority(tx, &hash, &proof, now())?;
+            }
+            Ok(())
+        })?;
+        let password_hash = match purpose {
             Purpose::Verify => None,
             _ => Some(crypto::password_hash(
                 password
@@ -391,15 +876,9 @@ impl Core {
             )?),
         };
         self.store.write(|tx| {
-            let hash = digest(&token);
-            let proof = tx
-                .get::<Proof>("account_proofs", &hash)?
-                .filter(|p| p.expires_at > now() && p.purpose == purpose)
-                .ok_or_else(|| Error::bad("Account code expired, consumed or invalid"))?;
-            let mut user = tx
-                .get::<User>("users", &proof.user_id)?
-                .filter(|u| u.epoch == proof.epoch && u.email.as_deref() == Some(&proof.email))
-                .ok_or_else(|| Error::bad("Account changed; request a new code"))?;
+            let proof = completion_proof(tx, &hash, purpose, now())?;
+            let mut user = completion_user(tx, &proof)?;
+            #[cfg(not(feature = "platform"))]
             let apply_password = |user: &mut User| -> Result<()> {
                 let hashed = password_hash
                     .clone()
@@ -407,7 +886,7 @@ impl Core {
                 let plaintext = password
                     .as_deref()
                     .ok_or_else(|| Error::bad("New password required"))?;
-                crate::password_history::accept(
+                crate::identity::password_history::accept(
                     tx,
                     self.config.password_history,
                     &user.id,
@@ -418,42 +897,69 @@ impl Core {
                 user.password_hash = hashed;
                 Ok(())
             };
+            let local = crate::password::Kind::of(tx, &user)? == crate::password::Kind::Local;
+            #[cfg(not(feature = "platform"))]
+            let mut factors_reset = false;
+            #[cfg(feature = "platform")]
+            let factors_reset = false;
             match purpose {
                 Purpose::Verify if user.enabled => user.email_verified = true,
-                Purpose::Reset
-                    if user.enabled && user.email_verified && !user.password_hash.is_empty() =>
-                {
-                    apply_password(&mut user)?;
-                    user.epoch += 1;
+                // Ordinary reset keeps factors. A target exposed to help desk
+                // loses factors and must enroll fresh ones after this proof.
+                Purpose::Reset if user.enabled && local => {
+                    reset_authority(tx, &hash, &proof, now())?;
+                    #[cfg(feature = "platform")]
+                    {
+                        let verified = workflow::VerifiedReset::new(
+                            tx,
+                            hash,
+                            proof,
+                            password
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                            password_hash
+                                .as_deref()
+                                .ok_or_else(|| Error::bad("New password required"))?,
+                        )?;
+                        return self.complete_password_reset_workflow(tx, verified, configured);
+                    }
+                    #[cfg(not(feature = "platform"))]
+                    {
+                        apply_password(&mut user)?;
+                        factors_reset = reset_exposed_factors(tx, &mut user)?;
+                        user.epoch = user.epoch.checked_add(1).ok_or_else(Error::forbidden)?;
+                    }
                 }
                 Purpose::Invite
                     if !user.enabled && !user.admin && user.password_hash.is_empty() =>
                 {
-                    let actor =
-                        creator(tx, proof.creator.as_deref().ok_or_else(Error::forbidden)?)?;
-                    actor.require("user.write", &format!("user/{}", user.username))?;
-                    let mut groups = Vec::new();
-                    for name in &proof.groups {
-                        actor.require("group.members", &format!("group/{name}"))?;
-                        let mut group = tx
-                            .get::<Group>("groups", name)?
-                            .ok_or_else(|| Error::missing("Invitation group was removed"))?;
-                        group.members.insert(user.id.clone());
-                        groups.push(group);
+                    let verified = invitation::Verified::new(
+                        tx,
+                        hash,
+                        proof,
+                        password
+                            .as_deref()
+                            .ok_or_else(|| Error::bad("New password required"))?,
+                        password_hash
+                            .as_deref()
+                            .ok_or_else(|| Error::bad("New password required"))?,
+                    )?;
+                    #[cfg(feature = "platform")]
+                    return self.complete_invitation_workflow(tx, verified);
+                    #[cfg(not(feature = "platform"))]
+                    {
+                        verified.commit(self, tx)?;
+                        return Ok(json!({"completed":true,"login_required":true}));
                     }
-                    for group in groups {
-                        tx.put("groups", &group.name, &group)?;
-                    }
-                    apply_password(&mut user)?;
-                    user.enabled = true;
-                    user.email_verified = true;
-                    user.epoch += 1;
                 }
                 _ => return Err(Error::forbidden()),
             }
-            tx.delete("account_proofs", &hash)?;
+            retire_proof(tx, &hash, ProofEnd::Used)?;
             tx.delete("account_latest", &proof_key(&user, purpose))?;
             tx.put("users", &user.id, &user)?;
+            if purpose == Purpose::Invite {
+                tx.delete("invitation_reservations", &user.id)?;
+            }
             if purpose != Purpose::Verify {
                 tx.delete("attempts", &user.username)?;
                 crate::logout::queue_user(tx, &user.id)?;
@@ -464,7 +970,11 @@ impl Core {
                 &format!("user.account.{}", purpose.name()),
                 &user.id,
             )?;
-            Ok(json!({"completed":true,"login_required":purpose!=Purpose::Verify}))
+            let mut result = json!({"completed":true,"login_required":purpose!=Purpose::Verify});
+            if factors_reset {
+                result["factors_reset"] = Value::Bool(true);
+            }
+            Ok(result)
         })
     }
     pub fn mail_deliveries(&self, token: &str) -> Result<Value> {
@@ -474,6 +984,16 @@ impl Core {
         })
     }
     fn claim_mail(&self) -> Result<Vec<Delivery>> {
+        // The due index changes atomically with the outbox. Skip an idle snapshot;
+        // later enqueues wait for the next poll. A positive hint must be rechecked
+        // under the writer, including proof validity, expiry and the current lease.
+        if self
+            .store
+            .read(|tx| tx.due::<Delivery>("mail_deliveries", now(), 1))?
+            .is_empty()
+        {
+            return Ok(Vec::new());
+        }
         self.store.write(|tx| {
             let mut ready = Vec::new();
             for (id, mut delivery) in tx.due::<Delivery>("mail_deliveries", now(), 32)? {
@@ -529,46 +1049,69 @@ pub async fn deliver(core: Core) -> Result<()> {
     };
     let transport = config.transport()?;
     let worker = core.clone();
-    let pending = tokio::task::spawn_blocking(move || worker.claim_mail())
-        .await
-        .map_err(Error::internal)??;
+    let pending = tokio::task::spawn_blocking(move || {
+        crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || worker.claim_mail())
+    })
+    .await
+    .map_err(Error::internal)??;
+    // Build the complete bounded batch before spawning any child work, so a
+    // malformed message cannot detach sends/finishes from this pass.
+    let messages = pending
+        .into_iter()
+        .map(|delivery| {
+            let message = Message::builder()
+                .from(config.from.parse::<Mailbox>().map_err(Error::internal)?)
+                .to(delivery
+                    .recipient
+                    .parse::<Mailbox>()
+                    .map_err(Error::internal)?)
+                .subject(&delivery.subject)
+                .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                .body(
+                    delivery
+                        .body
+                        .clone()
+                        .ok_or_else(|| Error::internal("Missing delivery body"))?,
+                )
+                .map_err(Error::internal)?;
+            Ok((delivery, message))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut jobs = tokio::task::JoinSet::new();
-    for delivery in pending {
-        let message = Message::builder()
-            .from(config.from.parse::<Mailbox>().map_err(Error::internal)?)
-            .to(delivery
-                .recipient
-                .parse::<Mailbox>()
-                .map_err(Error::internal)?)
-            .subject(&delivery.subject)
-            .header(lettre::message::header::ContentType::TEXT_PLAIN)
-            .body(
-                delivery
-                    .body
-                    .clone()
-                    .ok_or_else(|| Error::internal("Missing delivery body"))?,
-            )
-            .map_err(Error::internal)?;
+    for (delivery, message) in messages {
         let transport = transport.clone();
         let core = core.clone();
         jobs.spawn(async move {
             let sent = tokio::time::timeout(Duration::from_secs(30), transport.send(message))
                 .await
                 .is_ok_and(|r| r.is_ok());
-            tokio::task::spawn_blocking(move || core.finish_mail(&delivery, sent))
-                .await
-                .map_err(Error::internal)?
+            tokio::task::spawn_blocking(move || {
+                crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || {
+                    core.finish_mail(&delivery, sent)
+                })
+            })
+            .await
+            .map_err(Error::internal)?
         });
     }
+    let mut outcome = Ok(());
     while let Some(result) = jobs.join_next().await {
-        result.map_err(Error::internal)??;
+        let result = result.map_err(Error::internal).and_then(|result| result);
+        if outcome.is_ok() {
+            outcome = result;
+        }
     }
-    Ok(())
+    outcome
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (key, proof) in tx.maintenance_page::<Proof>("account_proofs")? {
         if proof.expires_at <= at {
-            tx.delete("account_proofs", &key)?;
+            retire_proof(tx, &key, ProofEnd::Expired)?;
+        }
+    }
+    for (key, outcome) in tx.maintenance_page::<ProofOutcome>("account_proof_outcomes")? {
+        if outcome.retain_until <= at {
+            tx.delete("account_proof_outcomes", &key)?;
         }
     }
     for (key, hash) in tx.maintenance_page::<String>("account_latest")? {

@@ -1,0 +1,82 @@
+keys ['expr', 'http', 'status', 'error', 'errorType', 'resultType', 'series', 'samples']
+dict expr,http,status,error,errorType,resultType,series,samples
+  samples: list[1]
+    [0]: dict metric,value
+--- ALL QUERIES ---
+rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_total[5m]), 0.01) n 1
+  (None, 'host.docker.internal:59691', None, '0')
+histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5m])) n 1
+  (None, 'host.docker.internal:59691', None, '0.00475')
+rate(riauth_rate_limited_total[5m]) n 1
+  (None, 'host.docker.internal:59691', None, '0')
+rate(riauth_worker_rejections_total[5m]) n 1
+  (None, 'host.docker.internal:59691', None, '0')
+increase(riauth_signing_errors_total[5m]) n 1
+  (None, 'host.docker.internal:59691', None, '0')
+increase(riauth_cleanup_errors_total[10m]) n 1
+  (None, 'host.docker.internal:59691', None, '0')
+histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket[5m])) n 1
+  (None, 'host.docker.internal:59691', None, '0.005319999999999998')
+riauth_queue_pending n 6
+  ('logout_deliveries', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+  ('mail_deliveries', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+  ('offboard_jobs', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+  ('provisioning_deactivations', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+  ('provisioning_jobs', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+  ('ssf_deliveries', 'host.docker.internal:59691', 'riauth_queue_pending', '0')
+riauth_queue_failed n 6
+  ('logout_deliveries', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+  ('mail_deliveries', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+  ('offboard_jobs', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+  ('provisioning_deactivations', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+  ('provisioning_jobs', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+  ('ssf_deliveries', 'host.docker.internal:59691', 'riauth_queue_failed', '0')
+riauth_queue_oldest_pending_seconds n 6
+  ('logout_deliveries', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+  ('mail_deliveries', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+  ('offboard_jobs', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+  ('provisioning_deactivations', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+  ('provisioning_jobs', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+  ('ssf_deliveries', 'host.docker.internal:59691', 'riauth_queue_oldest_pending_seconds', '0')
+riauth_requests_total n 1
+  (None, 'host.docker.internal:59691', 'riauth_requests_total', '31')
+up n 1
+  (None, 'host.docker.internal:59691', 'up', '1')
+--- GRAFANA FRAME SHAPE ---
+g0 keys ['expr', 'http', 'error', 'status', 'frames', 'samples']
+dict expr,http,error,status,frames,samples
+  samples: list[1]
+    [0]: dict name,refId,fields,last_values
+      fields: list[2]
+        [0]: dict name,labels
+      last_values: list[2]
+G rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_total[5m]), 0.01) frames 0 errs []
+G histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5m])) frames 0 errs []
+G rate(riauth_rate_limited_total[5m]) frames 0 errs []
+G rate(riauth_worker_rejections_total[5m]) frames 0 errs []
+G increase(riauth_signing_errors_total[5m]) frames 0 errs []
+G increase(riauth_cleanup_errors_total[10m]) frames 0 errs []
+G histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket[5m])) frames 0 errs []
+G riauth_queue_pending frames 0 errs []
+G riauth_queue_failed frames 0 errs []
+G riauth_queue_oldest_pending_seconds frames 0 errs []
+G riauth_requests_total frames 0 errs []
+G up frames 0 errs []
+--- RULES ---
+http 200
+ngroups 1
+group keys ['name', 'file', 'rules'] name riauth file /etc/prometheus/riauth-alerts.yml
+RiAuthUnavailable health ok lastError None state None
+RiAuthHighErrorRate health ok lastError None state None
+RiAuthLatency health ok lastError None state None
+RiAuthRateLimits health ok lastError None state None
+RiAuthWorkerSaturation health ok lastError None state None
+RiAuthSignerFailures health ok lastError None state None
+RiAuthMaintenanceFailures health ok lastError None state None
+RiAuthStorageContention health ok lastError None state None
+RiAuthDeliveryBacklog health ok lastError None state None
+RiAuthFailedDeliveries health ok lastError None state None
+--- FETCH exprs ---
+version 1 panel 11 nexpr 10
+provisioned False
+--- second import? search messages ---

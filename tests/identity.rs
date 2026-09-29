@@ -128,10 +128,13 @@ fn dpop_proof(
 
 type UpstreamCodes =
     std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (String, Value)>>>;
+type UpstreamHook = std::sync::Arc<std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>>;
 struct Upstream {
     source: riauth::source::Source,
     key: crypto::SigningKey,
     codes: UpstreamCodes,
+    /// Runs inside the token response, after the code is accepted and before it is returned.
+    on_exchange: UpstreamHook,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Upstream {
@@ -146,12 +149,15 @@ impl Upstream {
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let codes: UpstreamCodes = Default::default();
         let records = codes.clone();
+        let on_exchange: UpstreamHook = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let exchange = on_exchange.clone();
         let app = Router::new().route(
             "/token",
             post(
                 move |headers: axum::http::HeaderMap,
                       Form(form): Form<std::collections::HashMap<String, String>>| {
                     let records = records.clone();
+                    let exchange = exchange.clone();
                     async move {
                         use base64::engine::general_purpose::STANDARD;
                         assert_eq!(
@@ -169,6 +175,10 @@ impl Upstream {
                         let (challenge, tokens) =
                             records.lock().unwrap().remove(&form["code"]).unwrap();
                         assert_eq!(digest(&form["code_verifier"]), challenge);
+                        let hook = exchange.lock().unwrap().take();
+                        if let Some(hook) = hook {
+                            hook();
+                        }
                         Json(tokens)
                     }
                 },
@@ -209,6 +219,7 @@ impl Upstream {
             source,
             key,
             codes,
+            on_exchange,
             server,
         }
     }
@@ -231,28 +242,75 @@ impl Upstream {
         subject: &str,
         override_claims: Value,
     ) -> Value {
+        self.callback_with(f, start, subject, override_claims, None)
+            .await
+    }
+    async fn callback_with(
+        &self,
+        f: &Fixture,
+        start: &Value,
+        subject: &str,
+        override_claims: Value,
+        binding: Option<&str>,
+    ) -> Value {
+        self.redeem(f, start, subject, override_claims, binding)
+            .await
+            .0
+            .unwrap()
+    }
+    /// Parks one upstream code and attempts to redeem it. The code stays in the mock
+    /// until the token endpoint accepts it, so a refused callback leaves it outstanding.
+    async fn redeem(
+        &self,
+        f: &Fixture,
+        start: &Value,
+        subject: &str,
+        override_claims: Value,
+        binding: Option<&str>,
+    ) -> (riauth::error::Result<Value>, String) {
         let url = url::Url::parse(start["authorization_url"].as_str().unwrap()).unwrap();
-        let p: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
-        assert_eq!(p["max_age"], "0");
-        assert_eq!(p["code_challenge_method"], "S256");
-        let mut claims = json!({"iss":self.source.issuer,"sub":subject,"aud":"upstream-client","iat":now(),"exp":now()+300,"auth_time":now(),"nonce":p["nonce"],"email":"alice@example.test","email_verified":true,"name":"Upstream Alice","acr":"urn:upstream:mfa"});
+        let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query["max_age"], "0");
+        assert_eq!(query["code_challenge_method"], "S256");
+        let mut claims = json!({"iss":self.source.issuer,"sub":subject,"aud":"upstream-client","iat":now(),"exp":now()+300,"auth_time":now(),"nonce":query["nonce"],"email":"alice@example.test","email_verified":true,"name":"Upstream Alice","acr":"urn:upstream:mfa"});
         claims
             .as_object_mut()
             .unwrap()
             .extend(override_claims.as_object().unwrap().clone());
         let code = crypto::random_token("");
-        self.codes.lock().unwrap().insert(code.clone(),(p["code_challenge"].clone(),json!({"id_token":self.key.sign(&claims,false).unwrap(),"access_token":"mock-access"})));
+        self.codes.lock().unwrap().insert(
+            code.clone(),
+            (
+                query["code_challenge"].clone(),
+                json!({"id_token":self.key.sign(&claims,false).unwrap(),"access_token":"mock-access"}),
+            ),
+        );
+        let value = self.complete(f, start, &code, binding).await;
+        (value, code)
+    }
+    async fn complete(
+        &self,
+        f: &Fixture,
+        start: &Value,
+        code: &str,
+        binding: Option<&str>,
+    ) -> riauth::error::Result<Value> {
+        let url = url::Url::parse(start["authorization_url"].as_str().unwrap()).unwrap();
+        let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
         f.core
             .source_callback(
                 &self.source.id,
                 vec![
-                    ("state".into(), p["state"].clone()),
-                    ("code".into(), code),
+                    ("state".into(), query["state"].clone()),
+                    ("code".into(), code.to_owned()),
                     ("iss".into(), self.source.issuer.clone()),
                 ],
+                binding,
             )
             .await
-            .unwrap()
+    }
+    fn retains(&self, code: &str) -> bool {
+        self.codes.lock().unwrap().contains_key(code)
     }
     fn finish(&self, f: &Fixture, start: &Value, approve: bool) -> riauth::error::Result<Value> {
         f.core.source_finish(riauth::source::Finish {

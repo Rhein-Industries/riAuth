@@ -59,14 +59,26 @@ fn success(output: Output) -> Value {
     envelope["data"].clone()
 }
 
+fn current_revision(dir: &Path, config: &Path, session: &Path) -> String {
+    success(invoke(dir, config, session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string()
+}
+
 fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
     use serde_json::json;
     let agent = dir.join("identity-agent.json");
+    let revision = current_revision(dir, config, session);
     success(invoke(
         dir,
         config,
         session,
         &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "create-identity-manager",
             "agent",
             "create",
             "identity-manager",
@@ -105,35 +117,45 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         all.extend_from_slice(args);
         invoke(dir, config, &dir.join("no-human-session"), &all, None)
     };
-    let plan_and_apply = |manifest: &Value, version: &str, expected: Vec<String>| {
-        std::fs::write(&manifest_file, serde_json::to_vec(manifest).unwrap()).unwrap();
-        let plan_file = dir.join(format!("identity-plan-{version}.json"));
-        let planned = success(call(&[
-            "plan",
-            "--file",
-            manifest_file.to_str().unwrap(),
-            "--out",
-            plan_file.to_str().unwrap(),
-        ]));
-        let mut references = planned["changes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .flat_map(|c| c["secret_references"].as_array().into_iter().flatten())
-            .map(|v| v.as_str().unwrap().to_owned())
-            .collect::<Vec<_>>();
-        references.sort();
-        let mut expected = expected;
-        expected.sort();
-        assert_eq!(references, expected);
-        let applied = success(call(&["apply", "--plan", plan_file.to_str().unwrap()]));
-        assert_eq!(applied["applied"], true);
-        let printed = serde_json::to_string(&applied).unwrap();
-        assert!(!printed.contains(std::str::from_utf8(password_value).unwrap()));
-        assert!(!printed.contains("000102030405060708090a0b0c0d0e0f"));
-        assert!(!printed.contains("upstream-client-secret-fixture-only"));
-        (plan_file, applied)
-    };
+    let plan_and_apply =
+        |manifest: &Value, version: &str, expected: Vec<String>, confirm_removals: bool| {
+            std::fs::write(&manifest_file, serde_json::to_vec(manifest).unwrap()).unwrap();
+            let plan_file = dir.join(format!("identity-plan-{version}.json"));
+            let planned = success(call(&[
+                "plan",
+                "--file",
+                manifest_file.to_str().unwrap(),
+                "--out",
+                plan_file.to_str().unwrap(),
+            ]));
+            let mut references = planned["changes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|c| c["secret_references"].as_array().into_iter().flatten())
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect::<Vec<_>>();
+            references.sort();
+            let mut expected = expected;
+            expected.sort();
+            assert_eq!(references, expected);
+            assert_eq!(
+                planned["removal_impact"]["review_required"],
+                json!(confirm_removals)
+            );
+            let plan_arg = plan_file.to_str().unwrap();
+            let mut args = vec!["apply", "--plan", plan_arg];
+            if confirm_removals {
+                args.push("--confirm-removals");
+            }
+            let applied = success(call(&args));
+            assert_eq!(applied["applied"], true);
+            let printed = serde_json::to_string(&applied).unwrap();
+            assert!(!printed.contains(std::str::from_utf8(password_value).unwrap()));
+            assert!(!printed.contains("000102030405060708090a0b0c0d0e0f"));
+            assert!(!printed.contains("upstream-client-secret-fixture-only"));
+            (plan_file, applied)
+        };
     plan_and_apply(
         &manifest,
         "initial",
@@ -141,6 +163,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
             .iter()
             .map(|p| format!("file:{}", p.display()))
             .collect(),
+        false,
     );
     std::fs::remove_file(&password).unwrap();
     std::fs::remove_file(&source_secret).unwrap();
@@ -150,6 +173,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         &manifest,
         "factor-only",
         vec![format!("file:{}", factor.display())],
+        false,
     );
     std::fs::remove_file(&factor).unwrap();
     assert_eq!(
@@ -165,7 +189,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         .as_object_mut()
         .unwrap()
         .remove("password_version");
-    plan_and_apply(&manifest, "disable-password", vec![]);
+    plan_and_apply(&manifest, "disable-password", vec![], true);
 }
 
 #[test]
@@ -231,11 +255,20 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
     ));
     assert_eq!(login["user"]["admin"], true);
     assert!(login.get("session_token").is_none());
+    let creation_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &creation_revision,
+            "--idempotency-key",
+            "binary-create-alice",
             "user",
             "create",
             "alice",
@@ -245,25 +278,67 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         ],
         Some("alice-integration-password\n"),
     ));
+    let group_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["group", "create", "engineering"],
+        &[
+            "--if-revision",
+            &group_revision,
+            "--idempotency-key",
+            "binary-create-engineering",
+            "group",
+            "create",
+            "engineering",
+        ],
         None,
     ));
+    let member_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["group", "add-member", "engineering", "alice"],
+        &[
+            "--if-revision",
+            &member_revision,
+            "--idempotency-key",
+            "binary-add-alice-to-engineering",
+            "group",
+            "add-member",
+            "engineering",
+            "alice",
+        ],
         None,
     ));
+    let client_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["client", "create", "terminal", "--group", "engineering"],
+        &[
+            "--if-revision",
+            &client_revision,
+            "--idempotency-key",
+            "binary-create-terminal",
+            "client",
+            "create",
+            "terminal",
+            "--group",
+            "engineering",
+        ],
         None,
     ));
     success(invoke(
@@ -328,11 +403,16 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
     assert!(!revoked.status.success());
     // Agent administration uses its own credential, even with a nonexistent human session file.
     let agent = dir.path().join("agent.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-deployer",
             "agent",
             "create",
             "deployer",
@@ -407,14 +487,30 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         std::fs::read(first_secret).unwrap(),
         std::fs::read(second_secret).unwrap()
     );
-    let forbidden = agent_call(&["--if-revision", &revision, "client", "disable", "terminal"]);
+    let forbidden = agent_call(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "stale-disable-terminal",
+        "client",
+        "disable",
+        "terminal",
+    ]);
     // The stale revision is checked before mutation; a fresh request then reaches resource authorization.
     assert_eq!(forbidden.status.code(), Some(5));
     let revision = success(agent_call(&["revision"]))["revision"]
         .as_u64()
         .unwrap()
         .to_string();
-    let forbidden = agent_call(&["--if-revision", &revision, "client", "disable", "terminal"]);
+    let forbidden = agent_call(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "forbidden-disable-terminal",
+        "client",
+        "disable",
+        "terminal",
+    ]);
     assert_eq!(forbidden.status.code(), Some(4));
     exercise_source_and_factor_plans(dir.path(), &config, &session);
     let key = dir.path().join("backup.key");
@@ -460,6 +556,40 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         ))["verified"],
         true
     );
+    // R04: the restored configuration waits for a bound, attested completion.
+    let restored_config = restored.join("riauth.toml");
+    let status = success(invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &["recovery", "status"],
+        None,
+    ));
+    assert_eq!(status["serving_allowed"], false);
+    assert_eq!(status["pending"]["cause"], "backup_restore");
+    let id = status["pending"]["id"].as_str().unwrap().to_owned();
+    let unattested = invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &["recovery", "complete", "--recovery-id", &id],
+        None,
+    );
+    assert!(!unattested.status.success());
+    let completed = success(invoke(
+        dir.path(),
+        &restored_config,
+        &session,
+        &[
+            "recovery",
+            "complete",
+            "--recovery-id",
+            &id,
+            "--persistent-credentials-reconciled",
+        ],
+        None,
+    ));
+    assert_eq!(completed["serving_allowed"], true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -500,4 +630,3142 @@ fn cli_help_and_http_rejection_are_actionable() {
     let pkce = success(invoke(dir.path(), &config, &session, &["pkce"], None));
     assert_eq!(pkce["code_challenge_method"], "S256");
     assert_eq!(pkce["code_verifier"].as_str().unwrap().len(), 43);
+}
+
+#[test]
+fn legacy_usb_commands_fail_locally_with_client_guidance() {
+    let dir = TempDir::new().unwrap();
+    let config = PathBuf::from("missing.toml");
+    let session = dir.path().join("session.json");
+    for args in [
+        vec!["passkey", "enroll", "--name", "key"],
+        vec!["passkey", "login", "alice"],
+        vec!["request", "approve", "ABCDE-FGHIJ", "--passkey"],
+        vec!["portal", "approve", "ABCDE-FGHIJ", "--passkey"],
+        vec![
+            "authorize",
+            "http://localhost:8080/oauth/authorize?client_id=app",
+            "--passkey",
+        ],
+    ] {
+        let output = invoke(dir.path(), &config, &session, &args, None);
+        assert!(!output.status.success(), "{args:?}");
+        let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(envelope["error"]["code"], "operation_failed", "{args:?}");
+        assert!(
+            envelope["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("riauthctl"),
+            "{args:?}: {envelope}"
+        );
+    }
+}
+
+#[test]
+fn import_authentik_preflight_classifies_without_writing_files() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let input = dir.path().join("authentik-import.json");
+    std::fs::write(
+        &input,
+        json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+            "users":[{"pk":1,"uid":"a","username":"alice","name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],
+            "sources":[{"pk":"inbuilt-uuid","managed":"goauthentik.io/sources/inbuilt","meta_model_name":"authentik_core.source","component":""}],
+            "passwords":{},"clients":{}})
+        .to_string(),
+    )
+    .unwrap();
+    let file = input.to_str().unwrap();
+    let blocker = "alice: supply a password/password-hash reference or complete password reset before migration";
+    let data = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["import-authentik", "--file", file, "--preflight"],
+        None,
+    ));
+    assert_eq!(data["ready_for_plan"], false);
+    assert_eq!(data["blockers"], json!([blocker]));
+    assert_eq!(data["summary"]["blocking"], 1);
+    assert!(
+        data["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["kind"] == "source"
+                && i["id"] == "inbuilt-uuid"
+                && i["classification"] == "convertible"
+                && i["blocking"] == false)
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        1,
+        "preflight wrote files"
+    );
+    let written = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["import-authentik", "--file", file, "--out", "migration"],
+        None,
+    ));
+    assert_eq!(written["summary"], data["summary"]);
+    assert_eq!(written["manifest_file"], Value::Null);
+    let report: Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join("migration/report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["items"], data["items"]);
+    assert!(!dir.path().join("migration/manifest.json").exists());
+    let both = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "import-authentik",
+            "--file",
+            file,
+            "--out",
+            "again",
+            "--preflight",
+        ],
+        None,
+    );
+    assert!(!both.status.success());
+    assert!(!dir.path().join("again").exists());
+}
+
+#[test]
+fn migration_preflight_is_source_aware_and_rejects_without_writing() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let write = |name: &str, value: Value| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, value.to_string()).unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let run = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let bundle = write(
+        "authentik.json",
+        json!({"api_version":"riauth.authentik-import/v1","issuer":"https://id.example.test",
+            "users":[{"pk":1,"uid":"a","username":"alice","name":"Alice","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+            "groups":[],"providers":[],"applications":[],"policy_bindings":[],"sources":[],"passwords":{},"clients":{}}),
+    );
+    let inventory = write(
+        "keycloak.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak",
+            "elements":[{"kind":"user","id":"*"},{"kind":"provider","id":"grafana"}]}),
+    );
+    let secret = "cli-inventory-secret";
+    let smuggled = write(
+        "smuggled.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak",
+            "elements":[{"kind":"provider","id":"grafana"}],"client_secret":secret}),
+    );
+    let unknown = write(
+        "unknown.json",
+        json!({"api_version":"riauth.keycloak-import/v1","realm":"master"}),
+    );
+    let entries = || std::fs::read_dir(dir.path()).unwrap().count();
+    let before = entries();
+
+    // The Authentik bundle reports exactly what import-authentik --preflight reports.
+    let authentik = success(run(&["migration-preflight", "--file", &bundle]));
+    let legacy = success(run(&["import-authentik", "--file", &bundle, "--preflight"]));
+    for field in ["ready_for_plan", "summary", "blockers", "items"] {
+        assert_eq!(authentik[field], legacy[field], "{field}");
+    }
+    assert_eq!(authentik["source"]["converter"], "authentik");
+    assert!(authentik.get("manifest").is_none());
+
+    // Another named system is inventoried item by item, and always blocks.
+    let keycloak = success(run(&["migration-preflight", "--file", &inventory]));
+    assert_eq!(keycloak["ready_for_plan"], false);
+    assert_eq!(keycloak["source"]["system"], "keycloak");
+    assert_eq!(keycloak["summary"]["unsupported"], 3);
+    assert_eq!(keycloak["summary"]["blocking"], 3);
+    assert!(keycloak.get("manifest").is_none());
+    assert_eq!(entries(), before, "preflight wrote files");
+
+    // Rejected inputs fail without creating the requested output file or echoing values.
+    for file in [&smuggled, &unknown] {
+        let output = run(&[
+            "--output-file",
+            "rejected.json",
+            "migration-preflight",
+            "--file",
+            file,
+        ]);
+        assert!(!output.status.success());
+        assert!(!dir.path().join("rejected.json").exists());
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!text.contains(secret) && !text.contains("master"), "{text}");
+    }
+    assert_eq!(entries(), before);
+
+    let schema = success(run(&["schema", "migration-inventory"]));
+    assert!(schema["properties"]["elements"].is_object(), "{schema}");
+}
+
+#[test]
+fn migration_preflight_classifies_keycloak_native_kinds_without_leaking() {
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (config, session) = (dir.path().join("riauth.toml"), dir.path().join("session"));
+    let run = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let write = |name: &str, value: Value| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, value.to_string()).unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let secret = "keycloak-client-secret-sentinel";
+    let realm = write(
+        "keycloak.json",
+        json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak","elements":[
+            {"source_kind":"realm","id":"master"},
+            {"source_kind":"role","id":"realm-admin"},
+            {"kind":"provider","id":"grafana"}]}),
+    );
+    let entries = || std::fs::read_dir(dir.path()).unwrap().count();
+    let before = entries();
+    let output = run(&["migration-preflight", "--file", &realm]);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let data = success(output);
+    assert_eq!(data["ready_for_plan"], false);
+    assert!(data.get("manifest").is_none());
+    assert_eq!(data["summary"]["unsupported"], 4);
+    assert_eq!(data["summary"]["blocking"], 4);
+    let items = data["items"].as_array().unwrap();
+    for (native, id) in [("realm", "master"), ("role", "realm-admin")] {
+        let item = items
+            .iter()
+            .find(|i| i["source_kind"] == native && i["id"] == id)
+            .unwrap_or_else(|| panic!("{native} {id} has no finding"));
+        assert_eq!(item["kind"], "source_native");
+        assert_eq!(item["classification"], "unsupported");
+        assert_eq!(item["blocking"], true);
+        assert_eq!(
+            item["blocker"],
+            format!("keycloak {native} {id}: no riAuth converter; rebuild or retire it")
+        );
+    }
+    assert!(!stdout.contains(secret));
+    assert_eq!(entries(), before, "preflight wrote files");
+
+    // Secret-bearing native elements are rejected without output or echo.
+    for (name, element) in [
+        (
+            "extra.json",
+            json!({"source_kind":"client","id":"grafana","secret":secret}),
+        ),
+        (
+            "kind.json",
+            json!({"source_kind":format!("client:{secret}"),"id":"grafana"}),
+        ),
+        ("typed.json", json!({"source_kind":["realm"],"id":secret})),
+    ] {
+        let file = write(
+            name,
+            json!({"api_version":"riauth.migration-inventory/v1","system":"keycloak","elements":[element]}),
+        );
+        let output = run(&[
+            "--output-file",
+            "rejected.json",
+            "migration-preflight",
+            "--file",
+            &file,
+        ]);
+        assert!(!output.status.success(), "{name}");
+        assert!(!dir.path().join("rejected.json").exists(), "{name}");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!text.contains(secret), "{name}: {text}");
+    }
+}
+
+/// Initializes an instance in `dir`, serves it and logs the administrator in.
+fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
+    serve_with_admin_configured(dir, |_| {})
+}
+
+fn serve_with_admin_configured(
+    dir: &Path,
+    configure: impl FnOnce(&Path),
+) -> (PathBuf, PathBuf, Server) {
+    let config = dir.join("riauth.toml");
+    let session = dir.join("session.json");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    let issuer = format!("http://127.0.0.1:{}", addr.port());
+    success(invoke(
+        dir,
+        &config,
+        &session,
+        &[
+            "init",
+            "--issuer",
+            &issuer,
+            "--listen",
+            &addr.to_string(),
+            "--password-stdin",
+        ],
+        Some("cli-integration-password\n"),
+    ));
+    configure(&config);
+    let mut server = Server(
+        Command::new(env!("CARGO_BIN_EXE_riauth"))
+            .arg("--config")
+            .arg(&config)
+            .arg("serve")
+            .env_remove("RIAUTH_SERVER")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while TcpListener::bind(addr).is_ok() {
+        assert!(
+            server.0.try_wait().unwrap().is_none(),
+            "server exited early"
+        );
+        assert!(Instant::now() < deadline, "server did not start");
+        thread::sleep(Duration::from_millis(30));
+    }
+    success(invoke(
+        dir,
+        &config,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("cli-integration-password\n"),
+    ));
+    (config, session, server)
+}
+
+fn failure(output: Output) -> (i32, Value) {
+    assert!(!output.status.success());
+    let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["ok"], false);
+    (output.status.code().unwrap(), envelope["error"].clone())
+}
+
+#[test]
+fn cli_agent_create_requires_binding_and_never_replays_credential() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = current_revision(dir.path(), &config, &session);
+    let first_file = dir.path().join("issued-agent.json");
+    let retry_file = dir.path().join("retry-agent.json");
+    let command = [
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ];
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "issue-agent-once",
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+    assert!(!first_file.exists());
+
+    let mut first_args = vec![
+        "--if-revision",
+        revision.as_str(),
+        "--idempotency-key",
+        "issue-agent-once",
+    ];
+    first_args.extend(command);
+    let first = success(cli(&first_args));
+    assert_eq!(first["agent"]["id"], "issued-agent");
+    assert!(first.get("credential").is_none());
+    let credential: Value = serde_json::from_slice(&std::fs::read(&first_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let (code, replay) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "issue-agent-once",
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        retry_file.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert!(!replay.to_string().contains(token));
+    assert!(!retry_file.exists());
+    let current = current_revision(dir.path(), &config, &session);
+    assert_eq!(
+        current.parse::<u64>().unwrap(),
+        revision.parse::<u64>().unwrap() + 1
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.create" && event["target"] == "issued-agent")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn cli_agent_rotation_requires_binding_and_never_replays_credential() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let creation_revision = current_revision(dir.path(), &config, &session);
+    let old_file = dir.path().join("rotation-old.json");
+    success(cli(&[
+        "--if-revision",
+        &creation_revision,
+        "--idempotency-key",
+        "create-rotation-target",
+        "agent",
+        "create",
+        "rotation-target",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        old_file.to_str().unwrap(),
+    ]));
+    let old_credential: Value = serde_json::from_slice(&std::fs::read(&old_file).unwrap()).unwrap();
+    let old_token = old_credential["token"].as_str().unwrap();
+    let revision = current_revision(dir.path(), &config, &session);
+    let new_file = dir.path().join("rotation-new.json");
+    let retry_file = dir.path().join("rotation-retry.json");
+    // Keep the successful request and its exact retry bound to the same
+    // revision, key and body; only the local credential destination differs.
+    let rotate_with_binding = |at: &str, key: &str, out: &std::path::Path, ttl: Option<&str>| {
+        let mut args = vec![
+            "--if-revision",
+            at,
+            "--idempotency-key",
+            key,
+            "agent",
+            "rotate",
+            "rotation-target",
+        ];
+        if let Some(ttl) = ttl {
+            args.extend(["--ttl", ttl]);
+        }
+        args.extend(["--out", out.to_str().unwrap()]);
+        cli(&args)
+    };
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "rotate-once",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+    assert!(!new_file.exists());
+    let stale = (revision.parse::<u64>().unwrap() + 1).to_string();
+    let (code, error) = failure(rotate_with_binding(&stale, "rotate-stale", &new_file, None));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+    assert!(!new_file.exists());
+
+    let first = success(rotate_with_binding(
+        &revision,
+        "rotate-once",
+        &new_file,
+        None,
+    ));
+    assert_eq!(first["agent"]["id"], "rotation-target");
+    assert!(first.get("credential").is_none());
+    let credential: Value = serde_json::from_slice(&std::fs::read(&new_file).unwrap()).unwrap();
+    let new_token = credential["token"].as_str().unwrap();
+    assert_ne!(new_token, old_token);
+    let (code, replay) = failure(rotate_with_binding(
+        &revision,
+        "rotate-once",
+        &retry_file,
+        None,
+    ));
+    assert_eq!(code, 5);
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert!(!replay.to_string().contains(new_token));
+    assert!(!retry_file.exists());
+    let (code, changed) = failure(rotate_with_binding(
+        &revision,
+        "rotate-once",
+        &retry_file,
+        Some("7200"),
+    ));
+    assert_eq!(code, 5);
+    assert_eq!(changed["http_status"], 409);
+    assert!(!retry_file.exists());
+    assert_eq!(
+        current_revision(dir.path(), &config, &session)
+            .parse::<u64>()
+            .unwrap(),
+        revision.parse::<u64>().unwrap() + 1
+    );
+    let agent_cli = |file: &std::path::Path| {
+        invoke(
+            dir.path(),
+            &config,
+            &session,
+            &["--agent-file", file.to_str().unwrap(), "revision"],
+            None,
+        )
+    };
+    assert_eq!(failure(agent_cli(&old_file)).0, 3);
+    assert!(agent_cli(&new_file).status.success());
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "agent.rotate" && event["target"] == "rotation-target"
+            )
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn cli_agent_revoke_requires_bound_retry_and_audits_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let credential_file = dir.path().join("revoke-agent.json");
+    let creation_revision = current_revision(dir.path(), &config, &session);
+    success(cli(&[
+        "--if-revision",
+        &creation_revision,
+        "--idempotency-key",
+        "create-revoke-agent",
+        "agent",
+        "create",
+        "revoke-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        credential_file.to_str().unwrap(),
+    ]));
+    let revision = success(cli(&["revision"]))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "cli-agent-revoke",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+
+    let stale = (revision.parse::<u64>().unwrap() + 1).to_string();
+    let (code, error) = failure(cli(&[
+        "--if-revision",
+        &stale,
+        "--idempotency-key",
+        "cli-agent-stale",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+
+    let args = [
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "cli-agent-revoke",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ];
+    let first = success(cli(&args));
+    assert_eq!(first["enabled"], false);
+    assert!(first.get("credential").is_none());
+    assert_eq!(success(cli(&args)), first);
+    let current = success(cli(&["revision"]))["revision"].as_u64().unwrap();
+    assert_eq!(current, revision.parse::<u64>().unwrap() + 1);
+    let (code, error) = failure(cli(&[
+        "--if-revision",
+        &current.to_string(),
+        "--idempotency-key",
+        "cli-agent-fresh-repeat",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.revoke" && event["target"] == "revoke-agent")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn cli_user_creation_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let at = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    let password = "cli-user-creation-password\n";
+    let missing_key = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &at,
+            "user",
+            "create",
+            "created",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (_, error) = failure(missing_key);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let missing_revision = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--idempotency-key",
+            "cli-create-created",
+            "user",
+            "create",
+            "created",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (_, error) = failure(missing_revision);
+    assert!(error["message"].as_str().unwrap().contains("--if-revision"));
+
+    let args = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-created",
+        "user",
+        "create",
+        "created",
+        "--password-stdin",
+    ];
+    let first = success(invoke(dir.path(), &config, &session, &args, Some(password)));
+    let replay = success(invoke(dir.path(), &config, &session, &args, Some(password)));
+    assert_eq!(replay, first);
+    assert_eq!(first["username"], "created");
+    let current = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(current, at.parse::<u64>().unwrap() + 1);
+    let users = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["user", "list"],
+        None,
+    ));
+    assert_eq!(
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|user| user["username"] == "created")
+            .count(),
+        1
+    );
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["audit", "--limit", "100"],
+        None,
+    ));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.create" && event["target"] == first["id"])
+            .count(),
+        1
+    );
+    let stale = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "cli-create-stale",
+            "user",
+            "create",
+            "stale",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (code, error) = failure(stale);
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+}
+
+#[test]
+fn cli_group_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "group", "create", "engineering"],
+        vec![
+            "--idempotency-key",
+            "missing-revision",
+            "group",
+            "create",
+            "engineering",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Group writes require")
+        );
+    }
+    let create = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-engineering",
+        "group",
+        "create",
+        "engineering",
+    ];
+    let first = success(cli(&create));
+    assert_eq!(first["name"], "engineering");
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-engineering",
+        "group",
+        "create",
+        "research",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-stale-research",
+        "group",
+        "create",
+        "research",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let user_at = revision();
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &user_at,
+            "--idempotency-key",
+            "cli-create-member",
+            "user",
+            "create",
+            "member",
+            "--password-stdin",
+        ],
+        Some("cli-group-member-password\n"),
+    ));
+    let member_at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &member_at,
+            "group",
+            "add-member",
+            "engineering",
+            "member",
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-member-revision",
+            "group",
+            "remove-member",
+            "engineering",
+            "member",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Group writes require")
+        );
+    }
+    let add = [
+        "--if-revision",
+        &member_at,
+        "--idempotency-key",
+        "cli-add-member",
+        "group",
+        "add-member",
+        "engineering",
+        "member",
+    ];
+    let added = success(cli(&add));
+    assert_eq!(success(cli(&add)), added);
+    assert_eq!(added["members"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        member_at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &member_at,
+        "--idempotency-key",
+        "cli-add-member",
+        "group",
+        "remove-member",
+        "engineering",
+        "member",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &member_at,
+        "--idempotency-key",
+        "cli-stale-remove",
+        "group",
+        "remove-member",
+        "engineering",
+        "member",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let remove_at = revision();
+    let remove = [
+        "--if-revision",
+        &remove_at,
+        "--idempotency-key",
+        "cli-remove-member",
+        "group",
+        "remove-member",
+        "engineering",
+        "member",
+    ];
+    let removed = success(cli(&remove));
+    assert_eq!(removed["members"], serde_json::json!([]));
+    assert_eq!(success(cli(&remove)), removed);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        remove_at.parse::<u64>().unwrap() + 1
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["group.create", "group.member.add", "group.member.remove"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action)
+                .count(),
+            1,
+            "{action} audited more than once"
+        );
+    }
+}
+
+#[test]
+fn cli_client_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "client", "create", "cli-app"],
+        vec![
+            "--idempotency-key",
+            "missing-create-revision",
+            "client",
+            "create",
+            "cli-app",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Client writes require")
+        );
+    }
+    let create = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-app",
+        "client",
+        "create",
+        "cli-app",
+    ];
+    let first = success(cli(&create));
+    assert_eq!(first["client"]["client_id"], "cli-app");
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-app",
+        "client",
+        "create",
+        "cli-app",
+        "--name",
+        "Changed",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-stale-create",
+        "client",
+        "create",
+        "stale-app",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let update_at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &update_at,
+            "client",
+            "update",
+            "cli-app",
+            "--name",
+            "Renamed",
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-update-revision",
+            "client",
+            "update",
+            "cli-app",
+            "--name",
+            "Renamed",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Client writes require")
+        );
+    }
+    let update = [
+        "--if-revision",
+        &update_at,
+        "--idempotency-key",
+        "cli-update-app",
+        "client",
+        "update",
+        "cli-app",
+        "--name",
+        "Renamed",
+    ];
+    let updated = success(cli(&update));
+    assert_eq!(updated["name"], "Renamed");
+    assert_eq!(success(cli(&update)), updated);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        update_at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &update_at,
+        "--idempotency-key",
+        "cli-update-app",
+        "client",
+        "update",
+        "cli-app",
+        "--name",
+        "Different",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &update_at,
+        "--idempotency-key",
+        "cli-stale-update",
+        "client",
+        "update",
+        "cli-app",
+        "--name",
+        "Stale",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let (_, error) = failure(cli(&[
+        "--if-revision",
+        &revision(),
+        "client",
+        "disable",
+        "cli-app",
+    ]));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("Client writes require")
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["client.create", "client.update"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action)
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn cli_windows_device_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &at,
+            "windows-device",
+            "enroll",
+            "laptop",
+            "--username",
+            "admin",
+            "--display-name",
+            "Admin laptop",
+            "--show-secrets",
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-revision",
+            "windows-device",
+            "enroll",
+            "laptop",
+            "--username",
+            "admin",
+            "--display-name",
+            "Admin laptop",
+            "--show-secrets",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Windows device writes require")
+        );
+    }
+    let enroll = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-device-enroll",
+        "windows-device",
+        "enroll",
+        "laptop",
+        "--username",
+        "admin",
+        "--display-name",
+        "Admin laptop",
+        "--show-secrets",
+    ];
+    let first = success(cli(&enroll));
+    assert_eq!(first["device"]["id"], "laptop");
+    assert!(first["device_secret"].as_str().is_some());
+    assert!(success(cli(&enroll)) == first);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-device-enroll",
+        "windows-device",
+        "enroll",
+        "laptop",
+        "--username",
+        "admin",
+        "--display-name",
+        "Changed laptop",
+        "--show-secrets",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-device-stale",
+        "windows-device",
+        "enroll",
+        "other",
+        "--username",
+        "admin",
+        "--display-name",
+        "Other laptop",
+        "--show-secrets",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let revoke_at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &revoke_at,
+            "windows-device",
+            "revoke",
+            "laptop",
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-revoke-revision",
+            "windows-device",
+            "revoke",
+            "laptop",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Windows device writes require")
+        );
+    }
+    let revoke = [
+        "--if-revision",
+        &revoke_at,
+        "--idempotency-key",
+        "cli-device-revoke",
+        "windows-device",
+        "revoke",
+        "laptop",
+    ];
+    let revoked = success(cli(&revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&revoke)), revoked);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        revoke_at.parse::<u64>().unwrap() + 1
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["device.enroll", "device.revoke"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action && event["target"] == "laptop")
+                .count(),
+            1,
+            "{action} was audited more than once"
+        );
+    }
+}
+
+#[test]
+fn cli_certificate_bind_and_revoke_require_retry_binding() {
+    use openssl::{
+        asn1::Asn1Time,
+        bn::BigNum,
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::PKey,
+        x509::{
+            X509, X509NameBuilder,
+            extension::{BasicConstraints, KeyUsage},
+        },
+    };
+    let dir = TempDir::new().unwrap();
+    let trust = dir.path().join("mtls-root.pem");
+    let key = PKey::from_ec_key(
+        EcKey::generate(&EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap()).unwrap(),
+    )
+    .unwrap();
+    let mut name = X509NameBuilder::new().unwrap();
+    name.append_entry_by_text("CN", "CLI mTLS root").unwrap();
+    let name = name.build();
+    let mut certificate = X509::builder().unwrap();
+    certificate.set_version(2).unwrap();
+    certificate
+        .set_serial_number(&BigNum::from_u32(1).unwrap().to_asn1_integer().unwrap())
+        .unwrap();
+    certificate.set_subject_name(&name).unwrap();
+    certificate.set_issuer_name(&name).unwrap();
+    certificate.set_pubkey(&key).unwrap();
+    certificate
+        .set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap())
+        .unwrap();
+    certificate
+        .set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap())
+        .unwrap();
+    certificate
+        .append_extension(BasicConstraints::new().critical().ca().build().unwrap())
+        .unwrap();
+    certificate
+        .append_extension(
+            KeyUsage::new()
+                .critical()
+                .key_cert_sign()
+                .crl_sign()
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+    certificate.sign(&key, MessageDigest::sha256()).unwrap();
+    std::fs::write(&trust, certificate.build().to_pem().unwrap()).unwrap();
+
+    let (config, session, _server) = serve_with_admin_configured(dir.path(), |path| {
+        let mut value = riauth::config::Config::load(path).unwrap();
+        value.trusted_proxies = vec!["127.0.0.1".parse().unwrap()];
+        value.client_certificates = Some(riauth::mtls::ClientCertAuth {
+            trust_anchors_file: trust.clone(),
+            mode: riauth::mtls::ClientCertMode::Optional,
+            crl_file: None,
+            forwarded_header: Some("X-Client-Cert".into()),
+        });
+        std::fs::write(path, toml::to_string_pretty(&value).unwrap()).unwrap();
+    });
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &at,
+            "certificate",
+            "bind",
+            "admin",
+            "--san-email",
+            "admin@example.test",
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-revision",
+            "certificate",
+            "bind",
+            "admin",
+            "--san-email",
+            "admin@example.test",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Certificate binding writes require")
+        );
+    }
+    let bind = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-mtls-bind",
+        "certificate",
+        "bind",
+        "admin",
+        "--san-email",
+        "admin@example.test",
+    ];
+    let bound = success(cli(&bind));
+    let id = bound["id"].as_str().unwrap().to_owned();
+    assert_eq!(success(cli(&bind)), bound);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-mtls-bind",
+        "certificate",
+        "bind",
+        "admin",
+        "--san-email",
+        "changed@example.test",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-mtls-stale",
+        "certificate",
+        "bind",
+        "admin",
+        "--san-email",
+        "other@example.test",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let revoke_at = revision();
+    for args in [
+        vec!["--if-revision", &revoke_at, "certificate", "revoke", &id],
+        vec![
+            "--idempotency-key",
+            "missing-revoke-revision",
+            "certificate",
+            "revoke",
+            &id,
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Certificate binding writes require")
+        );
+    }
+    let revoke = [
+        "--if-revision",
+        &revoke_at,
+        "--idempotency-key",
+        "cli-mtls-revoke",
+        "certificate",
+        "revoke",
+        &id,
+    ];
+    let revoked = success(cli(&revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&revoke)), revoked);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        revoke_at.parse::<u64>().unwrap() + 1
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["mtls.bind", "mtls.revoke"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action && event["target"] == id)
+                .count(),
+            1,
+            "{action} was audited more than once"
+        );
+    }
+}
+
+#[cfg(feature = "platform")]
+fn radius_certificate_files(dir: &Path) -> (PathBuf, PathBuf) {
+    use openssl::{
+        asn1::Asn1Time,
+        bn::BigNum,
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::{PKey, Private},
+        x509::{
+            X509, X509NameBuilder,
+            extension::{BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName},
+        },
+    };
+    let key = || {
+        PKey::from_ec_key(
+            EcKey::generate(&EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap()).unwrap(),
+        )
+        .unwrap()
+    };
+    let name = |text: &str| {
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", text).unwrap();
+        name.build()
+    };
+    let ca_key = key();
+    let ca_name = name("RADIUS retry root");
+    let mut ca = X509::builder().unwrap();
+    ca.set_version(2).unwrap();
+    ca.set_serial_number(&BigNum::from_u32(1).unwrap().to_asn1_integer().unwrap())
+        .unwrap();
+    ca.set_subject_name(&ca_name).unwrap();
+    ca.set_issuer_name(&ca_name).unwrap();
+    ca.set_pubkey(&ca_key).unwrap();
+    ca.set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap())
+        .unwrap();
+    ca.set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap())
+        .unwrap();
+    ca.append_extension(BasicConstraints::new().critical().ca().build().unwrap())
+        .unwrap();
+    ca.append_extension(
+        KeyUsage::new()
+            .critical()
+            .key_cert_sign()
+            .crl_sign()
+            .build()
+            .unwrap(),
+    )
+    .unwrap();
+    ca.sign(&ca_key, MessageDigest::sha256()).unwrap();
+    let ca = ca.build();
+    std::fs::write(dir.join("ca.pem"), ca.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.join("ca.key"),
+        &ca_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    std::fs::write(dir.join("index.txt"), "").unwrap();
+    std::fs::write(dir.join("crlnumber"), "01\n").unwrap();
+    std::fs::write(dir.join("ca.cnf"), "[ca]\ndefault_ca=CA\n[CA]\ndatabase=index.txt\ncertificate=ca.pem\nprivate_key=ca.key\ndefault_md=sha256\ndefault_crl_days=1\ncrlnumber=crlnumber\n").unwrap();
+    let crl = Command::new("openssl")
+        .current_dir(dir)
+        .args([
+            "ca",
+            "-config",
+            "ca.cnf",
+            "-gencrl",
+            "-out",
+            "clients.crl.pem",
+            "-batch",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        crl.status.success(),
+        "{}",
+        String::from_utf8_lossy(&crl.stderr)
+    );
+
+    let leaf = |serial: u32, common_name: &str| -> (X509, PKey<Private>) {
+        let leaf_key = key();
+        let mut certificate = X509::builder().unwrap();
+        certificate.set_version(2).unwrap();
+        certificate
+            .set_serial_number(&BigNum::from_u32(serial).unwrap().to_asn1_integer().unwrap())
+            .unwrap();
+        certificate.set_subject_name(&name(common_name)).unwrap();
+        certificate.set_issuer_name(ca.subject_name()).unwrap();
+        certificate.set_pubkey(&leaf_key).unwrap();
+        certificate
+            .set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap())
+            .unwrap();
+        certificate
+            .set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap())
+            .unwrap();
+        certificate
+            .append_extension(BasicConstraints::new().critical().build().unwrap())
+            .unwrap();
+        certificate
+            .append_extension(
+                KeyUsage::new()
+                    .critical()
+                    .digital_signature()
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        certificate
+            .append_extension(
+                ExtendedKeyUsage::new()
+                    .server_auth()
+                    .client_auth()
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap();
+        let san = SubjectAlternativeName::new()
+            .dns("localhost")
+            .build(&certificate.x509v3_context(Some(&ca), None))
+            .unwrap();
+        certificate.append_extension(san).unwrap();
+        certificate.sign(&ca_key, MessageDigest::sha256()).unwrap();
+        (certificate.build(), leaf_key)
+    };
+    let (server, server_key) = leaf(2, "RADIUS server");
+    std::fs::write(dir.join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.join("server.key"),
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    let (first, _) = leaf(3, "First RADIUS client");
+    let (second, _) = leaf(4, "Second RADIUS client");
+    let first_file = dir.join("client-one.pem");
+    let second_file = dir.join("client-two.pem");
+    std::fs::write(&first_file, first.to_pem().unwrap()).unwrap();
+    std::fs::write(&second_file, second.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.join("radius.secret"),
+        b"radius-retry-fixture-secret-32-bytes",
+        false,
+    )
+    .unwrap();
+    (first_file, second_file)
+}
+
+#[cfg(feature = "platform")]
+#[test]
+fn cli_and_http_radius_certificate_writes_require_bound_retry_and_audit_once() {
+    use riauth::{
+        agent::{NewAgent, Permission},
+        model::{NewClient, NewUser, ProviderSettings},
+        radius::{Listener, Nas, Settings, Transport, eap::Config as EapConfig},
+    };
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (first_file, second_file) = radius_certificate_files(dir.path());
+    let mut wrong_scope_agent = String::new();
+    let (config, session, _server) = serve_with_admin_configured(dir.path(), |path| {
+        let mut value = riauth::config::Config::load(path).unwrap();
+        let core = riauth::core::Core::open(value.clone()).unwrap();
+        let admin = core
+            .login("admin".into(), "cli-integration-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "radius-fixture".into(),
+                name: "RADIUS retry fixture".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid".to_owned(), "radius".to_owned()].into(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    radius: Some(Settings {
+                        eap_tls: true,
+                        reply: vec![],
+                    }),
+                    default_acr_values: vec![riauth::radius::eap::CERTIFICATE_ACR.into()],
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        for username in ["alice", "bob"] {
+            core.create_user(
+                &admin,
+                NewUser {
+                    username: username.into(),
+                    password: "cli-integration-password".into(),
+                    email: None,
+                    display_name: username.into(),
+                    admin: false,
+                },
+            )
+            .unwrap();
+        }
+        wrong_scope_agent = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "radius-other-user-agent".into(),
+                    permissions: vec![
+                        Permission {
+                            action: "certificate.write".into(),
+                            resource: "user/bob".into(),
+                        },
+                        Permission {
+                            action: "radius.enroll".into(),
+                            resource: "radius/lan".into(),
+                        },
+                    ],
+                    ttl: 3600,
+                    parent: None,
+                },
+            )
+            .unwrap()["credential"]["token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        drop(core);
+        value.radius_listeners.insert(
+            "lan".into(),
+            Listener {
+                eap_tls: Some(EapConfig {
+                    certificate_file: dir.path().join("server.pem"),
+                    key_file: dir.path().join("server.key"),
+                    client_ca_file: dir.path().join("ca.pem"),
+                    client_crl_file: dir.path().join("clients.crl.pem"),
+                    ocsp_response_file: None,
+                    tls12: false,
+                    fragment_size: 1024,
+                }),
+                listen: "127.0.0.1:0".parse().unwrap(),
+                transport: Transport::Udp,
+                nas: [(
+                    "fixture".into(),
+                    Nas {
+                        peer: "127.0.0.1".parse().unwrap(),
+                        client_id: "radius-fixture".into(),
+                        shared_secret_file: Some(dir.path().join("radius.secret")),
+                        certificate_sha256: None,
+                    },
+                )]
+                .into(),
+                tls_cert_file: None,
+                tls_key_file: None,
+                client_ca_file: None,
+            },
+        );
+        std::fs::write(path, toml::to_string_pretty(&value).unwrap()).unwrap();
+    });
+    let issuer = riauth::config::Config::load(&config).unwrap().issuer;
+    let saved: Value = serde_json::from_slice(&std::fs::read(&session).unwrap()).unwrap();
+    let token = saved["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let url = format!("{issuer}/api/radius/certificates");
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap();
+    let first_pem = std::fs::read_to_string(&first_file).unwrap();
+    let second_pem = std::fs::read_to_string(&second_file).unwrap();
+    let body = |pem: &str| json!({"username":"admin","listener":"lan","certificate_chain_pem":pem});
+    let post = |key: Option<&str>, at: Option<u64>, pem: &str| {
+        let mut request = http.post(&url).bearer_auth(token).json(&body(pem));
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        if let Some(at) = at {
+            request = request.header("if-match", format!("\"{at}\""));
+        }
+        request.send().unwrap()
+    };
+    let delete = |id: &str, key: Option<&str>, at: Option<u64>| {
+        let mut request = http.delete(format!("{url}/{id}")).bearer_auth(token);
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        if let Some(at) = at {
+            request = request.header("if-match", format!("\"{at}\""));
+        }
+        request.send().unwrap()
+    };
+
+    let initial = revision();
+    for (key, at) in [
+        (None, None),
+        (Some("missing-revision"), None),
+        (None, Some(initial)),
+    ] {
+        assert_eq!(
+            post(key, at, &first_pem).status(),
+            reqwest::StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        http.post(&url)
+            .bearer_auth(&wrong_scope_agent)
+            .header("idempotency-key", "wrong-user-scope")
+            .header("if-match", format!("\"{initial}\""))
+            .json(&json!({"username":"alice","listener":"lan","certificate_chain_pem":first_pem}))
+            .send()
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+    for args in [
+        vec![
+            "--if-revision",
+            &initial.to_string(),
+            "radius",
+            "bind-certificate",
+            "admin",
+            "--listener",
+            "lan",
+            "--file",
+            first_file.to_str().unwrap(),
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-revision",
+            "radius",
+            "bind-certificate",
+            "admin",
+            "--listener",
+            "lan",
+            "--file",
+            first_file.to_str().unwrap(),
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("RADIUS certificate writes require")
+        );
+    }
+    assert_eq!(revision(), initial);
+    assert!(
+        success(cli(&["radius", "certificates"]))
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let first_at = revision().to_string();
+    let bind_first = [
+        "--if-revision",
+        &first_at,
+        "--idempotency-key",
+        "radius-cli-bind",
+        "radius",
+        "bind-certificate",
+        "admin",
+        "--listener",
+        "lan",
+        "--file",
+        first_file.to_str().unwrap(),
+    ];
+    let first = success(cli(&bind_first));
+    let first_id = first["id"].as_str().unwrap().to_owned();
+    assert_eq!(success(cli(&bind_first)), first);
+    assert_eq!(revision(), initial + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &first_at,
+        "--idempotency-key",
+        "radius-cli-bind",
+        "radius",
+        "bind-certificate",
+        "admin",
+        "--listener",
+        "lan",
+        "--file",
+        second_file.to_str().unwrap(),
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &first_at,
+        "--idempotency-key",
+        "radius-cli-stale",
+        "radius",
+        "bind-certificate",
+        "admin",
+        "--listener",
+        "lan",
+        "--file",
+        second_file.to_str().unwrap(),
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let second_at = revision();
+    let response = post(Some("radius-http-bind"), Some(second_at), &second_pem);
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let second: Value = response.json().unwrap();
+    let second_id = second["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        post(Some("radius-http-bind"), Some(second_at), &second_pem)
+            .json::<Value>()
+            .unwrap(),
+        second
+    );
+    assert_eq!(revision(), second_at + 1);
+    assert_eq!(
+        post(Some("radius-http-bind"), Some(second_at), &first_pem).status(),
+        reqwest::StatusCode::CONFLICT
+    );
+    assert_eq!(
+        post(Some("radius-http-stale"), Some(second_at), &second_pem).status(),
+        reqwest::StatusCode::CONFLICT
+    );
+
+    let first_revoke_at = revision().to_string();
+    for args in [
+        vec![
+            "--if-revision",
+            &first_revoke_at,
+            "radius",
+            "revoke-certificate",
+            &first_id,
+        ],
+        vec![
+            "--idempotency-key",
+            "missing-revoke-revision",
+            "radius",
+            "revoke-certificate",
+            &first_id,
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("RADIUS certificate writes require")
+        );
+    }
+    let first_revoke = [
+        "--if-revision",
+        &first_revoke_at,
+        "--idempotency-key",
+        "radius-cli-revoke",
+        "radius",
+        "revoke-certificate",
+        &first_id,
+    ];
+    let revoked = success(cli(&first_revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&first_revoke)), revoked);
+    assert_eq!(revision(), first_revoke_at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &first_revoke_at,
+        "--idempotency-key",
+        "radius-cli-revoke",
+        "radius",
+        "revoke-certificate",
+        &second_id,
+    ]));
+    assert_eq!(changed["http_status"], 409);
+
+    let second_revoke_at = revision();
+    for (key, at) in [
+        (None, None),
+        (Some("missing-revision"), None),
+        (None, Some(second_revoke_at)),
+    ] {
+        assert_eq!(
+            delete(&second_id, key, at).status(),
+            reqwest::StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    let response = delete(
+        &second_id,
+        Some("radius-http-revoke"),
+        Some(second_revoke_at),
+    );
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let revoked: Value = response.json().unwrap();
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(
+        delete(
+            &second_id,
+            Some("radius-http-revoke"),
+            Some(second_revoke_at)
+        )
+        .json::<Value>()
+        .unwrap(),
+        revoked
+    );
+    assert_eq!(revision(), second_revoke_at + 1);
+    assert_eq!(
+        delete(
+            &first_id,
+            Some("radius-http-revoke"),
+            Some(second_revoke_at)
+        )
+        .status(),
+        reqwest::StatusCode::CONFLICT
+    );
+    assert!(
+        success(cli(&["radius", "certificates"]))
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for (action, id) in [
+        ("certificate.bind", &first_id),
+        ("certificate.bind", &second_id),
+        ("certificate.revoke", &first_id),
+        ("certificate.revoke", &second_id),
+    ] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action && event["target"] == id.as_str())
+                .count(),
+            1,
+            "{action} was audited more than once for {id}"
+        );
+    }
+}
+
+#[test]
+fn cli_invitation_writes_require_retry_binding() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let file = dir.path().join("invite.json");
+    std::fs::write(
+        &file,
+        r#"{"username":"invited","email":"invited@example.test","display_name":"Invited"}"#,
+    )
+    .unwrap();
+    let file = file.to_str().unwrap();
+    let at = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    for args in [
+        vec!["--if-revision", &at, "account", "invite", "--file", file],
+        vec![
+            "--idempotency-key",
+            "invite-key",
+            "account",
+            "invite",
+            "--file",
+            file,
+        ],
+        vec![
+            "--if-revision",
+            &at,
+            "account",
+            "revoke-invitation",
+            "invited",
+        ],
+        vec![
+            "--idempotency-key",
+            "revoke-key",
+            "account",
+            "revoke-invitation",
+            "invited",
+        ],
+    ] {
+        let (_, error) = failure(invoke(dir.path(), &config, &session, &args, None));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Invitation writes require")
+        );
+    }
+    // The complete CLI binding reaches the server. No mail transport is configured here.
+    let (_, error) = failure(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "bound-invite",
+            "account",
+            "invite",
+            "--file",
+            file,
+        ],
+        None,
+    ));
+    assert_eq!(error["http_status"], 503);
+}
+
+#[test]
+fn cli_signing_key_rotation_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec!["rotate-key"],
+        vec!["--if-revision", &at, "rotate-key"],
+        vec!["--idempotency-key", "key-only", "rotate-key"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Signing-key rotation requires")
+        );
+    }
+    let rotate = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-rotate-once",
+        "rotate-key",
+    ];
+    let first = success(cli(&rotate));
+    assert!(first["kid"].as_str().is_some());
+    assert_eq!(success(cli(&rotate)), first);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-rotate-stale",
+        "rotate-key",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "signing_key.rotate" && event["target"] == first["kid"]
+            )
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn cli_signing_key_configuration_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec![
+            "--if-revision",
+            &at,
+            "keys",
+            "generate",
+            "cli-signing",
+            "--algorithm",
+            "EdDSA",
+        ],
+        vec![
+            "--idempotency-key",
+            "key-only",
+            "keys",
+            "generate",
+            "cli-signing",
+            "--algorithm",
+            "EdDSA",
+        ],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("Signing-key configuration requires")
+        );
+    }
+    let create = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-key-create",
+        "keys",
+        "generate",
+        "cli-signing",
+        "--algorithm",
+        "EdDSA",
+    ];
+    let first = success(cli(&create));
+    assert_eq!(first["id"], "cli-signing");
+    assert!(first["active"]["kid"].as_str().is_some());
+    assert!(!first.to_string().contains("PRIVATE KEY"));
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        at.parse::<u64>().unwrap() + 1
+    );
+    let (_, changed) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-key-create",
+        "keys",
+        "generate",
+        "other-key",
+        "--algorithm",
+        "EdDSA",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-key-stale",
+        "keys",
+        "generate",
+        "other-key",
+        "--algorithm",
+        "EdDSA",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "signing_key.configure"
+                && event["target"] == "cli-signing")
+            .count(),
+        1
+    );
+}
+
+/// M03: the CLI's direct and desired-state application writes reach the same
+/// management seam as the HTTP API, with the same type, retry and stale rules.
+#[test]
+fn cli_application_writes_share_management_seam() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let agent = dir.path().join("agent.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-cli-manager",
+            "agent",
+            "create",
+            "cli-manager",
+            "--permission",
+            "client.write=client/cli-signed",
+            "--permission",
+            "client.read=client/cli-signed",
+            "--permission",
+            "client.rotate=client/cli-signed",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let call = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent.to_str().unwrap()];
+        all.extend(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(call(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let key = riauth::crypto::SigningKey::generate().unwrap();
+    let signed = dir.path().join("signed.json");
+    std::fs::write(
+        &signed,
+        serde_json::to_vec(&serde_json::json!({"token_endpoint_auth_method":"private_key_jwt","jwks":{"keys":[key.jwk().unwrap()]}})).unwrap(),
+    )
+    .unwrap();
+    let unset = dir.path().join("unset.json");
+    std::fs::write(&unset, b"{}").unwrap();
+
+    // Authorized create; an exact retry with the same key replays the result.
+    let at = revision();
+    let create = |out: &Path| {
+        success(call(&[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "cli-create-signed",
+            "--output-file",
+            out.to_str().unwrap(),
+            "client",
+            "create",
+            "cli-signed",
+            "--confidential",
+            "--scope",
+            "openid",
+            "--settings-file",
+            signed.to_str().unwrap(),
+        ]))
+    };
+    let (first, second) = (
+        dir.path().join("create1.json"),
+        dir.path().join("create2.json"),
+    );
+    create(&first);
+    create(&second);
+    let created: Value = serde_json::from_slice(&std::fs::read(&first).unwrap()).unwrap();
+    assert_eq!(
+        std::fs::read(&first).unwrap(),
+        std::fs::read(&second).unwrap()
+    );
+    assert_eq!(created["client"]["confidential"], true);
+    assert!(created["client_secret"].is_null());
+
+    // The type rule is enforced identically for the direct and plan writers.
+    let at = revision();
+    let (code, error) = failure(call(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-downgrade-signed",
+        "client",
+        "update",
+        "cli-signed",
+        "--settings-file",
+        unset.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 2);
+    assert_eq!(error["message"], "Existing client type is immutable");
+    let manifest = dir.path().join("downgrade.json");
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&serde_json::json!({"api_version":"riauth/v1","clients":[{"client_id":"cli-signed","name":"cli-signed","confidential":false,"scopes":["openid"]}]})).unwrap(),
+    )
+    .unwrap();
+    let (code, plan_error) = failure(call(&[
+        "plan",
+        "--file",
+        manifest.to_str().unwrap(),
+        "--out",
+        dir.path().join("downgrade-plan.json").to_str().unwrap(),
+    ]));
+    assert_eq!(code, 2);
+    assert_eq!(plan_error["message"], error["message"]);
+    assert_eq!(
+        revision(),
+        at,
+        "refused writes must not advance the revision"
+    );
+
+    // A stale revision is refused before the write; the current one succeeds once.
+    let stale = (at.parse::<u64>().unwrap() - 1).to_string();
+    let (code, _) = failure(call(&[
+        "--if-revision",
+        &stale,
+        "--idempotency-key",
+        "cli-stale-update-signed",
+        "client",
+        "update",
+        "cli-signed",
+        "--name",
+        "Renamed",
+    ]));
+    assert_eq!(code, 5);
+    let updated = success(call(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-update-signed",
+        "client",
+        "update",
+        "cli-signed",
+        "--name",
+        "Renamed",
+    ]));
+    assert_eq!(updated["name"], "Renamed");
+    assert_eq!(updated["confidential"], true);
+    assert_eq!(revision(), (at.parse::<u64>().unwrap() + 1).to_string());
+}
+
+#[test]
+fn cli_api_and_scim_user_writes_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent_file = dir.path().join("scim-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-scim-manager",
+            "agent",
+            "create",
+            "scim-manager",
+            "--permission",
+            "user.write=user/parity-user",
+            "--permission",
+            "user.read=user/parity-user",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent_file.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let credential: Value = serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+
+    let input = json!({
+        "schemas": [riauth::scim::USER],
+        "userName": "parity-user",
+        "displayName": "SCIM name",
+        "emails": [{"value": "parity@example.test", "primary": true}]
+    });
+    let collection = format!("{issuer}/scim/v2/Users");
+    let created_response = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-scim-create")
+        .json(&input)
+        .send()
+        .unwrap();
+    assert_eq!(created_response.status(), reqwest::StatusCode::CREATED);
+    let original_etag = created_response.headers()["etag"]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let created: Value = created_response.json().unwrap();
+    let replay: Value = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-scim-create")
+        .json(&input)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(replay, created);
+    let scim_id = created["id"].as_str().unwrap();
+    let resource = format!("{collection}/{scim_id}");
+    let local = success(cli(&["get", "user", "parity-user"]));
+    assert_eq!(local["display_name"], "SCIM name");
+    assert_eq!(local["email"], "parity@example.test");
+
+    let denied = http
+        .post(&collection)
+        .bearer_auth(token)
+        .json(&json!({"schemas":[riauth::scim::USER],"userName":"outside-scope"}))
+        .send()
+        .unwrap();
+    assert_eq!(denied.status(), reqwest::StatusCode::FORBIDDEN);
+    let duplicate = http
+        .post(&collection)
+        .bearer_auth(token)
+        .json(&input)
+        .send()
+        .unwrap();
+    assert_eq!(duplicate.status(), reqwest::StatusCode::CONFLICT);
+
+    let api_response = http
+        .patch(format!("{issuer}/api/users/parity-user"))
+        .bearer_auth(token)
+        .header("if-match", format!("\"{}\"", revision()))
+        .header("idempotency-key", "parity-api-user-update")
+        .json(&json!({"display_name":"API name"}))
+        .send()
+        .unwrap();
+    assert_eq!(api_response.status(), reqwest::StatusCode::OK);
+    let api: Value = api_response.json().unwrap();
+    assert_eq!(api["display_name"], "API name");
+    let after_api: Value = http
+        .get(&resource)
+        .bearer_auth(token)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(after_api["displayName"], "API name");
+    assert_ne!(after_api["meta"]["version"], original_etag);
+
+    let at = revision();
+    let omitted = cli(&[
+        "--if-revision",
+        &at,
+        "user",
+        "update",
+        "parity-user",
+        "--name",
+        "Omitted key",
+    ]);
+    let (_, error) = failure(omitted);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let cli_update = success(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "parity-cli-user-update",
+        "user",
+        "update",
+        "parity-user",
+        "--name",
+        "CLI name",
+    ]));
+    assert_eq!(cli_update["display_name"], "CLI name");
+    let after_cli: Value = http
+        .get(&resource)
+        .bearer_auth(token)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(after_cli["displayName"], "CLI name");
+    assert_ne!(after_cli["meta"]["version"], after_api["meta"]["version"]);
+
+    let scim_patch = json!({
+        "schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+        "Operations":[{"op":"replace","path":"displayName","value":"SCIM revised"}]
+    });
+    let changed_response = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-update")
+        .json(&scim_patch)
+        .send()
+        .unwrap();
+    assert_eq!(changed_response.status(), reqwest::StatusCode::OK);
+    let changed: Value = changed_response.json().unwrap();
+    assert_eq!(changed["displayName"], "SCIM revised");
+    assert_ne!(changed["meta"]["version"], after_cli["meta"]["version"]);
+    let changed_replay: Value = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-update")
+        .json(&scim_patch)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(changed_replay, changed);
+    assert_eq!(
+        success(cli(&["get", "user", "parity-user"]))["display_name"],
+        "SCIM revised",
+    );
+
+    let stale = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", &original_etag)
+        .send()
+        .unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::PRECONDITION_FAILED);
+    let deleted = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-delete")
+        .send()
+        .unwrap();
+    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
+    let replay = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-scim-delete")
+        .send()
+        .unwrap();
+    assert_eq!(replay.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        success(cli(&["get", "user", "parity-user"]))["enabled"],
+        false
+    );
+    assert_eq!(
+        http.get(&resource)
+            .bearer_auth(token)
+            .send()
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::NOT_FOUND,
+    );
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["audit", "--limit", "1000"],
+        None,
+    ));
+    let count = |action: &str| {
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action && event["target"] == "parity-user")
+            .count()
+    };
+    assert_eq!(count("user.scim"), 2);
+    assert_eq!(count("user.scim_delete"), 1);
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.update")
+            .count(),
+        2,
+    );
+}
+
+#[test]
+fn cli_api_and_scim_group_writes_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent_file = dir.path().join("scim-group-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-scim-group-manager",
+            "agent",
+            "create",
+            "scim-group-manager",
+            "--permission",
+            "user.write=user/parity-member",
+            "--permission",
+            "user.read=user/parity-member",
+            "--permission",
+            "group.write=group/parity-group",
+            "--permission",
+            "group.members=group/parity-group",
+            "--permission",
+            "group.read=group/parity-group",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent_file.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let credential: Value = serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+
+    let user: Value = http
+        .post(format!("{issuer}/scim/v2/Users"))
+        .bearer_auth(token)
+        .json(&json!({"schemas":[riauth::scim::USER],"userName":"parity-member"}))
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    let user_id = user["id"].as_str().unwrap();
+    let local_user = success(cli(&["get", "user", "parity-member"]));
+    let local_id = local_user["id"].as_str().unwrap();
+    let group_input =
+        json!({"schemas":[riauth::scim::GROUP],"displayName":"parity-group","members":[]});
+    let collection = format!("{issuer}/scim/v2/Groups");
+    let created_response = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-group-create")
+        .json(&group_input)
+        .send()
+        .unwrap();
+    assert_eq!(created_response.status(), reqwest::StatusCode::CREATED);
+    let created: Value = created_response.json().unwrap();
+    let original_etag = created["meta"]["version"].as_str().unwrap();
+    let group_id = created["id"].as_str().unwrap();
+    let resource = format!("{collection}/{group_id}");
+    let replay: Value = http
+        .post(&collection)
+        .bearer_auth(token)
+        .header("idempotency-key", "parity-group-create")
+        .json(&group_input)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(replay, created);
+    assert_eq!(
+        success(cli(&["get", "group", "parity-group"]))["members"],
+        json!([])
+    );
+
+    let added = http
+        .put(format!(
+            "{issuer}/api/groups/parity-group/members/parity-member"
+        ))
+        .bearer_auth(token)
+        .header("if-match", format!("\"{}\"", revision()))
+        .header("idempotency-key", "parity-api-group-add")
+        .send()
+        .unwrap();
+    assert_eq!(added.status(), reqwest::StatusCode::OK);
+    let after_api: Value = http
+        .get(&resource)
+        .bearer_auth(token)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(after_api["members"][0]["value"], user_id);
+    assert_ne!(after_api["meta"]["version"], original_etag);
+    let stale = http.patch(&resource).bearer_auth(token)
+        .header("if-match", original_etag)
+        .json(&json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"stale"}]}))
+        .send().unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::PRECONDITION_FAILED);
+
+    let at = revision();
+    success(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "parity-cli-group-remove",
+        "group",
+        "remove-member",
+        "parity-group",
+        "parity-member",
+    ]));
+    assert_eq!(
+        success(cli(&["get", "group", "parity-group"]))["members"],
+        json!([])
+    );
+    let after_cli: Value = http
+        .get(&resource)
+        .bearer_auth(token)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(after_cli["members"], json!([]));
+    assert_ne!(after_cli["meta"]["version"], after_api["meta"]["version"]);
+
+    let add_member = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"add","path":"members","value":[{"value":user_id}]}]});
+    let changed_response = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-update")
+        .json(&add_member)
+        .send()
+        .unwrap();
+    assert_eq!(changed_response.status(), reqwest::StatusCode::OK);
+    let changed: Value = changed_response.json().unwrap();
+    assert_eq!(changed["members"][0]["value"], user_id);
+    let replay: Value = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", after_cli["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-update")
+        .json(&add_member)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(replay, changed);
+    assert!(
+        success(cli(&["get", "group", "parity-group"]))["members"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(local_id))
+    );
+
+    let metadata = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"externalId","value":"tag"}]});
+    let tagged_response = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", changed["meta"]["version"].as_str().unwrap())
+        .json(&metadata)
+        .send()
+        .unwrap();
+    assert_eq!(tagged_response.status(), reqwest::StatusCode::OK);
+    let tagged: Value = tagged_response.json().unwrap();
+    assert_eq!(tagged["externalId"], "tag");
+    let unchanged: Value = http
+        .patch(&resource)
+        .bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .json(&metadata)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(unchanged["meta"]["version"], tagged["meta"]["version"]);
+
+    let deleted = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-delete")
+        .send()
+        .unwrap();
+    assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
+    let replay = http
+        .delete(&resource)
+        .bearer_auth(token)
+        .header("if-match", tagged["meta"]["version"].as_str().unwrap())
+        .header("idempotency-key", "parity-group-delete")
+        .send()
+        .unwrap();
+    assert_eq!(replay.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(
+        http.get(&resource)
+            .bearer_auth(token)
+            .send()
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        success(cli(&["get", "group", "parity-group"]))["members"],
+        json!([])
+    );
+    assert_eq!(
+        http.post(&collection)
+            .bearer_auth(token)
+            .json(&group_input)
+            .send()
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::CONFLICT
+    );
+
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["audit", "--limit", "1000"],
+        None,
+    ));
+    let count = |action: &str| {
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action && event["target"] == "parity-group")
+            .count()
+    };
+    assert_eq!(count("group.scim"), 3);
+    assert_eq!(count("group.scim_delete"), 1);
+    for action in ["group.member.add", "group.member.remove"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| {
+                    event["action"] == action
+                        && event["target"]
+                            .as_str()
+                            .unwrap_or("")
+                            .starts_with("parity-group/")
+                })
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn cli_api_and_state_source_writes_share_management_seam() {
+    use serde_json::json;
+
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let issuer = success(invoke(dir.path(), &config, &session, &["status"], None))["issuer"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent_file = dir.path().join("source-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
+    success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-source-manager",
+            "agent",
+            "create",
+            "source-manager",
+            "--permission",
+            "source.write=source/parity-source",
+            "--permission",
+            "source.read=source/parity-source",
+            "--permission",
+            "state.read=state/revision",
+            "--out",
+            agent_file.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let credential: Value = serde_json::from_slice(&std::fs::read(&agent_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let cli = |args: &[&str]| {
+        let mut all = vec!["--agent-file", agent_file.to_str().unwrap()];
+        all.extend_from_slice(args);
+        invoke(dir.path(), &config, &session, &all, None)
+    };
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let http = reqwest::blocking::Client::new();
+    let endpoint = format!("{issuer}/api/sources");
+    let secret = "upstream-parity-secret-fixture";
+    let mut source = json!({
+        "id":"parity-source", "name":"CLI source",
+        "issuer":"https://source.example.test",
+        "authorization_endpoint":"https://source.example.test/authorize",
+        "token_endpoint":"https://source.example.test/token",
+        "client_id":"parity", "token_endpoint_auth_method":"client_secret_post",
+        "scopes":["read:user"],
+        "oauth_profile":{"userinfo_endpoint":"https://source.example.test/me","subject_pointer":"/id"}
+    });
+    let input_file = dir.path().join("source-input.json");
+    std::fs::write(
+        &input_file,
+        serde_json::to_vec(&json!({"source":source,"client_secret":secret})).unwrap(),
+    )
+    .unwrap();
+    let before_create = revision();
+    let direct = |at: &str| {
+        success(cli(&[
+            "--if-revision",
+            at,
+            "--idempotency-key",
+            "parity-source-create",
+            "source",
+            "put",
+            "--file",
+            input_file.to_str().unwrap(),
+        ]))
+    };
+    let created = direct(&before_create);
+    assert_eq!(created["name"], "CLI source");
+    assert_eq!(direct(&before_create), created);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        before_create.parse::<u64>().unwrap() + 1
+    );
+
+    source["name"] = json!("API source");
+    let api_input = json!({"source":source,"client_secret":null});
+    let before_api = revision();
+    let api = || {
+        http.post(&endpoint)
+            .bearer_auth(token)
+            .header("if-match", format!("\"{before_api}\""))
+            .header("idempotency-key", "parity-source-api-update")
+            .json(&api_input)
+            .send()
+            .unwrap()
+    };
+    let response = api();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let updated: Value = response.json().unwrap();
+    assert_eq!(updated["name"], "API source");
+    assert_eq!(api().json::<Value>().unwrap(), updated);
+    assert_eq!(
+        revision().parse::<u64>().unwrap(),
+        before_api.parse::<u64>().unwrap() + 1
+    );
+
+    source["name"] = json!("Planned source");
+    let manifest_file = dir.path().join("source-plan-input.json");
+    let plan_file = dir.path().join("source-plan.json");
+    std::fs::write(
+        &manifest_file,
+        serde_json::to_vec(&json!({
+            "api_version":"riauth/v1", "sources":[{"source":source}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let planned = success(cli(&[
+        "plan",
+        "--file",
+        manifest_file.to_str().unwrap(),
+        "--out",
+        plan_file.to_str().unwrap(),
+    ]));
+    assert_eq!(planned["changes"][0]["resource"], "source/parity-source");
+    let applied = success(cli(&["apply", "--plan", plan_file.to_str().unwrap()]));
+    assert_eq!(applied["applied"], true);
+    let listed = success(cli(&["source", "list"]));
+    assert_eq!(listed[0]["name"], "Planned source");
+    let api_list: Value = http
+        .get(&endpoint)
+        .bearer_auth(token)
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(api_list[0], listed[0]);
+
+    source["allow_admin_login"] = json!(true);
+    let before_denied = revision();
+    let denied = http
+        .post(&endpoint)
+        .bearer_auth(token)
+        .header("if-match", format!("\"{before_denied}\""))
+        .json(&json!({"source":source,"client_secret":null}))
+        .send()
+        .unwrap();
+    assert_eq!(denied.status(), reqwest::StatusCode::FORBIDDEN);
+    std::fs::write(
+        &manifest_file,
+        serde_json::to_vec(&json!({
+            "api_version":"riauth/v1", "sources":[{"source":source}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let (code, _) = failure(cli(&[
+        "plan",
+        "--file",
+        manifest_file.to_str().unwrap(),
+        "--out",
+        dir.path().join("denied-plan.json").to_str().unwrap(),
+    ]));
+    assert_eq!(code, 4);
+    assert_eq!(revision(), before_denied);
+
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["audit", "--limit", "1000"],
+        None,
+    ));
+    let count = |action: &str| {
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action && event["target"] == "parity-source")
+            .count()
+    };
+    assert_eq!(count("source.configure"), 2);
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "source.reconcile" && event["target"] == "source/parity-source"
+            })
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "state.apply")
+            .count(),
+        1
+    );
+    assert!(!events.to_string().contains(secret));
+    assert!(!planned.to_string().contains(secret));
 }

@@ -1,6 +1,7 @@
 use crate::{
     error::{Error, Result},
     model::Client,
+    validation::validate_name,
 };
 use url::Url;
 
@@ -40,9 +41,12 @@ pub fn redirect_matches(client: &Client, value: &str) -> bool {
     })
 }
 
+pub(crate) fn grant_enabled(client: &Client, grant: &str) -> bool {
+    client.settings.allowed_grants.is_empty() || client.settings.allowed_grants.contains(grant)
+}
+
 pub fn grant_allowed(client: &Client, grant: &str) -> Result<()> {
-    if !client.settings.allowed_grants.is_empty() && !client.settings.allowed_grants.contains(grant)
-    {
+    if !grant_enabled(client, grant) {
         return Err(Error::oauth(
             "unauthorized_client",
             "Grant type is disabled for this client",
@@ -53,6 +57,7 @@ pub fn grant_allowed(client: &Client, grant: &str) -> Result<()> {
 
 pub fn validate_settings(client: &Client) -> Result<()> {
     let s = &client.settings;
+    crate::edition::validate_client_settings(s)?;
     if let Some(app) = &s.app {
         app.validate(client)?;
     }
@@ -92,7 +97,7 @@ pub fn validate_settings(client: &Client) -> Result<()> {
         return Err(Error::bad("At most 32 token managers are allowed"));
     }
     for name in &s.token_managers {
-        crate::core::validate_name(name)?;
+        validate_name(name)?;
     }
 
     for key in [
@@ -189,14 +194,14 @@ pub fn validate_settings(client: &Client) -> Result<()> {
             .iter()
             .chain(&exchange.target_clients)
         {
-            crate::core::validate_name(name)?;
+            validate_name(name)?;
         }
     }
     if s.exchange_from.len() > 32 {
         return Err(Error::bad("At most 32 exchange requesters are allowed"));
     }
     for name in &s.exchange_from {
-        crate::core::validate_name(name)?;
+        validate_name(name)?;
     }
 
     if client.service

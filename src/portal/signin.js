@@ -12,6 +12,7 @@
     force_authn: ["Confirm it's you", "{App} asks you to sign in again."],
     max_age: ["Confirm it's you", "Your sign-in is older than {App} allows."],
     step_up: ["Extra verification needed", "{App} requires a passkey or an authenticator code."],
+    configured_totp: ["Enter your authenticator code", "Confirm with your current authenticator code to continue to {App}."],
     select_account: ["Choose an account for {App}", "Sign in with the account you want to use."]
   };
   const ACTIVE = new Set(["authenticate", "consent", "confirm"]);
@@ -27,7 +28,15 @@
   const noun = page?.kind === "logout" ? "sign-out request" : "sign-in request";
   // `generation` discards state fetched while a user action was in flight.
   let state = null, current = "loading", generation = 0, acting = 0, loading = false, again = false, leaving = false;
-  let pollTimer, messageAction = null, flow = null, flowKey = null;
+  let pollTimer, messageAction = null, flow = null, flowKey = null, passkeyAttempt = 0, capabilitiesReady = false;
+
+  async function refreshCapabilities() {
+    await RiAuthCapabilities.refresh().catch(() => {});
+    capabilitiesReady = true;
+    const passkeyAvailable = RiAuthCapabilities.usable("identity.passkeys") && RiAuth.passkeysAvailable();
+    $("signin-passkey").hidden = $("signin-divider").hidden = !passkeyAvailable;
+    RiAuthCapabilities.apply();
+  }
 
   const app = () => state?.application?.name || "the application";
   // Polling continues while the request can still change: open screens, and a request only
@@ -46,8 +55,8 @@
   // The terminal panel is one element, placed in whichever screen offers it.
   function terminal(section, before) {
     const panel = $("signin-terminal"), info = state?.terminal;
-    panel.hidden = !section || !info;
-    if (!section || !info) return;
+    panel.hidden = !section || !info || !RiAuthCapabilities.usable("portal.terminal_sign_in");
+    if (panel.hidden) return;
     if (panel.parentElement !== $(section)) $(section).insertBefore(panel, before ? $(before) : null);
     $("signin-code").textContent = info.user_code;
     const command = page.kind === "logout" ? "logout-request approve" : "request approve";
@@ -59,7 +68,7 @@
   }
   function showError(id, text, portal = false) {
     $(id).replaceChildren(text);
-    if (portal) {
+    if (portal && RiAuthCapabilities.usable("portal.user_applications")) {
       const link = document.createElement("a");
       link.href = `${base}apps`; link.textContent = "Open your applications portal";
       $(id).append(" ", link);
@@ -72,7 +81,7 @@
     clearError("message-error");
     messageAction = action?.run ?? null;
     $("message-action").textContent = action?.label ?? ""; $("message-action").hidden = !action;
-    $("message-link").hidden = !link; $("signin-expiry").hidden = true;
+    $("message-link").hidden = !link || !RiAuthCapabilities.usable("portal.user_applications"); $("signin-expiry").hidden = true;
     show("message", title);
   }
   function expired() {
@@ -83,7 +92,7 @@
 
   // State: fetched on load, on return to the tab and while polling (F21).
   async function load() {
-    if (!page || acting || leaving) return;
+    if (!page || !capabilitiesReady || acting || leaving) return;
     if (loading) { again = true; return; }
     loading = true; stop();
     const at = generation;
@@ -120,6 +129,7 @@
   function render(next) {
     const previous = state;
     state = next;
+    if (next.status !== "authenticate") { void flow?.cancel(); $("signin-passkey-cancel").hidden = true; }
     if (next.status === "complete" || next.status === "done") { proceed(next); return; }
     if (next.status === "unavailable") unavailable(next);
     else if (next.kind === "logout") logout(next);
@@ -152,24 +162,42 @@
     const host = next.application?.host;
     $("signin-app-host").textContent = host ? `You'll return to ${host}` : ""; $("signin-app-host").hidden = !host;
     const account = next.account, pinned = next.pinned === true && !!account;
+    const configuredPasskey = next.kind === "authorize" && next.requirements?.configured_passkey === true && !!account;
+    const configuredTotp = next.kind === "authorize" && next.requirements?.configured_totp === true && !!account;
+    const totpStage = configuredTotp ? next.requirements?.configured_stage : null;
     $("signin-account").hidden = !pinned;
     $("signin-account-text").textContent = pinned ? `Signed in as ${account.display_name} (@${account.username})` : "";
+    $("signin-switch").hidden = configuredPasskey || configuredTotp;
+    $("signin-form").hidden = configuredPasskey;
+    $("signin-passkey").hidden = configuredTotp || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
+    $("signin-divider").hidden = configuredPasskey || configuredTotp || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
+    $("signin-passkey").textContent = configuredPasskey ? "Verify with your passkey" : "Sign in with a passkey";
+    $("signin-passkey-cancel").textContent = configuredPasskey ? "Cancel passkey verification" : "Cancel passkey sign-in";
     // Keep what the user typed across polls; reset it when the account changes.
     const changed = current !== "authenticate" || previous?.session_ref !== next.session_ref || previous?.pinned !== next.pinned;
     $("signin-username").readOnly = pinned;
     if (pinned) $("signin-username").value = account.username;
     else if (changed) $("signin-username").value = account?.username || "";
     const mfa = next.requirements?.mfa === true;
-    $("signin-otp").required = mfa;
-    $("signin-requirement").hidden = !mfa;
-    $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code. No passkey yet?`;
+    $("signin-password").parentElement.hidden = totpStage === "totp";
+    $("signin-password").required = totpStage !== "totp";
+    $("signin-otp").parentElement.hidden = totpStage === "password";
+    $("signin-otp").required = totpStage === "totp" || (!configuredTotp && mfa);
+    $("signin-otp").parentElement.querySelector("label").textContent = configuredTotp ? "Current authenticator code" : "Authenticator or recovery code (if enabled)";
+    $("signin-otp-hint").textContent = configuredTotp ? "Use the current code from your authenticator app." : "Leave empty if your account has no authenticator app.";
+    $("signin-submit").textContent = totpStage === "password" ? "Verify password" : totpStage === "totp" ? "Verify code" : "Sign in";
+    $("signin-requirement").hidden = configuredTotp || !mfa;
+    $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code.`;
     $("signin-cancel").textContent = `Cancel and return to ${app()}`;
-    const key = `${next.pinned}:${next.session_ref}`;
+    const key = `${next.pinned}:${next.session_ref}:${configuredPasskey}:${configuredTotp}`;
     if (flowKey !== key) {
+      void flow?.cancel(); passkeyAttempt += 1;
+      $("signin-passkey-cancel").hidden = true;
       flowKey = key;
       flow = RiAuth.passkeyFlow(
         () => RiAuth.post(`${page.api}/passkey/start`, {}, { retry: true }),
-        (credential, started) => RiAuth.post(`${page.api}/passkey/finish`, { ceremony: started.ceremony, credential }));
+        (credential, started) => RiAuth.post(`${page.api}/passkey/finish`, { ceremony: started.ceremony, credential }), false,
+        (started) => RiAuth.post(`${page.api}/passkey/cancel`, { ceremony: started.ceremony }));
     }
     if (changed) clearError("signin-error");
     terminal("signin-authenticate", "signin-cancel");
@@ -196,7 +224,7 @@
     $("consent-resource").textContent = c.resource ? `For ${c.resource}` : ""; $("consent-resource").hidden = !required || !c.resource;
     const host = next.application?.host;
     $("consent-host").textContent = host ? `You'll return to ${host}` : ""; $("consent-host").hidden = !host;
-    $("consent-remember-label").hidden = !required;
+    $("consent-remember-label").hidden = !required || c.remember_enabled === false;
     if (current !== "consent") { $("consent-remember").checked = c.remember_default !== false; clearError("consent-error"); }
     $("consent-allow").textContent = required ? "Allow" : "Continue";
     $("consent-deny").textContent = required ? "Deny" : "Cancel";
@@ -255,6 +283,7 @@
       try { next = await request(); } catch (error) { failure = error; }
       acting -= 1; generation += 1;
       if (next) { render(next); return; }
+      if (!failure) { schedule(); return; }
       if (failure.code === "invalid_credentials") {
         $("signin-otp").value = "";
         for (const field of FIELDS) $(field).setAttribute("aria-invalid", "true");
@@ -279,24 +308,45 @@
   }
   $("signin-form").addEventListener("submit", (event) => {
     event.preventDefault();
+    if (acting) return;
     const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = code($("signin-otp").value);
-    if (!username || !password) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
-    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
+    if (!username || ($("signin-password").required && !password)) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
+    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {
+      await cancelPasskey();
       const next = await RiAuth.post(`${page.api}/password`, { username, password, otp });
       $("signin-otp").value = "";
       return next;
     }, "Couldn't sign in. Try again.");
   });
   for (const field of FIELDS) $(field).addEventListener("input", () => $(field).removeAttribute("aria-invalid"));
-  $("signin-passkey").addEventListener("click", () => act($("signin-passkey"), "signin-error", () => flow(), "Couldn't sign in with your passkey. Try again or use your password."));
+  $("signin-passkey").addEventListener("click", () => {
+    if (acting) return;
+    const attempt = ++passkeyAttempt;
+    $("signin-passkey-cancel").hidden = false;
+    act($("signin-passkey"), "signin-error", async () => {
+      try { const next = await flow(); return attempt === passkeyAttempt ? next : null; }
+      catch (error) { if (attempt !== passkeyAttempt) return null; throw error; }
+    }, "Couldn't sign in with your passkey. Try again or use your password.");
+  });
+  async function cancelPasskey() {
+    if (flow?.finishing) { showError("signin-error", "Finishing sign-in. Please wait."); return false; }
+    passkeyAttempt += 1;
+    await flow?.cancel();
+    $("signin-passkey-cancel").hidden = true;
+    return true;
+  }
+  $("signin-passkey-cancel").addEventListener("click", async () => {
+    if (await cancelPasskey()) { clearError("signin-error"); $("signin-passkey").focus(); }
+  });
   // Another account: this browser signs out (a terminal session is only unmapped, F25).
   RiAuth.guard($("signin-switch"), () => act($("signin-switch"), "signin-error", async () => {
+    if (!(await cancelPasskey())) return null;
     await RiAuth.post("api/portal/sign-out", { scope: "browser" }).catch((error) => { if (error.status !== 401) throw error; });
     return RiAuth.get(`${page.api}/state`);
   }, "Couldn't switch accounts. Try again."));
-  RiAuth.guard($("signin-cancel"), () => decide($("signin-cancel"), false, "signin-error"));
+  RiAuth.guard($("signin-cancel"), async () => { if (await cancelPasskey()) decide($("signin-cancel"), false, "signin-error"); });
   RiAuth.guard($("consent-allow"), () => decide($("consent-allow"), true, "consent-error"));
   RiAuth.guard($("consent-deny"), () => decide($("consent-deny"), false, "consent-error"));
   RiAuth.guard($("logout-confirm"), () => decide($("logout-confirm"), true, "logout-error"));
@@ -313,10 +363,11 @@
   $("signin-terminal").addEventListener("toggle", () => { if ($("signin-terminal").open) load(); else schedule(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(); else stop(); });
   window.addEventListener("focus", () => load());
-  window.addEventListener("pageshow", (event) => { if (event.persisted) { leaving = false; load(); } });
+  window.addEventListener("pageshow", (event) => { if (event.persisted) { leaving = false; refreshCapabilities().then(load); } });
   setInterval(() => { if (waiting()) expiry(); }, 30000);
 
-  $("signin-passkey").hidden = $("signin-divider").hidden = !RiAuth.passkeysAvailable();
-  if (page) load();
-  else message("This link isn't valid", "Return to the application and try again.", { link: true });
+  refreshCapabilities().then(() => {
+    if (page) load();
+    else message("This link isn't valid", "Return to the application and try again.", { link: true });
+  });
 })();

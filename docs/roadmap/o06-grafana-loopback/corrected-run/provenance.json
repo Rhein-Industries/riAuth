@@ -1,0 +1,15 @@
+{
+  "kind": "redacted_api_summary_from_the_corrected_lab",
+  "containers": {
+    "prometheus": "49d7824bce3f6fa78e127be3320dd6e39f3a61f12aba164aa881eb82f1e0a24c",
+    "grafana": "081d1afb48740f17b96325953655094bc669aacd7870fc7bde30f33958b6c0f0"
+  },
+  "listen": {
+    "riauth": "127.0.0.1:49875",
+    "prometheus": "127.0.0.1:49876",
+    "grafana": "127.0.0.1:49877"
+  },
+  "binary_sha256": "517093cbca1fdf56cfa093f43b79cd5d30405aa5bc10b68759ca4cbf63d92e6b",
+  "dashboard_source": "worktree deploy/riauth-grafana.json at the follow-up, not a file inside the c7a61c6 binary",
+  "request_message_note": "Grafana versions API stored version 1 as Initial save. The request message is recorded on dashboard-import.json and was not the stored version message."
+}

@@ -663,21 +663,15 @@ async fn saml_logout_oidc_continuation_http_and_confirmation() {
     let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
     let cert = saml_tests::cert(&local, "SAML bridge");
     provider(&f, "bridge", &sp, &cert, false);
-    f.client("oidc", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "oidc",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    post_logout_redirect_uris: vec!["https://app.example.test/finished".into()],
-                    frontchannel_logout_uri: Some("https://app.example.test/front".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings(
+        "oidc",
+        false,
+        ProviderSettings {
+            post_logout_redirect_uris: vec!["https://app.example.test/finished".into()],
+            frontchannel_logout_uri: Some("https://app.example.test/front".into()),
+            ..Default::default()
+        },
+    );
     let tokens = f.tokens("oidc", &alice, None);
     login_sp(&f, "bridge", &alice);
     // An ended RP grant is not proof that the parent session was revoked.
@@ -815,4 +809,784 @@ async fn saml_logout_oidc_continuation_http_and_confirmation() {
             .unwrap()
             .contains("/saml/logout/")
     );
+}
+
+#[tokio::test]
+async fn saml_logout_rechecks_reviewed_oidc_return_after_confirmation_and_flow_creation() {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    const OLD: &str = "https://app.example.test/old-finish";
+    const NEW: &str = "https://app.example.test/new-finish";
+    const BACK: &str = "https://app.example.test/back";
+    let f = Fixture::new();
+    let administrator = |name: &str| {
+        f.core
+            .create_user(
+                &f.admin,
+                NewUser {
+                    username: name.into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: name.into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
+        text(
+            &f.core.login(name.into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        )
+    };
+    let reviewer = administrator("reviewer");
+    let executor = administrator("executor");
+    let sp = peer(None);
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let cert = saml_tests::cert(&local, "SAML return fence");
+    provider(&f, "bridge", &sp, &cert, false);
+    f.client_with_settings(
+        "oidc",
+        false,
+        ProviderSettings {
+            post_logout_redirect_uris: vec![OLD.into()],
+            backchannel_logout_uri: Some(BACK.into()),
+            ..Default::default()
+        },
+    );
+    let sessions = ["pending", "decided", "direct"].map(|name| {
+        let token = f.user(name);
+        let rp = f.tokens("oidc", &token, None);
+        login_sp(&f, "bridge", &token);
+        (token, rp)
+    });
+    let request = |tokens: &Value| riauth::logout::LogoutRequest {
+        id_token_hint: Some(text(tokens, "id_token")),
+        client_id: Some("oidc".into()),
+        post_logout_redirect_uri: Some(OLD.into()),
+        state: Some("preserved".into()),
+    };
+    let handle = |pending: &Value| {
+        let id = pending["resume_uri"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned();
+        let binding = pending["set_cookie"]
+            .as_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .split_once('=')
+            .unwrap()
+            .1
+            .to_owned();
+        (id, binding)
+    };
+    // One confirmation waits for approval; another already has a flow whose
+    // cached Finish.redirect still contains OLD. Direct logout shares that path.
+    let pending = f
+        .core
+        .end_session(request(&sessions[0].1), None, None)
+        .unwrap();
+    let decided = f
+        .core
+        .end_session(request(&sessions[1].1), None, None)
+        .unwrap();
+    f.core
+        .logout_request_decide(&sessions[1].0, &text(&decided, "user_code"), true)
+        .unwrap();
+    let (decided_id, decided_binding) = handle(&decided);
+    let decided_flow = text(
+        &f.core
+            .logout_request_resume(&decided_id, Some(&decided_binding))
+            .unwrap(),
+        "redirect_uri",
+    );
+    let direct = f
+        .core
+        .end_session(request(&sessions[2].1), None, Some(&sessions[2].0))
+        .unwrap();
+    let direct_flow = text(&direct, "redirect_uri");
+    for uri in [&decided_flow, &direct_flow] {
+        assert!(uri.starts_with("http://localhost:9000/saml/logout/"));
+        let ticket = uri.rsplit('/').next().unwrap();
+        let flow: Value = f
+            .core
+            .store
+            .get("saml_logout_flows", &digest(ticket))
+            .unwrap()
+            .unwrap();
+        assert_eq!(flow["finish"]["redirect"], format!("{OLD}?state=preserved"));
+        assert_eq!(flow["finish"]["return_binding"]["registered_uri"], OLD);
+    }
+    let client: Client = f.core.store.get("clients", "oidc").unwrap().unwrap();
+    let change = f
+        .core
+        .stage_client_endpoint(
+            &f.admin,
+            "oidc",
+            ClientEndpointInput {
+                redirect_uris: client.redirect_uris,
+                origins: client.settings.origins,
+                post_logout_redirect_uris: vec![NEW.into()],
+                frontchannel_logout_uri: client.settings.frontchannel_logout_uri,
+                backchannel_logout_uri: client.settings.backchannel_logout_uri,
+            },
+        )
+        .unwrap();
+    let change_id = change["proposal"]["id"].as_str().unwrap();
+    let binding = || ClientEndpointBinding {
+        digest: text(&change, "digest"),
+    };
+    f.core
+        .approve_client_endpoint_change(&reviewer, change_id, binding())
+        .unwrap();
+    f.core
+        .execute_client_endpoint_change(&executor, change_id, binding())
+        .unwrap();
+    f.core
+        .logout_request_decide(&sessions[0].0, &text(&pending, "user_code"), true)
+        .unwrap();
+    let (pending_id, pending_binding) = handle(&pending);
+    let pending_flow = text(
+        &f.core
+            .logout_request_resume(&pending_id, Some(&pending_binding))
+            .unwrap(),
+        "redirect_uri",
+    );
+    assert!(pending_flow.starts_with("http://localhost:9000/saml/logout/"));
+    let pending_ticket = pending_flow.rsplit('/').next().unwrap();
+    let pending_record: Value = f
+        .core
+        .store
+        .get("saml_logout_flows", &digest(pending_ticket))
+        .unwrap()
+        .unwrap();
+    assert!(pending_record["finish"]["redirect"].is_null());
+    assert_eq!(
+        f.core
+            .logout_request_resume(&decided_id, Some(&decided_binding))
+            .unwrap()["redirect_uri"],
+        decided_flow
+    );
+    assert!(sessions.iter().all(|(token, _)| f.core.me(token).is_err()));
+    let queued = f
+        .core
+        .store
+        .list::<riauth::logout::Delivery>("logout_deliveries")
+        .unwrap();
+    assert_eq!(queued.len(), 3);
+    assert!(queued.iter().all(|(_, job)| job.uri == BACK));
+    let app = riauth::api::router(f.core.clone());
+    for (confirmation, continuation) in [(&pending, &pending_flow), (&decided, &decided_flow)] {
+        let resumed = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(confirmation["resume_uri"].as_str().unwrap())
+                    .header(
+                        "cookie",
+                        confirmation["set_cookie"]
+                            .as_str()
+                            .unwrap()
+                            .split(';')
+                            .next()
+                            .unwrap(),
+                    )
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resumed.status().is_redirection());
+        assert_eq!(resumed.headers()["location"], continuation.as_str());
+    }
+    for uri in [&pending_flow, &decided_flow, &direct_flow] {
+        let ticket = uri.rsplit('/').next().unwrap();
+        let next = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/saml/logout/{ticket}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(next.status().is_redirection());
+        let (xml, relay, _) = decode(
+            Reply::Redirect(next.headers()["location"].to_str().unwrap().into()),
+            &cert,
+            None,
+        );
+        let answer = response(
+            &xml,
+            "urn:test:bridge",
+            "http://localhost:9000/saml/bridge/sso",
+            "Success",
+        );
+        let callback = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!(
+                        "/saml/bridge/sso?{}",
+                        message(&sp, &answer, &relay, "SAMLResponse", false)
+                    ))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(callback.status().is_redirection());
+        let finished = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/saml/logout/{ticket}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(finished.status(), 200);
+        assert!(!finished.headers().contains_key("location"));
+        let body: Value =
+            serde_json::from_slice(&finished.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["logged_out"], true);
+        assert!(body["redirect_uri"].is_null());
+    }
+    assert_eq!(
+        f.core
+            .store
+            .list::<riauth::logout::Delivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
+/// A verified IdP logout whose index belongs only to a session revoked by a
+/// pinned-certificate change is consumed once. Replaying it leaves the next
+/// login that reuses the index in place. Restoring the previous certificate
+/// leaves that consumed request unverifiable. An unpresented login started
+/// before the change can still complete after the original certificate returns.
+#[test]
+fn saml_source_logout_after_certificate_rollover_is_one_time_and_replay_spares_the_next_login() {
+    let f = Fixture::new();
+    let alice = f.user("logout-rollover");
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let cert = saml_tests::cert(&local, "riAuth SLO rollover");
+    let upstream = peer(None);
+    let replacement = peer(None);
+    let source = Source {
+        id: "upstream".into(),
+        name: "SAML upstream".into(),
+        issuer: "urn:test:upstream".into(),
+        authorization_endpoint: "https://upstream.example.test/sso".into(),
+        token_endpoint: "".into(),
+        client_id: "urn:test:riauth-source".into(),
+        token_endpoint_auth_method: riauth::jose::ClientAuthMethod::None,
+        jwks: Default::default(),
+        scopes: Default::default(),
+        enabled: true,
+        auto_provision: false,
+        groups: Default::default(),
+        trusted_mfa_acr: Default::default(),
+        allow_admin_login: false,
+        oauth_profile: None,
+        saml: Some(riauth::source::saml::Settings {
+            signing_key: "signing".into(),
+            sp_certificate_pem: cert.clone(),
+            idp_certificates_pem: vec![upstream.cert.clone()],
+            name_id_format: NameIdFormat::Persistent,
+            name_attribute: None,
+            email_attribute: None,
+            email_verified_attribute: None,
+            require_encrypted_assertions: false,
+            slo_redirect_url: None,
+            slo_post_url: Some("https://upstream.example.test/slo".into()),
+        }),
+    };
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let session_a = source_login(&f, &source, &upstream, Some(&alice));
+    let user_id = text(&f.core.me(&session_a).unwrap()["user"], "id");
+    assert_eq!(user_id, text(&f.core.me(&alice).unwrap()["user"], "id"));
+    let (parked, parked_request, parked_credential) = saml_source_tests::begin(&f, &source, None);
+    let parked_response = upstream.response(
+        &source,
+        &f.core.saml_source_callback_url(&source.id),
+        &parked_request,
+        None,
+        false,
+    );
+    let mut rotated = source.clone();
+    rotated.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: rotated.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&session_a).is_err());
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+    let parked_row = |f: &Fixture| {
+        f.core
+            .store
+            .get::<Value>("source_logins", &digest(&parked))
+            .unwrap()
+            .unwrap()
+    };
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    let replays = |f: &Fixture| f.core.store.list::<u64>("saml_replays").unwrap().len();
+    let before = replays(&f);
+    let destination = "http://localhost:9000/saml/sources/upstream/slo";
+    let logout_request = |subject: &str, index: &str| {
+        request(
+            subject,
+            index,
+            &source.issuer,
+            destination,
+            &source.issuer,
+            &source.client_id,
+        )
+    };
+    let present = |signer: &Upstream, xml: &str, relay: &str| {
+        f.core.saml_source_logout(
+            "upstream",
+            &message(signer, xml, relay, "SAMLRequest", true),
+            true,
+        )
+    };
+    let hides = |error: &riauth::error::Error, secrets: &[&str]| {
+        let shown = error.to_string();
+        for secret in secrets {
+            assert!(!shown.contains(secret), "{shown}");
+        }
+    };
+    let wrong_name = logout_request("somebody-else", "upstream-session");
+    let wrong = present(&replacement, &wrong_name, "rollover-wrong-name")
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(wrong.code, "access_denied");
+    hides(
+        &wrong,
+        &[
+            replacement.cert.as_str(),
+            upstream.cert.as_str(),
+            "rollover-wrong-name",
+            wrong_name.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before);
+    let wrong_again = present(&replacement, &wrong_name, "rollover-wrong-name")
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(wrong_again.code, "access_denied");
+    assert_eq!(replays(&f), before);
+    let unknown_index = logout_request("opaque-subject", "other-index");
+    let unknown = present(&replacement, &unknown_index, "rollover-unknown-index")
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(unknown.code, "access_denied");
+    hides(
+        &unknown,
+        &[
+            replacement.cert.as_str(),
+            "rollover-unknown-index",
+            unknown_index.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before);
+    assert_eq!(
+        present(&replacement, &unknown_index, "rollover-unknown-index")
+            .err()
+            .expect("expected SAML source logout to fail")
+            .code,
+        "access_denied"
+    );
+    assert_eq!(replays(&f), before);
+    let removed = logout_request("opaque-subject", "upstream-session");
+    let removed_error = present(&upstream, &removed, "rollover-old-cert")
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(removed_error.code, "access_denied");
+    hides(
+        &removed_error,
+        &[
+            upstream.cert.as_str(),
+            "rollover-old-cert",
+            removed.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before);
+    let logout_xml = logout_request("opaque-subject", "upstream-session");
+    let raw = message(
+        &replacement,
+        &logout_xml,
+        "rollover-state",
+        "SAMLRequest",
+        true,
+    );
+    let (xml, relay, post) = decode(
+        f.core.saml_source_logout("upstream", &raw, true).unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-state");
+    assert!(xml.contains("status:Success"));
+    assert!(!xml.contains("PartialLogout"));
+    assert_eq!(replays(&f), before + 1);
+    assert!(f.core.me(&session_a).is_err());
+    let replayed = f
+        .core
+        .saml_source_logout("upstream", &raw, true)
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(replayed.code, "conflict");
+    assert_eq!(replayed.message, "SAML logout request replay");
+    hides(
+        &replayed,
+        &[
+            replacement.cert.as_str(),
+            "rollover-state",
+            logout_xml.as_str(),
+        ],
+    );
+    assert_eq!(replays(&f), before + 1);
+    let session_b = source_login(&f, &rotated, &replacement, None);
+    assert_eq!(text(&f.core.me(&session_b).unwrap()["user"], "id"), user_id);
+    let spared = f
+        .core
+        .saml_source_logout("upstream", &raw, true)
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(spared.code, "conflict");
+    assert_eq!(spared.message, "SAML logout request replay");
+    assert!(f.core.me(&session_b).is_ok());
+    assert_eq!(replays(&f), before + 1);
+    let second = logout_request("opaque-subject", "upstream-session");
+    let second_raw = message(
+        &replacement,
+        &second,
+        "rollover-second",
+        "SAMLRequest",
+        true,
+    );
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout("upstream", &second_raw, true)
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-second");
+    assert!(xml.contains("status:Success"));
+    assert!(f.core.me(&session_b).is_err());
+    assert_eq!(replays(&f), before + 2);
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let row = parked_row(&f);
+    assert_eq!(row["claimed"], false);
+    assert_eq!(row["failed"], false);
+    assert_eq!(
+        f.core
+            .saml_source_callback(
+                &source.id,
+                vec![
+                    ("RelayState".into(), parked.clone()),
+                    ("SAMLResponse".into(), STANDARD.encode(&parked_response)),
+                ],
+            )
+            .unwrap()["completed"],
+        true
+    );
+    let parked_session = text(
+        &f.core
+            .source_finish(Finish {
+                credential: parked_credential,
+                approve: true,
+                otp: None,
+            })
+            .unwrap(),
+        "session_token",
+    );
+    assert_eq!(
+        text(&f.core.me(&parked_session).unwrap()["user"], "id"),
+        user_id
+    );
+    let links = f
+        .core
+        .store
+        .list::<Value>("source_links")
+        .unwrap()
+        .into_iter()
+        .map(|(_, link)| link)
+        .collect::<Vec<_>>();
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["source"], "upstream");
+    assert_eq!(links[0]["issuer"], source.issuer);
+    assert_eq!(links[0]["subject"], "opaque-subject");
+    assert_eq!(links[0]["user_id"], user_id);
+    let restored = f
+        .core
+        .saml_source_logout("upstream", &raw, true)
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(restored.code, "access_denied");
+    hides(
+        &restored,
+        &[
+            replacement.cert.as_str(),
+            "rollover-state",
+            logout_xml.as_str(),
+        ],
+    );
+    assert!(f.core.me(&parked_session).is_ok());
+    assert_eq!(replays(&f), before + 2);
+    let fresh = logout_request("opaque-subject", "upstream-session");
+    let fresh_raw = message(&upstream, &fresh, "rollover-restored", "SAMLRequest", true);
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout("upstream", &fresh_raw, true)
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "rollover-restored");
+    assert!(xml.contains("status:Success"));
+    assert!(f.core.me(&parked_session).is_err());
+    assert_eq!(replays(&f), before + 3);
+    let still = f
+        .core
+        .saml_source_logout("upstream", &raw, true)
+        .err()
+        .expect("expected SAML source logout to fail");
+    assert_eq!(still.code, "access_denied");
+    hides(&still, &[replacement.cert.as_str(), "rollover-state"]);
+    assert_eq!(replays(&f), before + 3);
+}
+
+/// A current signer cannot spend an old LogoutRequest on a session revoked for
+/// another reason after source trust changes. The request stays unrecorded and
+/// still revokes a later login that reuses the index. An unexpired session with
+/// a stale fingerprint stays unmatched.
+#[test]
+fn saml_source_logout_unrelated_revocation_does_not_consume_old_request_after_trust_replacement() {
+    let f = Fixture::new();
+    let alice = f.user("logout-other-revoke");
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let cert = saml_tests::cert(&local, "riAuth SLO other revoke");
+    let upstream = peer(None);
+    let added = peer(None);
+    let source = Source {
+        id: "upstream".into(),
+        name: "SAML upstream".into(),
+        issuer: "urn:test:upstream".into(),
+        authorization_endpoint: "https://upstream.example.test/sso".into(),
+        token_endpoint: "".into(),
+        client_id: "urn:test:riauth-source".into(),
+        token_endpoint_auth_method: riauth::jose::ClientAuthMethod::None,
+        jwks: Default::default(),
+        scopes: Default::default(),
+        enabled: true,
+        auto_provision: false,
+        groups: Default::default(),
+        trusted_mfa_acr: Default::default(),
+        allow_admin_login: false,
+        oauth_profile: None,
+        saml: Some(riauth::source::saml::Settings {
+            signing_key: "signing".into(),
+            sp_certificate_pem: cert.clone(),
+            idp_certificates_pem: vec![upstream.cert.clone()],
+            name_id_format: NameIdFormat::Persistent,
+            name_attribute: None,
+            email_attribute: None,
+            email_verified_attribute: None,
+            require_encrypted_assertions: false,
+            slo_redirect_url: None,
+            slo_post_url: Some("https://upstream.example.test/slo".into()),
+        }),
+    };
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let session_a = source_login(&f, &source, &upstream, Some(&alice));
+    let user_id = text(&f.core.me(&session_a).unwrap()["user"], "id");
+    let sid = text(&f.core.me(&session_a).unwrap(), "session_id");
+    let destination = "http://localhost:9000/saml/sources/upstream/slo";
+    let logout_request = |subject: &str, index: &str| {
+        request(
+            subject,
+            index,
+            &source.issuer,
+            destination,
+            &source.issuer,
+            &source.client_id,
+        )
+    };
+    let same_xml = logout_request("opaque-subject", "upstream-session");
+    let old_xml = logout_request("opaque-subject", "upstream-session");
+    let old_raw = message(&upstream, &old_xml, "held-old-request", "SAMLRequest", true);
+    let replays = |f: &Fixture| f.core.store.list::<u64>("saml_replays").unwrap().len();
+    let before = replays(&f);
+    let stored = |f: &Fixture| {
+        f.core
+            .store
+            .get::<Session>("sessions", &sid)
+            .unwrap()
+            .unwrap()
+    };
+    let failure = |result: riauth::error::Result<Reply>| {
+        result.err().expect("expected SAML source logout to fail")
+    };
+    let hides = |error: &riauth::error::Error, secrets: &[&str]| {
+        let shown = error.to_string();
+        for secret in secrets {
+            assert!(!shown.contains(secret), "{shown}");
+        }
+    };
+    f.core.logout(&session_a).unwrap();
+    assert!(f.core.me(&session_a).is_err());
+    assert!(f.core.me(&alice).is_ok());
+    let revoked = stored(&f);
+    assert!(revoked.revoked);
+    let linked = revoked.identity.source.as_ref().unwrap();
+    assert!(!linked.pin_retired);
+    assert_eq!(linked.fingerprint, source.fingerprint().unwrap());
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout(
+                "upstream",
+                &message(
+                    &upstream,
+                    &same_xml,
+                    "same-fingerprint",
+                    "SAMLRequest",
+                    true,
+                ),
+                true,
+            )
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "same-fingerprint");
+    assert!(xml.contains("status:Success"));
+    assert_eq!(replays(&f), before + 1);
+    let mut trusted = source.clone();
+    trusted.saml.as_mut().unwrap().idp_certificates_pem =
+        vec![upstream.cert.clone(), added.cert.clone()];
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: trusted.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let after_trust = stored(&f);
+    assert!(after_trust.revoked);
+    let linked = after_trust.identity.source.as_ref().unwrap();
+    assert!(!linked.pin_retired);
+    assert_ne!(linked.fingerprint, trusted.fingerprint().unwrap());
+    f.core
+        .store
+        .write(|tx| {
+            let mut session = tx.get::<Session>("sessions", &sid)?.unwrap();
+            session.revoked = false;
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    let active = failure(f.core.saml_source_logout("upstream", &old_raw, true));
+    assert_eq!(active.code, "access_denied");
+    hides(
+        &active,
+        &[
+            upstream.cert.as_str(),
+            added.cert.as_str(),
+            "held-old-request",
+            old_xml.as_str(),
+        ],
+    );
+    assert!(!stored(&f).revoked);
+    assert_eq!(replays(&f), before + 1);
+    f.core
+        .store
+        .write(|tx| {
+            let mut session = tx.get::<Session>("sessions", &sid)?.unwrap();
+            session.revoked = true;
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    let held = failure(f.core.saml_source_logout("upstream", &old_raw, true));
+    assert_eq!(held.code, "access_denied");
+    hides(&held, &["held-old-request", old_xml.as_str()]);
+    assert!(stored(&f).revoked);
+    assert!(!stored(&f).identity.source.as_ref().unwrap().pin_retired);
+    assert_eq!(replays(&f), before + 1);
+    let session_b = source_login(&f, &trusted, &upstream, None);
+    assert_eq!(text(&f.core.me(&session_b).unwrap()["user"], "id"), user_id);
+    assert_ne!(text(&f.core.me(&session_b).unwrap(), "session_id"), sid);
+    let (xml, relay, post) = decode(
+        f.core
+            .saml_source_logout("upstream", &old_raw, true)
+            .unwrap(),
+        &cert,
+        None,
+    );
+    assert!(post);
+    assert_eq!(relay, "held-old-request");
+    assert!(xml.contains("status:Success"));
+    assert!(f.core.me(&session_b).is_err());
+    assert!(stored(&f).revoked);
+    assert_eq!(replays(&f), before + 2);
+    let replayed = failure(f.core.saml_source_logout("upstream", &old_raw, true));
+    assert_eq!(replayed.code, "conflict");
+    assert_eq!(replayed.message, "SAML logout request replay");
+    hides(&replayed, &["held-old-request", old_xml.as_str()]);
+    assert_eq!(replays(&f), before + 2);
+    assert!(f.core.me(&alice).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
 }

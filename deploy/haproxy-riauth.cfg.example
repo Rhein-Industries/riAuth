@@ -1,0 +1,28 @@
+# Replace the certificate, hostname and node IPs before use. Restrict port 9000
+# on each node to the load balancer addresses at the host firewall.
+global
+    log stdout format raw local0
+
+defaults
+    mode http
+    log global
+    option httplog
+    timeout http-request 10s
+    timeout connect 5s
+    # Allow authenticated backup streams; tune to the chosen backup quota.
+    timeout client 1h
+    timeout server 1h
+    timeout tunnel 1h
+
+frontend riauth_https
+    bind :443 ssl crt /etc/haproxy/certs/id.example.com.pem
+    http-request set-header X-Forwarded-For %[src]
+    http-request set-header X-Forwarded-Proto https
+    default_backend riauth_nodes
+
+backend riauth_nodes
+    option httpchk
+    http-check send meth GET uri /readyz ver HTTP/1.1 hdr Host id.example.com
+    http-check expect status 200
+    server node-a 10.0.0.11:9000 check inter 10s fall 2 rise 2
+    server node-b 10.0.0.12:9000 check inter 10s fall 2 rise 2

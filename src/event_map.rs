@@ -5,10 +5,8 @@
 //! are never consulted, and this view does not write audit records.
 
 use crate::{
-    core::Core,
     error::{Error, Result},
     model::{Audit, User},
-    store::Tx,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -19,6 +17,13 @@ pub const MAX_SCAN: usize = 10_000;
 pub const MAX_POINTS: usize = 500;
 const PAGE: usize = 256;
 
+/// Read-only audit and actor records for one map query transaction.
+pub trait EventMapTx {
+    fn audit_page_reverse(&self, after: Option<&str>, limit: usize)
+    -> Result<Vec<(String, Audit)>>;
+    fn user(&self, user_id: &str) -> Result<Option<User>>;
+}
+
 #[derive(Debug, Clone)]
 pub struct MapQuery {
     pub since: Option<u64>,
@@ -27,7 +32,7 @@ pub struct MapQuery {
 }
 
 impl MapQuery {
-    fn normalize(self) -> Result<Self> {
+    pub(crate) fn normalize(self) -> Result<Self> {
         let MapQuery {
             since,
             until,
@@ -76,31 +81,7 @@ struct Cell {
     conflict: bool,
 }
 
-impl Core {
-    pub fn audit_map(&self, token: &str, query: MapQuery) -> Result<Value> {
-        self.store.read(|tx| {
-            self.management(tx, token, "audit.read", "audit/events")?;
-            aggregate(tx, &query.normalize()?)
-        })
-    }
-
-    /// Browser administrators already hold every human management permission.
-    /// Agents have no portal cookie; they use [`Self::audit_map`].
-    pub fn audit_map_browser(&self, cookie: Option<&str>, query: MapQuery) -> Result<Value> {
-        self.store.read(|tx| {
-            let session = self
-                .browser_session(tx, cookie)?
-                .ok_or_else(Error::unauthorized)?;
-            let user = self.identity_user(tx, &session.identity)?;
-            if !user.admin {
-                return Err(Error::forbidden());
-            }
-            aggregate(tx, &query.normalize()?)
-        })
-    }
-}
-
-fn aggregate(tx: &Tx<'_>, query: &MapQuery) -> Result<Value> {
+pub(crate) fn aggregate(tx: &impl EventMapTx, query: &MapQuery) -> Result<Value> {
     let mut cursor = None;
     let mut scanned = 0usize;
     let mut matched = 0u64;
@@ -110,7 +91,7 @@ fn aggregate(tx: &Tx<'_>, query: &MapQuery) -> Result<Value> {
     let mut users = HashMap::<String, Option<Location>>::new();
     while scanned < MAX_SCAN && !window_done {
         let room = MAX_SCAN - scanned;
-        let batch = tx.scan_reverse::<Audit>("audit", cursor.as_deref(), PAGE.min(room))?;
+        let batch = tx.audit_page_reverse(cursor.as_deref(), PAGE.min(room))?;
         if batch.is_empty() {
             window_done = true;
             break;
@@ -143,10 +124,7 @@ fn aggregate(tx: &Tx<'_>, query: &MapQuery) -> Result<Value> {
     let truncated = if window_done {
         false
     } else {
-        match tx
-            .scan_reverse::<Audit>("audit", cursor.as_deref(), 1)?
-            .first()
-        {
+        match tx.audit_page_reverse(cursor.as_deref(), 1)?.first() {
             None => false,
             Some((_, event)) => query.since.is_none_or(|since| event.at >= since),
         }
@@ -185,7 +163,7 @@ fn aggregate(tx: &Tx<'_>, query: &MapQuery) -> Result<Value> {
 }
 
 fn location_for(
-    tx: &Tx<'_>,
+    tx: &impl EventMapTx,
     event: &Audit,
     cache: &mut HashMap<String, Option<Location>>,
 ) -> Result<Option<Location>> {
@@ -197,7 +175,7 @@ fn location_for(
         return Ok(cached.clone());
     }
     let location = tx
-        .get::<User>("users", &event.actor)?
+        .user(&event.actor)?
         .and_then(|user| user.attributes.get("location").and_then(parse_location));
     cache.insert(event.actor.clone(), location.clone());
     Ok(location)

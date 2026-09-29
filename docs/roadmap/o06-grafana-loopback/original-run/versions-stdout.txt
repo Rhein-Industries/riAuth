@@ -1,0 +1,9 @@
+http 200 dict
+keys ['continueToken', 'versions']
+{'version': 2, 'created': '2026-09-29T18:48:52Z', 'message': 'lab datasource selection for the disposable render'}
+ message: lab datasource selection for the disposable render
+{'version': 1, 'created': '2026-09-29T18:48:26Z', 'message': 'Initial save'}
+ message: Initial save
+phrase_in_product True
+product_bytes 15481
+72895680

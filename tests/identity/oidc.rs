@@ -193,6 +193,144 @@ fn refresh_scopes_can_only_shrink_and_expiry_is_absolute() {
 }
 
 #[test]
+fn offline_access_requires_refresh_grant_for_issuance_and_discovery() {
+    let f = Fixture::new();
+    f.client("limited", false);
+    // The code predates the policy change, so redemption must enforce the live grant set.
+    let pending = f.exchange_request("limited", &f.admin, None);
+    f.core
+        .update_client(
+            &f.admin,
+            "limited",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let metadata = f.core.provider_discovery("limited").unwrap();
+    assert_eq!(
+        metadata["grant_types_supported"],
+        json!(["authorization_code"])
+    );
+    assert_eq!(metadata["response_types_supported"], json!(["code"]));
+    assert!(
+        !metadata["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
+    assert!(metadata.get("device_authorization_endpoint").is_none());
+    assert_eq!(
+        f.core
+            .authorization_details(f.request("limited", &crypto::random_token("")))
+            .unwrap_err()
+            .code,
+        "invalid_scope"
+    );
+
+    let before = f.snapshot().unwrap();
+    assert_eq!(f.core.token(pending).unwrap_err().code, "invalid_grant");
+    f.assert_snapshot(&before);
+
+    let verifier = crypto::random_token("");
+    let mut request = f.request("limited", &verifier);
+    request.scope = "openid".into();
+    let redirect = f.core.authorize(&f.admin, request).unwrap();
+    let code = url::Url::parse(&redirect)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let issued = f
+        .core
+        .token(TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("limited".into()),
+            code: Some(code),
+            redirect_uri: Some("http://localhost:7777/callback?existing=1".into()),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(issued.get("refresh_token").is_none());
+    let access: Grant = f
+        .core
+        .store
+        .get("access", &digest(&text(&issued, "access_token")))
+        .unwrap()
+        .unwrap();
+    let family: Family = f
+        .core
+        .store
+        .get("families", &access.family_id)
+        .unwrap()
+        .unwrap();
+    assert!(family.expires_at <= now() + f.core.config.access_token_ttl);
+}
+
+#[test]
+fn offline_access_requires_refresh_grant_for_pending_device_code() {
+    let f = Fixture::new();
+    f.client("limited", false);
+    let started = f
+        .core
+        .device_start(TokenRequest {
+            client_id: Some("limited".into()),
+            scope: Some("openid offline_access".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    f.core
+        .device_decide(&f.admin, &text(&started, "user_code"), true)
+        .unwrap();
+    f.core
+        .update_client(
+            &f.admin,
+            "limited",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code", DEVICE_GRANT]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .token(TokenRequest {
+                grant_type: DEVICE_GRANT.into(),
+                client_id: Some("limited".into()),
+                device_code: Some(text(&started, "device_code")),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_grant"
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core
+            .device_start(TokenRequest {
+                client_id: Some("limited".into()),
+                scope: Some("openid offline_access".into()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .code,
+        "invalid_scope"
+    );
+}
+
+#[test]
 fn device_pending_slowdown_approval_and_single_use() {
     let f = Fixture::new();
     f.client("app", false);
@@ -574,13 +712,19 @@ fn empty_optional_parameters_and_native_callback_ports() {
             native: true,
             ..Default::default()
         }),
-        redirect_uris: Some(vec![
-            "http://127.0.0.1:12345/callback".into(),
-            "com.example.app:/callback".into(),
-        ]),
         ..Default::default()
     };
     f.core.update_client(&f.admin, "app", patch).unwrap();
+    crate::common::client_endpoint::set(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(vec![
+            "http://127.0.0.1:12345/callback".into(),
+            "com.example.app:/callback".into(),
+        ]),
+        None,
+    );
     let verifier = crypto::random_token("");
     let mut request = f.request("app", &verifier);
     request.redirect_uri = "http://127.0.0.1:54321/callback".into();
@@ -808,6 +952,134 @@ fn browser_reauthentication_cannot_be_moved_to_an_identical_request() {
             },
         )
         .unwrap();
+}
+
+#[test]
+fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
+    use riauth::browser::BrowserDecision;
+
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("alice");
+    let bob = f.user("bob");
+    let (sid, sso) = browser_sign_in(&f, "alice");
+    let started = f
+        .core
+        .browser_start(f.request("app", &crypto::random_token("")), None)
+        .unwrap();
+    let id = text(&started.body, "resume_uri")
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let binding = started
+        .cookies
+        .iter()
+        .find_map(|cookie| cookie.split(';').next()?.strip_prefix("riauth_return="))
+        .unwrap()
+        .to_owned();
+    let state = f
+        .core
+        .authorize_state(&id, Some(&binding), Some(&sso))
+        .unwrap();
+    assert_eq!(state["status"], "consent");
+    assert_eq!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(riauth::signin::session_ref("another-request", &sid)),
+            )
+            .unwrap_err()
+            .code,
+        "account_changed"
+    );
+    assert!(
+        f.core
+            .consents(&alice)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(text(&state, "session_ref")),
+            )
+            .unwrap()["status"],
+        "complete"
+    );
+    assert_eq!(
+        f.core.consents(&alice).unwrap().as_array().unwrap().len(),
+        1
+    );
+    assert!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(text(&state, "session_ref")),
+            )
+            .is_err()
+    );
+    assert!(
+        f.core
+            .browser_resume_with(&id, Some(&binding), Some(&sso))
+            .unwrap()
+            .location
+            .is_some()
+    );
+    assert!(
+        f.core
+            .browser_resume_with(&id, Some(&binding), Some(&sso))
+            .is_err()
+    );
+
+    let terminal = f
+        .core
+        .browser_start(f.request("app", &crypto::random_token("")), None)
+        .unwrap();
+    let code = text(&terminal.body, "user_code");
+    let decision = || BrowserDecision {
+        code: code.clone(),
+        approve: true,
+        transaction_id: None,
+        remember: true,
+    };
+    assert_eq!(
+        f.core.browser_decide(&bob, decision()).unwrap()["remembered"],
+        true
+    );
+    assert!(f.core.browser_decide(&bob, decision()).is_err());
+    assert_eq!(f.core.consents(&bob).unwrap().as_array().unwrap().len(), 1);
+
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    for token in [&alice, &bob] {
+        let user_id = text(&f.core.me(token).unwrap()["user"], "id");
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["actor"] == user_id.as_str()
+                    && event["action"] == "authorization.approved"
+                    && event["target"] == "app")
+                .count(),
+            1
+        );
+    }
 }
 
 #[test]
@@ -1395,6 +1667,378 @@ fn token_exchange_enforces_target_dpop_binding_for_impersonation_and_delegation(
 }
 
 #[test]
+fn metadata_server_discovery_tracks_enabled_client_scopes_and_claims() {
+    use riauth::claims::{ClaimMapping, ClaimSource};
+
+    let f = Fixture::new();
+    f.client("other", false);
+    let capabilities = riauth::capability::runtime(&f.core).unwrap();
+    let baseline = f.core.discovery().unwrap();
+    for (feature, field) in [
+        ("oidc.code.pkce_s256", "code_challenge_methods_supported"),
+        ("oidc.device", "device_authorization_endpoint"),
+        ("oidc.par", "pushed_authorization_request_endpoint"),
+        ("oidc.dynamic_registration", "registration_endpoint"),
+    ] {
+        assert_eq!(
+            baseline.get(field).is_some(),
+            capabilities["feature_states"][feature]["usable"] == true,
+            "{field} disagrees with {feature}"
+        );
+    }
+    assert!(
+        !baseline["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "custom".into(),
+                name: "Custom claims".into(),
+                confidential: false,
+                redirect_uris: vec!["http://localhost:7777/callback?existing=1".into()],
+                scopes: strings(&["openid", "api.read", "offline_access"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    claim_mappings: vec![
+                        ClaimMapping {
+                            scope: "api.read".into(),
+                            claim: "tenant".into(),
+                            source: ClaimSource::Username,
+                        },
+                        ClaimMapping {
+                            scope: "offline_access".into(),
+                            claim: "unusable_offline_claim".into(),
+                            source: ClaimSource::Username,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let server = f.core.discovery().unwrap();
+    assert!(
+        server["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        server["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+    assert!(
+        !server["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("unusable_offline_claim"))
+    );
+    let custom = f.core.provider_discovery("custom").unwrap();
+    assert!(
+        custom["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        custom["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+    assert!(
+        !custom["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
+    assert!(
+        !custom["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("unusable_offline_claim"))
+    );
+    let other = f.core.provider_discovery("other").unwrap();
+    assert!(
+        !other["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        !other["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+
+    crate::common::client_status::set(&f.core, &f.admin, "custom", false);
+    let disabled = f.core.discovery().unwrap();
+    assert!(
+        !disabled["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        !disabled["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+}
+
+#[test]
+fn metadata_registration_response_types_match_grants() {
+    use riauth::registration::{RegistrationRequest, RegistrationTemplate};
+
+    let f = Fixture::new();
+    let result = f
+        .core
+        .registration_template(
+            &f.admin,
+            RegistrationTemplate {
+                id: "device-only".into(),
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid"]),
+                grant_types: strings(&[DEVICE_GRANT]),
+                auth_methods: strings(&["none"]),
+                settings: ProviderSettings::default(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                ttl: 300,
+                max_uses: 1,
+            },
+        )
+        .unwrap();
+    let credential = text(&result, "initial_access_token");
+    let mut request = RegistrationRequest {
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        scope: Some("openid".into()),
+        grant_types: Some(strings(&[DEVICE_GRANT])),
+        token_endpoint_auth_method: Some("none".into()),
+        ..Default::default()
+    };
+    request.response_types = Some(strings(&["code"]));
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, request.clone())
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
+
+    request.response_types = None;
+    let registered = f.core.dynamic_register(&credential, request).unwrap();
+    assert_eq!(registered["grant_types"], json!([DEVICE_GRANT]));
+    assert_eq!(registered["response_types"], json!([]));
+    let client_id = text(&registered, "client_id");
+    let metadata = f.core.provider_discovery(&client_id).unwrap();
+    assert_eq!(metadata["grant_types_supported"], json!([DEVICE_GRANT]));
+    assert_eq!(metadata["response_types_supported"], json!([]));
+    assert_eq!(metadata["response_modes_supported"], json!([]));
+    for field in [
+        "authorization_endpoint",
+        "code_challenge_methods_supported",
+        "pushed_authorization_request_endpoint",
+        "request_object_signing_alg_values_supported",
+        "authorization_signing_alg_values_supported",
+        "authorization_encryption_alg_values_supported",
+        "authorization_encryption_enc_values_supported",
+        "token_endpoint_auth_signing_alg_values_supported",
+        "introspection_endpoint",
+        "introspection_endpoint_auth_methods_supported",
+    ] {
+        assert!(metadata.get(field).is_none(), "{field} is unusable");
+    }
+    assert_eq!(metadata["request_parameter_supported"], false);
+    assert_eq!(metadata["request_uri_parameter_supported"], false);
+    assert_eq!(metadata["require_pushed_authorization_requests"], false);
+    assert_eq!(metadata["claims_parameter_supported"], false);
+    assert_eq!(
+        metadata["authorization_response_iss_parameter_supported"],
+        false
+    );
+    assert_eq!(
+        metadata["token_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
+    assert_eq!(
+        metadata["revocation_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
+    assert!(metadata.get("device_authorization_endpoint").is_some());
+    assert_eq!(
+        f.core
+            .authorization_details(f.request(&client_id, &crypto::random_token("")))
+            .unwrap_err()
+            .code,
+        "unauthorized_client"
+    );
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .push_authorization(
+                &axum::http::HeaderMap::new(),
+                vec![
+                    ("client_id".into(), client_id.clone()),
+                    ("response_type".into(), "code".into()),
+                    (
+                        "redirect_uri".into(),
+                        "https://app.example.test/callback".into()
+                    ),
+                    ("scope".into(), "openid".into()),
+                    ("code_challenge".into(), digest(&crypto::random_token(""))),
+                    ("code_challenge_method".into(), "S256".into()),
+                ],
+            )
+            .unwrap_err()
+            .code,
+        "unauthorized_client"
+    );
+    f.assert_snapshot(&before);
+    assert!(
+        f.core
+            .device_start(TokenRequest {
+                client_id: Some(client_id),
+                scope: Some("openid".into()),
+                ..Default::default()
+            })
+            .is_ok()
+    );
+}
+
+#[test]
+fn metadata_authorization_code_clients_advertise_usable_requests_and_authentication() {
+    use riauth::jose::ClientAuthMethod;
+
+    let f = Fixture::new();
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "code".into(),
+                name: "Code client".into(),
+                confidential: true,
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    token_endpoint_auth_method: Some(ClientAuthMethod::ClientSecretBasic),
+                    jwks: Some(fixture_jwks(&f)),
+                    require_pushed_authorization_requests: true,
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let server = f.core.discovery().unwrap();
+    let metadata = f.core.provider_discovery("code").unwrap();
+    assert_eq!(
+        metadata["grant_types_supported"],
+        json!(["authorization_code"])
+    );
+    assert_eq!(metadata["response_types_supported"], json!(["code"]));
+    assert_eq!(
+        metadata["response_modes_supported"],
+        server["response_modes_supported"]
+    );
+    assert!(
+        !metadata["response_modes_supported"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    for field in [
+        "authorization_endpoint",
+        "code_challenge_methods_supported",
+        "pushed_authorization_request_endpoint",
+    ] {
+        assert_eq!(
+            metadata[field], server[field],
+            "{field} must remain available"
+        );
+    }
+    assert_eq!(metadata["request_parameter_supported"], true);
+    assert_eq!(metadata["request_uri_parameter_supported"], true);
+    assert_eq!(metadata["require_pushed_authorization_requests"], true);
+    assert_eq!(
+        metadata["request_object_signing_alg_values_supported"],
+        json!(["RS256"])
+    );
+    assert_eq!(
+        metadata["token_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert_eq!(
+        metadata["revocation_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert_eq!(
+        metadata["introspection_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert!(
+        metadata
+            .get("token_endpoint_auth_signing_alg_values_supported")
+            .is_none()
+    );
+    assert!(metadata.get("device_authorization_endpoint").is_none());
+    assert!(
+        !metadata["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
+
+    f.client("plain-code", false);
+    f.core
+        .update_client(
+            &f.admin,
+            "plain-code",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    allowed_grants: strings(&["authorization_code"]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let plain = f.core.provider_discovery("plain-code").unwrap();
+    assert!(plain.get("authorization_endpoint").is_some());
+    assert!(plain.get("pushed_authorization_request_endpoint").is_some());
+    assert_eq!(plain["request_uri_parameter_supported"], true);
+    assert_eq!(plain["request_parameter_supported"], false);
+    assert!(
+        plain
+            .get("request_object_signing_alg_values_supported")
+            .is_none()
+    );
+    assert_eq!(
+        plain["token_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
+}
+
+#[test]
 fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     use riauth::registration::{RegistrationRequest, RegistrationTemplate};
     let f = Fixture::new();
@@ -1417,6 +2061,27 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
         )
         .unwrap();
     let credential = text(&result, "initial_access_token");
+    assert_eq!(
+        f.core
+            .create_client(
+                &credential,
+                NewClient {
+                    client_id: "unbounded".into(),
+                    name: "Unbounded".into(),
+                    confidential: false,
+                    redirect_uris: vec![],
+                    scopes: strings(&["openid"]),
+                    allowed_groups: Default::default(),
+                    require_mfa: false,
+                    service: false,
+                    settings: Default::default(),
+                },
+            )
+            .unwrap_err()
+            .status
+            .as_u16(),
+        401
+    );
     let mut request = RegistrationRequest {
         redirect_uris: vec!["https://evil.example.test/callback".into()],
         token_endpoint_auth_method: Some("private_key_jwt".into()),
@@ -1440,12 +2105,39 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
             .code,
         "invalid_client_metadata"
     );
+    let before = f.snapshot().unwrap();
+    let mut missing_key = request.clone();
+    missing_key.jwks = None;
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, missing_key)
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
     let out = f
         .core
         .dynamic_register(&credential, request.clone())
         .unwrap();
     assert!(out.get("client_secret").is_none());
     assert_eq!(out["token_endpoint_auth_method"], "private_key_jwt");
+    let metadata = f.core.provider_discovery(&text(&out, "client_id")).unwrap();
+    for field in [
+        "token_endpoint_auth_methods_supported",
+        "revocation_endpoint_auth_methods_supported",
+        "introspection_endpoint_auth_methods_supported",
+    ] {
+        assert_eq!(metadata[field], json!(["private_key_jwt"]), "{field}");
+    }
+    assert_eq!(
+        metadata["token_endpoint_auth_signing_alg_values_supported"],
+        json!(["RS256"])
+    );
     let c: Client = f
         .core
         .store
@@ -1453,6 +2145,19 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
         .unwrap()
         .unwrap();
     assert!(c.confidential());
+    let registrations: Vec<_> = f
+        .core
+        .audit_events(&f.admin, 100)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "client.register")
+        .cloned()
+        .collect();
+    assert_eq!(registrations.len(), 1);
+    assert_eq!(registrations[0]["actor"], "registration:test");
+    assert_eq!(registrations[0]["target"], out["client_id"]);
     assert!(
         f.core
             .dynamic_register(&credential, request.clone())
@@ -1475,6 +2180,195 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     );
     let plans = f.core.registration_templates(&f.admin).unwrap();
     assert!(!plans.to_string().contains(&credential));
+}
+
+#[test]
+fn offline_access_requires_refresh_grant_at_registration() {
+    use riauth::registration::{RegistrationRequest, RegistrationTemplate};
+    let f = Fixture::new();
+    let result = f
+        .core
+        .registration_template(
+            &f.admin,
+            RegistrationTemplate {
+                id: "limited".into(),
+                redirect_uris: vec!["https://app.example.test/callback".into()],
+                scopes: strings(&["openid", "offline_access"]),
+                grant_types: strings(&["authorization_code"]),
+                auth_methods: strings(&["none"]),
+                settings: ProviderSettings::default(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                ttl: 300,
+                max_uses: 1,
+            },
+        )
+        .unwrap();
+    let credential = text(&result, "initial_access_token");
+    let mut request = RegistrationRequest {
+        redirect_uris: vec!["https://app.example.test/callback".into()],
+        token_endpoint_auth_method: Some("none".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        f.core
+            .dynamic_register(&credential, request.clone())
+            .unwrap_err()
+            .code,
+        "invalid_client_metadata"
+    );
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
+    request.scope = Some("openid".into());
+    let registered = f.core.dynamic_register(&credential, request).unwrap();
+    assert_eq!(registered["scope"], "openid");
+}
+
+#[test]
+fn service_type_is_consistent_across_direct_and_manifest_writes() {
+    use riauth::state::{ApplyRequest, Manifest};
+
+    let f = Fixture::new();
+    let direct = f
+        .core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "direct-service".into(),
+                name: "Direct service".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["api.read"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: true,
+                settings: Default::default(),
+            },
+        )
+        .unwrap();
+    assert_eq!(direct["client"]["confidential"], true);
+    assert!(direct["client_secret"].is_string());
+
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": "manifest-service",
+            "name": "Manifest service",
+            "service": true,
+            "scopes": ["api.read"],
+            "secret_ref": "env:SERVICE_SECRET",
+            "secret_version": "v1"
+        }]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&f.admin, manifest.clone()).unwrap();
+    assert_eq!(plan.changes.len(), 1);
+    f.core
+        .apply_state(
+            &f.admin,
+            ApplyRequest {
+                plan,
+                secrets: [("env:SERVICE_SECRET".into(), "s".repeat(40))].into(),
+                run_id: None,
+            },
+        )
+        .unwrap();
+    let stored: Client = f
+        .core
+        .store
+        .get("clients", "manifest-service")
+        .unwrap()
+        .unwrap();
+    assert!(stored.service && stored.confidential());
+    assert!(
+        f.core
+            .plan_state(&f.admin, manifest)
+            .unwrap()
+            .changes
+            .is_empty()
+    );
+}
+
+#[test]
+fn manifest_rotation_permission_precedes_secret_resolution() {
+    use riauth::{
+        agent::Agent,
+        state::{ApplyRequest, Manifest},
+    };
+
+    let f = Fixture::new();
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "rotation-target".into(),
+                name: "Rotation target".into(),
+                confidential: true,
+                redirect_uris: vec![],
+                scopes: strings(&["openid"]),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: Default::default(),
+            },
+        )
+        .unwrap();
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            riauth::agent::NewAgent {
+                id: "rotation-manager".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: ["client.write", "client.rotate"]
+                    .into_iter()
+                    .map(|action| riauth::agent::Permission {
+                        action: action.into(),
+                        resource: "client/rotation-target".into(),
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap();
+    let token = text(&created["credential"], "token");
+    let manifest: Manifest = serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": "rotation-target",
+            "name": "Rotation target",
+            "confidential": true,
+            "scopes": ["openid"],
+            "secret_ref": "env:MISSING",
+            "secret_version": "v2"
+        }]
+    }))
+    .unwrap();
+    let plan = f.core.plan_state(&token, manifest).unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent: Agent = tx.get("agents", "rotation-manager")?.unwrap();
+            agent.permissions.retain(|p| p.action != "client.rotate");
+            tx.put("agents", "rotation-manager", &agent)
+        })
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &token,
+            ApplyRequest {
+                plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 403);
+    f.assert_snapshot(&before);
 }
 
 #[test]
@@ -2063,23 +2957,17 @@ fn resource_indicators_bind_consent_code_refresh_audience_and_online_policy() {
 #[test]
 fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
     let f = Fixture::new();
-    f.client("app", false);
+    f.client_with_settings(
+        "app",
+        false,
+        ProviderSettings {
+            frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
+            post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
+            ..Default::default()
+        },
+    );
     let alice = f.user("alice");
     let bob = f.user("bob");
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
-                    post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
     let sid: String = f
         .core
         .store
@@ -2193,20 +3081,14 @@ fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
 
 const SIGNED_OUT: &str = "https://app.example.test/signed-out";
 fn logout_app(f: &Fixture) {
-    f.client("app", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    post_logout_redirect_uris: vec![SIGNED_OUT.into()],
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings(
+        "app",
+        false,
+        ProviderSettings {
+            post_logout_redirect_uris: vec![SIGNED_OUT.into()],
+            ..Default::default()
+        },
+    );
 }
 fn rp_logout(hint: Option<&Value>) -> riauth::logout::LogoutRequest {
     riauth::logout::LogoutRequest {

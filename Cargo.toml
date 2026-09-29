@@ -1,5 +1,6 @@
 [package]
 name = "riauth"
+default-run = "riauth"
 version = "0.1.1"
 edition = "2024"
 rust-version = "1.98"
@@ -11,6 +12,10 @@ readme = "README.md"
 keywords = ["identity", "oidc", "saml", "sso"]
 
 [features]
+# Preserve the existing source-build behavior. Release artifacts select an edition explicitly.
+default = ["platform"]
+essentials = []
+platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "dep:tokio-rustls", "dep:hmac", "dep:time", "dep:wasmi", "futures-util/sink"]
 test-support = []
 fuzzing = []
 
@@ -31,6 +36,7 @@ rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+semver = "1"
 schemars = "1.2.2"
 serde_urlencoded = "0.7"
 sha2 = "0.11"
@@ -38,38 +44,40 @@ subtle = "2.6"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 toml = "1.1.6"
 totp-rs = { version = "6.0", features = ["otpauth"] }
+# Enrollment QR codes only: no image, SVG or PIC renderer.
+qrcode = { version = "0.14.1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
-webauthn-authenticator-rs = { version = "=0.5.5", features = ["usb", "ui-cli"] }
-futures-util = { version = "0.3", features = ["sink"] }
-tokio-util = { version = "0.7", features = ["codec"] }
-tokio-rustls = "0.26"
-ldap3_proto = { version = "0.8.1", features = ["serde"] }
-md-5 = "0.11"
-hmac = "0.13"
-risaml = { version = "0.7", default-features = false, features = ["crypto-aws-lc"] }
-roxmltree = "0.21"
-flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
-time = { version = "0.3", features = ["formatting", "parsing"] }
-x509-parser = "0.18"
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["codec"], optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+ldap3_proto = { version = "0.8.1", features = ["serde"], optional = true }
+md-5 = { version = "0.11", optional = true }
+hmac = { version = "0.13", optional = true }
+risaml = { version = "0.7", default-features = false, features = ["crypto-aws-lc"], optional = true }
+roxmltree = { version = "0.21", optional = true }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"], optional = true }
+time = { version = "0.3", features = ["formatting", "parsing"], optional = true }
+x509-parser = { version = "0.18", optional = true }
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "aws-lc-rs"] }
 postgres = "0.19.14"
 tokio-postgres-rustls = "0.14.0"
 webpki-roots = "1"
 ldap3 = { version = "0.12.1", default-features = false, features = ["sync", "tls-rustls-aws-lc-rs"] }
 zeroize = "1.9"
-psl = "2.1.238"
-hyper = { version = "1", features = ["http1", "server"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-sha1 = "0.11"
+psl = { version = "2.1.238", optional = true }
+hyper = { version = "1", features = ["http1", "server"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
+sha1 = { version = "0.11", optional = true }
 tower = { version = "0.5", features = ["util"] }
+wasmi = { version = "0.40.0", optional = true, default-features = false, features = ["std", "extra-checks", "prefer-btree-collections"] }
 
 [dev-dependencies]
 openssl = "0.10"
-webauthn-authenticator-rs = { version = "=0.5.5", features = ["softpasskey"] }
+webauthn-authenticator-rs = { version = "=0.5.5", default-features = false, features = ["softpasskey"] }
 tempfile = "3"
 http-body-util = "0.1"
 axum = { version = "0.8.9", features = ["ws"] }

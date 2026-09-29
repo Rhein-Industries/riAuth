@@ -1,4 +1,5 @@
 //! Compact nested JWT encryption: RSA-OAEP-256 and A256GCM (RFC 7516).
+pub use crate::model::client_config::EncryptionKey;
 use crate::{
     crypto,
     error::{Error, Result},
@@ -6,20 +7,8 @@ use crate::{
 use aws_lc_rs::rsa::{OAEP_SHA256_MGF1SHA256, OaepPublicEncryptingKey, PublicEncryptingKey};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::{TryRng, rngs::SysRng};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EncryptionKey {
-    #[serde(default = "default_content_encryption")]
-    pub content_encryption: String,
-    pub kid: String,
-    pub public_key_pem: String,
-}
-fn default_content_encryption() -> String {
-    "A256GCM".into()
-}
 impl EncryptionKey {
     fn key(&self) -> Result<PublicEncryptingKey> {
         if self.kid.is_empty()

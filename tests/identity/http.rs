@@ -180,19 +180,13 @@ async fn issuer_paths_and_cors_preserve_exact_issuer_and_client_origins() {
     f.client("app", false);
     f.core.config.issuer = "http://localhost:9000/application/o/app/".into();
     f.core.config.validate().unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(riauth::model::ProviderSettings {
-                    origins: strings(&["https://app.example.test"]),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_endpoint::set(
+        &f.core,
+        &f.admin,
+        "app",
+        None,
+        Some(strings(&["https://app.example.test"])),
+    );
     let app = riauth::api::router(f.core.clone());
     let response = app
         .clone()
@@ -292,12 +286,6 @@ async fn scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessi
         .unwrap();
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(rejected.headers()["content-type"], "application/scim+json");
-    let rev = f
-        .core
-        .store
-        .get::<u64>("meta", "revision")
-        .unwrap()
-        .unwrap();
     let input = json!({"schemas":[riauth::scim::USER],"userName":"scim-alice","externalId":"directory-42","displayName":"Directory Alice","password":PASSWORD,"active":true,"emails":[{"value":"scim-alice@example.test","primary":true}]});
     let mut created = Value::Null;
     for _ in 0..2 {
@@ -308,7 +296,6 @@ async fn scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessi
                     .method("POST")
                     .uri("/scim/v2/Users")
                     .header("authorization", format!("Bearer {credential}"))
-                    .header("if-match", format!("\"{rev}\""))
                     .header("idempotency-key", "scim-create-42")
                     .header("content-type", "application/scim+json")
                     .body(Body::from(input.to_string()))
@@ -650,7 +637,13 @@ async fn http_remembered_consent_prompt_none_is_an_httponly_cookie_redirect() {
                 .header("authorization", format!("Bearer {}", f.admin))
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"code": code, "approve": true, "remember": true}).to_string(),
+                    json!({
+                        "code": code,
+                        "approve": true,
+                        "remember": true,
+                        "transaction_id": details["transaction_id"],
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )

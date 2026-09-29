@@ -1,0 +1,190 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "postgres",
+    "operation": "pg_dump_pg_restore_fresh_database",
+    "loopback": true,
+    "local_unencrypted": true,
+    "logical_restore": true,
+    "physical_copy": false,
+    "pitr": false,
+    "recovery_complete_run": false,
+    "cargo_build": false,
+    "production_files": false,
+    "issuer": "http://127.0.0.1:58839",
+    "postgres_port": 58838,
+    "temporary_files_removed": true,
+    "server_process_stopped": true
+  },
+  "outcome": "observed",
+  "detail": "Custom-format pg_dump and pg_restore into a fresh database on the same temporary cluster kept 25 riauth_store.records_v1 rows. recovery status before any open reported serving_allowed false, no pending gate, a matching cluster system identifier, and different database and records oids. serve exited 5 with the reconciliation error before a listener. That open applied storage_lineage_changed, removed one session and one session token, and left passwords 1 and signing_keys 1 in reconcile. The pre-dump session and a password login were connection refused. recovery complete was not run. The production gate stays open.",
+  "checks": [
+    {
+      "id": "binary",
+      "exit_code": 0,
+      "observed": {
+        "sha256": "de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069",
+        "bytes": 289661864,
+        "edition": "platform",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials",
+          "platform"
+        ],
+        "copied_from_snapshot": true
+      }
+    },
+    {
+      "id": "source",
+      "exit_code": 0,
+      "observed": {
+        "readyz_http_status": 200,
+        "login_user": "drill-admin",
+        "login_admin": true,
+        "session_file_mode": "0600",
+        "doctor": {
+          "healthy": true,
+          "schema_version": 3,
+          "revision": 0,
+          "issuer": "http://127.0.0.1:58839",
+          "storage": "postgresql",
+          "encrypted_at_rest": false,
+          "users": 1,
+          "enabled_administrators": 1,
+          "clients": 0,
+          "pending_logout_deliveries": 0,
+          "tls": "reverse_proxy"
+        },
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": true,
+          "pending_present": false,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true
+        },
+        "records": 25
+      }
+    },
+    {
+      "id": "dump_restore",
+      "exit_code": 0,
+      "observed": {
+        "format": "custom",
+        "dump_bytes": 8602,
+        "source_records": 25,
+        "restored_records_before_open": 25,
+        "counts_equal": true
+      }
+    },
+    {
+      "id": "status_before_open",
+      "exit_code": 0,
+      "observed": {
+        "backend": "postgresql",
+        "policy": "riauth.recovery/v1",
+        "initialized": true,
+        "schema": 3,
+        "serving_allowed": false,
+        "pending_present": false,
+        "recorded": {
+          "system_identifier_present": true,
+          "database_oid": 16384,
+          "records_oid": 16386
+        },
+        "observed": {
+          "system_identifier_present": true,
+          "database_oid": 16403,
+          "records_oid": 16405
+        },
+        "database_oid_equal": false,
+        "records_oid_equal": false,
+        "system_identifier_equal": true
+      }
+    },
+    {
+      "id": "restored_open",
+      "exit_code": 5,
+      "observed": {
+        "listener_started": false,
+        "serve_exit": 5,
+        "serve_error_lines": [
+          "error: Restored state requires reconciliation; run `riauth recovery status`"
+        ],
+        "listening_log": false,
+        "readyz_http_status": null,
+        "readyz_code": null,
+        "livez_http_status": null,
+        "pre_dump_session": {
+          "exit_code": 1,
+          "ok": false,
+          "code": "operation_failed",
+          "http_status": 0,
+          "message": "error sending request for url (http://127.0.0.1:58839/api/operations/doctor): client error (Connect): tcp connect error: Connection refused (os error 61)"
+        },
+        "password_login": {
+          "exit_code": 1,
+          "ok": false,
+          "code": "operation_failed",
+          "http_status": 0,
+          "message": "error sending request for url (http://127.0.0.1:58839/api/login): client error (Connect): tcp connect error: Connection refused (os error 61)",
+          "admin": null
+        },
+        "recovery_status_after_open": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": false,
+          "pending_present": true,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16403,
+            "records_oid": 16405
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16403,
+            "records_oid": 16405
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true,
+          "pending": {
+            "id": "fb7347a2-e262-4e58-a716-b9abf59a346b",
+            "cause": "storage_lineage_changed",
+            "policy": "riauth.recovery/v1",
+            "invalidated": {
+              "session_tokens": 1,
+              "sessions": 1
+            },
+            "reconcile": {
+              "enabled_accounts": 1,
+              "passwords": 1,
+              "signing_keys": 1
+            },
+            "epoch_advanced_users": 1,
+            "completed_at": null,
+            "database_oid_equal": false,
+            "records_oid_equal": false
+          }
+        },
+        "records_after_open": 28,
+        "recovery_complete_run": false
+      }
+    }
+  ]
+}

@@ -1,8 +1,11 @@
 //! SAML source: signed SP requests, pinned responses, explicit links and terminal completion.
+pub use super::saml_types::Settings;
+pub(crate) use super::saml_types::UpstreamSession;
 use super::{Login, Source, UpstreamIdentity};
+use crate::assembly::{BrowserReturn, SamlSigningKeyRead, SamlSourceClaim};
 use crate::{
-    core::{Core, audit, validate_display, validate_email, validate_name},
-    crypto::{self, Keys, SigningKey, digest, now},
+    core::{Core, validate_display, validate_email, validate_name},
+    crypto::{self, SigningKey, digest, now},
     error::{Error, Result},
     jose::ClientAuthMethod,
     response::escape,
@@ -10,37 +13,11 @@ use crate::{
         NameIdFormat,
         wire::{self, ASSERTION, DSIG, METADATA, POST, PROTOCOL},
     },
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use roxmltree::{Document, Node};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    pub signing_key: String,
-    pub sp_certificate_pem: String,
-    pub idp_certificates_pem: Vec<String>,
-    #[serde(default)]
-    pub name_id_format: NameIdFormat,
-    pub name_attribute: Option<String>,
-    pub email_attribute: Option<String>,
-    pub email_verified_attribute: Option<String>,
-    #[serde(default)]
-    pub require_encrypted_assertions: bool,
-    pub slo_redirect_url: Option<String>,
-    pub slo_post_url: Option<String>,
-}
-#[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct UpstreamSession {
-    #[serde(default)]
-    pub subject: Option<String>,
-    pub index: String,
-    pub expires_at: Option<u64>,
-}
 impl Settings {
     pub fn validate(&self, source: &Source) -> Result<()> {
         crate::saml::entity_id(&source.issuer)?;
@@ -94,33 +71,9 @@ impl Settings {
         }
         Ok(())
     }
-    pub(crate) fn key(&self, tx: &Tx<'_>) -> Result<SigningKey> {
-        let keys = if self.signing_key == "signing" {
-            crate::core::keys(tx)?
-        } else {
-            tx.get::<Keys>("key_domains", &self.signing_key)?
-                .ok_or_else(|| Error::bad("SAML source signing domain is missing"))?
-        };
-        let key = keys.active;
-        if key.remote.is_some() || key.algorithm != "RS256" {
-            return Err(Error::bad(
-                "SAML source requires a local RS256 signing/decryption key",
-            ));
-        }
-        let private =
-            risaml::crypto::keys::load_private_key(&key.pem, None).map_err(Error::internal)?;
-        let public = risaml::crypto::keys::load_certificate(&self.sp_certificate_pem)
-            .map_err(Error::internal)?;
-        if private.to_spki_der().is_none() || private.to_spki_der() != public.to_spki_der() {
-            return Err(Error::bad(
-                "SAML source SP certificate does not match its signing domain",
-            ));
-        }
-        Ok(key)
-    }
     pub(super) fn authorization(
         &self,
-        tx: &Tx<'_>,
+        keys: &SamlSigningKeyRead<'_, '_>,
         core: &Core,
         source: &Source,
         pending: &Login,
@@ -139,7 +92,7 @@ impl Settings {
             &source.authorization_endpoint,
             &xml,
             Some(state),
-            &self.key(tx)?.pem,
+            &keys.key(self)?.pem,
             "SAMLRequest",
         )
     }
@@ -152,12 +105,12 @@ impl Core {
         )
     }
     pub fn saml_source_metadata(&self, id: &str) -> Result<String> {
-        self.store.read(|tx|{
-        let source=super::enabled(tx,id)?;let settings=source.saml.as_ref().ok_or_else(||Error::missing("SAML source not found"))?;settings.validate(&source)?;
+        self.with_saml_source_metadata(id, |source, keys| {
+        let settings=source.saml.as_ref().ok_or_else(||Error::missing("SAML source not found"))?;settings.validate(source)?;
         let cert=STANDARD.encode(wire::certificate(&settings.sp_certificate_pem)?);
         let slo=if settings.slo_redirect_url.is_some()||settings.slo_post_url.is_some() {format!(r#"<md:SingleLogoutService Binding="{}" Location="{}"/><md:SingleLogoutService Binding="{POST}" Location="{}"/>"#,wire::REDIRECT,escape(&format!("{}/saml/sources/{id}/slo",crate::saml::endpoint_base(&self.config.issuer))),escape(&format!("{}/saml/sources/{id}/slo",crate::saml::endpoint_base(&self.config.issuer))))}else{String::new()};
         let xml=format!(r#"<md:EntityDescriptor xmlns:md="{METADATA}" xmlns:ds="{DSIG}" ID="_{}" entityID="{}"><md:SPSSODescriptor protocolSupportEnumeration="{PROTOCOL}" AuthnRequestsSigned="true" WantAssertionsSigned="true"><md:KeyDescriptor use="signing"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>{cert}</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor><md:KeyDescriptor use="encryption"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>{cert}</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor>{slo}<md:NameIDFormat>{}</md:NameIDFormat><md:AssertionConsumerService Binding="{POST}" Location="{}" index="0" isDefault="true"/></md:SPSSODescriptor></md:EntityDescriptor>"#,crypto::id(),escape(&source.client_id),settings.name_id_format.uri(),escape(&self.saml_source_callback_url(id)));
-        crate::saml::sign(&xml,&settings.key(tx)?,&settings.sp_certificate_pem,true)
+        crate::saml::sign(&xml,&keys.key(settings)?,&settings.sp_certificate_pem,true)
     })
     }
     pub fn saml_source_callback(&self, id: &str, pairs: Vec<(String, String)>) -> Result<Value> {
@@ -177,24 +130,12 @@ impl Core {
         let encoded = params
             .get("SAMLResponse")
             .ok_or_else(|| Error::bad("Missing SAMLResponse"))?;
-        let (source, pending) = self.store.write(|tx| {
-            let source = super::enabled(tx, id)?;
-            let settings = source
-                .saml
-                .as_ref()
-                .ok_or_else(|| Error::bad("Source is not SAML"))?;
-            settings.validate(&source)?;
-            let mut pending = tx
-                .get::<Login>("source_logins", &digest(state))?
-                .filter(|p| p.source == id && !p.claimed && p.expires_at > now())
-                .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
-            if pending.fingerprint != source.fingerprint()? {
+        let (source, pending) = match self.saml_source_callback_claim(id, state)? {
+            SamlSourceClaim::Retired => {
                 return Err(Error::bad("SAML source changed; restart login"));
             }
-            pending.claimed = true;
-            tx.put("source_logins", &digest(state), &pending)?;
-            Ok((source, pending))
-        })?;
+            SamlSourceClaim::Ready(source, pending) => (source, pending),
+        };
         let result = (|| {
             let xml = String::from_utf8(
                 STANDARD
@@ -203,7 +144,7 @@ impl Core {
             )
             .map_err(|_| Error::bad("SAML response must be UTF-8"))?;
             let settings = source.saml.as_ref().unwrap();
-            let key = self.store.read(|tx| settings.key(tx))?;
+            let key = self.saml_source_callback_key(settings)?;
             verified_identity(
                 &xml,
                 settings,
@@ -213,45 +154,42 @@ impl Core {
                 &key,
             )
         })();
-        self.store.write(|tx| {
-            let current_source = super::enabled(tx, id)?;
-            let mut current = tx
-                .get::<Login>("source_logins", &digest(state))?
-                .filter(|p| p.claimed && p.expires_at > now() && p.result.is_none() && !p.failed)
-                .ok_or_else(|| Error::bad("SAML source request expired"))?;
-            let result = result.and_then(|(identity, assertion, expiry)| {
-                if current_source.fingerprint()? != pending.fingerprint {
-                    return Err(Error::forbidden());
-                }
-                let key = digest(&format!("{}\0{assertion}", source.issuer));
-                if tx
-                    .get::<u64>("saml_source_replays", &key)?
-                    .is_some_and(|at| at > now())
-                {
-                    return Err(Error::forbidden());
-                }
-                tx.put("saml_source_replays", &key, &expiry.saturating_add(30))?;
-                Ok(identity)
-            });
-            match result {
-                Ok(identity) => current.result = Some(identity),
-                Err(_) => current.failed = true,
-            };
-            tx.put("source_logins", &digest(state), &current)?;
-            audit(
-                tx,
-                "upstream",
-                if current.failed {
-                    "source.login_failed"
-                } else {
-                    "source.authenticated"
-                },
-                id,
-            )?;
-            super::callback_body(tx, &current, &digest(state))
-        })
+        self.saml_source_callback_record(id, state, &source, &pending, result)
+    }
+
+    /// Confirms a browser-started SAML login. `returned` is the one-time token from the
+    /// ACS response; `started` is the Lax cookie from `portal_source_start`. A missing
+    /// or unknown return token does not end the login. A real return token whose start
+    /// cookie is missing or belongs to another browser does. A return whose pinned
+    /// source changed, including when that source is disabled, ends the login in
+    /// the same write. Restoring the previous certificate or enabling the source
+    /// again does not confirm it.
+    pub fn saml_source_browser_return(
+        &self,
+        id: &str,
+        started: Option<&str>,
+        returned: Option<&str>,
+    ) -> Result<()> {
+        let Some(returned) = returned.filter(|value| value.len() <= 256) else {
+            return Err(Error::bad("SAML browser return expired or already used"));
+        };
+        let started = started
+            .filter(|value| value.len() <= 256)
+            .map(str::to_owned);
+        let returned_digest = digest(returned);
+        let outcome =
+            self.saml_source_browser_return_claim(id, started.as_deref(), &returned_digest)?;
+        match outcome {
+            BrowserReturn::Confirmed => Ok(()),
+            BrowserReturn::Burned => Err(super::browser_mismatch()),
+            BrowserReturn::Retired => Err(Error::bad("SAML source changed; restart login")),
+            BrowserReturn::Unknown => {
+                Err(Error::bad("SAML browser return expired or already used"))
+            }
+        }
     }
 }
+
 fn limits() -> risaml::xml::XmlLimits {
     risaml::xml::XmlLimits {
         max_bytes: 48 * 1024,
@@ -692,7 +630,15 @@ fn identity(
             .ok_or_else(|| Error::bad("Missing AuthnInstant"))?,
     )?;
     // Every SP request sets ForceAuthn. Source completion cannot turn an old login into a fresh proof.
-    if auth_time + 5 < pending.started_at || auth_time > now() + 30 {
+    // Workflow proofs require authentication at or after their reserved attempt.
+    // Apply that bound at the verifier too, so the ACS cannot report a receipt
+    // as verified only for workflow consumption to reject its AuthnInstant.
+    let earliest = if pending.workflow.is_some() {
+        pending.started_at
+    } else {
+        pending.started_at.saturating_sub(5)
+    };
+    if auth_time < earliest || auth_time > now() + 30 {
         return Err(Error::forbidden());
     }
     let index = auth
@@ -762,6 +708,7 @@ fn identity(
             email_verified,
             mfa: source.trusted_mfa_acr.contains(&context),
             auth_time,
+            expires_at: Some(expires_at),
             saml_session: Some(UpstreamSession {
                 subject: Some(subject_name),
                 index: index.into(),
@@ -781,20 +728,4 @@ fn expiry(node: Node<'_, '_>) -> Result<u64> {
         return Err(Error::forbidden());
     }
     Ok(at)
-}
-pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, expiry) in tx.maintenance_page::<u64>("saml_source_replays")? {
-        if expiry <= at {
-            tx.delete("saml_source_replays", &id)?;
-        }
-    }
-    for (id, _) in tx.maintenance_page::<UpstreamSession>("saml_source_sessions")? {
-        if tx
-            .get::<crate::model::Session>("sessions", &id)?
-            .is_none_or(|s| s.expires_at <= at)
-        {
-            tx.delete("saml_source_sessions", &id)?;
-        }
-    }
-    Ok(())
 }

@@ -2,6 +2,15 @@
 # addPrefix middleware to the -outpost router and append the path to the forwardAuth address.
 # {{RIAUTH_URL}} must be riAuth's INTERNAL address (never routed back through Traefik).
 # Add `tls: {}` (or a certResolver) to both routers on HTTPS entrypoints. Requires single-app mode (no proxy.domain).
+# REQUIRED: Traefik v3.7.12+ and this STATIC setting on every protected entrypoint:
+# entryPoints:
+#   {{ENTRYPOINT}}:
+#     address: ":443"               # Use the actual listen address.
+#     http:
+#       aliasHeadersStrategy: delete # `reject` is also safe; default `keep` is unsafe.
+# The file-provider configuration below cannot set or check this static option.
+# Without it, X.Auth.User, X!Auth!User and X.Riauth.Request.Intent can bypass
+# forwardAuth's canonical authResponseHeaders and reach CGI/WSGI/PHP backends.
 http:
   middlewares:
     riauth-{{CLIENT_ID}}:
@@ -10,10 +19,11 @@ http:
         trustForwardHeader: false
         maxResponseBodySize: 65536
         authRequestHeaders:
-          [Accept, Cookie, Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-WebSocket-Key]
+          [Accept, Cookie, Origin, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-WebSocket-Key, X-Riauth-Request-Intent]
         authResponseHeaders:
           [X-Authentik-Username, X-Authentik-Uid, X-Authentik-Name, X-Authentik-Email,
-           X-Authentik-Groups, X-Authentik-Entitlements, X-Auth-User, X-Auth-Sub, Cookie, Authorization]
+           X-Authentik-Groups, X-Authentik-Entitlements, X-Auth-User, X-Auth-Sub, Cookie, Authorization,
+           X-Riauth-Request-Intent]
     riauth-{{CLIENT_ID}}-outpost-headers:
       headers:
         customRequestHeaders:

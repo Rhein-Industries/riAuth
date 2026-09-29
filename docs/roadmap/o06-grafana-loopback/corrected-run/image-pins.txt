@@ -1,0 +1,2 @@
+prometheus_id=sha256:3c42b892cf723fa54d2f262c37a0e1f80aa8c8ddb1da7b9b0df9455a35a7f893 prometheus_digests=["prom/prometheus@sha256:3c42b892cf723fa54d2f262c37a0e1f80aa8c8ddb1da7b9b0df9455a35a7f893"] prometheus_created=2026-07-10T08:49:11.358103752Z
+grafana_id=sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412 grafana_digests=["grafana/grafana-oss@sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412"] grafana_created=2026-04-14T08:24:54.815896447Z grafana_user=472

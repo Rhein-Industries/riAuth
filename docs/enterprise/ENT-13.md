@@ -2,7 +2,11 @@
 
 [Implementation](../../src/windows_login.rs) and [tests](../../tests/windows_login.rs).
 
-riAuth implements the enrollment and authentication protocol a Windows credential provider would call. It does not install a provider, and no Windows interactive login was tested. See [Windows credential provider package is not built or tested](#windows-credential-provider-package-is-not-built-or-tested).
+riAuth implements the enrollment and authentication protocol used by the
+[optional Windows device host and credential provider](../../windows/README.md).
+The source installer can register that provider, but no Windows interactive
+login has been tested. See [Windows device host and remaining credential
+provider work](#windows-device-host-and-remaining-credential-provider-work).
 
 The protocol is a machine API. It is not a browser login and it does not issue an OAuth access token.
 
@@ -11,7 +15,7 @@ The protocol is a machine API. It is not a browser login and it does not issue a
 | Actor | What they do |
 | --- | --- |
 | Administrator, or an agent with `device.enroll` | Enroll, list, and revoke devices |
-| Credential provider | Holds the device secret, collects the user password or a fresh session, and calls login |
+| Windows device host and credential provider | The host protects the device secret and redeems tickets; the provider collects riAuth proof and a separate local Windows password |
 | riAuth | Stores only a hash of the device secret, checks the user, and returns a short-lived sign-in ticket |
 
 Permission `device.enroll` is scoped to `device/<id>` or `*`. An agent cannot enroll, replace, or revoke a device for an administrator, including a device that is already bound to an administrator. A non-administrator session cannot enroll devices. Human administrators can.
@@ -19,9 +23,9 @@ Permission `device.enroll` is scoped to `device/<id>` or `*`. An agent cannot en
 CLI:
 
 ```sh
-riauth windows-device enroll laptop --username alice --display-name "Alice laptop" --offline-ttl 43200 --show-secrets
+riauth --if-revision "$revision" --idempotency-key "$enroll_key" --show-secrets windows-device enroll laptop --username alice --display-name "Alice laptop" --offline-ttl 43200
 riauth windows-device list
-riauth windows-device revoke laptop
+riauth --if-revision "$current_revision" --idempotency-key "$revoke_key" windows-device revoke laptop
 # Device secret from RIAUTH_WINDOWS_DEVICE_SECRET, or --secret-stdin.
 # Password from --password-stdin. Do not read both secrets from stdin.
 RIAUTH_OTP=123456 riauth windows-device login --device-id laptop --username alice --password-stdin --show-secrets
@@ -40,7 +44,7 @@ HTTP, relative to the issuer path:
 | POST | `/api/windows-devices/tickets/redeem` | None. The sign-in ticket in the body |
 | POST | `/api/windows-devices/offline/verify` | None. Device secret plus offline ticket |
 
-Agent mutations use the normal `If-Match` revision and optional `Idempotency-Key`. Login, redeem, and offline verify are not idempotent management mutations. A retried login mints another ticket; unused tickets expire after 300 seconds.
+Enrollment and revocation require `Idempotency-Key` and `If-Match: "<revision>"` for every bearer caller, including administrators and agents. Obtain the current revision with `riauth revision`; use a distinct key for each new operation and reuse the same key, revision, and body for an exact retry. An exact enrollment retry returns the committed secret without rotating it again. Login, redeem, and offline verify are protocol operations, so a retried login mints another ticket; unused tickets expire after 300 seconds.
 
 JSON Schemas: `riauth schema windows-device` and `riauth schema windows-login`.
 
@@ -114,26 +118,29 @@ Server `POST /api/windows-devices/offline/verify` repeats those checks and also 
 
 Limits, which a provider cannot paper over:
 
-- The MAC is symmetric. Whoever can read the device secret can forge a ticket that a provider will accept offline. Protect that secret. On Windows that storage is the provider's job (DPAPI, DPAPI-NG, or an equivalent hardware-backed secret). riAuth does not store it and does not implement DPAPI.
+- The MAC is symmetric. Whoever can read the device secret can forge a ticket that a provider will accept offline. Protect that secret. The server stores only its digest; the Windows device host uses machine DPAPI and restricted file ACLs. Any future credential provider must protect its own copy as well.
 - While the machine is offline, the provider cannot learn that an administrator revoked the device or changed the password. The stolen ticket remains usable on that provider until its expiry, at most 72 hours, unless the provider already knows a newer epoch or a revocation from an earlier online check. Do not use a long `offline_ttl` if that window is unacceptable. Online login and server verify fail closed immediately.
 - Offline tickets do not survive password epoch changes. `recover-admin`, a password update, self-service password change, and any other epoch bump make server verification fail. A provider that cached the previous epoch must discard the ticket once it sees the new epoch, and must not treat the ticket as valid across that change.
 - Audit records the device id and the actor. They do not include the device secret, the offline ticket, or the sign-in ticket.
 
 Break-glass is the existing local recovery, not this protocol. With the server stopped, `riauth recover-admin <username> --password-stdin` sets a new administrator password, optionally `--reset-mfa`, enables the account, and bumps the epoch. The user's riAuth password remains the online proof a provider must send. Neither recovery path requires the device secret. Neither one logs a person into Windows by itself.
 
-## Windows credential provider package is not built or tested
+## Windows device host and remaining credential provider work
 
-This repository does not contain a credential provider, a CP DLL, C++ sources, or a WiX/MSI package. Nothing here was compiled as a Windows binary, installed on Windows, or exercised at the secure attention sequence.
+The [Windows implementation](../../windows/README.md) includes the device host,
+a native credential provider source, and an installer that requires signed
+payloads. Enrollment pins an enabled local account SID. For each logon or unlock
+submission, the provider asks the host to redeem a fresh online ticket, checks
+that approval matches the pinned local SID, and only then serializes the
+separately entered local Windows password for LSA. It requests no offline ticket
+and fails closed on network loss or revocation. The installer pins one signer
+for host and provider updates and deregisters the provider on uninstall.
 
-This release does not include:
-
-- Install, upgrade, and uninstall of a credential provider on any Windows version
-- Interactive sign-in, unlock, or User Account Control integration
-- Disabled-user behavior at the Windows logon UI (the server rejects a disabled user; Windows itself was not tested)
-- Storing the device secret or offline ticket with DPAPI or Credential Manager
-- Packaging, code signing, or a supported Windows build
-
-A Windows credential provider requires separate implementation and validation. The Rust tests cover only the server protocol above.
+No signed release artifact, Windows installation, secure-desktop interaction,
+or actual LSA logon has been validated here. Other Windows system credential
+providers remain available for recovery; this provider does not enforce riAuth
+approval across those routes. Disabled-user behavior at the Windows logon UI
+also remains untested.
 
 ## What the server test covers
 

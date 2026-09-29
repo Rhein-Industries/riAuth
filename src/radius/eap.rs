@@ -1,11 +1,9 @@
 //! EAP-TLS 1.2/1.3: pinned certificate identities, bounded fragmentation and MPPE delivery.
 use super::{Nas, Packet, WireAttributes};
 use crate::{
-    core::{Core, audit, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{Client, Identity, Session, User},
-    store::Tx,
+    model::{Client, Identity},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use md5::{Digest, Md5};
@@ -13,7 +11,6 @@ use rustls::pki_types::{
     CertificateDer, CertificateRevocationListDer, PrivateKeyDer, UnixTime, pem::PemObject,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{Read, Write},
@@ -22,29 +19,21 @@ use std::{
 };
 
 pub const CERTIFICATE_ACR: &str = "urn:riauth:acr:certificate";
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Config {
-    pub certificate_file: PathBuf,
-    pub key_file: PathBuf,
-    pub client_ca_file: PathBuf,
-    pub client_crl_file: PathBuf,
-    pub ocsp_response_file: Option<PathBuf>,
-    #[serde(default)]
-    pub tls12: bool,
-    #[serde(default = "fragment_size")]
-    pub fragment_size: usize,
+pub use crate::radius_eap_types::Config;
+
+pub(crate) trait EapPort {
+    fn profile(&self, listener: &str) -> Result<&Config>;
+    fn create_identity(
+        &self,
+        client: &Client,
+        listener: &str,
+        profile_fp: &str,
+        der: &[u8],
+    ) -> Result<Identity>;
+    fn close(&self, identity: Option<&Identity>) -> Result<()>;
 }
-fn fragment_size() -> usize {
-    1024
-}
+
 impl Config {
-    pub fn validate(&self) -> Result<()> {
-        if !(256..=1400).contains(&self.fragment_size) {
-            return Err(Error::bad("EAP-TLS fragment_size must be 256..1400 bytes"));
-        }
-        Ok(())
-    }
     fn material(&self) -> Result<Material> {
         self.validate()?;
         let read = |file: &PathBuf| -> Result<Vec<CertificateDer<'static>>> {
@@ -125,6 +114,10 @@ impl Config {
         .build()
         .map_err(Error::internal)
     }
+    pub(crate) fn verifier_ready(&self) -> Result<()> {
+        self.load().map(|_| ())
+    }
+
     pub(super) fn load(&self) -> Result<(Arc<rustls::ServerConfig>, String)> {
         let Material {
             certs,
@@ -186,257 +179,58 @@ pub struct CertificateInput {
     pub listener: String,
     pub certificate_chain_pem: String,
 }
-#[derive(Clone, Serialize, Deserialize)]
-struct Certificate {
-    id: String,
-    username: String,
-    user_id: String,
-    listener: String,
-    fingerprint: String,
-    expires_at: u64,
-}
-#[derive(Clone, Serialize, Deserialize)]
-struct IdentityBinding {
-    certificate_key: String,
-    certificate_id: String,
-    listener: String,
-    profile_fingerprint: String,
-    expires_at: u64,
-}
-fn certificate_key(listener: &str, fingerprint: &str) -> String {
+pub(crate) fn certificate_key(listener: &str, fingerprint: &str) -> String {
     digest(&format!("{listener}\0{fingerprint}"))
 }
-fn profile<'a>(core: &'a Core, listener: &str) -> Result<&'a Config> {
-    core.config
-        .radius_listeners
-        .get(listener)
-        .and_then(|c| c.eap_tls.as_ref())
-        .ok_or_else(|| Error::bad("RADIUS listener has no EAP-TLS trust profile"))
+pub(crate) fn profile_fingerprint(profile: &Config) -> Result<String> {
+    Ok(profile.material()?.fp)
 }
-fn certificate_fingerprint(der: &[u8]) -> String {
+pub(crate) fn certificate_fingerprint(der: &[u8]) -> String {
     use sha2::Digest as ShaDigest;
     URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(der))
 }
-impl Core {
-    pub fn radius_certificate_bind(&self, token: &str, input: CertificateInput) -> Result<Value> {
-        validate_name(&input.username)?;
-        validate_name(&input.listener)?;
-        self.store.read(|tx| {
-            let actor = self.management(
-                tx,
-                token,
-                "certificate.write",
-                &format!("user/{}", input.username),
-            )?;
-            actor.require("radius.enroll", &format!("radius/{}", input.listener))?;
-            let user = crate::core::user_by_name(tx, &input.username)?;
-            if actor.agent && user.admin {
-                return Err(Error::forbidden());
-            }
-            Ok(())
+
+pub(crate) struct PreparedCertificate {
+    pub key: String,
+    pub fingerprint: String,
+    pub expires_at: u64,
+}
+
+pub(crate) fn prepare_certificate_binding<'a>(
+    input: &CertificateInput,
+    profile: impl FnOnce() -> Result<&'a Config>,
+) -> Result<PreparedCertificate> {
+    if input.certificate_chain_pem.len() > 32768 {
+        return Err(Error::bad("EAP certificate chain exceeds 32 KiB"));
+    }
+    let chain = CertificateDer::pem_slice_iter(input.certificate_chain_pem.as_bytes())
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|_| Error::bad("Invalid EAP certificate chain"))?;
+    let cert = chain
+        .first()
+        .ok_or_else(|| Error::bad("Missing EAP client certificate"))?;
+    if chain.len() > 8 {
+        return Err(Error::bad("EAP client chain exceeds eight certificates"));
+    }
+    let config = profile()?;
+    let Material { roots, crls, .. } = config.material()?;
+    config
+        .verifier(roots, crls)?
+        .verify_client_cert(cert, &chain[1..], UnixTime::now())
+        .map_err(|_| {
+            Error::bad("EAP client certificate is not valid under this listener's private CA")
         })?;
-        if input.certificate_chain_pem.len() > 32768 {
-            return Err(Error::bad("EAP certificate chain exceeds 32 KiB"));
-        }
-        let chain = CertificateDer::pem_slice_iter(input.certificate_chain_pem.as_bytes())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|_| Error::bad("Invalid EAP certificate chain"))?;
-        let cert = chain
-            .first()
-            .ok_or_else(|| Error::bad("Missing EAP client certificate"))?;
-        if chain.len() > 8 {
-            return Err(Error::bad("EAP client chain exceeds eight certificates"));
-        }
-        let config = profile(self, &input.listener)?;
-        let Material { roots, crls, .. } = config.material()?;
-        config
-            .verifier(roots, crls)?
-            .verify_client_cert(cert, &chain[1..], UnixTime::now())
-            .map_err(|_| {
-                Error::bad("EAP client certificate is not valid under this listener's private CA")
-            })?;
-        let (_, parsed) = x509_parser::parse_x509_certificate(cert.as_ref())
-            .map_err(|_| Error::bad("Invalid EAP X.509 certificate"))?;
-        let expires_at = u64::try_from(parsed.validity().not_after.timestamp())
-            .map_err(|_| Error::bad("Invalid certificate expiry"))?;
-        let fingerprint = certificate_fingerprint(cert.as_ref());
-        let key = certificate_key(&input.listener, &fingerprint);
-        self.mutation(token, |tx| {
-            let actor = self.management(
-                tx,
-                token,
-                "certificate.write",
-                &format!("user/{}", input.username),
-            )?;
-            actor.require("radius.enroll", &format!("radius/{}", input.listener))?;
-            let user = crate::core::user_by_name(tx, &input.username)?;
-            if actor.agent && user.admin {
-                return Err(Error::forbidden());
-            }
-            let existing = tx.get::<Certificate>("radius_certificates", &key)?;
-            if let Some(existing) = &existing {
-                if existing.user_id != user.id {
-                    return Err(Error::conflict(
-                        "Certificate is already bound to another identity",
-                    ));
-                }
-                return Ok(json!(existing));
-            }
-            if tx
-                .list::<Certificate>("radius_certificates")?
-                .iter()
-                .filter(|(_, c)| c.user_id == user.id)
-                .count()
-                >= 32
-            {
-                return Err(Error::conflict("User has too many EAP certificates"));
-            }
-            let certificate = Certificate {
-                id: crypto::id(),
-                username: user.username,
-                user_id: user.id,
-                listener: input.listener.clone(),
-                fingerprint,
-                expires_at,
-            };
-            tx.put("radius_certificate_ids", &certificate.id, &key)?;
-            tx.put("radius_certificates", &key, &certificate)?;
-            audit(tx, &actor.id, "certificate.bind", &certificate.id)?;
-            Ok(json!(certificate))
-        })
-    }
-    pub fn radius_certificates(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| {
-            let actor = self.principal(tx, token)?;
-            let mut rows = Vec::new();
-            for (_, mut certificate) in tx.list::<Certificate>("radius_certificates")? {
-                let Some(user) = tx.get::<User>("users", &certificate.user_id)? else {
-                    continue;
-                };
-                if actor.allows("certificate.read", &format!("user/{}", user.username))
-                    && actor.allows("radius.enroll", &format!("radius/{}", certificate.listener))
-                {
-                    certificate.username = user.username;
-                    rows.push(certificate);
-                }
-            }
-            Ok(json!(rows))
-        })
-    }
-    pub fn radius_certificate_revoke(&self, token: &str, id: &str) -> Result<Value> {
-        self.mutation(token, |tx| {
-            let key = tx
-                .get::<String>("radius_certificate_ids", id)?
-                .ok_or_else(|| Error::missing("Certificate not found"))?;
-            let certificate = tx
-                .get::<Certificate>("radius_certificates", &key)?
-                .ok_or_else(|| Error::missing("Certificate not found"))?;
-            let user = tx
-                .get::<User>("users", &certificate.user_id)?
-                .ok_or_else(Error::forbidden)?;
-            let actor = self.management(
-                tx,
-                token,
-                "certificate.write",
-                &format!("user/{}", user.username),
-            )?;
-            actor.require("radius.enroll", &format!("radius/{}", certificate.listener))?;
-            if actor.agent && user.admin {
-                return Err(Error::forbidden());
-            }
-            tx.delete("radius_certificates", &key)?;
-            tx.delete("radius_certificate_ids", id)?;
-            audit(tx, &actor.id, "certificate.revoke", id)?;
-            Ok(json!({"revoked":true,"id":id}))
-        })
-    }
-    fn eap_identity(
-        &self,
-        client: &Client,
-        listener: &str,
-        profile_fp: &str,
-        der: &[u8],
-    ) -> Result<Identity> {
-        let fingerprint = certificate_fingerprint(der);
-        let key = certificate_key(listener, &fingerprint);
-        self.store.write(|tx| {
-            let (current, settings) = super::client(tx, &client.id)?;
-            if !settings.eap_tls || super::fingerprint(&current)? != super::fingerprint(client)? {
-                return Err(Error::forbidden());
-            }
-            let cert = tx
-                .get::<Certificate>("radius_certificates", &key)?
-                .filter(|c| c.expires_at > now())
-                .ok_or_else(Error::forbidden)?;
-            let user = tx
-                .get::<User>("users", &cert.user_id)?
-                .filter(|u| u.enabled)
-                .ok_or_else(Error::forbidden)?;
-            let sid = crypto::id();
-            let identity = Identity {
-                user_id: user.id,
-                epoch: user.epoch,
-                mfa: false,
-                auth_time: now(),
-                session_id: sid.clone(),
-                amr: vec!["x509".into()],
-                source: None,
-            };
-            let expiry = (now() + 180).min(cert.expires_at);
-            let session = Session {
-                id: sid.clone(),
-                token_hash: digest(&crypto::random_token("")),
-                identity: identity.clone(),
-                expires_at: expiry,
-                revoked: false,
-            };
-            // No session_tokens index: this protocol identity cannot become an HTTP bearer session.
-            tx.put("sessions", &sid, &session)?;
-            tx.put(
-                "radius_eap_identities",
-                &sid,
-                &IdentityBinding {
-                    certificate_key: key,
-                    certificate_id: cert.id,
-                    listener: listener.into(),
-                    profile_fingerprint: profile_fp.into(),
-                    expires_at: expiry,
-                },
-            )?;
-            self.radius_identity(tx, &current, &identity)?;
-            Ok(identity)
-        })
-    }
-}
-pub(crate) fn validate_identity(core: &Core, tx: &Tx<'_>, identity: &Identity) -> Result<()> {
-    if identity.source.is_none() && identity.amr.iter().any(|a| a == "x509") {
-        let binding = tx
-            .get::<IdentityBinding>("radius_eap_identities", &identity.session_id)?
-            .filter(|b| b.expires_at > now())
-            .ok_or_else(Error::unauthorized)?;
-        let cert = tx
-            .get::<Certificate>("radius_certificates", &binding.certificate_key)?
-            .filter(|c| {
-                c.id == binding.certificate_id
-                    && c.user_id == identity.user_id
-                    && c.expires_at > now()
-            })
-            .ok_or_else(Error::unauthorized)?;
-        if cert.listener != binding.listener
-            || profile(core, &binding.listener)?.material()?.fp != binding.profile_fingerprint
-        {
-            return Err(Error::unauthorized());
-        }
-    }
-    Ok(())
-}
-pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, b) in tx.maintenance_page::<IdentityBinding>("radius_eap_identities")? {
-        if b.expires_at <= at {
-            tx.delete("radius_eap_identities", &id)?;
-        }
-    }
-    Ok(())
+    let (_, parsed) = x509_parser::parse_x509_certificate(cert.as_ref())
+        .map_err(|_| Error::bad("Invalid EAP X.509 certificate"))?;
+    let expires_at = u64::try_from(parsed.validity().not_after.timestamp())
+        .map_err(|_| Error::bad("Invalid certificate expiry"))?;
+    let fingerprint = certificate_fingerprint(cert.as_ref());
+    let key = certificate_key(&input.listener, &fingerprint);
+    Ok(PreparedCertificate {
+        key,
+        fingerprint,
+        expires_at,
+    })
 }
 
 struct Conversation {
@@ -457,7 +251,7 @@ struct Conversation {
 pub(super) struct Engine {
     conversations: Mutex<BTreeMap<String, Conversation>>,
 }
-pub(super) enum Outcome {
+pub(crate) enum Outcome {
     Challenge(WireAttributes),
     Accept(Identity, WireAttributes),
     Reject(WireAttributes),
@@ -510,7 +304,7 @@ fn attributes(eap: Vec<u8>, state: Option<&str>) -> WireAttributes {
     }
     attrs
 }
-pub(super) fn failure(request: &Packet) -> WireAttributes {
+pub(crate) fn failure(request: &Packet) -> WireAttributes {
     message(request)
         .map(|m| attributes(packet(4, m[1], None, &[]), None))
         .unwrap_or_default()
@@ -538,7 +332,13 @@ impl Conversation {
         let next = self.outbound.pop_front().unwrap();
         Ok(self.request(&next))
     }
-    fn step(&mut self, core: &Core, client: &Client, listener: &str, input: &[u8]) -> Result<Step> {
+    fn step(
+        &mut self,
+        port: &dyn EapPort,
+        client: &Client,
+        listener: &str,
+        input: &[u8],
+    ) -> Result<Step> {
         self.rounds += 1;
         if self.rounds > 256 || input[1] != self.expected || input[4] != 13 || input.len() < 6 {
             return Err(Error::bad("Unexpected EAP-TLS response or sequence"));
@@ -629,7 +429,7 @@ impl Conversation {
                 .peer_certificates()
                 .and_then(|c| c.first())
                 .ok_or_else(Error::forbidden)?;
-            self.identity = Some(core.eap_identity(
+            self.identity = Some(port.create_identity(
                 client,
                 listener,
                 &self.profile_fingerprint,
@@ -661,7 +461,7 @@ impl Engine {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn process(
         &self,
-        core: &Core,
+        port: &dyn EapPort,
         listener: &str,
         nas_id: &str,
         nas: &Nas,
@@ -687,7 +487,7 @@ impl Engine {
         if request.attr(2).is_some() || request.attr(3).is_some() {
             return Ok(Outcome::Reject(failure(request)));
         }
-        let config = profile(core, listener)?;
+        let config = port.profile(listener)?;
         let context = digest(&format!(
             "{listener}\0{nas_id}\0{}\0{}\0{}",
             nas.peer,
@@ -743,7 +543,7 @@ impl Engine {
         if c.profile_fingerprint != config.material()?.fp {
             return Ok(Outcome::Reject(failure(request)));
         }
-        let step = c.step(core, client, listener, &input);
+        let step = c.step(port, client, listener, &input);
         match step {
             Ok(Step::Challenge(reply)) => {
                 conversations.insert(state.into(), c);
@@ -770,7 +570,7 @@ impl Engine {
             }
             Err(error) => {
                 if let Some(identity) = &c.identity {
-                    let _ = core.store.write(|tx| super::close(tx, Some(identity)));
+                    let _ = port.close(Some(identity));
                 }
                 if error.status.is_server_error() {
                     Err(error)

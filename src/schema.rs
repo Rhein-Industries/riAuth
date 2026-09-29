@@ -10,6 +10,8 @@ pub const NAMES: &[&str] = &[
     "provisioning-plan",
     "invitation",
     "authentik-import",
+    "migration-finding",
+    "migration-inventory",
     "manifest",
     "plan",
     "apply",
@@ -26,18 +28,46 @@ pub const NAMES: &[&str] = &[
     "client-create",
     "client-update",
     "cli-result",
+    "workflow",
+    "policy-simulation",
 ];
+const PLATFORM_NAMES: &[&str] = &[
+    "radius-certificate",
+    "windows-device",
+    "windows-login",
+    "client-certificate",
+    "cloud-directory-plan",
+];
+
+pub fn available_names() -> Vec<&'static str> {
+    NAMES
+        .iter()
+        .copied()
+        .filter(|name| cfg!(feature = "platform") || !PLATFORM_NAMES.contains(name))
+        .collect()
+}
+
 pub fn schema(name: &str) -> Result<Value> {
+    if !available_names().contains(&name) {
+        return Err(Error::missing("Unknown schema; see capabilities.schemas"));
+    }
     Ok(match name {
+        #[cfg(feature = "platform")]
         "radius-certificate" => json!(schemars::schema_for!(crate::radius::eap::CertificateInput)),
+        #[cfg(feature = "platform")]
         "windows-device" => json!(schemars::schema_for!(crate::windows_login::EnrollDevice)),
+        #[cfg(feature = "platform")]
         "windows-login" => json!(schemars::schema_for!(crate::windows_login::WindowsLogin)),
+        #[cfg(feature = "platform")]
         "client-certificate" => json!(schemars::schema_for!(crate::mtls::BindInput)),
         "directory-plan" => json!(schemars::schema_for!(crate::directory::Plan)),
+        #[cfg(feature = "platform")]
         "cloud-directory-plan" => json!(schemars::schema_for!(crate::cloud_directory::Plan)),
         "provisioning-plan" => json!(schemars::schema_for!(crate::provisioning::Plan)),
         "invitation" => json!(schemars::schema_for!(crate::lifecycle::Invitation)),
         "authentik-import" => json!(schemars::schema_for!(crate::migration::Import)),
+        "migration-finding" => json!(schemars::schema_for!(crate::migration::Finding)),
+        "migration-inventory" => json!(schemars::schema_for!(crate::migration::Inventory)),
         "manifest" => json!(schemars::schema_for!(crate::state::Manifest)),
         "plan" => json!(schemars::schema_for!(crate::state::Plan)),
         "apply" => json!(schemars::schema_for!(crate::state::ApplyRequest)),
@@ -57,6 +87,8 @@ pub fn schema(name: &str) -> Result<Value> {
         "user-update" => json!(schemars::schema_for!(crate::model::UserPatch)),
         "client-create" => json!(schemars::schema_for!(crate::model::NewClient)),
         "client-update" => json!(schemars::schema_for!(crate::model::ClientPatch)),
+        "workflow" => json!(schemars::schema_for!(crate::workflow::Definition)),
+        "policy-simulation" => json!(schemars::schema_for!(crate::claims::Simulation)),
         "cli-result" => {
             json!({"$schema": "https://json-schema.org/draft/2020-12/schema", "oneOf": [
                 {"type": "object", "required": ["schema_version", "ok", "data"], "additionalProperties": false, "properties": {"schema_version": {"const": "riauth.cli/v1"}, "ok": {"const": true}, "data": {}}},

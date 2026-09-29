@@ -1,9 +1,7 @@
 //! Explicit-origin HTTP reverse proxy with live identity checks and bounded WebSocket sessions.
 use crate::{
-    api::App,
-    core::Core,
+    assembly::ProxyRequests,
     error::{Error, Result},
-    model::Client,
     outpost::Settings,
 };
 use axum::{
@@ -16,101 +14,20 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{sync::Semaphore, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Target {
-    pub client_id: String,
-    pub upstream: String,
-    pub ca_file: Option<PathBuf>,
-    #[serde(default)]
-    pub allow_plain_http: bool,
+pub use crate::assembly::proxy_start as start;
+pub use crate::proxy_listener::{Listener, Target};
+use crate::proxy_listener::{authority, origin};
+
+pub(crate) trait ProxyPort: Send + Sync + 'static {
+    fn listeners(&self) -> &BTreeMap<String, Listener>;
+    fn requests(&self) -> ProxyRequests;
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease;
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Listener {
-    pub listen: SocketAddr,
-    pub tls_cert_file: Option<PathBuf>,
-    pub tls_key_file: Option<PathBuf>,
-    pub routes: BTreeMap<String, Target>,
-    #[serde(default = "body_limit")]
-    pub max_body_bytes: usize,
-    #[serde(default = "timeout")]
-    pub upstream_timeout_seconds: u64,
-}
-fn body_limit() -> usize {
-    8 * 1024 * 1024
-}
-fn timeout() -> u64 {
-    30
-}
-fn origin(value: &str) -> Result<url::Url> {
-    let url = url::Url::parse(value).map_err(|_| Error::bad("Invalid proxy origin"))?;
-    if !["http", "https"].contains(&url.scheme()) || url.origin().ascii_serialization() != value {
-        return Err(Error::bad(
-            "Proxy routes require exact HTTP(S) origins without paths or credentials",
-        ));
-    }
-    Ok(url)
-}
-impl Listener {
-    pub fn validate(&self) -> Result<()> {
-        if self.routes.is_empty()
-            || self.routes.len() > 64
-            || self.max_body_bytes == 0
-            || self.max_body_bytes > 64 * 1024 * 1024
-            || !(1..=300).contains(&self.upstream_timeout_seconds)
-        {
-            return Err(Error::bad(
-                "Proxy requires 1..64 routes, a 1-byte..64-MiB request limit and 1..300-second upstream timeout",
-            ));
-        }
-        if self.tls_cert_file.is_some() != self.tls_key_file.is_some()
-            || !self.listen.ip().is_loopback() && self.tls_cert_file.is_none()
-        {
-            return Err(Error::bad(
-                "Proxy listeners require certificate/key files together and native TLS on non-loopback addresses",
-            ));
-        }
-        let mut authorities = std::collections::BTreeSet::new();
-        for (external, target) in &self.routes {
-            let url = crate::config::validate_server_url(external)
-                .map_err(|_| Error::bad("External proxy origins require HTTPS or HTTP loopback"))?;
-            if url.origin().ascii_serialization() != *external
-                || !authorities.insert(authority(&url).to_owned())
-                || self.tls_cert_file.is_some() && url.scheme() != "https"
-            {
-                return Err(Error::bad(
-                    "Proxy needs unique exact authorities and HTTPS origins when TLS is enabled",
-                ));
-            }
-            crate::core::validate_name(&target.client_id)?;
-            let upstream = origin(&target.upstream)?;
-            if upstream.scheme() == "http" && target.ca_file.is_some() {
-                return Err(Error::bad("Plain HTTP upstream cannot use a CA file"));
-            }
-            if upstream.scheme() == "http"
-                && !target.allow_plain_http
-                && !matches!(
-                    upstream.host_str(),
-                    Some("localhost" | "127.0.0.1" | "[::1]")
-                )
-            {
-                return Err(Error::bad(
-                    "Non-loopback HTTP upstream requires explicit allow_plain_http",
-                ));
-            }
-        }
-        Ok(())
-    }
-}
-fn authority(url: &url::Url) -> &str {
-    &url[url::Position::BeforeHost..url::Position::AfterPort]
-}
+
 #[derive(Clone)]
 struct Route {
     external: String,
@@ -119,14 +36,14 @@ struct Route {
 }
 #[derive(Clone)]
 struct Runtime {
-    app: App,
+    requests: ProxyRequests,
     routes: BTreeMap<String, Route>,
     slots: Arc<Semaphore>,
     body_limit: usize,
     timeout: Duration,
     stop: CancellationToken,
 }
-fn internal_peer() -> std::net::IpAddr {
+pub(crate) fn internal_peer() -> std::net::IpAddr {
     std::net::Ipv4Addr::LOCALHOST.into()
 }
 fn single<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
@@ -140,13 +57,84 @@ fn single<'a>(headers: &'a HeaderMap, name: &str) -> Result<Option<&'a str>> {
     }
     Ok(value)
 }
+fn backend_header_name(name: &str) -> String {
+    name.bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() {
+                byte.to_ascii_lowercase() as char
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
 fn identity_header(name: &str) -> bool {
+    // CGI, WSGI and PHP can map punctuation to the same variable as a dash.
+    let name = backend_header_name(name);
     name.starts_with("x-authentik-") || name.starts_with("x-auth-") || name.starts_with("x-riauth-")
+}
+fn untrusted_request_header(name: &str) -> bool {
+    let name = backend_header_name(name);
+    matches!(
+        name.as_str(),
+        "host" | "authorization" | "cookie" | "set-cookie" | "forwarded"
+    ) || identity_header(&name)
+        || [
+            "x-forwarded-",
+            "x-original-",
+            "x-real-",
+            "x-remote-",
+            "remote-",
+            "x-ssl-",
+            "ssl-client-",
+            "proxy-",
+        ]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+fn reject_ambiguous_headers(headers: &HeaderMap) -> Result<()> {
+    for name in headers.keys() {
+        let name = name.as_str();
+        if name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            continue;
+        }
+        let normalized = backend_header_name(name);
+        if untrusted_request_header(&normalized)
+            || matches!(
+                normalized.as_str(),
+                "origin" | "connection" | "upgrade" | "content-length" | "transfer-encoding"
+            )
+            || normalized.starts_with("sec-fetch-")
+            || normalized.starts_with("sec-websocket-")
+        {
+            return Err(Error::bad("Ambiguous proxy header name"));
+        }
+    }
+    Ok(())
 }
 fn private_cookie(name: &str) -> bool {
     name.starts_with("riauth_")
         || name.starts_with("__Host-riauth_")
         || name.starts_with("__Secure-riauth_")
+}
+fn connection_tokens(headers: &HeaderMap) -> Result<Vec<String>> {
+    let mut tokens = Vec::new();
+    for value in headers.get_all("connection").iter() {
+        for name in value
+            .to_str()
+            .map_err(|_| Error::bad("Invalid Connection header"))?
+            .split(',')
+        {
+            let name = name.trim().to_ascii_lowercase();
+            axum::http::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| Error::bad("Invalid Connection header token"))?;
+            tokens.push(name);
+        }
+    }
+    Ok(tokens)
 }
 fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
     let mut removed = vec![
@@ -160,18 +148,7 @@ fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
         "upgrade".into(),
         "content-length".into(),
     ];
-    for value in headers.get_all("connection").iter() {
-        for name in value
-            .to_str()
-            .map_err(|_| Error::bad("Invalid Connection header"))?
-            .split(',')
-        {
-            let name = name.trim().to_ascii_lowercase();
-            axum::http::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| Error::bad("Invalid Connection header token"))?;
-            removed.push(name);
-        }
-    }
+    removed.extend(connection_tokens(headers)?);
     let mut result = HeaderMap::new();
     for (name, value) in headers {
         if !(removed.iter().any(|v| v == name.as_str())
@@ -190,23 +167,7 @@ fn clean(headers: &HeaderMap) -> Result<HeaderMap> {
 }
 async fn profile(runtime: &Runtime, route: &Route) -> Result<Settings> {
     let (id, external) = (route.target.client_id.clone(), route.external.clone());
-    runtime
-        .app
-        .run(move |core| {
-            core.store.read(|tx| {
-                let client = tx
-                    .get::<Client>("clients", &id)?
-                    .filter(|c| c.enabled)
-                    .ok_or_else(Error::forbidden)?;
-                let settings = client.settings.proxy.clone().ok_or_else(Error::forbidden)?;
-                settings.validate(&client)?;
-                if !settings.allows_origin(&external) {
-                    return Err(Error::forbidden());
-                }
-                Ok(settings)
-            })
-        })
-        .await
+    runtime.requests.profile(id, external).await
 }
 fn redirect(location: &str) -> Result<Response> {
     let mut response = StatusCode::FOUND.into_response();
@@ -240,6 +201,7 @@ async fn handle(
     {
         return Err(Error::bad("Unsupported proxy request target or method"));
     }
+    reject_ambiguous_headers(request.headers())?;
     let host = single(request.headers(), "host")?.ok_or_else(|| Error::bad("Host is required"))?;
     let route = runtime
         .routes
@@ -258,13 +220,7 @@ async fn handle(
     // Apply the write guard before dispatching /outpost/logout as well as
     // forwarding application requests.
     if ![Method::GET, Method::HEAD, Method::OPTIONS].contains(request.method()) {
-        let origin = single(request.headers(), "origin")?;
-        let site = single(request.headers(), "sec-fetch-site")?;
-        if origin.is_some_and(|value| value != route.external)
-            || site.is_some_and(|value| value != "same-origin" && value != "none")
-        {
-            return Err(Error::forbidden());
-        }
+        crate::outpost::unsafe_request_provenance(request.headers(), &route.external)?;
     }
     let mut auth_headers = request.headers().clone();
     auth_headers.insert(
@@ -282,23 +238,7 @@ async fn handle(
         }
         let peers = peer.ip();
         let bucket = format!("proxy:{id}:{action}");
-        runtime
-            .app
-            .run(move |core| {
-                if core
-                    .store
-                    .shared_rate_limit(peers, &bucket, 60)
-                    .map_err(Error::internal)?
-                {
-                    return Err(Error::new(
-                        StatusCode::TOO_MANY_REQUESTS,
-                        "rate_limited",
-                        "Retry shortly",
-                    ));
-                }
-                Ok(())
-            })
-            .await?;
+        runtime.requests.outpost_rate_limit(peers, bucket).await?;
         let pairs = url::form_urlencoded::parse(request.uri().query().unwrap_or("").as_bytes())
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect::<Vec<_>>();
@@ -308,42 +248,15 @@ async fn handle(
                     return Err(Error::bad("Start requires exactly one rd parameter"));
                 }
                 let rd = pairs[0].1.clone();
-                runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_start(
-                            &id,
-                            internal_peer(),
-                            &rd,
-                        )?)
-                    })
-                    .await
+                runtime.requests.outpost_start(id, rd).await
             }
             (&Method::GET, "callback") => {
                 runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_callback(
-                            &id,
-                            internal_peer(),
-                            &auth_headers,
-                            pairs,
-                        )?)
-                    })
+                    .requests
+                    .outpost_callback(id, auth_headers, pairs)
                     .await
             }
-            (&Method::POST, "logout") => {
-                runtime
-                    .app
-                    .run(move |core| {
-                        crate::api::browser_response(core.outpost_logout(
-                            &id,
-                            internal_peer(),
-                            &auth_headers,
-                        )?)
-                    })
-                    .await
-            }
+            (&Method::POST, "logout") => runtime.requests.outpost_logout(id, auth_headers).await,
             _ => Err(Error::missing("Outpost endpoint not found")),
         };
     }
@@ -351,37 +264,25 @@ async fn handle(
     let websocket = single(request.headers(), "upgrade")?.is_some();
     let copied = auth_headers.clone();
     let cid = id.clone();
-    let (_, identity_headers) = match runtime
-        .app
-        .run(move |core| core.outpost_auth(&cid, internal_peer(), &copied))
-        .await
-    {
+    let (_, identity_headers) = match runtime.requests.authenticate(cid, copied).await {
         Ok(result) => result,
         Err(e)
             if e.status == StatusCode::UNAUTHORIZED
                 && [Method::GET, Method::HEAD].contains(request.method())
                 && !websocket =>
         {
-            let login = runtime
-                .app
-                .run(move |core| core.outpost_login_url(&id, internal_peer(), &auth_headers))
-                .await?;
+            let login = runtime.requests.login_url(id, auth_headers).await?;
             return redirect(&login);
         }
         Err(e) => return Err(e),
     };
     let mut headers = clean(request.headers())?;
-    for name in [
-        "host",
-        "authorization",
-        "cookie",
-        "forwarded",
-        "x-original-url",
-        "x-forwarded-for",
-        "x-forwarded-host",
-        "x-forwarded-proto",
-        "x-real-ip",
-    ] {
+    let untrusted = headers
+        .keys()
+        .filter(|name| untrusted_request_header(name.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    for name in untrusted {
         headers.remove(name);
     }
     for (name, value) in &identity_headers {
@@ -411,6 +312,9 @@ async fn handle(
         if request.method() != Method::GET
             || single(request.headers(), "upgrade")?
                 .is_none_or(|v| !v.eq_ignore_ascii_case("websocket"))
+            || !connection_tokens(request.headers())?
+                .iter()
+                .any(|token| token == "upgrade")
             || single(request.headers(), "sec-websocket-version")? != Some("13")
             || single(request.headers(), "origin")? != Some(&route.external)
         {
@@ -505,6 +409,9 @@ async fn handle(
             || single(&upstream_headers, "sec-websocket-accept")? != Some(&expected)
             || single(&upstream_headers, "upgrade")?
                 .is_none_or(|v| !v.eq_ignore_ascii_case("websocket"))
+            || !connection_tokens(&upstream_headers)?
+                .iter()
+                .any(|token| token == "upgrade")
         {
             return Err(Error::new(
                 StatusCode::BAD_GATEWAY,
@@ -541,15 +448,7 @@ async fn handle(
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
                     let (id, headers) = (id.clone(), auth_headers.clone());
-                    if runtime
-                        .app
-                        .run(move |core| {
-                            core.outpost_auth(&id, internal_peer(), &headers)
-                                .map(|_| ())
-                        })
-                        .await
-                        .is_err()
-                    {
+                    if runtime.requests.recheck(id, headers).await.is_err() {
                         break;
                     }
                 }
@@ -581,7 +480,8 @@ async fn handle(
 }
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
-    tasks: Vec<JoinHandle<()>>,
+    pub(crate) tasks: Vec<JoinHandle<()>>,
+    leases: Vec<crate::capability::ListenerLease>,
     stop: CancellationToken,
 }
 impl Drop for Servers {
@@ -603,18 +503,15 @@ async fn tls(config: &Listener) -> Result<Option<axum_server::tls_rustls::Rustls
         _ => Ok(None),
     }
 }
-pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
-    // This Core is private to the embedded proxy. No management/API router uses its local trust marker.
-    if !core.config.trusted_proxies.contains(&internal_peer()) {
-        core.config.trusted_proxies.push(internal_peer());
-    }
+pub(crate) async fn start_with_port<P: ProxyPort>(port: P) -> anyhow::Result<Servers> {
     let stop = CancellationToken::new();
     let mut servers = Servers {
         addresses: vec![],
         tasks: vec![],
+        leases: vec![],
         stop: stop.clone(),
     };
-    for config in core.config.proxy_listeners.values() {
+    for (id, config) in port.listeners() {
         config.validate()?;
         let mut routes = BTreeMap::new();
         for (external, target) in &config.routes {
@@ -645,7 +542,7 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
             );
         }
         let runtime = Runtime {
-            app: App::new(core.clone()),
+            requests: port.requests(),
             routes,
             slots: Arc::new(Semaphore::new(256)),
             body_limit: config.max_body_bytes,
@@ -655,6 +552,9 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
         let router = Router::new().fallback(any(handle)).with_state(runtime);
         let listener = tokio::net::TcpListener::bind(config.listen).await?;
         servers.addresses.push(listener.local_addr()?);
+        let lease = port.bind_listener(id, config);
+        let worker_lease = lease.clone();
+        servers.leases.push(lease);
         if let Some(tls) = tls(config).await? {
             let refresh = tls.clone();
             let config = config.clone();
@@ -673,6 +573,8 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
             }));
             let server = axum_server::from_tcp_rustls(listener.into_std()?, tls)?;
             servers.tasks.push(tokio::spawn(async move {
+                let _lease = worker_lease;
+                _lease.running();
                 if server
                     .serve(router.into_make_service_with_connect_info::<SocketAddr>())
                     .await
@@ -683,6 +585,8 @@ pub async fn start(mut core: Core) -> anyhow::Result<Servers> {
             }));
         } else {
             servers.tasks.push(tokio::spawn(async move {
+                let _lease = worker_lease;
+                _lease.running();
                 if axum::serve(
                     listener,
                     router.into_make_service_with_connect_info::<SocketAddr>(),

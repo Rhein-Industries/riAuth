@@ -3,20 +3,39 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 2;
-pub const QUEUES: [&str; 5] = [
+pub const INDEX_VERSION: u32 = 8;
+pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
     "provisioning_jobs",
     "ssf_deliveries",
     "offboard_jobs",
+    "provisioning_deactivations",
 ];
+// Outbound SCIM user links, grouped by local user for the disable transition.
+const USER_LINKS: &str = "index_user_provisioning_links";
+const GROUP_DN_FOLDS: &str = "index_group_dn_folds";
+pub(super) const GROUP_BINDINGS: &str = "index_group_bindings";
+pub(super) const GROUP_SOURCE_DIGESTS: &str = "index_group_source_digests";
+const GROUP_MEMBERS: &str = "index_group_members";
+const GROUP_MEMBER_OVERFLOW: &str = "index_group_member_overflow";
+// Index scans never decode an arbitrary-length stale member ID. Longer IDs
+// force a paged User scan and remain available for exact point verification.
+const INLINE_GROUP_MEMBER_BYTES: usize = 256;
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
+// Imported records can approach the archive's per-frame limit. The ordinary
+// maintenance PAGE would decode 128 such records before returning to rebuild.
+const REBUILD_PAGE: usize = 1;
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct QueueStats {
     pub pending: u64,
     pub failed: u64,
     pub oldest_pending_seconds: u64,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct GroupBinding {
+    pub name: String,
+    pub source_digest: String,
 }
 fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
     if bucket == "offboard_jobs" {
@@ -30,6 +49,20 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
         return (
             pending,
             value["status"] == "failed",
+            due,
+            value["created_at"].as_u64().unwrap_or(0),
+        );
+    }
+    if bucket == "provisioning_deactivations" {
+        let running = value["status"] == "running";
+        let due = value["next_attempt"].as_u64().unwrap_or(0).max(if running {
+            value["lease_until"].as_u64().unwrap_or(0)
+        } else {
+            0
+        });
+        return (
+            running || value["status"] == "pending",
+            value["status"] == "failed" || value["status"] == "stale",
             due,
             value["created_at"].as_u64().unwrap_or(0),
         );
@@ -76,11 +109,81 @@ impl Tx<'_> {
         &self,
         bucket: &str,
         id: &str,
+        group_before: Option<&Value>,
         after: Option<&Value>,
     ) -> Result<()> {
+        if bucket == "users" {
+            // Authentication can rewrite factors or rehash a password without
+            // changing the outbound SCIM projection. Only source changes that
+            // could alter a plan invalidate a saved scan cursor.
+            let before = self.get::<Value>("users", id)?;
+            let changed = match (before.as_ref(), after) {
+                (None, None) => false,
+                (None, Some(_)) | (Some(_), None) => true,
+                (Some(before), Some(after)) => [
+                    "id",
+                    "username",
+                    "display_name",
+                    "email",
+                    "enabled",
+                    "admin",
+                ]
+                .iter()
+                .any(|field| before.get(*field) != after.get(*field)),
+            };
+            if changed {
+                let generation = self
+                    .get::<u64>("provisioning_user_generation", "all")?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("SCIM user generation exhausted"))?;
+                self.put("provisioning_user_generation", "all", &generation)?;
+            }
+            // JSON user-list cursors cover every UserView field, including
+            // factors and attributes omitted from the provisioning projection.
+            if before.as_ref() != after {
+                let generation = self
+                    .get::<u64>("user_listing_generation", "all")?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("User listing generation exhausted"))?;
+                self.put("user_listing_generation", "all", &generation)?;
+            }
+        }
+        if bucket == "groups" {
+            let before = group_before
+                .map(|value| serde_json::from_value::<crate::model::Group>(value.clone()))
+                .transpose()
+                .map_err(Error::internal)?;
+            let after = after
+                .map(|value| serde_json::from_value::<crate::model::Group>(value.clone()))
+                .transpose()
+                .map_err(Error::internal)?;
+            self.update_group_index(id, before.as_ref(), after.as_ref())?;
+        }
         if bucket == "access_grants" {
             let before = self.get::<Value>(bucket, id)?;
             self.update_grant_index(id, before.as_ref(), after)?;
+        }
+        if bucket == "provisioning_links" {
+            let before = self.get::<Value>(bucket, id)?;
+            self.update_link_index(id, before.as_ref(), after)?;
+            // A planning cursor spans transactions. Any ownership change for
+            // its target invalidates that cursor, including an insertion that
+            // sorts before the cursor or an offboarding link update.
+            let targets: std::collections::BTreeSet<_> = [before.as_ref(), after]
+                .into_iter()
+                .flatten()
+                .filter_map(|link| link.get("target").and_then(Value::as_str))
+                .collect();
+            for target in targets {
+                let generation = self
+                    .get::<u64>("provisioning_link_generations", target)?
+                    .unwrap_or(0)
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("SCIM link generation exhausted"))?;
+                self.put("provisioning_link_generations", target, &generation)?;
+            }
         }
         if COUNTED.contains(&bucket) {
             let previous = self.get::<Value>(bucket, id)?;
@@ -136,6 +239,225 @@ impl Tx<'_> {
             self.put("index_user_access_grants", &key, &id)?;
         }
         Ok(())
+    }
+    fn update_link_index(
+        &self,
+        id: &str,
+        before: Option<&Value>,
+        after: Option<&Value>,
+    ) -> Result<()> {
+        let entry = |value: &Value| {
+            value["local_id"]
+                .as_str()
+                .filter(|_| value["kind"] == "Users")
+                .map(|user| {
+                    (
+                        format!("{USER_LINKS}/{}", crypto::digest(user)),
+                        value["target"].clone(),
+                    )
+                })
+        };
+        let old = before.and_then(entry);
+        let new = after.and_then(entry);
+        if old == new {
+            return Ok(());
+        }
+        if let Some((index, _)) = old {
+            self.delete(&index, id)?;
+        }
+        if let Some((index, target)) = new {
+            self.put(&index, id, &target)?;
+        }
+        Ok(())
+    }
+    fn update_group_index(
+        &self,
+        id: &str,
+        before: Option<&crate::model::Group>,
+        after: Option<&crate::model::Group>,
+    ) -> Result<()> {
+        // The source digest is written independently by import_record after
+        // the raw Group value. A bypassing raw import changes that digest but
+        // not this binding, so LDAP fails closed without fetching Group.members.
+        if let Some(group) = after {
+            self.put(
+                GROUP_BINDINGS,
+                id,
+                &GroupBinding {
+                    name: group.name.clone(),
+                    source_digest: group_source_digest(group)?,
+                },
+            )?;
+        } else if before.is_some() {
+            self.delete(GROUP_BINDINGS, id)?;
+            self.delete(GROUP_SOURCE_DIGESTS, id)?;
+        }
+        let fold_bucket = format!(
+            "{GROUP_DN_FOLDS}/{}",
+            crypto::digest(&id.to_ascii_lowercase())
+        );
+        if before.is_none() && after.is_some() {
+            self.put(&fold_bucket, id, &true)?;
+        } else if before.is_some() && after.is_none() {
+            self.delete(&fold_bucket, id)?;
+        }
+        let key = crypto::digest(id);
+        let member_bucket = format!("{GROUP_MEMBERS}/{key}");
+        let overflow_bucket = format!("{GROUP_MEMBER_OVERFLOW}/{key}");
+        if let Some(old) = before {
+            for user in &old.members {
+                if after.is_none_or(|new| new.name != old.name || !new.members.contains(user)) {
+                    self.delete(&format!("index_user_groups/{}", crypto::digest(user)), &key)?;
+                    let member_key = crypto::digest(user);
+                    self.delete(&member_bucket, &member_key)?;
+                    self.delete(&overflow_bucket, &member_key)?;
+                }
+            }
+        }
+        if let Some(new) = after {
+            for user in &new.members {
+                if before.is_none_or(|old| old.name != new.name || !old.members.contains(user)) {
+                    self.put(
+                        &format!("index_user_groups/{}", crypto::digest(user)),
+                        &key,
+                        &new.name,
+                    )?;
+                    let member_key = crypto::digest(user);
+                    if user.len() <= INLINE_GROUP_MEMBER_BYTES {
+                        self.put(&member_bucket, &member_key, &Some(user))?;
+                    } else {
+                        self.put(&member_bucket, &member_key, &None::<&String>)?;
+                        self.put(&overflow_bucket, &member_key, user)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Validate the Group key/name and its last indexed source content using
+    /// only two small records from the caller's snapshot. The source digest
+    /// is refreshed on every raw Group import, including imports that skip indexes.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_binding(&self, name: &str) -> Result<bool> {
+        let binding = self.get::<GroupBinding>(GROUP_BINDINGS, name)?;
+        let source_digest = self.get::<String>(GROUP_SOURCE_DIGESTS, name)?;
+        match (binding, source_digest) {
+            (None, None) => Ok(false),
+            (Some(binding), Some(source_digest))
+                if binding.name == name && binding.source_digest == source_digest =>
+            {
+                Ok(true)
+            }
+            _ => Err(Error::internal("LDAP Group record binding mismatch")),
+        }
+    }
+    /// Read only this user's durable memberships. Each storage range is bounded;
+    /// the result can still contain every group when the user belongs to all of them.
+    pub fn user_group_names(&self, user_id: &str) -> Result<BTreeSet<String>> {
+        let bucket = format!("index_user_groups/{}", crypto::digest(user_id));
+        let mut names = BTreeSet::new();
+        let mut after = None;
+        loop {
+            let page = self.scan::<String>(&bucket, after.as_deref(), PAGE)?;
+            if page.is_empty() {
+                break;
+            }
+            let full = page.len() == PAGE;
+            after = page.last().map(|(key, _)| key.clone());
+            names.extend(page.into_iter().map(|(_, name)| name));
+            if !full {
+                break;
+            }
+        }
+        Ok(names)
+    }
+    /// One bounded page of durable Group memberships for an LDAP user. The
+    /// cursor is the index key (a Group-key digest), not the Group name.
+    #[cfg(feature = "platform")]
+    pub(crate) fn user_group_index_page(
+        &self,
+        user_id: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(String, String)>> {
+        self.scan(
+            &format!("index_user_groups/{}", crypto::digest(user_id)),
+            after,
+            limit.min(PAGE),
+        )
+    }
+    /// Check one durable membership without decoding the Group's member set.
+    #[cfg(feature = "platform")]
+    pub(crate) fn user_has_group_index(&self, user_id: &str, group_name: &str) -> Result<bool> {
+        let bucket = format!("index_user_groups/{}", crypto::digest(user_id));
+        match self.get::<String>(&bucket, &crypto::digest(group_name))? {
+            Some(name) if name == group_name => Ok(true),
+            Some(_) => Err(Error::internal(
+                "Group membership index has a mismatched name",
+            )),
+            None => Ok(false),
+        }
+    }
+    /// One bounded page of Group members. Long IDs are represented by a
+    /// sentinel so scans do not materialize their source-sized strings.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_member_index_page(
+        &self,
+        group_name: &str,
+        after: Option<&str>,
+    ) -> Result<Vec<(String, Option<String>)>> {
+        let bucket = format!("{GROUP_MEMBERS}/{}", crypto::digest(group_name));
+        let page = self.scan::<Option<String>>(&bucket, after, PAGE)?;
+        for (key, member) in &page {
+            if member.as_ref().is_some_and(|member| {
+                member.len() > INLINE_GROUP_MEMBER_BYTES || crypto::digest(member) != *key
+            }) {
+                return Err(Error::internal("LDAP Group member index binding mismatch"));
+            }
+        }
+        Ok(page)
+    }
+    /// Exact point membership after the User-scan fallback. The overflow row
+    /// is read only for a matching long User ID, never during the index scan.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_has_member_index(&self, group_name: &str, user_id: &str) -> Result<bool> {
+        let group = crypto::digest(group_name);
+        let key = crypto::digest(user_id);
+        match self.get::<Option<String>>(&format!("{GROUP_MEMBERS}/{group}"), &key)? {
+            None => Ok(false),
+            Some(Some(member)) if member == user_id => Ok(true),
+            Some(Some(_)) => Err(Error::internal("LDAP Group member index binding mismatch")),
+            Some(None) => {
+                let member =
+                    self.get::<String>(&format!("{GROUP_MEMBER_OVERFLOW}/{group}"), &key)?;
+                if user_id.len() > INLINE_GROUP_MEMBER_BYTES && member.as_deref() == Some(user_id) {
+                    Ok(true)
+                } else {
+                    Err(Error::internal(
+                        "LDAP Group member overflow binding mismatch",
+                    ))
+                }
+            }
+        }
+    }
+    /// Group storage keys whose LDAP DNs have the same ASCII case fold.
+    /// A page is enough for the read side to detect visible collisions without
+    /// retaining every projected Group DN.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_dn_fold_page(
+        &self,
+        name: &str,
+        after: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let bucket = format!(
+            "{GROUP_DN_FOLDS}/{}",
+            crypto::digest(&name.to_ascii_lowercase())
+        );
+        Ok(self
+            .scan::<bool>(&bucket, after, PAGE)?
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect())
     }
     /// Only grants for this user are visited; revoked grants are absent from the index.
     pub fn user_access_grants<T: DeserializeOwned>(&self, user_id: &str) -> Result<Vec<T>> {
@@ -262,6 +584,77 @@ impl Tx<'_> {
             .unwrap_or(0);
         Ok(stats)
     }
+    /// Bounded round-robin selection for connector claims. Advance only past
+    /// inspected entries, so a busy target at the head cannot hide later due
+    /// jobs. Freeze the due cutoff until wraparound; new retries/appends cannot
+    /// keep the cursor chasing the tail forever. A stored cursor whose forward
+    /// pass inspects no due row wraps once from the index start under that same
+    /// cutoff. A pass that already inspected a due row does not wrap. Only
+    /// cursor metadata changes on a refused claim, never a job's retry time,
+    /// lease or attempt count.
+    pub(crate) fn connector_due<T: DeserializeOwned, R>(
+        &self,
+        bucket: &str,
+        at: u64,
+        mut claim: impl FnMut(String, T) -> Result<Option<R>>,
+    ) -> Result<Option<R>> {
+        const CURSORS: &str = "connector_due_cursors";
+        const LIMIT: usize = 16;
+        if !matches!(bucket, "provisioning_jobs" | "provisioning_deactivations") {
+            return Err(Error::internal("Collection has no connector cursor"));
+        }
+        let stored = self.get::<(String, u64)>(CURSORS, bucket)?;
+        let cutoff = stored.as_ref().map_or(at, |(_, cutoff)| (*cutoff).min(at));
+        // No stored cursor already starts at the index head. A stored cursor
+        // scans strictly after its key, so this records that one empty forward
+        // pass may restart once.
+        let mut after = stored.map(|(key, _)| key);
+        let mut wrap = after.is_some();
+        let mut selected = None;
+        let mut exhausted;
+        let mut last;
+        loop {
+            let entries =
+                self.scan::<String>(&format!("index_due_{bucket}"), after.as_deref(), LIMIT)?;
+            exhausted = entries.len() < LIMIT;
+            last = None;
+            for (key, id) in entries {
+                let due = key
+                    .split('/')
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or_else(|| Error::internal("Invalid due index"))?;
+                if due > cutoff {
+                    exhausted = true;
+                    break;
+                }
+                last = Some(key);
+                if let Some(record) = self.get(bucket, &id)?
+                    && let Some(result) = claim(id, record)?
+                {
+                    selected = Some(result);
+                    // Remaining entries in this page have not been inspected.
+                    exhausted = false;
+                    break;
+                }
+            }
+            // Re-due keys sort before a parked cursor. Claim each of them once
+            // on this restart. Do not restart after a pass that inspected a
+            // due row, and do not restart a second time in this call.
+            if wrap && last.is_none() && selected.is_none() {
+                wrap = false;
+                after = None;
+                continue;
+            }
+            break;
+        }
+        if let Some(last) = last.filter(|_| !exhausted) {
+            self.put(CURSORS, bucket, &(last, cutoff))?;
+        } else {
+            self.delete(CURSORS, bucket)?;
+        }
+        Ok(selected)
+    }
     /// A durable cursor advances at most PAGE records per collection each pass.
     /// Freeze the sweep's upper bound so continuous appends cannot prevent wraparound.
     pub fn maintenance_page<T: DeserializeOwned>(&self, bucket: &str) -> Result<Vec<(String, T)>> {
@@ -295,11 +688,24 @@ impl Tx<'_> {
     }
     /// Used for offline upgrades and restore, never for ordinary requests.
     pub fn rebuild_indexes(&self) -> Result<()> {
+        self.rebuild_indexes_checked(&|| Ok(()))
+    }
+    /// Rebuild derived indexes in pages, checking for cancellation between pages.
+    /// The caller's write transaction keeps the source records and rebuilt indexes
+    /// atomic even if a check aborts partway through.
+    pub fn rebuild_indexes_checked(&self, check: &dyn Fn() -> Result<()>) -> Result<()> {
         let mut indexes = vec![
             "index_counts".to_owned(),
             "index_queues".into(),
             "session_retention".into(),
             "index_user_access_grants".into(),
+            "index_user_groups".into(),
+            GROUP_DN_FOLDS.into(),
+            GROUP_BINDINGS.into(),
+            GROUP_SOURCE_DIGESTS.into(),
+            GROUP_MEMBERS.into(),
+            GROUP_MEMBER_OVERFLOW.into(),
+            USER_LINKS.into(),
         ];
         for bucket in COUNTED {
             indexes.push(format!("index_expiry_{bucket}"));
@@ -309,31 +715,66 @@ impl Tx<'_> {
             indexes.push(format!("index_age_{queue}"));
         }
         for bucket in indexes {
-            for (key, _) in self.list::<Value>(&bucket)? {
-                self.delete(&bucket, &key)?;
-            }
+            self.for_each_rebuild_page::<Value>(&bucket, check, |key, _| {
+                self.delete(&bucket, &key)
+            })?;
         }
         for bucket in COUNTED {
-            let records = self.list::<Value>(bucket)?;
-            self.put("index_counts", bucket, &(records.len() as u64))?;
-            for (id, value) in records {
-                self.update_indexes(bucket, &id, Some(&value))?;
-            }
+            let mut count = 0u64;
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                count = count
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("Collection count overflow"))?;
+                self.update_indexes(bucket, &id, None, Some(&value))
+            })?;
+            self.put("index_counts", bucket, &count)?;
         }
         for bucket in ["access", "refresh"] {
-            for (id, value) in self.list::<Value>(bucket)? {
-                self.update_indexes(bucket, &id, Some(&value))?;
-            }
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                self.update_indexes(bucket, &id, None, Some(&value))
+            })?;
         }
         for bucket in QUEUES {
-            for (id, value) in self.list::<Value>(bucket)? {
-                self.update_queue_indexes(bucket, &id, None, Some(&value))?;
-            }
+            self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
+                self.update_queue_indexes(bucket, &id, None, Some(&value))
+            })?;
         }
-        for (id, value) in self.list::<Value>("access_grants")? {
-            self.update_grant_index(&id, None, Some(&value))?;
-        }
+        self.for_each_rebuild_page::<Value>("access_grants", check, |id, value| {
+            self.update_grant_index(&id, None, Some(&value))
+        })?;
+        self.for_each_rebuild_page::<crate::model::Group>("groups", check, |id, group| {
+            self.update_group_index(&id, None, Some(&group))?;
+            self.put(GROUP_SOURCE_DIGESTS, &id, &group_source_digest(&group)?)
+        })?;
+        self.for_each_rebuild_page::<Value>("provisioning_links", check, |id, link| {
+            self.update_link_index(&id, None, Some(&link))
+        })?;
+        check()?;
         self.put("meta", "index_version", &INDEX_VERSION)?;
         Ok(())
+    }
+    fn for_each_rebuild_page<T: DeserializeOwned>(
+        &self,
+        bucket: &str,
+        check: &dyn Fn() -> Result<()>,
+        mut visit: impl FnMut(String, T) -> Result<()>,
+    ) -> Result<()> {
+        let mut after = None;
+        loop {
+            check()?;
+            let page = self.scan::<T>(bucket, after.as_deref(), REBUILD_PAGE)?;
+            if page.is_empty() {
+                return Ok(());
+            }
+            let last = page.last().unwrap().0.clone();
+            let complete = page.len() < REBUILD_PAGE;
+            for (id, value) in page {
+                visit(id, value)?;
+            }
+            if complete {
+                return Ok(());
+            }
+            after = Some(last);
+        }
     }
 }

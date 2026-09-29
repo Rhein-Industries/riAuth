@@ -4,7 +4,7 @@
 
 `alert_webhook` is an optional local route for a few process conditions. It is not a substitute for the deployment's paging system. Prometheus rules remain the place to page operators. Set latency targets from measurements in your deployment; this webhook does not define them.
 
-`dispatch_alerts` posts a small JSON document when a selected condition is currently true. The maintenance loop calls it after each cleanup pass. Tests and operators can call the same function directly. Cleanup and signing counters are process-lifetime, so those conditions stay true until the process restarts. `storage_not_ready` is probed on each dispatch and clears when storage recovers. The hook reports conditions that are true at that dispatch. It does not deduplicate, inhibit, or escalate.
+`dispatch_alerts` posts a small JSON document when a selected condition is currently true. A separate worker calls it about once per minute on the bounded delivery runtime; cleanup has its own maintenance runtime. Tests and operators can call the same function directly. Cleanup and signing counters are process-lifetime, so those conditions stay true until the process restarts. `storage_not_ready` is probed on each dispatch and clears when storage recovers. The hook reports conditions that are true at that dispatch. It does not deduplicate, inhibit, or escalate.
 
 Selected signals:
 
@@ -14,7 +14,7 @@ Selected signals:
 
 The body is the service name plus those signal names and counters. It does not include database records, passwords, signing keys, bearer tokens, or other credentials. An optional bearer token is read from an owner-only file (0600 or 0400) and is sent only as an `Authorization` header.
 
-The HTTP client uses a three-second request timeout and a two-second connect timeout and does not follow redirects. A refused, slow, or non-success response is logged and counted on `riauth_alert_delivery_errors_total`. Delivery failure does not stop the server. A receiver that does not answer can delay the next maintenance pass by that client timeout; that bound is a fail-safe, not a latency target.
+The HTTP client uses a three-second request timeout and a two-second connect timeout and does not follow redirects. A refused, slow, or non-success response is logged and counted on `riauth_alert_delivery_errors_total`. Delivery failure does not stop the server. A receiver that does not answer occupies its delivery slot until the client timeout; maintenance continues independently. That timeout is a fail-safe, not a latency target. See [background capacity](../operations.md#background-capacity-and-overload) for admission, deadlines and retry signals.
 
 ```toml
 [alert_webhook]

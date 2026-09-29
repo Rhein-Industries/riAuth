@@ -275,7 +275,9 @@ fn openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync() {
     ldap.delete(renamed).unwrap().success().unwrap();
     let plan = core.directory_plan(&admin, "staff").unwrap();
     assert_eq!(plan["changes"][0]["action"], "disable");
-    core.directory_apply(&admin, &text(&plan, "id")).unwrap();
+    assert!(core.directory_apply(&admin, &text(&plan, "id")).is_err());
+    core.directory_apply_confirmed(&admin, &text(&plan, "id"), Some(&text(&plan, "id")))
+        .unwrap();
     assert!(
         !core
             .store
@@ -311,7 +313,36 @@ fn openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync() {
     }
     let plan = core.directory_plan(&admin, "staff").unwrap();
     assert_eq!(plan["changes"].as_array().unwrap().len(), 205);
-    core.directory_apply(&admin, &text(&plan, "id")).unwrap();
+    // The departed account remains absent, so this create page still needs review.
+    assert_eq!(plan["removal_impact"]["missing_users"], 1);
+    assert_eq!(plan["removal_impact"]["disabled_users"], 0);
+    assert_eq!(plan["removal_impact"]["removed_memberships"], 0);
+    assert_eq!(plan["removal_impact"]["review_required"], true);
+    let denied = core
+        .directory_apply(&admin, &text(&plan, "id"))
+        .unwrap_err();
+    assert_eq!(denied.code, "conflict");
+    assert_eq!(
+        denied.message,
+        "Connector removals require explicit review; confirm this exact plan ID after inspecting removal_impact and changes"
+    );
+    assert!(
+        core.store
+            .get::<String>("usernames", "paged000")
+            .unwrap()
+            .is_none()
+    );
+    let applied = core
+        .directory_apply_confirmed(&admin, &text(&plan, "id"), Some(&text(&plan, "id")))
+        .unwrap();
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["changes"].as_array().unwrap().len(), 205);
+    assert!(
+        core.store
+            .get::<String>("usernames", "paged204")
+            .unwrap()
+            .is_some()
+    );
     let mut unsafe_directory = core.config.directories["staff"].clone();
     unsafe_directory.url = "ldap://example.test".into();
     unsafe_directory.transport = Transport::Loopback;

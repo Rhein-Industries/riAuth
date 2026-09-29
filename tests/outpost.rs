@@ -132,7 +132,49 @@ async fn exercise(nginx: Option<String>) {
     );
     use std::future::IntoFuture;
     let (sender, mut receiver) = tokio::sync::mpsc::channel::<Value>(32);
-    let app=Router::new().route("/ws",axum::routing::get(|ws:axum::extract::WebSocketUpgrade| async move { ws.protocols(["test"]).on_upgrade(|mut socket|async move { while let Some(Ok(message))=socket.recv().await { if socket.send(message).await.is_err(){break;} } }) })).fallback(any(move|headers:HeaderMap,OriginalUri(uri):OriginalUri|{let sender=sender.clone();async move{let value=json!({"username":headers.get("x-authentik-username").and_then(|v|v.to_str().ok()),"authorization":headers.get("authorization").and_then(|v|v.to_str().ok()),"cookie":headers.get("cookie").and_then(|v|v.to_str().ok()),"uri":uri.to_string()});let _=sender.send(value.clone()).await;Json(value)}}));
+    let app = Router::new()
+        .route(
+            "/ws",
+            axum::routing::get(|ws: axum::extract::WebSocketUpgrade| async move {
+                ws.protocols(["test"]).on_upgrade(|mut socket| async move {
+                    while let Some(Ok(message)) = socket.recv().await {
+                        if socket.send(message).await.is_err() {
+                            break;
+                        }
+                    }
+                })
+            }),
+        )
+        .fallback(any(
+            move |headers: HeaderMap, OriginalUri(uri): OriginalUri| {
+                let sender = sender.clone();
+                async move {
+                    let header = |name| headers.get(name).and_then(|v| v.to_str().ok());
+                    let value = json!({
+                        "username": header("x-authentik-username"),
+                        "authorization": header("authorization"),
+                        "cookie": header("cookie"),
+                        "intent": header("x-riauth-request-intent"),
+                        "custom_dotted": header("x.app.version"),
+                        "uri": uri.to_string(),
+                        "auth_alias": header("x_auth_user"),
+                        "identity_alias": header("x_authentik_username"),
+                        "riauth_alias": header("x_riauth_app_cookie"),
+                        "forwarded": header("forwarded"),
+                        "forwarded_alias": header("x_forwarded_for"),
+                        "forwarded_for": header("x-forwarded-for"),
+                        "forwarded_host": header("x-forwarded-host"),
+                        "forwarded_proto": header("x-forwarded-proto"),
+                        "forwarded_uri": header("x-forwarded-uri"),
+                        "original_host": header("x-original-host"),
+                        "real_ip": header("x-real-ip"),
+                        "remote_user": header("remote-user"),
+                    });
+                    let _ = sender.send(value.clone()).await;
+                    Json(value)
+                }
+            },
+        ));
     let app = tokio::spawn(axum::serve(app_listener, app).into_future());
     let config = include_str!("../deploy/nginx-forward-auth.conf")
         .replace("{{RUNTIME}}", temp.path().to_str().unwrap())
@@ -294,23 +336,112 @@ async fn exercise(nginx: Option<String>) {
     assert_eq!(callback.status(), 302);
     assert_eq!(callback.headers()["location"].to_str().unwrap(), target);
     let proxy_cookie = cookie(&callback);
-    let value = http
+    let mut request = http
         .get(&target)
         .header("cookie", format!("{proxy_cookie}; app-session=fixture"))
         .header("x-authentik-username", "root")
         .header("x-auth-user", "root")
-        .header("authorization", "Bearer attacker")
-        .send()
-        .await
-        .unwrap()
-        .json::<Value>()
-        .await
-        .unwrap();
+        .header("forwarded", "for=attacker.test")
+        .header("x-forwarded-for", "attacker.test")
+        .header("x-forwarded-host", "attacker.test")
+        .header("x-forwarded-proto", "https")
+        .header("x-forwarded-uri", "/admin")
+        .header("x-original-host", "attacker.test")
+        .header("x-real-ip", "203.0.113.4")
+        .header("remote-user", "root")
+        .header("authorization", "Bearer attacker");
+    if !builtin {
+        request = request
+            .header("x_auth_user", "root")
+            .header("x_authentik_username", "root")
+            .header("x_riauth_app_cookie", "planted")
+            .header("x_forwarded_for", "attacker.test");
+    }
+    let value = request.send().await.unwrap().json::<Value>().await.unwrap();
     assert_eq!(value["username"], "admin");
     assert_eq!(value["authorization"], Value::Null);
     assert_eq!(value["cookie"], "app-session=fixture");
     assert_eq!(value["uri"], "/reports?one=1&two=2");
+    if builtin {
+        for name in [
+            "auth_alias",
+            "identity_alias",
+            "riauth_alias",
+            "forwarded",
+            "forwarded_alias",
+            "forwarded_uri",
+            "original_host",
+            "real_ip",
+            "remote_user",
+        ] {
+            assert_eq!(value[name], Value::Null, "{name}");
+        }
+        assert_eq!(value["forwarded_for"], "127.0.0.1");
+        assert_eq!(value["forwarded_host"], proxy_addr.to_string());
+        assert_eq!(value["forwarded_proto"], "http");
+    }
     let _ = receiver.recv().await;
+    if builtin {
+        // Each request has a valid session. A 400 and an empty upstream channel
+        // prove that header aliases are refused at ingress, before authorization
+        // or forwarding can turn them into a trusted backend variable.
+        for alias in [
+            "X.Auth.User",
+            "X!Auth!User",
+            "X_Auth_User",
+            "X_Authentik_Username",
+            "X_Riauth_App_Cookie",
+        ] {
+            let rejected = http
+                .get(&target)
+                .header("cookie", &proxy_cookie)
+                .header(alias, "root")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(rejected.status(), 400, "{alias}");
+            assert!(receiver.try_recv().is_err(), "{alias} reached upstream");
+        }
+        for alias in [
+            "X.Riauth.Request.Intent",
+            "X!Riauth!Request!Intent",
+            "X_Riauth_Request_Intent",
+        ] {
+            let rejected = http
+                .post(&target)
+                .header("cookie", &proxy_cookie)
+                .header("x-riauth-request-intent", "api")
+                .header(alias, "api")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(rejected.status(), 400, "{alias}");
+            assert!(receiver.try_recv().is_err(), "{alias} reached upstream");
+        }
+    }
+    let missing_provenance = http
+        .post(&target)
+        .header("cookie", &proxy_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_provenance.status(), 403);
+    assert!(receiver.try_recv().is_err());
+    let mut explicit_request = http
+        .post(&target)
+        .header("cookie", &proxy_cookie)
+        .header("x-riauth-request-intent", "api");
+    if builtin {
+        explicit_request = explicit_request.header("x.app.version", "1");
+    }
+    let explicit_api = explicit_request.send().await.unwrap();
+    assert_eq!(explicit_api.status(), 200);
+    let api_seen = receiver.recv().await.unwrap();
+    assert_eq!(api_seen["username"], "admin");
+    assert_eq!(api_seen["intent"], Value::Null);
+    if builtin {
+        assert_eq!(api_seen["custom_dotted"], "1");
+    }
     for (request_origin, site) in [
         ("http://evil.example.test", "same-site"),
         (&origin[..], "same-site"),
@@ -345,6 +476,17 @@ async fn exercise(nginx: Option<String>) {
     assert_eq!(receiver.recv().await.unwrap()["username"], "admin");
     let mut websocket = if builtin {
         let url = format!("ws://{proxy_addr}/ws");
+        let incomplete = http
+            .get(format!("{origin}/ws"))
+            .header("cookie", &proxy_cookie)
+            .header("origin", &origin)
+            .header("upgrade", "websocket")
+            .header("sec-websocket-version", "13")
+            .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(incomplete.status(), 403);
         let mut untrusted = url.clone().into_client_request().unwrap();
         untrusted
             .headers_mut()
@@ -378,6 +520,7 @@ async fn exercise(nginx: Option<String>) {
         assert_eq!(
             http.post(&target)
                 .header("cookie", &proxy_cookie)
+                .header("x-riauth-request-intent", "api")
                 .body(vec![0; 4097])
                 .send()
                 .await
@@ -400,7 +543,15 @@ async fn exercise(nginx: Option<String>) {
         None
     };
 
-    assert_eq!(http.post(&target).send().await.unwrap().status(), 401);
+    assert_eq!(
+        http.post(&target)
+            .header("x-riauth-request-intent", "api")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
     let logout_url = format!("{origin}/outpost/reports/logout");
     for (request_origin, site) in [
         ("http://evil.example.test", "same-site"),

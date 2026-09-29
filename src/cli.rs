@@ -1,4 +1,13 @@
+mod backup;
+mod client_creation;
+mod client_endpoint;
+mod client_policy;
+mod client_status;
+mod grants;
+pub mod local;
+mod memberships;
 mod transport;
+mod usb;
 use transport::{Remote, SavedSession};
 
 use crate::{
@@ -52,6 +61,10 @@ impl std::fmt::Display for RemoteFailure {
 impl std::error::Error for RemoteFailure {}
 
 pub fn report_error(error: &anyhow::Error, json_output: bool) -> i32 {
+    if error.is::<local::TransitionBlocked>() {
+        eprintln!("error: {error}");
+        return 5;
+    }
     let (status, code, message) = if let Some(e) = error.downcast_ref::<RemoteFailure>() {
         (e.status, e.code.clone(), e.message.clone())
     } else if let Some(e) = error.downcast_ref::<crate::error::Error>() {
@@ -120,7 +133,7 @@ pub struct Cli {
     /// Fail instead of prompting for missing input
     #[arg(long, global = true)]
     pub non_interactive: bool,
-    /// Stable identifier to retry the same management mutation for up to 24 hours
+    /// Stable identifier to retry the same mutation for up to 24 hours
     #[arg(long, global = true)]
     pub idempotency_key: Option<String>,
     /// Apply a direct management mutation only at this configuration revision
@@ -135,6 +148,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Assign low-risk human grants or stage, review and execute privileged changes
+    Grants {
+        #[command(subcommand)]
+        command: grants::GrantCommand,
+    },
     /// Plan and apply LDAP, Google Workspace, and Microsoft Entra directory imports
     Directory {
         #[command(subcommand)]
@@ -146,12 +164,7 @@ pub enum Command {
         command: ProvisionCommand,
     },
     /// Copy an offline redb instance into an empty PostgreSQL database and write its new configuration
-    MigratePostgres {
-        #[arg(long)]
-        postgres_config: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-    },
+    MigratePostgres(local::MigratePostgresArgs),
     /// Invite accounts, verify email and recover a forgotten password
     Account {
         #[command(subcommand)]
@@ -168,6 +181,9 @@ pub enum Command {
         resource: String,
         #[arg(long)]
         id: Option<String>,
+        /// Resource ETag returned by SCIM GET/POST, including its quotes
+        #[arg(long)]
+        if_version: Option<String>,
         #[arg(long,default_value="GET",value_parser=["GET","POST","PUT","PATCH","DELETE"])]
         method: String,
         #[arg(long)]
@@ -237,12 +253,13 @@ pub enum Command {
         #[arg(long)]
         revoke: Option<String>,
     },
-    /// Convert complete Authentik API exports into a reviewed manifest and blocker report
-    ImportAuthentik {
+    /// Convert complete Authentik API exports into a reviewed manifest and classified preflight report
+    ImportAuthentik(local::ImportAuthentikArgs),
+    /// Classify an Authentik export bundle or a declared inventory of another source system; writes nothing
+    MigrationPreflight {
+        /// riauth.authentik-import/v1 bundle or riauth.migration-inventory/v1 inventory
         #[arg(long)]
         file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
     },
     /// Change your own password with current-password and MFA verification
     Passwd {
@@ -259,28 +276,23 @@ pub enum Command {
     /// Inspect queued and completed back-channel logout deliveries
     Deliveries,
     /// Generate a private encryption key file
-    Keygen {
-        #[arg(long)]
-        out: PathBuf,
-    },
+    Keygen(local::KeygenArgs),
     /// Take a consistent encrypted backup of the running instance
+    ///
+    /// Streams a riauth.backup/v3 archive into a new private file and publishes it under --out
+    /// only after the whole archive authenticates with the backup key. For this command
+    /// --request-timeout bounds each wait for data, not the whole transfer.
     Backup {
         #[arg(long)]
         key_file: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Largest archive to accept, in bytes; the server's own quota also applies
+        #[arg(long, default_value_t = crate::operations::stream::MAX_ARCHIVE_BYTES, value_parser = clap::value_parser!(u64).range(32..=4_294_967_296))]
+        max_bytes: u64,
     },
     /// Restore and verify a backup in a new directory, without starting a server
-    Restore {
-        #[arg(long)]
-        backup: PathBuf,
-        #[arg(long)]
-        key_file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        #[arg(long)]
-        database_key_file: Option<PathBuf>,
-    },
+    Restore(local::RestoreArgs),
     /// Enumerate visible resources with pagination
     Inventory {
         #[arg(value_parser = ["users", "groups", "clients", "audit"])]
@@ -318,6 +330,8 @@ pub enum Command {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        #[arg(long)]
+        confirm_removals: bool,
     },
     /// Export visible desired state without credentials
     Export {
@@ -339,30 +353,35 @@ pub enum Command {
         #[arg(long)]
         mfa: bool,
     },
+    /// Simulate one policy request with optional group and verified-source assumptions
+    Simulate {
+        client_id: String,
+        username: String,
+        #[arg(long, default_value = "openid profile", value_delimiter = ' ')]
+        scope: Vec<String>,
+        #[arg(long, conflicts_with = "without_group")]
+        with_group: Option<String>,
+        #[arg(long, conflicts_with = "with_group")]
+        without_group: Option<String>,
+        #[arg(
+            long,
+            help = "Assume this source was verified; use federated or mfa assurance"
+        )]
+        source: Option<String>,
+        #[arg(long, default_value = "password", value_parser = ["password", "mfa", "federated", "certificate"])]
+        assurance: String,
+    },
     /// Manage scoped machine credentials
     Agent {
         #[command(subcommand)]
         command: AgentCommand,
     },
     /// Create an instance, signing key and first administrator
-    Init {
-        #[arg(long, default_value = "http://localhost:9000")]
-        issuer: String,
-        #[arg(long, default_value = "127.0.0.1:9000")]
-        listen: std::net::SocketAddr,
-        #[arg(long, default_value = "data")]
-        data_dir: PathBuf,
-        #[arg(long, default_value = "admin")]
-        admin: String,
-        #[arg(long)]
-        password_stdin: bool,
-        #[arg(long)]
-        database_key_file: Option<PathBuf>,
-        #[arg(long)]
-        postgres_config: Option<PathBuf>,
-    },
+    Init(local::InitArgs),
     /// Run the identity service with native TLS or a configured TLS reverse proxy
     Serve,
+    /// Provision a single-use browser setup proof in a private operator file (local, offline)
+    PrepareSetup(local::PrepareSetupArgs),
     /// Check the connected instance
     Status,
     /// Authenticate and save a private CLI session
@@ -382,7 +401,7 @@ pub enum Command {
         #[command(subcommand)]
         command: UserCommand,
     },
-    /// Schedule, reschedule or cancel local user offboarding
+    /// Schedule, reschedule, cancel, or inspect local user offboarding
     Offboard {
         #[command(subcommand)]
         command: OffboardCommand,
@@ -459,7 +478,8 @@ pub enum Command {
         #[command(subcommand)]
         command: ReportCommand,
     },
-    /// Rotate the signing key; retain the previous public key during token expiry
+    /// Rotate the signing key; requires --idempotency-key and --if-revision
+    /// Retains the previous public key during token expiry.
     RotateKey,
     /// Manage Shared Signals streams. Inbound push URL is `{issuer}/api/ssf/events` with content type `application/secevent+jwt`.
     Ssf {
@@ -467,12 +487,33 @@ pub enum Command {
         command: SsfCommand,
     },
     /// Recover an administrator offline; requires local database access and a stopped server
-    RecoverAdmin {
-        username: String,
+    RecoverAdmin(local::RecoverAdminArgs),
+    /// Restored-state policy; offline, with every server stopped (docs/recovery.md)
+    Recovery {
+        #[command(subcommand)]
+        command: RecoveryCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RecoveryCommand {
+    /// Show the serving gate, pending reconciliation and PostgreSQL lineage (read-only)
+    Status,
+    /// Apply the restored-state policy after a database-native restore
+    /// (PostgreSQL PITR, base backup or dump, or a copied redb file)
+    Invalidate {
+        /// Confirm that older database state may now be in use
+        #[arg(long, required = true)]
+        database_restored: bool,
+    },
+    /// Reopen the serving gate after reconciling restored persistent credentials
+    Complete {
+        /// The pending recovery `id` that was reviewed, from `recovery status`
         #[arg(long)]
-        password_stdin: bool,
+        recovery_id: String,
+        /// Confirm that listed persistent credentials were reconciled or rotated
         #[arg(long)]
-        reset_mfa: bool,
+        persistent_credentials_reconciled: bool,
     },
 }
 
@@ -536,9 +577,95 @@ pub enum ProvisionCommand {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        /// Confirm the exact reviewed plan's removals
+        #[arg(long)]
+        confirm_removals: bool,
     },
     Jobs,
+    /// Stop an unfinished delivery job so the target can be replanned
+    Stop {
+        job: String,
+    },
+    /// Per-target offboarding deactivation outcomes
+    Deactivations,
+    /// Re-evaluate a failed or stale deactivation against the current link
+    RetryDeactivation {
+        id: String,
+    },
+    /// Record what the target shows for a stopped job's ambiguous item
+    Resolve {
+        job: String,
+        /// applied, not_applied or absent
+        #[arg(long)]
+        observed: String,
+        /// Reference for the check, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Record what the target shows for an ambiguous stale or failed deactivation
+    ResolveDeactivation {
+        id: String,
+        /// applied, not_applied or absent
+        #[arg(long)]
+        observed: String,
+        /// Reference for the check, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+        /// Exact deactivation revision, required for an unlinked Create
+        #[arg(long, requires_all = ["workers_quiesced", "remote_requests_settled"])]
+        revision: Option<String>,
+        /// Attest every old Create worker is unable to resume
+        #[arg(long, requires = "revision")]
+        workers_quiesced: bool,
+        /// Attest prior Create requests cannot still commit at the provider
+        #[arg(long, requires = "revision")]
+        remote_requests_settled: bool,
+    },
+    /// Waive further attempts for a held, failed or stale deactivation
+    DismissDeactivation {
+        id: String,
+        /// Exact revision from provision deactivations
+        #[arg(long)]
+        revision: String,
+        /// remote_absent or permanently_unverifiable
+        #[arg(long, value_parser = ["remote_absent", "permanently_unverifiable"])]
+        reason: String,
+        /// Evidence reference for the waiver, such as a ticket; no secrets
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Recover an abandoned reviewed-job dispatch after external quiescence
+    RecoverDispatch {
+        job: String,
+        #[command(flatten)]
+        recovery: DispatchRecoveryArgs,
+    },
+    /// Recover an abandoned deactivation dispatch after external quiescence
+    RecoverDeactivationDispatch {
+        id: String,
+        #[command(flatten)]
+        recovery: DispatchRecoveryArgs,
+    },
 }
+
+#[derive(Args, Serialize)]
+pub struct DispatchRecoveryArgs {
+    /// Exact state_revision (job) or revision (deactivation) from a fresh listing
+    #[arg(long)]
+    revision: String,
+    #[arg(long, value_parser = ["worker_lost", "legacy_untracked"])]
+    reason: String,
+    /// Reference proving worker quiescence and prior provider request settlement
+    #[arg(long)]
+    evidence: String,
+    /// Attest every old worker, including suspended/legacy nodes, cannot resume
+    #[arg(long, required = true)]
+    workers_quiesced: bool,
+    /// Attest no prior provider request can still commit; not a success claim
+    #[arg(long, required = true)]
+    remote_requests_settled: bool,
+}
+
 #[derive(Subcommand)]
 pub enum DirectoryCommand {
     List,
@@ -550,6 +677,9 @@ pub enum DirectoryCommand {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        /// Confirm the exact reviewed plan's removals
+        #[arg(long)]
+        confirm_removals: bool,
     },
     /// Review a Google Workspace user and group sync
     Workspace {
@@ -805,13 +935,28 @@ pub enum OffboardCommand {
     Get {
         id: String,
     },
+    /// Redacted counts and attention items for scheduled offboarding
+    Diagnostics,
 }
 #[derive(Subcommand)]
 pub enum GroupCommand {
+    /// Review exact durable membership of configured privileged groups
+    Review {
+        #[command(subcommand)]
+        command: memberships::ReviewCommand,
+    },
     List,
-    Create { name: String },
-    AddMember { group: String, username: String },
-    RemoveMember { group: String, username: String },
+    Create {
+        name: String,
+    },
+    AddMember {
+        group: String,
+        username: String,
+    },
+    RemoveMember {
+        group: String,
+        username: String,
+    },
 }
 #[derive(Subcommand)]
 pub enum AccessCommand {
@@ -839,6 +984,26 @@ pub enum AccessCommand {
 #[derive(Subcommand)]
 pub enum ClientCommand {
     List,
+    /// Review exact OAuth redirect URIs and browser origins
+    EndpointReview {
+        #[command(subcommand)]
+        command: client_endpoint::ReviewCommand,
+    },
+    /// Review exact application enable/disable and its revocation consequences
+    StatusReview {
+        #[command(subcommand)]
+        command: client_status::ReviewCommand,
+    },
+    /// Review new application clients when instance policy requires it
+    CreationReview {
+        #[command(subcommand)]
+        command: client_creation::ReviewCommand,
+    },
+    /// Review exact allowed_groups / require_mfa changes on an existing client
+    Review {
+        #[command(subcommand)]
+        command: client_policy::ReviewCommand,
+    },
     Create {
         client_id: String,
         #[arg(long)]
@@ -936,10 +1101,14 @@ pub enum MfaCommand {
         out: PathBuf,
     },
     Enroll,
+    /// Start replacing your authenticator app after a recent MFA login; finish with `mfa confirm`
+    Replace,
     Confirm {
         #[arg(long)]
         code_stdin: bool,
     },
+    /// Remove your authenticator app and recovery codes after a recent MFA login; signs out everywhere
+    Remove,
 }
 #[derive(Args)]
 pub struct ClientAuth {
@@ -1201,6 +1370,9 @@ pub async fn run(cli: Cli) -> Result<()> {
     if cli.output_file.as_ref().is_some_and(|p| p.exists()) {
         bail!("Output file already exists; refusing the operation before mutation");
     }
+    if let Some(command) = local::from_legacy(&cli.command) {
+        return local::dispatch(local::LocalOptions::from(&cli), command).await;
+    }
     match &cli.command {
         Command::Saml {
             command:
@@ -1228,47 +1400,12 @@ pub async fn run(cli: Cli) -> Result<()> {
             )?;
             return Ok(());
         }
-        Command::ImportAuthentik { file, out } => {
-            let input = serde_json::from_slice(&fs::read(file)?)?;
-            let report = crate::migration::convert(input)?;
-            fs::create_dir(out).context("Migration output must be a new directory")?;
-            private_dir(out)?;
-            write_private(
-                &out.join("report.json"),
-                &serde_json::to_vec_pretty(&report)?,
-                false,
-            )?;
-            if report["ready_for_plan"] == true {
-                write_private(
-                    &out.join("manifest.json"),
-                    &serde_json::to_vec_pretty(&report["manifest"])?,
-                    false,
-                )?;
-            }
-            emit_local(
-                &cli,
-                &json!({"report_file": out.join("report.json"), "ready_for_plan": report["ready_for_plan"], "blockers": report["blockers"], "manifest_file": if report["ready_for_plan"] == true { json!(out.join("manifest.json")) } else { Value::Null }}),
-            )?;
+        Command::MigrationPreflight { file } => {
+            emit_local(&cli, &crate::migration::preflight(&fs::read(file)?)?)?;
             return Ok(());
         }
         Command::Schema { name } => {
             emit_local(&cli, &crate::schema::schema(name)?)?;
-            return Ok(());
-        }
-        Command::Keygen { out } => {
-            write_private(out, crypto::random_token("").as_bytes(), false)?;
-            emit_local(&cli, &json!({"key_file": out, "created": true}))?;
-            return Ok(());
-        }
-        Command::Restore {
-            backup,
-            key_file,
-            out,
-            database_key_file,
-        } => {
-            let value =
-                crate::operations::restore(backup, key_file, out, database_key_file.clone())?;
-            emit_local(&cli, &value)?;
             return Ok(());
         }
         Command::Validate { file } => {
@@ -1284,95 +1421,44 @@ pub async fn run(cli: Cli) -> Result<()> {
             emit_local(&cli, &crate::agent::capabilities())?;
             return Ok(());
         }
-        Command::MigratePostgres {
-            postgres_config,
-            out,
-        } => {
-            let config = Config::load(&cli.config)?;
-            let target = crate::postgres_store::PostgresConfig::load(postgres_config)?;
-            let output = out.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                crate::operations::migrate_postgres(config, target, &output)
-            })
-            .await??;
-            emit_local(&cli, &result)?;
-            return Ok(());
-        }
-        Command::Init {
-            postgres_config,
-            issuer,
-            listen,
-            data_dir,
-            admin,
-            password_stdin,
-            database_key_file,
-        } => {
-            if cli.config.exists() {
-                bail!("{} already exists", cli.config.display());
-            }
-            let config = Config {
-                postgres: postgres_config
-                    .as_ref()
-                    .map(|p| crate::postgres_store::PostgresConfig::load(p))
-                    .transpose()?,
-                issuer: issuer.clone(),
-                listen: *listen,
-                data_dir: data_dir.clone(),
-                database_key_file: database_key_file
-                    .as_ref()
-                    .map(|p| p.canonicalize())
-                    .transpose()?,
-                ..Default::default()
-            };
-            config.validate()?;
-            let base = cli.config.parent().unwrap_or(Path::new("."));
-            let mut runtime = config.clone();
-            if runtime.data_dir.is_relative() {
-                runtime.data_dir = base.join(&runtime.data_dir);
-            }
-            if runtime.data_dir.join("riauth.redb").exists() {
-                bail!("Database already exists; refusing to replace it");
-            }
-            let password = read_password(*password_stdin, true)?;
-            let input = NewUser {
-                username: admin.clone(),
-                password: password.to_string(),
-                email: None,
-                display_name: admin.clone(),
-                admin: true,
-            };
-            eprintln!("Creating instance and signing key…");
-            tokio::task::spawn_blocking(move || Core::initialize(runtime, input)).await??;
-            write_private(
-                &cli.config,
-                toml::to_string_pretty(&config)?.as_bytes(),
-                false,
-            )?;
-            emit_local(
-                &cli,
-                &json!({"initialized": true, "config": cli.config, "issuer": config.issuer}),
-            )?;
-            return Ok(());
-        }
         Command::Serve => {
             let config = Config::load(&cli.config)?;
-            let core = tokio::task::spawn_blocking(move || Core::open(config)).await??;
-            return crate::api::serve(core).await;
+            return crate::bootstrap::serve(config).await;
         }
-        Command::RecoverAdmin {
-            username,
-            password_stdin,
-            reset_mfa,
-        } => {
+        Command::Recovery { command } => {
             let config = Config::load(&cli.config)?;
-            let password = read_password(*password_stdin, true)?;
-            let username = username.clone();
-            let reset = *reset_mfa;
-            tokio::task::spawn_blocking(move || {
-                Core::open(config)?.recover_admin(&username, &password, reset)
+            enum Action {
+                Status,
+                Invalidate,
+                Complete(String, bool),
+            }
+            let action = match command {
+                RecoveryCommand::Status => Action::Status,
+                RecoveryCommand::Invalidate { .. } => Action::Invalidate,
+                RecoveryCommand::Complete {
+                    recovery_id,
+                    persistent_credentials_reconciled,
+                } => Action::Complete(recovery_id.clone(), *persistent_credentials_reconciled),
+            };
+            let value = tokio::task::spawn_blocking(move || -> Result<Value> {
+                Ok(match action {
+                    // Opening a store could create, migrate or apply a lineage recovery.
+                    Action::Status => crate::recovery::inspect(&config)?,
+                    Action::Invalidate => json!({
+                        "invalidated": crate::recovery::invalidate_restored(&Core::open(config)?.store)?,
+                        "serving_allowed": false,
+                    }),
+                    Action::Complete(id, attested) => {
+                        let store = Core::open(config)?.store;
+                        json!({
+                            "completed": crate::recovery::complete(&store, &id, attested)?,
+                            "serving_allowed": crate::recovery::require_serving(&store).is_ok(),
+                        })
+                    }
+                })
             })
             .await??;
-            emit_local(&cli, &json!({"recovered": true, "sessions_revoked": true}))?;
+            emit_local(&cli, &value)?;
             return Ok(());
         }
         Command::Pkce => {
@@ -1385,26 +1471,56 @@ pub async fn run(cli: Cli) -> Result<()> {
         }
         _ => {}
     }
+    if matches!(
+        &cli.command,
+        Command::Passkey {
+            command: PasskeyCommand::Enroll { .. } | PasskeyCommand::Login { .. },
+        } | Command::Authorize { passkey: true, .. }
+            | Command::Portal {
+                command: PortalCommand::Approve { passkey: true, .. },
+            }
+            | Command::Request {
+                command: RequestCommand::Approve { passkey: true, .. },
+            }
+    ) {
+        usb::require_support()?;
+    }
     let remote = Remote::new(&cli)?;
     let output = match cli.command {
         Command::Radius { command } => match command {
             RadiusCommand::Certificates => remote.call(Method::GET, "/api/radius/certificates", None, true).await?,
             RadiusCommand::BindCertificate { username, listener, file } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("RADIUS certificate writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 use std::io::Read;
                 let mut certificate = String::new();
                 fs::File::open(file)?.take(32769).read_to_string(&mut certificate)?;
                 if certificate.len() > 32768 { anyhow::bail!("Certificate chain exceeds 32 KiB"); }
                 remote.call(Method::POST, "/api/radius/certificates", Some(json!({"username":username,"listener":listener,"certificate_chain_pem":certificate})), true).await?
             },
-            RadiusCommand::RevokeCertificate { id } => remote.call(Method::DELETE, &format!("/api/radius/certificates/{}", segment(&id)?), None, true).await?,
+            RadiusCommand::RevokeCertificate { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("RADIUS certificate writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/radius/certificates/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::WindowsDevice { command } => match command {
             WindowsDeviceCommand::Enroll { id, username, display_name, offline_ttl } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Windows device writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 remote.secret_destination()?;
                 remote.call(Method::POST, "/api/windows-devices", Some(json!({"id": id, "username": username, "display_name": display_name, "offline_ttl": offline_ttl})), true).await?
             }
             WindowsDeviceCommand::List => remote.call(Method::GET, "/api/windows-devices", None, true).await?,
-            WindowsDeviceCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/windows-devices/{}", segment(&id)?), None, true).await?,
+            WindowsDeviceCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Windows device writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/windows-devices/{}", segment(&id)?), None, true).await?
+            },
             WindowsDeviceCommand::Login { device_id, username, secret_stdin, password_stdin, reauth_session_stdin } => {
                 if secret_stdin && (password_stdin || reauth_session_stdin) {
                     bail!("Read only one value from stdin; put the device secret in RIAUTH_WINDOWS_DEVICE_SECRET");
@@ -1424,6 +1540,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Certificate { command } => match command {
             CertificateCommand::List => remote.call(Method::GET, "/api/certificates", None, true).await?,
             CertificateCommand::Bind { username, file, san_uri, san_email } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Certificate binding writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 use std::io::Read;
                 let certificate_pem = if let Some(file) = file {
                     let mut certificate = String::new();
@@ -1438,7 +1557,12 @@ pub async fn run(cli: Cli) -> Result<()> {
                 }
                 remote.call(Method::POST, "/api/certificates", Some(json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email})), true).await?
             }
-            CertificateCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/certificates/{}", segment(&id)?), None, true).await?,
+            CertificateCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Certificate binding writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/certificates/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::Saml { command: SamlCommand::LogoutStatus { ticket } } => remote.call(Method::GET, &format!("/saml/logout/{}/status",segment(&ticket)?),None,false).await?,
         Command::Saml { command: SamlCommand::Metadata { client_id, out } } => {
@@ -1454,12 +1578,9 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
         Command::Doctor => remote.call(Method::GET, "/api/operations/doctor", None, true).await?,
-        Command::Backup { key_file, out } => {
-            if out.exists() { bail!("Backup output already exists"); }
-            let key = crate::config::read_private_secret(&key_file,128)?;
-            let result = remote.call(Method::POST, "/api/operations/backup", Some(json!({"encryption_key": key.trim()})), true).await?;
-            write_private(&out, &serde_json::to_vec(&result)?, false)?;
-            json!({"backup_file": out, "created_at": result["created_at"], "encrypted": true})
+        Command::Backup { key_file, out, max_bytes } => {
+            let transfer = backup::Transfer { ca_cert: cli.ca_cert.as_deref(), idle_timeout: Duration::from_secs(cli.request_timeout), max_bytes };
+            backup::download(&remote, &transfer, &key_file, &out).await?
         }
         Command::Get { kind, name } => remote.call(Method::GET, &format!("/api/resources/{}/{}", segment(&kind)?, segment(&name)?), None, true).await?,
         Command::Consents { revoke } => if let Some(id) = revoke { remote.call(Method::DELETE, &format!("/api/consents/{}", segment(&id)?), None, true).await? } else { remote.call(Method::GET, "/api/consents", None, true).await? },
@@ -1470,7 +1591,10 @@ pub async fn run(cli: Cli) -> Result<()> {
                 if response.status().is_success(){json!({"content_type":"text/plain; version=0.0.4","metrics":response.text().await?})}else{response_json(response).await?}
             } else {remote.call(Method::GET, "/api/operations/metrics", None, true).await?}
         },
-        Command::Scim { resource,id,method,file,filter,start_index,count } => {
+        Command::Scim { resource,id,if_version,method,file,filter,start_index,count } => {
+            if remote.if_revision.is_some() {
+                bail!("SCIM uses resource ETags; use --if-version for PUT, PATCH, or DELETE");
+            }
             let mut path=format!("/scim/v2/{resource}");
             if let Some(id)=id {path.push('/');path.push_str(segment(&id)?);}
             let mut query=url::form_urlencoded::Serializer::new(String::new());
@@ -1479,10 +1603,15 @@ pub async fn run(cli: Cli) -> Result<()> {
             if let Some(count)=count {query.append_pair("count",&count.to_string());}
             let query=query.finish();if !query.is_empty(){path.push('?');path.push_str(&query);}
             let body=file.map(|f| ->Result<Value>{Ok(serde_json::from_slice(&fs::read(f)?)?)}).transpose()?;
-            remote.call(Method::from_bytes(method.as_bytes())?,&path,body,true).await?
+            remote.call_with_if_match(Method::from_bytes(method.as_bytes())?,&path,body,true,if_version.as_deref()).await?
         },
         Command::Revision => remote.call(Method::GET, "/api/state/revision", None, true).await?,
         Command::Explain { client_id, username, scope, mfa } => remote.call(Method::POST, "/api/policy/explain", Some(json!({"client_id": client_id, "username": username, "scope": scope, "mfa": mfa})), true).await?,
+        Command::Simulate { client_id, username, scope, with_group, without_group, source, assurance } => {
+            let group = with_group.map(|name| json!({"name": name, "member": true}))
+                .or_else(|| without_group.map(|name| json!({"name": name, "member": false})));
+            remote.call(Method::POST, "/api/policy/simulate", Some(json!({"client_id": client_id, "username": username, "scope": scope, "group": group, "source": source, "assurance": assurance})), true).await?
+        },
         Command::Inventory { kind, after, limit, filter } => {
             let query = serde_urlencoded::to_string([("limit", Some(limit.to_string())), ("after", after), ("filter", filter)].into_iter().filter_map(|(k, v)| v.map(|v| (k, v))).collect::<Vec<_>>())?;
             remote.call(Method::GET, &format!("/api/inventory/{kind}?{query}"), None, true).await?
@@ -1531,13 +1660,16 @@ pub async fn run(cli: Cli) -> Result<()> {
             manifest.validate()?;
             let plan = remote.call(Method::POST, "/api/state/plan", Some(json!(manifest)), true).await?;
             write_private(&out, &serde_json::to_vec_pretty(&plan)?, false)?;
-            json!({"plan_file": out, "plan_id": plan["plan_id"], "hash": plan["hash"], "base_revision": plan["base_revision"], "changes": plan["changes"], "expires_at": plan["expires_at"]})
+            json!({"plan_file": out, "plan_id": plan["plan_id"], "hash": plan["hash"], "base_revision": plan["base_revision"], "changes": plan["changes"], "removal_impact": plan["removal_impact"], "reconciliation_mode": plan["reconciliation_mode"], "expires_at": plan["expires_at"]})
         }
-        Command::Apply { plan } => {
+        Command::Apply { plan, confirm_removals } => {
             let plan: crate::state::Plan = serde_json::from_slice(&fs::read(plan)?)?;
             let status = remote.call(Method::GET, &format!("/api/state/plans/{}", segment(&plan.plan_id)?), None, true).await?;
             if status["plan"] != json!(plan) { bail!("Saved plan was modified or belongs to another server"); }
             if status["applied"] == true { status["result"].clone() } else {
+                if plan.removal_impact.review_required && !confirm_removals {
+                    bail!("Inspect desired-state removal_impact and changes, then rerun with --confirm-removals");
+                }
                 let mut secrets = std::collections::BTreeMap::new();
                 let references=plan.changes.iter().flat_map(|c|c.secret_references.iter()).collect::<std::collections::BTreeSet<_>>();
                 for reference in references {
@@ -1546,7 +1678,8 @@ pub async fn run(cli: Cli) -> Result<()> {
                         else { bail!("Unsupported secret reference"); };
                     secrets.insert(reference.to_owned(), value);
                 }
-                remote.call(Method::POST, "/api/state/apply", Some(json!(crate::state::ApplyRequest { plan, secrets, run_id: remote.run_id.clone() })), true).await?
+                let reviewed = confirm_removals.then(|| plan.plan_id.clone());
+                remote.call_with_review(Method::POST, "/api/state/apply", Some(json!(crate::state::ApplyRequest { plan, secrets, run_id: remote.run_id.clone() })), true, reviewed.as_deref()).await?
             }
         }
         Command::Export { out } => {
@@ -1559,17 +1692,36 @@ pub async fn run(cli: Cli) -> Result<()> {
             DirectoryCommand::List=>remote.call(Method::GET,"/api/directories",None,true).await?,
             DirectoryCommand::Plan{id,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
-                let plan=remote.call(Method::POST,&format!("/api/directories/{}/plan",segment(&id)?),None,true).await?;
+                let path=format!("/api/directories/{}/plan",segment(&id)?);
+                let mut plan=Value::Null;
+                for _ in 0..1024 {
+                    plan=remote.call(Method::POST,&path,None,true).await?;
+                    if plan["decision"]!="snapshot_in_progress" {break;}
+                }
+                if plan["id"].as_str().is_none() {
+                    bail!("LDAP snapshot did not complete within the request quota; retry directory plan to resume");
+                }
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"changes":plan["changes"]})
             },
-            DirectoryCommand::Apply{plan}=>{
+            DirectoryCommand::Apply{plan,confirm_removals}=>{
                 let plan:Value=serde_json::from_slice(&fs::read(plan)?)?;
                 let id=plan["id"].as_str().context("Invalid LDAP plan ID")?;
                 let saved=remote.call(Method::GET,&format!("/api/directory-plans/{}",segment(id)?),None,true).await?;
                 let mut saved=saved; saved["applied"]=plan["applied"].clone();
                 if saved!=plan {bail!("LDAP plan was modified or belongs to another instance");}
-                remote.call(Method::POST,&format!("/api/directory-plans/{}/apply",segment(id)?),None,true).await?
+                if plan["removal_impact"]["review_required"]==true && !confirm_removals { bail!("Inspect LDAP removal_impact and changes, then rerun with --confirm-removals"); }
+                let path=format!("/api/directory-plans/{}/apply",segment(id)?);
+                let mut result=Value::Null;
+                for _ in 0..1024 {
+                    result=remote.call_with_review(Method::POST,&path,None,true,
+                        if confirm_removals {Some(id)} else {None}).await?;
+                    if result["decision"]!="snapshot_in_progress" {break;}
+                }
+                if result["decision"]=="snapshot_in_progress" {
+                    bail!("LDAP apply validation did not finish within the CLI page limit; retry directory apply to resume");
+                }
+                result
             },
             DirectoryCommand::Workspace { command } => cloud_directory(&remote, "workspace", &command).await?,
             DirectoryCommand::Entra { command } => cloud_directory(&remote, "entra", &command).await?,
@@ -1577,13 +1729,31 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Provision { command } => match command {
             ProvisionCommand::Targets=>remote.call(Method::GET,"/api/provisioning/targets",None,true).await?,
             ProvisionCommand::Jobs=>remote.call(Method::GET,"/api/provisioning/jobs",None,true).await?,
+            ProvisionCommand::Stop{job}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/stop",segment(&job)?),None,true).await?,
+            ProvisionCommand::Deactivations=>remote.call(Method::GET,"/api/provisioning/deactivations",None,true).await?,
+            ProvisionCommand::RetryDeactivation{id}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/retry",segment(&id)?),None,true).await?,
+            ProvisionCommand::Resolve{job,observed,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/resolve",segment(&job)?),Some(json!({"observed":observed,"evidence":evidence})),true).await?,
+            ProvisionCommand::ResolveDeactivation{id,observed,evidence,revision,workers_quiesced,remote_requests_settled}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/resolve",segment(&id)?),Some(json!({"observed":observed,"evidence":evidence,"create_settlement":revision.map(|revision|json!({"revision":revision,"workers_quiesced":workers_quiesced,"remote_requests_settled":remote_requests_settled}))})),true).await?,
+            ProvisionCommand::DismissDeactivation{id,revision,reason,evidence}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/dismiss",segment(&id)?),Some(json!({"revision":revision,"reason":reason,"evidence":evidence})),true).await?,
+            ProvisionCommand::RecoverDispatch{job,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/jobs/{}/recover-dispatch",segment(&job)?),Some(serde_json::to_value(recovery)?),true).await?,
+            ProvisionCommand::RecoverDeactivationDispatch{id,recovery}=>remote.call(Method::POST,&format!("/api/provisioning/deactivations/{}/recover-dispatch",segment(&id)?),Some(serde_json::to_value(recovery)?),true).await?,
             ProvisionCommand::Plan{target,out}=>{
                 if out.exists(){bail!("Plan output already exists");}
-                let plan=remote.call(Method::POST,&format!("/api/provisioning/targets/{}/plan",segment(&target)?),None,true).await?;
+                let path = format!("/api/provisioning/targets/{}/plan",segment(&target)?);
+                let mut plan = Value::Null;
+                // Every request commits at most one source and one link page.
+                // A later invocation can resume the server's durable snapshot.
+                for _ in 0..1024 {
+                    plan = remote.call(Method::POST,&path,None,true).await?;
+                    if plan["decision"] != "snapshot_in_progress" { break; }
+                }
+                if plan["id"].as_str().is_none() {
+                    bail!("SCIM snapshot did not complete within the request quota; retry provision plan to resume");
+                }
                 write_private(&out,&serde_json::to_vec_pretty(&plan)?,false)?;
                 json!({"plan_file":out,"id":plan["id"],"revision":plan["revision"],"target":plan["target"],"resources":plan["resources"]})
             },
-            ProvisionCommand::Apply{plan}=>{
+            ProvisionCommand::Apply{plan,confirm_removals}=>{
                 let plan:Value=serde_json::from_slice(&fs::read(plan)?)?;
                 let id=plan["id"].as_str().context("Invalid provisioning plan ID")?;
                 let plan_path=format!("/api/provisioning/plans/{}",segment(id)?);
@@ -1591,7 +1761,8 @@ pub async fn run(cli: Cli) -> Result<()> {
                 match remote.call(Method::GET,&plan_path,None,true).await {
                     Ok(saved) => {
                         if saved!=plan {bail!("Provisioning plan was modified or belongs to another instance");}
-                        remote.call(Method::POST,&apply_path,None,true).await?
+                        if plan["removal_impact"]["review_required"]==true && !confirm_removals { bail!("Inspect SCIM removal_impact and resources, then rerun with --confirm-removals"); }
+                        remote.call_with_review(Method::POST,&apply_path,None,true,if confirm_removals {Some(id)} else {None}).await?
                     },
                     Err(error) if error.downcast_ref::<RemoteFailure>().is_some_and(|failure| failure.status==404) => {
                         // A later plan may have removed this bulky snapshot while
@@ -1611,10 +1782,18 @@ pub async fn run(cli: Cli) -> Result<()> {
             AccountCommand::VerifyRequest => remote.call(Method::POST,"/api/account/verify-request",None,true).await?,
             AccountCommand::ResetRequest { username } => remote.call(Method::POST,"/api/account/reset-request",Some(json!({"username":username})),false).await?,
             AccountCommand::Invite { file } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Invitation writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let invitation:crate::lifecycle::Invitation=serde_json::from_slice(&fs::read(file)?)?;
                 remote.call(Method::POST,"/api/account/invitations",Some(json!(invitation)),true).await?
             },
-            AccountCommand::RevokeInvitation { username } => remote.call(Method::DELETE,&format!("/api/account/invitations/{}",segment(&username)?),None,true).await?,
+            AccountCommand::RevokeInvitation { username } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Invitation writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE,&format!("/api/account/invitations/{}",segment(&username)?),None,true).await?
+            },
             AccountCommand::Deliveries => remote.call(Method::GET,"/api/operations/mail",None,true).await?,
             command => {
                 let (purpose,stdin)=match command {AccountCommand::Verify{token_stdin}=>(crate::lifecycle::Purpose::Verify,token_stdin),AccountCommand::Reset{token_stdin}=>(crate::lifecycle::Purpose::Reset,token_stdin),AccountCommand::Accept{token_stdin}=>(crate::lifecycle::Purpose::Invite,token_stdin),_=>unreachable!()};
@@ -1629,7 +1808,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             PasskeyCommand::Enroll { name } => {
                 if NON_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed){bail!("USB enrollment needs touch/PIN input; use passkey start/finish with an authenticator client in noninteractive mode");}
                 let start=remote.call(Method::POST,"/api/passkey/registration/start",Some(json!({"name":name})),true).await?;
-                let response=crate::passkey::usb(&remote.issuer,start["public_key"].clone(),true).await?;
+                let response=usb::perform(&remote.issuer,start["public_key"].clone(),true).await?;
                 remote.call(Method::POST,"/api/passkey/registration/finish",Some(json!({"ceremony":start["ceremony"],"response":response})),true).await?
             }
             PasskeyCommand::Login { username,transaction_id } => {
@@ -1703,11 +1882,18 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             LogoutRequestCommand::Deny { code } => remote.call(Method::POST,&format!("/api/logout-requests/{}/decision",segment(&code)?),Some(json!({"approve":false})),true).await?,
         },
-        Command::Keys { command } => match command {
-            KeysCommand::List => remote.call(Method::GET,"/api/keys",None,true).await?,
-            KeysCommand::Bind {id,signer,algorithm} => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"remote_signer":signer})),true).await?,
-            KeysCommand::Generate { id, algorithm } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm})),true).await?,
-            KeysCommand::Import { id, file, algorithm, kid } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"private_key_pem":crate::config::read_private_secret(&file,16384)?.as_str(),"kid":kid})),true).await?,
+        Command::Keys { command } => {
+            if !matches!(&command, KeysCommand::List)
+                && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+            {
+                bail!("Signing-key configuration requires --idempotency-key and --if-revision (from `riauth revision`)");
+            }
+            match command {
+                KeysCommand::List => remote.call(Method::GET,"/api/keys",None,true).await?,
+                KeysCommand::Bind {id,signer,algorithm} => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"remote_signer":signer})),true).await?,
+                KeysCommand::Generate { id, algorithm } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm})),true).await?,
+                KeysCommand::Import { id, file, algorithm, kid } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"private_key_pem":crate::config::read_private_secret(&file,16384)?.as_str(),"kid":kid})),true).await?,
+            }
         },
         Command::Registration { command } => match command {
             RegistrationCommand::Create { file, out } => {
@@ -1724,13 +1910,19 @@ pub async fn run(cli: Cli) -> Result<()> {
                 let credential: Value = serde_json::from_slice(&fs::read(credential_file)?)?;
                 if credential["issuer"].as_str() != Some(&remote.issuer) { bail!("Registration credential belongs to another issuer"); }
                 let input: crate::registration::RegistrationRequest = serde_json::from_slice(&fs::read(file)?)?;
-                response_json(remote.http.post(format!("{}/oauth/register", remote.issuer.trim_end_matches('/')))
-                    .bearer_auth(credential["token"].as_str().context("Missing initial access token")?).json(&input).send().await?).await?
+                let mut request = remote.http.post(format!("{}/oauth/register", remote.issuer.trim_end_matches('/')))
+                    .bearer_auth(credential["token"].as_str().context("Missing initial access token")?).json(&input);
+                if let Some(run_id) = &remote.run_id { request = request.header("x-riauth-run-id", run_id); }
+                if let Some(key) = &remote.idempotency_key { request = request.header("idempotency-key", key); }
+                response_json(request.send().await?).await?
             }
         },
         Command::Agent { command } => match command {
             AgentCommand::Create { id, permissions, ttl, parent, out } => {
                 if out.exists() { bail!("Credential destination already exists"); }
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent creation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let permissions: Vec<crate::agent::Permission> = permissions.into_iter().map(|p| -> Result<_> {
                     let (action, resource) = p.split_once('=').context("Permission must be action=resource")?;
                     Ok(crate::agent::Permission { action: action.into(), resource: resource.into() })
@@ -1741,12 +1933,20 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             AgentCommand::Rotate { id, ttl, out } => {
                 if out.exists() { bail!("Credential destination already exists"); }
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent rotation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let result = remote.call(Method::POST, &format!("/api/agents/{}/rotate", segment(&id)?), Some(json!({"ttl":ttl})), true).await?;
                 write_private(&out, &serde_json::to_vec(&result["credential"])?, false)?;
                 json!({"agent": result["agent"], "credential_file":out})
             }
             AgentCommand::List => remote.call(Method::GET, "/api/agents", None, true).await?,
-            AgentCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/agents/{}", segment(&id)?), None, true).await?,
+            AgentCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent revocation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/agents/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::Status => remote.call(Method::GET, "/healthz", None, false).await?,
         Command::Discovery => {
@@ -1859,48 +2059,61 @@ pub async fn run(cli: Cli) -> Result<()> {
                     .await?
             }
         },
+        Command::Grants { command } => grants::run(&remote, command).await?,
         Command::User { command } => run_user(&remote, command).await?,
         Command::Offboard { command } => run_offboard(&remote, command).await?,
         Command::Ssf { command } => run_ssf(&remote, command).await?,
-        Command::Group { command } => match command {
-            GroupCommand::List => remote.call(Method::GET, "/api/groups", None, true).await?,
-            GroupCommand::Create { name } => {
-                remote
-                    .call(
-                        Method::POST,
-                        "/api/groups",
-                        Some(json!({"name": name})),
-                        true,
-                    )
-                    .await?
+        Command::Group { command } => {
+            if matches!(
+                &command,
+                GroupCommand::Create { .. }
+                    | GroupCommand::AddMember { .. }
+                    | GroupCommand::RemoveMember { .. }
+            ) && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+            {
+                bail!("Group writes require --idempotency-key and --if-revision (from `riauth revision`)");
             }
-            GroupCommand::AddMember { group, username } => {
-                remote
-                    .call(
-                        Method::PUT,
-                        &format!(
-                            "/api/groups/{}/members/{}",
-                            segment(&group)?,
-                            segment(&username)?
-                        ),
-                        None,
-                        true,
-                    )
-                    .await?
-            }
-            GroupCommand::RemoveMember { group, username } => {
-                remote
-                    .call(
-                        Method::DELETE,
-                        &format!(
-                            "/api/groups/{}/members/{}",
-                            segment(&group)?,
-                            segment(&username)?
-                        ),
-                        None,
-                        true,
-                    )
-                    .await?
+            match command {
+                GroupCommand::Review { command } => memberships::run(&remote, command).await?,
+                GroupCommand::List => remote.call(Method::GET, "/api/groups", None, true).await?,
+                GroupCommand::Create { name } => {
+                    remote
+                        .call(
+                            Method::POST,
+                            "/api/groups",
+                            Some(json!({"name": name})),
+                            true,
+                        )
+                        .await?
+                }
+                GroupCommand::AddMember { group, username } => {
+                    remote
+                        .call(
+                            Method::PUT,
+                            &format!(
+                                "/api/groups/{}/members/{}",
+                                segment(&group)?,
+                                segment(&username)?
+                            ),
+                            None,
+                            true,
+                        )
+                        .await?
+                }
+                GroupCommand::RemoveMember { group, username } => {
+                    remote
+                        .call(
+                            Method::DELETE,
+                            &format!(
+                                "/api/groups/{}/members/{}",
+                                segment(&group)?,
+                                segment(&username)?
+                            ),
+                            None,
+                            true,
+                        )
+                        .await?
+                }
             }
         },
         Command::Client { command } => run_client(&remote, command).await?,
@@ -1932,6 +2145,18 @@ pub async fn run(cli: Cli) -> Result<()> {
                 remote
                     .call(Method::POST, "/api/mfa/enroll", None, true)
                     .await?
+            }
+            MfaCommand::Replace => {
+                remote
+                    .call(Method::POST, "/api/mfa/replace", None, true)
+                    .await?
+            }
+            MfaCommand::Remove => {
+                let output = remote
+                    .call(Method::POST, "/api/mfa/remove", None, true)
+                    .await?;
+                fs::remove_file(&remote.session_file)?;
+                output
             }
             MfaCommand::Confirm { code_stdin } => {
                 let code = read_secret(code_stdin, "RIAUTH_OTP", Some("One-time code: "))?;
@@ -2048,11 +2273,14 @@ pub async fn run(cli: Cli) -> Result<()> {
         }
         Command::Report { command } => export_report(&remote, &command).await?,
         Command::RotateKey => {
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!("Signing-key rotation requires --idempotency-key and --if-revision (from `riauth revision`)");
+            }
             remote
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?
         }
-        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init { .. } | Command::MigratePostgres { .. } | Command::Serve | Command::Pkce | Command::RecoverAdmin { .. } | Command::ImportAuthentik { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen { .. } | Command::Restore { .. } => {
+        Command::Saml { command: SamlCommand::ImportSp { .. } } | Command::Init(..) | Command::PrepareSetup(..) | Command::MigratePostgres(..) | Command::Serve | Command::Pkce | Command::RecoverAdmin(..) | Command::Recovery { .. } | Command::ImportAuthentik(..) | Command::MigrationPreflight { .. } | Command::Schema { .. } | Command::Capabilities | Command::Validate { .. } | Command::Keygen(..) | Command::Restore(..) => {
             unreachable!()
         }
     };
@@ -2261,6 +2489,11 @@ async fn run_offboard(remote: &Remote, command: OffboardCommand) -> Result<Value
                 )
                 .await
         }
+        OffboardCommand::Diagnostics => {
+            remote
+                .call(Method::GET, "/api/operations/offboarding", None, true)
+                .await
+        }
         OffboardCommand::Cancel { id } => {
             remote
                 .call(
@@ -2349,6 +2582,11 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
             admin,
             password_stdin,
         } => {
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!(
+                    "User creation requires --idempotency-key and --if-revision (from `riauth revision`)"
+                );
+            }
             let password = read_password(password_stdin, true)?;
             return remote
                 .call(
@@ -2420,6 +2658,9 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
             },
         ),
     };
+    if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+        bail!("User update requires --idempotency-key and --if-revision (from `riauth revision`)");
+    }
     remote
         .call(
             Method::PATCH,
@@ -2430,8 +2671,28 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
         .await
 }
 async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
+    if matches!(
+        &command,
+        ClientCommand::Create { .. }
+            | ClientCommand::Update { .. }
+            | ClientCommand::Disable { .. }
+            | ClientCommand::Enable { .. }
+    ) && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+    {
+        bail!("Client writes require --idempotency-key and --if-revision (from `riauth revision`)");
+    }
     let (id, patch) = match command {
         ClientCommand::List => return remote.call(Method::GET, "/api/clients", None, true).await,
+        ClientCommand::EndpointReview { command } => {
+            return client_endpoint::run(remote, command).await;
+        }
+        ClientCommand::Review { command } => return client_policy::run(remote, command).await,
+        ClientCommand::StatusReview { command } => {
+            return client_status::run(remote, command).await;
+        }
+        ClientCommand::CreationReview { command } => {
+            return client_creation::run(remote, command).await;
+        }
         ClientCommand::Create {
             client_id,
             name,
@@ -2529,6 +2790,11 @@ async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
         ),
         ClientCommand::RotateSecret { client_id } => {
             remote.secret_destination()?;
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!(
+                    "Client secret rotation requires --idempotency-key and --if-revision (from `riauth revision`)"
+                );
+            }
             return remote
                 .call(
                     Method::POST,
@@ -2780,14 +3046,23 @@ async fn cloud_directory(
             if out.exists() {
                 bail!("Plan output already exists");
             }
-            let plan = remote
-                .call(
-                    Method::POST,
-                    &format!("/api/{collection}/{}/plan", segment(id)?),
-                    None,
-                    true,
-                )
-                .await?;
+            let mut plan = Value::Null;
+            for _ in 0..1024 {
+                plan = remote
+                    .call(
+                        Method::POST,
+                        &format!("/api/{collection}/{}/plan", segment(id)?),
+                        None,
+                        true,
+                    )
+                    .await?;
+                if plan["decision"] != "snapshot_in_progress" {
+                    break;
+                }
+            }
+            if plan["decision"] == "snapshot_in_progress" {
+                bail!("Cloud directory snapshot did not finish within the CLI page limit");
+            }
             write_private(out, &serde_json::to_vec_pretty(&plan)?, false)?;
             json!({"plan_file": out, "id": plan["id"], "revision": plan["revision"], "changes": plan["changes"], "removal_impact": plan["removal_impact"]})
         }
@@ -2820,15 +3095,25 @@ async fn cloud_directory(
                     "This plan disables users or removes group access at the review threshold; inspect its changes and rerun with --confirm-removals"
                 );
             }
-            remote
-                .call_with_review(
-                    Method::POST,
-                    &format!("/api/{plans}/{}/apply", segment(id)?),
-                    None,
-                    true,
-                    if *confirm_removals { Some(id) } else { None },
-                )
-                .await?
+            let mut result = Value::Null;
+            for _ in 0..1024 {
+                result = remote
+                    .call_with_review(
+                        Method::POST,
+                        &format!("/api/{plans}/{}/apply", segment(id)?),
+                        None,
+                        true,
+                        if *confirm_removals { Some(id) } else { None },
+                    )
+                    .await?;
+                if result["decision"] != "snapshot_in_progress" {
+                    break;
+                }
+            }
+            if result["decision"] == "snapshot_in_progress" {
+                bail!("Cloud directory apply validation did not finish within the CLI page limit");
+            }
+            result
         }
     })
 }

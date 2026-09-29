@@ -1,0 +1,264 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "redb",
+    "loopback": true,
+    "fresh_temp_store": true,
+    "d01_port_avoided": 9000,
+    "backup_verified": true,
+    "restore_completed": true,
+    "recovery_complete_run": true,
+    "restored_directory_served": true,
+    "restored_issuer_login": true,
+    "cargo_build": false,
+    "temporary_files_removed": true,
+    "server_process_stopped": true,
+    "stopping_point": "done",
+    "edition": "essentials",
+    "version": "0.1.1"
+  },
+  "outcome": "passed",
+  "detail": "verified v3 backup restored under a new database key, recovery complete cleared the gate, and a fresh login on the restored issuer succeeded",
+  "checks": [
+    {
+      "id": "binaries",
+      "exit_code": 0,
+      "observed": {
+        "riauth_sha256": "264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f",
+        "riauth_bytes": 204953512,
+        "cargo_build": false,
+        "executed_from_temp_copy": true
+      }
+    },
+    {
+      "id": "capabilities",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "edition": "essentials",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials"
+        ]
+      }
+    },
+    {
+      "id": "keygen_database",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "created": true,
+        "mode": 384,
+        "inside_temp": true
+      }
+    },
+    {
+      "id": "init",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "initialized": true,
+        "issuer": "http://127.0.0.1:51677",
+        "listen": "127.0.0.1:51677",
+        "port_distinct_from_d01": true
+      }
+    },
+    {
+      "id": "readyz_original",
+      "exit_code": 0,
+      "observed": {
+        "http_status": 200
+      }
+    },
+    {
+      "id": "login_original",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "username": "drill-admin",
+        "admin": true,
+        "enabled": true,
+        "mfa_enabled": false,
+        "password_available": true,
+        "expires_at_present": true,
+        "session_token_in_stdout": false,
+        "session_mode": 384,
+        "session_inside_temp": true
+      }
+    },
+    {
+      "id": "backup",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "api_version": "riauth.backup/v3",
+        "verified": true,
+        "encrypted": true,
+        "issuer": "http://127.0.0.1:51677",
+        "stream_id": "gGZx2QyH1chG01K4J7p5Pw",
+        "frames": 3,
+        "records": 20,
+        "bytes": 11180,
+        "archive_size_matches": true
+      }
+    },
+    {
+      "id": "restore",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "restored": true,
+        "verified": true,
+        "issuer": "http://127.0.0.1:51677",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "serving_allowed": false,
+        "database_keys_differ": true,
+        "restored_config_names_new_database_key": true,
+        "recovery": {
+          "id": "1d746ed2-45d3-4417-9abb-dd77194bc51d",
+          "policy": "riauth.recovery/v1",
+          "cause": "backup_restore",
+          "invalidated": {
+            "session_tokens": 1,
+            "sessions": 1
+          },
+          "reconcile": {
+            "enabled_accounts": 1,
+            "passwords": 1,
+            "signing_keys": 1
+          },
+          "epoch_advanced_users": 1,
+          "unclassified": [],
+          "completed_at_present": false
+        }
+      }
+    },
+    {
+      "id": "recovery_status_before_complete",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "backend": "redb",
+        "schema": 3,
+        "initialized": true,
+        "serving_allowed": false,
+        "pending_id": "1d746ed2-45d3-4417-9abb-dd77194bc51d",
+        "policy": "riauth.recovery/v1"
+      }
+    },
+    {
+      "id": "recovery_complete",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "serving_allowed": true,
+        "completed": {
+          "id": "1d746ed2-45d3-4417-9abb-dd77194bc51d",
+          "policy": "riauth.recovery/v1",
+          "cause": "backup_restore",
+          "invalidated": {
+            "session_tokens": 1,
+            "sessions": 1
+          },
+          "reconcile": {
+            "enabled_accounts": 1,
+            "passwords": 1,
+            "signing_keys": 1
+          },
+          "epoch_advanced_users": 1,
+          "unclassified": [],
+          "completed_at_present": true
+        }
+      }
+    },
+    {
+      "id": "recovery_status_after_complete",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "serving_allowed": true,
+        "pending": null
+      }
+    },
+    {
+      "id": "stop_original_process",
+      "exit_code": 0,
+      "observed": {
+        "pid_alive": false
+      }
+    },
+    {
+      "id": "port_free_before_restored_serve",
+      "exit_code": 0,
+      "observed": {
+        "port_free": true,
+        "wait_ms": 30230,
+        "listen": "127.0.0.1:51677"
+      }
+    },
+    {
+      "id": "readyz_restored",
+      "exit_code": 0,
+      "observed": {
+        "http_status": 200,
+        "stderr_contains_listening": true,
+        "pid_alive": true
+      }
+    },
+    {
+      "id": "prior_session_on_restored_issuer",
+      "exit_code": 3,
+      "ok": false,
+      "observed": {
+        "error_code": "invalid_token",
+        "http_status": 401,
+        "error_message": "Authentication required or session expired"
+      }
+    },
+    {
+      "id": "login_restored",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "username": "drill-admin",
+        "admin": true,
+        "enabled": true,
+        "mfa_enabled": false,
+        "password_available": true,
+        "expires_at_present": true,
+        "session_token_in_stdout": false,
+        "session_mode": 384,
+        "session_inside_temp": true,
+        "distinct_session_file": true
+      }
+    },
+    {
+      "id": "doctor_restored",
+      "exit_code": 0,
+      "ok": true,
+      "observed": {
+        "healthy": true,
+        "schema_version": 3,
+        "revision": 4294967296,
+        "issuer": "http://127.0.0.1:51677",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "users": 1,
+        "enabled_administrators": 1,
+        "clients": 0,
+        "tls": "reverse_proxy",
+        "active_signing_key_present": true,
+        "pending_logout_deliveries": 0
+      }
+    },
+    {
+      "id": "home_session_untouched",
+      "exit_code": 0,
+      "observed": {
+        "unchanged": true
+      }
+    }
+  ]
+}

@@ -62,6 +62,24 @@ impl Drop for Prepared {
     }
 }
 
+#[cfg(feature = "test-support")]
+thread_local! {
+    static AFTER_PREPARE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+/// Test-only schedule point: `pause` runs once on this thread after the first prepared
+/// callback returns `Ok` and before its writer revalidates the recorded reads.
+#[cfg(feature = "test-support")]
+pub fn with_prepared_pause<T>(pause: impl FnOnce() + 'static, f: impl FnOnce() -> T) -> T {
+    struct Reset(Option<Box<dyn FnOnce()>>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            AFTER_PREPARE.with(|hook| *hook.borrow_mut() = self.0.take());
+        }
+    }
+    let _reset = Reset(AFTER_PREPARE.with(|hook| hook.borrow_mut().replace(Box::new(pause))));
+    f()
+}
+
 impl Store {
     /// The callback may run again after a conflict. Do not perform irreversible
     /// external effects in it. Generated credentials are returned only after commit.
@@ -70,6 +88,10 @@ impl Store {
             // Each uncached read uses a short transaction. Expensive preparation
             // holds neither a writer nor a PostgreSQL pool slot. Point reads are
             // repeatable from the cache; all points/ranges must still match at commit.
+            self.telemetry
+                .prepared_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let preparing = self.telemetry.prepared_prepare.timer();
             let tx = Tx {
                 transaction: Transaction::Prepared(self),
                 key: self.key(),
@@ -77,21 +99,41 @@ impl Store {
                 security_events: RefCell::default(),
                 telemetry: &self.telemetry,
                 prepared: RefCell::new(Some(Prepared::default())),
+                transitions: Some(self.transitions.as_ref()),
             };
             let output = f(&tx)?;
+            drop(preparing);
+            #[cfg(feature = "test-support")]
+            if let Some(pause) = AFTER_PREPARE.with(|hook| hook.borrow_mut().take()) {
+                pause();
+            }
             let prepared = tx
                 .prepared
                 .borrow_mut()
                 .take()
                 .expect("prepared transaction");
             let committed = self.write(|tx| {
+                let _validating = self.telemetry.prepared_validate.timer();
                 // Authority can expire without a concurrent database mutation.
                 if prepared
                     .deadline
                     .is_some_and(|deadline| crypto::now() >= deadline)
                 {
+                    self.telemetry
+                        .prepared_expired
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     return Ok(false);
                 }
+                // Recorded before checking; a mismatch stops the checks early.
+                self.telemetry.prepared_validated_records.fetch_add(
+                    (prepared.reads.len()
+                        + prepared
+                            .scans
+                            .iter()
+                            .map(|scan| scan.records.len())
+                            .sum::<usize>()) as u64,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 for (name, expected) in &prepared.reads {
                     if tx.raw_get_base(name)? != *expected {
                         return Ok(false);
@@ -114,6 +156,9 @@ impl Store {
                 .optimistic_conflicts
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
+        self.telemetry
+            .prepared_exhausted
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Err(Error::new(
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "transaction_conflict",

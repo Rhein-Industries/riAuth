@@ -5,10 +5,11 @@ use crate::{
     core::{Core, audit},
     crypto::{self, digest, now},
     error::{Error, Result},
+    management::{ConsentApproval, remember_approved_consent},
     model::{Client, Identity, Session, User},
     oidc::{Authorization, needs_reauthentication, validate_authorization},
-    saml::{insufficient_error, stale},
     signin::{self, FRESH_SECONDS, TERMINAL_WARN_SECONDS, account_json},
+    signin::{insufficient_error, stale},
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -17,7 +18,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use webauthn_rs::prelude::PublicKeyCredential;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Pending {
     id: String,
     code: String,
@@ -42,6 +43,14 @@ struct Pending {
     /// collects the callback; a terminal approval leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     approved_by: Option<String>,
+    /// Opted-in configured consent; the exact preparation is in request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    configured_consent: Option<String>,
+    /// Durable passkey reauthentication run owned by this interaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    configured_run: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    configured_client: Option<String>,
 }
 /// Maps an SSO cookie digest to a session. A rotated row is a short-lived tombstone that
 /// only attach and `point_browser` read; it never authenticates.
@@ -53,11 +62,11 @@ pub(crate) struct BrowserSession {
     pub(crate) rotated: bool,
 }
 #[derive(Serialize, Deserialize)]
-struct Consent {
+pub(crate) struct Consent {
     #[serde(default)]
-    resource: Option<String>,
-    scopes: BTreeSet<String>,
-    expires_at: u64,
+    pub(crate) resource: Option<String>,
+    pub(crate) scopes: BTreeSet<String>,
+    pub(crate) expires_at: u64,
 }
 
 pub struct BrowserReply {
@@ -82,38 +91,17 @@ impl Core {
     pub fn consents(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let (user, _) = self.session(tx, token)?;
-            let mut list = Vec::new();
-            for (_, client) in tx.list::<Client>("clients")? {
-                if let Some(consent) = crate::saml::consent(tx, &user.id, &client)? { list.push(consent); }
-                if let Some(consent) = tx.get::<Consent>("consents", &consent_key(&user.id, &client.id))?.filter(|c| c.expires_at > now()) {
-                    list.push(json!({"client_id":client.id,"name":client.name,"scopes":consent.scopes,"resource":consent.resource,"expires_at":consent.expires_at}));
-                }
-            }
-            Ok(json!(list))
+            Ok(json!(consents_for_user(tx, &user.id)?))
         })
     }
     pub fn revoke_consent(&self, token: &str, cid: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (user, _) = self.session(tx, token)?;
-            tx.delete("consents", &consent_key(&user.id, cid))?;
-            crate::saml::revoke_consent(tx, &user.id, cid)?;
-            crate::outpost::revoke_sessions(tx, &user.id, cid)?;
-            for (_, grant) in tx.list::<crate::model::Grant>("access")?.into_iter().chain(tx.list("refresh")?) {
-                if grant.client_id == cid && grant.identity.is_some_and(|i| i.user_id == user.id) && let Some(mut family) = tx.get::<crate::model::Family>("families", &grant.family_id)? {
-                    family.revoked = true; tx.put("families", &grant.family_id, &family)?;
-                }
-            }
-            // Unredeemed authorizations for this user/client must not resurrect consent.
-            for (id, code) in tx.list::<crate::model::Code>("codes")? { if code.client_id == cid && code.identity.user_id == user.id { tx.delete("codes", &id)?; } }
-            for (id, mut device) in tx.list::<crate::model::Device>("devices")? {
-                if device.client_id == cid && matches!(&device.status, crate::model::DeviceStatus::Approved(i) if i.user_id == user.id) {
-                    device.status = crate::model::DeviceStatus::Denied; tx.put("devices", &id, &device)?;
-                }
-            }
-            crate::logout::queue_user_client(tx, &user.id, cid)?;
-            crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
-            audit(tx, &user.id, "consent.revoke", cid)?;
-            Ok(json!({"revoked":true,"client_id":cid}))
+            crate::management::withdraw_consent(
+                self,
+                tx,
+                crate::management::ConsentWithdraw::Bearer { token },
+                cid,
+            )
         })
     }
     pub fn browser_start(
@@ -128,8 +116,40 @@ impl Core {
         self.store.write(|tx| {
             let (client, scopes) = validate_authorization(tx, &request)?;
             let active = self.browser_session(tx, cookie)?;
+            #[cfg(feature = "platform")]
+            let configured_consent = self.config.browser_consent_workflow.as_deref();
+            #[cfg(not(feature = "platform"))]
+            let configured_consent: Option<&str> = None;
+            #[cfg(feature = "platform")]
+            let configured_reauthentication = configured_consent.is_some_and(|name| {
+                self.config.workflows.get(name).is_some_and(|entry| {
+                    entry.active
+                        && (crate::workflow::supported_configured_passkey_consent(
+                            &entry.definition,
+                        ) || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
+                        ))
+                })
+            });
+            #[cfg(not(feature = "platform"))]
+            let configured_reauthentication = false;
+            if configured_consent.is_some()
+                && (client.settings.source_stage.is_some()
+                    || request.has_prompt("select_account")
+                    || (!configured_reauthentication
+                        && (request.has_prompt("login") || request.max_age == Some(0))))
+            {
+                return Err(Error::oauth(
+                    "interaction_required",
+                    "This request needs another consent path",
+                ));
+            }
+            let configured_client = configured_consent
+                .map(|_| client_fingerprint(&client))
+                .transpose()?;
             if let Some(session) = active.as_ref() {
-                if !needs_reauthentication(&client, &request, &session.identity)
+                if configured_consent.is_none()
+                    && !needs_reauthentication(&client, &request, &session.identity)
                     && consent_satisfied(tx, &client, &request, &scopes, &session.identity.user_id)?
                 {
                     request.decision = Some("approve".into());
@@ -159,6 +179,17 @@ impl Core {
             }
             let id = crypto::id();
             request.request_binding = Some(id.clone());
+            if configured_consent.is_some() {
+                let transaction = crate::assembly::prepare_authentication_in(
+                    tx,
+                    &request,
+                    active
+                        .as_ref()
+                        .map(|session| session.identity.user_id.clone()),
+                    now() + 600,
+                )?;
+                request.transaction_id = Some(transaction);
+            }
             let stage =
                 if crate::source::stage_authentication_required(&client, &request, active.as_ref())
                 {
@@ -209,6 +240,9 @@ impl Core {
                 authentication: None,
                 requested_from,
                 approved_by: None,
+                configured_consent: configured_consent.map(str::to_owned),
+                configured_run: None,
+                configured_client,
             };
             tx.put(
                 "authorization_codes",
@@ -296,6 +330,11 @@ impl Core {
             if let Some(proof) = &pending.authentication {
                 tx.delete("authentication", proof)?;
             }
+            if pending.configured_consent.is_some()
+                && let Some(transaction) = pending.request.transaction_id.as_deref()
+            {
+                tx.delete("authentication", &digest(transaction))?;
+            }
             Ok(BrowserReply {
                 form_post: crate::response::is_form(pending.request.response_mode.as_deref()),
                 body: Value::Null,
@@ -314,6 +353,11 @@ impl Core {
             let pending = pending_by_code(tx, code)?;
             if pending.callback.is_some() {
                 return Err(Error::conflict("Request already decided"));
+            }
+            if pending.configured_consent.is_some() {
+                return Err(Error::bad(
+                    "Decide this configured consent in the original browser",
+                ));
             }
             let aged = stale(&session.identity, TERMINAL_WARN_SECONDS);
             Ok((pending.request, pending.requested_from, aged))
@@ -335,6 +379,9 @@ impl Core {
         self.store.write(|tx| {
             let mut pending = pending_by_code(tx, &input.code)?;
             if pending.callback.is_some() { return Err(Error::conflict("Request already decided")); }
+            if pending.configured_consent.is_some() {
+                return Err(Error::bad("Decide this configured consent in the original browser"));
+            }
             if pending.stage_id.is_some() {
                 return Err(Error::bad(
                     "Complete the embedded source stage for this authorization",
@@ -347,13 +394,20 @@ impl Core {
             let mut request = pending.request.clone();
             request.decision = Some(if input.approve { "approve" } else { "deny" }.into());
             request.transaction_id = input.transaction_id;
-            pending.callback = Some(self.authorize_in(tx, token, request)?);
+            pending.callback = Some(self.authorize_in(tx, token, request.clone())?);
             pending.remember = input.remember;
             if input.approve {
-                pending.session_id = Some(session.id);
+                pending.session_id = Some(session.id.clone());
                 if input.remember {
                     let client = tx.get::<Client>("clients", &pending.request.client_id)?.ok_or_else(Error::unauthorized)?;
-                    remember_consent(tx, &pending.request, &client, &session.identity.user_id)?;
+                    remember_approved_consent(
+                        tx,
+                        ConsentApproval::OidcIssued {
+                            request: &request,
+                            client: &client,
+                            session: &session,
+                        },
+                    )?;
                 }
             }
             tx.put("browser_authorizations", &pending.id, &pending)?;
@@ -371,8 +425,64 @@ impl Core {
         self.store.read(|tx| {
             let p = interaction(tx, id, binding)?;
             let session = self.browser_session(tx, sso)?;
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })
+    }
+    /// The grant write rolls back on `Err`, so a stale configured run is sealed
+    /// in an earlier write. Ordinary interactions have no configured consent.
+    #[cfg(feature = "platform")]
+    fn seal_browser_continuations(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        sso: Option<&str>,
+    ) -> Result<()> {
+        let pending = self.store.read(|tx| interaction(tx, id, binding))?;
+        if pending.configured_run.is_none() && pending.configured_consent.is_none() {
+            return Ok(());
+        }
+        if let Some(run_id) = pending.configured_run.as_deref() {
+            crate::workflow::executor::seal_reviewed_run(self, run_id)?;
+        }
+        if let Some(cookie) = sso
+            && let Some(session) = self
+                .store
+                .read(|tx| self.browser_session(tx, Some(cookie)))?
+        {
+            crate::workflow::executor::seal_session_run(
+                self,
+                &session.id,
+                pending.configured_run.as_deref(),
+            )?;
+        }
+        // A decided request keeps request_decided. Selector loss seals only
+        // while this continuation can still spend the pinned run, and only
+        // after a stale pin has returned its own conflict.
+        if undecided(pending.clone()).is_err() {
+            return Ok(());
+        }
+        let Some(workflow) = pending.configured_consent.as_deref() else {
+            return Ok(());
+        };
+        if !self.browser_consent_selection_lost(workflow) {
+            return Ok(());
+        }
+        let Some(run_id) = pending.configured_run.as_deref() else {
+            return Ok(());
+        };
+        crate::workflow::executor::seal_lost_browser_selection(self, run_id)
+    }
+    #[cfg(feature = "platform")]
+    fn browser_consent_selection_lost(&self, workflow: &str) -> bool {
+        self.config.browser_consent_workflow.as_deref() != Some(workflow)
+            || self.config.workflows.get(workflow).is_none_or(|entry| {
+                !entry.active
+                    || !(crate::workflow::supported_configured_session_consent(&entry.definition)
+                        || crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                        || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
+                        ))
+            })
     }
     /// Browser password sign-in for this request. The body is the interaction state.
     pub fn authorize_password(
@@ -384,9 +494,152 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
+        let (pending, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(not(feature = "platform"))]
+        let _ = &pending;
+        #[cfg(feature = "platform")]
+        if let Some(workflow) = pending.configured_consent.as_deref()
+            && self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
+            })
+        {
+            if let Some(cookie) = sso.filter(|_| pin.is_some()) {
+                return self.authorize_totp_password(
+                    id, binding, cookie, workflow, username, password, otp,
+                );
+            }
+            if pending.configured_run.is_some() {
+                return Err(Error::unauthorized());
+            }
+        }
         let staged = self.browser_password_login(username, password, otp, pin.as_deref())?;
         self.authorize_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+
+    #[cfg(feature = "platform")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Browser interaction, session, workflow and submitted credentials are distinct authority inputs"
+    )]
+    fn authorize_totp_password(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        cookie: &str,
+        workflow: &str,
+        username: String,
+        password: String,
+        otp: Option<String>,
+    ) -> Result<BrowserReply> {
+        use crate::workflow::executor::{
+            BrowserTotp, browser_totp_code_in, browser_totp_owner, browser_totp_stage_in,
+            browser_totp_start_in,
+        };
+        let (run_id, stage, session, request) = self.store.write(|tx| {
+            let mut p = undecided(interaction(tx, id, binding)?)?;
+            if p.configured_consent.as_deref() != Some(workflow) {
+                return Err(Error::forbidden());
+            }
+            let session = self
+                .browser_session(tx, Some(cookie))?
+                .ok_or_else(Error::unauthorized)?;
+            let user = self.identity_user(tx, &session.identity)?;
+            if user.username != username {
+                return Err(account_changed());
+            }
+            let client = tx
+                .get::<Client>("clients", &p.request.client_id)?
+                .ok_or_else(Error::forbidden)?;
+            if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str())
+                || !needs_reauthentication(&client, &p.request, &session.identity)
+            {
+                return Err(Error::forbidden());
+            }
+            let run_id = if let Some(run_id) = p.configured_run.as_deref() {
+                run_id.to_owned()
+            } else {
+                let run_id = browser_totp_start_in(
+                    self,
+                    tx,
+                    workflow,
+                    id,
+                    cookie,
+                    &session,
+                    &p.request,
+                    p.expires_at,
+                )?;
+                p.configured_run = Some(run_id.clone());
+                tx.put("browser_authorizations", id, &p)?;
+                run_id
+            };
+            let owner = BrowserTotp {
+                workflow,
+                interaction: id,
+                cookie,
+                session: &session,
+                authorization: &p.request,
+                run_id: &run_id,
+            };
+            let stage = browser_totp_stage_in(self, tx, &owner)?;
+            Ok((run_id, stage, session, p.request))
+        })?;
+        let owner = BrowserTotp {
+            workflow,
+            interaction: id,
+            cookie,
+            session: &session,
+            authorization: &request,
+            run_id: &run_id,
+        };
+        let save_final = |tx: &Tx<'_>, view: &crate::workflow::executor::View| -> Result<()> {
+            if let Some(callback) = &view.authorization_response {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                if p.configured_run.as_deref() != Some(run_id.as_str())
+                    || p.configured_consent.as_deref() != Some(workflow)
+                {
+                    return Err(Error::forbidden());
+                }
+                p.callback = Some(callback.clone());
+                p.approved_by = Some(session.id.clone());
+                tx.put("browser_authorizations", id, &p)?;
+            }
+            Ok(())
+        };
+        match stage {
+            "password" => {
+                self.workflow_password_with(
+                    &run_id,
+                    password,
+                    |core, tx, run| browser_totp_owner(core, tx, &owner, run),
+                    save_final,
+                )?;
+            }
+            "totp" => {
+                let code = otp.ok_or_else(|| Error::bad("Enter a current authenticator code"))?;
+                self.store.write(|tx| {
+                    let p = undecided(interaction(tx, id, binding)?)?;
+                    if p.configured_run.as_deref() != Some(run_id.as_str()) {
+                        return Err(Error::forbidden());
+                    }
+                    let view = browser_totp_code_in(self, tx, &owner, code)?;
+                    save_final(tx, &view)
+                })?;
+            }
+            _ => return Err(Error::conflict("Consent is awaiting a decision")),
+        }
+        let body = self.authorize_state(id, binding, Some(cookie))?;
+        Ok(BrowserReply {
+            form_post: false,
+            body,
+            location: None,
+            refresh: None,
+            cookies: vec![],
+        })
     }
     /// A pinned account signs in with its own passkeys; otherwise the browser offers any.
     pub fn authorize_passkey_start(
@@ -395,7 +648,58 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         let (p, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        if let (Some(workflow), Some(cookie), Some(_)) =
+            (p.configured_consent.as_deref(), sso, pin.as_deref())
+            && self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+            })
+        {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                let client = tx
+                    .get::<Client>("clients", &p.request.client_id)?
+                    .ok_or_else(Error::forbidden)?;
+                if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str()) {
+                    return Err(Error::conflict("Authorization client changed"));
+                }
+                let (run_id, challenge) =
+                    crate::workflow::executor::browser_passkey_consent_start_in(
+                        self,
+                        tx,
+                        workflow,
+                        id,
+                        cookie,
+                        &session,
+                        &p.request,
+                        p.expires_at,
+                        p.configured_run.as_deref(),
+                    )?;
+                p.configured_run = Some(run_id);
+                tx.put("browser_authorizations", &p.id, &p)?;
+                Ok(json!(challenge))
+            });
+        }
+        if p.configured_run.is_some() {
+            return Err(Error::forbidden());
+        }
+        #[cfg(feature = "platform")]
+        if pin.is_some()
+            && p.configured_consent.as_deref().is_some_and(|workflow| {
+                self.config.workflows.get(workflow).is_some_and(|entry| {
+                    crate::workflow::supported_configured_password_totp_consent(&entry.definition)
+                })
+            })
+        {
+            return Err(Error::forbidden());
+        }
         self.browser_passkey_start(pin.as_deref(), &format!("oidc:{id}"), &p.browser_hash)
     }
     pub fn authorize_passkey_finish(
@@ -406,7 +710,51 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
+        let (p, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        if p.configured_run.is_some() {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let workflow = p
+                    .configured_consent
+                    .as_deref()
+                    .ok_or_else(Error::forbidden)?;
+                let run_id = p.configured_run.as_deref().ok_or_else(Error::forbidden)?;
+                let cookie = sso.ok_or_else(Error::unauthorized)?;
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                let view = crate::workflow::executor::browser_passkey_consent_finish_in(
+                    self, tx, workflow, id, cookie, &session, &p.request, run_id, ceremony,
+                    response,
+                )?;
+                if let Some(callback) = view.authorization_response {
+                    p.callback = Some(callback);
+                    p.approved_by = Some(session.id.clone());
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                }
+                Ok(BrowserReply {
+                    form_post: false,
+                    body: self.status_for(tx, &p, Some(session), sso)?,
+                    location: None,
+                    refresh: None,
+                    cookies: vec![],
+                })
+            });
+        }
+        if p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                    || crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
+            })
+        }) && pin.is_some()
+        {
+            return Err(Error::forbidden());
+        }
         let staged = self.browser_passkey_finish(
             ceremony,
             response,
@@ -415,6 +763,49 @@ impl Core {
             pin.as_deref(),
         )?;
         self.authorize_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+    pub fn authorize_passkey_cancel(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        sso: Option<&str>,
+        ceremony: &str,
+    ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
+        #[cfg(not(feature = "platform"))]
+        let _ = sso;
+        let p = self
+            .store
+            .read(|tx| undecided(interaction(tx, id, binding)?))?;
+        #[cfg(feature = "platform")]
+        if p.configured_run.is_some() {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let workflow = p
+                    .configured_consent
+                    .as_deref()
+                    .ok_or_else(Error::forbidden)?;
+                let run_id = p.configured_run.as_deref().ok_or_else(Error::forbidden)?;
+                let cookie = sso.ok_or_else(Error::unauthorized)?;
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                let view = crate::workflow::executor::browser_passkey_consent_cancel_in(
+                    self, tx, workflow, id, cookie, &session, &p.request, run_id, ceremony,
+                )?;
+                if let Some(callback) = view.authorization_response {
+                    p.callback = Some(callback);
+                    p.approved_by = Some(session.id.clone());
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                }
+                self.status_for(tx, &p, Some(session), sso)
+            });
+        }
+        if p.configured_run.is_some() {
+            return Err(Error::forbidden());
+        }
+        self.browser_passkey_cancel(ceremony, &format!("oidc:{id}"), binding)
     }
     /// Approves as this browser's session, or denies without one. The body is the state.
     pub fn authorize_decision(
@@ -426,9 +817,141 @@ impl Core {
         remember: bool,
         session_ref: Option<String>,
     ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         self.store.write(|tx| {
             let mut p = undecided(interaction(tx, id, binding)?)?;
             let session = self.browser_session(tx, sso)?;
+            if let Some(workflow) = p.configured_consent.as_deref() {
+                #[cfg(feature = "platform")]
+                {
+                    let passkey = self.config.workflows.get(workflow).is_some_and(|entry| {
+                        entry.active
+                            && crate::workflow::supported_configured_passkey_consent(
+                                &entry.definition,
+                            )
+                    });
+                    let totp = self.config.workflows.get(workflow).is_some_and(|entry| {
+                        entry.active
+                            && crate::workflow::supported_configured_password_totp_consent(
+                                &entry.definition,
+                            )
+                    });
+                    if approve {
+                        let client = tx
+                            .get::<Client>("clients", &p.request.client_id)?
+                            .ok_or_else(Error::forbidden)?;
+                        if p.configured_client.as_deref()
+                            != Some(client_fingerprint(&client)?.as_str())
+                        {
+                            return Err(Error::conflict("Authorization client changed"));
+                        }
+                        let session = session.as_ref().ok_or_else(Error::unauthorized)?;
+                        if !session_ref.as_deref().is_some_and(|reference| {
+                            crypto::constant_eq(reference, &signin::session_ref(id, &session.id))
+                        }) {
+                            return Err(account_changed());
+                        }
+                        p.callback = Some(if totp {
+                            crate::workflow::executor::browser_totp_decide_in(
+                                self,
+                                tx,
+                                &crate::workflow::executor::BrowserTotp {
+                                    workflow,
+                                    interaction: id,
+                                    cookie: sso.ok_or_else(Error::unauthorized)?,
+                                    session,
+                                    authorization: &p.request,
+                                    run_id: p
+                                        .configured_run
+                                        .as_deref()
+                                        .ok_or_else(Error::forbidden)?,
+                                },
+                                true,
+                            )?
+                        } else if passkey {
+                            crate::workflow::executor::browser_passkey_consent_decide_in(
+                                self,
+                                tx,
+                                workflow,
+                                id,
+                                sso.ok_or_else(Error::unauthorized)?,
+                                session,
+                                &p.request,
+                                p.configured_run.as_deref().ok_or_else(Error::forbidden)?,
+                                true,
+                            )?
+                        } else {
+                            if p.configured_run.is_some() {
+                                return Err(Error::forbidden());
+                            }
+                            crate::workflow::executor::browser_consent_decide_in(
+                                self,
+                                tx,
+                                workflow,
+                                id,
+                                sso.ok_or_else(Error::unauthorized)?,
+                                session,
+                                &p.request,
+                                p.expires_at,
+                            )?
+                        });
+                        p.approved_by = Some(session.id.clone());
+                        audit(
+                            tx,
+                            &session.identity.user_id,
+                            "browser.authorization.decided",
+                            &p.request.client_id,
+                        )?;
+                    } else {
+                        let actor = session
+                            .as_ref()
+                            .map_or("anonymous", |value| value.identity.user_id.as_str());
+                        p.callback = Some(if let Some(run_id) = p.configured_run.as_deref() {
+                            let session = session.as_ref().ok_or_else(Error::unauthorized)?;
+                            if totp {
+                                crate::workflow::executor::browser_totp_decide_in(
+                                    self,
+                                    tx,
+                                    &crate::workflow::executor::BrowserTotp {
+                                        workflow,
+                                        interaction: id,
+                                        cookie: sso.ok_or_else(Error::unauthorized)?,
+                                        session,
+                                        authorization: &p.request,
+                                        run_id,
+                                    },
+                                    false,
+                                )?
+                            } else {
+                                crate::workflow::executor::browser_passkey_consent_decide_in(
+                                    self,
+                                    tx,
+                                    workflow,
+                                    id,
+                                    sso.ok_or_else(Error::unauthorized)?,
+                                    session,
+                                    &p.request,
+                                    run_id,
+                                    false,
+                                )?
+                            }
+                        } else {
+                            self.authorization_denied(tx, &p.request, actor)?
+                        });
+                    }
+                    if let Some(proof) = p.authentication.take() {
+                        tx.delete("authentication", &proof)?;
+                    }
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                    return self.status_for(tx, &p, session, sso);
+                }
+                #[cfg(not(feature = "platform"))]
+                {
+                    let _ = workflow;
+                    return Err(Error::forbidden());
+                }
+            }
             if approve {
                 let session = session.as_ref().ok_or_else(Error::unauthorized)?;
                 if !session_ref
@@ -442,7 +965,7 @@ impl Core {
                 p.callback = Some(self.authorize_session_proof(
                     tx,
                     session.clone(),
-                    request,
+                    request.clone(),
                     false,
                     p.authentication.as_deref(),
                 )?);
@@ -451,7 +974,14 @@ impl Core {
                     .ok_or_else(Error::unauthorized)?;
                 p.remember = remember && !client.settings.implicit_consent;
                 if p.remember {
-                    remember_consent(tx, &p.request, &client, &session.identity.user_id)?;
+                    remember_approved_consent(
+                        tx,
+                        ConsentApproval::OidcIssued {
+                            request: &request,
+                            client: &client,
+                            session,
+                        },
+                    )?;
                 }
                 p.approved_by = Some(session.id.clone());
                 audit(
@@ -471,7 +1001,7 @@ impl Core {
                 tx.delete("authentication", &proof)?;
             }
             tx.put("browser_authorizations", &p.id, &p)?;
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })
     }
     /// The undecided request and the account it is pinned to: the browser session's user,
@@ -484,6 +1014,12 @@ impl Core {
     ) -> Result<(Pending, Option<String>)> {
         self.store.read(|tx| {
             let p = undecided(interaction(tx, id, binding)?)?;
+            #[cfg(feature = "platform")]
+            if let Some(workflow) = p.configured_consent.as_deref()
+                && self.browser_consent_selection_lost(workflow)
+            {
+                return Err(Error::conflict("Browser consent workflow changed"));
+            }
             let pin = if p.request.has_prompt("select_account") {
                 None
             } else {
@@ -551,7 +1087,7 @@ impl Core {
             let session = tx.get::<Session>("sessions", holder)?.filter(|s| {
                 !s.revoked && s.expires_at > now() && self.identity_user(tx, &s.identity).is_ok()
             });
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })?;
         Ok(BrowserReply {
             form_post: false,
@@ -566,7 +1102,12 @@ impl Core {
     fn authorize_auto_continue(&self, tx: &Tx<'_>, id: &str, holder: &str) -> Result<bool> {
         let Some(mut p) = tx
             .get::<Pending>("browser_authorizations", id)?
-            .filter(|p| p.expires_at > now() && p.callback.is_none() && p.stage_id.is_none())
+            .filter(|p| {
+                p.expires_at > now()
+                    && p.callback.is_none()
+                    && p.stage_id.is_none()
+                    && p.configured_consent.is_none()
+            })
         else {
             return Ok(false);
         };
@@ -624,7 +1165,15 @@ impl Core {
         Ok(true)
     }
     /// The §4.5 state for `session`, the browser's live session if any.
-    fn status_for(&self, tx: &Tx<'_>, p: &Pending, session: Option<Session>) -> Result<Value> {
+    fn status_for(
+        &self,
+        tx: &Tx<'_>,
+        p: &Pending,
+        session: Option<Session>,
+        sso: Option<&str>,
+    ) -> Result<Value> {
+        #[cfg(not(feature = "platform"))]
+        let _ = sso;
         let request = &p.request;
         let name = tx
             .get::<Client>("clients", &request.client_id)?
@@ -660,7 +1209,9 @@ impl Core {
             state["continue"] = json!(self.resume_path(&p.id));
             return Ok(state);
         }
-        state["terminal"] = json!({"user_code": p.code, "issuer": self.config.issuer});
+        if p.configured_consent.is_none() {
+            state["terminal"] = json!({"user_code": p.code, "issuer": self.config.issuer});
+        }
         if p.stage_id.is_some() {
             return unavailable(state, "source_stage", None);
         }
@@ -669,6 +1220,54 @@ impl Core {
             Err(error) if error.status.is_server_error() => return Err(error),
             Err(_) => return unavailable(state, "invalid_request", None),
         };
+        if let Some(workflow) = p.configured_consent.as_deref() {
+            #[cfg(not(feature = "platform"))]
+            let _ = workflow;
+            #[cfg(feature = "platform")]
+            let selected = !self.browser_consent_selection_lost(workflow);
+            #[cfg(not(feature = "platform"))]
+            let selected = false;
+            if !selected || client.settings.source_stage.is_some() {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Configured consent is unavailable".into()),
+                );
+            }
+            if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str()) {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Authorization client changed".into()),
+                );
+            }
+            let transaction = request
+                .transaction_id
+                .as_deref()
+                .ok_or_else(Error::forbidden)?;
+            let request_hash = request.request_hash()?;
+            let prepared = tx.get::<crate::model::AuthenticationTransaction>(
+                "authentication",
+                &digest(transaction),
+            )?;
+            if prepared.as_ref().is_none_or(|row| {
+                row.expires_at <= now()
+                    || row.request_hash != request_hash
+                    || row.authenticated_session.is_some()
+                    || row.source_stage.is_some()
+                    || row.user_id.as_ref().is_some_and(|id| {
+                        session
+                            .as_ref()
+                            .is_some_and(|holder| &holder.identity.user_id != id)
+                    })
+            }) {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Prepared consent is unavailable".into()),
+                );
+            }
+        }
         let probe = |mfa: bool| Identity {
             amr: if mfa {
                 vec!["webauthn".into(), "mfa".into()]
@@ -684,20 +1283,174 @@ impl Core {
         };
         let mfa = needs_step_up(&client, request, &probe(false));
         let browser = !mfa || !needs_step_up(&client, request, &probe(true));
-        let required = match &session {
-            Some(s) => !consent_satisfied(tx, &client, request, &scopes, &s.identity.user_id)?,
-            None => request.has_prompt("consent") || !client.settings.implicit_consent,
+        let required = if p.configured_consent.is_some() {
+            true
+        } else {
+            match &session {
+                Some(s) => !consent_satisfied(tx, &client, request, &scopes, &s.identity.user_id)?,
+                None => request.has_prompt("consent") || !client.settings.implicit_consent,
+            }
+        };
+        #[cfg(feature = "platform")]
+        let configured_passkey = p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+            })
+        });
+        #[cfg(not(feature = "platform"))]
+        let configured_passkey = false;
+        #[cfg(feature = "platform")]
+        let configured_totp = p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
+            })
+        });
+        #[cfg(feature = "platform")]
+        let browser = if configured_totp {
+            let mut totp_probe = probe(true);
+            totp_probe.amr = vec!["pwd".into(), "otp".into()];
+            !mfa || !needs_step_up(&client, request, &totp_probe)
+        } else {
+            browser
         };
         state["requirements"] = json!({"mfa": mfa, "browser": browser});
-        state["consent"] = json!({"required": required, "scopes": scopes, "attributes": null, "resource": request.resource, "remember_default": true});
+        if configured_passkey {
+            state["requirements"]["configured_passkey"] = json!(true);
+        }
+        #[cfg(feature = "platform")]
+        if configured_totp {
+            state["requirements"]["configured_totp"] = json!(true);
+        }
+        state["consent"] = json!({"required": required, "scopes": scopes, "attributes": null, "resource": request.resource, "remember_default": p.configured_consent.is_none(), "remember_enabled": p.configured_consent.is_none()});
         if !browser {
             return unavailable(state, "step_up_unavailable", None);
         }
         let Some(session) = session else {
+            if p.configured_run.is_some() {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Bound browser session is unavailable".into()),
+                );
+            }
             state["status"] = json!("authenticate");
             state["reason"] = json!("sign_in");
             return Ok(state);
         };
+        #[cfg(feature = "platform")]
+        if configured_passkey {
+            if !needs_reauthentication(&client, request, &session.identity) {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Passkey reauthentication is not required".into()),
+                );
+            }
+            let ready = if let Some(run_id) = p.configured_run.as_deref() {
+                let Some(cookie) = sso else {
+                    return unavailable(
+                        state,
+                        "access_denied",
+                        Some("Bound browser session is unavailable".into()),
+                    );
+                };
+                match crate::workflow::executor::browser_passkey_consent_ready_in(
+                    self,
+                    tx,
+                    p.configured_consent
+                        .as_deref()
+                        .ok_or_else(Error::forbidden)?,
+                    &p.id,
+                    cookie,
+                    &session,
+                    request,
+                    run_id,
+                ) {
+                    Ok(ready) => ready,
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => {
+                        return unavailable(
+                            state,
+                            "access_denied",
+                            Some("Bound consent run is unavailable".into()),
+                        );
+                    }
+                }
+            } else {
+                false
+            };
+            state["status"] = json!(if ready { "consent" } else { "authenticate" });
+            if !ready {
+                state["reason"] = json!("step_up");
+            }
+            return Ok(state);
+        }
+        #[cfg(feature = "platform")]
+        if configured_totp {
+            if !needs_reauthentication(&client, request, &session.identity) {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Password and TOTP reauthentication is not required".into()),
+                );
+            }
+            let stage = if let Some(run_id) = p.configured_run.as_deref() {
+                let Some(cookie) = sso else {
+                    return unavailable(
+                        state,
+                        "access_denied",
+                        Some("Bound browser session is unavailable".into()),
+                    );
+                };
+                let owner = crate::workflow::executor::BrowserTotp {
+                    workflow: p
+                        .configured_consent
+                        .as_deref()
+                        .ok_or_else(Error::forbidden)?,
+                    interaction: &p.id,
+                    cookie,
+                    session: &session,
+                    authorization: request,
+                    run_id,
+                };
+                match crate::workflow::executor::browser_totp_stage_in(self, tx, &owner) {
+                    Ok(stage) => stage,
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => {
+                        return unavailable(
+                            state,
+                            "access_denied",
+                            Some("Bound consent run is unavailable".into()),
+                        );
+                    }
+                }
+            } else {
+                "password"
+            };
+            state["requirements"]["configured_stage"] = json!(stage);
+            state["status"] = json!(if stage == "consent" {
+                "consent"
+            } else {
+                "authenticate"
+            });
+            if stage != "consent" {
+                state["reason"] = json!(if stage == "totp" {
+                    "configured_totp"
+                } else {
+                    "prompt_login"
+                });
+            }
+            return Ok(state);
+        }
+        if p.configured_consent.is_some()
+            && needs_reauthentication(&client, request, &session.identity)
+        {
+            return unavailable(state, "step_up_unavailable", None);
+        }
         // prompt=login, max_age, account selection and step-up need a sign-in bound to this request.
         if needs_reauthentication(&client, request, &session.identity)
             && !signin::proof_valid(
@@ -862,9 +1615,26 @@ impl Core {
     }
 }
 
-fn consent_key(uid: &str, cid: &str) -> String {
+pub(crate) fn consent_key(uid: &str, cid: &str) -> String {
     digest(&format!("{uid}\0{cid}"))
 }
+
+pub(crate) fn consents_for_user(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
+    let mut list = Vec::new();
+    for (_, client) in tx.list::<Client>("clients")? {
+        if let Some(consent) = crate::saml::consent(tx, user_id, &client)? {
+            list.push(consent);
+        }
+        if let Some(consent) = tx
+            .get::<Consent>("consents", &consent_key(user_id, &client.id))?
+            .filter(|c| c.expires_at > now())
+        {
+            list.push(json!({"client_id":client.id,"name":client.name,"scopes":consent.scopes,"resource":consent.resource,"expires_at":consent.expires_at}));
+        }
+    }
+    Ok(list)
+}
+
 /// Implicit consent, or a remembered one covering these scopes and resource. prompt=consent
 /// always asks again.
 fn consent_satisfied(
@@ -886,27 +1656,6 @@ fn consent_satisfied(
                     && c.resource == request.resource
             }))
 }
-fn remember_consent(
-    tx: &Tx<'_>,
-    request: &Authorization,
-    client: &Client,
-    user_id: &str,
-) -> Result<()> {
-    let scopes = crate::assurance::requested_scopes(
-        client,
-        request,
-        crate::oidc::scope_request(&request.scope, client)?,
-    )?;
-    tx.put(
-        "consents",
-        &consent_key(user_id, &client.id),
-        &Consent {
-            resource: request.resource.clone(),
-            scopes,
-            expires_at: now() + 2_592_000,
-        },
-    )
-}
 /// The browser's own request: its binding cookie proves which browser started it.
 fn interaction(tx: &Tx<'_>, id: &str, binding: Option<&str>) -> Result<Pending> {
     let p = tx
@@ -923,6 +1672,30 @@ fn interaction(tx: &Tx<'_>, id: &str, binding: Option<&str>) -> Result<Pending> 
         return Err(Error::unauthorized());
     }
     Ok(p)
+}
+/// Direct bearer authorization cannot spend or bypass a browser interaction
+/// selected for configured consent. Ordinary browser and W03 request bindings
+/// keep their existing semantics.
+#[cfg(feature = "platform")]
+pub(crate) fn reject_configured_pending(tx: &Tx<'_>, request: &Authorization) -> Result<()> {
+    let Some(id) = request.request_binding.as_deref() else {
+        return Ok(());
+    };
+    if tx
+        .get::<Pending>("browser_authorizations", id)?
+        .is_some_and(|pending| pending.configured_consent.is_some() && pending.expires_at > now())
+    {
+        return Err(Error::conflict(
+            "This browser request belongs to configured consent",
+        ));
+    }
+    Ok(())
+}
+
+fn client_fingerprint(client: &Client) -> Result<String> {
+    serde_json::to_string(client)
+        .map(|value| digest(&value))
+        .map_err(Error::internal)
 }
 /// Decided requests, and those waiting for an embedded source stage, take no browser input.
 fn undecided(p: Pending) -> Result<Pending> {
@@ -960,12 +1733,25 @@ fn pending_by_code(tx: &Tx<'_>, code: &str) -> Result<Pending> {
         .ok_or_else(|| Error::missing("Authorization request expired"))
 }
 fn waiting(core: &Core, p: &Pending) -> Value {
-    json!({"status": "authorization_pending", "user_code": p.code, "client_id": p.request.client_id, "instruction": format!("Sign in in this browser, or run riauth request approve {} in your terminal.", p.code), "expires_at": p.expires_at, "resume_uri": core.resume_path(&p.id)})
+    let instruction = if p.configured_consent.is_some() {
+        "Sign in and decide this request in the original browser.".to_owned()
+    } else {
+        format!(
+            "Sign in in this browser, or run riauth request approve {} in your terminal.",
+            p.code
+        )
+    };
+    json!({"status": "authorization_pending", "user_code": p.configured_consent.is_none().then_some(&p.code), "client_id": p.request.client_id, "instruction": instruction, "expires_at": p.expires_at, "resume_uri": core.resume_path(&p.id)})
 }
 
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, p) in tx.maintenance_page::<Pending>("browser_authorizations")? {
         if p.expires_at < at {
+            if p.configured_consent.is_some()
+                && let Some(transaction) = p.request.transaction_id.as_deref()
+            {
+                tx.delete("authentication", &digest(transaction))?;
+            }
             tx.delete(
                 "authorization_codes",
                 &digest(&crypto::normalize_code(&p.code)?),

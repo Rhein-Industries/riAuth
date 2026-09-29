@@ -1,12 +1,31 @@
 use crate::{
-    core::{Core, audit, user_by_name, validate_name},
+    core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::User,
+    management,
+    model::{Session, User},
     store::Tx,
 };
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub use crate::identity::agent_credentials::{Agent, Permission};
+
+/// Prefix of the management credential for a browser session: the SSO cookie value follows.
+/// `api::bearer` rejects whitespace, so an Authorization header can never carry one; only the
+/// same-origin administration routes (`portal::admin`) build it, behind the browser guards.
+const BROWSER_SESSION: &str = "browser-session ";
+
+/// The management credential `principal` accepts for this browser session cookie.
+pub(crate) fn browser_credential(cookie: &str) -> String {
+    format!("{BROWSER_SESSION}{cookie}")
+}
+
+/// The SSO cookie of a browser management credential.
+pub(crate) fn browser_cookie(token: &str) -> Option<&str> {
+    token.strip_prefix(BROWSER_SESSION)
+}
 
 pub const ACTIONS: &[(&str, &str)] = &[
     ("ldap.search", "client"),
@@ -40,36 +59,13 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("session.revoke", "session"),
     ("device.enroll", "device"),
     ("state.read", "state"),
+    ("workflow.read", "workflow"),
+    ("workflow.write", "workflow"),
     ("operations.read", "operations"),
     ("operations.backup", "operations"),
     ("ssf.manage", "ssf"),
     ("ssf.configure", "ssf"),
 ];
-
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Permission {
-    pub action: String,
-    pub resource: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Agent {
-    pub id: String,
-    pub permissions: Vec<Permission>,
-    pub expires_at: u64,
-    pub created_at: u64,
-    pub enabled: bool,
-    pub token_hash: String,
-    /// Owning user id. Absent on rows created before parent ownership.
-    #[serde(default)]
-    pub parent_user: Option<String>,
-}
-impl Agent {
-    pub fn view(&self) -> Value {
-        json!({"id": self.id, "parent_user": self.parent_user, "permissions": self.permissions, "expires_at": self.expires_at, "created_at": self.created_at, "enabled": self.enabled})
-    }
-}
 
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,15 +82,27 @@ pub struct NewAgent {
 pub struct Principal {
     pub id: String,
     pub agent: bool,
+    /// A human with current, exact grants rather than full administrator rights.
+    pub delegated: bool,
+    pub grants: Vec<crate::delegation::HumanGrant>,
     pub permissions: Vec<Permission>,
 }
 impl Principal {
     pub fn allows(&self, action: &str, resource: &str) -> bool {
-        !self.agent
-            || self
-                .permissions
-                .iter()
-                .any(|p| p.action == action && (p.resource == resource || p.resource == "*"))
+        crate::edition::action_available(action)
+            && (if self.delegated {
+                self.grants
+                    .iter()
+                    .any(|grant| grant.allows(action, resource))
+            } else if self.agent {
+                self.permissions.iter().any(|p| {
+                    crate::edition::agent_permission_available(&p.action, &p.resource)
+                        && p.action == action
+                        && (p.resource == resource || p.resource == "*")
+                })
+            } else {
+                true
+            })
     }
     pub fn require(&self, action: &str, resource: &str) -> Result<()> {
         if self.allows(action, resource) {
@@ -103,28 +111,44 @@ impl Principal {
             Err(Error::forbidden())
         }
     }
+
+    /// A directory operator's write authority is confined to a reviewed
+    /// connector sync. Direct user and group APIs still require their own
+    /// permissions; agents retain their existing combined permission checks.
+    pub(crate) fn require_directory_user(
+        &self,
+        scope: &str,
+        username: &str,
+        user_id: Option<&str>,
+    ) -> Result<()> {
+        if self.delegated {
+            self.require("directory.sync", scope)?;
+            if user_id == Some(self.id.as_str()) {
+                return Err(Error::forbidden());
+            }
+            Ok(())
+        } else {
+            self.require("user.write", &format!("user/{username}"))
+        }
+    }
+
+    pub(crate) fn require_directory_group(&self, scope: &str, name: &str) -> Result<()> {
+        if self.delegated {
+            self.require("directory.sync", scope)
+        } else {
+            self.require("group.members", &format!("group/{name}"))
+        }
+    }
 }
 
 impl Core {
     pub fn rotate_agent(&self, token: &str, id: &str, ttl: u64) -> Result<Value> {
-        if !(60..=2_592_000).contains(&ttl) {
-            return Err(Error::bad("Agent lifetime must be 60 seconds to 30 days"));
-        }
-        self.mutation(token, |tx| {
-            let actor = self.admin(tx, token)?;
-            let mut agent = tx.get::<Agent>("agents", id)?.filter(|a| a.enabled).ok_or_else(|| Error::missing("Enabled agent not found"))?;
-            // A disabled or deleted parent blocks rotation even if the row was not revoked yet.
-            if !parent_active(tx, &agent)? {
-                return Err(Error::conflict("Agent parent is disabled or deleted"));
-            }
-            tx.delete("agent_tokens", &agent.token_hash)?;
-            let credential = crypto::random_token("ri_agent_");
-            // Parent, id, and permissions stay as created. Only the token and expiry change.
-            agent.token_hash = digest(&credential); agent.expires_at = now() + ttl;
-            tx.put("agents", id, &agent)?; tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
-            audit(tx, &actor.id, "agent.rotate", id)?;
-            Ok(json!({"agent":agent.view(),"credential":{"issuer":self.config.issuer,"agent_id":id,"token":credential,"expires_at":agent.expires_at}}))
-        })
+        // Retain the existing validation order before receipt lookup; the
+        // writer repeats it at its transaction boundary. A generic mutation
+        // receipt would persist and replay the plaintext rotated credential.
+        management::validate_agent_rotation_ttl(ttl)?;
+        self.store
+            .write(|tx| management::rotate_agent(self, tx, token, id, ttl))
     }
     pub fn principal(&self, tx: &Tx<'_>, token: &str) -> Result<Principal> {
         if token.starts_with("ri_agent_") {
@@ -142,16 +166,39 @@ impl Core {
             Ok(Principal {
                 id: format!("agent:{}", agent.id),
                 agent: true,
+                delegated: false,
+                grants: vec![],
                 permissions: agent.permissions,
             })
         } else {
-            let user = self.admin(tx, token)?;
+            let user = match browser_cookie(token) {
+                Some(cookie) => self.browser_user(tx, cookie)?.0,
+                None => self.session(tx, token)?.0,
+            };
+            let grants = if user.admin {
+                vec![]
+            } else {
+                crate::delegation::active(tx, &self.config, &user.id)?
+            };
+            if !user.admin && grants.is_empty() {
+                return Err(Error::forbidden());
+            }
             Ok(Principal {
                 id: user.id,
                 agent: false,
+                delegated: !user.admin,
+                grants,
                 permissions: vec![],
             })
         }
+    }
+    /// The user and session behind a browser SSO cookie, with the same session and identity
+    /// checks as a bearer session.
+    pub(crate) fn browser_user(&self, tx: &Tx<'_>, cookie: &str) -> Result<(User, Session)> {
+        let session = self
+            .browser_session(tx, Some(cookie))?
+            .ok_or_else(Error::unauthorized)?;
+        Ok((self.identity_user(tx, &session.identity)?, session))
     }
     pub(crate) fn management(
         &self,
@@ -162,70 +209,17 @@ impl Core {
     ) -> Result<Principal> {
         let actor = self.principal(tx, token)?;
         actor.require(action, resource)?;
+        crate::reconciliation::validate_apply_lease(tx, &actor)?;
         Ok(actor)
     }
     pub fn create_agent(&self, token: &str, input: NewAgent) -> Result<Value> {
-        validate_name(&input.id)?;
-        if let Some(parent) = &input.parent {
-            validate_name(parent)?;
-        }
-        if !(60..=2_592_000).contains(&input.ttl)
-            || input.permissions.is_empty()
-            || input.permissions.len() > 100
-        {
-            return Err(Error::bad(
-                "Agent requires 1–100 permissions and a lifetime of 60 seconds to 30 days",
-            ));
-        }
-        for permission in &input.permissions {
-            let (_, kind) = ACTIONS
-                .iter()
-                .find(|(a, _)| *a == permission.action)
-                .ok_or_else(|| Error::bad("Unknown agent permission"))?;
-            if permission.resource != "*" {
-                let (prefix, name) = permission
-                    .resource
-                    .split_once('/')
-                    .ok_or_else(|| Error::bad("Resource must be kind/name or *"))?;
-                let kind_matches = if *kind == "directory" {
-                    // LDAP stays directory/<id>. Cloud sync reuses the same actions
-                    // with an exact workspace/<id> or entra/<id> resource.
-                    matches!(prefix, "directory" | "workspace" | "entra")
-                } else {
-                    prefix == *kind
-                };
-                if !kind_matches {
-                    return Err(Error::bad(
-                        "Permission action and resource kind do not match",
-                    ));
-                }
-                validate_name(name)?;
-            }
-        }
-        self.mutation(token, |tx| {
-            // Bootstrap/delegation is intentionally restricted to human administrators.
-            let actor = self.admin(tx, token)?;
-            if tx.get::<Agent>("agents", &input.id)?.is_some() { return Err(Error::conflict("Agent already exists")); }
-            let parent_user = if let Some(username) = &input.parent {
-                let parent = user_by_name(tx, username)?;
-                if parent.admin {
-                    return Err(Error::forbidden());
-                }
-                if !parent.enabled {
-                    return Err(Error::bad("Parent user is disabled"));
-                }
-                Some(parent.id)
-            } else {
-                None
-            };
-            let credential = crypto::random_token("ri_agent_");
-            let agent = Agent { id: input.id, permissions: input.permissions, expires_at: now() + input.ttl,
-                created_at: now(), enabled: true, token_hash: digest(&credential), parent_user };
-            tx.put("agents", &agent.id, &agent)?;
-            tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
-            audit(tx, &actor.id, "agent.create", &agent.id)?;
-            Ok(json!({"agent": agent.view(), "credential": {"issuer": self.config.issuer, "agent_id": agent.id, "token": credential, "expires_at": agent.expires_at}}))
-        })
+        // Retain the existing validation order before receipt lookup; the writer
+        // repeats validation at its own transaction boundary.
+        management::validate_new_agent(&input)?;
+        // This writer records only a redacted issuance marker. The generic
+        // mutation receipt would persist and replay the plaintext credential.
+        self.store
+            .write(|tx| management::create_agent(self, tx, token, input))
     }
     pub fn list_agents(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
@@ -239,17 +233,18 @@ impl Core {
         })
     }
     pub fn revoke_agent(&self, token: &str, id: &str) -> Result<Value> {
-        self.mutation(token, |tx| {
-            let actor = self.admin(tx, token)?;
-            let mut agent = tx
-                .get::<Agent>("agents", id)?
-                .ok_or_else(|| Error::missing("Agent not found"))?;
-            agent.enabled = false;
-            tx.put("agents", id, &agent)?;
-            tx.delete("agent_tokens", &agent.token_hash)?;
-            audit(tx, &actor.id, "agent.revoke", id)?;
-            Ok(agent.view())
-        })
+        // Remote revocation must bind the exact request to a configuration
+        // revision. In-process lifecycle callers have no HTTP context.
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Agent revocation requires Idempotency-Key and If-Match",
+            ));
+        }
+        self.mutation(token, |tx| management::revoke_agent(self, tx, token, id))
     }
 }
 
@@ -265,21 +260,6 @@ pub(crate) fn parent_active(tx: &Tx<'_>, agent: &Agent) -> Result<bool> {
     Ok(tx
         .get::<User>("users", parent)?
         .is_some_and(|user| user.enabled))
-}
-
-/// Disable every agent owned by this user and drop its token in the caller's transaction.
-pub(crate) fn revoke_owned(tx: &Tx<'_>, user_id: &str) -> Result<()> {
-    for (id, mut agent) in tx.list::<Agent>("agents")? {
-        if agent.parent_user.as_deref() != Some(user_id) {
-            continue;
-        }
-        tx.delete("agent_tokens", &agent.token_hash)?;
-        if agent.enabled {
-            agent.enabled = false;
-            tx.put("agents", &id, &agent)?;
-        }
-    }
-    Ok(())
 }
 
 /// Parent user id for an agent actor, or for agent create/rotate/revoke of that target.
@@ -301,9 +281,126 @@ pub(crate) fn audit_parent(
         .and_then(|agent| agent.parent_user))
 }
 
+pub const FEATURES: &[&str] = &[
+    "portal.user_applications",
+    "portal.terminal_sign_in",
+    "audit.self_hosted_event_map",
+    "saml.idp_signed_browser_sso",
+    "saml.sp_initiated_logout",
+    "saml.logout_fanout",
+    "saml.upstream_logout",
+    "saml.assertion_encryption",
+    "radius.pap",
+    "radius.radsec",
+    "radius.eap_tls",
+    "agents.certificate_bindings",
+    "directory.ldap_provider",
+    "proxy.forward_auth_sso",
+    "proxy.shared_domain_sso",
+    "proxy.reverse_proxy",
+    "directory.ldap_sync",
+    "identity.ldap_authentication",
+    "identity.passkeys",
+    "identity.email_verification",
+    "identity.invitations",
+    "identity.email_password_reset",
+    "operations.postgresql",
+    "operations.shared_rate_limits",
+    "operations.native_tls",
+    "operations.vault_transit_signing",
+    "oidc.par",
+    "oidc.jar",
+    "oidc.jarm",
+    "oidc.claims_requests",
+    "oidc.dpop",
+    "oidc.bound_key",
+    "oidc.pairwise_subjects",
+    "oidc.resource_indicators",
+    "oidc.key_domains",
+    "oidc.jwe",
+    "oidc.provider_issuers",
+    "oidc.frontchannel_logout",
+    "oidc.session_management",
+    "identity.oidc_sources",
+    "identity.saml_sources",
+    "identity.oauth_sources",
+    "identity.source_linking",
+    "identity.totp_import",
+    "agents.source_manifests",
+    "directory.scim_inbound",
+    "directory.scim_outbound",
+    "operations.prometheus",
+    "operations.schema_migrations",
+    "oidc.private_key_jwt",
+    "oidc.federated_machine_grants",
+    "oidc.token_exchange",
+    "oidc.dynamic_registration",
+    "oidc.code.pkce_s256",
+    "oidc.device",
+    "oidc.refresh_rotation",
+    "oidc.native_redirects",
+    "oidc.request_bound_reauthentication",
+    "agents.scoped_credentials",
+    "agents.plan_apply",
+    "agents.atomic_idempotency",
+    "agents.conditional_mutations",
+    "agents.audit_run_id",
+    "agents.schema",
+    "oidc.browser_terminal_handoff",
+    "oidc.rp_logout",
+    "oidc.backchannel_logout",
+    "oidc.claim_mappings",
+    "oidc.scope_policies",
+    "oidc.provider_settings",
+    "oidc.cors",
+    "operations.encrypted_backup_restore",
+    "operations.encrypted_storage",
+    "identity.recovery_codes",
+    "identity.self_password_change",
+    "access.temporary_entitlements",
+    "identity.scheduled_offboarding",
+    "operations.audit_review",
+    "operations.csv_export",
+    "identity.windows_device_login",
+    "agents.parent_ownership",
+    "directory.workspace_sync",
+    "directory.entra_sync",
+    "identity.https_client_certificates",
+    "identity.device_trust",
+    "ssf.push",
+    "workflow.controlled_extensions",
+];
+
+pub const PLATFORM_FEATURES: &[&str] = &[
+    "audit.self_hosted_event_map",
+    "saml.idp_signed_browser_sso",
+    "saml.sp_initiated_logout",
+    "saml.logout_fanout",
+    "saml.upstream_logout",
+    "saml.assertion_encryption",
+    "radius.pap",
+    "radius.radsec",
+    "radius.eap_tls",
+    "agents.certificate_bindings",
+    "directory.ldap_provider",
+    "proxy.forward_auth_sso",
+    "proxy.shared_domain_sso",
+    "proxy.reverse_proxy",
+    "operations.vault_transit_signing",
+    "identity.saml_sources",
+    "directory.scim_inbound",
+    "access.temporary_entitlements",
+    "identity.scheduled_offboarding",
+    "identity.windows_device_login",
+    "agents.parent_ownership",
+    "directory.workspace_sync",
+    "directory.entra_sync",
+    "identity.https_client_certificates",
+    "identity.device_trust",
+    "ssf.push",
+    "workflow.controlled_extensions",
+];
+
 pub fn capabilities() -> Value {
-    json!({"schema_version": "riauth.capabilities/v1", "version": env!("CARGO_PKG_VERSION"),
-        "interface": "cli", "permissions": ACTIONS.iter().map(|(action, resource_kind)| json!({"action": action, "resource_kind": resource_kind})).collect::<Vec<_>>(),
-        "features": ["portal.user_applications", "portal.terminal_sign_in", "audit.self_hosted_event_map", "saml.idp_signed_browser_sso", "saml.sp_initiated_logout", "saml.logout_fanout", "saml.upstream_logout", "saml.assertion_encryption", "radius.pap", "radius.radsec", "radius.eap_tls", "agents.certificate_bindings", "directory.ldap_provider", "proxy.forward_auth_sso", "proxy.shared_domain_sso", "proxy.reverse_proxy", "directory.ldap_sync", "identity.ldap_authentication", "identity.passkeys", "identity.email_verification", "identity.invitations", "identity.email_password_reset", "operations.postgresql", "operations.shared_rate_limits", "operations.native_tls", "operations.vault_transit_signing", "oidc.par", "oidc.jar", "oidc.jarm", "oidc.claims_requests", "oidc.dpop", "oidc.bound_key", "oidc.pairwise_subjects", "oidc.resource_indicators", "oidc.key_domains", "oidc.jwe", "oidc.provider_issuers", "oidc.frontchannel_logout", "oidc.session_management", "identity.oidc_sources", "identity.saml_sources", "identity.oauth_sources", "identity.source_linking", "identity.totp_import", "agents.source_manifests", "directory.scim_inbound", "directory.scim_outbound", "operations.prometheus", "operations.schema_migrations", "oidc.private_key_jwt", "oidc.federated_machine_grants", "oidc.token_exchange", "oidc.dynamic_registration", "oidc.code.pkce_s256", "oidc.device", "oidc.refresh_rotation", "oidc.native_redirects", "oidc.request_bound_reauthentication", "agents.scoped_credentials", "agents.plan_apply", "agents.atomic_idempotency", "agents.conditional_mutations", "agents.audit_run_id", "agents.schema", "oidc.browser_terminal_handoff", "oidc.rp_logout", "oidc.backchannel_logout", "oidc.claim_mappings", "oidc.scope_policies", "oidc.provider_settings", "oidc.cors", "operations.encrypted_backup_restore", "operations.encrypted_storage", "identity.recovery_codes", "identity.self_password_change", "access.temporary_entitlements", "identity.scheduled_offboarding", "operations.audit_review", "operations.csv_export", "identity.windows_device_login", "agents.parent_ownership", "directory.workspace_sync", "directory.entra_sync", "identity.https_client_certificates", "identity.device_trust", "ssf.push"],
-        "schemas": crate::schema::NAMES, "cli_result_schema": "riauth.cli/v1", "error_exit_codes": {"operation_failed": 1, "usage": 2, "authentication": 3, "permission": 4, "conflict": 5, "retryable": 6}})
+    crate::capability::artifact()
 }

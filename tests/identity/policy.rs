@@ -1,5 +1,160 @@
 use super::*;
 
+#[cfg(feature = "platform")]
+#[test]
+fn platform_conditional_policy_uses_bound_signals_and_projects_only_allowed_claims() {
+    use riauth::claims::{
+        AssuranceLevel, AuthenticationProof, ClaimMapping, ClaimSource, ConditionalClaimMapping,
+        ConditionalPolicy, Predicate,
+    };
+
+    let f = Fixture::new();
+    f.client("app", false);
+    let alice = f.user("alice");
+    f.core.create_group(&f.admin, "engineering").unwrap();
+    f.core
+        .group_member(&f.admin, "engineering", "alice", true)
+        .unwrap();
+
+    let mut settings = ProviderSettings::default();
+    settings.policy.conditional = Some(ConditionalPolicy {
+        access: vec![Predicate::All {
+            of: vec![
+                Predicate::Application { id: "app".into() },
+                Predicate::ProofFresh {
+                    proof: AuthenticationProof::Password,
+                    max_age_seconds: 300,
+                },
+                Predicate::Assurance {
+                    level: AssuranceLevel::Password,
+                },
+            ],
+        }],
+        scopes: std::collections::BTreeMap::from([(
+            "profile".into(),
+            vec![Predicate::GroupMember {
+                group: "engineering".into(),
+            }],
+        )]),
+        claim_mappings: vec![
+            ConditionalClaimMapping {
+                mapping: ClaimMapping {
+                    scope: "profile".into(),
+                    claim: "team_approved".into(),
+                    source: ClaimSource::Literal { value: json!(true) },
+                },
+                when: Predicate::GroupMember {
+                    group: "engineering".into(),
+                },
+            },
+            ConditionalClaimMapping {
+                mapping: ClaimMapping {
+                    scope: "profile".into(),
+                    claim: "device_approved".into(),
+                    source: ClaimSource::Literal { value: json!(true) },
+                },
+                when: Predicate::ApprovedDevice {
+                    max_age_seconds: 300,
+                },
+            },
+        ],
+    });
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                settings: Some(settings.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let tokens = f.tokens("app", &alice, None);
+    let access = text(&tokens, "access_token");
+    let info = f.core.userinfo(&access).unwrap();
+    assert_eq!(info["team_approved"], true);
+    assert!(info.get("device_approved").is_none());
+
+    f.core
+        .group_member(&f.admin, "engineering", "alice", false)
+        .unwrap();
+    assert!(f.core.userinfo(&access).is_err());
+    assert!(
+        f.core
+            .token(TokenRequest {
+                grant_type: "refresh_token".into(),
+                client_id: Some("app".into()),
+                refresh_token: Some(text(&tokens, "refresh_token")),
+                ..Default::default()
+            })
+            .is_err()
+    );
+
+    f.core
+        .group_member(&f.admin, "engineering", "alice", true)
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let sid: String = tx.get("session_tokens", &digest(&alice))?.unwrap();
+            let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+            session.identity.auth_time = now().saturating_sub(301);
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let sid: String = tx.get("session_tokens", &digest(&alice))?.unwrap();
+            let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+            session.identity.auth_time = now();
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+
+    settings.policy.conditional.as_mut().unwrap().access = vec![Predicate::ApprovedDevice {
+        max_age_seconds: 300,
+    }];
+    f.core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                settings: Some(settings.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        f.core
+            .authorize(&alice, f.request("app", &crypto::random_token("")))
+            .is_err()
+    );
+
+    settings.policy.conditional.as_mut().unwrap().access = vec![Predicate::VerifiedSource {
+        source: "unconfigured".into(),
+    }];
+    assert!(
+        f.core
+            .update_client(
+                &f.admin,
+                "app",
+                ClientPatch {
+                    settings: Some(settings),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+    );
+    assert!(serde_json::from_value::<Predicate>(json!({"type":"client_asserted_mfa"})).is_err());
+}
+
 #[test]
 fn last_administrator_is_preserved() {
     let f = Fixture::new();
@@ -56,16 +211,7 @@ fn disable_then_enable_never_resurrects_user_or_client_tokens() {
     );
     let tokens = f.tokens("app", &alice, None);
     for enabled in [false, true] {
-        f.core
-            .update_client(
-                &f.admin,
-                "app",
-                ClientPatch {
-                    enabled: Some(enabled),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+        crate::common::client_status::set(&f.core, &f.admin, "app", enabled);
     }
     assert!(f.core.userinfo(&text(&tokens, "access_token")).is_err());
 }
@@ -73,21 +219,15 @@ fn disable_then_enable_never_resurrects_user_or_client_tokens() {
 #[test]
 fn terminal_browser_handoff_silent_consent_and_rp_logout_are_bound_to_sessions() {
     let f = Fixture::new();
-    f.client("app", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(riauth::model::ProviderSettings {
-                    post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
-                    backchannel_logout_uri: Some("https://app.example.test/backchannel".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings(
+        "app",
+        false,
+        riauth::model::ProviderSettings {
+            post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
+            backchannel_logout_uri: Some("https://app.example.test/backchannel".into()),
+            ..Default::default()
+        },
+    );
     let verifier = crypto::random_token("");
     let start = f
         .core
@@ -310,6 +450,7 @@ fn requested_claims_require_consent_scopes_and_enforce_essential_values() {
         f.core.authorize(&alice, wrong).unwrap_err().code,
         "unmet_authentication_requirements"
     );
+    request.transaction_id = details["transaction_id"].as_str().map(str::to_owned);
     let callback = f.core.authorize(&alice, request).unwrap();
     let code = url::Url::parse(&callback)
         .unwrap()
@@ -339,12 +480,14 @@ fn requested_claims_require_consent_scopes_and_enforce_essential_values() {
     assert_eq!(id["acr"], riauth::assurance::PASSWORD);
     let mut step_up = f.request("app", &crypto::random_token(""));
     step_up.acr_values = Some(riauth::assurance::MFA.into());
-    assert!(
-        f.core
-            .authorization_prepare(Some(&alice), step_up.clone())
-            .unwrap()["reauthentication_required"]
-            == true
-    );
+    let step_up_details = f
+        .core
+        .authorization_prepare(Some(&alice), step_up.clone())
+        .unwrap();
+    assert_eq!(step_up_details["reauthentication_required"], true);
+    step_up.transaction_id = step_up_details["transaction_id"]
+        .as_str()
+        .map(str::to_owned);
     assert_eq!(
         f.core.authorize(&alice, step_up).unwrap_err().code,
         "login_required"
@@ -439,6 +582,42 @@ fn default_assurance_and_userinfo_essential_acr_trigger_step_up_and_signed_reque
     );
 }
 
+/// `connector_due` resumes the due index strictly after the key it claimed.
+/// `finish_provisioning` sets `next_attempt` to the current second, which can
+/// reuse that key, so the next `provisioning_step` only drops the cursor.
+/// Stop on job state. The budget is a step count, not a sleep.
+async fn drive_provisioning_until(
+    core: &Core,
+    token: &str,
+    job_id: &str,
+    ready: impl Fn(&Value) -> bool,
+) -> Value {
+    const STEPS: usize = 8;
+    let mut seen = Value::Null;
+    for _ in 0..STEPS {
+        let worker = core.clone();
+        tokio::task::spawn_blocking(move || worker.provisioning_step())
+            .await
+            .unwrap()
+            .unwrap();
+        let jobs = core.provisioning_jobs(token).unwrap();
+        let Some(job) = jobs
+            .as_array()
+            .and_then(|jobs| jobs.iter().find(|job| job["id"].as_str() == Some(job_id)))
+        else {
+            panic!("provisioning job {job_id} missing after a step: {jobs}");
+        };
+        seen = job.clone();
+        if ready(&seen) {
+            return seen;
+        }
+        if seen["stale"] == true {
+            panic!("provisioning job {job_id} went stale before it matched: {seen}");
+        }
+    }
+    panic!("provisioning job {job_id} did not match after {STEPS} steps: {seen}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable_departures_and_stop_stale_jobs()
  {
@@ -508,29 +687,19 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
     let plan = source.core.provisioning_plan(&agent, "directory").unwrap();
     assert_eq!(plan["resources"].as_array().unwrap().len(), 2);
     assert!(!plan.to_string().contains(&destination.admin));
+    let plan_id = text(&plan, "id");
     assert!(
         source
             .core
-            .provisioning_apply(&source.admin, &text(&plan, "id"))
+            .provisioning_apply(&source.admin, &plan_id)
             .is_err()
     );
-    source
-        .core
-        .provisioning_apply(&agent, &text(&plan, "id"))
-        .unwrap();
-    for _ in 0..2 {
-        let core = source.core.clone();
-        tokio::task::spawn_blocking(move || core.provisioning_step())
-            .await
-            .unwrap()
-            .unwrap();
-    }
-    assert_eq!(
-        source.core.provisioning_jobs(&agent).unwrap()[0]["completed"],
-        true,
-        "{}",
-        source.core.provisioning_jobs(&agent).unwrap()
-    );
+    source.core.provisioning_apply(&agent, &plan_id).unwrap();
+    let job = drive_provisioning_until(&source.core, &agent, &plan_id, |job| {
+        job["completed"] == true
+    })
+    .await;
+    assert_eq!(job["completed"], true, "{job}");
     let users = destination
         .core
         .scim_list(&destination.admin, "Users", Default::default())
@@ -557,17 +726,12 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
         )
         .unwrap();
     let plan = source.core.provisioning_plan(&agent, "directory").unwrap();
-    source
-        .core
-        .provisioning_apply(&agent, &text(&plan, "id"))
-        .unwrap();
-    for _ in 0..2 {
-        let core = source.core.clone();
-        tokio::task::spawn_blocking(move || core.provisioning_step())
-            .await
-            .unwrap()
-            .unwrap();
-    }
+    let plan_id = text(&plan, "id");
+    source.core.provisioning_apply(&agent, &plan_id).unwrap();
+    drive_provisioning_until(&source.core, &agent, &plan_id, |job| {
+        job["completed"] == true
+    })
+    .await;
     let user = destination
         .core
         .scim_get(&destination.admin, "Users", &id)
@@ -579,17 +743,15 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
         .group_member(&source.admin, "staff", "provisioned", false)
         .unwrap();
     let plan = source.core.provisioning_plan(&agent, "directory").unwrap();
+    let plan_id = text(&plan, "id");
     source
         .core
-        .provisioning_apply(&agent, &text(&plan, "id"))
+        .provisioning_apply_confirmed(&agent, &plan_id, Some(&plan_id))
         .unwrap();
-    for _ in 0..2 {
-        let core = source.core.clone();
-        tokio::task::spawn_blocking(move || core.provisioning_step())
-            .await
-            .unwrap()
-            .unwrap();
-    }
+    drive_provisioning_until(&source.core, &agent, &plan_id, |job| {
+        job["completed"] == true
+    })
+    .await;
     assert_eq!(
         destination
             .core
@@ -603,28 +765,17 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
         .unwrap();
     assert_eq!(group["Resources"][0]["members"], json!([]));
     let plan = source.core.provisioning_plan(&agent, "directory").unwrap();
-    source
-        .core
-        .provisioning_apply(&agent, &text(&plan, "id"))
-        .unwrap();
+    let plan_id = text(&plan, "id");
+    source.core.provisioning_apply(&agent, &plan_id).unwrap();
     source
         .core
         .revoke_agent(&source.admin, "provisioner")
         .unwrap();
-    let core = source.core.clone();
-    tokio::task::spawn_blocking(move || core.provisioning_step())
-        .await
-        .unwrap()
-        .unwrap();
-    let jobs = source.core.provisioning_jobs(&source.admin).unwrap();
-    assert_eq!(
-        jobs.as_array()
-            .unwrap()
-            .iter()
-            .find(|j| j["id"] == plan["id"])
-            .unwrap()["stale"],
-        true
-    );
+    let job = drive_provisioning_until(&source.core, &source.admin, &plan_id, |job| {
+        job["stale"] == true
+    })
+    .await;
+    assert_eq!(job["stale"], true, "{job}");
     server.abort();
 }
 
@@ -783,16 +934,13 @@ fn group_policy_is_checked_again_at_refresh_userinfo_and_proxy() {
     f.client("app", false);
     let alice = f.user("alice");
     f.core.create_group(&f.admin, "developers").unwrap();
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                allowed_groups: Some(strings(&["developers"])),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    crate::common::client_policy::replace(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(strings(&["developers"])),
+        None,
+    );
     assert!(
         f.core
             .authorize(&alice, f.request("app", &crypto::random_token("")))

@@ -6,6 +6,46 @@ use riauth::{
     model::{NewUser, User, UserPatch},
 };
 
+#[cfg(feature = "platform")]
+async fn agent_request(
+    app: &axum::Router,
+    method: &str,
+    path: &str,
+    token: &str,
+    revision: u64,
+    key: &str,
+    body: Option<&serde_json::Value>,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("if-match", format!("\"{revision}\""))
+        .header("idempotency-key", key);
+    if body.is_some() {
+        request = request.header("content-type", "application/json");
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .body(Body::from(
+                    body.map_or_else(String::new, ToString::to_string),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 32_768)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
 fn new_agent(id: &str, parent: Option<&str>) -> NewAgent {
     NewAgent {
         id: id.into(),
@@ -32,6 +72,349 @@ fn legacy_agent_row_defaults_parent_to_none() {
     )
     .unwrap();
     assert_eq!(agent.parent_user, None);
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn agent_create_revoke_share_receipts_and_single_audits() {
+    use axum::http::StatusCode;
+    use riauth::crypto::digest;
+    use serde_json::json;
+
+    let f = Fixture::new();
+    let owner_session = f.user("owner");
+    let owner_id = f
+        .core
+        .list_users(&f.admin)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["username"] == "owner")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(f.core.clone());
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let before = revision();
+    let mut input = serde_json::to_value(new_agent("owned-writer", Some("owner"))).unwrap();
+    input["permissions"][0]["resource"] = json!("user/owner");
+
+    let mut invalid = input.clone();
+    invalid["permissions"][0]["resource"] = json!("group/owner");
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        "/api/agents",
+        &f.admin,
+        before,
+        "invalid-agent-scope",
+        Some(&invalid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(revision(), before);
+    assert!(
+        f.core
+            .store
+            .get::<Agent>("agents", "owned-writer")
+            .unwrap()
+            .is_none()
+    );
+
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        "/api/agents",
+        &owner_session,
+        before,
+        "owner-cannot-issue",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(revision(), before);
+
+    let create = || {
+        agent_request(
+            &app,
+            "POST",
+            "/api/agents",
+            &f.admin,
+            before,
+            "create-owned-writer",
+            Some(&input),
+        )
+    };
+    let (status, created) = create().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["agent"]["parent_user"], owner_id);
+    assert_eq!(created["agent"]["permissions"], input["permissions"]);
+    let credential = text(&created["credential"], "token");
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&credential))
+            .unwrap()
+            .as_deref(),
+        Some("owned-writer")
+    );
+    assert_eq!(revision(), before + 1);
+    let (status, replay) = create().await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&credential));
+    assert_eq!(revision(), before + 1);
+    let receipts = f.core.store.list::<serde_json::Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+    assert!(!receipts[0].1.to_string().contains(&credential));
+
+    let current = revision();
+    let (status, _) = agent_request(
+        &app,
+        "DELETE",
+        "/api/agents/owned-writer",
+        &credential,
+        current,
+        "agent-cannot-revoke",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(revision(), current);
+
+    let revoke = || {
+        agent_request(
+            &app,
+            "DELETE",
+            "/api/agents/owned-writer",
+            &f.admin,
+            current,
+            "revoke-owned-writer",
+            None,
+        )
+    };
+    let (status, revoked) = revoke().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["enabled"], false);
+    assert_eq!(revoked["parent_user"], owner_id);
+    assert_eq!(revision(), current + 1);
+    assert_eq!(revoke().await, (StatusCode::OK, revoked));
+    assert_eq!(revision(), current + 1);
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&credential))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.core.me(&credential).unwrap_err().code, "invalid_token");
+
+    let agents = f.core.list_agents(&f.admin).unwrap().to_string();
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert!(!agents.contains(&credential));
+    assert!(!events.to_string().contains(&credential));
+    for action in ["agent.create", "agent.revoke"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action
+                    && event["target"] == "owned-writer"
+                    && event["details"]["parent_user"] == owner_id)
+                .count(),
+            1
+        );
+    }
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn agent_rotation_issues_one_credential_and_revokes_the_old_one() {
+    use axum::http::StatusCode;
+    use riauth::crypto::digest;
+    use serde_json::json;
+
+    let f = Fixture::new();
+    let owner_session = f.user("owner");
+    let owner_id: String = f.core.store.get("usernames", "owner").unwrap().unwrap();
+    let created = f
+        .core
+        .create_agent(&f.admin, new_agent("rotating-owned", Some("owner")))
+        .unwrap();
+    let old_token = text(&created["credential"], "token");
+    let before: Agent = f
+        .core
+        .store
+        .get("agents", "rotating-owned")
+        .unwrap()
+        .unwrap();
+    let app = riauth::api::router(f.core.clone());
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let at = revision();
+    let path = "/api/agents/rotating-owned/rotate";
+    let invalid = json!({"ttl": 59});
+    let input = json!({"ttl": 7200});
+
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &f.admin,
+        at,
+        "rotate-invalid-ttl",
+        Some(&invalid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &owner_session,
+        at,
+        "owner-cannot-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &old_token,
+        at,
+        "agent-cannot-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(revision(), at);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Agent>("agents", "rotating-owned")
+            .unwrap()
+            .unwrap()
+            .token_hash,
+        before.token_hash
+    );
+
+    let rotate = || {
+        agent_request(
+            &app,
+            "POST",
+            path,
+            &f.admin,
+            at,
+            "rotate-owned-once",
+            Some(&input),
+        )
+    };
+    let (status, rotated) = rotate().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rotated["agent"]["parent_user"], owner_id);
+    assert_eq!(
+        rotated["agent"]["permissions"],
+        created["agent"]["permissions"]
+    );
+    let new_token = text(&rotated["credential"], "token");
+    assert_ne!(new_token, old_token);
+    assert_eq!(revision(), at + 1);
+    let (status, replay) = rotate().await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&new_token));
+    assert_eq!(revision(), at + 1);
+    let receipts = f.core.store.list::<serde_json::Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+    assert!(!receipts[0].1.to_string().contains(&new_token));
+
+    let after: Agent = f
+        .core
+        .store
+        .get("agents", "rotating-owned")
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.parent_user, before.parent_user);
+    assert_eq!(after.permissions, before.permissions);
+    assert_eq!(after.created_at, before.created_at);
+    assert_eq!(after.token_hash, digest(&new_token));
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&old_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&new_token))
+            .unwrap()
+            .as_deref(),
+        Some("rotating-owned")
+    );
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
+
+    let agents = f.core.list_agents(&f.admin).unwrap().to_string();
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert!(!agents.contains(&new_token));
+    assert!(!events.to_string().contains(&new_token));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.rotate"
+                && event["target"] == "rotating-owned"
+                && event["details"]["parent_user"] == owner_id)
+            .count(),
+        1
+    );
+
+    f.core
+        .update_user(
+            &f.admin,
+            "owner",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let disabled_at = revision();
+    let (status, _) = agent_request(
+        &app,
+        "POST",
+        path,
+        &f.admin,
+        disabled_at,
+        "disabled-parent-rotate",
+        Some(&input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(revision(), disabled_at);
+    assert_eq!(f.core.me(&new_token).unwrap_err().code, "invalid_token");
 }
 
 #[test]

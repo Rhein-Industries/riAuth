@@ -1,85 +1,59 @@
-//! Local stand-in for Chrome Enterprise device trust.
+//! Device trust: a local compact-JWT stand-in, or an explicit Chrome Verified Access v2 adapter.
 //!
-//! A managed Chrome deployment and Google's Verified Access API were not tested.
-//! The local compact-JWT contract requires a separate, reviewed adapter for a
-//! vendor verifier. Merely replacing the key does not establish compatibility.
+//! The local contract is a nonce-bound JWT under a pinned PEM or JWKS key. The v2
+//! adapter asks Google for a challenge and submits a signed challenge response.
+//! It does not accept the local JWT. Neither path was executed against a managed
+//! Chrome device or `verifiedaccess.googleapis.com`. Replacing the local public
+//! key does not establish managed-device compatibility.
 use crate::{
-    core::{Core, audit},
-    crypto::{self, digest, now},
+    crypto::now,
     error::{Error, Result},
     model::{Client, Identity, Session},
-    store::Tx,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
+use std::{fs::File, io::Read, path::Path};
+
+pub use crate::device_trust_types::{
+    CHALLENGE_TTL, Challenge, DEFAULT_FRESHNESS, DeviceVerification, MAX_FRESHNESS, TrustConfig,
 };
 
-pub const CHALLENGE_TTL: u64 = 120;
-pub const DEFAULT_FRESHNESS: u64 = 300;
-pub const MAX_FRESHNESS: u64 = 3600;
+#[path = "verified_access.rs"]
+pub(crate) mod verified_access;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) use verified_access::TokenCache;
+pub use verified_access::{
+    GENERATE_URL, GOOGLE_CHALLENGE_TTL, SCOPE, TOKEN_URL, VERIFY_URL, VerifiedAccessRequest,
+    VerifiedAccessResponse, VerifiedAccessTransport,
+};
+
+/// End-user verify body. The local provider accepts only `token`. The Verified
+/// Access provider accepts only `challenge` and `challenge_response`.
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TrustConfig {
-    /// SPKI or PKCS#1 PEM public key. Mutually exclusive with `jwks_file`.
+pub struct DeviceTrustSubmission {
     #[serde(default)]
-    pub pem_file: Option<PathBuf>,
-    /// JWKS document containing 1–8 verification keys. Mutually exclusive with `pem_file`.
+    pub token: Option<String>,
     #[serde(default)]
-    pub jwks_file: Option<PathBuf>,
-    /// Required with `pem_file`: RS256, ES256, or EdDSA.
+    pub challenge: Option<String>,
     #[serde(default)]
-    pub algorithm: Option<String>,
-    /// When set, the device JWT `kid` must equal this value (PEM has a single key).
-    #[serde(default)]
-    pub kid: Option<String>,
-    /// How long a successful verification stays fresh. Default 300, maximum 3600.
-    #[serde(default = "default_freshness")]
-    pub freshness_ttl: u64,
+    pub challenge_response: Option<String>,
 }
 
-fn default_freshness() -> u64 {
-    DEFAULT_FRESHNESS
+/// The pinned verifier configuration supplied by server assembly.
+pub trait DeviceTrustContext {
+    fn device_trust_config(&self) -> Option<&TrustConfig>;
 }
 
-impl Default for TrustConfig {
-    fn default() -> Self {
-        Self {
-            pem_file: None,
-            jwks_file: None,
-            algorithm: None,
-            kid: None,
-            freshness_ttl: DEFAULT_FRESHNESS,
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Challenge {
-    pub user_id: String,
-    #[serde(default)]
-    pub session_id: String,
-    #[serde(default)]
-    pub epoch: u64,
-    pub expires_at: u64,
-    pub used: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct DeviceVerification {
-    pub device_id: String,
-    pub user_id: String,
-    #[serde(default)]
-    pub session_id: String,
-    #[serde(default)]
-    pub epoch: u64,
-    pub verified_at: u64,
-    pub expires_at: u64,
+/// Device binding records read or cleaned in the caller's transaction.
+pub trait DeviceTrustTx {
+    fn stored_session(&self, session_id: &str) -> Result<Option<Session>>;
+    fn verification(&self, session_id: &str) -> Result<Option<DeviceVerification>>;
+    fn challenge_page(&self) -> Result<Vec<(String, Challenge)>>;
+    fn verification_page(&self) -> Result<Vec<(String, DeviceVerification)>>;
+    fn delete_challenge(&self, id: &str) -> Result<()>;
+    fn delete_verification(&self, id: &str) -> Result<()>;
 }
 
 enum Verifier {
@@ -91,10 +65,56 @@ enum Verifier {
     Jwks(crate::jose::PublicJwks),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderKind {
+    Local,
+    GoogleVerifiedAccessV2,
+}
+
+pub(crate) fn provider_kind(config: &TrustConfig) -> Result<ProviderKind> {
+    match config.provider.as_deref() {
+        None | Some("local") => {
+            if config.service_account_file.is_some()
+                || config.expected_identity.is_some()
+                || config.customer_id.is_some()
+                || !config.allowed_key_trust_levels.is_empty()
+            {
+                return Err(Error::bad(
+                    "Local device trust rejects Verified Access settings",
+                ));
+            }
+            Ok(ProviderKind::Local)
+        }
+        Some("google_verified_access_v2") => {
+            if config.pem_file.is_some()
+                || config.jwks_file.is_some()
+                || config.algorithm.is_some()
+                || config.kid.is_some()
+            {
+                return Err(Error::bad("Verified Access rejects the local JWT verifier"));
+            }
+            Ok(ProviderKind::GoogleVerifiedAccessV2)
+        }
+        Some(_) => Err(Error::bad(
+            "Device trust provider must be local or google_verified_access_v2",
+        )),
+    }
+}
+
+pub(crate) fn provider_ready(config: &TrustConfig) -> Result<()> {
+    match provider_kind(config)? {
+        ProviderKind::Local => load_verifier(config).map(|_| ()),
+        ProviderKind::GoogleVerifiedAccessV2 => verified_access::validate_google_config(config),
+    }
+}
+
+/// Drop a challenge once its lifetime and any retained response hash have both ended.
+pub(crate) fn drop_challenge(challenge: &Challenge, at: u64) -> bool {
+    challenge.expires_at <= at && challenge.response_retained_until <= at
+}
+
 pub fn validate_config(config: &TrustConfig) -> anyhow::Result<()> {
-    load_verifier(config)
-        .map(|_| ())
-        .map_err(|error| anyhow::anyhow!(error.message))
+    provider_ready(config).map_err(|error| anyhow::anyhow!(error.message))
 }
 
 fn load_verifier(config: &TrustConfig) -> Result<Verifier> {
@@ -165,7 +185,7 @@ fn read_bounded(path: &Path, limit: u64) -> Result<String> {
     Ok(text)
 }
 
-fn unavailable() -> Error {
+pub(crate) fn unavailable() -> Error {
     Error::oauth(
         "unmet_authentication_requirements",
         "Device trust verifier is not configured",
@@ -173,18 +193,18 @@ fn unavailable() -> Error {
 }
 
 pub fn policy_reason(
-    core: &Core,
-    tx: &Tx<'_>,
+    context: &impl DeviceTrustContext,
+    tx: &impl DeviceTrustTx,
     client: &Client,
     identity: Option<&Identity>,
 ) -> Result<Option<&'static str>> {
     if !client.settings.require_device_trust {
         return Ok(None);
     }
-    let Some(config) = &core.config.device_trust else {
+    let Some(config) = context.device_trust_config() else {
         return Ok(Some("device_trust_verifier_unconfigured"));
     };
-    if load_verifier(config).is_err() {
+    if provider_ready(config).is_err() {
         return Ok(Some("device_trust_verifier_unconfigured"));
     }
     let Some(identity) = identity else {
@@ -192,7 +212,7 @@ pub fn policy_reason(
     };
     let at = now();
     let session_active = tx
-        .get::<Session>("sessions", &identity.session_id)?
+        .stored_session(&identity.session_id)?
         .is_some_and(|session| {
             !session.revoked
                 && session.expires_at > at
@@ -200,7 +220,7 @@ pub fn policy_reason(
                 && session.identity.epoch == identity.epoch
         });
     let fresh = tx
-        .get::<DeviceVerification>("device_verifications", &identity.session_id)?
+        .verification(&identity.session_id)?
         .is_some_and(|record| {
             record.user_id == identity.user_id
                 && record.session_id == identity.session_id
@@ -215,8 +235,13 @@ pub fn policy_reason(
     }
 }
 
-pub fn require(core: &Core, tx: &Tx<'_>, client: &Client, identity: &Identity) -> Result<()> {
-    match policy_reason(core, tx, client, Some(identity))? {
+pub fn require(
+    context: &impl DeviceTrustContext,
+    tx: &impl DeviceTrustTx,
+    client: &Client,
+    identity: &Identity,
+) -> Result<()> {
+    match policy_reason(context, tx, client, Some(identity))? {
         None => Ok(()),
         Some("device_trust_verifier_unconfigured") => Err(unavailable()),
         Some(_) => Err(Error::oauth(
@@ -226,7 +251,7 @@ pub fn require(core: &Core, tx: &Tx<'_>, client: &Client, identity: &Identity) -
     }
 }
 
-fn verify_token(config: &TrustConfig, token: &str, audience: &str) -> Result<Value> {
+pub(crate) fn verify_token(config: &TrustConfig, token: &str, audience: &str) -> Result<Value> {
     if token.len() > 16_384 || token.matches('.').count() != 2 {
         return Err(Error::bad("Device trust token validation failed"));
     }
@@ -285,7 +310,7 @@ fn verify_token(config: &TrustConfig, token: &str, audience: &str) -> Result<Val
         .map_err(|_| Error::bad("Device trust token validation failed"))
 }
 
-fn device_identifier(claims: &Value) -> Result<String> {
+pub(crate) fn device_identifier(claims: &Value) -> Result<String> {
     for name in [
         "device_permanent_id",
         "devicePermanentId",
@@ -305,127 +330,20 @@ fn device_identifier(claims: &Value) -> Result<String> {
     ))
 }
 
-impl Core {
-    pub fn device_challenge(&self, token: &str) -> Result<Value> {
-        if self.config.device_trust.is_none() {
-            return Err(unavailable());
-        }
-        self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            let mut active = 0u32;
-            for (key, challenge) in tx.list::<Challenge>("device_challenges")? {
-                if challenge.used || challenge.expires_at <= now() {
-                    tx.delete("device_challenges", &key)?;
-                } else if challenge.user_id == user.id {
-                    active += 1;
-                }
-            }
-            if active >= 8 {
-                return Err(Error::bad("Too many outstanding device challenges"));
-            }
-            let issued_at = now();
-            let challenge = crypto::random_token("");
-            let record = Challenge {
-                user_id: user.id.clone(),
-                session_id: session.id.clone(),
-                epoch: user.epoch,
-                expires_at: (issued_at + CHALLENGE_TTL).min(session.expires_at),
-                used: false,
-            };
-            tx.put("device_challenges", &digest(&challenge), &record)?;
-            audit(tx, &user.id, "device_trust.challenge", &user.id)?;
-            Ok(serde_json::json!({
-                "challenge": challenge,
-                "expires_in": record.expires_at.saturating_sub(issued_at),
-                "expires_at": record.expires_at,
-                "audience": self.config.issuer,
-            }))
-        })
-    }
-
-    pub fn device_verify(&self, token: &str, device_token: &str) -> Result<Value> {
-        let config = self.config.device_trust.clone().ok_or_else(unavailable)?;
-        let claims = verify_token(&config, device_token, &self.config.issuer)?;
-        let nonce = claims["nonce"]
-            .as_str()
-            .filter(|nonce| !nonce.is_empty() && nonce.len() <= 512)
-            .ok_or_else(|| {
-                Error::bad("Device trust nonce does not match an outstanding challenge")
-            })?;
-        let device_id = device_identifier(&claims)?;
-        let proof_expires_at = claims["exp"]
-            .as_u64()
-            .ok_or_else(|| Error::bad("Device trust token validation failed"))?;
-        let hash = digest(nonce);
-        self.store.write(|tx| {
-            let (user, session) = self.session(tx, token)?;
-            let mut challenge = tx
-                .get::<Challenge>("device_challenges", &hash)?
-                .ok_or_else(|| {
-                    Error::bad("Device trust nonce does not match an outstanding challenge")
-                })?;
-            if challenge.user_id != user.id
-                || challenge.session_id != session.id
-                || challenge.epoch != user.epoch
-            {
-                return Err(Error::bad(
-                    "Device trust nonce does not match an outstanding challenge",
-                ));
-            }
-            if challenge.used {
-                return Err(Error::bad("Device challenge already used"));
-            }
-            if challenge.expires_at <= now() {
-                return Err(Error::bad("Device challenge expired"));
-            }
-            if proof_expires_at <= now() {
-                return Err(Error::bad("Device trust token expired"));
-            }
-            if tx
-                .get::<DeviceVerification>("device_verifications", &session.id)?
-                .is_some_and(|previous| previous.device_id != device_id)
-            {
-                return Err(Error::bad("A different device requires a new session"));
-            }
-            challenge.used = true;
-            tx.put("device_challenges", &hash, &challenge)?;
-            let verified_at = now();
-            let record = DeviceVerification {
-                device_id: device_id.clone(),
-                user_id: user.id.clone(),
-                session_id: session.id.clone(),
-                epoch: user.epoch,
-                verified_at,
-                expires_at: (verified_at + config.freshness_ttl)
-                    .min(proof_expires_at)
-                    .min(session.expires_at),
-            };
-            tx.put("device_verifications", &session.id, &record)?;
-            audit(tx, &user.id, "device_trust.verified", &device_id)?;
-            Ok(serde_json::json!({
-                "verified": true,
-                "device_id": device_id,
-                "verified_at": verified_at,
-                "expires_at": record.expires_at,
-            }))
-        })
-    }
-}
-
-pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, challenge) in tx.maintenance_page::<Challenge>("device_challenges")? {
-        if challenge.used || challenge.expires_at < at {
-            tx.delete("device_challenges", &id)?;
+pub fn cleanup(tx: &impl DeviceTrustTx, at: u64) -> Result<()> {
+    for (id, challenge) in tx.challenge_page()? {
+        if drop_challenge(&challenge, at) {
+            tx.delete_challenge(&id)?;
         }
     }
-    for (id, verification) in tx.maintenance_page::<DeviceVerification>("device_verifications")? {
+    for (id, verification) in tx.verification_page()? {
         // Retain the device binding throughout the session, even when freshness
         // has expired. Legacy user-keyed rows have no session and are discarded.
         let session_active = tx
-            .get::<Session>("sessions", &verification.session_id)?
+            .stored_session(&verification.session_id)?
             .is_some_and(|session| !session.revoked && session.expires_at > at);
         if !session_active {
-            tx.delete("device_verifications", &id)?;
+            tx.delete_verification(&id)?;
         }
     }
     Ok(())

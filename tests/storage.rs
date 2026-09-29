@@ -240,6 +240,241 @@ fn maintenance_and_queue_work_is_bounded_and_indexes_commit_atomically() {
     }
 }
 
+#[test]
+fn index_rebuild_pages_adversarial_buckets_and_rolls_back_on_check_failure() {
+    use riauth::store::maintenance::PAGE;
+    use riauth::telemetry::ReadContext;
+    use serde_json::json;
+
+    for encrypted in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open_with_key(
+            &dir.path().join("state.redb"),
+            encrypted.then(|| zeroize::Zeroizing::new([10; 32])),
+        )
+        .unwrap();
+        let large_value = "x".repeat(2 * 1024 * 1024);
+        store
+            .write(|tx| {
+                for n in 0..PAGE + 3 {
+                    let id = format!("{n:05}");
+                    tx.put("http_rates", &id, &(100u64, 1u32))?;
+                    tx.put(
+                        "logout_deliveries",
+                        &id,
+                        &json!({"created_at":100,"next_attempt":200,"delivered_at":null}),
+                    )?;
+                    tx.put(
+                        "access",
+                        &id,
+                        &json!({
+                            "identity":{"session_id":"session"},
+                            "expires_at":n as u64,
+                            "payload":if n == PAGE + 2 { large_value.as_str() } else { "" }
+                        }),
+                    )?;
+                    tx.put(
+                        "access_grants",
+                        &id,
+                        &json!({"user_id":"owner","revoked_at":null}),
+                    )?;
+                    tx.put("index_expiry_http_rates", &format!("stale-{id}"), &id)?;
+                }
+                tx.put("index_counts", "http_rates", &999u64)?;
+                tx.put("index_user_access_grants", "stale", &"missing")?;
+                Ok(())
+            })
+            .unwrap();
+
+        let checks = AtomicUsize::new(0);
+        let failed = store.write(|tx| {
+            tx.rebuild_indexes_checked(&|| {
+                if checks.fetch_add(1, Ordering::Relaxed) == 3 {
+                    Err(Error::bad("rebuild interrupted"))
+                } else {
+                    Ok(())
+                }
+            })
+        });
+        assert!(failed.is_err());
+        assert_eq!(
+            store.get::<u64>("index_counts", "http_rates").unwrap(),
+            Some(999)
+        );
+        assert!(
+            store
+                .get::<String>("index_expiry_http_rates", "stale-00000")
+                .unwrap()
+                .is_some()
+        );
+
+        let unbounded = store
+            .telemetry()
+            .reads
+            .scans(ReadContext::Writer, false)
+            .count();
+        let bounded = store
+            .telemetry()
+            .reads
+            .scans(ReadContext::Writer, true)
+            .count();
+        checks.store(0, Ordering::Relaxed);
+        store
+            .write(|tx| {
+                tx.rebuild_indexes_checked(&|| {
+                    checks.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                })?;
+                assert_eq!(tx.collection_count("http_rates")?, (PAGE + 3) as u64);
+                assert_eq!(
+                    tx.queue_stats("logout_deliveries", 500)?.pending,
+                    (PAGE + 3) as u64
+                );
+                assert_eq!(
+                    tx.get::<u64>("session_retention", "session")?,
+                    Some((PAGE + 2) as u64)
+                );
+                assert_eq!(
+                    tx.scan::<String>("index_user_access_grants", None, PAGE + 4)?
+                        .len(),
+                    PAGE + 3
+                );
+                assert!(
+                    tx.get::<String>("index_expiry_http_rates", "stale-00000")?
+                        .is_none()
+                );
+                assert!(
+                    tx.get::<String>("index_user_access_grants", "stale")?
+                        .is_none()
+                );
+                Ok(())
+            })
+            .unwrap();
+        assert!(checks.load(Ordering::Relaxed) > 4 * PAGE);
+        assert_eq!(
+            store
+                .telemetry()
+                .reads
+                .scans(ReadContext::Writer, false)
+                .count(),
+            unbounded
+        );
+        assert!(
+            store
+                .telemetry()
+                .reads
+                .scans(ReadContext::Writer, true)
+                .count()
+                - bounded
+                > 4 * PAGE as u64
+        );
+    }
+}
+
+#[test]
+fn subject_collision_validation_scans_one_user_at_a_time() {
+    use riauth::{
+        claims,
+        model::{Client, ProviderSettings, User},
+        telemetry::ReadContext,
+    };
+    use serde_json::json;
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("state.redb")).unwrap();
+    let client = Client {
+        id: "app".into(),
+        name: "App".into(),
+        secret_hash: None,
+        redirect_uris: Vec::new(),
+        scopes: Default::default(),
+        allowed_groups: Default::default(),
+        require_mfa: false,
+        enabled: true,
+        service: false,
+        settings: ProviderSettings::default(),
+    };
+    let make_user = |id: String, subject: Option<&str>| {
+        let mut user: User = serde_json::from_value(json!({
+            "id":id,"username":id,"email":null,"display_name":id,
+            "password_hash":"","enabled":true,"admin":false,"epoch":0,
+            "totp_secret":null,"totp_pending":null,"totp_last_step":null,"created_at":0
+        }))
+        .unwrap();
+        if let Some(subject) = subject {
+            user.subjects.insert("app".into(), subject.into());
+        }
+        user
+    };
+    store
+        .write(|tx| {
+            tx.put("clients", "app", &client)?;
+            for n in 0..260 {
+                let id = format!("u{n:04}");
+                let subject = (n == 259).then_some("taken");
+                let mut user = make_user(id.clone(), subject);
+                if n == 259 {
+                    user.password_hash = "x".repeat(1024 * 1024);
+                }
+                tx.put("users", &id, &user)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+
+    let unbounded = store
+        .telemetry()
+        .reads
+        .scans(ReadContext::Read, false)
+        .count();
+    let bounded = store
+        .telemetry()
+        .reads
+        .scans(ReadContext::Read, true)
+        .count();
+    let candidate = make_user("candidate".into(), Some("taken"));
+    assert!(
+        store
+            .read(|tx| claims::validate_user_checked(tx, &candidate, &|| Ok(())))
+            .is_err()
+    );
+    let unique = make_user("candidate".into(), Some("unique"));
+    store
+        .read(|tx| claims::validate_user_checked(tx, &unique, &|| Ok(())))
+        .unwrap();
+    store.read(|tx| claims::validate_user(tx, &unique)).unwrap();
+    assert!(
+        store
+            .telemetry()
+            .reads
+            .scans(ReadContext::Read, true)
+            .count()
+            - bounded
+            >= 520
+    );
+    assert_eq!(
+        store
+            .telemetry()
+            .reads
+            .scans(ReadContext::Read, false)
+            .count(),
+        unbounded
+    );
+
+    let checks = AtomicUsize::new(0);
+    let interrupted = store.read(|tx| {
+        claims::validate_user_checked(tx, &unique, &|| {
+            if checks.fetch_add(1, Ordering::Relaxed) == 3 {
+                Err(Error::bad("subject scan interrupted"))
+            } else {
+                Ok(())
+            }
+        })
+    });
+    assert!(interrupted.is_err());
+    assert_eq!(checks.load(Ordering::Relaxed), 4);
+}
+
 #[cfg(feature = "test-support")]
 #[test]
 fn prepared_authority_expiring_during_signing_is_rechecked_before_commit() {

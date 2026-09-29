@@ -1,13 +1,16 @@
 use crate::{
     config::Config,
-    crypto::{self, Keys, RetiredKey, SigningKey, digest, id, now},
+    crypto::{self, Keys, SigningKey, digest, id, now},
     error::{Error, Result},
     model::*,
     store::{Store, Tx},
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
 
 /// Who receives a verified password login: a bearer token, or a staged browser login.
 #[doc(hidden)]
@@ -22,6 +25,93 @@ pub struct Core {
     pub config: Config,
     pub store: Store,
     dummy_hash: Arc<String>,
+    pub(crate) runtime: Arc<crate::capability::RuntimeStatus>,
+    #[cfg(feature = "platform")]
+    pub(crate) verified_access_cache: Arc<Mutex<crate::device_trust::TokenCache>>,
+    #[cfg(all(feature = "platform", feature = "test-support"))]
+    pub(crate) verified_access_transport:
+        Arc<Mutex<Option<Arc<dyn crate::device_trust::VerifiedAccessTransport>>>>,
+}
+
+impl Core {
+    /// Apply a management mutation and its retry receipt in one transaction.
+    pub(crate) fn mutation(
+        &self,
+        token: &str,
+        f: impl FnOnce(&Tx<'_>) -> Result<Value>,
+    ) -> Result<Value> {
+        self.mutation_checked(
+            token,
+            |tx, actor, context| {
+                if let Some(c) = context {
+                    if (actor.agent || actor.delegated) && c.revision.is_none() {
+                        return Err(Error::new(
+                            StatusCode::PRECONDITION_REQUIRED,
+                            "precondition_required",
+                            "Scoped mutations require If-Match with the current revision",
+                        ));
+                    }
+                    let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                    if c.revision.is_some_and(|r| r != revision) {
+                        return Err(Error::conflict("Configuration revision changed"));
+                    }
+                }
+                Ok(())
+            },
+            f,
+        )
+    }
+
+    /// Use the same authorization, idempotency receipt, and atomic writer with
+    /// a protocol-specific precondition. The check runs after receipt replay.
+    pub(crate) fn mutation_checked(
+        &self,
+        token: &str,
+        check: impl FnOnce(
+            &Tx<'_>,
+            &crate::agent::Principal,
+            Option<&crate::context::RequestContext>,
+        ) -> Result<()>,
+        f: impl FnOnce(&Tx<'_>) -> Result<Value>,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            let actor = self.principal(tx, token)?;
+            let context = crate::context::current();
+            let receipt_key = context
+                .as_ref()
+                .and_then(|c| c.idempotency_key.as_ref())
+                .map(|k| digest(&format!("{}\0{k}", actor.id)));
+            // Keep the established agent/admin receipt representation stable.
+            // A delegated human's current grants form a separate replay scope.
+            let permissions = if actor.delegated {
+                json!({"human_grants": actor.grants, "generation": tx.get::<u64>("human_grant_generations", &actor.id)?.unwrap_or(0)})
+            } else {
+                serde_json::to_value(&actor.permissions).map_err(Error::internal)?
+            };
+            if let Some(key) = &receipt_key
+                && let Some(result) = crate::context::replay_receipt(
+                    tx,
+                    key,
+                    &context.as_ref().unwrap().fingerprint,
+                    &permissions,
+                )?
+            {
+                return Ok(result);
+            }
+            check(tx, &actor, context.as_ref())?;
+            let result = f(tx)?;
+            if let Some(key) = receipt_key {
+                crate::context::save_receipt(
+                    tx,
+                    &key,
+                    context.unwrap().fingerprint,
+                    permissions,
+                    &result,
+                )?;
+            }
+            Ok(result)
+        })
+    }
 }
 
 impl Core {
@@ -29,17 +119,44 @@ impl Core {
         config.validate().map_err(Error::internal)?;
         crate::config::private_dir(&config.data_dir).map_err(Error::internal)?;
         let store = Store::from_config(&config)?;
+        Self::initialize_store(config, store, input, |_| Ok(()))
+    }
+
+    /// All first-administrator paths use the same transaction and credential policy.
+    pub(crate) fn initialize_store(
+        config: Config,
+        store: Store,
+        input: NewUser,
+        ownership: impl FnOnce(&Tx<'_>) -> Result<()>,
+    ) -> Result<Self> {
+        if store.get::<u32>("meta", "schema")?.is_some() {
+            return Err(Error::conflict("Instance already initialized"));
+        }
+        let mut user = make_user(input)?;
+        user.admin = true;
+        Self::initialize_with_administrator(config, store, |tx| {
+            ownership(tx)?;
+            Ok(user)
+        })
+    }
+
+    /// Shared initialization commit for password and verified passkey administrators.
+    /// The closure must recheck ownership and persist any credentials in this writer.
+    pub(crate) fn initialize_with_administrator(
+        config: Config,
+        store: Store,
+        administrator: impl FnOnce(&Tx<'_>) -> Result<User>,
+    ) -> Result<Self> {
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
         let key = SigningKey::generate()?;
         let dummy = crypto::password_hash(&crypto::random_token(""))?;
-        let mut user = make_user(input)?;
-        user.admin = true;
         store.write(|tx| {
             if tx.get::<u32>("meta", "schema")?.is_some() {
                 return Err(Error::conflict("Instance already initialized"));
             }
+            let user = administrator(tx)?;
             tx.put("meta", "schema", &crate::upgrade::SCHEMA)?;
             tx.put(
                 "meta",
@@ -47,6 +164,7 @@ impl Core {
                 &crate::store::maintenance::INDEX_VERSION,
             )?;
             tx.put("meta", "issuer", &config.issuer)?;
+            crate::node_security::stamp(&config, tx)?;
             tx.put(
                 "meta",
                 "keys",
@@ -56,7 +174,8 @@ impl Core {
                 },
             )?;
             tx.put("meta", "dummy_hash", &dummy)?;
-            crate::password_history::record_imported_hash(
+            crate::assembly::stamp_prepared_index(tx)?;
+            crate::identity::password_history::record_imported_hash(
                 tx,
                 config.password_history,
                 &user.id,
@@ -64,13 +183,28 @@ impl Core {
                 &user.password_hash,
             )?;
             tx.put("users", &user.id, &user)?;
+            crate::delegation::record_elevation_provenance(
+                tx,
+                &user,
+                crate::delegation::ProvenanceBasis::Bootstrap,
+            )?;
             tx.put("usernames", &user.username, &user.id)?;
+            tx.delete("meta", "browser_setup")?;
+            tx.delete("meta", "browser_setup_passkeys")?;
+            crate::recovery::stamp_lineage(tx)?;
+            crate::upgrade::stamp_initial(tx)?;
+            crate::edition::stamp_activation(&config, tx)?;
             audit(tx, "bootstrap", "instance.initialize", &user.username)
         })?;
         Ok(Self {
             config,
             store,
             dummy_hash: Arc::new(dummy),
+            runtime: Arc::default(),
+            #[cfg(feature = "platform")]
+            verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
+            #[cfg(all(feature = "platform", feature = "test-support"))]
+            verified_access_transport: Arc::new(Mutex::new(None)),
         })
     }
     pub fn open(config: Config) -> Result<Self> {
@@ -79,19 +213,41 @@ impl Core {
             return Err(Error::missing("Database missing; run riauth init"));
         }
         let store = Store::from_config(&config)?;
+        Self::open_store(config, store)
+    }
+
+    pub(crate) fn open_store(config: Config, store: Store) -> Result<Self> {
         if store.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer) {
             return Err(Error::bad(
                 "Configured issuer does not match the initialized instance",
             ));
         }
+        // An existing agreement is compared before any startup write. A missing
+        // row is recorded only after the read-only edition and capability gates,
+        // so a refused build does not become canonical.
+        crate::node_security::enforce(&config, &store)?;
+        // Edition compatibility is read-only and must run before either migration
+        // or restored-lineage reconciliation mutates shared state.
+        crate::edition::validate_store(&store)?;
+        crate::capability::validate_store(&config, &store)?;
+        crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
+        crate::recovery::verify_lineage(&store)?;
+        crate::context::scrub_legacy_agent_receipts_on_open(&store)?;
+        store.write(crate::assembly::backfill_prepared_index)?;
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
             .ok_or_else(|| Error::internal("dummy hash missing"))?;
+        store.write(|tx| crate::edition::stamp_activation(&config, tx))?;
         Ok(Self {
             config,
             store,
             dummy_hash: Arc::new(dummy),
+            runtime: Arc::default(),
+            #[cfg(feature = "platform")]
+            verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
+            #[cfg(all(feature = "platform", feature = "test-support"))]
+            verified_access_transport: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -160,16 +316,9 @@ impl Core {
             let (_, matches, upgraded) = verified.as_ref().unwrap();
             let password_ok = *matches && user.as_ref().is_some_and(|u| !u.password_hash.is_empty());
             let mut valid = password_ok && user.as_ref().is_some_and(|u| u.enabled);
-            if let Some(u) = user.as_mut().filter(|_| valid)
-                && let Some(secret) = &u.totp_secret {
-                    if let Some(code) = otp.as_deref().filter(|c| c.starts_with("ri_recovery_")) {
-                        valid = u.recovery_codes.remove(&digest(code));
-                    } else {
-                        let step = crypto::totp_step_with(secret, &u.username, otp.as_deref().unwrap_or(""), at, u.totp_last_step, &u.totp_settings)?;
-                        valid = step.is_some();
-                        if valid { u.totp_last_step = step; }
-                    }
-                }
+            if let Some(u) = user.as_mut().filter(|_| valid) {
+                valid = crate::authenticator::consume_password_factor(u, otp.as_deref(), at)?;
+            }
             if !valid {
                 attempts.failures += 1;
                 if attempts.failures >= 5 { attempts.locked_until = at + 900; }
@@ -180,7 +329,7 @@ impl Core {
             }
             let mut u = user.unwrap();
             if let Some(hash) = upgraded.clone() {
-                crate::password_history::note_rehash(
+                crate::identity::password_history::note_rehash(
                     tx,
                     self.config.password_history,
                     &u.id,
@@ -244,9 +393,23 @@ impl Core {
     }
     pub fn recover_admin(&self, username: &str, password: &str, reset_mfa: bool) -> Result<()> {
         self.store.write(|tx| {
+            if tx.postgres_other_clients()?.is_some_and(|count| count > 0) {
+                return Err(Error::conflict("Stop every riAuth process connected to this database before administrator recovery"));
+            }
             let mut user = user_by_name(tx, username)?;
+            let credential_exposed = crate::delegation::credential_exposure(tx, &user.id)?.is_some();
+            let legacy_unproven = !user.admin
+                && !crate::delegation::proven_for_elevation(tx, &user)?;
+            if (credential_exposed || legacy_unproven) && !reset_mfa {
+                return Err(Error::conflict(
+                    "Unproven or operator-exposed credentials require offline recovery with factor reset",
+                ));
+            }
+            if user.password_hash.is_empty() && user.totp_secret.is_none() && !reset_mfa {
+                return Err(Error::conflict("Passkey-only recovery requires explicit --reset-mfa; enrolled factors will be removed"));
+            }
             let hashed = crypto::password_hash(password)?;
-            crate::password_history::accept(
+            crate::identity::password_history::accept(
                 tx,
                 self.config.password_history,
                 &user.id,
@@ -260,16 +423,32 @@ impl Core {
             user.epoch += 1;
             if reset_mfa {
                 crate::passkey::clear(tx, &user.id)?;
+                #[cfg(feature = "platform")]
+                crate::assembly::clear_user_binding(tx, &user.id)?;
                 user.has_passkeys = false;
                 user.recovery_codes.clear();
                 user.totp_secret = None;
                 user.totp_pending = None;
                 user.totp_last_step = None;
             }
+            if credential_exposed || legacy_unproven {
+                // A legacy address may have been set by an agent before
+                // exposure tracking. Do not use it for recovery after elevation.
+                user.email = None;
+                user.email_verified = false;
+                tx.delete(crate::delegation::CREDENTIAL_EXPOSURE, &user.id)?;
+            }
+            if reset_mfa {
+                crate::delegation::record_elevation_provenance(
+                    tx,
+                    &user,
+                    crate::delegation::ProvenanceBasis::OfflineRecovery,
+                )?;
+            }
             tx.put("users", &user.id, &user)?;
             crate::logout::queue_user(tx, &user.id)?;
             tx.delete("attempts", username)?;
-            audit(tx, "local-recovery", "admin.recover", &user.id)
+            audit(tx, "local-recovery", if reset_mfa { "admin.recover.factors_reset" } else { "admin.recover" }, &user.id)
         })
     }
     pub fn me(&self, token: &str) -> Result<Value> {
@@ -284,14 +463,12 @@ impl Core {
     }
     pub fn logout(&self, token: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (u, mut s) = self.session(tx, token)?;
-            s.revoked = true;
-            tx.put("sessions", &s.id, &s)?;
-            crate::logout::queue_session(tx, &s.id)?;
-            crate::ssf::enqueue(tx, &u.id, crate::ssf::SESSION_REVOKED, "")?;
-            audit(tx, &u.id, "session.revoke", &s.id)?;
-            let propagation=crate::saml::logout::redirect(self,tx,&s.id,None)?;
-            Ok(json!({"revoked": true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::Logout { token },
+            )
+            .map(|outcome| outcome.body)
         })
     }
     pub fn sessions(&self, token: &str) -> Result<Value> {
@@ -307,143 +484,72 @@ impl Core {
     }
     pub fn revoke_session(&self, token: &str, sid: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let actor = if token.starts_with("ri_agent_") {
-                self.management(tx, token, "session.revoke", &format!("session/{sid}"))?
-                    .id
-            } else {
-                let (user, _) = self.session(tx, token)?;
-                let target = tx
-                    .get::<Session>("sessions", sid)?
-                    .ok_or_else(|| Error::missing("Session not found"))?;
-                if target.identity.user_id != user.id && !user.admin {
-                    return Err(Error::forbidden());
-                }
-                user.id
-            };
-            let mut target = tx
-                .get::<Session>("sessions", sid)?
-                .ok_or_else(|| Error::missing("Session not found"))?;
-            target.revoked = true;
-            tx.put("sessions", sid, &target)?;
-            crate::logout::queue_session(tx, sid)?;
-            crate::ssf::enqueue(tx, &target.identity.user_id, crate::ssf::SESSION_REVOKED, "")?;
-            audit(tx, &actor, "session.revoke", sid)?;
-            let propagation=crate::saml::logout::redirect(self,tx,sid,None)?;
-            Ok(json!({"revoked":true,"saml_logout_url":propagation["redirect_uri"],"saml_logout":propagation}))
+            crate::management::revoke_sessions(
+                self,
+                tx,
+                crate::management::RevokeIntent::BearerOne {
+                    token,
+                    target_id: sid,
+                },
+            )
+            .map(|outcome| outcome.body)
         })
     }
     pub fn list_users(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<User>("users")?
-                    .iter()
-                    .filter(|(_, u)| actor.allows("user.read", &format!("user/{}", u.username)))
-                    .map(|(_, u)| UserView::from(u))
-                    .collect::<Vec<_>>()
-            ))
+            // Keep the returned array in key order without also retaining the
+            // complete User bucket and a second array of typed views.
+            let mut users = Vec::new();
+            let mut after = None;
+            loop {
+                let page =
+                    tx.scan::<User>("users", after.as_deref(), crate::store::maintenance::PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = page.last().map(|(key, _)| key.clone());
+                for (_, user) in page {
+                    if actor.allows("user.read", &format!("user/{}", user.username)) {
+                        users.push(json!(UserView::from(&user)));
+                    }
+                }
+                if !full {
+                    break;
+                }
+            }
+            Ok(Value::Array(users))
         })
     }
     pub fn create_user(&self, token: &str, input: NewUser) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "User creation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
-            let actor =
-                self.management(tx, token, "user.write", &format!("user/{}", input.username))?;
-            if actor.agent && input.admin {
-                return Err(Error::forbidden());
-            }
-            let user = make_user(input)?;
-            if tx.get::<String>("usernames", &user.username)?.is_some() {
-                return Err(Error::conflict("Username already exists"));
-            }
-            crate::password_history::record_imported_hash(
-                tx,
-                self.config.password_history,
-                &user.id,
-                "",
-                &user.password_hash,
-            )?;
-            tx.put("users", &user.id, &user)?;
-            tx.put("usernames", &user.username, &user.id)?;
-            audit(tx, &actor.id, "user.create", &user.id)?;
-            Ok(json!(UserView::from(&user)))
+            let actor = self.principal(tx, token)?;
+            crate::management::create_user(&self.config, tx, &actor, input)
         })
     }
     pub fn update_user(&self, token: &str, username: &str, patch: UserPatch) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "User update requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
-            let mut user = user_by_name(tx, username)?;
-            let previous_epoch = user.epoch;
-            if actor.agent && (user.admin || patch.admin == Some(true)) {
-                return Err(Error::forbidden());
-            }
-            if let Some(password) = patch.password {
-                let hashed = crypto::password_hash(&password)?;
-                crate::password_history::accept(
-                    tx,
-                    self.config.password_history,
-                    &user.id,
-                    &user.password_hash,
-                    &password,
-                    &hashed,
-                )?;
-                user.password_hash = hashed;
-                user.epoch += 1;
-                tx.delete("attempts", username)?;
-            }
-            if let Some(enabled) = patch.enabled {
-                user.enabled = enabled;
-                user.epoch += 1;
-            }
-            if let Some(admin) = patch.admin {
-                user.admin = admin;
-                user.epoch += 1;
-            }
-            if let Some(email) = patch.email {
-                validate_email(&email)?;
-                if user.email.as_ref() != Some(&email) {
-                    user.email_verified = false;
-                }
-                user.email = Some(email);
-            }
-            if let Some(attributes) = patch.attributes {
-                user.attributes = attributes;
-            }
-            if let Some(verified) = patch.email_verified {
-                user.email_verified = verified;
-            }
-            if let Some(subjects) = patch.subjects {
-                if user.subjects != subjects {
-                    user.epoch += 1;
-                }
-                user.subjects = subjects;
-            }
-            crate::claims::validate_user(tx, &user)?;
-            if let Some(name) = patch.display_name {
-                validate_display(&name)?;
-                user.display_name = name;
-            }
-            if patch.reset_mfa {
-                crate::passkey::clear(tx, &user.id)?;
-                user.has_passkeys = false;
-                user.recovery_codes.clear();
-                user.totp_secret = None;
-                user.totp_pending = None;
-                user.totp_last_step = None;
-                user.epoch += 1;
-            }
-            if patch.revoke_sessions {
-                user.epoch += 1;
-            }
-            ensure_remaining_admin(tx, &user)?;
-            tx.put("users", &user.id, &user)?;
-            if user.epoch != previous_epoch {
-                crate::logout::queue_user(tx, &user.id)?;
-            }
-            if patch.revoke_sessions {
-                crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
-            }
-            audit(tx, &actor.id, "user.update", &user.id)?;
-            Ok(json!(UserView::from(&user)))
+            let actor = self.principal(tx, token)?;
+            crate::management::update_user(&self.config, tx, &actor, username, patch)
         })
     }
     pub fn list_groups(&self, token: &str) -> Result<Value> {
@@ -458,20 +564,34 @@ impl Core {
             ))
         })
     }
+    fn require_group_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Group writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
     pub fn create_group(&self, token: &str, name: &str) -> Result<Value> {
-        validate_name(name)?;
+        Self::require_group_retry_binding()?;
         self.mutation(token, |tx| {
-            let user = self.management(tx, token, "group.write", &format!("group/{name}"))?;
-            if tx.get::<Group>("groups", name)?.is_some() {
-                return Err(Error::conflict("Group already exists"));
-            }
-            let group = Group {
-                name: name.into(),
-                members: BTreeSet::new(),
-            };
-            tx.put("groups", name, &group)?;
-            audit(tx, &user.id, "group.create", name)?;
-            Ok(json!(group))
+            let actor = self.management(tx, token, "group.write", &format!("group/{name}"))?;
+            let written = crate::management::write_group(
+                &self.config,
+                tx,
+                &actor,
+                name,
+                crate::management::GroupIntent::Create(&BTreeSet::new()),
+                crate::management::GroupAudit::OnChange {
+                    action: "group.create",
+                    target: name,
+                },
+            )?;
+            Ok(json!(written.group))
         })
     }
     pub fn group_member(
@@ -481,32 +601,33 @@ impl Core {
         username: &str,
         add: bool,
     ) -> Result<Value> {
+        Self::require_group_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "group.members", &format!("group/{name}"))?;
             let user = user_by_name(tx, username)?;
-            let mut group = tx
-                .get::<Group>("groups", name)?
-                .ok_or_else(|| Error::missing("Group not found"))?;
-            if add {
-                group.members.insert(user.id.clone());
-            } else {
-                group.members.remove(&user.id);
-            }
-            tx.put("groups", name, &group)?;
-            audit(
+            let written = crate::management::write_group(
+                &self.config,
                 tx,
-                &actor.id,
-                if add {
-                    "group.member.add"
-                } else {
-                    "group.member.remove"
+                &actor,
+                name,
+                crate::management::GroupIntent::Member {
+                    user_id: &user.id,
+                    present: add,
                 },
-                &format!("{name}/{}", user.id),
+                crate::management::GroupAudit::OnChange {
+                    action: if add {
+                        "group.member.add"
+                    } else {
+                        "group.member.remove"
+                    },
+                    target: &format!("{name}/{}", user.id),
+                },
             )?;
-            Ok(json!(group))
+            Ok(json!(written.group))
         })
     }
     pub fn create_client(&self, token: &str, input: NewClient) -> Result<Value> {
+        Self::require_client_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.management(
                 tx,
@@ -514,31 +635,17 @@ impl Core {
                 "client.write",
                 &format!("client/{}", input.client_id),
             )?;
-            validate_name(&input.client_id)?;
-            validate_display(&input.name)?;
-            if tx.get::<Client>("clients", &input.client_id)?.is_some() {
-                return Err(Error::conflict("Client already exists"));
-            }
-            let secret = (input.settings.token_endpoint_auth_method
-                != Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
-                && (input.confidential || input.service))
-                .then(|| crypto::random_token("ri_client_"));
-            let client = Client {
-                id: input.client_id,
-                name: input.name,
-                secret_hash: secret.as_deref().map(digest),
-                redirect_uris: input.redirect_uris,
-                scopes: input.scopes,
-                allowed_groups: input.allowed_groups,
-                require_mfa: input.require_mfa,
-                enabled: true,
-                service: input.service,
-                settings: input.settings,
-            };
-            validate_client(tx, &client)?;
-            tx.put("clients", &client.id, &client)?;
-            audit(tx, &actor.id, "client.create", &client.id)?;
-            Ok(json!({"client": client.view(), "client_secret": secret}))
+            let (client, secret) = crate::management::new_client(input);
+            let written = crate::management::write_client(
+                tx,
+                &self.config,
+                &actor,
+                None,
+                client,
+                secret,
+                crate::management::Record::Direct("client.create"),
+            )?;
+            Ok(json!({"client": written.client.view(), "client_secret": written.secret}))
         })
     }
     pub fn list_clients(&self, token: &str) -> Result<Value> {
@@ -554,21 +661,32 @@ impl Core {
         })
     }
     pub fn update_client(&self, token: &str, cid: &str, patch: ClientPatch) -> Result<Value> {
+        Self::require_client_retry_binding()?;
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "client.write", &format!("client/{cid}"))?;
-            let mut c = tx
+            let principal = self.principal(tx, token)?;
+            let action = if principal.delegated {
+                "client.owner_update"
+            } else {
+                "client.write"
+            };
+            let actor = self.management(tx, token, action, &format!("client/{cid}"))?;
+            if actor.delegated
+                && (patch.enabled.is_some()
+                    || patch.allowed_groups.is_some()
+                    || patch.require_mfa.is_some()
+                    || patch.scopes.is_some())
+            {
+                return Err(Error::forbidden());
+            }
+            let existing = tx
                 .get::<Client>("clients", cid)?
                 .ok_or_else(|| Error::missing("Client not found"))?;
+            let mut c = existing.clone();
             if let Some(name) = patch.name {
-                validate_display(&name)?;
                 c.name = name;
             }
             if let Some(enabled) = patch.enabled {
                 c.enabled = enabled;
-                // Disabling then enabling a client must never resurrect existing grants.
-                if !enabled {
-                    revoke_client_grants(tx, cid)?;
-                }
             }
             if let Some(groups) = patch.allowed_groups {
                 c.allowed_groups = groups;
@@ -583,96 +701,99 @@ impl Core {
                 c.scopes = scopes;
             }
             if let Some(settings) = patch.settings {
-                let auth_change = c.settings.authentication_credentials_differ(&settings);
-                if auth_change {
-                    actor.require("client.rotate", &format!("client/{cid}"))?;
-                }
-                if auth_change
-                    || settings.issuer != c.settings.issuer
-                    || settings.pairwise_sector != c.settings.pairwise_sector
-                {
-                    revoke_client_grants(tx, cid)?;
-                }
-                if settings.token_endpoint_auth_method
-                    == Some(crate::jose::ClientAuthMethod::PrivateKeyJwt)
-                {
-                    c.secret_hash = None;
-                }
                 c.settings = settings;
             }
-            validate_client(tx, &c)?;
-            tx.put("clients", cid, &c)?;
-            audit(tx, &actor.id, "client.update", cid)?;
-            Ok(c.view())
+            let written = crate::management::write_client(
+                tx,
+                &self.config,
+                &actor,
+                Some(&existing),
+                c,
+                crate::management::Secret::Keep,
+                crate::management::Record::Direct("client.update"),
+            )?;
+            Ok(written.client.view())
         })
+    }
+    fn require_client_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Client writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
     }
     pub fn rotate_client_secret(&self, token: &str, cid: &str) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Client secret rotation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "client.rotate", &format!("client/{cid}"))?;
-            let mut c = tx
+            let existing = tx
                 .get::<Client>("clients", cid)?
                 .ok_or_else(|| Error::missing("Client not found"))?;
-            if c.secret_hash.is_none() {
+            if existing.secret_hash.is_none() {
                 return Err(Error::bad("Public clients do not have a secret"));
             }
-            let secret = crypto::random_token("ri_client_");
-            c.secret_hash = Some(digest(&secret));
-            tx.put("clients", cid, &c)?;
-            revoke_client_grants(tx, cid)?;
-            audit(tx, &actor.id, "client.secret.rotate", cid)?;
-            Ok(json!({"client_id": cid, "client_secret": secret}))
+            let written = crate::management::write_client(
+                tx,
+                &self.config,
+                &actor,
+                Some(&existing),
+                existing.clone(),
+                crate::management::Secret::Issue,
+                crate::management::Record::Direct("client.secret.rotate"),
+            )?;
+            Ok(json!({"client_id": cid, "client_secret": written.secret}))
         })
     }
+    /// Starts TOTP enrollment for this session (`authenticator::totp_start_in`).
     pub fn mfa_begin(&self, token: &str) -> Result<Value> {
+        self.mfa_start(token, false)
+    }
+    /// Starts replacing the enabled authenticator app; `mfa_confirm` finishes it.
+    pub fn mfa_replace(&self, token: &str) -> Result<Value> {
+        self.mfa_start(token, true)
+    }
+    fn mfa_start(&self, token: &str, replace: bool) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, session) = self.session(tx, token)?;
-            if session.identity.auth_time + crate::signin::FRESH_SECONDS < now() { return Err(crate::signin::reauthentication_required()); }
-            require_factor_session(&user, &session)?;
-            if user.totp_secret.is_some() { return Err(Error::conflict("MFA already enabled")); }
-            user.totp_settings = Default::default();
-            let secret = crypto::totp_secret();
-            let uri = crypto::totp(&secret, &user.username)?
-                .to_url()
-                .map_err(Error::internal)?;
-            user.totp_pending = Some((secret.clone(), now() + 600));
-            tx.put("users", &user.id, &user)?;
-            audit(tx, &user.id, "mfa.enroll.begin", &user.id)?;
-            Ok(json!({"secret": secret, "otpauth_uri": uri, "expires_in": 600, "instruction": "Store the secret in an authenticator and run riauth mfa confirm"}))
+            let (user, session) = self.session(tx, token)?;
+            let mut started = self.totp_start_in(tx, user, &session, replace)?;
+            started["instruction"] =
+                json!("Store the secret in an authenticator and run riauth mfa confirm");
+            Ok(started)
         })
     }
+    /// Confirms the enrollment this session started; recovery codes are rotated separately.
     pub fn mfa_confirm(&self, token: &str, code: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, _) = self.session(tx, token)?;
-            let (secret, expires) = user.totp_pending.clone().ok_or_else(|| Error::bad("No pending MFA enrollment"))?;
-            if expires <= now() { return Err(Error::bad("Enrollment expired")); }
-            let step = crypto::totp_step(&secret, &user.username, code, now(), None)?.ok_or_else(|| Error::bad("Invalid one-time code"))?;
-            user.totp_secret = Some(secret);
-            user.recovery_codes.clear();
-            user.totp_pending = None;
-            user.totp_last_step = Some(step);
-            user.epoch += 1;
-            tx.put("users", &user.id, &user)?;
-            crate::logout::queue_user(tx, &user.id)?;
-            audit(tx, &user.id, "mfa.enabled", &user.id)?;
-            Ok(json!({"mfa_enabled": true, "instruction": "All sessions revoked. Log in with a fresh one-time code."}))
+            let (user, session) = self.session(tx, token)?;
+            let mut confirmed = self.totp_confirm_in(tx, user, &session, code, false)?;
+            confirmed["instruction"] =
+                json!("All sessions revoked. Log in with a fresh one-time code.");
+            Ok(confirmed)
+        })
+    }
+    pub fn mfa_remove(&self, token: &str) -> Result<Value> {
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            self.totp_remove_in(tx, user, &session)
         })
     }
     pub fn recovery_codes(&self, token: &str) -> Result<Value> {
         self.store.write(|tx| {
-            let (mut user, session) = self.session(tx, token)?;
-            if !session.identity.mfa
-                || user.totp_secret.is_none()
-                || session.identity.auth_time + 300 < now()
-            {
-                return Err(Error::forbidden());
-            }
-            let codes: Vec<_> = (0..10)
-                .map(|_| crypto::random_token("ri_recovery_"))
-                .collect();
-            user.recovery_codes = codes.iter().map(|c| digest(c)).collect();
-            tx.put("users", &user.id, &user)?;
-            audit(tx, &user.id, "mfa.recovery_codes.rotate", &user.id)?;
-            Ok(json!({"recovery_codes": codes, "single_use": true}))
+            let (user, session) = self.session(tx, token)?;
+            self.recovery_codes_in(tx, user, &session)
         })
     }
     pub fn change_password(
@@ -682,40 +803,93 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<Value> {
-        let username = self
-            .store
-            .read(|tx| self.session(tx, token).map(|(u, _)| u.username))?;
+        let current = zeroize::Zeroizing::new(current);
+        let password = zeroize::Zeroizing::new(password);
+        let otp = otp.map(zeroize::Zeroizing::new);
+        if current.len() > 1024 || otp.as_ref().is_some_and(|code| code.len() > 128) {
+            return Err(Error::bad("Password or code is too long"));
+        }
+        // Pin this request before hashing. No verification session or factor
+        // consumption may survive independently of the credential mutation.
+        let (pinned, pinned_session) = self.store.read(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            crate::password::require_local(tx, &user)?;
+            // Enrolled TOTP will be proved by this request inside the writer.
+            crate::password::require_fresh_mfa(&user, &session, user.totp_secret.is_some())?;
+            crate::password::unlocked(tx, &user)??;
+            Ok((user, session))
+        })?;
         let new_hash = crypto::password_hash(&password)?;
-        let fresh = self.login(username, current, otp)?;
-        let reauth = fresh["session_token"]
-            .as_str()
-            .ok_or_else(|| Error::internal("Missing reauthentication token"))?
-            .to_owned();
-        let result = self.store.write(|tx| {
-            let (mut user, _) = self.session(tx, token)?;
-            let (verified, _) = self.session(tx, &reauth)?;
-            if verified.id != user.id {
+        let password_ok = {
+            let _timer = self.store.telemetry().password.timer();
+            crypto::password_matches(&current, &pinned.password_hash)
+        };
+        self.store.write(|tx| {
+            let (mut user, session) = self.session(tx, token)?;
+            if user.id != pinned.id
+                || user.epoch != pinned.epoch
+                || user.username != pinned.username
+                || user.password_hash != pinned.password_hash
+                || session.id != pinned_session.id
+                || session.identity.session_id != session.id
+                || session.token_hash != digest(token)
+            {
                 return Err(Error::forbidden());
             }
-            crate::password_history::accept(
+            crate::password::require_local(tx, &user)?;
+            let factor_required = user.totp_secret.is_some();
+            // A passkey-only MFA requirement still needs this session's fresh
+            // passkey assurance. A submitted recovery code keeps its existing
+            // password-change permission and cannot upgrade the stored session.
+            crate::password::require_fresh_mfa(&user, &session, factor_required)?;
+            if let Err(locked) = crate::password::unlocked(tx, &user)? {
+                return Ok(Err(locked));
+            }
+            let at = now();
+            if !password_ok
+                || !crate::authenticator::consume_password_factor(
+                    &mut user,
+                    otp.as_deref().map(String::as_str),
+                    at,
+                )?
+            {
+                let mut attempts = tx
+                    .get::<Attempts>("attempts", &user.username)?
+                    .unwrap_or_default();
+                if at.saturating_sub(attempts.window_start) >= 900 {
+                    attempts = Attempts {
+                        window_start: at,
+                        ..Default::default()
+                    };
+                }
+                attempts.failures += 1;
+                if attempts.failures >= 5 {
+                    attempts.locked_until = at + 900;
+                }
+                tx.put("attempts", &user.username, &attempts)?;
+                audit(tx, "anonymous", "login.failed", &user.username)?;
+                // Failed verification commits only the shared guessing budget.
+                return Ok(Err(Error::new(
+                    StatusCode::UNAUTHORIZED,
+                    "invalid_credentials",
+                    "Invalid username, password, or one-time code",
+                )));
+            }
+            crate::password::replace(
                 tx,
                 self.config.password_history,
-                &user.id,
-                &user.password_hash,
+                &mut user,
                 &password,
-                &new_hash,
+                new_hash,
             )?;
-            user.password_hash = new_hash;
-            user.epoch += 1;
-            tx.put("users", &user.id, &user)?;
-            crate::logout::queue_user(tx, &user.id)?;
-            audit(tx, &user.id, "user.password.change", &user.id)?;
-            Ok(json!({"changed": true, "sessions_revoked": true}))
-        });
-        if result.is_err() {
-            let _ = self.logout(&reauth);
-        }
-        result
+            // History checks may take time. Expiry or freshness failure rolls
+            // the factor, password, epoch and revocation writes back together.
+            if session.expires_at <= now() {
+                return Err(Error::unauthorized());
+            }
+            crate::password::require_fresh_mfa(&user, &session, factor_required)?;
+            Ok(Ok(json!({"changed": true, "sessions_revoked": true})))
+        })?
     }
     pub fn audit_events(&self, token: &str, limit: usize) -> Result<Value> {
         self.store.read(|tx| {
@@ -729,31 +903,28 @@ impl Core {
         })
     }
     pub fn rotate_key(&self, token: &str) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Signing-key rotation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.store.read(|tx| {
             self.management(tx, token, "key.rotate", "key/signing")
                 .map(|_| ())
         })?;
-        let replacement = SigningKey::generate()?;
         self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "key.rotate", "key/signing")?;
-            let mut keys = keys(tx)?;
-            keys.retired.retain(|key| key.expires_at > now());
-            if keys.retired.len() >= 32 { return Err(Error::conflict("32 retained signing keys remain in use; wait for their retention windows before rotating")); }
-            let expires_at = tx.list::<crate::logout::RpSession>("rp_sessions")?.iter().map(|(_, rp)| rp.expires_at.saturating_add(3600)).max().unwrap_or(0).max(now() + 3720);
-            // Retain verification keys for recent RP logout hints as well as unexpired JWTs.
-            keys.retired.push(RetiredKey {
-                jwk: keys.active.jwk()?,
-                expires_at,
-            });
-            keys.active = replacement;
-            tx.put("meta", "keys", &keys)?;
-            audit(tx, &actor.id, "signing_key.rotate", &keys.active.kid)?;
-            Ok(json!({"kid": keys.active.kid}))
+            crate::management::rotate_signing_key(self, tx, token)
         })
     }
     pub fn cleanup(&self) -> Result<()> {
         let _timer = self.store.telemetry().cleanup.timer();
-        let result = self.cleanup_pass();
+        let result = crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+            self.cleanup_pass()
+        });
         if result.is_err() {
             self.store
                 .telemetry()
@@ -768,15 +939,20 @@ impl Core {
         self.store
             .write(|tx| crate::authorization::cleanup(tx, at))?;
         self.store
+            .write(|tx| crate::assembly::cleanup_prepared(tx, at))?;
+        self.store
             .write(|tx| crate::session_protocol::cleanup(tx, at))?;
         self.store.write(|tx| crate::source::cleanup(tx, at))?;
         self.store.write(|tx| crate::passkey::cleanup(tx, at))?;
         self.store
-            .write(|tx| crate::windows_login::cleanup(tx, at))?;
+            .write(|tx| crate::authenticator::cleanup(tx, at))?;
+        self.store
+            .write(|tx| crate::identity::windows_credentials::cleanup(tx, at))?;
         self.store.write(|tx| crate::lifecycle::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
         self.store.write(|tx| crate::directory::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
         self.store
             .write(|tx| crate::cloud_directory::cleanup(tx, at))?;
         self.store.write(|tx| crate::outpost::cleanup(tx, at))?;
@@ -786,8 +962,15 @@ impl Core {
         self.store.write(crate::context::cleanup)?;
         self.store.write(|tx| crate::browser::cleanup(tx, at))?;
         self.store.write(|tx| crate::portal::cleanup(tx, at))?;
-        self.store.write(|tx| crate::pam::cleanup(tx, at))?;
-        self.store.write(|tx| crate::logout::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
+        self.store
+            .write(|tx| crate::workflow::executor::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
+        self.store
+            .write(|tx| crate::management::cleanup_access(tx, at))?;
+        self.store
+            .write(|tx| crate::identity::logout_queue::cleanup(tx, at))?;
+        #[cfg(feature = "platform")]
         self.store
             .write(|tx| crate::device_trust::cleanup(tx, at))?;
         self.store.write(|tx| crate::ssf::cleanup(tx, at))?;
@@ -866,7 +1049,9 @@ impl Core {
             }
             Ok(())
         })?;
-        crate::offboarding::cleanup(self)
+        #[cfg(feature = "platform")]
+        crate::offboarding::cleanup(self)?;
+        Ok(())
     }
     pub(crate) fn session(&self, tx: &Tx<'_>, token: &str) -> Result<(User, Session)> {
         let sid = tx
@@ -883,27 +1068,16 @@ impl Core {
     }
     pub(crate) fn identity_user(&self, tx: &Tx<'_>, identity: &Identity) -> Result<User> {
         let user = self.identity_user_unbound(tx, identity)?;
-        let session = tx
-            .get::<Session>("sessions", &identity.session_id)?
-            .ok_or_else(Error::unauthorized)?;
-        if session.revoked || session.identity.user_id != user.id {
-            return Err(Error::unauthorized());
-        }
+        crate::identity::validate_session(tx, identity, &user)?;
         Ok(user)
     }
     /// Every identity check except the session row, for identities not yet bound to a session.
     pub(crate) fn identity_user_unbound(&self, tx: &Tx<'_>, identity: &Identity) -> Result<User> {
-        crate::radius::eap::validate_identity(self, tx, identity)?;
+        self.radius_eap_validate_identity(tx, identity)?;
         crate::mtls::validate_identity(tx, identity)?;
         crate::directory::validate_identity(self, tx, identity)?;
-        crate::source::validate_identity(tx, identity)?;
-        let user = tx
-            .get::<User>("users", &identity.user_id)?
-            .ok_or_else(Error::unauthorized)?;
-        if !user.enabled || user.epoch != identity.epoch {
-            return Err(Error::unauthorized());
-        }
-        Ok(user)
+        crate::assembly::source_validate_identity(tx, identity)?;
+        crate::identity::validate_user(tx, identity)
     }
     pub(crate) fn dummy_password_hash(&self) -> &str {
         &self.dummy_hash
@@ -943,6 +1117,34 @@ pub(crate) fn keys(tx: &Tx<'_>) -> Result<Keys> {
 pub(crate) const AUDIT_RETENTION_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Result<()> {
+    audit_with_details(tx, actor, action, target, Value::Null)
+}
+
+/// `audit` with operator-supplied context, such as resolution evidence. The
+/// context is stored in `details.context` and redacted like the change log.
+pub(crate) fn audit_with(
+    tx: &Tx<'_>,
+    actor: &str,
+    action: &str,
+    target: &str,
+    context: Option<Value>,
+) -> Result<()> {
+    audit_with_details(
+        tx,
+        actor,
+        action,
+        target,
+        context.map_or(Value::Null, |context| json!({"context": context})),
+    )
+}
+
+pub(crate) fn audit_with_details(
+    tx: &Tx<'_>,
+    actor: &str,
+    action: &str,
+    target: &str,
+    extra: Value,
+) -> Result<()> {
     if [
         "user.",
         "group.",
@@ -952,10 +1154,13 @@ pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Res
         "source.reconcile",
         "source_link.reconcile",
         "agent.",
+        "delegation.",
         "access.",
+        "ssf.stream.",
         "signing_key.",
         "admin.recover",
         "directory.apply",
+        "reconciliation.schedule.",
         "cloud_directory.apply",
         "certificate.",
         "offboard.",
@@ -972,6 +1177,11 @@ pub(crate) fn audit(tx: &Tx<'_>, actor: &str, action: &str, target: &str) -> Res
         "request_id": crate::context::current().map(|c| c.request_id),
         "changes": tx.changes(),
     });
+    if let Some(extra) = extra.as_object() {
+        for (key, value) in extra {
+            details[key] = value.clone();
+        }
+    }
     crate::store::redact_audit_value(&mut details);
     if let Some(parent) = crate::agent::audit_parent(tx, actor, action, target)? {
         details["parent_user"] = json!(parent);
@@ -995,12 +1205,7 @@ pub(crate) fn groups_for(tx: &Tx<'_>, uid: &str) -> Result<BTreeSet<String>> {
 }
 
 pub(crate) fn durable_groups_for(tx: &Tx<'_>, uid: &str) -> Result<BTreeSet<String>> {
-    Ok(tx
-        .list::<Group>("groups")?
-        .into_iter()
-        .filter(|(_, group)| group.members.contains(uid))
-        .map(|(_, group)| group.name)
-        .collect())
+    tx.user_group_names(uid)
 }
 /// Reject a write that would leave the instance without an enabled administrator.
 /// `user` is the record as it would be stored.
@@ -1023,93 +1228,11 @@ pub(crate) fn user_by_name(tx: &Tx<'_>, username: &str) -> Result<User> {
     tx.get("users", &uid)?
         .ok_or_else(|| Error::missing("User not found"))
 }
-/// Atomic account revocation and credential signals shared by every user writer.
-pub(crate) fn user_security_transition(
-    tx: &Tx<'_>,
-    user_id: &str,
-    before: &Value,
-    after: Option<&Value>,
-) -> Result<()> {
-    let disabled = after.is_none_or(|user| user["enabled"] == false);
-    // Old snapshots may contain disabled parents whose children were never
-    // revoked. Re-enabling must repair those credentials before enabling use.
-    if disabled || before["enabled"] == false {
-        crate::agent::revoke_owned(tx, user_id)?;
-        crate::windows_login::revoke_user(tx, user_id)?;
-        crate::logout::queue_user(tx, user_id)?;
-        if disabled && before["enabled"] == true {
-            crate::ssf::enqueue(tx, user_id, crate::ssf::ACCOUNT_DISABLED, "")?;
-        }
-    }
-    let Some(after) = after else {
-        return Ok(());
-    };
-    // A successful password login may transparently rehash the same credential.
-    // Credential replacement paths bump the epoch; rehashes keep it unchanged.
-    if before["password_hash"] != after["password_hash"] && before["epoch"] != after["epoch"] {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "password")?;
-    }
-    if before["totp_secret"] != after["totp_secret"]
-        || before["totp_settings"] != after["totp_settings"] && !after["totp_secret"].is_null()
-    {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "otp")?;
-    }
-    // Consuming a recovery code is authentication, whereas adding new codes is rotation.
-    if after["recovery_codes"].as_array().is_some_and(|codes| {
-        codes.iter().any(|code| {
-            before["recovery_codes"]
-                .as_array()
-                .is_none_or(|old| !old.contains(code))
-        })
-    }) {
-        crate::ssf::enqueue(tx, user_id, crate::ssf::CREDENTIAL_CHANGE, "recovery-code")?;
-    }
-    Ok(())
-}
 /// Changing a factor needs an MFA session once the user has TOTP or a passkey.
 #[doc(hidden)]
-pub fn require_factor_session(user: &User, session: &Session) -> Result<()> {
-    if (user.totp_secret.is_some() || user.has_passkeys) && !session.identity.mfa {
-        return Err(Error::new(
-            StatusCode::FORBIDDEN,
-            "mfa_required",
-            "Sign in with your passkey or authenticator code first",
-        ));
-    }
-    Ok(())
-}
-pub fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty()
-        || name == "."
-        || name == ".."
-        || name.len() > 64
-        || !name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"-_.@".contains(&c))
-    {
-        return Err(Error::bad(
-            "Names must be 1–64 ASCII letters, digits, dots, hyphens, underscores or @",
-        ));
-    }
-    Ok(())
-}
-pub(crate) fn validate_display(name: &str) -> Result<()> {
-    if name.is_empty() || name.len() > 200 || name.chars().any(char::is_control) {
-        return Err(Error::bad(
-            "Display name must be 1–200 bytes without control characters",
-        ));
-    }
-    Ok(())
-}
-pub(crate) fn validate_email(email: &str) -> Result<()> {
-    if email.len() > 254
-        || !email.contains('@')
-        || email.chars().any(|c| c.is_control() || c.is_whitespace())
-    {
-        return Err(Error::bad("Invalid email address"));
-    }
-    Ok(())
-}
+pub use crate::identity::require_factor_session;
+pub use crate::validation::validate_name;
+pub(crate) use crate::validation::{validate_display, validate_email};
 pub(crate) fn make_user(input: NewUser) -> Result<User> {
     validate_name(&input.username)?;
     if let Some(email) = &input.email {
@@ -1153,6 +1276,7 @@ pub(crate) fn validate_client(tx: &Tx<'_>, c: &Client) -> Result<()> {
     crate::provider::validate_settings(c)?;
     crate::saml::validate_key(tx, c)?;
     crate::claims::validate_mappings(c)?;
+    crate::claims::validate_conditional_references(tx, c)?;
     for rule in std::iter::once(&c.settings.policy.access).chain(c.settings.policy.scopes.values())
     {
         for group in rule

@@ -1,6 +1,7 @@
 use crate::{
     api::{App, browser_response, cookie, credential_floor, sso_cookie},
     error::{Error, Result},
+    lifecycle::Purpose,
 };
 use axum::{
     Json, Router,
@@ -18,9 +19,75 @@ pub(crate) struct BrowserError;
 
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/portal", get(catalogue))
+        .route("/api/portal/account/accept", post(account_accept))
+        .route("/api/portal/account/verify", post(account_verify))
+        .route(
+            "/api/portal/account/verify-request",
+            post(account_verify_request),
+        )
+        .route(
+            "/api/portal/account/reset-request",
+            post(account_reset_request),
+        )
+        .route("/api/portal/account/reset", post(account_reset))
+        .route("/api/portal/password", post(password_change))
+        .route("/api/portal/sign-in", post(start))
+        .route("/api/portal/sign-in/{id}", post(poll))
+        .route("/api/portal/sign-in/{id}/cancel", post(cancel))
+        .route("/api/portal/sign-out", post(sign_out))
+        .route("/api/portal/requests/{code}", get(details).post(decide))
+        .route("/api/portal/login/password", post(password_login))
+        .route("/api/portal/login/passkey/start", post(passkey_login_start))
+        .route(
+            "/api/portal/login/passkey/finish",
+            post(passkey_login_finish),
+        )
+        .route(
+            "/api/portal/login/passkey/cancel",
+            post(passkey_login_cancel),
+        )
+        .route("/api/portal/passkeys", get(passkeys))
+        .route(
+            "/api/portal/passkeys/registration/start",
+            post(passkey_register_start),
+        )
+        .route(
+            "/api/portal/passkeys/registration/finish",
+            post(passkey_register_finish),
+        )
+        .route(
+            "/api/portal/passkeys/registration/cancel",
+            post(passkey_register_cancel),
+        )
+        .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
+        .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
+        .merge(super::mfa::routes())
+        .route("/api/device/browser/{code}", get(device_browser_details))
+        .route("/api/device/browser/decision", post(device_browser_decide))
+        .merge(super::self_service::http::routes())
+        .merge(super::sources::routes())
+}
+
+pub fn browser_routes() -> Router<App> {
+    let routes = Router::new()
         .route("/apps", get(page))
         .route("/apps/", get(page))
         .route("/apps/launch", get(launch))
+        .route("/device", get(device_page))
+        .route("/device/", get(device_page))
+        .route(
+            "/portal/assets/device.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("device.js"),
+                )
+            }),
+        )
+        .route("/account/accept", get(account_page))
+        .route("/account/verify", get(account_page))
+        .route("/account/reset", get(account_page))
         .route(
             "/portal/assets/app.css",
             get(|| async {
@@ -49,6 +116,60 @@ pub fn routes() -> Router<App> {
             }),
         )
         .route(
+            "/portal/assets/grant-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("grant-review.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/membership-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("membership-review.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/client-creation-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("client-creation-review.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/client-policy-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("client-policy-review.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/client-status-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("client-status-review.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/client-endpoint-review.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("client-endpoint-review.js"),
+                )
+            }),
+        )
+        .route(
             "/portal/assets/auth.js",
             get(|| async {
                 (
@@ -57,6 +178,34 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
+        .route(
+            "/portal/assets/account.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("account.js"),
+                )
+            }),
+        )
+        .route(
+            "/portal/assets/capabilities.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("capabilities.js"),
+                )
+            }),
+        )
+        .merge(super::self_service::http::browser_routes())
+        .merge(super::sources::browser_routes());
+    #[cfg(feature = "platform")]
+    let routes = routes.merge(event_map_routes());
+    routes
+}
+
+#[cfg(feature = "platform")]
+fn event_map_routes() -> Router<App> {
+    Router::new()
         .route("/events", get(events_page))
         .route("/events/", get(events_page))
         .route(
@@ -77,39 +226,18 @@ pub fn routes() -> Router<App> {
                 )
             }),
         )
-        .route("/api/portal", get(catalogue))
-        .route("/api/portal/sign-in", post(start))
-        .route("/api/portal/sign-in/{id}", post(poll))
-        .route("/api/portal/sign-in/{id}/cancel", post(cancel))
-        .route("/api/portal/sign-out", post(sign_out))
-        .route("/api/portal/requests/{code}", get(details).post(decide))
-        .route("/api/portal/login/password", post(password_login))
-        .route("/api/portal/login/passkey/start", post(passkey_login_start))
-        .route(
-            "/api/portal/login/passkey/finish",
-            post(passkey_login_finish),
-        )
-        .route("/api/portal/passkeys", get(passkeys))
-        .route(
-            "/api/portal/passkeys/registration/start",
-            post(passkey_register_start),
-        )
-        .route(
-            "/api/portal/passkeys/registration/finish",
-            post(passkey_register_finish),
-        )
-        .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
-    let mut response = if headers
-        .get("accept")
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(|h| h.contains("text/html"))
+    let mut response = if app.core.config.browser_ui
+        && headers
+            .get("accept")
+            .and_then(|h| h.to_str().ok())
+            .is_some_and(|h| h.contains("text/html"))
     {
         page(State(app), headers.clone()).await
     } else {
-        Json(json!({"service":"riAuth","interface":"CLI","discovery":format!("{}.well-known/openid-configuration",app.core.cookie_path()),"portal":format!("{}apps",app.core.cookie_path())})).into_response()
+        Json(json!({"service":"riAuth","interface":"CLI","discovery":format!("{}.well-known/openid-configuration",app.core.cookie_path()),"portal":if app.core.config.browser_ui { Some(format!("{}apps",app.core.cookie_path())) } else { None }})).into_response()
     };
     response
         .headers_mut()
@@ -123,6 +251,122 @@ pub async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
         placeholder_sso(&app, &mut response);
     }
     response
+}
+
+async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
+    let mut response = portal_html(include_str!("device.html"), &app, true);
+    if sso_cookie(&app, &headers).is_none() {
+        placeholder_sso(&app, &mut response);
+    }
+    response
+}
+
+/// Opening an email link only serves the page. Its one-time proof stays in the
+/// fragment, which is never sent with this GET, and is spent only by a user POST.
+async fn account_page(State(app): State<App>) -> Response {
+    portal_html(include_str!("account.html"), &app, true)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccountCompletion {
+    token: String,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+async fn account_accept(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Invite, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+async fn account_verify(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Verify, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+async fn account_verify_request(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| core.portal_verify_request(sso.as_deref()).map(Json))
+        .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResetRequest {
+    username: String,
+}
+
+/// Unknown and ineligible accounts get the same accepted answer and no email.
+async fn account_reset_request(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<ResetRequest>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run(move |core| core.account_reset_request(&input.username).map(Json))
+        .await
+}
+
+/// Spends a reset proof on a new password. It never signs the browser in.
+async fn account_reset(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<AccountCompletion>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run_credentials(move |core| {
+        core.account_complete(input.token, Purpose::Reset, input.password)
+            .map(Json)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasswordChange {
+    current_password: String,
+    password: String,
+}
+
+async fn password_change(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasswordChange>,
+) -> Result<Response> {
+    let started = Instant::now();
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    let result = app
+        .run_credentials(move |core| {
+            core.portal_password_change(sso.as_deref(), input.current_password, input.password)
+        })
+        .await;
+    credential_floor(
+        started,
+        result
+            .as_ref()
+            .is_err_and(|error| error.code == "invalid_current_password"),
+    )
+    .await;
+    browser_response(result?)
 }
 
 /// How long a placeholder SSO cookie lasts if no sign-in replaces it.
@@ -140,6 +384,7 @@ pub(crate) fn placeholder_sso(app: &App, response: &mut Response) {
     }
 }
 
+#[cfg(feature = "platform")]
 async fn events_page(State(app): State<App>) -> Response {
     portal_html(include_str!("events.html"), &app, true)
 }
@@ -176,7 +421,17 @@ pub(crate) fn standalone_page(
     text: &str,
     link: Option<(&str, &str)>,
 ) -> Response {
-    let css = format!("{}portal/assets/app.css", app.core.cookie_path());
+    standalone_page_at(&app.core.cookie_path(), status, title, text, link)
+}
+
+pub(crate) fn standalone_page_at(
+    base: &str,
+    status: StatusCode,
+    title: &str,
+    text: &str,
+    link: Option<(&str, &str)>,
+) -> Response {
+    let css = format!("{base}portal/assets/app.css");
     let link = link
         .map(|(href, label)| {
             format!(
@@ -211,7 +466,11 @@ fn escape(value: &str) -> String {
 /// sent by cross-site forms; no portal endpoint opts into credentialed CORS. Browsers
 /// that send Fetch Metadata must also report a same-origin request.
 pub(crate) fn browser_write_guard(app: &App, headers: &HeaderMap) -> Result<()> {
-    let origin = url::Url::parse(&app.core.config.issuer)
+    browser_write_guard_for(&app.core.config.issuer, headers)
+}
+
+pub(crate) fn browser_write_guard_for(issuer: &str, headers: &HeaderMap) -> Result<()> {
+    let origin = url::Url::parse(issuer)
         .map_err(Error::internal)?
         .origin()
         .ascii_serialization();
@@ -389,6 +648,23 @@ struct PasskeyProof {
     ceremony: String,
     credential: Value,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyCeremony {
+    ceremony: String,
+}
+async fn passkey_login_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCeremony>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    app.run(move |core| {
+        core.portal_passkey_cancel(cookie(&headers, "riauth_passkey"), &input.ceremony)
+            .map(Json)
+    })
+    .await
+}
 async fn passkey_login_finish(
     State(app): State<App>,
     headers: HeaderMap,
@@ -418,16 +694,26 @@ async fn passkeys(State(app): State<App>, headers: HeaderMap) -> Result<Json<Val
 struct PasskeyName {
     name: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PasskeyRegistration {
+    name: String,
+    expected_user_id: String,
+}
 async fn passkey_register_start(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(input): Json<PasskeyName>,
+    Json(input): Json<PasskeyRegistration>,
 ) -> Result<Json<Value>> {
     browser_write_guard(&app, &headers)?;
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| {
-        core.portal_passkey_register_start(sso.as_deref(), input.name)
-            .map(Json)
+        core.portal_passkey_register_start_bound(
+            sso.as_deref(),
+            input.name,
+            Some(&input.expected_user_id),
+        )
+        .map(Json)
     })
     .await
 }
@@ -446,6 +732,33 @@ async fn passkey_register_finish(
             &input.ceremony,
             response,
         )?)
+    })
+    .await
+}
+async fn passkey_register_cancel(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyCeremony>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_passkey_register_cancel(sso.as_deref(), &input.ceremony)
+            .map(Json)
+    })
+    .await
+}
+async fn passkey_rename(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_passkey_rename(sso.as_deref(), &id, input.name)
+            .map(Json)
     })
     .await
 }
@@ -482,6 +795,40 @@ async fn details(
     let token = crate::api::bearer(&headers)?;
     app.run(move |core| core.portal_request(&token, &code).map(Json))
         .await
+}
+async fn device_browser_details(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> Result<Json<Value>> {
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| core.device_browser_details(sso.as_deref(), &code).map(Json))
+        .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeviceBrowserDecision {
+    user_code: String,
+    approve: bool,
+    session_ref: String,
+}
+async fn device_browser_decide(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<DeviceBrowserDecision>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.device_browser_decide(
+            sso.as_deref(),
+            &input.user_code,
+            input.approve,
+            &input.session_ref,
+        )
+        .map(Json)
+    })
+    .await
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

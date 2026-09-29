@@ -1,18 +1,15 @@
 //! A bounded, read-only LDAPv3 provider with TLS and scoped service credentials.
 use crate::{
-    core::{Core, durable_groups_for, validate_name},
     crypto::{digest, now},
     error::{Error, Result},
-    model::{Client, Group, User},
-    store::Tx,
+    model::Client,
+    validation::validate_name,
 };
 use futures_util::{SinkExt, StreamExt};
 use ldap3_proto::{LdapCodec, control::LdapControl, proto::*};
-use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     net::{IpAddr, SocketAddr},
-    path::PathBuf,
     sync::Arc,
     time::Duration,
 };
@@ -23,14 +20,74 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 use tokio_util::codec::Framed;
-const STARTTLS: &str = "1.3.6.1.4.1.1466.20037";
-const WHOAMI: &str = "1.3.6.1.4.1.4203.1.11.3";
-const PAGED: &str = "1.2.840.113556.1.4.319";
-#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Settings {
-    pub base_dn: String,
-    pub search_groups: BTreeSet<String>,
+pub(crate) const STARTTLS: &str = "1.3.6.1.4.1.1466.20037";
+pub(crate) const WHOAMI: &str = "1.3.6.1.4.1.4203.1.11.3";
+pub(crate) const PAGED: &str = "1.2.840.113556.1.4.319";
+pub use crate::assembly::ldap_start as start;
+pub use crate::model::client_settings::ldap::Settings;
+
+// Reuse the listener's BER decoder and limits without creating a connection or
+// invoking bind/search handlers. &[u8] is an always-ready Tokio AsyncRead.
+#[cfg(feature = "fuzzing")]
+pub(crate) fn fuzz_ber(data: &[u8]) -> std::io::Result<Vec<i32>> {
+    use futures_util::FutureExt;
+    use std::io;
+    use tokio_util::codec::FramedRead;
+
+    if data.len() > 65_536 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "LDAP input limit",
+        ));
+    }
+    let mut wire = FramedRead::new(data, LdapCodec::new(Some(32768), Some(16)));
+    let mut ids = Vec::new();
+    for _ in 0..1000 {
+        match wire.next().now_or_never() {
+            Some(Some(Ok(message))) => ids.push(message.msgid),
+            Some(Some(Err(error))) => return Err(error),
+            Some(None) => return Ok(ids),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "LDAP in-memory read",
+                ));
+            }
+        }
+    }
+    Ok(ids)
+}
+
+#[cfg(all(test, feature = "fuzzing"))]
+mod ber_tests {
+    use super::fuzz_ber;
+
+    #[test]
+    fn listener_codec_parses_complete_frames_and_rejects_truncation() {
+        let unbind = include_bytes!("../fuzz/corpus/parsers/ldap-unbind");
+        let search = include_bytes!("../fuzz/corpus/parsers/ldap-search-present");
+        assert_eq!(fuzz_ber(unbind).unwrap(), vec![1]);
+        assert_eq!(fuzz_ber(search).unwrap(), vec![2]);
+        assert_eq!(
+            fuzz_ber(&[unbind.as_slice(), unbind.as_slice()].concat()).unwrap(),
+            vec![1, 1]
+        );
+        assert!(fuzz_ber(&unbind[..unbind.len() - 1]).is_err());
+        assert!(
+            fuzz_ber(include_bytes!(
+                "../fuzz/corpus/parsers/ldap-truncated-unbind"
+            ))
+            .is_err()
+        );
+        assert!(
+            fuzz_ber(include_bytes!(
+                "../fuzz/corpus/parsers/ldap-indefinite-length"
+            ))
+            .is_err()
+        );
+        assert!(fuzz_ber(include_bytes!("../fuzz/corpus/parsers/ldap-deep-filter")).is_err());
+        assert!(fuzz_ber(&vec![0; 65_537]).is_err());
+    }
 }
 impl Settings {
     pub fn validate(&self, client: &Client) -> Result<()> {
@@ -56,64 +113,50 @@ impl Settings {
         }
         Ok(())
     }
-    fn user_dn(&self, name: &str) -> String {
+    pub(crate) fn user_dn(&self, name: &str) -> String {
         format!("uid={name},ou=users,{}", self.base_dn)
     }
-    fn group_dn(&self, name: &str) -> String {
+    pub(crate) fn group_dn(&self, name: &str) -> String {
         format!("cn={name},ou=groups,{}", self.base_dn)
     }
-    fn agent_dn(&self) -> String {
+    pub(crate) fn agent_dn(&self) -> String {
         format!("cn=riauth-agent,{}", self.base_dn)
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Listener {
-    pub listen: SocketAddr,
-    pub client_id: String,
-    pub allowed_peers: BTreeSet<IpAddr>,
-    pub tls_cert_file: Option<PathBuf>,
-    pub tls_key_file: Option<PathBuf>,
-    #[serde(default)]
-    pub ldaps: bool,
-    #[serde(default)]
-    pub local_unencrypted: bool,
+pub use crate::ldap_listener::Listener;
+
+pub(crate) trait LdapPort: Clone + Send + Sync + 'static {
+    fn listeners(&self) -> &BTreeMap<String, Listener>;
+    fn bind_listener(&self, id: &str, listener: &Listener) -> crate::capability::ListenerLease;
+    fn ldap_rate_limit(&self, peer: IpAddr, category: &str) -> Result<bool>;
+    fn ldap_bind_target(
+        &self,
+        cid: &str,
+        dn: &str,
+        password: &str,
+    ) -> Result<(Settings, Option<(String, bool)>)>;
+    fn login(
+        &self,
+        username: String,
+        password: String,
+        otp: Option<String>,
+    ) -> Result<serde_json::Value>;
+    fn ldap_bind_authorized(&self, cid: &str, token: &str) -> Result<()>;
+    fn logout(&self, token: &str) -> Result<serde_json::Value>;
+    fn ldap_whoami(&self, cid: &str, auth: Option<&Auth>) -> Result<String>;
+    fn ldap_search_entries(
+        &self,
+        cid: &str,
+        auth: Option<&Auth>,
+        query: &LdapSearchRequest,
+        starttls: bool,
+    ) -> Result<(Vec<LdapSearchResultEntry>, u64)>;
 }
-impl Listener {
-    pub fn validate(&self) -> Result<()> {
-        validate_name(&self.client_id)?;
-        if self.allowed_peers.is_empty()
-            || self.allowed_peers.len() > 128
-            || self
-                .allowed_peers
-                .iter()
-                .any(|ip| ip.is_unspecified() || ip.is_multicast())
-        {
-            return Err(Error::bad(
-                "LDAP listeners require one to 128 explicit peer IPs",
-            ));
-        }
-        if self.local_unencrypted {
-            if !self.listen.ip().is_loopback()
-                || self.ldaps
-                || self.tls_cert_file.is_some()
-                || self.tls_key_file.is_some()
-            {
-                return Err(Error::bad(
-                    "Unencrypted LDAP is restricted to an explicit loopback listener",
-                ));
-            }
-        } else if self.tls_cert_file.is_none() || self.tls_key_file.is_none() {
-            return Err(Error::bad(
-                "LDAP requires certificate and key files for LDAPS or mandatory STARTTLS",
-            ));
-        }
-        Ok(())
-    }
-}
+
 pub struct Servers {
     pub addresses: Vec<SocketAddr>,
     tasks: Vec<JoinHandle<()>>,
+    leases: Vec<crate::capability::ListenerLease>,
 }
 impl Drop for Servers {
     fn drop(&mut self) {
@@ -123,7 +166,7 @@ impl Drop for Servers {
     }
 }
 async fn tls(
-    _core: &Core,
+    _core: &impl LdapPort,
     listener: &Listener,
 ) -> anyhow::Result<Option<Arc<rustls::ServerConfig>>> {
     if listener.local_unencrypted {
@@ -136,29 +179,35 @@ async fn tls(
     .await?;
     Ok(Some(Arc::new(config)))
 }
-pub async fn start(core: Core) -> anyhow::Result<Servers> {
+pub(crate) async fn start_with_port(core: impl LdapPort) -> anyhow::Result<Servers> {
     let mut ready = Vec::new();
-    for listener in core.config.ldap_listeners.values() {
+    for (id, listener) in core.listeners() {
         listener.validate()?;
         let tls = tls(&core, listener).await?;
         let socket = TcpListener::bind(listener.listen).await?;
-        ready.push((socket, listener.clone(), tls));
+        ready.push((id.clone(), socket, listener.clone(), tls));
     }
     let mut servers = Servers {
         addresses: Vec::new(),
         tasks: Vec::new(),
+        leases: Vec::new(),
     };
-    for (socket, config, tls) in ready {
+    for (id, socket, config, tls) in ready {
         servers.addresses.push(socket.local_addr()?);
         let core = core.clone();
-        servers
-            .tasks
-            .push(tokio::spawn(listen(core, socket, config, tls)));
+        let lease = core.bind_listener(&id, &config);
+        let worker_lease = lease.clone();
+        servers.leases.push(lease);
+        servers.tasks.push(tokio::spawn(async move {
+            let _lease = worker_lease;
+            _lease.running();
+            listen(core, socket, config, tls).await;
+        }));
     }
     Ok(servers)
 }
 async fn listen(
-    core: Core,
+    core: impl LdapPort,
     socket: TcpListener,
     config: Listener,
     mut tls_config: Option<Arc<rustls::ServerConfig>>,
@@ -183,7 +232,7 @@ trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 type Wire = Framed<Box<dyn Io>, LdapCodec>;
 #[derive(Clone)]
-enum Auth {
+pub(crate) enum Auth {
     Agent(zeroize::Zeroizing<String>),
     User(zeroize::Zeroizing<String>),
 }
@@ -227,14 +276,14 @@ fn mapped(error: Error) -> LdapResultCode {
         _ => LdapResultCode::Unavailable,
     }
 }
-async fn release(core: &Core, auth: Option<Auth>) {
+async fn release(core: &impl LdapPort, auth: Option<Auth>) {
     if let Some(Auth::User(token)) = auth {
         let core = core.clone();
         let _ = tokio::task::spawn_blocking(move || core.logout(&token)).await;
     }
 }
 async fn connection(
-    core: Core,
+    core: impl LdapPort,
     stream: tokio::net::TcpStream,
     peer: IpAddr,
     config: Listener,
@@ -268,10 +317,8 @@ async fn connection(
             }
             let worker = core.clone();
             let category = format!("ldap:{}", config.client_id);
-            if tokio::task::spawn_blocking(move || {
-                worker.store.shared_rate_limit(peer, &category, 600)
-            })
-            .await??
+            if tokio::task::spawn_blocking(move || worker.ldap_rate_limit(peer, &category))
+                .await??
             {
                 break;
             }
@@ -649,47 +696,8 @@ async fn connection(
 fn crypto_token() -> Vec<u8> {
     crate::crypto::random_token("").into_bytes()
 }
-fn profile(tx: &Tx<'_>, id: &str) -> Result<(Client, Settings)> {
-    let client = tx
-        .get::<Client>("clients", id)?
-        .filter(|c| c.enabled)
-        .ok_or_else(Error::forbidden)?;
-    let settings = client.settings.ldap.clone().ok_or_else(Error::forbidden)?;
-    settings.validate(&client)?;
-    for group in &settings.search_groups {
-        if tx.get::<Group>("groups", group)?.is_none() {
-            return Err(Error::bad("LDAP search group does not exist"));
-        }
-    }
-    Ok((client, settings))
-}
-fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
-    let (settings, username) = core.store.read(|tx| {
-        let (_, settings) = profile(tx, cid)?;
-        if dn.eq_ignore_ascii_case(&settings.agent_dn()) {
-            core.management(tx, password, "ldap.search", &format!("client/{cid}"))?;
-            if !password.starts_with("ri_agent_") {
-                return Err(Error::forbidden());
-            }
-            return Ok((settings, None));
-        }
-        let matches: Vec<_> = tx
-            .list::<User>("users")?
-            .into_iter()
-            .map(|(_, u)| u)
-            .filter(|u| settings.user_dn(&u.username).eq_ignore_ascii_case(dn))
-            .collect();
-        if matches.len() != 1 {
-            return Err(Error::unauthorized());
-        }
-        Ok((
-            settings,
-            Some((
-                matches[0].username.clone(),
-                matches[0].totp_secret.is_some(),
-            )),
-        ))
-    })?;
+fn bind_user(core: &impl LdapPort, cid: &str, dn: &str, password: &str) -> Result<Auth> {
+    let (settings, username) = core.ldap_bind_target(cid, dn, password)?;
     let Some((username, mfa)) = username else {
         return Ok(Auth::Agent(zeroize::Zeroizing::new(password.into())));
     };
@@ -708,15 +716,7 @@ fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
             .ok_or_else(Error::unauthorized)?
             .to_owned(),
     );
-    let allowed = core.store.read(|tx| {
-        let (client, _) = profile(tx, cid)?;
-        let (_, session) = core.session(tx, &token)?;
-        core.authorize_identity(tx, &client, &session.identity)?;
-        if crate::assurance::needs_step_up(&client, &Default::default(), &session.identity) {
-            return Err(Error::forbidden());
-        }
-        Ok(())
-    });
+    let allowed = core.ldap_bind_authorized(cid, &token);
     if let Err(error) = allowed {
         let _ = core.logout(&token);
         return Err(error);
@@ -724,40 +724,10 @@ fn bind_user(core: &Core, cid: &str, dn: &str, password: &str) -> Result<Auth> {
     let _ = settings;
     Ok(Auth::User(token))
 }
-fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result<Option<User>> {
-    let (client, _) = profile(tx, cid)?;
-    match auth {
-        Some(Auth::Agent(token)) => {
-            core.management(tx, token, "ldap.search", &format!("client/{cid}"))?;
-            Ok(None)
-        }
-        Some(Auth::User(token)) => {
-            let (user, session) = core.session(tx, token)?;
-            core.authorize_identity(tx, &client, &session.identity)?;
-            if crate::assurance::needs_step_up(&client, &Default::default(), &session.identity) {
-                return Err(Error::forbidden());
-            }
-            Ok(Some(user))
-        }
-        None => Err(Error::unauthorized()),
-    }
+fn whoami(core: &impl LdapPort, cid: &str, auth: Option<&Auth>) -> Result<String> {
+    core.ldap_whoami(cid, auth)
 }
-fn whoami(core: &Core, cid: &str, auth: Option<&Auth>) -> Result<String> {
-    core.store.read(|tx| {
-        let (_, settings) = profile(tx, cid)?;
-        if auth.is_none() {
-            return Ok(String::new());
-        }
-        let user = authorize(core, tx, cid, auth)?;
-        Ok(format!(
-            "dn:{}",
-            user.as_ref()
-                .map(|u| settings.user_dn(&u.username))
-                .unwrap_or_else(|| settings.agent_dn())
-        ))
-    })
-}
-fn entry(dn: String, attrs: Vec<(&str, Vec<String>)>) -> LdapSearchResultEntry {
+pub(crate) fn entry(dn: String, attrs: Vec<(&str, Vec<String>)>) -> LdapSearchResultEntry {
     LdapSearchResultEntry {
         dn,
         attributes: attrs
@@ -771,7 +741,7 @@ fn entry(dn: String, attrs: Vec<(&str, Vec<String>)>) -> LdapSearchResultEntry {
     }
 }
 fn search_entries(
-    core: &Core,
+    core: &impl LdapPort,
     cid: &str,
     auth: Option<&Auth>,
     query: &LdapSearchRequest,
@@ -786,177 +756,7 @@ fn search_entries(
         return Err(Error::bad("Unsupported search options"));
     }
     validate_filter(&query.filter, 0, &mut 0)?;
-    core.store.read(|tx| {
-        let (client, settings) = profile(tx, cid)?;
-        let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-        if query.base.is_empty() && query.scope == LdapSearchScope::Base {
-            let row = entry(
-                String::new(),
-                vec![
-                    ("objectClass", vec!["top".into()]),
-                    ("namingContexts", vec![settings.base_dn]),
-                    ("supportedLDAPVersion", vec!["3".into()]),
-                    (
-                        "supportedExtension",
-                        if starttls {
-                            vec![STARTTLS.into(), WHOAMI.into()]
-                        } else {
-                            vec![WHOAMI.into()]
-                        },
-                    ),
-                    ("supportedControl", vec![PAGED.into()]),
-                ],
-            );
-            let rows = if matches_filter(&query.filter, &row) {
-                vec![row]
-            } else {
-                Vec::new()
-            };
-            return Ok((rows, revision));
-        }
-        let self_user = authorize(core, tx, cid, auth)?;
-        let all_groups = tx.list::<Group>("groups")?;
-        let selected: BTreeSet<String> = all_groups
-            .iter()
-            .filter(|(name, _)| settings.search_groups.contains(name))
-            .flat_map(|(_, g)| g.members.iter().cloned())
-            .collect();
-        let users: Vec<_> = tx
-            .list::<User>("users")?
-            .into_iter()
-            .map(|(_, u)| u)
-            .filter(|u| {
-                u.enabled
-                    && selected.contains(&u.id)
-                    && self_user.as_ref().is_none_or(|me| me.id == u.id)
-            })
-            .collect();
-        if users.len() > 2000 {
-            return Err(Error::bad(
-                "LDAP profile supports at most 2000 selected users",
-            ));
-        }
-        let visible: BTreeMap<_, _> = users
-            .iter()
-            .map(|u| (u.id.clone(), u.username.clone()))
-            .collect();
-        let mut rows = Vec::new();
-        let mut unique = BTreeSet::new();
-        rows.push(entry(
-            settings.base_dn.clone(),
-            vec![
-                ("objectClass", vec!["top".into(), "domain".into()]),
-                (
-                    "dc",
-                    vec![
-                        settings
-                            .base_dn
-                            .split(',')
-                            .next()
-                            .unwrap()
-                            .trim_start_matches("dc=")
-                            .into(),
-                    ],
-                ),
-            ],
-        ));
-        for ou in ["users", "groups"] {
-            rows.push(entry(
-                format!("ou={ou},{}", settings.base_dn),
-                vec![
-                    (
-                        "objectClass",
-                        vec!["top".into(), "organizationalUnit".into()],
-                    ),
-                    ("ou", vec![ou.into()]),
-                ],
-            ));
-        }
-        for user in users {
-            let dn = settings.user_dn(&user.username);
-            if !unique.insert(dn.to_ascii_lowercase()) {
-                return Err(Error::conflict(
-                    "LDAP DNs collide under case-insensitive matching",
-                ));
-            }
-            let memberships = durable_groups_for(tx, &user.id)?;
-            let mut attrs = vec![
-                (
-                    "objectClass",
-                    vec![
-                        "top".into(),
-                        "person".into(),
-                        "organizationalPerson".into(),
-                        "inetOrgPerson".into(),
-                    ],
-                ),
-                ("uid", vec![user.username.clone()]),
-                ("cn", vec![user.display_name.clone()]),
-                ("sn", vec![user.display_name.clone()]),
-                ("displayName", vec![user.display_name.clone()]),
-                ("entryUUID", vec![user.id.clone()]),
-            ];
-            if client.scopes.contains("email") {
-                attrs.push(("mail", user.email.into_iter().collect()));
-            }
-            if client.scopes.contains("groups") {
-                attrs.push((
-                    "memberOf",
-                    memberships
-                        .into_iter()
-                        .map(|g| settings.group_dn(&g))
-                        .collect(),
-                ));
-            }
-            rows.push(entry(dn, attrs));
-        }
-        if client.scopes.contains("groups") {
-            for (name, group) in all_groups {
-                let members: Vec<_> = group
-                    .members
-                    .iter()
-                    .filter_map(|id| visible.get(id))
-                    .map(|name| settings.user_dn(name))
-                    .collect();
-                if members.is_empty() {
-                    continue;
-                }
-                let dn = settings.group_dn(&name);
-                if !unique.insert(dn.to_ascii_lowercase()) {
-                    return Err(Error::conflict("LDAP group DNs collide"));
-                }
-                rows.push(entry(
-                    dn,
-                    vec![
-                        ("objectClass", vec!["top".into(), "groupOfNames".into()]),
-                        ("cn", vec![name]),
-                        ("member", members),
-                    ],
-                ));
-            }
-        }
-        let base = query.base.to_ascii_lowercase();
-        if !rows.iter().any(|r| r.dn.eq_ignore_ascii_case(&query.base)) {
-            return Err(Error::missing("LDAP base not found"));
-        }
-        rows.retain(|row| {
-            let dn = row.dn.to_ascii_lowercase();
-            let suffix = format!(",{base}");
-            let child = dn.strip_suffix(&suffix);
-            let in_scope = match query.scope {
-                LdapSearchScope::Base => dn == base,
-                LdapSearchScope::OneLevel => child.is_some_and(|s| !s.contains(',')),
-                LdapSearchScope::Subtree => dn == base || child.is_some(),
-                LdapSearchScope::Children => child.is_some(),
-            };
-            in_scope && matches_filter(&query.filter, row)
-        });
-        rows.sort_by(|a, b| a.dn.cmp(&b.dn));
-        if rows.iter().map(LdapSearchResultEntry::size).sum::<usize>() > 4 * 1024 * 1024 {
-            return Err(Error::bad("LDAP result exceeds provider limit"));
-        }
-        Ok((rows, revision))
-    })
+    core.ldap_search_entries(cid, auth, query, starttls)
 }
 fn validate_filter(filter: &LdapFilter, depth: usize, nodes: &mut usize) -> Result<()> {
     *nodes += 1;
@@ -1003,7 +803,7 @@ fn validate_filter(filter: &LdapFilter, depth: usize, nodes: &mut usize) -> Resu
     }
     Ok(())
 }
-fn matches_filter(filter: &LdapFilter, row: &LdapSearchResultEntry) -> bool {
+pub(crate) fn matches_filter(filter: &LdapFilter, row: &LdapSearchResultEntry) -> bool {
     let values = |name: &str| {
         row.attributes
             .iter()

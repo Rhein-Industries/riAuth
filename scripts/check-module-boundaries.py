@@ -1,0 +1,2014 @@
+#!/usr/bin/env python3
+"""Check A03 source boundaries and report explicit crate-reference edges.
+
+This is a source-level inventory, not a Rust call graph: `super` imports, macros,
+trait dispatch and runtime calls are outside its counts. A counted edge means one
+source file explicitly names a crate-root module in code or a grouped `use`.
+"""
+
+import argparse
+import collections
+import json
+from pathlib import Path
+import re
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+MANAGEMENT = {
+    "agent", "context", "lifecycle", "offboarding", "operations",
+    "provisioning", "registration", "reports", "resource", "state",
+}
+API_SERVER = {"api"}
+CLIENT = {"cli", "main"}
+STORAGE = {"store", "postgres_store"}
+SERVER_ASSEMBLY = {"assembly"}
+PROTOCOL = {
+    "assurance", "authenticator", "authorization", "browser", "claims",
+    "cloud_directory", "device_trust", "directory", "dpop", "event_map",
+    "exchange", "issuer", "jose", "keyring", "ldap_server", "logout",
+    "mtls", "oidc", "outpost", "pam", "passkey", "password",
+    "portal", "provider", "proxy_server", "radius", "response", "saml",
+    "scim", "session_protocol", "signin", "source", "ssf", "windows_login",
+}
+IDENTITY_ALLOWED = {"crypto", "error", "model", "identity"}
+STORAGE_FORBIDDEN = {"core", "agent", "windows_login", "logout", "ssf", "assembly", "identity"}
+MODEL_FORBIDDEN = {"portal", "saml", "radius", "ldap_server", "outpost", "jose", "encryption"}
+MODEL_CONFIG_LEGACY = {
+    "jose": {"ClientAuthMethod", "MachineTrust"},
+    "exchange": {"ExchangePolicy"},
+    "encryption": {"EncryptionKey"},
+}
+CONTEXT_FORBIDDEN = {"core"}
+RAW_STRING = re.compile(r'(?:br|r)(?P<hashes>#{0,255})"')
+CHAR_LITERAL = re.compile(r"(?:b)?'(?:\\(?:u\{[0-9A-Fa-f_]+\}|x[0-9A-Fa-f]{2}|.)|[^'\\\n])'")
+
+
+def masked_rust_source(source: str) -> str:
+    """Mask comments and literals, preserving line breaks and import punctuation."""
+    def mask(fragment: str) -> str:
+        return "".join(char if char in "\r\n" else " " for char in fragment)
+
+    result = []
+    pos = 0
+    while pos < len(source):
+        start = pos
+        if source.startswith("//", pos):
+            newline = source.find("\n", pos)
+            pos = len(source) if newline == -1 else newline
+        elif source.startswith("/*", pos):
+            depth = 1
+            pos += 2
+            while pos < len(source) and depth:
+                if source.startswith("/*", pos):
+                    depth += 1
+                    pos += 2
+                elif source.startswith("*/", pos):
+                    depth -= 1
+                    pos += 2
+                else:
+                    pos += 1
+        else:
+            token_start = pos == 0 or not (source[pos - 1].isalnum() or source[pos - 1] == "_")
+            raw = RAW_STRING.match(source, pos) if token_start else None
+            char = CHAR_LITERAL.match(source, pos) if token_start else None
+            if raw:
+                closing = '"' + raw.group("hashes")
+                end = source.find(closing, raw.end())
+                pos = len(source) if end == -1 else end + len(closing)
+            elif char:
+                pos = char.end()
+            elif source[pos] == '"':
+                pos += 1
+                while pos < len(source):
+                    if source[pos] == "\\":
+                        pos += 2
+                    elif source[pos] == '"':
+                        pos += 1
+                        break
+                    else:
+                        pos += 1
+            else:
+                result.append(source[pos])
+                pos += 1
+                continue
+        result.append(mask(source[start:pos]))
+    return "".join(result)
+
+
+def rust_function_body(source: str, name: str) -> str | None:
+    """Find a named function body in masked Rust source for a narrow boundary check."""
+    match = re.search(rf"\bfn\s+{re.escape(name)}\s*\(", source)
+    if match is None:
+        return None
+    start = source.find("{", match.end())
+    if start == -1:
+        return None
+    depth = 0
+    for pos in range(start, len(source)):
+        if source[pos] == "{":
+            depth += 1
+        elif source[pos] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start + 1:pos]
+    return None
+
+
+def root_module(path: Path) -> str:
+    return path.relative_to(SRC).parts[0].removesuffix(".rs")
+
+
+def group(module: str) -> str:
+    if module == "identity":
+        return "identity"
+    if module == "core":
+        return "core_engine"
+    if module == "model":
+        return "model"
+    if module in STORAGE:
+        return "storage"
+    if module in SERVER_ASSEMBLY:
+        return "server_assembly"
+    if module in MANAGEMENT:
+        return "management"
+    if module in API_SERVER:
+        return "api_server"
+    if module in CLIENT:
+        return "client"
+    if module in PROTOCOL:
+        return "protocol"
+    return "shared_support"
+
+
+def grouped_roots(source: str) -> list[str]:
+    roots = []
+    for match in re.finditer(r"crate\s*::\s*\{", source):
+        start = match.end()
+        depth = 0
+        field_start = start
+        for pos in range(start, len(source)):
+            char = source[pos]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                if depth == 0:
+                    field = source[field_start:pos].strip()
+                    if field:
+                        root = re.match(r"([A-Za-z_]\w*)", field)
+                        if root:
+                            roots.append(root.group(1))
+                    break
+                depth -= 1
+            elif char == "," and depth == 0:
+                field = source[field_start:pos].strip()
+                root = re.match(r"([A-Za-z_]\w*)", field)
+                if root:
+                    roots.append(root.group(1))
+                field_start = pos + 1
+    return roots
+
+
+def split_use_branches(tree: str) -> list[str]:
+    branches = []
+    depth = 0
+    start = 0
+    for pos, char in enumerate(tree):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            branches.append(tree[start:pos])
+            start = pos + 1
+    branches.append(tree[start:])
+    return branches
+
+
+def expanded_use_paths(tree: str, prefix: tuple[str, ...] = ()) -> list[tuple[str, ...]]:
+    paths = []
+    for branch in split_use_branches(tree):
+        branch = branch.strip()
+        if not branch:
+            continue
+        brace = branch.find("{")
+        if brace != -1 and branch.endswith("}"):
+            head = branch[:brace].strip().removesuffix("::")
+            parts = tuple(part.strip() for part in head.split("::") if part.strip())
+            paths.extend(expanded_use_paths(branch[brace + 1:-1], prefix + parts))
+        else:
+            head = re.split(r"\s+as\s+", branch, maxsplit=1)[0]
+            parts = tuple(part.strip() for part in head.split("::") if part.strip())
+            paths.append(prefix + parts)
+    return paths
+
+
+def legacy_client_config_references(source: str) -> set[str]:
+    source = masked_rust_source(source)
+    paths = set(re.findall(r"\bcrate\s*::\s*(\w+)\s*::\s*(\w+)\b", source))
+    for match in re.finditer(r"\buse\s+crate\s*::\s*(.*?);", source, flags=re.S):
+        paths.update(
+            path[:2] for path in expanded_use_paths(match.group(1)) if len(path) >= 2
+        )
+    return {
+        f"{root}::{leaf}" for root, leaf in paths
+        if leaf in MODEL_CONFIG_LEGACY.get(root, ())
+    }
+
+
+def references(path: Path) -> set[str]:
+    source = masked_rust_source(path.read_text())
+    refs = set(re.findall(r"\bcrate\s*::\s*([A-Za-z_]\w*)", source))
+    refs.update(grouped_roots(source))
+    refs.discard("self")
+    refs.discard("super")
+    return refs
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", type=Path, help="write the measured graph to this path")
+    args = parser.parse_args()
+    paths = sorted(SRC.rglob("*.rs"))
+    legacy_password_history = SRC / "password_history.rs"
+    module_groups = {root_module(path): group(root_module(path)) for path in paths}
+    edges = collections.defaultdict(set)
+    errors = []
+    if legacy_password_history.exists():
+        errors.append("src/password_history.rs: password history policy belongs in identity")
+    for path in paths:
+        source_module = root_module(path)
+        source_group = module_groups[source_module]
+        refs = references(path)
+        for target in refs:
+            if target in module_groups:
+                edges[(source_group, module_groups[target])].add(path.relative_to(ROOT).as_posix())
+        if source_group == "identity":
+            protocol_refs = refs & PROTOCOL
+            if protocol_refs:
+                errors.append(f"{path.relative_to(ROOT)}: identity refers to protocol {sorted(protocol_refs)}")
+            forbidden = refs - IDENTITY_ALLOWED - PROTOCOL
+            if forbidden:
+                errors.append(f"{path.relative_to(ROOT)}: identity refers to {sorted(forbidden)}")
+            if re.search(r"\bimpl\s+Core\b", path.read_text()):
+                errors.append(f"{path.relative_to(ROOT)}: identity implements Core")
+        if source_group == "storage" and refs & STORAGE_FORBIDDEN:
+            errors.append(f"{path.relative_to(ROOT)}: storage refers to {sorted(refs & STORAGE_FORBIDDEN)}")
+        if source_group == "storage" and refs & PROTOCOL:
+            errors.append(f"{path.relative_to(ROOT)}: storage refers to protocol {sorted(refs & PROTOCOL)}")
+        if source_module == "dpop" and refs & STORAGE:
+            errors.append(f"{path.relative_to(ROOT)}: DPoP refers directly to storage")
+        if source_module == "jose" and refs & STORAGE:
+            errors.append(f"{path.relative_to(ROOT)}: JOSE refers directly to storage")
+        if source_module == "issuer" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: issuer refers directly to storage or Core")
+        if source_module in {"keyring", "response"} and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: {source_module} refers directly to storage or Core")
+        if source_module == "claims" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: claims refers directly to storage or Core")
+        if source_module == "event_map" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: event_map refers directly to storage or Core")
+        if source_module == "device_trust" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: device_trust refers directly to storage or Core")
+        if source_module == "session_protocol" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: session_protocol refers directly to storage or Core")
+        if source_module == "oidc" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: OIDC refers directly to storage or Core")
+        if source_module == "authorization" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: authorization refers directly to storage or Core")
+        if source_module == "exchange" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: exchange refers directly to storage or Core")
+        if source_module == "ssf" and refs & (STORAGE | {"core"}):
+            errors.append(f"{path.relative_to(ROOT)}: SSF refers directly to storage or Core")
+        if path == SRC / "saml.rs" and refs & (STORAGE | {"core"}):
+            errors.append("src/saml.rs: SAML browser SSO refers directly to storage or Core")
+        if path == SRC / "saml/logout.rs" and refs & (STORAGE | {"core"}):
+            errors.append("src/saml/logout.rs: SAML logout refers directly to storage or Core")
+        if path == SRC / "passkey.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/passkey.rs: passkey protocol refers directly to storage, Core or assembly")
+        if path == SRC / "authenticator.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/authenticator.rs: authenticator protocol refers directly to storage, Core or assembly")
+        if path == SRC / "password.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/password.rs: password protocol refers directly to storage, Core or assembly")
+        if path == SRC / "logout.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/logout.rs: logout protocol refers directly to storage, Core or assembly")
+        if path == SRC / "mtls.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/mtls.rs: client-certificate protocol refers directly to storage, Core or assembly")
+        if path == SRC / "portal/self_service.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/portal/self_service.rs: browser self-service refers directly to storage, Core or assembly")
+        if path == SRC / "portal/mfa.rs" and refs & (STORAGE | {"core", "assembly"}):
+            errors.append("src/portal/mfa.rs: browser MFA refers directly to storage, Core or assembly")
+        if path == SRC / "portal/sources.rs" and (
+            refs & (STORAGE | {"core", "assembly"})
+            or re.search(r"\bimpl\s+Core\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/portal/sources.rs: browser source adapter refers directly to storage, Core or assembly")
+        if path == SRC / "proxy_server.rs" and (
+            refs & STORAGE or re.search(r"\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/proxy_server.rs: proxy transport refers directly to storage")
+        if path == SRC / "proxy_server.rs" and (
+            "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/proxy_server.rs: proxy transport refers directly to Core")
+        if path == SRC / "proxy_server.rs" and re.search(
+            r"\bApp\b|\.\s*run\s*\(", masked_rust_source(path.read_text())
+        ):
+            errors.append("src/proxy_server.rs: proxy request Core dispatch belongs in assembly")
+        if path == SRC / "windows_login.rs" and (
+            "core" in refs or re.search(r"\bCore\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/windows_login.rs: Windows protocol refers directly to Core")
+        if path == SRC / "windows_login.rs" and re.search(
+            r"\.\s*store\s*\.\s*read\s*\(", masked_rust_source(path.read_text())
+        ):
+            errors.append("src/windows_login.rs: Windows protocol directly reads storage")
+        if path == SRC / "windows_login.rs" and re.search(
+            r"\.\s*store\s*\.\s*write\s*\(", masked_rust_source(path.read_text())
+        ):
+            errors.append("src/windows_login.rs: Windows protocol directly writes storage")
+        if path == SRC / "pam.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/pam.rs: temporary-access protocol refers directly to Core or storage")
+        if path == SRC / "provider.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/provider.rs: provider policy refers directly to Core or storage")
+        if path == SRC / "signin.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/signin.rs: browser sign-in protocol refers directly to Core or storage")
+        if path == SRC / "outpost.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/outpost.rs: proxy SSO protocol refers directly to Core or storage")
+        if path == SRC / "directory.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/directory.rs: LDAP import adapter refers directly to Core or storage")
+        if path == SRC / "cloud_directory.rs" and (
+            re.search(
+                r"\b(?:SyncRun|RETRY_LIMIT|RETRY_WINDOW|budget_exhausted|window_open|ensure_budget|record_failure|reset_budget)\b",
+                masked_rust_source(path.read_text()),
+            )
+            or '"cloud_directory_runs"' in path.read_text()
+        ):
+            errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
+        if path == SRC / "cloud_directory.rs":
+            if rust_function_body(masked_rust_source(path.read_text()), "cloud_snapshot_actor") is not None:
+                errors.append("src/cloud_directory.rs: snapshot authority/revision check belongs in assembly")
+            reconcile = rust_function_body(masked_rust_source(path.read_text()), "cloud_reconcile")
+            if (
+                reconcile is None
+                or not re.search(r"\bcloud_reconcile_pending\s*\(", reconcile)
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", reconcile)
+            ):
+                errors.append("src/cloud_directory.rs: pending reconcile-plan read belongs in assembly")
+            plan_get = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_get")
+            if plan_get is None or re.search(r"\.\s*store\b|\bTx\b|\btx\b", plan_get):
+                errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")
+            plan_internal = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_internal")
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_actor_revision\s*\(", plan_internal)
+                or re.search(r"let\s*\(\s*actor\s*,\s*revision\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", plan_internal)
+            ):
+                errors.append("src/cloud_directory.rs: snapshot actor/revision read belongs in assembly")
+            snapshot_prepare = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_snapshot.rs").read_text()),
+                "cloud_snapshot_prepare",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_prepare\s*\(", plan_internal)
+                or re.search(r"let\s*\(\s*prior\s*,\s*mut\s+draft\s*,\s*restarted\s*,\s*authority_digest\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", plan_internal)
+                or snapshot_prepare is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", snapshot_prepare)
+            ):
+                errors.append("src/cloud_directory.rs: planning draft authorization/read belongs in assembly")
+            plan_materialize = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_snapshot.rs").read_text()),
+                "cloud_plan_materialize",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_plan_materialize\s*\(", plan_internal)
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", plan_internal)
+                or plan_materialize is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", plan_materialize)
+                or not re.search(r"\bcloud_snapshot_actor\s*\([\s\S]*\bmaterialize_completed_draft\s*\(", plan_materialize)
+            ):
+                errors.append("src/cloud_directory.rs: completed planning snapshot read belongs in assembly")
+            snapshot_stage = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_snapshot.rs").read_text()),
+                "cloud_snapshot_stage",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_stage\s*\(", plan_internal)
+                or re.search(r"\breturn\s+self\s*\.\s*store\s*\.\s*write\s*\(", plan_internal)
+                or snapshot_stage is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", snapshot_stage)
+            ):
+                errors.append("src/cloud_directory.rs: planning snapshot staging write belongs in assembly")
+            plan_preview = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_plan_preview",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_plan_preview\s*\(", plan_internal)
+                or re.search(r"\.\s*store\s*\.\s*preview\s*\(", plan_internal)
+                or plan_preview is None
+                or not re.search(r"\.\s*store\s*\.\s*preview\s*\(", plan_preview)
+                or not re.search(r"\bcloud_snapshot_actor\s*\([\s\S]*\bremoval_impact\s*\([\s\S]*\breconcile\s*\(", plan_preview)
+            ):
+                errors.append("src/cloud_directory.rs: reviewed-plan preview belongs in assembly")
+            plan_commit = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_plan_commit",
+            )
+            if (
+                plan_internal is None
+                or not re.search(
+                    r"\bcloud_budget_reset\s*\([\s\S]*\bcloud_plan_preview\s*\([\s\S]*\bcloud_plan_commit\s*\(",
+                    plan_internal,
+                )
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", plan_internal)
+                or plan_commit is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", plan_commit)
+                or not re.search(r"\.count\s*\(\s*\)\s*>=\s*16", plan_commit)
+                or not re.search(
+                    r"\bcloud_snapshot_actor\s*\([\s\S]*\btx\.get::<u64>\s*\([\s\S]*"
+                    r"\btx\.get::<CloudSnapshotDraft>\s*\([\s\S]*\btx\.list::<Plan>\s*\([\s\S]*"
+                    r"\bReviewBinding::new\s*\([\s\S]*\.\s*validate\s*\([\s\S]*"
+                    r"\brequire_backup_safe_record\s*\([\s\S]*\btx\.put\s*\([\s\S]*"
+                    r"\btx\.delete\s*\([\s\S]*\baudit_scoped\s*\(",
+                    plan_commit,
+                )
+            ):
+                errors.append("src/cloud_directory.rs: final reviewed-plan write belongs in assembly")
+            apply_confirmed = rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_confirmed")
+            if (
+                apply_confirmed is None
+                or not re.search(r"\bcloud_applied_plan_sync_authorized\s*\(", apply_confirmed)
+                or re.search(r"if\s+initially_applied\s*\{\s*self\s*\.\s*store\s*\.\s*read", apply_confirmed)
+            ):
+                errors.append("src/cloud_directory.rs: applied-plan sync read belongs in assembly")
+            if (
+                rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_actor") is not None
+                or apply_confirmed is None
+                or not re.search(r"\bcloud_apply_snapshot_prepare\s*\(", apply_confirmed)
+                or re.search(r"let\s*\(\s*prior\s*,\s*mut\s+apply\s*,\s*restarted\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", apply_confirmed)
+            ):
+                errors.append("src/cloud_directory.rs: apply snapshot authorization/read belongs in assembly")
+            apply_materialize = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_materialize",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(r"\bcloud_apply_materialize\s*\([\s\S]*\bif\s+entries\s*!=\s*plan\.entries", apply_confirmed)
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", apply_confirmed)
+                or apply_materialize is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", apply_materialize)
+                or not re.search(r"\bcloud_apply_actor\s*\([\s\S]*\bmaterialize_completed_draft\s*\(", apply_materialize)
+            ):
+                errors.append("src/cloud_directory.rs: completed apply snapshot read belongs in assembly")
+            apply_stage = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_snapshot_stage",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(r"\bcloud_apply_snapshot_stage\s*\(", apply_confirmed)
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", apply_confirmed)
+                or apply_stage is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", apply_stage)
+            ):
+                errors.append("src/cloud_directory.rs: apply snapshot staging write belongs in assembly")
+            apply_commit = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_commit",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(
+                    r"\bcloud_budget_reset\s*\([\s\S]*\bcloud_apply_materialize\s*\([\s\S]*"
+                    r"\bif\s+entries\s*!=\s*plan\.entries[\s\S]*\bcloud_apply_commit\s*\(",
+                    apply_confirmed,
+                )
+                or re.search(r"\.\s*mutation\s*\(", apply_confirmed)
+                or apply_commit is None
+                or not re.search(r"\.\s*mutation\s*\(", apply_commit)
+                or not re.search(
+                    r"\bmanagement\s*\([\s\S]*\btx\s*\.\s*get::<Plan>\s*\([\s\S]*"
+                    r"\bif\s+plan\.review\s*!=\s*observed_review[\s\S]*"
+                    r"\bif\s+plan\.applied\s*\{[\s\S]*\bcloud_apply_actor\s*\([\s\S]*"
+                    r"\btx\s*\.\s*get::<CloudApplyDraft>\s*\([\s\S]*\bremoval_impact\s*\([\s\S]*"
+                    r"\bApplyGate\s*\{[\s\S]*\.\s*validate\s*\([\s\S]*"
+                    r"\breconcile\s*\([\s\S]*\btx\.put\s*\([\s\S]*"
+                    r"\btx\.delete\s*\([\s\S]*\baudit_scoped\s*\(",
+                    apply_commit,
+                )
+            ):
+                errors.append("src/cloud_directory.rs: final apply mutation belongs in assembly")
+            if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
+                errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
+            cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")
+            if cleanup is None or re.search(r"\bmaintenance_page\s*::\s*<\s*Plan\s*>", cleanup):
+                errors.append("src/cloud_directory.rs: reviewed-plan retention belongs in assembly")
+            if (
+                cleanup is None
+                or not re.search(r"\bcloud_snapshot_cleanup\s*\(", cleanup)
+                or re.search(r"\bmaintenance_page\s*::\s*<\s*Cloud(?:Snapshot|Apply)Draft\s*>", cleanup)
+            ):
+                errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
+        if path == SRC / "cloud_operations.rs":
+            operations = rust_function_body(masked_rust_source(path.read_text()), "cloud_operations")
+            catalog_source = (SRC / "assembly/cloud_directory_catalog.rs").read_text()
+            initial_auth = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_authorize_read"
+            )
+            initial_auth_raw = rust_function_body(catalog_source, "cloud_operation_authorize_read")
+            initial_call = (
+                re.search(r"\bself\.cloud_operation_authorize_read\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;", operations)
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or initial_call is None
+                or not (0 <= operations.find("resource(kind, id)") < initial_call.start() < operations.find("match kind"))
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", operations[:operations.find("match kind")])
+                or initial_auth is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", initial_auth)
+                or initial_auth_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.read"\s*,\s*scope\s*\)\s*\?[\s\S]*Ok\s*\(\s*\(\s*\)\s*\)',
+                    initial_auth_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: initial read authorization belongs in assembly")
+            missing_groups = rust_function_body(
+                masked_rust_source(catalog_source),
+                "cloud_operation_missing_groups",
+            )
+            if (
+                operations is None
+                or not re.search(r"\bcloud_operation_missing_groups\s*\(", operations)
+                or re.search(r"\btx\s*\.\s*get\s*::<\s*Group\s*>", operations)
+                or missing_groups is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", missing_groups)
+                or not re.search(
+                    r"\bmanagement\s*\([\s\S]*\btx\s*\.\s*get\s*::<\s*Group\s*>",
+                    missing_groups,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: authorized local-group lookup belongs in assembly")
+            can_sync = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_can_sync"
+            )
+            can_sync_raw = rust_function_body(catalog_source, "cloud_operation_can_sync")
+            can_sync_call = (
+                re.search(
+                    r"\blet\s+can_sync\s*=\s*self\.cloud_operation_can_sync\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                )
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or can_sync_call is None
+                or not (
+                    operations.find("cloud_operation_missing_groups")
+                    < can_sync_call.start()
+                    < operations.find("reconciliation_schedules")
+                )
+                or re.search(
+                    r"\.\s*store\s*\.\s*read\s*\(",
+                    operations[
+                        operations.find("cloud_operation_missing_groups"):
+                        operations.find("reconciliation_schedules")
+                    ],
+                )
+                or re.search(r"\bprincipal\s*\(", operations)
+                or can_sync is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", can_sync)
+                or not re.search(
+                    r"\bprincipal\s*\(\s*tx\s*,\s*token\s*\)\s*\?\s*\.\s*allows\s*\(",
+                    can_sync,
+                )
+                or re.search(r"\bmanagement\s*\(", can_sync)
+                or can_sync_raw is None
+                or not re.search(r'\.allows\s*\(\s*"directory\.sync"\s*,\s*scope\s*\)', can_sync_raw)
+            ):
+                errors.append("src/cloud_operations.rs: sync authority read belongs in assembly")
+            controller_check = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_controller_check"
+            )
+            controller_check_raw = rust_function_body(catalog_source, "cloud_operation_controller_check")
+            controller_call = (
+                re.search(
+                    r"\blet\s+last_check\s*=\s*self\.cloud_operation_controller_check\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                )
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or controller_call is None
+                or not (
+                    0 <= operations.find("let controller = if can_sync")
+                    < operations.find("controller_fingerprint")
+                    < controller_call.start()
+                )
+                or not re.search(r"\blast_check\s*\.\s*filter\s*\(", operations[controller_call.end():])
+                or re.search(r"\bCloudControllerCheck\b", masked_rust_source(path.read_text()))
+                or controller_check is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", controller_check)
+                or controller_check_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)\s*\?[\s\S]*'
+                    r'tx\.get\s*::<\s*CloudControllerCheck\s*>\s*\(\s*"cloud_controller_checks"\s*,\s*scope\s*\)',
+                    controller_check_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: scoped controller check read belongs in assembly")
+            connection_check = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_last_connection_check"
+            )
+            connection_check_raw = rust_function_body(
+                catalog_source, "cloud_operation_last_connection_check"
+            )
+            connection_call = (
+                re.search(
+                    r"\blet\s+last_connection_check\s*=\s*self\.cloud_operation_last_connection_check\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                )
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or connection_call is None
+                or not (
+                    operations.find("reconciliation_jobs")
+                    < connection_call.start()
+                    < operations.find("Ok(json!")
+                )
+                or re.search(r"\btx\s*\.\s*get\s*::<\s*Value\s*>", operations)
+                or connection_check is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", connection_check)
+                or connection_check_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.read"\s*,\s*scope\s*\)\s*\?[\s\S]*'
+                    r'tx\.get\s*::<\s*Value\s*>\s*\(\s*"cloud_connection_checks"\s*,\s*scope\s*\)',
+                    connection_check_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: scoped connection check read belongs in assembly")
+            read_auth_calls = (
+                list(re.finditer(
+                    r"\bself\.cloud_operation_authorize_read\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                ))
+                if operations is not None
+                else []
+            )
+            if (
+                connection_call is None
+                or len(read_auth_calls) != 2
+                or not (connection_call.end() <= read_auth_calls[1].start() < operations.find("Ok(json!"))
+                or operations[connection_call.end():read_auth_calls[1].start()].strip()
+                or operations[read_auth_calls[1].end():operations.find("Ok(json!")].strip()
+            ):
+                errors.append("src/cloud_operations.rs: final read authorization must follow connection check")
+            probe = rust_function_body(masked_rust_source(path.read_text()), "cloud_test_connection")
+            probe_auth = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_authorize_probe"
+            )
+            probe_auth_raw = rust_function_body(catalog_source, "cloud_operation_authorize_probe")
+            probe_call = (
+                re.search(r"\bself\.cloud_operation_authorize_probe\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;", probe)
+                if probe is not None
+                else None
+            )
+            if (
+                probe is None
+                or probe_call is None
+                or not (
+                    0 <= probe.find("resource(kind, id)")
+                    < probe_call.start()
+                    < probe.find("let checked_at")
+                    < probe.find("cloud_connection_probe")
+                )
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe[:probe.find("cloud_connection_probe")])
+                or probe_auth is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", probe_auth)
+                or probe_auth_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)\s*\?[\s\S]*Ok\s*\(\s*\(\s*\)\s*\)',
+                    probe_auth_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: pre-probe sync authorization belongs in assembly")
+            probe_auth_calls = (
+                list(re.finditer(
+                    r"\bself\.cloud_operation_authorize_probe\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    probe,
+                ))
+                if probe is not None
+                else []
+            )
+            probe_result = (
+                re.search(r"\blet\s+result\s*=\s*self\.cloud_connection_probe\s*\(\s*kind\s*,\s*id\s*\)\s*;", probe)
+                if probe is not None
+                else None
+            )
+            if (
+                probe is None
+                or len(probe_auth_calls) != 2
+                or probe_result is None
+                or not (probe_result.end() <= probe_auth_calls[1].start() < probe.find("Ok(match result"))
+                or probe[probe_result.end():probe_auth_calls[1].start()].strip()
+                or probe[probe_auth_calls[1].end():probe.find("Ok(match result")].strip()
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe)
+            ):
+                errors.append("src/cloud_operations.rs: post-probe sync recheck belongs in assembly")
+            verify = rust_function_body(masked_rust_source(path.read_text()), "cloud_verify_credential")
+            preflight = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_credential_preflight"
+            )
+            preflight_raw = rust_function_body(catalog_source, "cloud_operation_credential_preflight")
+            preflight_call = (
+                re.search(
+                    r"\bself\.cloud_operation_credential_preflight\s*\(\s*token\s*,\s*&scope\s*\)\s*\?",
+                    verify,
+                )
+                if verify is not None else None
+            )
+            if (
+                verify is None
+                or preflight_call is None
+                or not (0 <= verify.find("resource(kind, id)") < preflight_call.start()
+                        < verify.find("match kind") < verify.find("cloud_connection_probe")
+                        < verify.find("cloud_operation_record_credential_check"))
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", masked_rust_source(path.read_text()))
+                or re.search(r"\b(?:management|replay_receipt)\s*\(", verify)
+                or preflight is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", preflight)
+                or not (0 <= preflight.find("self.management") < preflight.find("replay_receipt")
+                        < preflight.find("actor.agent") < preflight.find("tx.get::<u64>"))
+                or preflight_raw is None
+                or not re.search(r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)', preflight_raw)
+                or "digest(&format!" not in preflight_raw
+                or "actor.permissions" not in preflight_raw
+                or "context.fingerprint" not in preflight_raw
+                or not re.search(r'tx\.get\s*::<\s*u64\s*>\s*\(\s*"meta"\s*,\s*"revision"\s*\)', preflight_raw)
+            ):
+                errors.append("src/cloud_operations.rs: credential replay and revision preflight belongs in assembly")
+            record = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_record_credential_check"
+            )
+            record_raw = rust_function_body(catalog_source, "cloud_operation_record_credential_check")
+            record_call = (
+                re.search(
+                    r"\bself\.cloud_operation_record_credential_check\s*\(\s*token\s*,\s*&scope\s*,\s*outcome\s*\)",
+                    verify,
+                )
+                if verify is not None else None
+            )
+            if (
+                verify is None
+                or record_call is None
+                or not (0 <= verify.find("let outcome = match self.cloud_connection_probe")
+                        < record_call.start())
+                or re.search(r"\.\s*(?:mutation|store\s*\.\s*(?:read|write))\s*\(", masked_rust_source(path.read_text()))
+                or record is None
+                or not (0 <= record.find("self.mutation") < record.find("self.management")
+                        < record.find("tx.put") < record.find("audit") < record.find("Ok(outcome)"))
+                or record_raw is None
+                or not re.search(r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)', record_raw)
+                or not re.search(r'tx\.put\s*\(\s*"cloud_connection_checks"\s*,\s*scope\s*,\s*&outcome\s*\)', record_raw)
+                or not re.search(r'audit\s*\(\s*tx\s*,\s*&actor\.id\s*,\s*"cloud_directory\.credential_verify"\s*,\s*scope\s*\)', record_raw)
+            ):
+                errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
+        if path == SRC / "source/workflow.rs":
+            adapter = masked_rust_source(path.read_text())
+            port = (SRC / "assembly/source_workflow.rs").read_text()
+            assembly_root = (SRC / "assembly.rs").read_text()
+            bind = rust_function_body(port, "bind_login") or ""
+            retire = rust_function_body(port, "discard_login") or ""
+            compact_bind = re.sub(r"\s+", "", bind)
+            compact_retire = re.sub(r"\s+", "", retire)
+            uses = {
+                name: re.sub(r"\s+", "", rust_function_body(adapter, name) or "")
+                for name in (
+                    "evidence_authority", "begin_workflow_source", "consume",
+                    "authorization_identity", "discard",
+                )
+            }
+            if (
+                re.search(r"\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\b|\.\s*store\b", adapter)
+                or len(re.findall(r"\bSourceWorkflowTx::new\s*\(\s*tx\s*\)", adapter)) != 5
+                or not all(
+                    operation in uses[name]
+                    for name, operation in (
+                        ("evidence_authority", "storage.link(&evidence.link)?"),
+                        ("begin_workflow_source", "storage.login(&key)?"),
+                        ("begin_workflow_source", "storage.bind_login(&key,&login)?"),
+                        ("consume", "storage.login(&attempt.login)?"),
+                        ("authorization_identity", "storage.upstream_session(&session.id)?"),
+                        ("discard", "storage.login(&attempt.login)?"),
+                        ("discard", "storage.discard_login(&attempt.login,&login)?"),
+                    )
+                )
+                or not all(
+                    re.search(rf"\bfn\s+{name}\s*\(", port)
+                    for name in ("link", "login", "upstream_session", "bind_login", "discard_login")
+                )
+                or not all(
+                    fragment in re.sub(r"\s+", "", port)
+                    for fragment in (
+                        'self.tx.get("source_links",key)',
+                        'self.tx.get("source_logins",key)',
+                        'self.tx.get("saml_source_sessions",session_id)',
+                    )
+                )
+                or not (0 <= compact_bind.find('self.tx.put("source_logins",key,login)?')
+                        < compact_bind.find('self.tx.delete("source_polls",&login.poll_hash)'))
+                or not (0 <= compact_retire.find("super::clear_browser_return(self.tx,login)?")
+                        < compact_retire.find('self.tx.delete("source_polls",&login.poll_hash)?')
+                        < compact_retire.find('self.tx.delete("source_logins",key)'))
+                or not re.search(r'#\[cfg\(feature\s*=\s*"platform"\)\]\s*mod\s+source_workflow\s*;', assembly_root)
+            ):
+                errors.append("src/source/workflow.rs: workflow source storage belongs in assembly")
+        if path == SRC / "source/saml.rs":
+            saml_source = path.read_text()
+            source_root = (SRC / "source.rs").read_text()
+            assembly_source_keys = (SRC / "assembly/source_saml_keys.rs").read_text()
+            assembly_source_cleanup = (SRC / "assembly/source_saml_cleanup.rs").read_text()
+            metadata_adapter = rust_function_body(saml_source, "saml_source_metadata")
+            metadata_compact = re.sub(r"\s+", "", metadata_adapter or "")
+            metadata_read = rust_function_body(assembly_source_keys, "with_saml_source_metadata")
+            metadata_read_compact = re.sub(r"\s+", "", metadata_read or "")
+            key_read = rust_function_body(assembly_source_keys, "key")
+            key_compact = re.sub(r"\s+", "", key_read or "")
+            callback_key = rust_function_body(assembly_source_keys, "saml_source_callback_key")
+            callback_key_compact = re.sub(r"\s+", "", callback_key or "")
+            cleanup_read = rust_function_body(assembly_source_cleanup, "cleanup")
+            cleanup_compact = re.sub(r"\s+", "", cleanup_read or "")
+            assembly_source_claim = (SRC / "assembly/source_saml_claim.rs").read_text()
+            callback_adapter = rust_function_body(saml_source, "saml_source_callback")
+            callback_compact = re.sub(r"\s+", "", callback_adapter or "")
+            callback_claim = rust_function_body(assembly_source_claim, "saml_source_callback_claim")
+            callback_claim_compact = re.sub(r"\s+", "", callback_claim or "")
+            assembly_source_record = (SRC / "assembly/source_saml_record.rs").read_text()
+            callback_record = rust_function_body(assembly_source_record, "saml_source_callback_record")
+            callback_record_compact = re.sub(r"\s+", "", callback_record or "")
+            assembly_source_return = (SRC / "assembly/source_saml_return.rs").read_text()
+            return_adapter = rust_function_body(saml_source, "saml_source_browser_return")
+            adapter_compact = re.sub(r"\s+", "", return_adapter or "")
+            return_claim = rust_function_body(assembly_source_return, "take_browser_return")
+            claim_compact = re.sub(r"\s+", "", return_claim or "")
+            return_write = rust_function_body(assembly_source_return, "saml_source_browser_return_claim")
+            return_write_compact = re.sub(r"\s+", "", return_write or "")
+            assembly_root = (SRC / "assembly.rs").read_text()
+            if (
+                re.search(r"\bTx\b|\btx\s*\.|\.store\b", masked_rust_source(saml_source))
+                or rust_function_body(saml_source, "cleanup") is not None
+                or rust_function_body(saml_source, "key") is not None
+                or metadata_adapter is None
+                or not (0 <= metadata_compact.find("self.with_saml_source_metadata(id,|source,keys|")
+                        < metadata_compact.find("settings.validate(source)?")
+                        < metadata_compact.find("STANDARD.encode(wire::certificate(")
+                        < metadata_compact.find("letxml=format!(")
+                        < metadata_compact.find("crate::saml::sign(&xml,&keys.key(settings)?"))
+                or metadata_read is None
+                or not (0 <= metadata_read_compact.find("self.store.read(|tx|")
+                        < metadata_read_compact.find("super::source_enabled(tx,id)?")
+                        < metadata_read_compact.find("render(&source,&SamlSigningKeyRead::new(tx))"))
+                or key_read is None
+                or not (0 <= key_compact.find('core::keys(self.tx)?')
+                        < key_compact.find('self.tx.get::<Keys>("key_domains",&settings.signing_key)?')
+                        < key_compact.find('key.remote.is_some()||key.algorithm!="RS256"')
+                        < key_compact.find("private.to_spki_der()!=public.to_spki_der()"))
+                or callback_key is None
+                or "self.store.read(|tx|settings.key(tx))" not in callback_key_compact
+                or "self.saml_source_callback_key(settings)?" not in callback_compact
+                or cleanup_read is None
+                or not (0 <= cleanup_compact.find('tx.maintenance_page::<u64>("saml_source_replays")?')
+                        < cleanup_compact.find("ifexpiry<=at")
+                        < cleanup_compact.find('tx.delete("saml_source_replays",&id)?')
+                        < cleanup_compact.find('tx.maintenance_page::<UpstreamSession>("saml_source_sessions")?')
+                        < cleanup_compact.find('tx.get::<Session>("sessions",&id)?')
+                        < cleanup_compact.find("s.expires_at<=at")
+                        < cleanup_compact.find('tx.delete("saml_source_sessions",&id)?'))
+                or not re.search(r"cleanup_source_saml\s*\(\s*tx\s*,\s*at\s*\)\s*\?\s*;\s*#\[cfg\(not\(feature\s*=\s*\"platform\"\)\)\]\s*saml::cleanup\s*\(\s*tx\s*,\s*at\s*\)\s*\?\s*;\s*crate::assembly::cleanup_expired_source_state", source_root)
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_keys\s*;", assembly_root)
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_cleanup\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: SAML key, metadata and cleanup storage belong in assembly")
+            if (
+                rust_function_body(saml_source, "saml_source_callback_claim") is not None
+                or re.search(r"\benum\s+Claim\b", saml_source)
+                or callback_adapter is None
+                or not (0 <= callback_compact.find("params.insert(k,v).is_some()")
+                        < callback_compact.find(".filter(|s|s.len()==43)")
+                        < callback_compact.find('params.get("SAMLResponse")')
+                        < callback_compact.find("self.saml_source_callback_claim(id,state)?")
+                        < callback_compact.find("SamlSourceClaim::Retired=>")
+                        < callback_compact.find("SamlSourceClaim::Ready(source,pending)=>")
+                        < callback_compact.find("STANDARD.decode(encoded)")
+                        < callback_compact.find("verified_identity(")
+                        < callback_compact.find("self.saml_source_callback_record(id,state,&source,&pending,result)"))
+                or "self.store.write(|tx|" in callback_compact
+                or callback_claim is None
+                or not (0 <= callback_claim_compact.find("self.store.write(|tx|")
+                        < callback_claim_compact.find('tx.get::<Source>("sources",id)?')
+                        < callback_claim_compact.find("source.saml.is_none()")
+                        < callback_claim_compact.find('tx.get::<Login>("source_logins",&digest(state))?')
+                        < callback_claim_compact.find("p.source==id&&!p.claimed&&p.expires_at>now()")
+                        < callback_claim_compact.find("presented_source_retired(source.as_ref(),&pending.fingerprint)")
+                        < callback_claim_compact.find("pending.failed=true")
+                        < callback_claim_compact.find('audit(tx,"upstream","source.login_failed",id)?')
+                        < callback_claim_compact.find("returnOk(SamlSourceClaim::Retired)")
+                        < callback_claim_compact.find("settings.validate(&source)?")
+                        < callback_claim_compact.rfind("Ok(SamlSourceClaim::Ready(source,pending))"))
+                or callback_claim_compact.count('tx.put("source_logins",&digest(state),&pending)?') != 2
+                or callback_claim_compact.count('audit(tx,"upstream","source.login_failed",id)?') != 1
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_claim\s*;", assembly_root)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_claim::SamlSourceClaim\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: initial SAML callback claim belongs in assembly")
+            if (
+                rust_function_body(saml_source, "saml_source_callback_record") is not None
+                or callback_record is None
+                or not (0 <= callback_record_compact.find("self.store.write(|tx|")
+                        < callback_record_compact.find('tx.get::<Source>("sources",id)?')
+                        < callback_record_compact.find('tx.get::<Login>("source_logins",&digest(state))?')
+                        < callback_record_compact.find("p.claimed&&p.expires_at>now()&&p.result.is_none()&&!p.failed")
+                        < callback_record_compact.find("result.and_then(|(identity,assertion,expiry)|")
+                        < callback_record_compact.find("current_source.fingerprint()?!=pending.fingerprint")
+                        < callback_record_compact.find('tx.get::<u64>("saml_source_replays",&key)?')
+                        < callback_record_compact.find('tx.put("saml_source_replays",&key,&expiry.saturating_add(30))?')
+                        < callback_record_compact.find("matchresult{")
+                        < callback_record_compact.find('tx.put("source_returns",&token_digest,&digest(state))?')
+                        < callback_record_compact.find('tx.put("source_logins",&digest(state),&current)?')
+                        < callback_record_compact.find("audit(")
+                        < callback_record_compact.find("callback_body(tx,&current,&digest(state))?")
+                        < callback_record_compact.find('body["browser_return"]=json!(token)')
+                        < callback_record_compact.rfind("Ok(body)"))
+                or callback_record_compact.count('tx.put("saml_source_replays",&key,&expiry.saturating_add(30))?') != 1
+                or callback_record_compact.count('tx.put("source_returns",&token_digest,&digest(state))?') != 1
+                or callback_record_compact.count('tx.put("source_logins",&digest(state),&current)?') != 1
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_record\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: final SAML callback record belongs in assembly")
+            if (
+                rust_function_body(saml_source, "take_browser_return") is not None
+                or re.search(r"\benum\s+BrowserReturn\b", saml_source)
+                or return_adapter is None
+                or not (0 <= adapter_compact.find("returned.filter(|value|value.len()<=256)")
+                        < adapter_compact.find("started.filter(|value|value.len()<=256)")
+                        < adapter_compact.find("letreturned_digest=digest(returned)")
+                        < adapter_compact.find("self.saml_source_browser_return_claim(id,started.as_deref(),&returned_digest)?")
+                        < adapter_compact.find("BrowserReturn::Confirmed=>Ok(())")
+                        < adapter_compact.find("BrowserReturn::Burned=>Err(super::browser_mismatch())")
+                        < adapter_compact.find("BrowserReturn::Retired=>Err(Error::bad("))
+                or return_claim is None
+                or not (0 <= claim_compact.find('tx.get::<String>("source_returns",returned_digest)?')
+                        < claim_compact.find('tx.get::<Login>("source_logins",&login_key)?')
+                        < claim_compact.find("ifpending.source!=id")
+                        < claim_compact.find("crypto::constant_eq(bound,returned_digest)")
+                        < claim_compact.find("pending.expires_at<=now()")
+                        < claim_compact.find('tx.get::<Source>("sources",id)?')
+                        < claim_compact.find("presented_source_retired(source.as_ref(),&pending.fingerprint)")
+                        < claim_compact.find("browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(\"\"),started)")
+                        < claim_compact.find("pending.browser_return_confirmed=true")
+                        < claim_compact.rfind("Ok(BrowserReturn::Confirmed)"))
+                or claim_compact.count('tx.delete("source_returns",returned_digest)?') != 3
+                or claim_compact.count('super::clear_browser_return(tx,&pending)?') != 3
+                or claim_compact.count('audit(tx,"upstream","source.login_failed",id)?') != 2
+                or return_write is None
+                or "self.store.write(|tx|take_browser_return(tx,id,started,returned_digest))" not in return_write_compact
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_return\s*;", assembly_root)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_return::BrowserReturn\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: one-use browser return claim belongs in assembly")
+        if path == SRC / "source.rs":
+            source_protocol = masked_rust_source(path.read_text())
+            source_catalog = (SRC / "assembly/source_catalog.rs").read_text()
+            source_identity = (SRC / "assembly/source_identity.rs").read_text()
+            identity_read = rust_function_body(source_identity, "validate_identity")
+            identity_compact = re.sub(r"\s+", "", identity_read or "")
+            core_identity = rust_function_body(
+                (SRC / "core.rs").read_text(), "identity_user_unbound"
+            )
+            core_identity_compact = re.sub(r"\s+", "", core_identity or "")
+            claims_identity = rust_function_body(
+                (SRC / "assembly/claims.rs").read_text(), "verified_upstream_source"
+            )
+            claims_identity_compact = re.sub(r"\s+", "", claims_identity or "")
+            if (
+                rust_function_body(source_protocol, "validate_identity") is not None
+                or not re.search(r"\bpub\s+use\s+crate::assembly::source_validate_identity\s+as\s+validate_identity\s*;", path.read_text())
+                or not re.search(r"\bpub\s+use\s+source_identity::validate_identity\s+as\s+source_validate_identity\s*;", (SRC / "assembly.rs").read_text())
+                or identity_read is None
+                or not (0 <= identity_compact.find('context.id.starts_with("ldap/")')
+                        < identity_compact.find("enabled(tx,&context.id).map_err(|_|Error::unauthorized())?")
+                        < identity_compact.find('tx.get::<Link>("source_links",&context.link)?')
+                        < identity_compact.find("context.fingerprint!=source.fingerprint()?")
+                        < identity_compact.find("link.user_id!=identity.user_id")
+                        < identity_compact.find("link.source!=context.id")
+                        < identity_compact.find("source.saml.is_some()")
+                        < identity_compact.find('tx.get::<saml::UpstreamSession>("saml_source_sessions",&identity.session_id)?')
+                        < identity_compact.find("s.expires_at.is_some_and(|at|at<=now())")
+                        < identity_compact.find("!source.allow_admin_login")
+                        < identity_compact.find('tx.get::<User>("users",&identity.user_id)?')
+                        < identity_compact.find("u.admin")
+                        < identity_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", identity_read)
+                or core_identity is None
+                or not (0 <= core_identity_compact.find("self.radius_eap_validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::mtls::validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::directory::validate_identity(self,tx,identity)?")
+                        < core_identity_compact.find("crate::assembly::source_validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::identity::validate_user(tx,identity)"))
+                or claims_identity is None
+                or not (0 <= claims_identity_compact.find("crate::assembly::source_validate_identity(self,identity)?")
+                        < claims_identity_compact.find("Ok(identity.source.as_ref()"))
+            ):
+                errors.append("src/source.rs: source identity trust reads belong in assembly")
+            if rust_function_body(source_protocol, "source_list") is not None:
+                errors.append("src/source.rs: authorized source catalog read belongs in assembly")
+            require_source_write = rust_function_body(path.read_text(), "require_write")
+            write_compact = re.sub(r"\s+", "", require_source_write or "")
+            write_prior = rust_function_body(source_catalog, "source_write_prior")
+            prior_compact = re.sub(r"\s+", "", write_prior or "")
+            require_group = rust_function_body(source_catalog, "require_source_group")
+            group_compact = re.sub(r"\s+", "", require_group or "")
+            source_links_check = rust_function_body(source_catalog, "source_has_links")
+            links_compact = re.sub(r"\s+", "", source_links_check or "")
+            if (
+                require_source_write is None
+                or not (0 <= write_compact.find("self.validate()?")
+                        < write_compact.find('actor.require("source.write",&format!("source/{}",self.id))?')
+                        < write_compact.find("settings.key(tx)?")
+                        < write_compact.find("crate::assembly::source_write_prior(tx,self)?")
+                        < write_compact.find("self.allow_admin_login||prior.admin_login_was_allowed")
+                        < write_compact.find('actor.require("user.write","*")?')
+                        < write_compact.find("validate_name(group)?")
+                        < write_compact.find('actor.require("group.members",&format!("group/{group}"))?')
+                        < write_compact.find("crate::assembly::require_source_group(tx,group)?")
+                        < write_compact.find("ifprior.identity_binding_changed&&crate::assembly::source_has_links(tx,&self.id)?")
+                        < write_compact.find('Error::conflict("Issuer,upstreamclientIDandOAuthidentitymappingareimmutablewhileaccountsarelinked"'))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:Source|Group)>\s*\(', require_source_write)
+                or re.search(r'\btx\s*\.\s*list\s*::\s*<Link>\s*\(', require_source_write)
+                or write_prior is None
+                or not (0 <= prior_compact.find('tx.get::<Source>("sources",&source.id)?')
+                        < prior_compact.find("stored.allow_admin_login")
+                        < prior_compact.find("stored.issuer!=source.issuer")
+                        < prior_compact.find("stored.client_id!=source.client_id")
+                        < prior_compact.find("stored.oauth_profile!=source.oauth_profile")
+                        < prior_compact.find("settings.name_id_format"))
+                or require_group is None
+                or not (0 <= group_compact.find('tx.get::<Group>("groups",group)?')
+                        < group_compact.find('Error::bad("Sourcereferencesanunknowngroup")')
+                        < group_compact.rfind("Ok(())"))
+                or source_links_check is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_has_links\s*\([^)]*\)\s*->\s*Result<bool>", source_catalog)
+                or not (0 <= links_compact.find('tx.list::<Link>("source_links")?')
+                        < links_compact.find(".any(|(_,link)|link.source==source_id)"))
+                or any(field in links_compact for field in ("link.subject", "link.issuer", "json!"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", write_prior + require_group)
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", source_links_check or "")
+                or "source_write_prior" not in (SRC / "assembly.rs").read_text()
+                or "require_source_group" not in (SRC / "assembly.rs").read_text()
+                or "source_has_links" not in (SRC / "assembly.rs").read_text()
+            ):
+                errors.append("src/source.rs: source write prior, group and linked-account reads belong in assembly")
+            source_put = rust_function_body(
+                masked_rust_source(source_catalog), "source_put"
+            )
+            source_put_raw = rust_function_body(source_catalog, "source_put")
+            if (
+                rust_function_body(source_protocol, "source_put") is not None
+                or re.search(r"\bself\.mutation\s*\(", source_protocol)
+                or source_put is None
+                or not (0 <= source_put.find("Zeroizing::new")
+                        < source_put.find("self.mutation")
+                        < source_put.find("self.principal")
+                        < source_put.find("management::write_source")
+                        < source_put.find("Ok(json!(input.source))"))
+                or source_put_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_put\s*\(", source_catalog)
+                or "SourceWrite::Direct" not in source_put_raw
+                or "secret.as_deref().map(String::as_str)" not in source_put_raw
+                or "&input.source" not in source_put_raw
+            ):
+                errors.append("src/source.rs: source configuration mutation belongs in assembly")
+            source_start = rust_function_body(
+                masked_rust_source(source_catalog), "source_start"
+            )
+            if (
+                rust_function_body(source_protocol, "source_start") is not None
+                or source_start is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_start)
+                or not re.search(
+                    r"self\.source_start_in\s*\(\s*tx\s*,\s*id\s*,\s*&input\s*,\s*token\s*,\s*None\s*\)",
+                    source_start,
+                )
+                or not re.search(r"\.map\s*\(\s*\|started\|\s*started\.body\s*\)", source_start)
+                or rust_function_body(source_protocol, "source_start_in") is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_start_in\s*\(", source_protocol)
+            ):
+                errors.append("src/source.rs: source start writer belongs in assembly")
+            source_start_for = rust_function_body(path.read_text(), "source_start_for")
+            source_start_for_compact = re.sub(r"\s+", "", source_start_for or "")
+            start_authentication = rust_function_body(
+                source_catalog, "validate_source_start_authentication"
+            )
+            auth_compact = re.sub(r"\s+", "", start_authentication or "")
+            if (
+                source_start_for is None
+                or not (0 <= source_start_for_compact.find("letsource=enabled(tx,id)?")
+                        < source_start_for_compact.find("ifsource.oauth_profile.is_some()&&input.authentication_transaction.is_some()")
+                        < source_start_for_compact.find("lettarget=ifinput.link")
+                        < source_start_for_compact.find("ifletSome(challenge)=&input.authentication_transaction")
+                        < source_start_for_compact.find("crate::assembly::validate_source_start_authentication(tx,challenge)?")
+                        < source_start_for_compact.find("letstate=crypto::random_token"))
+                or re.search(r'\btx\s*\.\s*(?:get|list|query|scan|count|find)\s*::\s*<', path.read_text())
+                or start_authentication is None
+                or not (0 <= auth_compact.find('tx.get::<AuthenticationTransaction>("authentication",&digest(challenge))?')
+                        < auth_compact.find("record.expires_at>now()&&record.authenticated_session.is_none()")
+                        < auth_compact.find('Error::bad("Authenticationtransactionexpiredorused")')
+                        < auth_compact.find("crate::oidc::reject_embedded_stage(&record)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", start_authentication)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_catalog::\{[^}]*validate_source_start_authentication", (SRC / "assembly.rs").read_text(), re.S)
+            ):
+                errors.append("src/source.rs: request-bound authentication read belongs in assembly")
+            persist_start = rust_function_body(source_catalog, "persist_source_start")
+            persist_start_compact = re.sub(r"\s+", "", persist_start or "")
+            start_call = "self.persist_source_start(tx,&state,&pending)?"
+            first_start = source_start_for_compact.find(start_call)
+            second_start = source_start_for_compact.find(start_call, first_start + 1)
+            if (
+                source_start_for is None
+                or source_start_for_compact.count(start_call) != 2
+                or not (0 <= source_start_for_compact.find(
+                    "settings.authorization(tx,self,&source,&pending,&state)?"
+                ) < first_start < source_start_for_compact.find("letmutauthorize=")
+                    < source_start_for_compact.find("ifsource.oauth_profile.is_none()")
+                    < second_start)
+                or re.search(r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"source_(?:logins|polls)"', source_start_for)
+                or persist_start is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_start\s*\(", source_catalog)
+                or not (0 <= persist_start_compact.find('tx.put("source_logins",&digest(state),pending)?')
+                        < persist_start_compact.find('tx.put("source_polls",&pending.poll_hash,&digest(state))?')
+                        < persist_start_compact.find("Ok(())"))
+            ):
+                errors.append("src/source.rs: source start one-use reservation belongs in assembly")
+            source_unlink = rust_function_body(
+                masked_rust_source(source_catalog), "source_unlink"
+            )
+            source_unlink_raw = rust_function_body(source_catalog, "source_unlink")
+            if (
+                rust_function_body(source_protocol, "source_unlink") is not None
+                or source_unlink is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_unlink)
+                or not (0 <= source_unlink.find("self.session")
+                        < source_unlink.find("management::unlink_source"))
+                or source_unlink_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_unlink\s*\(", source_catalog)
+                or not re.search(r"self\.session\s*\(\s*tx\s*,\s*token\s*\)\s*\?", source_unlink_raw)
+                or not re.search(
+                    r"management::unlink_source\s*\(\s*tx\s*,\s*&user\s*,\s*&session\s*,\s*link_id\s*\)",
+                    source_unlink_raw,
+                )
+            ):
+                errors.append("src/source.rs: session-bound source unlink writer belongs in assembly")
+            source_links = rust_function_body(
+                masked_rust_source(source_catalog), "source_links"
+            )
+            source_links_raw = rust_function_body(source_catalog, "source_links")
+            if (
+                rust_function_body(source_protocol, "source_links") is not None
+                or re.search(r"\bself\s*\.\s*store\s*\.\s*read\s*\(", source_protocol)
+                or source_links is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", source_links)
+                or not (0 <= source_links.find("self.session")
+                        < source_links.find("source_links_of"))
+                or source_links_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_links\s*\(", source_catalog)
+                or not re.search(r"self\.session\s*\(\s*tx\s*,\s*token\s*\)\s*\?", source_links_raw)
+                or not re.search(r"source_links_of\s*\(\s*tx\s*,\s*&user\.id\s*\)\s*\?", source_links_raw)
+            ):
+                errors.append("src/source.rs: session-scoped source link read belongs in assembly")
+            link_projection = rust_function_body(source_catalog, "source_links_of")
+            link_projection_compact = re.sub(r"\s+", "", link_projection or "")
+            portal_links = rust_function_body(
+                (SRC / "assembly/portal_sources.rs").read_text(), "portal_source_links"
+            )
+            portal_links_compact = re.sub(r"\s+", "", portal_links or "")
+            if (
+                rust_function_body(source_protocol, "links_of") is not None
+                or link_projection is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_links_of\s*\(", source_catalog)
+                or not (0 <= link_projection_compact.find('tx.list::<Link>("source_links")?')
+                        < link_projection_compact.find(".filter(|(_,l)|l.user_id==user_id)")
+                        < link_projection_compact.find('json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject})')
+                        < link_projection_compact.find(".collect())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(|\.sort", link_projection)
+                or portal_links is None
+                or not (0 <= portal_links_compact.find("self.store.read(|tx|")
+                        < portal_links_compact.find("self.portal_session(tx,sso)?")
+                        < portal_links_compact.find("browser_sources(tx)?")
+                        < portal_links_compact.find('tx.list::<Source>("sources")?')
+                        < portal_links_compact.find("super::source_catalog::source_links_of(tx,&user.id)?")
+                        < portal_links_compact.find('link["name"]=json!(name.unwrap_or_else('))
+            ):
+                errors.append("src/source.rs: source link storage projection belongs in assembly")
+            export_all = rust_function_body(source_catalog, "export_all_links")
+            export_all_compact = re.sub(r"\s+", "", export_all or "")
+            export_scoped = rust_function_body(source_catalog, "export_links")
+            export_scoped_compact = re.sub(r"\s+", "", export_scoped or "")
+            source_export_all = rust_function_body(path.read_text(), "export_all_links")
+            source_export_scoped = rust_function_body(path.read_text(), "export_links")
+            assembly_exports = re.sub(r"\s+", "", (SRC / "assembly.rs").read_text())
+            state_source = (SRC / "state.rs").read_text()
+            state_export = rust_function_body(state_source, "export_state")
+            state_export_compact = re.sub(r"\s+", "", state_export or "")
+            live_target = rust_function_body(state_source, "live_target_identity")
+            if (
+                re.sub(r"\s+", "", source_export_all or "") != "crate::assembly::source_export_all_links(tx)"
+                or re.sub(r"\s+", "", source_export_scoped or "") != "crate::assembly::source_export_links(tx,actor)"
+                or "export_all_linksassource_export_all_links" not in assembly_exports
+                or "export_linksassource_export_links" not in assembly_exports
+                or export_all is None
+                or not (0 <= export_all_compact.find('tx.list::<Link>("source_links")?')
+                        < export_all_compact.find('tx.get::<User>("users",&link.user_id)?')
+                        < export_all_compact.find('Error::internal("Linkedusermissing")')
+                        < export_all_compact.find("output.push(LinkSpec{")
+                        < export_all_compact.find("source:link.source")
+                        < export_all_compact.find("subject:link.subject")
+                        < export_all_compact.find("username:user.username")
+                        < export_all_compact.find("issuer:Some(link.issuer)")
+                        < export_all_compact.rfind("Ok(output)"))
+                or export_scoped is None
+                or not (0 <= export_scoped_compact.find("export_all_links(tx)?")
+                        < export_scoped_compact.find('actor.allows("source.read",&format!("source/{}",link.source))')
+                        < export_scoped_compact.find('actor.allows("user.read",&format!("user/{}",link.username))')
+                        < export_scoped_compact.find(".collect())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(|\.sort", export_all + export_scoped)
+                or state_export is None
+                or not (0 <= state_export_compact.find("self.store.read(|tx|")
+                        < state_export_compact.find("self.principal(tx,token)?")
+                        < state_export_compact.find("crate::source::export_links(tx,&actor)?"))
+                or live_target is None
+                or "crate::source::export_all_links(tx)?" not in live_target
+            ):
+                errors.append("src/source.rs: source link export reads and scope filter belong in assembly")
+            protocol_enabled = rust_function_body(path.read_text(), "enabled")
+            catalog_enabled = rust_function_body(source_catalog, "enabled_source")
+            catalog_enabled_compact = re.sub(r"\s+", "", catalog_enabled or "")
+            if (
+                re.sub(r"\s+", "", protocol_enabled or "")
+                != "crate::assembly::source_enabled(tx,id)"
+                or "enabled_sourceassource_enabled" not in assembly_exports
+                or catalog_enabled is None
+                or not (0 <= catalog_enabled_compact.find('tx.get::<Source>("sources",id)?')
+                        < catalog_enabled_compact.find(".filter(|source|source.enabled)")
+                        < catalog_enabled_compact.find('Error::missing("Enabledsourcenotfound")'))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", catalog_enabled)
+            ):
+                errors.append("src/source.rs: enabled source storage lookup belongs in assembly")
+            source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
+            pending_stage = rust_function_body(source_stage_assembly, "enforce_pending_stage")
+            pending_compact = re.sub(r"\s+", "", pending_stage or "")
+            pending_caller = rust_function_body(
+                (SRC / "assembly/oidc.rs").read_text(), "authorize_session_proof_inner"
+            )
+            caller_compact = re.sub(r"\s+", "", pending_caller or "")
+            suspension = rust_function_body(path.read_text(), "suspension_hash")
+            suspension_compact = re.sub(r"\s+", "", suspension or "")
+            if (
+                rust_function_body(source_protocol, "enforce_pending_stage") is not None
+                or pending_stage is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+enforce_pending_stage\s*\(", source_stage_assembly)
+                or not (0 <= pending_compact.find("letkey=suspension_hash(request)?")
+                        < pending_compact.find('tx.get::<String>("source_stage_requests",&key)?')
+                        < pending_compact.find('tx.get::<SourceStage>("source_stages",&id)?')
+                        < pending_compact.find("stage.expires_at<=now()")
+                        < pending_compact.find("stage.suspension_hash!=key")
+                        < pending_compact.find("stage.request.client_id!=request.client_id")
+                        < pending_compact.find("ifstage.cancelled")
+                        < pending_compact.find("if!stage.used")
+                        < pending_compact.find("lethash=request.request_hash()?")
+                        < pending_compact.find("request.transaction_id.as_deref()")
+                        < pending_compact.find("!crypto::constant_eq(token,&stage.transaction)")
+                        < pending_compact.find('tx.get::<AuthenticationTransaction>("authentication",&digest(token))?')
+                        < pending_compact.find("record.expires_at>now()")
+                        < pending_compact.find("record.source_stage.as_deref()==Some(stage.id.as_str())")
+                        < pending_compact.find("record.request_hash==hash")
+                        < pending_compact.find("record.authenticated_session.as_deref()==Some(session.id.as_str())")
+                        < pending_compact.rfind("Ok(())"))
+                or pending_compact.count("returnOk(());") != 3
+                or pending_compact.count('"login_required","Completetheembeddedsourcestage"') != 4
+                or '"access_denied","Thesourcestagewascancelled"' not in pending_compact
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", pending_stage)
+                or suspension is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+suspension_hash\s*\(", path.read_text())
+                or not (0 <= suspension_compact.find("request.decision=None")
+                        < suspension_compact.find("request.transaction_id=None")
+                        < suspension_compact.find("request.request_binding=None")
+                        < suspension_compact.find("request.request_hash()"))
+                or pending_caller is None
+                or "crate::source::enforce_pending_stage" in pending_caller
+                or not (0 <= caller_compact.find("ifsession.expires_at<=now()||session.revoked")
+                        < caller_compact.find("mark_direct_decision(")
+                        < caller_compact.find("super::source_stage::enforce_pending_stage(tx,&request,&session)?")
+                        < caller_compact.find('ifrequest.has_prompt("none")'))
+            ):
+                errors.append("src/source.rs: pending source-stage storage reads belong in assembly")
+            stage_creation = rust_function_body(source_protocol, "begin_source_stage")
+            stage_creation_compact = re.sub(r"\s+", "", stage_creation or "")
+            stage_creation_raw = rust_function_body(path.read_text(), "begin_source_stage")
+            stage_auth_write = rust_function_body(
+                source_stage_assembly, "persist_source_stage_authentication"
+            )
+            stage_binding_write = rust_function_body(
+                source_stage_assembly, "persist_source_stage_binding"
+            )
+            stage_auth_compact = re.sub(r"\s+", "", stage_auth_write or "")
+            stage_binding_compact = re.sub(r"\s+", "", stage_binding_write or "")
+            stage_start_login = rust_function_body(source_stage_assembly, "verify_stage_start_login")
+            stage_start_login_compact = re.sub(r"\s+", "", stage_start_login or "")
+            if (
+                stage_creation is None
+                or stage_creation_raw is None
+                or not (0 <= stage_creation_compact.find("self.source_start_in(")
+                        < stage_creation_compact.find("self.persist_source_stage_authentication(")
+                        < stage_creation_compact.find("crate::assembly::verify_stage_start_login(tx,&stage)?")
+                        < stage_creation_compact.find("self.persist_source_stage_binding(")
+                        < stage_creation_compact.find("audit("))
+                or "Some(&stage_id)" not in stage_creation
+                or "source_stage:Some(stage_id.clone())" not in stage_creation_compact
+                or "self.persist_source_stage_authentication(tx,&transaction,&AuthenticationTransaction{" not in stage_creation_compact
+                or "self.persist_source_stage_binding(tx,&stage,&suspension)?" not in stage_creation_compact
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<Login>\s*\(\s*"source_logins"', stage_creation_raw)
+                or re.search(
+                    r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"(?:authentication|source_stages|source_stage_requests)"',
+                    stage_creation_raw,
+                )
+                or stage_start_login is None
+                or not (0 <= stage_start_login_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < stage_start_login_compact.find('Error::internal("sourceloginmissing")')
+                        < stage_start_login_compact.find("login.nonce!=stage.nonce")
+                        < stage_start_login_compact.find("login.stage.as_deref()!=Some(stage.id.as_str())")
+                        < stage_start_login_compact.find("login.source!=stage.source_id")
+                        < stage_start_login_compact.find("login.expires_at>now()+600")
+                        < stage_start_login_compact.find('Error::internal("sourcestagebindingfailed")')
+                        < stage_start_login_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_start_login)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::verify_stage_start_login\s*;", (SRC / "assembly.rs").read_text())
+                or stage_auth_write is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_stage_authentication\s*\(", source_stage_assembly)
+                or 'tx.put("authentication",&digest(transaction),pending)' not in stage_auth_compact
+                or stage_binding_write is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_stage_binding\s*\(", source_stage_assembly)
+                or not (0 <= stage_binding_compact.find('tx.put("source_stages",&stage.id,stage)?')
+                        < stage_binding_compact.find('tx.put("source_stage_requests",suspension,&stage.id)'))
+            ):
+                errors.append("src/source.rs: source stage creation one-use writes belong in assembly")
+            stage_available = rust_function_body(source_stage_assembly, "ensure_stage_request_available")
+            stage_available_compact = re.sub(r"\s+", "", stage_available or "")
+            if (
+                not (0 <= stage_creation_compact.find("letrequest_hash=")
+                        < stage_creation_compact.find("letsuspension=")
+                        < stage_creation_compact.find("crate::assembly::ensure_stage_request_available(tx,&suspension)?")
+                        < stage_creation_compact.find("letstage_id=")
+                        < stage_creation_compact.find("self.source_start_in("))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:String|SourceStage)>\s*\(\s*"(?:source_stage_requests|source_stages)"', stage_creation_raw)
+                or stage_available is None
+                or not (0 <= stage_available_compact.find('tx.get::<String>("source_stage_requests",suspension)?')
+                        < stage_available_compact.find('tx.get::<SourceStage>("source_stages",&existing)?')
+                        < stage_available_compact.find("!stage.used&&!stage.cancelled&&stage.expires_at>now()")
+                        < stage_available_compact.find('Error::conflict("Anembeddedsourcestageisalreadypendingforthisauthorizationrequest"')
+                        < stage_available_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_available)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::ensure_stage_request_available\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: active source-stage request reads belong in assembly")
+            source_stage_cancel = rust_function_body(
+                masked_rust_source(source_stage_assembly), "source_stage_cancel"
+            )
+            source_stage_cancel_raw = rust_function_body(
+                source_stage_assembly, "source_stage_cancel"
+            )
+            if (
+                rust_function_body(source_protocol, "source_stage_cancel") is not None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+cancel_stage\s*\(", source_protocol)
+                or source_stage_cancel is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_stage_cancel)
+                or source_stage_cancel_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_stage_cancel\s*\(", source_stage_assembly)
+                or not re.search(
+                    r"self\.store\s*\.\s*write\s*\(\s*\|tx\|\s*self\.cancel_stage\s*\(\s*tx\s*,\s*stage_id\s*,\s*authorization_id\s*\)\s*\)",
+                    source_stage_cancel_raw,
+                )
+                or not re.search(r"\bmod\s+source_stage\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: one-use source stage cancellation writer belongs in assembly")
+            source_stage_resume = rust_function_body(
+                masked_rust_source(source_stage_assembly), "source_stage_resume"
+            )
+            source_stage_resume_raw = rust_function_body(
+                source_stage_assembly, "source_stage_resume"
+            )
+            if (
+                rust_function_body(source_protocol, "source_stage_resume") is not None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+resume_stage\s*\(", source_protocol)
+                or source_stage_resume is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_stage_resume)
+                or source_stage_resume_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_stage_resume\s*\(", source_stage_assembly)
+                or not re.search(
+                    r"self\.store\s*\.\s*write\s*\(\s*\|tx\|\s*self\.resume_stage\s*\(\s*tx\s*,\s*stage_id\s*,\s*authorization_id\s*,\s*otp\.as_deref\s*\(\s*\)\s*\)\s*\)\s*\?",
+                    source_stage_resume_raw,
+                )
+            ):
+                errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
+            stage_resume = rust_function_body(source_protocol, "resume_stage")
+            stage_resume_compact = re.sub(r"\s+", "", stage_resume or "")
+            stage_resume_raw = rust_function_body(path.read_text(), "resume_stage")
+            stage_login_read = rust_function_body(source_stage_assembly, "stage_resume_login")
+            stage_login_compact = re.sub(r"\s+", "", stage_login_read or "")
+            stage_linked_read = rust_function_body(source_stage_assembly, "stage_linked_user")
+            stage_linked_compact = re.sub(r"\s+", "", stage_linked_read or "")
+            session_read = rust_function_body(source_stage_assembly, "stage_resume_session")
+            session_read_compact = re.sub(r"\s+", "", session_read or "")
+            discard_bearer = rust_function_body(source_stage_assembly, "discard_stage_resume_bearer")
+            persist_resume = rust_function_body(source_stage_assembly, "persist_stage_resume_use")
+            if (
+                stage_resume is None
+                or stage_resume_raw is None
+                or not (0 <= stage_resume_compact.find("stage.browser_id!=stage.request.request_binding")
+                        < stage_resume_compact.find("crate::assembly::stage_resume_login(tx,&stage)?")
+                        < stage_resume_compact.find("letSome(identity)=pending.result.clone()"))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<Login>\s*\(\s*"source_logins"', stage_resume_raw)
+                or stage_login_read is None
+                or not (0 <= stage_login_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < stage_login_compact.find("login.stage.as_deref()==Some(stage.id.as_str())")
+                        < stage_login_compact.find("login.nonce==stage.nonce")
+                        < stage_login_compact.find("login.source==stage.source_id")
+                        < stage_login_compact.find("login.expires_at>now()")
+                        < stage_login_compact.find("!login.failed")
+                        < stage_login_compact.find('Error::bad("Sourcestageloginexpiredorisnotbound")'))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_login_read)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::stage_resume_login\s*;", (SRC / "assembly.rs").read_text())
+                or not (0 <= stage_resume_compact.find("letsource=enabled(tx,&stage.source_id)?")
+                        < stage_resume_compact.find("crate::assembly::stage_linked_user(tx,&link_key(&source.id,&source.issuer,&identity.subject)")
+                        < stage_resume_compact.find("letmismatch=")
+                        < stage_resume_compact.find("letunbound=")
+                        < stage_resume_compact.find("ifmismatch||unbound")
+                        < stage_resume_compact.find("crate::oidc::get_client(tx,&stage.request.client_id)?"))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:Link|User)>\s*\(\s*"(?:source_links|users)"', stage_resume_raw)
+                or stage_linked_read is None
+                or not (0 <= stage_linked_compact.find('tx.get::<Link>("source_links",key)?')
+                        < stage_linked_compact.find('tx.get::<User>("users",&link.user_id)')
+                        < stage_linked_compact.find(".transpose()?")
+                        < stage_linked_compact.find(".flatten())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_linked_read)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::stage_linked_user\s*;", (SRC / "assembly.rs").read_text())
+                or not (0 <= stage_resume_compact.find("self.complete_source_login(")
+                        < stage_resume_compact.find("crate::assembly::stage_resume_session(tx,token)?")
+                        < stage_resume_compact.find("self.discard_stage_resume_bearer(tx,token)?")
+                        < stage_resume_compact.find("request.decision=Some(")
+                        < stage_resume_compact.find("stage.used=true")
+                        < stage_resume_compact.find("self.persist_stage_resume_use(tx,&stage)?")
+                        < stage_resume_compact.find("self.authorize_session("))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:String|Session)>\s*\(\s*"(?:session_tokens|sessions)"', stage_resume_raw)
+                or re.search(r'\btx\s*\.\s*delete\s*\(\s*"session_tokens"', stage_resume_raw)
+                or re.search(r'\btx\s*\.\s*put\s*\(\s*"source_stages"', stage_resume_raw)
+                or session_read is None
+                or not (0 <= session_read_compact.find('tx.get::<String>("session_tokens",&digest(token))?')
+                        < session_read_compact.find('Error::internal("missingsession")')
+                        < session_read_compact.find('tx.get::<Session>("sessions",&sid)?')
+                        < session_read_compact.rfind('Error::internal("missingsession")'))
+                or session_read_compact.count('Error::internal("missingsession")') != 2
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", session_read)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::stage_resume_session\s*;", (SRC / "assembly.rs").read_text())
+                or discard_bearer is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+discard_stage_resume_bearer\s*\(", source_stage_assembly)
+                or 'tx.delete("session_tokens",&digest(token))' not in re.sub(r"\s+", "", discard_bearer)
+                or persist_resume is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_stage_resume_use\s*\(", source_stage_assembly)
+                or 'tx.put("source_stages",&stage.id,stage)' not in re.sub(r"\s+", "", persist_resume)
+            ):
+                errors.append("src/source.rs: source stage resume bearer and one-use writes belong in assembly")
+            stage_loader = rust_function_body(source_stage_assembly, "load_source_stage")
+            stage_loader_compact = re.sub(r"\s+", "", stage_loader or "")
+            cancel_stage = rust_function_body(path.read_text(), "cancel_stage")
+            cancel_stage_compact = re.sub(r"\s+", "", cancel_stage or "")
+            load_call = "crate::assembly::load_source_stage(tx,stage_id,authorization_id)?"
+            if (
+                rust_function_body(path.read_text(), "load_stage") is not None
+                or not (0 <= stage_resume_compact.find(load_call)
+                        < stage_resume_compact.find("ifstage.used||stage.cancelled"))
+                or cancel_stage is None
+                or not (0 <= cancel_stage_compact.find(load_call)
+                        < cancel_stage_compact.find("ifstage.used||stage.cancelled"))
+                or stage_loader is None
+                or not (0 <= stage_loader_compact.find('tx.get::<SourceStage>("source_stages",stage_id)?')
+                        < stage_loader_compact.find('Error::bad("Sourcestagenotfound")')
+                        < stage_loader_compact.find("!crypto::constant_eq(&stage.id,stage_id)")
+                        < stage_loader_compact.find("!crypto::constant_eq(&stage.authorization_id,authorization_id)")
+                        < stage_loader_compact.find("Error::forbidden()")
+                        < stage_loader_compact.rfind("Ok(stage)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_loader)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::load_source_stage\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: source stage ownership read belongs in assembly")
+            callback_stage = rust_function_body(source_stage_assembly, "callback_source_stage")
+            callback_stage_compact = re.sub(r"\s+", "", callback_stage or "")
+            callback_body = rust_function_body(path.read_text(), "callback_body")
+            callback_body_compact = re.sub(r"\s+", "", callback_body or "")
+            if (
+                callback_body is None
+                or not (0 <= callback_body_compact.find('"completed":!pending.failed')
+                        < callback_body_compact.find("crate::assembly::callback_source_stage(tx,pending,login_key)?")
+                        < callback_body_compact.find('body["source_stage"]=stage')
+                        < callback_body_compact.rfind("Ok(body)"))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<SourceStage>\s*\(\s*"source_stages"', callback_body)
+                or callback_stage is None
+                or not (0 <= callback_stage_compact.find("ifletSome(id)=&pending.stage")
+                        < callback_stage_compact.find('tx.get::<SourceStage>("source_stages",id)?')
+                        < callback_stage_compact.find("!stage.used")
+                        < callback_stage_compact.find("!stage.cancelled")
+                        < callback_stage_compact.find("stage.expires_at>now()")
+                        < callback_stage_compact.find("stage.login_key==login_key")
+                        < callback_stage_compact.find("stage.nonce==pending.nonce")
+                        < callback_stage_compact.find("stage.source_id==pending.source")
+                        < callback_stage_compact.find('"stage_id":stage.id')
+                        < callback_stage_compact.find('"authorization_id":stage.authorization_id')
+                        < callback_stage_compact.rfind("Ok(None)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", callback_stage)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::callback_source_stage\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: source callback stage projection belongs in assembly")
+            stage_rejection = rust_function_body(source_protocol, "reject_stage")
+            stage_rejection_compact = re.sub(r"\s+", "", stage_rejection or "")
+            stage_rejection_raw = rust_function_body(path.read_text(), "reject_stage")
+            persist_rejection = rust_function_body(source_stage_assembly, "persist_stage_rejection")
+            persist_rejection_compact = re.sub(r"\s+", "", persist_rejection or "")
+            if (
+                stage_rejection is None
+                or stage_rejection_raw is None
+                or not (0 <= stage_rejection_compact.find("stage.used=true")
+                        < stage_rejection_compact.find("stage.cancelled=true")
+                        < stage_rejection_compact.find("self.persist_stage_rejection(tx,stage)?")
+                        < stage_rejection_compact.find("self.stage_denial(tx,stage,error,description)?"))
+                or re.search(
+                    r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"(?:source_stages|source_polls|source_logins)"',
+                    stage_rejection_raw,
+                )
+                or persist_rejection is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_stage_rejection\s*\(", source_stage_assembly)
+                or not (0 <= persist_rejection_compact.find('tx.put("source_stages",&stage.id,stage)?')
+                        < persist_rejection_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < persist_rejection_compact.find("pending.failed=true")
+                        < persist_rejection_compact.find('tx.delete("source_polls",&pending.poll_hash)?')
+                        < persist_rejection_compact.find('tx.put("source_logins",&stage.login_key,&pending)?')
+                        < persist_rejection_compact.find("Ok(())"))
+            ):
+                errors.append("src/source.rs: terminal source stage rejection writes belong in assembly")
+            source_cleanup = rust_function_body(path.read_text(), "cleanup")
+            source_cleanup_compact = re.sub(r"\s+", "", source_cleanup or "")
+            expiry_cleanup = rust_function_body(source_stage_assembly, "cleanup_expired_source_state")
+            expiry_cleanup_compact = re.sub(r"\s+", "", expiry_cleanup or "")
+            if (
+                source_cleanup_compact != "#[cfg(feature=\"platform\")]crate::assembly::cleanup_source_saml(tx,at)?;#[cfg(not(feature=\"platform\"))]saml::cleanup(tx,at)?;crate::assembly::cleanup_expired_source_state(tx,at)"
+                or not re.search(r"\bpub\s+fn\s+cleanup\s*\(\s*tx\s*:\s*&Tx", path.read_text())
+                or expiry_cleanup is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+cleanup_expired_source_state\s*\(", source_stage_assembly)
+                or not (0 <= expiry_cleanup_compact.find('tx.maintenance_page::<Login>("source_logins")?')
+                        < expiry_cleanup_compact.find("pending.expires_at<at")
+                        < expiry_cleanup_compact.find("super::clear_browser_return(tx,&pending)?")
+                        < expiry_cleanup_compact.find('tx.delete("source_polls",&pending.poll_hash)?')
+                        < expiry_cleanup_compact.find('tx.delete("source_logins",&id)?')
+                        < expiry_cleanup_compact.find('tx.maintenance_page::<SourceStage>("source_stages")?')
+                        < expiry_cleanup_compact.find("stage.expires_at<at")
+                        < expiry_cleanup_compact.find('tx.get::<String>("source_stage_requests",&stage.suspension_hash)?')
+                        < expiry_cleanup_compact.find("==Some(id.as_str())")
+                        < expiry_cleanup_compact.find('tx.delete("source_stage_requests",&stage.suspension_hash)?')
+                        < expiry_cleanup_compact.find('tx.delete("source_stages",&id)?')
+                        < expiry_cleanup_compact.find("Ok(())"))
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::cleanup_expired_source_state\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: expiry cleanup storage belongs in assembly")
+            source_finish_assembly = (SRC / "assembly/source_finish.rs").read_text()
+            source_finish = rust_function_body(source_finish_assembly, "source_finish")
+            source_finish_compact = re.sub(r"\s+", "", source_finish or "")
+            if (
+                rust_function_body(source_protocol, "source_finish") is not None
+                or re.search(r"\bself\.store\s*\.\s*(?:read|write)\s*\(", source_protocol)
+                or source_finish is None
+                or not re.search(r"\bpub\s+fn\s+source_finish\s*\(", source_finish_assembly)
+                or not (0 <= source_finish_compact.find("Zeroizing::new(input.credential)")
+                        < source_finish_compact.find("self.store.write")
+                        < source_finish_compact.find('tx.get::<String>("source_polls",&digest(&credential))')
+                        < source_finish_compact.find('tx.get::<Login>("source_logins",&state)')
+                        < source_finish_compact.find("p.expires_at>now()&&!p.failed&&p.attempts<5")
+                        < source_finish_compact.find("pending.stage.is_some()||pending.workflow.is_some()")
+                        < source_finish_compact.find("self.complete_source_login"))
+                or not re.search(
+                    r"self\.complete_source_login\(tx,&state,&mutpending,input\.approve,input\.otp\.as_deref\(\),None,?\)",
+                    source_finish_compact,
+                )
+                or not source_finish_compact.endswith("})?")
+                or not re.search(r"\bpub\(crate\)\s+fn\s+complete_source_login\s*\(", source_finish_assembly)
+                or not re.search(r"\bmod\s+source_finish\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: charged source finish writer belongs in assembly")
+            source_finish_browser = rust_function_body(
+                source_finish_assembly.replace("source_finish_browser<T>", "source_finish_browser"),
+                "source_finish_browser",
+            )
+            source_finish_browser_compact = re.sub(r"\s+", "", source_finish_browser or "")
+            if (
+                re.search(r"\bfn\s+source_finish_browser\s*<", path.read_text())
+                or source_finish_browser is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_finish_browser\s*<T>\s*\(", source_finish_assembly)
+                or not (0 <= source_finish_browser_compact.find("self.store.write")
+                        < source_finish_browser_compact.find('tx.get::<String>("source_polls",&digest(credential))')
+                        < source_finish_browser_compact.find('tx.get::<Login>("source_logins",&state)')
+                        < source_finish_browser_compact.find("pending.stage.is_some()||pending.workflow.is_some()")
+                        < source_finish_browser_compact.find("bind(tx,pending.target.as_ref())?")
+                        < source_finish_browser_compact.find("letlinking=pending.target.is_some()")
+                        < source_finish_browser_compact.find("self.complete_source_login")
+                        < source_finish_browser_compact.find("Ok(body)=>deliver(tx,linking,&body).map(Ok)")
+                        < source_finish_browser_compact.find("Err(error)=>Ok(Err(error))"))
+                or not source_finish_browser_compact.endswith("})?")
+            ):
+                errors.append("src/source.rs: browser source finish transaction belongs in assembly")
+            source_completion = rust_function_body(source_finish_assembly, "complete_source_login")
+            source_completion_compact = re.sub(r"\s+", "", source_completion or "")
+            clear_return = rust_function_body(source_finish_assembly, "clear_browser_return")
+            if (
+                rust_function_body(source_protocol, "complete_source_login") is not None
+                or rust_function_body(source_protocol, "clear_browser_return") is not None
+                or source_completion is None
+                or not (0 <= source_completion_compact.find("pending.browser_return_confirmed")
+                        < source_completion_compact.find("pending.workflow.is_some()")
+                        < source_completion_compact.find("enabled(tx,&pending.source)")
+                        < source_completion_compact.find("pending.fingerprint!=source.fingerprint()")
+                        < source_completion_compact.find("pending.result.clone()")
+                        < source_completion_compact.find("self.identity_user(tx,target)")
+                        < source_completion_compact.find("if!approve")
+                        < source_completion_compact.find("write_source_memberships")
+                        < source_completion_compact.find("pending.attempts+=1")
+                        < source_completion_compact.find('tx.put("source_logins",state,&pending)')
+                        < source_completion_compact.find("returnOk(Err(Error::unauthorized()))")
+                        < source_completion_compact.find('tx.put("users",&user.id,&user)')
+                        < source_completion_compact.find("write_source_link")
+                        < source_completion_compact.find("pin_retired:false")
+                        < source_completion_compact.find('tx.put("authentication",&digest(challenge),&transaction)')
+                        < source_completion_compact.find('tx.put("saml_source_sessions",&sid,upstream)')
+                        < source_completion_compact.find('tx.put("sessions",&sid,&session)')
+                        < source_completion_compact.find('tx.put("session_tokens",&session.token_hash,&sid)')
+                        < source_completion_compact.find("clear_browser_return(tx,pending)")
+                        < source_completion_compact.find('tx.delete("source_polls",&pending.poll_hash)')
+                        < source_completion_compact.find('tx.delete("source_logins",state)')
+                        < source_completion_compact.rfind("audit("))
+                or clear_return is None
+                or not re.search(r'tx\.delete\s*\(\s*"source_returns"\s*,\s*token\s*\)', clear_return)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_finish::clear_browser_return\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
+            source_callback = rust_function_body(source_protocol, "source_callback")
+            source_callback_raw = rust_function_body(path.read_text(), "source_callback")
+            callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
+            callback_claim = rust_function_body(
+                masked_rust_source(callback_assembly), "source_callback_claim"
+            )
+            callback_claim_raw = rust_function_body(
+                callback_assembly, "source_callback_claim"
+            )
+            callback_claim_compact = re.sub(r"\s+", "", callback_claim_raw or "")
+            if (
+                source_callback is None
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", source_callback)
+                or source_callback_raw is None
+                or not re.search(
+                    r"context::scope\s*\(\s*context\s*,\s*\|\|\s*\{\s*worker\.source_callback_claim\s*\(\s*source_id\s*,\s*request_state\s*,\s*presented\s*\)",
+                    source_callback_raw,
+                )
+                or callback_claim is None
+                or not (0 <= callback_claim_compact.find("self.store.write")
+                        < callback_claim_compact.find('tx.get::<Source>("sources",id)')
+                        < callback_claim_compact.find('tx.get::<Login>("source_logins",&digest(state))')
+                        < callback_claim_compact.find("presented_source_retired(")
+                        < callback_claim_compact.find("browser_binding_matches")
+                        < callback_claim_compact.find("pending.claimed=true")
+                        < callback_claim_compact.find("pending.failed=true")
+                        < callback_claim_compact.find('tx.put("source_logins",&digest(state),&pending)')
+                        < callback_claim_compact.find('audit(tx,"upstream","source.login_failed",id)')
+                        < callback_claim_compact.find("CallbackClaim::Retired")
+                        < callback_claim_compact.find('tx.get::<String>("source_secrets",id)'))
+                or callback_claim_raw is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_callback_claim\s*\(", callback_assembly)
+                or not re.search(r'let\s+source\s*=\s*tx\.get::<Source>\s*\(\s*"sources"\s*,\s*id\s*\)\s*\?', callback_claim_raw)
+                or not re.search(r'p\.expires_at\s*>\s*now\s*\(\s*\)\s*&&\s*!p\.claimed', callback_claim_raw)
+                or not re.search(r"\bpub\(crate\)\s+fn\s+browser_binding_matches\s*\(", path.read_text())
+                or not re.search(r"\bpub\(crate\)\s+fn\s+presented_source_retired\s*\(", path.read_text())
+            ):
+                errors.append("src/source.rs: one-use source callback claim belongs in assembly")
+            callback_record = rust_function_body(
+                masked_rust_source(callback_assembly), "source_callback_record"
+            )
+            callback_record_raw = rust_function_body(
+                callback_assembly, "source_callback_record"
+            )
+            callback_record_compact = re.sub(r"\s+", "", callback_record or "")
+            if (
+                source_callback is None
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", source_callback)
+                or source_callback_raw is None
+                or not re.search(
+                    r"context::scope\s*\(\s*context\s*,\s*\|\|\s*worker\.source_callback_record\s*\(\s*state\s*,\s*id\s*,\s*result\s*\)",
+                    source_callback_raw,
+                )
+                or rust_function_body(source_protocol, "source_callback_record") is not None
+                or callback_record is None
+                or not (0 <= callback_record_compact.find("self.store.write")
+                        < callback_record_compact.find("tx.get::<Login>")
+                        < callback_record_compact.find("tx.get::<Source>")
+                        < callback_record_compact.find("matchresult")
+                        < callback_record_compact.find("tx.put")
+                        < callback_record_compact.find("audit")
+                        < callback_record_compact.find("callback_body"))
+                or callback_record_raw is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_callback_record\s*\(", callback_assembly)
+                or not re.search(r"current\.failed\s*=\s*true\s*;\s*current\.result\s*=\s*None", callback_record_raw)
+                or not re.search(r"\bmod\s+source_callback\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: post-verification callback write belongs in assembly")
+        if path == SRC / "ldap_server.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/ldap_server.rs: LDAP protocol refers directly to Core or storage")
+        if path == SRC / "radius.rs":
+            radius_source = masked_rust_source(path.read_text())
+            if "core" in refs or re.search(r"\bCore\b", radius_source):
+                errors.append("src/radius.rs: RADIUS protocol refers directly to Core")
+            if re.search(r"\.\s*store\s*\.\s*read\s*\(", radius_source) or re.search(
+                r"\bfn\s+(?:client|radius_identity)\s*\(", radius_source
+            ):
+                errors.append("src/radius.rs: RADIUS client or identity read belongs in assembly")
+            if re.search(r"\.\s*store\s*\.\s*write\s*\(", radius_source):
+                errors.append("src/radius.rs: RADIUS replay or close write belongs in assembly")
+            if refs & STORAGE or re.search(r"\.\s*store\b", radius_source):
+                errors.append("src/radius.rs: RADIUS protocol refers directly to storage")
+        if path == SRC / "radius/eap.rs":
+            eap_source = masked_rust_source(path.read_text())
+            if (
+                refs & (STORAGE | {"core"})
+                or re.search(r"\bfn\s+validate_identity\s*\(", eap_source)
+                or re.search(r"\.\s*store\s*\.\s*(?:read|write)\s*\(", eap_source)
+                or re.search(
+                    r"\.\s*mutation\s*\(|\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\s*(?:<|\()",
+                    eap_source,
+                )
+            ):
+                errors.append("src/radius/eap.rs: EAP Core or storage access belongs in assembly")
+        if source_group == "model" and refs & PROTOCOL:
+            errors.append(f"{path.relative_to(ROOT)}: model refers to protocol {sorted(refs & PROTOCOL)}")
+        if source_group == "model" and refs & MODEL_FORBIDDEN:
+            errors.append(f"{path.relative_to(ROOT)}: model refers to {sorted(refs & MODEL_FORBIDDEN)}")
+        if source_group == "model":
+            legacy_config = legacy_client_config_references(path.read_text())
+            if legacy_config:
+                errors.append(f"{path.relative_to(ROOT)}: model refers to legacy client configuration types {sorted(legacy_config)}")
+        if source_module == "context" and refs & CONTEXT_FORBIDDEN:
+            errors.append(f"{path.relative_to(ROOT)}: context refers to {sorted(refs & CONTEXT_FORBIDDEN)}")
+    graph = {
+        "method": "Distinct Rust source files with explicit crate-root references, including grouped use; excludes super imports, macros and runtime dispatch",
+        "source_files": len(paths),
+        "module_groups": dict(sorted(module_groups.items())),
+        "group_edges": [
+            {"from": left, "to": right, "files": len(files), "paths": sorted(files)}
+            for (left, right), files in sorted(edges.items())
+        ],
+        "boundary_checks": {
+            "identity_allowed_crate_roots": sorted(IDENTITY_ALLOWED),
+            "identity_forbidden_reference_files": sum(
+                bool(references(path) - IDENTITY_ALLOWED)
+                for path in paths if group(root_module(path)) == "identity"
+            ),
+            "identity_storage_reference_files": sum(
+                "store" in references(path)
+                for path in paths if group(root_module(path)) == "identity"
+            ),
+            "identity_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
+                for path in paths if group(root_module(path)) == "identity"
+            ),
+            "storage_adapter_reference_files": sum(
+                bool(references(path) & STORAGE_FORBIDDEN)
+                for path in paths if group(root_module(path)) == "storage"
+            ),
+            "storage_identity_reference_files": sum(
+                "identity" in references(path)
+                for path in paths if group(root_module(path)) == "storage"
+            ),
+            "storage_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
+                for path in paths if group(root_module(path)) == "storage"
+            ),
+            "dpop_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "dpop"
+            ),
+            "jose_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "jose"
+            ),
+            "issuer_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "issuer"
+            ),
+            "issuer_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "issuer"
+            ),
+            "keyring_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "keyring"
+            ),
+            "keyring_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "keyring"
+            ),
+            "response_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "response"
+            ),
+            "response_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "response"
+            ),
+            "claims_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "claims"
+            ),
+            "claims_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "claims"
+            ),
+            "event_map_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "event_map"
+            ),
+            "event_map_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "event_map"
+            ),
+            "device_trust_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "device_trust"
+            ),
+            "device_trust_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "device_trust"
+            ),
+            "session_protocol_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "session_protocol"
+            ),
+            "session_protocol_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "session_protocol"
+            ),
+            "oidc_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "oidc"
+            ),
+            "oidc_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "oidc"
+            ),
+            "authorization_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "authorization"
+            ),
+            "authorization_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "authorization"
+            ),
+            "exchange_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "exchange"
+            ),
+            "exchange_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "exchange"
+            ),
+            "ssf_storage_reference_files": sum(
+                bool(references(path) & STORAGE)
+                for path in paths if root_module(path) == "ssf"
+            ),
+            "ssf_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "ssf"
+            ),
+            "saml_browser_storage_reference_files": int(
+                bool(references(SRC / "saml.rs") & STORAGE)
+            ),
+            "saml_browser_core_reference_files": int(
+                "core" in references(SRC / "saml.rs")
+            ),
+            "saml_logout_storage_reference_files": int(
+                bool(references(SRC / "saml/logout.rs") & STORAGE)
+            ),
+            "saml_logout_core_reference_files": int(
+                "core" in references(SRC / "saml/logout.rs")
+            ),
+            "passkey_storage_reference_files": int(
+                bool(references(SRC / "passkey.rs") & STORAGE)
+            ),
+            "passkey_core_reference_files": int(
+                "core" in references(SRC / "passkey.rs")
+            ),
+            "authenticator_storage_reference_files": int(
+                bool(references(SRC / "authenticator.rs") & STORAGE)
+            ),
+            "authenticator_core_reference_files": int(
+                "core" in references(SRC / "authenticator.rs")
+            ),
+            "password_storage_reference_files": int(
+                bool(references(SRC / "password.rs") & STORAGE)
+            ),
+            "password_core_reference_files": int(
+                "core" in references(SRC / "password.rs")
+            ),
+            "logout_storage_reference_files": int(
+                bool(references(SRC / "logout.rs") & STORAGE)
+            ),
+            "logout_core_reference_files": int(
+                "core" in references(SRC / "logout.rs")
+            ),
+            "mtls_storage_reference_files": int(
+                bool(references(SRC / "mtls.rs") & STORAGE)
+            ),
+            "mtls_core_reference_files": int(
+                "core" in references(SRC / "mtls.rs")
+            ),
+            "portal_self_service_storage_reference_files": int(
+                bool(references(SRC / "portal/self_service.rs") & STORAGE)
+            ),
+            "portal_self_service_core_reference_files": int(
+                "core" in references(SRC / "portal/self_service.rs")
+            ),
+            "model_protocol_reference_files": sum(
+                bool(references(path) & PROTOCOL)
+                for path in paths if group(root_module(path)) == "model"
+            ),
+            "model_adapter_reference_files": sum(
+                bool(references(path) & MODEL_FORBIDDEN)
+                for path in paths if group(root_module(path)) == "model"
+            ),
+            "model_legacy_client_config_reference_files": sum(
+                bool(legacy_client_config_references(path.read_text()))
+                for path in paths if group(root_module(path)) == "model"
+            ),
+            "context_core_reference_files": sum(
+                "core" in references(path)
+                for path in paths if root_module(path) == "context"
+            ),
+            "password_history_adapter_files": int(legacy_password_history.exists()),
+        },
+    }
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(graph, indent=2) + "\n")
+    for name, count in graph["boundary_checks"].items():
+        if name.endswith("_files"):
+            print(f"{name}: {count}")
+    print(f"Explicit crate-reference graph checked across {len(paths)} Rust source files")
+    if errors:
+        raise SystemExit("Module boundary check failed:\n" + "\n".join(errors))
+
+
+if __name__ == "__main__":
+    main()
