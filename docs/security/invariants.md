@@ -633,7 +633,10 @@ that identity is stored. Restoring the previous keys does not finish that login.
 ACS accepts the response. Restoring the previous IdP certificate leaves that
 login unfinished. `saml_source_browser_return` ends a verified browser login
 when its pinned source changed before the return. Restoring the previous
-certificate does not confirm that return. [SAML](../../src/saml.rs) `stale` deliberately treats zero
+certificate does not confirm that return. A code, SAML response, or browser
+return presented while its source is disabled ends that login. Enabling the
+source again does not redeem it. A login that was not presented can still
+complete after the source is enabled again. [SAML](../../src/saml.rs) `stale` deliberately treats zero
 `auth_time` as exempt from the terminal freshness rule; request `max_age` and
 factor operations are separate rules, not satisfied by that exemption.
 
@@ -644,10 +647,12 @@ factor operations are separate rules, not satisfied by that exemption.
 `local_totp_is_still_required_when_upstream_is_not_mfa`,
 `oauth_only_stage_does_not_invent_authentication_assurance`;
 [sources](../../tests/identity/sources.rs)
-`oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_rollback_replay`;
+`oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_rollback_replay`,
+`oidc_callback_presented_while_source_disabled_cannot_redeem_after_reenable`;
 [SAML sources](../../tests/identity/saml_source.rs)
 `saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and_rollback_replay`,
-`saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confirm`;
+`saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confirm`,
+`saml_login_presented_while_source_disabled_cannot_continue_after_reenable`;
 [browser](../../tests/browser_signin.rs) `oauth_source_session_is_exempt_from_terminal_freshness`.
 
 **Missing coverage / later contract.** Q02-C07 changes stage/request/account/

@@ -161,27 +161,30 @@ impl Core {
             Retired,
         }
         let claim = self.store.write(|tx| {
-            let source = super::enabled(tx, id)?;
-            let settings = source
-                .saml
-                .as_ref()
-                .ok_or_else(|| Error::bad("Source is not SAML"))?;
-            settings.validate(&source)?;
+            // A disabled source still has a record. Filtering it out here would
+            // roll back and let this RelayState complete after re-enable.
+            let source = tx.get::<Source>("sources", id)?;
+            if source.as_ref().is_some_and(|source| source.saml.is_none()) {
+                return Err(Error::bad("Source is not SAML"));
+            }
             let mut pending = tx
                 .get::<Login>("source_logins", &digest(state))?
                 .filter(|p| p.source == id && !p.claimed && p.expires_at > now())
                 .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
-            let retire = match source.fingerprint() {
-                Ok(fingerprint) => fingerprint != pending.fingerprint,
-                Err(_) => true,
-            };
-            if retire {
+            if super::presented_source_retired(source.as_ref(), &pending.fingerprint) {
                 pending.claimed = true;
                 pending.failed = true;
                 tx.put("source_logins", &digest(state), &pending)?;
                 audit(tx, "upstream", "source.login_failed", id)?;
                 return Ok(Claim::Retired);
             }
+            let source = source
+                .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
+            let settings = source
+                .saml
+                .as_ref()
+                .ok_or_else(|| Error::bad("Source is not SAML"))?;
+            settings.validate(&source)?;
             pending.claimed = true;
             tx.put("source_logins", &digest(state), &pending)?;
             Ok(Claim::Ready(source, pending))
@@ -209,12 +212,15 @@ impl Core {
             )
         })();
         self.store.write(|tx| {
-            let current_source = super::enabled(tx, id)?;
+            let current_source = tx.get::<Source>("sources", id)?;
             let mut current = tx
                 .get::<Login>("source_logins", &digest(state))?
                 .filter(|p| p.claimed && p.expires_at > now() && p.result.is_none() && !p.failed)
                 .ok_or_else(|| Error::bad("SAML source request expired"))?;
             let result = result.and_then(|(identity, assertion, expiry)| {
+                let Some(current_source) = current_source.as_ref() else {
+                    return Err(Error::forbidden());
+                };
                 if current_source.fingerprint()? != pending.fingerprint {
                     return Err(Error::forbidden());
                 }
@@ -268,8 +274,9 @@ impl Core {
     /// ACS response; `started` is the Lax cookie from `portal_source_start`. A missing
     /// or unknown return token does not end the login. A real return token whose start
     /// cookie is missing or belongs to another browser does. A return whose pinned
-    /// source changed ends the login in the same write, so restoring the previous
-    /// certificate does not confirm it.
+    /// source changed, including when that source is disabled, ends the login in
+    /// the same write. Restoring the previous certificate or enabling the source
+    /// again does not confirm it.
     pub fn saml_source_browser_return(
         &self,
         id: &str,
@@ -335,14 +342,10 @@ fn take_browser_return(
         tx.delete("source_returns", returned_digest)?;
         return Ok(BrowserReturn::Unknown);
     }
-    let source = super::enabled(tx, id)?;
-    // Commit the retirement. Err would roll the writer back and leave this
-    // one-time return confirmable after the previous certificate is restored.
-    let retire = match source.fingerprint() {
-        Ok(fingerprint) => fingerprint != pending.fingerprint,
-        Err(_) => true,
-    };
-    if retire {
+    // Load a disabled source too. `enabled` would roll this write back and
+    // leave the one-time return confirmable after the source is enabled again.
+    let source = tx.get::<Source>("sources", id)?;
+    if super::presented_source_retired(source.as_ref(), &pending.fingerprint) {
         pending.failed = true;
         pending.result = None;
         super::clear_browser_return(tx, &pending)?;

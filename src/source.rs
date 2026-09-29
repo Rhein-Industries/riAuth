@@ -674,8 +674,10 @@ impl Core {
                 worker.store.write(|tx| {
                     let id = source_id.as_str();
                     let state = request_state.as_str();
-                    let source = enabled(tx, id)?;
-                    if source.saml.is_some() {
+                    // A disabled source still has a record. Filtering it out here
+                    // would roll back and leave this code redeemable after re-enable.
+                    let source = tx.get::<Source>("sources", id)?;
+                    if source.as_ref().is_some_and(|source| source.saml.is_some()) {
                         return Err(Error::bad("SAML sources require the signed POST ACS"));
                     }
                     let mut pending = tx
@@ -686,10 +688,7 @@ impl Core {
                         })?;
                     // Commit the end of the login. Err would roll back and leave the code redeemable
                     // after the previous keys were restored.
-                    let retire = match source.fingerprint() {
-                        Ok(fingerprint) => fingerprint != pending.fingerprint,
-                        Err(_) => true,
-                    };
+                    let retire = presented_source_retired(source.as_ref(), &pending.fingerprint);
                     if retire
                         || pending.browser_binding.as_deref().is_some_and(|expected| {
                             !browser_binding_matches(expected, presented.as_deref())
@@ -705,6 +704,9 @@ impl Core {
                             Claim::Mismatch
                         });
                     }
+                    let source = source.ok_or_else(|| {
+                        Error::bad("Source request expired, changed or already used")
+                    })?;
                     pending.claimed = true;
                     tx.put("source_logins", &digest(state), &pending)?;
                     let secret = tx
@@ -1502,6 +1504,20 @@ pub(crate) fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
     tx.get::<Source>("sources", id)?
         .filter(|s| s.enabled)
         .ok_or_else(|| Error::missing("Enabled source not found"))
+}
+
+/// A presented login ends when its stored source is missing or no longer has
+/// the fingerprint captured at start. `enabled` is part of that fingerprint, so
+/// a disabled source must be loaded here: `enabled` would roll the write back
+/// and let the same code, response, or return succeed after re-enable.
+pub(crate) fn presented_source_retired(source: Option<&Source>, pending_fingerprint: &str) -> bool {
+    match source {
+        Some(source) => source
+            .fingerprint()
+            .map(|fingerprint| fingerprint != pending_fingerprint)
+            .unwrap_or(true),
+        None => true,
+    }
 }
 pub(crate) fn link_key(source: &str, issuer: &str, subject: &str) -> String {
     digest(&format!("{source}\0{issuer}\0{subject}"))

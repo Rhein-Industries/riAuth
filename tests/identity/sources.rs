@@ -1373,3 +1373,102 @@ fn hides_rotation(error: &riauth::error::Error, token: &str) {
     assert!(!shown.contains("source-client-secret"), "{shown}");
     assert!(!shown.contains("replacement-source-secret"), "{shown}");
 }
+
+/// Disabling a source changes its fingerprint. A code presented while it is
+/// disabled ends that login, so enabling the source again cannot redeem the
+/// code. A login that was not presented can still complete after re-enable.
+/// Replacing only the client secret leaves the resulting session in place.
+#[tokio::test]
+async fn oidc_callback_presented_while_source_disabled_cannot_redeem_after_reenable() {
+    let f = Fixture::new();
+    let mut upstream = Upstream::new(&f).await;
+    let key = upstream.key.clone();
+    let subject = "subject-disable";
+
+    let parked = upstream.start(&f, None);
+    upstream.source.enabled = false;
+    put_source(&f, &upstream.source);
+    assert!(
+        f.core
+            .source_start(
+                &upstream.source.id,
+                riauth::source::Start {
+                    link: false,
+                    authentication_transaction: None,
+                },
+                None,
+            )
+            .is_err()
+    );
+    assert_eq!(source_login_row(&f, &parked)["failed"], false);
+    assert_eq!(source_login_row(&f, &parked)["claimed"], false);
+    upstream.source.enabled = true;
+    put_source(&f, &upstream.source);
+    let (kept, kept_code, kept_token) =
+        signed_callback(&f, &upstream, &parked, &key, subject, json!({})).await;
+    let kept = kept.unwrap();
+    assert_eq!(kept["completed"], true);
+    assert!(!kept.to_string().contains(&kept_token));
+    assert!(!upstream.retains(&kept_code));
+    let first = upstream.finish(&f, &parked, true).unwrap();
+    let user_id = text(&first["user"], "id");
+    let session = text(&first, "session_token");
+    assert!(f.core.me(&session).is_ok());
+    assert_eq!(source_links(&f).len(), 1);
+    assert_eq!(source_links(&f)[0]["subject"], subject);
+    assert_eq!(source_links(&f)[0]["issuer"], upstream.source.issuer);
+    assert_eq!(source_links(&f)[0]["user_id"], user_id);
+
+    let started = upstream.start(&f, None);
+    upstream.source.enabled = false;
+    put_source(&f, &upstream.source);
+    assert!(f.core.me(&session).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    let (retired, code, token) =
+        signed_callback(&f, &upstream, &started, &key, subject, json!({})).await;
+    let retired = retired.unwrap_err();
+    assert_eq!(retired.code, "invalid_request");
+    assert!(retired.to_string().contains("already used"));
+    hides_rotation(&retired, &token);
+    assert!(upstream.retains(&code));
+    let row = source_login_row(&f, &started);
+    assert_eq!(row["failed"], true);
+    assert_eq!(row["claimed"], true);
+    assert!(row["result"].is_null());
+    upstream.source.enabled = true;
+    put_source(&f, &upstream.source);
+    let replay = upstream
+        .complete(&f, &started, &code, None)
+        .await
+        .unwrap_err();
+    assert_eq!(replay.code, "invalid_request");
+    assert!(replay.to_string().contains("already used"));
+    hides_rotation(&replay, &token);
+    assert!(upstream.retains(&code));
+    assert!(upstream.finish(&f, &started, true).is_err());
+    assert_eq!(source_login_row(&f, &started)["failed"], true);
+    assert_eq!(source_links(&f).len(), 1);
+    assert_eq!(source_links(&f)[0]["subject"], subject);
+    assert_eq!(source_links(&f)[0]["issuer"], upstream.source.issuer);
+    assert_eq!(source_links(&f)[0]["user_id"], user_id);
+
+    let started = upstream.start(&f, None);
+    let (again, _, _) = signed_callback(&f, &upstream, &started, &key, subject, json!({})).await;
+    assert_eq!(again.unwrap()["completed"], true);
+    let second = upstream.finish(&f, &started, true).unwrap();
+    assert_eq!(text(&second["user"], "id"), user_id);
+    let session_kept = text(&second, "session_token");
+    f.core
+        .source_put(
+            &f.admin,
+            riauth::source::SourceInput {
+                source: upstream.source.clone(),
+                client_secret: Some("replacement-source-secret".into()),
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&session_kept).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert_eq!(source_links(&f).len(), 1);
+    assert_eq!(source_links(&f)[0]["user_id"], user_id);
+}
