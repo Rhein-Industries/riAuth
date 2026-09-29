@@ -1108,6 +1108,25 @@ def main() -> None:
                         < stage_binding_compact.find('tx.put("source_stage_requests",suspension,&stage.id)'))
             ):
                 errors.append("src/source.rs: source stage creation one-use writes belong in assembly")
+            stage_available = rust_function_body(source_stage_assembly, "ensure_stage_request_available")
+            stage_available_compact = re.sub(r"\s+", "", stage_available or "")
+            if (
+                not (0 <= stage_creation_compact.find("letrequest_hash=")
+                        < stage_creation_compact.find("letsuspension=")
+                        < stage_creation_compact.find("crate::assembly::ensure_stage_request_available(tx,&suspension)?")
+                        < stage_creation_compact.find("letstage_id=")
+                        < stage_creation_compact.find("self.source_start_in("))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:String|SourceStage)>\s*\(\s*"(?:source_stage_requests|source_stages)"', stage_creation_raw)
+                or stage_available is None
+                or not (0 <= stage_available_compact.find('tx.get::<String>("source_stage_requests",suspension)?')
+                        < stage_available_compact.find('tx.get::<SourceStage>("source_stages",&existing)?')
+                        < stage_available_compact.find("!stage.used&&!stage.cancelled&&stage.expires_at>now()")
+                        < stage_available_compact.find('Error::conflict("Anembeddedsourcestageisalreadypendingforthisauthorizationrequest"')
+                        < stage_available_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_available)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::ensure_stage_request_available\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: active source-stage request reads belong in assembly")
             source_stage_cancel = rust_function_body(
                 masked_rust_source(source_stage_assembly), "source_stage_cancel"
             )

@@ -769,15 +769,7 @@ impl Core {
         }
         let request_hash = start.request.request_hash()?;
         let suspension = suspension_hash(&start.request)?;
-        if let Some(existing) = tx.get::<String>("source_stage_requests", &suspension)?
-            && tx
-                .get::<SourceStage>("source_stages", &existing)?
-                .is_some_and(|stage| !stage.used && !stage.cancelled && stage.expires_at > now())
-        {
-            return Err(Error::conflict(
-                "An embedded source stage is already pending for this authorization request",
-            ));
-        }
+        crate::assembly::ensure_stage_request_available(tx, &suspension)?;
         let stage_id = crypto::random_token("ri_stage_");
         let started = self.source_start_in(
             tx,

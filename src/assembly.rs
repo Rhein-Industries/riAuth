@@ -92,6 +92,7 @@ mod source_identity;
 pub use source_identity::validate_identity as source_validate_identity;
 mod source_stage;
 pub(crate) use source_stage::cleanup_expired_source_state;
+pub(crate) use source_stage::ensure_stage_request_available;
 #[cfg(feature = "platform")]
 mod ssf;
 #[cfg(feature = "platform")]

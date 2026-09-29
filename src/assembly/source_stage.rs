@@ -10,6 +10,19 @@ use crate::{
 };
 use serde_json::Value;
 
+pub(crate) fn ensure_stage_request_available(tx: &Tx<'_>, suspension: &str) -> Result<()> {
+    if let Some(existing) = tx.get::<String>("source_stage_requests", suspension)?
+        && tx
+            .get::<SourceStage>("source_stages", &existing)?
+            .is_some_and(|stage| !stage.used && !stage.cancelled && stage.expires_at > now())
+    {
+        return Err(Error::conflict(
+            "An embedded source stage is already pending for this authorization request",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn enforce_pending_stage(
     tx: &Tx<'_>,
     request: &crate::oidc::Authorization,

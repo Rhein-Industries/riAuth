@@ -1725,6 +1725,89 @@ fn query(redirect: &str) -> std::collections::HashMap<String, String> {
         .collect()
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn stage_request_preflight_keeps_conflict_and_dangling_index_retry() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let first = f.core.authorization_prepare(None, request.clone()).unwrap();
+    let first_id = text(&first["source_stage"], "stage_id");
+    let first_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &first_id)
+        .unwrap()
+        .unwrap();
+    let suspension = text(&first_stage, "suspension_hash");
+    let reserved = f.snapshot().unwrap();
+
+    assert_eq!(
+        f.core
+            .authorization_prepare(None, request.clone())
+            .unwrap_err()
+            .message,
+        "An embedded source stage is already pending for this authorization request"
+    );
+    f.assert_snapshot(&reserved);
+
+    f.core
+        .store
+        .write(|tx| tx.delete("source_stages", &first_id))
+        .unwrap();
+    let retried = f.core.authorization_prepare(None, request).unwrap();
+    let next_id = text(&retried["source_stage"], "stage_id");
+    assert_ne!(next_id, first_id);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .as_deref(),
+        Some(next_id.as_str())
+    );
+    let next_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &next_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(next_stage["request_hash"], first_stage["request_hash"]);
+    assert_eq!(
+        next_stage["suspension_hash"],
+        first_stage["suspension_hash"]
+    );
+}
+
+#[cfg(not(feature = "platform"))]
+#[test]
+fn source_stage_setting_stays_disabled_in_essentials() {
+    let f = Fixture::new();
+    f.client("app", false);
+    let before = f.snapshot().unwrap();
+    let error = f
+        .core
+        .update_client(
+            &f.admin,
+            "app",
+            ClientPatch {
+                settings: Some(ProviderSettings {
+                    source_stage: Some("upstream".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_request");
+    assert_eq!(
+        error.message,
+        "Client setting source_stage requires the Platform build"
+    );
+    f.assert_snapshot(&before);
+}
+
 #[tokio::test]
 async fn stage_resume_consumes_retried_request_after_cancel() {
     let f = Fixture::new();
