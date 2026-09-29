@@ -35,8 +35,8 @@ The aggregate omits stored error text, `last_outcome`, job `outcome`, authority 
 - Storage pressure and key problems.
 - Provisioning job errors, which stay on the provisioning job read, including its stored error text.
 - Mail deliveries, which stay on the mail read.
-- Deactivation rows that no offboarding job references.
-- The separate Platform offboarding aggregate. This read does not extend it.
+- Deactivation delivery. Incomplete and failed rows, including rows no offboarding job records, are [deactivation diagnostics](o06-deactivation-diagnostics.md).
+- The separate Platform offboarding job aggregate. This reconciliation read does not extend it.
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. Controller failures do not change those answers, and this slice adds no series and no dashboard JSON.
 - A production backlog deadline beyond the existing 256-job retention and the 50-row response cap.
 

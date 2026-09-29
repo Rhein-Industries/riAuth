@@ -48,7 +48,8 @@ A connector failure leaves both probes on their existing answers.
 connector, mail, Vault, webhook, or offboarding field. `riauth deliveries` is
 the logout outbox, not mail and not SCIM. Incomplete scheduled offboarding is
 `riauth offboard diagnostics` (`GET /api/operations/offboarding`), which is
-separate from `doctor`.
+separate from `doctor`. Deactivation rows, including a row no offboarding job
+records, are `GET /api/operations/offboarding/deactivations` on Platform.
 
 Counters in `riauth metrics` reset at process start. `runtime.signing_errors`,
 `runtime.alert_delivery_errors`, and `runtime.cleanup_errors` are those
@@ -410,5 +411,7 @@ key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
 after restore, Compose or systemd restore, and Windows device recovery
 remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).
 Scheduled-offboarding attention is
-[offboarding diagnostics](roadmap/o06-offboarding-diagnostics.md). This
-incident page did not execute that read against a directory.
+[offboarding diagnostics](roadmap/o06-offboarding-diagnostics.md).
+Deactivation delivery is
+[deactivation diagnostics](roadmap/o06-deactivation-diagnostics.md). This
+incident page did not execute either read against a directory.

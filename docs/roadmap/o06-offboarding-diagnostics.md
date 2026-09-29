@@ -36,7 +36,7 @@ The read does not write an audit event. It is not on the maintenance hot path an
 - Storage pressure and key problems.
 - Failed jobs outside scheduled offboarding. Provisioning jobs and mail deliveries keep their existing reads. Reconciliation controller failures have a separate redacted aggregate, [reconciliation diagnostics](o06-reconciliation-diagnostics.md). This offboarding read does not list them.
 - `doctor` and `queues.offboard_jobs.failed`. The failed queue counts `status: failed` only, so a done job with incomplete downstream work is still absent there.
-- Deactivation rows that no offboarding job references. This read does not walk `provisioning_deactivations` on its own.
+- Deactivation rows, including rows no offboarding job records. The row-level read is [deactivation diagnostics](o06-deactivation-diagnostics.md). This job aggregate still reads `offboard_jobs`.
 - A production backlog deadline for the full job scan.
 
 ## Local check

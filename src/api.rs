@@ -737,6 +737,10 @@ fn platform_routes() -> Router<App> {
         .route("/api/offboard/jobs/{id}/cancel", post(offboard_cancel))
         .route("/api/operations/offboarding", get(offboarding_diagnostics))
         .route(
+            "/api/operations/offboarding/deactivations",
+            get(offboarding_deactivation_diagnostics),
+        )
+        .route(
             "/api/access/requests",
             get(access_requests).post(access_request_create),
         )
@@ -2152,6 +2156,11 @@ grant_change_handler!(cancel_client_creation_change);
 session_handler!(offboard_jobs, offboard_list);
 #[cfg(feature = "platform")]
 session_handler!(offboarding_diagnostics, offboarding_diagnostics);
+#[cfg(feature = "platform")]
+session_handler!(
+    offboarding_deactivation_diagnostics,
+    offboarding_deactivation_diagnostics
+);
 session_handler!(groups, list_groups);
 session_handler!(clients, list_clients);
 session_handler!(mfa_begin, mfa_begin);

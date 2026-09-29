@@ -65,7 +65,8 @@ HTTP:
 - `POST /api/offboard/jobs/{id}/cancel`
 - `GET /api/offboard/jobs`
 - `GET /api/offboard/jobs/{id}`
-- `GET /api/operations/offboarding` for the redacted aggregate; `operations.read` on `operations/offboarding`
+- `GET /api/operations/offboarding` for the redacted job aggregate; `operations.read` on `operations/offboarding`
+- `GET /api/operations/offboarding/deactivations` for the redacted deactivation-delivery aggregate; the same permission
 
 Running, done and cancelled jobs cannot be rescheduled. Cancelling a done or failed job conflicts. Cancelling an already cancelled job returns the job without a second audit event.
 
@@ -73,6 +74,8 @@ Running, done and cancelled jobs cannot be rescheduled. Cancelling a done or fai
 
 `GET /api/operations/offboarding` and `riauth offboard diagnostics` are a Platform read. A serving Essentials process cannot retain `offboard_jobs`, so the route is on the Platform router. Permission is `operations.read` on `operations/offboarding`. Counts include every job. Attention items include jobs the caller may `user.offboard`, and omit target names the caller may not `provisioner.read`. The state uses the same classification as `downstream.state`. The diagnostic omits the job result, dismissal and resolution evidence, target URLs, remote identifiers, lease owners, and hold text outside the known hold tokens. Each attention item and visible target reports `has_error` when a stored `last_error` is present. The aggregate leaves that text on the job read. `next_action` uses that presence and names the follow-up. `remote_completion_verified` is true only when `downstream_state` is `delivered`. `affects_readiness` is false. Doctor and `queues.offboard_jobs.failed` still count a failed job by `status: failed`; a done job with incomplete downstream work is visible on this read. The scan covers the offboard job bucket. The response lists at most 50 jobs and 32 non-succeeded visible targets per job. See [offboarding diagnostics](../roadmap/o06-offboarding-diagnostics.md).
 
+`GET /api/operations/offboarding/deactivations` is the row-level companion on the same permission. It counts every stored deactivation, including a row no offboarding job records, and lists at most 50 redacted attention rows for `pending`, `failed`, `ambiguous`, or `dismissed` delivery. Item visibility uses `user.offboard` on the account's current username. The stored username is not the authorization key. A hidden target omits its name. `has_error` records a stored error, and the text stays on `GET /api/provisioning/deactivations`. `affects_readiness` is false. Essentials does not serve this route. See [deactivation diagnostics](../roadmap/o06-deactivation-diagnostics.md).
+
 ## Audit
 
-`offboard.schedule`, `offboard.reschedule`, `offboard.cancel` and `offboard.execute` record the actor, the job id and the username (`<job-id>/<username>`). These actions bump the configuration revision. Job records and audit events do not contain passwords, tokens or SCIM credentials. The diagnostic read does not record an audit event.
+`offboard.schedule`, `offboard.reschedule`, `offboard.cancel` and `offboard.execute` record the actor, the job id and the username (`<job-id>/<username>`). These actions bump the configuration revision. Job records and audit events do not contain passwords, tokens or SCIM credentials. Neither diagnostic read records an audit event.
