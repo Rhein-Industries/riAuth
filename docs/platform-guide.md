@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records seven loopback observations. The first
+build. The walkthrough records eight loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -27,15 +27,18 @@ only that server snapshot, captured one invitation on a loopback SMTP sink,
 accepted the password in an isolated browser, and signed in only after that
 acceptance. The seventh used only that server snapshot and ran the section 11
 schema, validate, plan, apply, runtime `[workflows.local-password]` restart,
-configured start, and export. It did not submit the password step. The commands
-in sections 1 through 13 are the ones implemented in this tree: `[features]` in
+configured start, and export. It did not submit the password step. The eighth
+used only that server snapshot and ran section 9 `directory list`,
+`directory plan`, and `directory apply` against one disposable loopback
+OpenLDAP listener. The commands in sections 1 through 13 are the ones
+implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
 [standalone client](../crates/riauthctl/src/main.rs).
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14's password acceptance
-was run once on loopback. Seven disposable loopback runs are recorded in
+was run once on loopback. Eight disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -55,7 +58,10 @@ profile, a USB security key, or Touch ID. The sixth appended a loopback
 signed out, refused a replay of that link, and then signed in as the invited
 person. The seventh ran section 11 `schema`, `validate`, `plan`, and `apply`,
 restarted serve with `[workflows.local-password]`, started that configured
-workflow, and ran `export`. The password step was not submitted. Rename,
+workflow, and ran `export`. The password step was not submitted. The
+eighth created the local group `staff`, appended `[directories.staff]` with
+`transport` `starttls`, and ran `directory list`, `directory plan`, and
+`directory apply` against a disposable loopback OpenLDAP listener. Rename,
 remove, passkey sign-in, passkey invitation acceptance, hardware, peers, and
 Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
@@ -66,8 +72,9 @@ The install below leaves PostgreSQL, Workspace, Entra, RADIUS, proxy, and
 the other Platform protocols unset. Sections 9 and 10 add the shared LDAP
 import and outbound SCIM steps on this Platform server. Sections 11 through
 13 add the configured-workflow, SAML, and LDAP provider procedures. Section
-11 was executed once on loopback. Sections 9, 10, 12, and 13 were read from
-this tree and were not executed. Assembly and
+11 was executed once on loopback. Section 9 was executed once on loopback
+against a disposable OpenLDAP listener. Sections 10, 12, and 13 were read
+from this tree and were not executed. Assembly and
 downgrade rules stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -897,7 +904,7 @@ lab. Row `details` were not copied.
 
 ## 9. Import one LDAP directory
 
-`init` writes no `[directories]` table. LDAP import is a later edit of the
+`init` writes an empty `[directories]` table and no directory id. LDAP import is a later edit of the
 lab configuration, then `directory list`, `directory plan`, and
 `directory apply` against the running server. Those three commands are
 remote calls on the server CLI session and are the same verbs on both
@@ -1002,6 +1009,64 @@ Page limits, the five-minute plan, and removal thresholds stay in
 [connector removal safeguards](removal-safeguards.md). Imported accounts
 have local passwords disabled. A later password login is checked against
 the directory. This section stops at plan and apply.
+
+### Loopback observation
+
+The [walkthrough](roadmap/d01-platform-cli-walkthrough.md) records one
+section 9 run on a copy of the Platform server snapshot supplied for
+`58357fd`. No Cargo build was run. The copy's `riauth capabilities` catalog
+had `edition` `platform` and `build_features` `essentials` and `platform`.
+`riauth --version` printed `riauth 0.1.1`. Those two commands are local.
+The printed commands in this section do not include them.
+
+`init` wrote empty `[directories]`, `[workspace_directories]`,
+`[entra_directories]`, `[scim_targets]`, `[ldap_listeners]`,
+`[proxy_listeners]`, `[radius_listeners]`, and `[signers]` tables. It wrote
+no directory id. The local group `staff` was created with the server CLI
+while `serve` was up, with `--idempotency-key` and `--if-revision`. Its
+member count was 0. Section 6's `add-member` was left unrun, so `admin` was
+not a member of `staff`.
+
+Serve was stopped. The printed `[directories.staff]` block was appended with
+`transport` `starttls`, the printed bases and filters, `password_file`
+`ldap-password`, and `ca_file` `ca.crt`. The URL was
+`ldap://127.0.0.1:60523`. The documented host `directory.example.test` stays
+the shape in the example above. `/etc/hosts` was not edited. The certificate
+was a one-day disposable CA and leaf, CN `localhost`, with SAN
+`DNS:localhost` and `IP:127.0.0.1`. The same serve command was started again.
+
+The directory was Homebrew OpenLDAP `slapd` 2.7.1 on that loopback URL.
+`memberof` is compiled into that binary. Exported `memberof` symbols were 0,
+and the only on-disk memberof file was the man page `slapo-memberof.5`.
+The fixture configuration loaded `overlay memberof`. The built-in `memberOf`
+attribute is operational and not user-modifiable, so the LDIF left it unset.
+Adding `groupOfNames` `cn=staff` with member
+`uid=alice,ou=people,dc=example,dc=test` made a plaintext search show
+`memberOf` equal to `cn=staff,ou=groups,dc=example,dc=test`. `entryUUID` was
+present and is not copied. The population client was plaintext `ldapadd` on
+the same listener. The fixture root DN was the printed bind DN, with no
+person entry for that DN. `scripts/test-ldap.sh` was not run.
+
+`directory list` showed id `staff`, that URL, user base
+`ou=people,dc=example,dc=test`, group `staff`, and reconciliation mode
+`manual-review`. `directory plan` exited 0. Standard output had plan id
+`3f9ffb68-406f-472a-8d78-69116899b0f0`, revision 1, and one `create` for
+`alice` in group `staff`. It omitted `removal_impact`. The plan file's
+`removal_impact.review_required` was false. Disabled users, missing users,
+and removed memberships were 0. `directory apply` omitted
+`--confirm-removals`. It printed `applied` true and the same change.
+`user list` then showed `alice` enabled, with `admin` false,
+`password_available` false, and `email_verified` false. `group list` showed
+`staff` with one member, and that member was `alice`. The member value is a
+user id and is not copied. No directory password login was attempted.
+
+An OpenSSL STARTTLS probe of the same listener reported verification OK and
+TLS 1.3. Apple `ldapsearch` 2.4.28 with `-ZZ` exited 1 and printed
+`ldap_start_tls: Connect error (-11)`. That probe is not a printed command.
+The plan and apply above are the riAuth client result for `transport`
+`starttls`. A failed upgrade fails the plan before accounts change. The
+commands came from the immutable snapshot. The walkthrough limits the source
+comparison to the files it names.
 
 ## 10. Provision one outbound SCIM target
 
@@ -2091,12 +2156,20 @@ replay, and then signed in as the invited person. Passkey acceptance,
 sign-out, and the headless invitation journeys stayed unrun. A seventh run
 executed section 11: `schema`, `validate`, `plan`, `apply`, a runtime
 `[workflows.local-password]` restart, one configured start, and `export`.
-The password step was not submitted. Sections 9, 10, 12, and 13 remain
-source-reviewed procedures. The generated `init` file still has no directory,
-no SCIM target, no workflow, no SAML client, and no LDAP listener until the
-operator adds them. Directory, SCIM, SAML, and LDAP provider commands were
-not executed here. No service provider, upstream identity provider, or LDAP
-client was contacted.
+The password step was not submitted. An eighth run executed section 9:
+server CLI creation of local group `staff`, then `directory list`,
+`directory plan`, and `directory apply` against a disposable loopback
+OpenLDAP listener with `transport` `starttls`.
+`removal_impact.review_required` was false, so apply omitted
+`--confirm-removals`. Sections 10, 12, and 13 remain source-reviewed
+procedures. The generated `init` file contains empty `[directories]`,
+`[workspace_directories]`, `[entra_directories]`, `[scim_targets]`,
+`[ldap_listeners]`, `[proxy_listeners]`, `[radius_listeners]`, and
+`[signers]` tables, and no directory id until the operator appends one. It
+has no workflow table and no SAML client. SCIM, SAML, and LDAP provider
+commands were not executed here. No service provider or upstream identity
+provider was contacted. The section 9 directory was the disposable loopback
+`slapd`, not a customer directory.
 
 Still outside this slice, as later tasks:
 
@@ -2163,12 +2236,14 @@ Still outside this slice, as later tasks:
   entry points.
 - Any claim that a person completed `cargo install`, the OIDC redirect,
   passkey enrollment, passkey rename or removal, passkey sign-in,
-  `recovery complete`, `recover-admin`, an LDAP directory plan or
-  apply, a SCIM plan or apply, a SAML metadata exchange with a peer, an LDAP
-  provider bind, or an invitation passkey acceptance. One section 11 workflow
+  `recovery complete`, `recover-admin`, a SCIM plan or
+  apply, a SAML metadata exchange with a peer, an LDAP
+  provider bind, or an invitation passkey acceptance. One section 9 LDAP
+  plan and apply was run against a disposable loopback OpenLDAP listener.
+  One section 11 workflow
   plan, apply, and configured start was run, and its password step was not
   submitted. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has seven runs.
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has eight runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2184,4 +2259,7 @@ Still outside this slice, as later tasks:
   acceptance, a signed-out applications page, replay refusal, and a later
   password sign-in. The seventh supplies section 11 schema, validate, plan,
   apply, the runtime password workflow, one configured start, and export on
-  that same server snapshot. D01 remains incomplete.
+  that same server snapshot. The eighth supplies section 9 `directory list`,
+  `directory plan`, and `directory apply` for directory `staff` on that same
+  server snapshot, against one disposable loopback OpenLDAP listener. The
+  imported account was `alice` in group `staff`. D01 remains incomplete.

@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records seven disposable loopback runs of the
+This page records eight disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -15,12 +15,14 @@ entry points. The fifth copied only that server snapshot and opened section 4
 in an isolated browser. The sixth copied only that server snapshot, captured
 one invitation on loopback SMTP, and accepted the password in an isolated
 browser. The seventh copied only that server snapshot and ran the section 11
-configured password workflow through export. No run used an external peer or
-`cargo install`.
-The first two runs did not launch `riauthctl` or `riauth-maintenance`. The
-fourth, fifth, sixth, and seventh runs did not launch them either. The fifth
-and sixth runs opened a browser. The fifth stored no passkey. The sixth did
-not start a passkey ceremony. The seventh did not open a browser.
+configured password workflow through export. The eighth copied only that
+server snapshot and ran section 9 `directory list`, `directory plan`, and
+`directory apply` against one disposable loopback OpenLDAP listener. No run
+used an external peer or `cargo install`. The first two runs did not launch
+`riauthctl` or `riauth-maintenance`. The fourth, fifth, sixth, seventh, and
+eighth runs did not launch them either. The fifth and sixth runs opened a
+browser. The fifth stored no passkey. The sixth did not start a passkey
+ceremony. The seventh and eighth did not open a browser.
 
 ## Essentials catalog run
 
@@ -2279,5 +2281,323 @@ Still unrun on this run:
 - `recovery complete`, `recover-admin`, and a second server
 - a browser, a physical key, a synced passkey, a phone, a spoken screen
   reader, an external peer, and the Essentials guide
+
+D01 remains incomplete.
+
+## Section 9 LDAP directory import
+
+The docs worktree for this record is
+`11f1f8eaeaf23008b94767bcdd310bd46501c182`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the catalog
+run, the remote-administration run, the section 5 run, the section 4 run,
+the section 14 run, and the section 11 run copied. Its mode stayed
+`-r-x------`, its size stayed 289661864 bytes, its mtime stayed
+`2026-09-29 17:00:59 +0200`, and its SHA-256 stayed
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. The
+snapshot path was not executed. A copy lived in a new `mktemp` directory
+under `/tmp`, mode `700`. The copy was an APFS clone, then chmod `700`. Its
+SHA-256 matched the snapshot before any command, and its inode differed.
+This page calls that directory `$LAB`. The copy's real path is not recorded.
+`riauthctl` and `riauth-maintenance` were not launched.
+`deployment-private/` was not written. This run did not open a browser.
+`scripts/test-ldap.sh` was not run.
+
+The printed guide lines use `deployment-private/platform-lab/`. This run
+passed the same flags with `$LAB` paths. Remote commands also passed
+`--config $LAB/riauth.toml` and `--session-file $LAB/admin.session`. The
+default config path is `riauth.toml` in the current directory, and the
+default server-CLI session is the home session file. Neither home session
+file was written. No command passed `--json`.
+
+### Setup
+
+Free space on the data volume was 10329524 KiB before the copy and stayed
+above 7 GiB. After the clone it was 10331176 KiB. Port 9000 was free before
+serve. Both default home session files were absent. The administrator
+password and the LDAP bind password were separate 24-character alphanumeric
+files, mode `600`, with no trailing newline. Neither password is recorded.
+
+```sh
+riauth --config $LAB/riauth.toml --non-interactive init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir $LAB/data \
+  --admin admin \
+  --password-stdin
+```
+
+Exit 0. Standard error was `Creating instance and signing key…`, 37 bytes,
+including the newline. The configuration file was mode `600`. Standard
+output said `initialized` true and issuer `http://localhost:9000`. That
+object is not copied because it names the config path. The file contained
+no administrator password and no `[mail]` table. Its table headers were
+`[proxy_listeners]`, `[radius_listeners]`, `[ldap_listeners]`,
+`[directories]`, `[workspace_directories]`, `[entra_directories]`,
+`[scim_targets]`, and `[signers]`. Each of those tables was empty.
+`[directories.staff]` was absent. There was no `[workflows]` table.
+
+```sh
+riauth --version
+riauth --config $LAB/riauth.toml capabilities
+```
+
+`riauth --version` printed `riauth 0.1.1`. Its standard error was empty.
+`capabilities` exited 0. It is local, and the printed section 9 commands do
+not include it. The catalog `schema_version` was `riauth.capabilities/v2`,
+`edition` was `platform`, `interface` was `server`, `version` was `0.1.1`,
+and `build_features` were `essentials` and `platform`. The target was
+`macos` / `aarch64`. The schema list had 29 names. The catalog object was
+20679 bytes and is not copied.
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+`/readyz` on `127.0.0.1:9000` returned status `ok`, role `integrated`, and
+version `0.1.1`. The body was 187 bytes. This readiness request is not one
+of the printed section 9 commands.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session login admin --password-stdin
+```
+
+Exit 0. The session file was mode `600`. Standard output named user `admin`,
+with `admin` true. It did not contain a session token. Standard error was
+empty. The login object is not copied because it names the session path.
+
+`riauth revision` printed revision 0.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session \
+  --idempotency-key section9-staff \
+  --if-revision 0 \
+  group create staff
+```
+
+Exit 0. Standard error was empty. The group name was `staff` and its member
+count was 0. The next `riauth revision` printed revision 1. Section 6's
+`group add-member` was not run. `admin` was not added to `staff`.
+
+### Directory fixture
+
+SIGTERM stopped the first `serve`. SIGKILL was not required. Port 9000 was
+free before the configuration edit. The printed `[directories.staff]` block
+was then appended:
+
+```toml
+[directories.staff]
+url = "ldap://127.0.0.1:60523"
+transport = "starttls"
+bind_dn = "cn=riauth,ou=services,dc=example,dc=test"
+password_file = "ldap-password"
+ca_file = "ca.crt"
+user_base = "ou=people,dc=example,dc=test"
+user_filter = "(objectClass=inetOrgPerson)"
+id_attribute = "entryUUID"
+username_attribute = "uid"
+display_attribute = "cn"
+email_attribute = "mail"
+
+[directories.staff.group_user_filters]
+staff = "(memberOf=cn=staff,ou=groups,dc=example,dc=test)"
+```
+
+`password_file` and `ca_file` are relative to the configuration file. The
+bind password file was mode `600`. `ca.crt` was mode `600`. The
+configuration stayed mode `600`.
+
+The listener was Homebrew OpenLDAP `slapd` 2.7.1,
+`@(#) $OpenLDAP: slapd 2.7.1 (Sep  8 2026 21:55:18) $`, at
+`/opt/homebrew/opt/openldap/libexec/slapd`. `nm` reported 0 exported
+`memberof` symbols. The Cellar contained the man page `slapo-memberof.5` and
+no memberof module file. `strings` on that `slapd` includes `memberof.c`, and
+the binary already defines operational attribute `memberOf` with
+`NO-USER-MODIFICATION`. The fixture `slapd.conf` loaded `overlay memberof`
+after the `mdb` database. Schema files were `core`, `cosine`, and
+`inetorgperson`. The suffix was `dc=example,dc=test`. The root DN was the
+printed bind DN. `rootpw` was a `slappasswd -n -T` hash of the bind password
+file. The hash and the password are not recorded. `slapd.conf` and the TLS
+key were mode `600`. There was no person entry for the bind DN. `ou=services`
+was present.
+
+The certificate was a one-day RSA 2048 CA, CN `localhost`, `CA:TRUE`, SAN
+`DNS:localhost` and `IP:127.0.0.1`, key usage `keyCertSign,cRLSign`. The leaf
+was RSA 2048, CN `localhost`, the same SAN, `CA:FALSE`, key usage
+`digitalSignature,keyEncipherment`, extended key usage `serverAuth`. No PEM
+from either file is copied.
+
+`slapd` listened on `ldap://127.0.0.1:60523`. Readiness was a plaintext
+anonymous base search. The population client was plaintext `ldapadd` to that
+same URL, with the bind password read from the file. The LDIF added
+`uid=alice,ou=people,dc=example,dc=test` as `inetOrgPerson` with `uid`
+`alice`, `cn` `Alice Example`, `sn` `Example`, and `mail`
+`alice@example.test`. It set no `userPassword` and no `memberOf`. It then
+added `cn=staff,ou=groups,dc=example,dc=test` as `groupOfNames` with member
+`uid=alice,ou=people,dc=example,dc=test`. `ldapadd` exited 0. A following
+plaintext search showed `memberOf` equal to
+`cn=staff,ou=groups,dc=example,dc=test` and showed `entryUUID`. The UUID
+value is not copied.
+
+An OpenSSL `s_client -starttls ldap` probe against that listener exited 0.
+It reported `Verification: OK` and `Protocol version: TLSv1.3`. Apple
+`/usr/bin/ldapsearch` 2.4.28, with `-ZZ` and the same CA, exited 1 and
+printed `ldap_start_tls: Connect error (-11)`. That client did not complete
+STARTTLS. The probe is not a printed section 9 command. The riAuth commands
+below used the appended `transport` `starttls` configuration.
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+The second `/readyz` returned status `ok`. The body was 187 bytes.
+
+### List, plan, and apply
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session directory list
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session directory plan staff \
+  --out $LAB/ldap-plan.json
+```
+
+`directory list` exited 0. Standard error was empty. The one row was:
+
+| Field | Observed value |
+| --- | --- |
+| `id` | `staff` |
+| `url` | `ldap://127.0.0.1:60523` |
+| `user_base` | `ou=people,dc=example,dc=test` |
+| `groups` | `staff` |
+| `reconciliation_mode` | `manual-review` |
+
+`directory plan` exited 0. Standard error was empty. The plan file was mode
+`600`. Standard output named the plan file, so that object is not copied.
+The retained stdout fields were id
+`3f9ffb68-406f-472a-8d78-69116899b0f0`, revision 1, and one `create` for
+`alice` with group `staff`. `removal_impact` was absent from that stdout
+object. `riauth revision` after plan still printed revision 1.
+
+The plan file held the same id, directory `staff`, revision 1, `expires_at`
+`1790702694`, and `applied` false. It had one entry and the same change.
+The entry's username was `alice`, display name `Alice Example`, email
+`alice@example.test`, and group `staff`. `removal_impact` was:
+
+| Field | Observed value |
+| --- | --- |
+| `disabled_users` | 0 |
+| `missing_users` | 0 |
+| `removed_memberships` | 0 |
+| `review_required` | false |
+
+`fingerprint` and `actor` were present. They are not copied. Distinguished
+names and `entryUUID` values from the plan are not copied.
+`review_required` was false, so apply omitted `--confirm-removals`.
+
+Before apply, `user list` contained only `admin`. `group list` contained
+`staff` with member count 0.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session directory apply \
+  --plan $LAB/ldap-plan.json
+```
+
+Exit 0. Standard error was empty. The object had `applied` true, the same
+plan id, and the same one `create` for `alice` in group `staff`. It had no
+`decision` field. `riauth revision` then printed revision 4.
+
+`user list` after apply contained `admin` and `alice`. `admin` stayed
+`password_available` true. `alice` was:
+
+| Field | Observed value |
+| --- | --- |
+| `username` | `alice` |
+| `display_name` | `Alice Example` |
+| `email` | `alice@example.test` |
+| `enabled` | true |
+| `admin` | false |
+| `mfa_enabled` | false |
+| `password_available` | false |
+| `email_verified` | false |
+| attributes | 0 |
+| subjects | 0 |
+
+User ids and `created_at` are not copied. `group list` showed `staff` with
+member count 1. That member was the imported `alice` account. Group members
+are stored as user ids, and the id is not copied.
+
+`$LAB/data/riauth.redb` was 110592 bytes. The serve log was 683 bytes. The
+serve log, the `slapd` log, and the configuration file did not contain the
+administrator password or the bind password. The session file and both
+password files were outside that scan.
+
+### Source comparison
+
+The comparison is `git diff 58357fd 11f1f8e`, limited to the files named
+here. These files had no difference:
+
+- `src/directory.rs`
+- `src/assembly/directory.rs`
+- `src/connector_guard.rs`
+- `src/core.rs`
+- `src/crypto.rs`
+- `src/model.rs`
+
+`src/api.rs` adds `GET /api/operations/provisioning/deactivations`. This run
+did not call it. `src/cli.rs` differs in the agent create, rotate, and
+revoke idempotency checks. `directory list`, `directory plan`,
+`directory apply`, `group create`, `user list`, `group list`, `revision`,
+and `login` are outside that diff. `src/config.rs` differs in the
+browser-consent adapter check, which also accepts a password-plus-TOTP
+consent workflow. Directory `password_file` and `ca_file` resolution is
+outside that diff. This comparison does not cover the rest of the tree. The
+commands above were served by the immutable snapshot.
+
+In that same snapshot-equal `src/core.rs`, a revision bump follows audit
+actions whose names start with `user.`, `group.`, or `directory.apply`,
+among other prefixes. `directory.plan` is not one of those prefixes. The
+observed revision stayed 1 across plan and was 4 after apply. No audit
+command was run, so the audit rows were not read.
+
+### Cleanup
+
+The evidence script exited 0 after the product commands above exited 0. Its
+cleanup then stopped `serve` and `slapd` with SIGTERM. SIGKILL was not
+required. It re-hashed the snapshot, found port 9000 free, found both
+default home session files absent, and removed the lab directory. The
+remover's own record was `lab_removed` 1. A following check found no lab
+directory, the snapshot hash and mode unchanged, port 9000 free, both home
+session files absent, and no `slapd` process. Free space on the data volume
+stayed above 7 GiB. After cleanup, available space was 10293580 KiB.
+
+### Unrun on this LDAP import run
+
+The executed chain is `riauth init`, `serve`, `/readyz`, server CLI login,
+local `--version` and `capabilities`, `revision`, `group create staff`, a
+SIGTERM restart after appending `[directories.staff]`, a second `/readyz`,
+`directory list`, `directory plan`, `user list`, `group list`,
+`directory apply`, and the same two reads again.
+
+Still unrun on this run:
+
+- `--confirm-removals`
+- `--if-revision` on `directory apply`
+- a directory password login
+- `group add-member` for `admin`
+- `directory workspace` and `directory entra`
+- sections 10, 12, and 13
+- an audit read of the plan or the apply
+- `scripts/test-ldap.sh`
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`
+- `recovery complete`, `recover-admin`, and a second server
+- a browser, a physical key, a synced passkey, a phone, a spoken screen
+  reader, a customer directory, and the Essentials guide
 
 D01 remains incomplete.
