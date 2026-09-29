@@ -6,7 +6,8 @@ One invocation is one binary and one backend, redb or PostgreSQL. A second pass
 creates empty groups during the same read so writer overlap and the server's
 background counters are both recorded. Optional --directory-users and
 --directory-groups add a bounded directory and verify the administrator's
-group index before measurement. Both default to zero.
+group index before measurement. Both default to zero. --pace-ms sleeps
+between measured reads so a pass can outlast the 60-second maintenance cadence.
 
 python3 scripts/q09_benchmark_slice.py --self-check
 python3 scripts/q09_benchmark_slice.py --binary PATH --backend redb --out FILE
@@ -43,6 +44,8 @@ BUDGET_MAX = 500
 INDEX_PAGE_ROWS = 128
 DIRECTORY_USERS_MAX = 32
 DIRECTORY_GROUPS_MAX = 32
+PACE_MS_MAX = 15000
+MAINTENANCE_CADENCE_SECONDS = 60
 BACKGROUND_JOBS = (
     "reconciliation",
     "provisioning",
@@ -73,6 +76,7 @@ LIMITATIONS = (
     "The default general rate limit is 600 requests per minute. Estimated general requests must stay at or below 500.",
     "Build profile, toolchain, and feature set are recorded only from the operator flags. The script does not recover them from the binary. The artifact sha256 is of the measured file.",
     "This report is an observation of the recorded run. It assigns no load, recovery, or capacity target.",
+    "Optional --pace-ms sleeps between measured reads. The sleep is outside each latency sample and inside the pass wall clock. Maintenance cadence overlap requires that sleep to make the pass longer than 60 seconds and the maintenance finished counter to increase during the pass.",
 )
 
 
@@ -227,6 +231,23 @@ def request_budget(iterations, warmup, interference_cap, directory_users=0, dire
     }
 
 
+def pace_seconds(pace_ms):
+    if isinstance(pace_ms, bool) or not isinstance(pace_ms, int) or pace_ms < 0 or pace_ms > PACE_MS_MAX:
+        raise SliceError(f"pace-ms must be an integer from 0 through {PACE_MS_MAX}")
+    return pace_ms / 1000
+
+
+def maintenance_cadence_overlap(finished_delta, elapsed_seconds):
+    """True when this pass both outlasts the maintenance period and sees a finish."""
+    return (
+        isinstance(finished_delta, int)
+        and not isinstance(finished_delta, bool)
+        and finished_delta >= 1
+        and isinstance(elapsed_seconds, (int, float))
+        and elapsed_seconds > MAINTENANCE_CADENCE_SECONDS
+    )
+
+
 def validate_shape(iterations, warmup, interference_cap, directory_users=0, directory_groups=0):
     if iterations < 1 or warmup < 0 or interference_cap < 1:
         raise SliceError("iterations must be >= 1, warmup >= 0, and interference cap >= 1")
@@ -262,6 +283,13 @@ def completion_code(report):
         return 4
     if not report["interference"]["overlap"]:
         return 2
+    for name in ("quiet", "interference"):
+        passage = report["passes"][name]
+        if (
+            passage.get("elapsed_seconds", 0) > MAINTENANCE_CADENCE_SECONDS
+            and passage.get("maintenance_cadence_overlap") is False
+        ):
+            return 5
     return 0
 
 
@@ -681,7 +709,11 @@ def stop_postgres(programs, cluster, root):
     )
 
 
-def measured_pass(base, token, username, iterations, warmup, pid, hidden, expected_groups, interfere=None):
+def measured_pass(
+    base, token, username, iterations, warmup, pid, hidden, expected_groups,
+    interfere=None, pace_ms=0,
+):
+    pace = pace_seconds(pace_ms)
     for _ in range(warmup):
         _elapsed, status, parsed, unparsed = http_exchange(
             "GET", base + "/api/me", headers=auth_headers(token), timeout=5,
@@ -704,7 +736,7 @@ def measured_pass(base, token, username, iterations, warmup, pid, hidden, expect
     codes = {}
     started = time.perf_counter()
     try:
-        for _ in range(iterations):
+        for index in range(iterations):
             elapsed, status, parsed, unparsed = http_exchange(
                 "GET", base + "/api/me", headers=auth_headers(token), timeout=5,
             )
@@ -717,6 +749,8 @@ def measured_pass(base, token, username, iterations, warmup, pid, hidden, expect
                 statuses[key] = statuses.get(key, 0) + 1
                 if code:
                     codes[code] = codes.get(code, 0) + 1
+            if pace and index + 1 < iterations:
+                time.sleep(pace)
     finally:
         elapsed_seconds = time.perf_counter() - started
         sampler.stop()
@@ -728,20 +762,26 @@ def measured_pass(base, token, username, iterations, warmup, pid, hidden, expect
         "GET", base + "/api/operations/metrics", headers=auth_headers(token), timeout=5,
     )
     after = require_document(after_status, after_body, "metrics", hidden)
+    delta = subtract_counters(counter_snapshot(after), counter_snapshot(before))
+    finished = delta["background_jobs"]["maintenance"]["finished"]
+    elapsed_rounded = round(elapsed_seconds, 6)
     return {
         "clients": 2 if interfere else 1,
         "warmup": warmup,
+        "pace_ms": pace_ms,
         "attempts": iterations,
         "success": success,
         "errors": iterations - success,
         "error_statuses": statuses,
         "error_codes": codes,
-        "elapsed_seconds": round(elapsed_seconds, 6),
+        "elapsed_seconds": elapsed_rounded,
         "throughput_success_per_second": round(success / elapsed_seconds, 6) if elapsed_seconds else None,
         "throughput_attempts_per_second": round(iterations / elapsed_seconds, 6) if elapsed_seconds else None,
         "latency_us": distribution(samples),
         "process": sampler.summary(),
-        "server_counter_delta": subtract_counters(counter_snapshot(after), counter_snapshot(before)),
+        "maintenance_finished_delta": finished,
+        "maintenance_cadence_overlap": maintenance_cadence_overlap(finished, elapsed_rounded),
+        "server_counter_delta": delta,
         "server_counter_delta_includes": "the closing /api/operations/metrics read and interference requests that completed before it",
         "host_loadavg": {"start": load_start, "end": load_end},
     }
@@ -951,9 +991,11 @@ def run_slice(
     binary, backend, iterations, warmup, interference_cap,
     fixture=False, directory_users=0, directory_groups=0,
     build_profile="unrecorded", build_toolchain="unrecorded", build_features="unrecorded",
+    pace_ms=0,
 ):
     if backend not in ("redb", "postgresql"):
         raise SliceError("backend must be redb or postgresql")
+    pace_seconds(pace_ms)
     budget = validate_shape(
         iterations, warmup, interference_cap, directory_users, directory_groups,
     )
@@ -1036,6 +1078,7 @@ def run_slice(
         expected_groups = dataset["session_read_groups"]
         quiet = measured_pass(
             base, token, username, iterations, warmup, server.pid, hidden, expected_groups,
+            pace_ms=pace_ms,
         )
         outcome = {"success": 0, "conflict": 0, "error": 0, "posts": 0, "revision_refreshes": 0}
         start = threading.Event()
@@ -1050,6 +1093,7 @@ def run_slice(
         interference = measured_pass(
             base, token, username, iterations, warmup, server.pid, hidden, expected_groups,
             interfere={"start": start, "stop": stop, "thread": writer},
+            pace_ms=pace_ms,
         )
         report = {
             "schema": SCHEMA,
@@ -1090,6 +1134,8 @@ def run_slice(
                 "iterations": iterations,
                 "warmup": warmup,
                 "interference_cap": interference_cap,
+                "pace_ms": pace_ms,
+                "maintenance_cadence_seconds": MAINTENANCE_CADENCE_SECONDS,
                 "directory_users": directory_users,
                 "directory_groups": directory_groups,
                 "username": username,
@@ -1281,6 +1327,7 @@ def serve_fixture(host, port):
                     for name in BACKGROUND_JOBS
                 }
                 jobs["logout_ssf"]["finished"] = metrics_calls
+                jobs["maintenance"]["finished"] = metrics_calls
                 self.send_json(200, {
                     "requests_total": request_count,
                     "responses_error_total": 0,
@@ -1375,6 +1422,7 @@ def main(argv=None):
     parser.add_argument("--interference-cap", type=int, default=30)
     parser.add_argument("--directory-users", type=int, default=0)
     parser.add_argument("--directory-groups", type=int, default=0)
+    parser.add_argument("--pace-ms", type=int, default=0)
     parser.add_argument("--build-profile", default="unrecorded")
     parser.add_argument("--build-toolchain", default="unrecorded")
     parser.add_argument("--build-features", default="unrecorded")
@@ -1385,9 +1433,9 @@ def main(argv=None):
             args.binary or args.out or args.backend != "redb"
             or args.directory_users or args.directory_groups
             or args.build_profile != "unrecorded" or args.build_toolchain != "unrecorded"
-            or args.build_features != "unrecorded"
+            or args.build_features != "unrecorded" or args.pace_ms
         ):
-            raise SliceError("--self-check takes no binary, backend, directory size, build note, or output file")
+            raise SliceError("--self-check takes no binary, backend, directory size, pace, build note, or output file")
         report = run_slice(sys.executable, "redb", 12, 1, 4, fixture=True)
         code = completion_code(report)
         if code != 0 or report["product_run"] or not report["interference"]["overlap"]:
@@ -1418,11 +1466,35 @@ def main(argv=None):
             or counts != {"q09-dir-0001": 3, "q09-dir-0002": 3}
             or directory["passes"]["quiet"]["success"] != 4
             or directory["passes"]["interference"]["success"] != 4
+            or directory["passes"]["quiet"]["pace_ms"] != 0
+            or directory["passes"]["quiet"]["maintenance_cadence_overlap"]
         ):
             raise SliceError(f"self-check directory failed with completion code {directory_code}")
+        paced = run_slice(
+            sys.executable, "redb", 4, 0, 1, fixture=True, pace_ms=40,
+        )
+        paced_code = completion_code(paced)
+        quiet_paced = paced["passes"]["quiet"]
+        interference_paced = paced["passes"]["interference"]
+        if (
+            paced_code != 0
+            or paced["product_run"]
+            or not paced["interference"]["overlap"]
+            or paced["settings"]["pace_ms"] != 40
+            or quiet_paced["pace_ms"] != 40
+            or quiet_paced["success"] != 4
+            or quiet_paced["elapsed_seconds"] < 0.10
+            or quiet_paced["maintenance_finished_delta"] < 1
+            or quiet_paced["maintenance_cadence_overlap"]
+            or interference_paced["elapsed_seconds"] < 0.10
+            or interference_paced["maintenance_finished_delta"] < 1
+            or interference_paced["maintenance_cadence_overlap"]
+        ):
+            raise SliceError(f"self-check pace failed with completion code {paced_code}")
         print(
             "q09 benchmark slice self-check passed product_run=false overlap=true "
-            "directory_verified=true"
+            "directory_verified=true pace_stretched=true maintenance_delta=true "
+            "cadence_overlap=false"
         )
         return 0
     if not args.binary:
@@ -1431,7 +1503,7 @@ def main(argv=None):
         args.binary, args.backend, args.iterations, args.warmup, args.interference_cap,
         directory_users=args.directory_users, directory_groups=args.directory_groups,
         build_profile=args.build_profile, build_toolchain=args.build_toolchain,
-        build_features=args.build_features,
+        build_features=args.build_features, pace_ms=args.pace_ms,
     )
     code = completion_code(report)
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
@@ -1446,7 +1518,10 @@ def main(argv=None):
         f"dataset={report['dataset']['name']} "
         f"directory_users={report['dataset']['extra_users']} "
         f"directory_groups={len(report['dataset']['groups'])} "
-        f"verified={str(report['dataset']['verified']).lower()}",
+        f"verified={str(report['dataset']['verified']).lower()} "
+        f"pace_ms={report['settings']['pace_ms']} "
+        f"quiet_maintenance_overlap={str(report['passes']['quiet']['maintenance_cadence_overlap']).lower()} "
+        f"interference_maintenance_overlap={str(report['passes']['interference']['maintenance_cadence_overlap']).lower()}",
         file=sys.stderr,
     )
     return code

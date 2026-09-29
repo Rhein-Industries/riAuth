@@ -53,12 +53,14 @@ Each report uses schema `riauth.benchmark-slice/v1` and sets
 - hardware description and host load average
 - iteration count, warmup, interference cap, directory size, and the estimated general-rate-limit budget
 - the dataset: fresh init, or the verified users, groups, memberships, and administrator session-read groups
-- for each pass: attempts, successes, error statuses and error codes, nearest-rank p50/p95/p99 latency over every attempt, successful throughput, `ps` RSS/CPU samples of the serve process, server counter deltas, and host load
+- for each pass: attempts, successes, error statuses and error codes, nearest-rank p50/p95/p99 latency over every attempt, successful throughput, `ps` RSS/CPU samples of the serve process, server counter deltas, host load, the pace, and whether the pass overlapped the maintenance cadence
 - writer successes, conflicts, and errors, and the arithmetic difference of the latency percentiles
 
 The general category allows 600 requests per minute from one address. `GET /api/me`, metrics, revision, and group creation share that category. The script refuses a shape whose estimate is above 500. Login is the separate `login` category. `/readyz` is a probe.
 
-Exit 0 means every measured read succeeded, at least one group create succeeded, and no measured attempt returned 429. Exit 2 means the report was written and the writer completed no group. Exit 3 means a measured attempt returned 429. Exit 4 means some other measured error. Exit 1 means the run stopped before a report.
+Exit 0 means every measured read succeeded, at least one group create succeeded, and no measured attempt returned 429. Exit 2 means the report was written and the writer completed no group. Exit 3 means a measured attempt returned 429. Exit 4 means some other measured error. Exit 5 means the report was written, a measured pass lasted longer than 60 seconds, and the maintenance `finished` counter did not increase during that pass. Exit 1 means the run stopped before a report.
+
+`--pace-ms` sleeps that many milliseconds between measured reads in both passes. Zero leaves the reads back to back. The sleep is outside each latency sample and inside the pass wall clock, so throughput falls while the latency sample stays the HTTP exchange. The sleep does not add a general request. A pass sets `maintenance_cadence_overlap` only when its wall clock is longer than 60 seconds and the maintenance `finished` counter increases during the pass. The maintenance job uses a 60-second interval and its first tick is immediate, so a pass has to be longer than that interval to contain a later finish.
 
 ## Reproduce
 
@@ -91,7 +93,9 @@ The default remains one administrator and no memberships. `N` is extra users
 in addition to that administrator, and `G` is groups. The report names that
 directory `q09-Nu-Gg`. `q09-2u-2g` is the administrator plus two extra users
 (three accounts) and two groups. `q09-8u-8g` is the administrator plus eight
-extra users (nine accounts) and eight groups.
+extra users (nine accounts) and eight groups. Add `--pace-ms 6500` when the
+measured pass must outlast the 60-second maintenance cadence. Twelve measured
+reads at that pace sleep for 71.5 seconds between attempts.
 `--build-profile`, `--build-toolchain`, and `--build-features` are recorded as
 supplied. The script still hashes the measured file and does not infer the
 compiler from it.

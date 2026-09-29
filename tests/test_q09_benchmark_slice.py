@@ -85,6 +85,22 @@ class Percentiles(unittest.TestCase):
         quiet_only = json.loads(json.dumps(clean))
         quiet_only["interference"]["overlap"] = False
         self.assertEqual(benchmark.completion_code(quiet_only), 2)
+        missed = json.loads(json.dumps(clean))
+        missed["passes"]["quiet"]["elapsed_seconds"] = 70
+        missed["passes"]["quiet"]["maintenance_cadence_overlap"] = False
+        missed["passes"]["interference"]["elapsed_seconds"] = 1
+        missed["passes"]["interference"]["maintenance_cadence_overlap"] = False
+        self.assertEqual(benchmark.completion_code(missed), 5)
+        self.assertFalse(benchmark.maintenance_cadence_overlap(0, 70))
+        self.assertFalse(benchmark.maintenance_cadence_overlap(1, 60))
+        self.assertTrue(benchmark.maintenance_cadence_overlap(1, 60.001))
+        self.assertTrue(benchmark.maintenance_cadence_overlap(2, 75))
+        self.assertEqual(benchmark.pace_seconds(0), 0)
+        self.assertEqual(benchmark.pace_seconds(6500), 6.5)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.pace_seconds(-1)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.pace_seconds(benchmark.PACE_MS_MAX + 1)
 
     def test_session_read_classification(self):
         self.assertEqual(benchmark.classify_me(200, {"user": {"username": "admin"}}, False, "admin"), (True, None))
@@ -146,6 +162,14 @@ class FixtureRun(unittest.TestCase):
         self.assertEqual(report["dataset"]["session_read_groups"], [])
         self.assertEqual(report["settings"]["directory_users"], 0)
         self.assertEqual(report["settings"]["directory_groups"], 0)
+        self.assertEqual(report["settings"]["pace_ms"], 0)
+        self.assertEqual(quiet["pace_ms"], 0)
+        self.assertGreaterEqual(quiet["maintenance_finished_delta"], 1)
+        self.assertFalse(quiet["maintenance_cadence_overlap"])
+        self.assertEqual(
+            quiet["maintenance_finished_delta"],
+            quiet["server_counter_delta"]["background_jobs"]["maintenance"]["finished"],
+        )
         with self.assertRaises(benchmark.SliceError):
             benchmark.main(["--self-check", "--out", "fixture.json"])
         with self.assertRaises(benchmark.SliceError):
@@ -201,6 +225,31 @@ class FixtureRun(unittest.TestCase):
         )
         self.assertFalse(report["product_run"])
         self.assertFalse(report["performance_claim"])
+        self.assertEqual(report["passes"]["quiet"]["pace_ms"], 0)
+        self.assertFalse(report["passes"]["quiet"]["maintenance_cadence_overlap"])
+
+    def test_paced_fixture_stretches_the_pass_without_claiming_cadence_overlap(self):
+        report = benchmark.run_slice(
+            benchmark.sys.executable, "redb", 4, 0, 1, fixture=True, pace_ms=40,
+        )
+        self.assertEqual(benchmark.completion_code(report), 0)
+        self.assertEqual(report["settings"]["pace_ms"], 40)
+        self.assertEqual(report["settings"]["maintenance_cadence_seconds"], 60)
+        quiet = report["passes"]["quiet"]
+        interference = report["passes"]["interference"]
+        for passage in (quiet, interference):
+            self.assertEqual(passage["pace_ms"], 40)
+            self.assertEqual(passage["success"], 4)
+            self.assertEqual(passage["errors"], 0)
+            self.assertGreaterEqual(passage["elapsed_seconds"], 0.10)
+            self.assertGreaterEqual(passage["maintenance_finished_delta"], 1)
+            self.assertFalse(passage["maintenance_cadence_overlap"])
+            self.assertEqual(
+                passage["maintenance_finished_delta"],
+                passage["server_counter_delta"]["background_jobs"]["maintenance"]["finished"],
+            )
+        self.assertTrue(report["interference"]["overlap"])
+        self.assertFalse(report["product_run"])
 
 
 PROBE_BINARY = """#!/usr/bin/env python3
