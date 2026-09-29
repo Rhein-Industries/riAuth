@@ -244,6 +244,24 @@ enrolled, so that kept-factor sentence is the page copy. The capture is the
 fixture's loopback SMTP listener, not an external mailbox. Hardware
 authenticators, real mobile devices, and external email remain open, and this
 Playwright project is not a CI job.
+`tools/browser/multi-authenticator.spec.js` is a separate headless journey
+on the same 390×844 CSS viewport. Two browser contexts each get their own
+Playwright WebAuthn shim before the page loads. The password account enrolls
+one passkey in the first context, signs in with it, and turns on an
+authenticator app from the setup key shown on the page. An empty code and a
+wrong code leave the app off. The confirming code is spent, so the second
+context signs in with the password and the next time-based code, then
+enrolls a second passkey on its own shim. Removing the first passkey ends
+both sessions while the second browser keeps its cookie, rejects that first
+credential, and leaves the second passkey able to sign in. The authenticator
+app stays on. One shim returns only its first resident credential and cannot
+choose another; registration also excludes credential ids that shim already
+holds, so the second passkey has to be a separate authenticator. Neither
+shim is a physical security key, a synced passkey, a phone app, or a mobile
+operating system. The viewport is CSS only, and this is not a screen reader.
+Hardware authenticators, synced passkeys, a phone hybrid, real mobile
+devices, and external email remain open, and this Playwright project is not
+a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
