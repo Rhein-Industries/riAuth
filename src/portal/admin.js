@@ -1644,7 +1644,7 @@
       }
       if (!password) throw invalid("Enter an initial password.");
       const body = { username, password, display_name: value(form, "new-display"), admin: checked(form, "new-admin"), email: value(form, "new-email") || null };
-      await api("POST", "admin/users", body, { key });
+      await api("POST", "admin/users", body, { revision: data.revision, key });
       await saved(`Created ${username}.`, hash("people", username));
     }, {
       403: (error) => error.code === "mfa_required" ? "Sign in with your passkey or authenticator code in this browser, then try again." :

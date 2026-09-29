@@ -251,7 +251,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | Method | Route | Contract |
 | --- | --- | --- |
 | GET | `/api/capabilities` | Public `riauth.capabilities/v2` instance snapshot: `features` contains only locally usable profiles; `feature_states` separates compiled, enabled, configured and usable with redacted reasons. Permissions and schemas remain build catalogs. External peer health and caller authorization are separate. |
-| GET, POST | `/api/users` | Existing visible-user array / create user |
+| GET, POST | `/api/users` | Existing visible-user array / create user; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET | `/api/users?limit=100&cursor=...` | Opt-in JSON user pages; `items`, `next_cursor`, `limit`, `revision` |
 | PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset; requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET, POST | `/api/groups` | Visible groups / create group |

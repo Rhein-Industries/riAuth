@@ -231,11 +231,20 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
     ));
     assert_eq!(login["user"]["admin"], true);
     assert!(login.get("session_token").is_none());
+    let creation_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &creation_revision,
+            "--idempotency-key",
+            "binary-create-alice",
             "user",
             "create",
             "alice",
@@ -854,6 +863,124 @@ fn failure(output: Output) -> (i32, Value) {
     let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(envelope["ok"], false);
     (output.status.code().unwrap(), envelope["error"].clone())
+}
+
+#[test]
+fn cli_user_creation_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let at = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    let password = "cli-user-creation-password\n";
+    let missing_key = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &at,
+            "user",
+            "create",
+            "created",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (_, error) = failure(missing_key);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let missing_revision = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--idempotency-key",
+            "cli-create-created",
+            "user",
+            "create",
+            "created",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (_, error) = failure(missing_revision);
+    assert!(error["message"].as_str().unwrap().contains("--if-revision"));
+
+    let args = [
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create-created",
+        "user",
+        "create",
+        "created",
+        "--password-stdin",
+    ];
+    let first = success(invoke(dir.path(), &config, &session, &args, Some(password)));
+    let replay = success(invoke(dir.path(), &config, &session, &args, Some(password)));
+    assert_eq!(replay, first);
+    assert_eq!(first["username"], "created");
+    let current = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(current, at.parse::<u64>().unwrap() + 1);
+    let users = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["user", "list"],
+        None,
+    ));
+    assert_eq!(
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|user| user["username"] == "created")
+            .count(),
+        1
+    );
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &session,
+        &["audit", "--limit", "100"],
+        None,
+    ));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.create" && event["target"] == first["id"])
+            .count(),
+        1
+    );
+    let stale = invoke(
+        dir.path(),
+        &config,
+        &session,
+        &[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "cli-create-stale",
+            "user",
+            "create",
+            "stale",
+            "--password-stdin",
+        ],
+        Some(password),
+    );
+    let (code, error) = failure(stale);
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
 }
 
 /// M03: the CLI's direct and desired-state application writes reach the same

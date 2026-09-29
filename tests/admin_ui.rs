@@ -4,7 +4,7 @@ use axum::{
     body::Body,
     http::{HeaderMap, Request, StatusCode},
 };
-use common::Fixture;
+use common::{Fixture, PASSWORD};
 use http_body_util::BodyExt;
 use riauth::core::Core;
 use serde_json::{Value, json};
@@ -777,6 +777,12 @@ async fn writes_use_the_management_path_and_guards() {
     let app = riauth::api::router(fixture.core.clone());
     let origin = origin(&fixture.core);
     let new_user = json!({"username": "grace", "password": "correct horse battery staple 42", "display_name": "Grace"});
+    let blocked_revision = fixture
+        .core
+        .store
+        .get("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
     // Cross-site shapes and non-administrators change nothing.
     for (cookie, portal, sent_origin, status) in [
         (Some(admin.as_str()), true, None, StatusCode::FORBIDDEN),
@@ -805,6 +811,8 @@ async fn writes_use_the_management_path_and_guards() {
             cookie,
             portal,
             origin: sent_origin,
+            revision: Some(blocked_revision),
+            key: Some("blocked-user-create"),
             body: Some(new_user.clone()),
             ..Default::default()
         };
@@ -828,17 +836,40 @@ async fn writes_use_the_management_path_and_guards() {
         body,
         ..Default::default()
     };
-    let (status, _, created) = send(&app, "/api/admin/users", write("POST", Some(new_user))).await;
+    let create = Call {
+        revision: Some(
+            fixture
+                .core
+                .store
+                .get("meta", "revision")
+                .unwrap()
+                .unwrap_or(0),
+        ),
+        key: Some("create-grace"),
+        ..write("POST", Some(new_user))
+    };
+    let (status, _, created) = send(&app, "/api/admin/users", create).await;
     assert_eq!(status, StatusCode::OK, "{created}");
     assert!(created.get("password_hash").is_none());
     // Validation is the management API's own.
     let (status, _, body) = send(
         &app,
         "/api/admin/users",
-        write(
-            "POST",
-            Some(json!({"username": "bad name!", "password": "x"})),
-        ),
+        Call {
+            revision: Some(
+                fixture
+                    .core
+                    .store
+                    .get("meta", "revision")
+                    .unwrap()
+                    .unwrap_or(0),
+            ),
+            key: Some("invalid-user-create"),
+            ..write(
+                "POST",
+                Some(json!({"username": "bad name!", "password": "x"})),
+            )
+        },
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
@@ -897,6 +928,162 @@ async fn writes_use_the_management_path_and_guards() {
     let (status, _, body) = send(&app, "/api/admin/users/grace", current).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["display_name"], "Grace Hopper");
+}
+
+#[tokio::test]
+async fn user_creation_requires_receipt_and_revision_across_browser_and_bearer() {
+    let fixture = Fixture::new();
+    let outsider = fixture.user("outsider");
+    let cookie = sso_cookie(&fixture.core, &fixture.admin);
+    let origin = origin(&fixture.core);
+    let app = riauth::api::router(fixture.core.clone());
+    let revision = || {
+        fixture
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let audit_count = || {
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.create")
+            .count()
+    };
+    let input =
+        |username| json!({"username": username, "password": PASSWORD, "display_name": username});
+    let browser = |key: Option<&'static str>, version, username| Call {
+        method: "POST",
+        cookie: Some(&cookie),
+        portal: true,
+        origin: Some(&origin),
+        key,
+        revision: version,
+        body: Some(input(username)),
+        ..Default::default()
+    };
+    let bearer = |key: Option<&'static str>, version, username| Call {
+        method: "POST",
+        bearer: Some(&fixture.admin),
+        key,
+        revision: version,
+        body: Some(input(username)),
+        ..Default::default()
+    };
+    let browser_path = "/api/admin/users";
+    let bearer_path = "/api/users";
+    let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        script
+            .as_str()
+            .unwrap()
+            .contains("api(\"POST\", \"admin/users\", body, { revision: data.revision, key })")
+    );
+    let at = revision();
+    let baseline_audit = audit_count();
+    let before = fixture.snapshot().unwrap();
+    for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
+        assert_eq!(
+            send(&app, browser_path, browser(key, version, "missing"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(&app, bearer_path, bearer(key, version, "missing"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        send(
+            &app,
+            bearer_path,
+            Call {
+                method: "POST",
+                bearer: Some(&outsider),
+                key: Some("unauthorized-user-create"),
+                revision: Some(at),
+                body: Some(input("forbidden")),
+                ..Default::default()
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+
+    let first = send(
+        &app,
+        browser_path,
+        browser(Some("browser-user-create"), Some(at), "browser-created"),
+    )
+    .await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(first.2["username"], "browser-created");
+    assert!(first.2.get("password_hash").is_none());
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        browser_path,
+        browser(Some("browser-user-create"), Some(at), "browser-created"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, first.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count(), baseline_audit + 1);
+    assert_eq!(revision(), at + 1);
+    assert_eq!(
+        send(
+            &app,
+            browser_path,
+            browser(Some("browser-user-create"), Some(at), "different")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_path,
+            bearer(Some("stale-user-create"), Some(at), "stale")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    fixture.assert_http_mutation_snapshot(&committed);
+
+    let current = revision();
+    let second = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-user-create"), Some(current), "api-created"),
+    )
+    .await;
+    assert_eq!(second.0, StatusCode::OK);
+    assert_eq!(second.2["username"], "api-created");
+    let replay = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-user-create"), Some(current), "api-created"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, second.2);
+    assert_eq!(audit_count(), baseline_audit + 2);
+    assert_eq!(revision(), current + 1);
 }
 
 #[tokio::test]

@@ -500,6 +500,15 @@ impl Core {
         })
     }
     pub fn create_user(&self, token: &str, input: NewUser) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "User creation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             crate::management::create_user(&self.config, tx, &actor, input)

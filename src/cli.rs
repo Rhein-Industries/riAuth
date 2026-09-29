@@ -2499,6 +2499,11 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
             admin,
             password_stdin,
         } => {
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!(
+                    "User creation requires --idempotency-key and --if-revision (from `riauth revision`)"
+                );
+            }
             let password = read_password(password_stdin, true)?;
             return remote
                 .call(
