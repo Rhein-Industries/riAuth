@@ -1692,8 +1692,9 @@ server does not prove discoverability. The CDP
 ceremony stays in `invitation-passkey.spec.js`.
 
 None of these journeys is an external mailbox, a spoken screen reader, a
-phone hybrid, a mobile operating system, or a release. Playwright stays
-outside CI. The viewport is CSS pixels. The page is
+phone hybrid, a mobile operating system, or a release. The CI integration
+job is written to run the bounded headless allowlist in [Portal](PORTAL.md);
+this guide slice did not run that job. The viewport is CSS pixels. The page is
 `src/portal/account.js` and `src/portal/account.html`. The password handler
 is `src/portal/http.rs`. The passkey routes are `src/api/invitation.rs` and
 `src/lifecycle/invitation/passkey.rs`.
