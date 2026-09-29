@@ -4,6 +4,10 @@
   device-trust JWT. The adapter calls only the pinned v2 generate and verify
   endpoints and `https://oauth2.googleapis.com/token`, and it fails closed when
   the service-account file, customer, device id, or key trust level is absent.
+- Verify rejects a `challengeResponse` whose embedded `SignedData` is not the
+  issued challenge, before calling Google. The device signature over that
+  embedding is still checked only by Google's verify endpoint. Google's
+  challenge-signing key is not pinned.
 - This slice was not executed against `verifiedaccess.googleapis.com` or a
   managed Chrome device. `deviceSignals` are not evaluated, profile-only
   responses are rejected, and I07 stays open.

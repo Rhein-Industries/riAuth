@@ -2175,7 +2175,7 @@
       ],
       "label": "build",
       "journey": "module",
-      "current_state": "The local JWT stand-in remains the default. An explicit google_verified_access_v2 adapter calls only the pinned v2 generate and verify endpoints and the Google OAuth token endpoint, and it fails closed when the verifier or response identity is absent. It was not executed against verifiedaccess.googleapis.com or a managed Chrome device (ENT-06).",
+      "current_state": "The local JWT stand-in remains the default. An explicit google_verified_access_v2 adapter calls only the pinned v2 generate and verify endpoints and the Google OAuth token endpoint, and it fails closed when the verifier or response identity is absent. Before verify, the response must embed the issued challenge's SignedData data and signature. The device signature over that embedding stays with Google's verify endpoint. It was not executed against verifiedaccess.googleapis.com or a managed Chrome device (ENT-06).",
       "implementation": [
         "src/device_trust.rs",
         "src/verified_access.rs",
@@ -2258,6 +2258,11 @@
           "ref": "src/verified_access.rs::cleartext_and_unpinned_urls_are_refused",
           "kind": "rust",
           "ci": "ci-check"
+        },
+        {
+          "ref": "src/verified_access.rs::embedded_signed_data_binds_the_response_to_the_issued_challenge",
+          "kind": "rust",
+          "ci": "ci-check"
         }
       ],
       "documentation": [
@@ -2267,7 +2272,7 @@
       "gaps": [
         "Managed Chrome tenant",
         "Live generate and verify",
-        "Cryptographic binding of challengeResponse to the issued challenge"
+        "Local check of the device signature over ChallengeResponse (device public key stays inside encrypted key info; Google verify was not observed live)"
       ],
       "unverified": [
         "Any managed device",

@@ -1243,7 +1243,7 @@
           "gaps": [
             "Managed Chrome tenant",
             "Live generate and verify",
-            "Cryptographic binding of challengeResponse to the issued challenge"
+            "Local check of the device signature over ChallengeResponse (device public key stays inside encrypted key info; Google verify was not observed live)"
           ]
         },
         "I08": {
@@ -5587,7 +5587,7 @@
       },
       "current_evidence": {
         "provisional_assessment": "build",
-        "summary": "The local compact-JWT stand-in remains the default. The google_verified_access_v2 adapter is present and was not executed against verifiedaccess.googleapis.com or a managed Chrome device.",
+        "summary": "The local compact-JWT stand-in remains the default. The google_verified_access_v2 adapter rejects a response that does not embed the issued challenge, leaves the device signature to Google's verify endpoint, and was not executed against verifiedaccess.googleapis.com or a managed Chrome device.",
         "repository_paths": [
           "src/device_trust.rs",
           "src/verified_access.rs",
@@ -5595,7 +5595,7 @@
           "tests/device_trust.rs",
           "docs/enterprise/ENT-06.md"
         ],
-        "review": "Local device_trust tests and verified_access lib tests passed in this worktree. That run did not call verifiedaccess.googleapis.com and did not use a managed Chrome device.",
+        "review": "Local device_trust tests and verified_access lib tests passed in this worktree, including a cross-challenge response that embeds a different SignedData. That run did not call verifiedaccess.googleapis.com and did not use a managed Chrome device.",
         "released_artifact_verification": "not performed",
         "a01_reconciliation": {
           "status": "accepted inventory refreshed and reconciled with authorized target contract",
@@ -5620,7 +5620,8 @@
             "tests/device_trust.rs::google::google_verified_access_v2_config_rejects_untrusted_endpoints_and_weak_trust",
             "src/config.rs::verified_access_service_account_path_is_resolved_beside_the_config",
             "src/verified_access.rs::verify_body_requires_customer_device_and_allowed_trust",
-            "src/verified_access.rs::cleartext_and_unpinned_urls_are_refused"
+            "src/verified_access.rs::cleartext_and_unpinned_urls_are_refused",
+            "src/verified_access.rs::embedded_signed_data_binds_the_response_to_the_issued_challenge"
           ]
         },
         "assessment_basis": "Current-coverage assessment of the target row against accepted A01/Q01 evidence; narrower/fuller rows may differ from umbrella labels. Test presence does not claim execution."

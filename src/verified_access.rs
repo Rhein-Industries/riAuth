@@ -3,11 +3,16 @@
 //! `POST https://verifiedaccess.googleapis.com/v2/challenge:generate` takes an empty
 //! body and returns a base64 `SignedData` challenge (REST reference, 2025-03-20).
 //! `POST https://verifiedaccess.googleapis.com/v2/challenge:verify` takes
-//! `challengeResponse` and optional `expectedIdentity`. This server calls generate
-//! itself with the service-account bearer. The developer guide (2024-10-16) says a
-//! challenge is good for one minute. Verify does not receive the original challenge;
-//! echoing it locally does not prove the response was signed over that challenge.
-//! Google documents that check. This module was not executed against
+//! `challengeResponse` (base64 `SignedData`) and optional `expectedIdentity`.
+//! Verify does not receive or echo the issued challenge. Chromium's
+//! `device_trust_attestation_ca.proto` and AOSP `attestation_ca.proto` place that
+//! issued `SignedData` in `ChallengeResponse.challenge` (field 1) and wrap the
+//! `ChallengeResponse` as `SignedData` signed by the device key
+//! (RSASSA-PKCS1-v1_5-SHA256). The device public key stays inside
+//! `encrypted_key_info`, so this module compares the embedded data and signature
+//! bytes with the issued challenge and still posts the original response bytes
+//! for Google to check that device signature. Google's challenge-signing key is
+//! not pinned. This module was not executed against
 //! `verifiedaccess.googleapis.com` or a managed Chrome device.
 
 use super::TrustConfig;
@@ -22,6 +27,7 @@ use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{io::Read, sync::Mutex, time::Duration};
+use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
 
 pub const GENERATE_URL: &str = "https://verifiedaccess.googleapis.com/v2/challenge:generate";
@@ -126,8 +132,15 @@ pub(crate) fn generate_challenge(
     if value.get("error").is_some() {
         return Err(remote_unavailable());
     }
-    canonical_base64(challenge, MIN_CHALLENGE_BYTES, MAX_CHALLENGE_BYTES)
-        .map_err(|_| remote_unavailable())
+    let challenge = canonical_base64(challenge, MIN_CHALLENGE_BYTES, MAX_CHALLENGE_BYTES)
+        .map_err(|_| remote_unavailable())?;
+    let bytes = STANDARD
+        .decode(&challenge)
+        .map_err(|_| remote_unavailable())?;
+    if parse_signed_data(&bytes).is_err() {
+        return Err(remote_unavailable());
+    }
+    Ok(challenge)
 }
 
 pub(crate) struct AcceptedDevice {
@@ -171,6 +184,32 @@ pub(crate) fn require_response_material(value: &str) -> Result<String> {
     }
     canonical_base64(value, MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)
         .map_err(|_| Error::bad("Verified Access challenge response is invalid"))
+}
+
+/// Reject a response whose embedded SignedData is not the issued challenge.
+pub(crate) fn response_answers_challenge(challenge_b64: &str, response_b64: &str) -> Result<()> {
+    let issued_bytes = decode_bounded(challenge_b64, MIN_CHALLENGE_BYTES, MAX_CHALLENGE_BYTES)?;
+    let response_bytes = decode_bounded(response_b64, MIN_RESPONSE_BYTES, MAX_RESPONSE_BYTES)?;
+    let issued = parse_signed_data(&issued_bytes).map_err(|_| invalid_response())?;
+    let (payload, _) = parse_signed_data(&response_bytes).map_err(|_| invalid_response())?;
+    let embedded = embedded_challenge(&payload).map_err(|_| invalid_response())?;
+    let same = issued.0.as_slice().ct_eq(embedded.0.as_slice())
+        & issued.1.as_slice().ct_eq(embedded.1.as_slice());
+    if !bool::from(same) {
+        return Err(Error::bad(
+            "Verified Access response does not answer this challenge",
+        ));
+    }
+    Ok(())
+}
+
+fn invalid_response() -> Error {
+    Error::bad("Verified Access challenge response is invalid")
+}
+
+fn decode_bounded(value: &str, min: usize, max: usize) -> Result<Vec<u8>> {
+    let canonical = canonical_base64(value, min, max).map_err(|_| invalid_response())?;
+    STANDARD.decode(canonical).map_err(|_| invalid_response())
 }
 
 fn accept_device(config: &TrustConfig, body: &[u8]) -> Result<AcceptedDevice> {
@@ -451,6 +490,127 @@ fn valid_bearer(value: &str) -> bool {
     (1..=8192).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_graphic())
 }
 
+const MAX_PROTO_FIELD: u64 = (1 << 29) - 1;
+type ParseResult<T> = std::result::Result<T, ()>;
+
+struct ProtoTag {
+    field: u64,
+    wire: u32,
+}
+
+fn read_varint(input: &mut &[u8]) -> ParseResult<u64> {
+    let mut value = 0u64;
+    for index in 0..10 {
+        if input.is_empty() {
+            return Err(());
+        }
+        let byte = input[0];
+        *input = &input[1..];
+        if index == 9 && byte > 1 {
+            return Err(());
+        }
+        value |= u64::from(byte & 0x7f) << (index * 7);
+        if byte & 0x80 == 0 {
+            return Ok(value);
+        }
+    }
+    Err(())
+}
+
+fn next_tag(input: &mut &[u8]) -> ParseResult<ProtoTag> {
+    let tag = read_varint(input)?;
+    let field = tag >> 3;
+    if field == 0 || field > MAX_PROTO_FIELD {
+        return Err(());
+    }
+    Ok(ProtoTag {
+        field,
+        wire: (tag & 7) as u32,
+    })
+}
+
+fn skip_exact(input: &mut &[u8], len: usize) -> ParseResult<()> {
+    if input.len() < len {
+        return Err(());
+    }
+    *input = &input[len..];
+    Ok(())
+}
+
+fn take_delimited(input: &mut &[u8]) -> ParseResult<Vec<u8>> {
+    let len = usize::try_from(read_varint(input)?).map_err(|_| ())?;
+    if input.len() < len {
+        return Err(());
+    }
+    let (head, tail) = input.split_at(len);
+    *input = tail;
+    Ok(head.to_vec())
+}
+
+fn skip_field(input: &mut &[u8], wire: u32) -> ParseResult<()> {
+    match wire {
+        0 => {
+            read_varint(input)?;
+            Ok(())
+        }
+        1 => skip_exact(input, 8),
+        2 => {
+            let len = usize::try_from(read_varint(input)?).map_err(|_| ())?;
+            skip_exact(input, len)
+        }
+        5 => skip_exact(input, 4),
+        _ => Err(()),
+    }
+}
+
+/// Last duplicate wins, matching proto2 `optional`. Fields 1 and 2 must be
+/// length-delimited and non-empty. Unknown fields are skipped.
+fn parse_signed_data(bytes: &[u8]) -> ParseResult<(Vec<u8>, Vec<u8>)> {
+    let mut rest = bytes;
+    let mut data = None;
+    let mut signature = None;
+    let mut steps = 0usize;
+    while !rest.is_empty() {
+        steps += 1;
+        if steps > bytes.len() {
+            return Err(());
+        }
+        let tag = next_tag(&mut rest)?;
+        match (tag.field, tag.wire) {
+            (1, 2) => data = Some(take_delimited(&mut rest)?),
+            (2, 2) => signature = Some(take_delimited(&mut rest)?),
+            (1 | 2, _) => return Err(()),
+            _ => skip_field(&mut rest, tag.wire)?,
+        }
+    }
+    match (data, signature) {
+        (Some(data), Some(signature)) if !data.is_empty() && !signature.is_empty() => {
+            Ok((data, signature))
+        }
+        _ => Err(()),
+    }
+}
+
+/// `ChallengeResponse.challenge` (field 1) is the issued SignedData.
+fn embedded_challenge(payload: &[u8]) -> ParseResult<(Vec<u8>, Vec<u8>)> {
+    let mut rest = payload;
+    let mut challenge = None;
+    let mut steps = 0usize;
+    while !rest.is_empty() {
+        steps += 1;
+        if steps > payload.len() {
+            return Err(());
+        }
+        let tag = next_tag(&mut rest)?;
+        match (tag.field, tag.wire) {
+            (1, 2) => challenge = Some(take_delimited(&mut rest)?),
+            (1, _) => return Err(()),
+            _ => skip_field(&mut rest, tag.wire)?,
+        }
+    }
+    parse_signed_data(challenge.as_deref().ok_or(())?)
+}
+
 fn canonical_base64(value: &str, min: usize, max: usize) -> Result<String> {
     if value.len() > MAX_BODY || value.bytes().any(|byte| byte.is_ascii_whitespace()) {
         return Err(Error::bad("invalid"));
@@ -639,5 +799,146 @@ mod tests {
         );
         assert!(pinned_url("https://oauth2.googleapis.com/token?scope=bad").is_err());
         assert_eq!(pinned_url(TOKEN_URL).unwrap(), TOKEN_URL);
+    }
+
+    fn varint(out: &mut Vec<u8>, mut value: u64) {
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            out.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+    }
+
+    fn delimited(field: u64, bytes: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        varint(&mut out, (field << 3) | 2);
+        varint(&mut out, bytes.len() as u64);
+        out.extend_from_slice(bytes);
+        out
+    }
+
+    fn signed(data: &[u8], signature: &[u8]) -> Vec<u8> {
+        let mut out = delimited(1, data);
+        out.extend(delimited(2, signature));
+        out
+    }
+
+    fn wrap_response(issued: &[u8], outer_signature: &[u8]) -> Vec<u8> {
+        let mut body = delimited(3, b"encrypted-key-info");
+        body.extend(delimited(1, issued));
+        body.extend(delimited(2, &[0xab; 32]));
+        signed(&body, outer_signature)
+    }
+
+    fn encode(bytes: &[u8]) -> String {
+        STANDARD.encode(bytes)
+    }
+
+    fn binding_error(challenge: &str, response: &str) -> String {
+        match response_answers_challenge(challenge, response) {
+            Ok(()) => panic!("response was accepted for {challenge}"),
+            Err(error) => error.message,
+        }
+    }
+
+    #[test]
+    fn embedded_signed_data_binds_the_response_to_the_issued_challenge() {
+        let issued = signed(&[0x11; 17], &[0x12; 16]);
+        let challenge = encode(&issued);
+        let matching = encode(&wrap_response(&issued, &[0x21; 32]));
+        assert!(response_answers_challenge(&challenge, &matching).is_ok());
+
+        let mut reordered = delimited(2, &[0x12; 16]);
+        reordered.extend(delimited(1, &[0x11; 17]));
+        reordered.extend(delimited(7, b"ignored-extra"));
+        assert!(
+            response_answers_challenge(
+                &challenge,
+                &encode(&wrap_response(&reordered, &[0x22; 32]))
+            )
+            .is_ok()
+        );
+
+        let mut nonminimal = Vec::new();
+        nonminimal.extend_from_slice(&[0x8a, 0x00]);
+        varint(&mut nonminimal, 17);
+        nonminimal.extend_from_slice(&[0x11; 17]);
+        nonminimal.push(0x12);
+        nonminimal.push(0x80 | 16);
+        nonminimal.push(0x00);
+        nonminimal.extend_from_slice(&[0x12; 16]);
+        assert!(
+            response_answers_challenge(
+                &challenge,
+                &encode(&wrap_response(&nonminimal, &[0x23; 32]))
+            )
+            .is_ok()
+        );
+
+        let mut duplicate = delimited(1, &[0x99; 17]);
+        duplicate.extend(signed(&[0x11; 17], &[0x12; 16]));
+        assert!(
+            response_answers_challenge(
+                &challenge,
+                &encode(&wrap_response(&duplicate, &[0x24; 32]))
+            )
+            .is_ok()
+        );
+
+        let other = signed(&[0x13; 17], &[0x14; 16]);
+        assert_eq!(
+            binding_error(&challenge, &encode(&wrap_response(&other, &[0x51; 32]))),
+            "Verified Access response does not answer this challenge"
+        );
+        let mut tweaked = issued.clone();
+        let last = tweaked.len() - 1;
+        tweaked[last] ^= 0x01;
+        assert_eq!(
+            binding_error(&challenge, &encode(&wrap_response(&tweaked, &[0x61; 32]))),
+            "Verified Access response does not answer this challenge"
+        );
+        let mut replaced = signed(&[0x11; 17], &[0x12; 16]);
+        replaced.extend(delimited(1, &[0x99; 17]));
+        assert_eq!(
+            binding_error(&challenge, &encode(&wrap_response(&replaced, &[0x62; 32]))),
+            "Verified Access response does not answer this challenge"
+        );
+
+        let mut truncated = wrap_response(&issued, &[0x21; 32]);
+        truncated.pop();
+        assert_eq!(
+            binding_error(&challenge, &encode(&truncated)),
+            "Verified Access challenge response is invalid"
+        );
+        let nonce_only = signed(&delimited(2, &[0xab; 32]), &[0x21; 32]);
+        assert_eq!(
+            binding_error(&challenge, &encode(&nonce_only)),
+            "Verified Access challenge response is invalid"
+        );
+        let not_signed = signed(&delimited(1, &[0x08, 0x01]), &[0x21; 32]);
+        assert_eq!(
+            binding_error(&challenge, &encode(&not_signed)),
+            "Verified Access challenge response is invalid"
+        );
+        assert!(parse_signed_data(&issued).is_ok());
+        let mut extra = issued.clone();
+        extra.extend(delimited(9, b"future-field"));
+        assert!(parse_signed_data(&extra).is_ok());
+        assert!(parse_signed_data(&signed(b"", &[0x12; 16])).is_err());
+        assert!(parse_signed_data(&delimited(1, &[0x11; 16])).is_err());
+        assert!(parse_signed_data(&[0x0b]).is_err());
+        assert!(parse_signed_data(&[0x02, 0x01, 0x00]).is_err());
+        assert!(
+            parse_signed_data(&[
+                0x0a, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01
+            ])
+            .is_err()
+        );
     }
 }

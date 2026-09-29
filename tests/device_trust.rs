@@ -780,6 +780,39 @@ mod google {
         b64(&vec![byte; len])
     }
 
+    fn proto_bytes(field: u32, bytes: &[u8]) -> Vec<u8> {
+        assert!(field < 16);
+        assert!(bytes.len() < 128);
+        let mut out = Vec::with_capacity(bytes.len() + 2);
+        out.push(((field << 3) | 2) as u8);
+        out.push(bytes.len() as u8);
+        out.extend_from_slice(bytes);
+        out
+    }
+
+    fn signed_data(data: &[u8], signature: &[u8]) -> Vec<u8> {
+        let mut out = proto_bytes(1, data);
+        out.extend(proto_bytes(2, signature));
+        out
+    }
+
+    fn challenge_blob(byte: u8) -> String {
+        b64(&signed_data(
+            &vec![byte; 17],
+            &vec![byte.wrapping_add(1); 16],
+        ))
+    }
+
+    fn answer(challenge_b64: &str, outer_sig_byte: u8) -> String {
+        let issued = base64::engine::general_purpose::STANDARD
+            .decode(challenge_b64)
+            .unwrap();
+        let mut body = proto_bytes(1, &issued);
+        body.extend(proto_bytes(2, &[0x9a; 32]));
+        body.extend(proto_bytes(3, &[0x5c; 24]));
+        b64(&signed_data(&body, &vec![outer_sig_byte; 32]))
+    }
+
     fn http(status: u16, body: impl AsRef<[u8]>) -> VerifiedAccessResponse {
         VerifiedAccessResponse {
             status,
@@ -808,7 +841,7 @@ mod google {
     }
 
     fn generate_reply(byte: u8) -> VerifiedAccessResponse {
-        json_http(&json!({"challenge": blob(byte, 32)}))
+        json_http(&json!({"challenge": challenge_blob(byte)}))
     }
 
     fn verify_reply(device: &str, customer: &str, level: &Value) -> VerifiedAccessResponse {
@@ -1008,13 +1041,14 @@ mod google {
         assert!(urls(&script).is_empty());
 
         let issued = f.core.device_challenge(&alice).unwrap();
-        let challenge = blob(0x11, 32);
+        let challenge = challenge_blob(0x11);
         assert_eq!(issued["challenge"], challenge);
+        assert!(challenge.ends_with('='), "{challenge}");
         assert_eq!(issued["provider"], "google_verified_access_v2");
         assert_eq!(issued["expires_in"], 60);
         assert!(issued.get("audience").is_none());
         assert_assertion(&script, &account.public_pem);
-        let response = blob(0x21, 48);
+        let response = answer(&challenge, 0x21);
         let unknown = submit(&f.core, &alice, &blob(0x99, 32), &response).unwrap_err();
         assert!(unknown.message.contains("does not match this session"));
         assert_eq!(urls(&script), vec![TOKEN_URL, GENERATE_URL]);
@@ -1113,7 +1147,7 @@ mod google {
             verified["verified_at"].as_u64().unwrap() + 60
         );
 
-        let replay_challenge = blob(0x12, 32);
+        let replay_challenge = challenge_blob(0x12);
         assert_eq!(
             f.core.device_challenge(&alice).unwrap()["challenge"],
             replay_challenge
@@ -1183,7 +1217,7 @@ mod google {
             .unwrap();
         let short = f.core.device_challenge(&bob).unwrap();
         assert_eq!(short["expires_at"], session_expiry);
-        assert_eq!(short["challenge"], blob(0x13, 32));
+        assert_eq!(short["challenge"], challenge_blob(0x13));
 
         let user_id = f
             .core
@@ -1223,10 +1257,36 @@ mod google {
             })
             .unwrap();
 
-        let switched = blob(0x22, 48);
         let different = f.core.device_challenge(&alice).unwrap();
-        let different_challenge = different["challenge"].as_str().unwrap();
-        let rejected = submit(&f.core, &alice, different_challenge, &switched).unwrap_err();
+        let different_challenge = different["challenge"].as_str().unwrap().to_owned();
+        assert_eq!(different_challenge, challenge_blob(0x14));
+        let before_cross = urls(&script).len();
+        let foreign = answer(&replay_challenge, 0x51);
+        let crossed = submit(&f.core, &alice, &different_challenge, &foreign).unwrap_err();
+        assert_eq!(crossed.status.as_u16(), 400);
+        assert_eq!(crossed.code, "invalid_request");
+        assert_eq!(
+            crossed.message,
+            "Verified Access response does not answer this challenge"
+        );
+        assert_eq!(urls(&script).len(), before_cross);
+        let malformed = submit(&f.core, &alice, &different_challenge, &blob(0x21, 48)).unwrap_err();
+        assert_eq!(
+            malformed.message,
+            "Verified Access challenge response is invalid"
+        );
+        assert_eq!(malformed.status.as_u16(), 400);
+        assert_eq!(urls(&script).len(), before_cross);
+        let open = f
+            .core
+            .store
+            .get::<Challenge>("device_challenges", &crypto::digest(&different_challenge))
+            .unwrap()
+            .unwrap();
+        assert!(!open.used);
+        assert!(open.response_sha256.is_empty());
+        let switched = answer(&different_challenge, 0x22);
+        let rejected = submit(&f.core, &alice, &different_challenge, &switched).unwrap_err();
         assert!(rejected.message.contains("different device"));
         assert_eq!(
             f.core
@@ -1240,10 +1300,10 @@ mod google {
                 .device_id,
             "device-1"
         );
-        let consumed = submit(&f.core, &alice, different_challenge, &switched).unwrap_err();
+        let consumed = submit(&f.core, &alice, &different_challenge, &switched).unwrap_err();
         assert!(consumed.message.contains("already used"));
         let before_replay = urls(&script).len();
-        let second_replay = blob(0x15, 32);
+        let second_replay = challenge_blob(0x15);
         assert_eq!(
             f.core.device_challenge(&alice).unwrap()["challenge"],
             second_replay
@@ -1252,12 +1312,12 @@ mod google {
         assert!(replayed_switch.message.contains("already accepted"));
         assert_eq!(urls(&script).len(), before_replay + 1);
 
-        let renewed = blob(0x23, 48);
         let next = f.core.device_challenge(&alice).unwrap()["challenge"]
             .as_str()
             .unwrap()
             .to_owned();
-        assert_eq!(next, blob(0x16, 32));
+        assert_eq!(next, challenge_blob(0x16));
+        let renewed = answer(&next, 0x23);
         let renewed = submit(&f.core, &alice, &next, &renewed).unwrap();
         assert_eq!(renewed["device_id"], "device-1");
         assert_eq!(
@@ -1345,6 +1405,28 @@ mod google {
                 .is_empty()
         );
 
+        let mut opaque = Fixture::new();
+        opaque.core.config.device_trust = Some(account.config.clone());
+        let session = opaque.user("alice");
+        let script = install(
+            &opaque.core,
+            vec![
+                token_reply(3600, None, "Bearer"),
+                json_http(&json!({"challenge": blob(0x7e, 32)})),
+            ],
+        );
+        let error = opaque.core.device_challenge(&session).unwrap_err();
+        assert_no_secret(&error);
+        assert_eq!(urls(&script), vec![TOKEN_URL, GENERATE_URL]);
+        assert!(
+            opaque
+                .core
+                .store
+                .list::<Challenge>("device_challenges")
+                .unwrap()
+                .is_empty()
+        );
+
         let mut cached = Fixture::new();
         cached.core.config.device_trust = Some(account.config.clone());
         let session = cached.user("alice");
@@ -1358,11 +1440,11 @@ mod google {
         );
         assert_eq!(
             cached.core.device_challenge(&session).unwrap()["challenge"],
-            blob(0x31, 32)
+            challenge_blob(0x31)
         );
         assert_eq!(
             cached.core.device_challenge(&session).unwrap()["challenge"],
-            blob(0x32, 32)
+            challenge_blob(0x32)
         );
         assert_eq!(urls(&script), vec![TOKEN_URL, GENERATE_URL, GENERATE_URL]);
 
@@ -1457,7 +1539,7 @@ mod google {
             "unavailable",
             "unavailable",
         ];
-        let response = blob(0x42, 48);
+        let response = answer(&challenge, 0x42);
         for needle in expected {
             let error = submit(&identity.core, &session, &challenge, &response).unwrap_err();
             assert!(error.message.contains(needle), "{}", error.message);

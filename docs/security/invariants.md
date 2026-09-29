@@ -796,9 +796,11 @@ algorithm/key and audience/expiry/nonce, consume the challenge, and bind
 `DeviceVerification` to session/user/epoch/device. A different device needs a new
 session. No device-attestation or enrollment-agent guarantee follows from this JWT
 signal protocol. `google_verified_access_v2` is a separate adapter in
-[verified_access.rs](../../src/verified_access.rs). It was not run against
-`verifiedaccess.googleapis.com` or a managed Chrome device, and it does not
-evaluate `deviceSignals`.
+[verified_access.rs](../../src/verified_access.rs). Before verify it requires the
+`challengeResponse` `SignedData` to embed the issued challenge's data and
+signature bytes. The device signature over that embedding remains Google's
+verify check. The adapter was not run against `verifiedaccess.googleapis.com`
+or a managed Chrome device, and it does not evaluate `deviceSignals`.
 
 **Existing regressions.** [Device trust](../../tests/device_trust.rs)
 `forged_replayed_expired_and_mismatched_signals_are_rejected`,

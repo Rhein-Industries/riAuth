@@ -70,7 +70,7 @@ implementation and regression evidence.
 [Release limitations](../limitations.md) describe evaluation/pilot scope,
 unpublished independent OIDC conformance, the backup archive cap and redb-only
 restore. [Google Workspace](../enterprise/ENT-03.md) currently depends on a token
-broker; [device trust](../enterprise/ENT-06.md) keeps the local stand-in as the default, and its Verified Access v2 adapter has no managed Chrome tenant;
+broker; [device trust](../enterprise/ENT-06.md) keeps the local stand-in as the default, and its Verified Access v2 adapter has no managed Chrome tenant and does not locally verify the device signature over the challenge response;
 [Windows login](../enterprise/ENT-13.md) is a protocol without a packaged
 credential provider. None establishes the desired finished integration.
 

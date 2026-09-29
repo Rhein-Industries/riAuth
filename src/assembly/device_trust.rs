@@ -279,6 +279,10 @@ impl Core {
             self.google_bound_challenge(tx, token, &hash, &response_hash)?;
             Ok(())
         })?;
+        // Session, freshness, and response-hash checks stay ahead of this parse
+        // so those failures keep their existing errors. A mismatch does not call
+        // verify and does not consume the challenge.
+        device_trust::verified_access::response_answers_challenge(&challenge, &response)?;
         let accepted = device_trust::verified_access::verify_challenge_response(
             config,
             &self.verified_access_cache,
