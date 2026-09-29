@@ -611,6 +611,38 @@ def main() -> None:
                 or not re.search(r'\.allows\s*\(\s*"directory\.sync"\s*,\s*scope\s*\)', can_sync_raw)
             ):
                 errors.append("src/cloud_operations.rs: sync authority read belongs in assembly")
+            controller_check = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_controller_check"
+            )
+            controller_check_raw = rust_function_body(catalog_source, "cloud_operation_controller_check")
+            controller_call = (
+                re.search(
+                    r"\blet\s+last_check\s*=\s*self\.cloud_operation_controller_check\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                )
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or controller_call is None
+                or not (
+                    0 <= operations.find("let controller = if can_sync")
+                    < operations.find("controller_fingerprint")
+                    < controller_call.start()
+                )
+                or not re.search(r"\blast_check\s*\.\s*filter\s*\(", operations[controller_call.end():])
+                or re.search(r"\bCloudControllerCheck\b", masked_rust_source(path.read_text()))
+                or controller_check is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", controller_check)
+                or controller_check_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)\s*\?[\s\S]*'
+                    r'tx\.get\s*::<\s*CloudControllerCheck\s*>\s*\(\s*"cloud_controller_checks"\s*,\s*scope\s*\)',
+                    controller_check_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: scoped controller check read belongs in assembly")
             connection_check = rust_function_body(
                 masked_rust_source(catalog_source), "cloud_operation_last_connection_check"
             )

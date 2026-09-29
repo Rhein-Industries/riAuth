@@ -3,7 +3,7 @@ use crate::{
     core::{Core, audit, validate_name},
     crypto::{digest, now},
     error::{Error, Result},
-    reconciliation::{CloudControllerCheck, controller_fingerprint},
+    reconciliation::controller_fingerprint,
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
@@ -161,10 +161,7 @@ impl Core {
                 .get(&scope)
                 .map(|configured| {
                     let fingerprint = controller_fingerprint(&self.config, &scope)?;
-                    let last_check = self.store.read(|tx| {
-                        self.management(tx, token, "directory.sync", &scope)?;
-                        tx.get::<CloudControllerCheck>("cloud_controller_checks", &scope)
-                    })?;
+                    let last_check = self.cloud_operation_controller_check(token, &scope)?;
                     Ok::<_, Error>(json!({
                         "credential": credential_status(&configured.credential_file, 4096),
                         "last_check": last_check

@@ -1,6 +1,9 @@
 //! Scoped cloud-directory catalog read over concrete storage.
 
-use crate::{cloud_directory::Provider, core::Core, error::Result, model::Group};
+use crate::{
+    cloud_directory::Provider, core::Core, error::Result, model::Group,
+    reconciliation::CloudControllerCheck,
+};
 use serde_json::{Value, json};
 
 impl Core {
@@ -41,6 +44,17 @@ impl Core {
     pub(crate) fn cloud_operation_can_sync(&self, token: &str, scope: &str) -> Result<bool> {
         self.store
             .read(|tx| Ok(self.principal(tx, token)?.allows("directory.sync", scope)))
+    }
+
+    pub(crate) fn cloud_operation_controller_check(
+        &self,
+        token: &str,
+        scope: &str,
+    ) -> Result<Option<CloudControllerCheck>> {
+        self.store.read(|tx| {
+            self.management(tx, token, "directory.sync", scope)?;
+            tx.get::<CloudControllerCheck>("cloud_controller_checks", scope)
+        })
     }
 
     pub(crate) fn cloud_operation_last_connection_check(

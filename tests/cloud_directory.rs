@@ -3415,6 +3415,62 @@ fn cloud_operations_sync_authority_controls_controller_view() {
 }
 
 #[test]
+fn cloud_operations_controller_check_is_scoped_to_current_fingerprint() {
+    use riauth::reconciliation::ControllerConfig;
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let controller_token = agent_token(
+        &fixture,
+        "cloud-view-controller",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let credential_file = fixture._dir.path().join("controller-token");
+    write_private(&credential_file, controller_token.as_bytes(), false).unwrap();
+    fixture.core.config.reconciliation_controllers.insert(
+        "workspace/corp".into(),
+        ControllerConfig {
+            agent_id: "cloud-view-controller".into(),
+            credential_file: credential_file.clone(),
+            interval_seconds: 300,
+        },
+    );
+
+    let check = fixture
+        .core
+        .cloud_verify_controller(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(check["ready"], true);
+    let before = fixture.snapshot().unwrap();
+    let current = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(current["controller"]["last_check"], check);
+    assert!(!current.to_string().contains(&controller_token));
+    assert!(!current.to_string().contains(&credential_file.display().to_string()));
+
+    fixture
+        .core
+        .config
+        .reconciliation_controllers
+        .get_mut("workspace/corp")
+        .unwrap()
+        .interval_seconds = 600;
+    let stale = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert!(stale["controller"]["last_check"].is_null());
+    fixture.assert_snapshot(&before);
+}
+
+#[test]
 fn cloud_operations_connection_check_read_is_scoped_and_pure() {
     let directory = serve(
         "workspace",
