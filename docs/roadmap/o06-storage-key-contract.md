@@ -2,7 +2,7 @@
 
 Status: one local slice. O06 stays open. Label remains **extend**. Journey remains `module`.
 
-This page records an audit of the store, telemetry, and signing-key paths at `f00c39329f09660e5bd00f78a2cc9f7695f3ccd1`. A publishable signal would be the same fact on redb and PostgreSQL, a point read or another bounded read, a response that keeps key material out, and a result that leaves readiness on its existing rules. No current reading meets that set. This slice adds no route, metric, schema field, or readiness change.
+This page records an audit of the store, telemetry, and signing-key paths at `f00c39329f09660e5bd00f78a2cc9f7695f3ccd1`. A re-read at `9c374beae00e99fbc7f922ef44c23243d6fbc28a` found those Rust sources unchanged and names the extra readings below. A publishable signal would be the same fact on redb and PostgreSQL, a point read or another bounded read, a response that keeps key material out, and a result that leaves readiness on its existing rules. No current reading meets that set. This slice adds no route, metric, schema field, or readiness change.
 
 ## Occupancy
 
@@ -20,6 +20,19 @@ The process already emits these storage readings:
 `Store::ready` on PostgreSQL checks `NOT pg_is_in_recovery()` and `default_transaction_read_only = off`. On both backends it then checks schema and index activation and the recovery serving gate (`require_active`, `require_serving`). `/readyz` calls `ready` after an application-worker permit check when the role serves authentication. The alert signal `storage_not_ready` is that `ready` result. Opening `data_dir/riauth.redb` uses `symlink_metadata` to distinguish a missing path. The file length is not read. PostgreSQL open checks `to_regclass` for `riauth_store.records_v1` and `riauth_store.storage_format`. Neither path selects `pg_database_size` or `pg_total_relation_size`.
 
 A redb file length includes freelist and every table. A PostgreSQL relation size is that relation and its indexes. The repository has no shared function that returns either quantity, and it has no database or file capacity those quantities could be compared with. An occupancy ratio needs that capacity. Summing snapshot pages or running a backup export would read the keyspace.
+
+## Readings that stay outside occupancy
+
+The re-read at `9c374beae00e99fbc7f922ef44c23243d6fbc28a` compared `src/store.rs`, `src/store/maintenance.rs`, `src/postgres_store.rs`, `src/operations.rs`, `src/crypto.rs`, `src/keyring.rs`, `src/assembly/keyring.rs`, `src/management.rs`, `src/telemetry.rs`, `src/kms.rs`, `src/kms_essentials.rs`, and `src/config.rs` with `f00c39329f09660e5bd00f78a2cc9f7695f3ccd1`. Those files match. The functions below were already present.
+
+- `Tx::postgres_lineage` returns `None` on redb. On PostgreSQL the row is the current database oid, the oid of `riauth_store.records_v1`, and, when `pg_control_system()` succeeds, `system_identifier`. `Lineage` stores those three fields. `meta/storage_lineage` keeps the stamped value. `require_serving` compares the stamp with the live row and refuses the store when the PostgreSQL objects differ. The function comment limits the row to a logical restore into another cluster, database, or table.
+- `Tx::postgres_other_clients` returns `None` on redb. On PostgreSQL it is `count(*)` from `pg_stat_activity` for this database, `application_name = 'riauth'`, excluding this backend. Restore, migration, edition transition, the node-security agreement write, database recovery, and administrator recovery refuse their write when that count is above zero.
+- `snapshot_next_key` returns the next record key. `snapshot_digest` hashes every persisted record key and value. `lock_records_for_transition` takes `SHARE ROW EXCLUSIVE` on `riauth_store.records_v1` when the transaction is a PostgreSQL writer. A redb transaction and a PostgreSQL read transaction return success without that lock.
+- `collection_count` returns the `index_counts` point for `http_rates` or `mail_limits`. Every other bucket returns the internal error `Collection has no count index`.
+- `riauth_storage_pool_capacity` is `PostgresConfig.pool_size`, validated as 1 through 64 with a default of 8, and stored when the PostgreSQL pool is constructed. A redb process leaves that gauge at 0. `Occupancy` publishes `riauth_storage_write_waiters`, `riauth_storage_pool_waiters`, and `riauth_storage_pool_in_use`, plus each `_peak` gauge, as callers inside this process. [operations](../operations.md) describes the pool gauges as checkout against that pool size.
+- No file under `src` selects `pg_database_size`, `pg_total_relation_size`, or `pg_relation_size`. `src/store.rs` imports `ReadableTableMetadata`. No call publishes a redb table `len` or `stats`.
+
+`SigningKey`, `RetiredKey`, and `Keys` are unchanged. The key-health section still describes the only stored signing material.
 
 ## Key health
 
@@ -41,7 +54,7 @@ An occupancy signal needs a `Tx` reading with one meaning on redb and PostgreSQL
 
 A key-health signal needs a stored status that is distinct from the private-key document, covers the primary ring and every signing domain without listing those documents, and stays off readiness. The 32-key rotation guard becomes that kind of signal only when its result is stored, or when a point read can report it without deserializing `pem` and without omitting `key_domains`.
 
-Until one of those exists, this repository does not emit a storage-occupancy series or a key-problem series. `signing_errors` and doctor remain the signing-failure counter and the kid-plus-configuration report above.
+Until one of those exists, this repository does not emit a storage-occupancy series or a key-problem series. The lineage row, the other-session count, the pool-capacity gauge, and the full-keyspace digest remain recovery, session, pool, and migration inputs. `signing_errors` and doctor remain the signing-failure counter and the kid-plus-configuration report above.
 
 ## What remains open
 
@@ -54,5 +67,9 @@ Until one of those exists, this repository does not emit a storage-occupancy ser
 ## Local check
 
 This slice changes documentation only. No Rust source changed, so Cargo was not run. `/tmp/riauth-o06-target` was absent. Free space on `/System/Volumes/Data` was 22976492 KiB when these checks ran.
+
+`python3 scripts/check-docs.py` printed `Markdown links and build-directory layout checked`. `git diff --check` produced no output.
+
+Re-read at `9c374beae00e99fbc7f922ef44c23243d6fbc28a`: this page only. No Rust source changed, so Cargo was not run. `/tmp/riauth-o06-target` was absent. Free space on `/System/Volumes/Data` was 11485860 KiB when these checks ran.
 
 `python3 scripts/check-docs.py` printed `Markdown links and build-directory layout checked`. `git diff --check` produced no output.
