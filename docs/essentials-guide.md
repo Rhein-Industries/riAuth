@@ -483,14 +483,18 @@ check. A different body or a different If-Match with that key returns
 
 `group get` returns the group. `group has-member` reads the group and the
 user and prints `member`. For this pair the value is true when `admin` is in
-`staff`.
+`staff`. Both verbs are `riauthctl` commands.
 
-The server CLI has the same group verbs and uses the server CLI session.
-`riauth group create` and `riauth group add-member` stop locally unless both
-`--idempotency-key` and `--if-revision` are present. The message is:
+The server CLI group commands are `review`, `list`, `create`, `add-member`,
+and `remove-member` ([cli.rs](../src/cli.rs)). It has no `group get` or
+`group has-member`. The [Platform walkthrough](roadmap/d01-platform-cli-walkthrough.md)
+`riauth group --help` printed those five commands. `riauth group create` and `riauth group add-member` stop
+locally unless both `--idempotency-key` and `--if-revision` are present. The
+message is:
 `Group writes require --idempotency-key and --if-revision (from riauth revision)`.
 The source string wraps `riauth revision` in backticks. This section uses
-`riauthctl` because that is the session from section 3.
+`riauthctl` because that is the session from section 3. This Essentials page
+did not run the group commands.
 
 `--group staff` on `client update` replaces `allowed_groups` and limits who
 may use the application. This section leaves `local-demo` unrestricted.
