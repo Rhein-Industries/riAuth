@@ -191,6 +191,16 @@ and does not change the password.
 Chromium additionally cancels a virtual internal authenticator from the keyboard.
 The spec does not exercise a physical security key, a synced platform passkey, a
 phone hybrid transport, a mobile operating system, or a spoken screen reader.
+`tools/browser/passkey-revocation.spec.js` is a separate headless journey on the
+same 390×844 CSS viewport. It enrolls one passkey, signs in with it, and removes
+it. Enrollment and removal each end the account's other browser session while
+that browser keeps its cookie. The removed credential is rejected with the
+unknown-passkey message, and the password still signs in. Playwright's WebAuthn
+shim supplies the credential in Chromium, Firefox, and WebKit. The shim is not a
+physical security key, a synced passkey, a phone, or a mobile operating system.
+An engine whose page has no WebAuthn is skipped. Hardware authenticators and
+real mobile devices remain manual gates, and this Playwright project is not a
+CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
