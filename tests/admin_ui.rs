@@ -884,17 +884,173 @@ async fn writes_use_the_management_path_and_guards() {
         .unwrap();
     let stale = Call {
         revision: Some(revision - 1),
+        key: Some("stale-user-edit"),
         ..write("PATCH", Some(json!({"display_name": "Stale"})))
     };
     let (status, _, body) = send(&app, "/api/admin/users/grace", stale).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
     let current = Call {
         revision: Some(revision),
+        key: Some("current-user-edit"),
         ..write("PATCH", Some(json!({"display_name": "Grace Hopper"})))
     };
     let (status, _, body) = send(&app, "/api/admin/users/grace", current).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["display_name"], "Grace Hopper");
+}
+
+#[tokio::test]
+async fn user_update_requires_receipt_and_revision_across_browser_and_bearer() {
+    let fixture = Fixture::new();
+    fixture.user("managed");
+    let outsider = fixture.user("outsider");
+    let cookie = sso_cookie(&fixture.core, &fixture.admin);
+    let origin = origin(&fixture.core);
+    let app = riauth::api::router(fixture.core.clone());
+    let revision = || {
+        fixture
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let audit_count = || {
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "user.update")
+            .count()
+    };
+    let browser = |key: Option<&'static str>, version, name| Call {
+        method: "PATCH",
+        cookie: Some(&cookie),
+        portal: true,
+        origin: Some(&origin),
+        key,
+        revision: version,
+        body: Some(json!({"display_name": name})),
+        ..Default::default()
+    };
+    let bearer = |key: Option<&'static str>, version, name| Call {
+        method: "PATCH",
+        bearer: Some(&fixture.admin),
+        key,
+        revision: version,
+        body: Some(json!({"display_name": name})),
+        ..Default::default()
+    };
+    let browser_path = "/api/admin/users/managed";
+    let bearer_path = "/api/users/managed";
+    let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        script
+            .as_str()
+            .unwrap()
+            .contains("`admin/users/${seg(user.username)}`, patch, { revision: data.revision, key }")
+    );
+    let at = revision();
+    let before = fixture.snapshot().unwrap();
+    for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
+        assert_eq!(
+            send(&app, browser_path, browser(key, version, "First"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(&app, bearer_path, bearer(key, version, "First"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        send(
+            &app,
+            bearer_path,
+            Call {
+                method: "PATCH",
+                bearer: Some(&outsider),
+                key: Some("unauthorized-user-update"),
+                revision: Some(at),
+                body: Some(json!({"display_name": "Denied"})),
+                ..Default::default()
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+    assert_eq!(audit_count(), 0);
+
+    let first = send(
+        &app,
+        browser_path,
+        browser(Some("browser-user-update"), Some(at), "First"),
+    )
+    .await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(first.2["display_name"], "First");
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        browser_path,
+        browser(Some("browser-user-update"), Some(at), "First"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, first.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count(), 1);
+    assert_eq!(revision(), at + 1);
+    assert_eq!(
+        send(
+            &app,
+            browser_path,
+            browser(Some("browser-user-update"), Some(at), "Changed body")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_path,
+            bearer(Some("stale-user-update"), Some(at), "Second")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    fixture.assert_http_mutation_snapshot(&committed);
+
+    let current = revision();
+    let second = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-user-update"), Some(current), "Second"),
+    )
+    .await;
+    assert_eq!(second.0, StatusCode::OK);
+    assert_eq!(second.2["display_name"], "Second");
+    let replay = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-user-update"), Some(current), "Second"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, second.2);
+    assert_eq!(audit_count(), 2);
+    assert_eq!(revision(), current + 1);
 }
 
 #[tokio::test]
@@ -1126,23 +1282,42 @@ async fn a_changed_email_cannot_be_marked_verified() {
             .clone();
         (ada["email"].clone(), ada["email_verified"].clone())
     };
-    let patch = |body| Call {
+    let patch = |body, key| Call {
         method: "PATCH",
         cookie: Some(&admin),
         portal: true,
         origin: Some(&origin),
+        revision: Some(
+            fixture
+                .core
+                .store
+                .get("meta", "revision")
+                .unwrap()
+                .unwrap_or(0),
+        ),
+        key: Some(key),
         body: Some(body),
         ..Default::default()
     };
     let body = json!({"email": "ada@new.example", "email_verified": true});
-    let (status, _, reply) = send(&app, "/api/admin/users/ada", patch(body)).await;
+    let (status, _, reply) = send(
+        &app,
+        "/api/admin/users/ada",
+        patch(body, "invalid-email-edit"),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
     assert_eq!(
         stored(&fixture.core),
         (json!("ada@example.test"), json!(true))
     );
     let body = json!({"email": "ada@new.example"});
-    let (status, _, reply) = send(&app, "/api/admin/users/ada", patch(body)).await;
+    let (status, _, reply) = send(
+        &app,
+        "/api/admin/users/ada",
+        patch(body, "valid-email-edit"),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{reply}");
     assert_eq!(
         stored(&fixture.core),

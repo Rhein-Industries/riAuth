@@ -2570,6 +2570,9 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
             },
         ),
     };
+    if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+        bail!("User update requires --idempotency-key and --if-revision (from `riauth revision`)");
+    }
     remote
         .call(
             Method::PATCH,

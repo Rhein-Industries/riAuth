@@ -1097,6 +1097,7 @@ fn cli_api_and_scim_user_writes_share_management_seam() {
         .patch(format!("{issuer}/api/users/parity-user"))
         .bearer_auth(token)
         .header("if-match", format!("\"{}\"", revision()))
+        .header("idempotency-key", "parity-api-user-update")
         .json(&json!({"display_name":"API name"}))
         .send()
         .unwrap();
@@ -1108,8 +1109,32 @@ fn cli_api_and_scim_user_writes_share_management_seam() {
     assert_ne!(after_api["meta"]["version"], original_etag);
 
     let at = revision();
+    let omitted = cli(&[
+        "--if-revision",
+        &at,
+        "user",
+        "update",
+        "parity-user",
+        "--name",
+        "Omitted key",
+    ]);
+    let (_, error) = failure(omitted);
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
     let cli_update = success(cli(&[
-        "--if-revision", &at, "user", "update", "parity-user", "--name", "CLI name",
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "parity-cli-user-update",
+        "user",
+        "update",
+        "parity-user",
+        "--name",
+        "CLI name",
     ]));
     assert_eq!(cli_update["display_name"], "CLI name");
     let after_cli: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();

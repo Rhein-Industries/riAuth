@@ -147,6 +147,10 @@ async fn call(
     if let Some(rev) = rev {
         request = request.header("if-match", format!("\"{rev}\""));
     }
+    // Keep these authority probes distinct under the user update receipt contract.
+    if method == "PATCH" && (uri.starts_with("/api/users/") || uri.starts_with("/api/admin/users/")) {
+        request = request.header("idempotency-key", uuid::Uuid::new_v4().to_string());
+    }
     let payload = if let Some(body) = body {
         request = request.header("content-type", "application/json");
         Body::from(body.to_string())

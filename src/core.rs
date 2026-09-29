@@ -506,6 +506,15 @@ impl Core {
         })
     }
     pub fn update_user(&self, token: &str, username: &str, patch: UserPatch) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "User update requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             crate::management::update_user(&self.config, tx, &actor, username, patch)
