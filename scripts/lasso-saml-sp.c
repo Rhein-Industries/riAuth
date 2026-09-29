@@ -4,12 +4,15 @@
  * This is a separate program. Do not link it into the riauth binary.
  *
  * request prints one signed AuthnRequest. accept checks the AuthnResponse
- * with signature verification forced on, then prints the NameID only after
- * lasso_login_accept_sso succeeds.
+ * with signature verification forced on, then checks the assertion audience
+ * and Conditions lifetime with Lasso's validators. It prints the NameID only
+ * after those checks and lasso_login_accept_sso succeed. Recipient is not
+ * compared by this Lasso login path.
  */
 #include <lasso/lasso.h>
 #include <lasso/id-ff/identity.h>
 #include <lasso/id-ff/session.h>
+#include <lasso/saml-2.0/saml2_helper.h>
 #include <lasso/xml/saml-2.0/saml2_name_id.h>
 #include <lasso/xml/saml-2.0/saml2_strings.h>
 #include <lasso/xml/saml-2.0/samlp2_authn_request.h>
@@ -169,6 +172,38 @@ static void tune_request(LassoLogin *login, const char *acs) {
     profile->msg_relayState = g_strdup(RELAY);
 }
 
+static void reject_condition(const char *kind, int state) {
+    fprintf(stderr, "lasso %s: assertion %s is not valid (%d)\n", kind, kind, state);
+    exit(1);
+}
+
+/* Signature verification has already succeeded. These calls are Lasso's own
+ * audience and Conditions NotBefore/NotOnOrAfter checks. */
+static void require_assertion_conditions(LassoLogin *login, LassoServer *server) {
+    LassoNode *node = lasso_login_get_assertion(login);
+    LassoSaml2Assertion *assertion;
+    const char *audience;
+    LassoSaml2AssertionValidationState audience_state;
+    LassoSaml2AssertionValidationState lifetime_state;
+    if (!LASSO_IS_SAML2_ASSERTION(node)) {
+        fail("lasso_login_get_assertion", LASSO_PROFILE_ERROR_MISSING_ASSERTION);
+    }
+    assertion = LASSO_SAML2_ASSERTION(node);
+    audience = LASSO_PROVIDER(server)->ProviderID;
+    if (audience == NULL || audience[0] == '\0') {
+        fail("provider_id", LASSO_PROFILE_ERROR_MISSING_SERVER);
+    }
+    audience_state = lasso_saml2_assertion_validate_audience(assertion, audience);
+    if (audience_state != LASSO_SAML2_ASSERTION_VALID) {
+        reject_condition("audience", (int)audience_state);
+    }
+    lifetime_state = lasso_saml2_assertion_validate_time_checks(assertion, 0, 0);
+    g_object_unref(node);
+    if (lifetime_state != LASSO_SAML2_ASSERTION_VALID) {
+        reject_condition("lifetime", (int)lifetime_state);
+    }
+}
+
 static void require_line(const char *value, const char *label) {
     if (value == NULL || value[0] == '\0' || strchr(value, '\n') != NULL || strchr(value, '\r') != NULL) {
         fprintf(stderr, "lasso %s: empty or multiline\n", label);
@@ -278,6 +313,7 @@ static void accept_mode(int argc, char **argv) {
     }
     check("lasso_login_process_authn_response_msg", lasso_login_process_authn_response_msg(login, response));
     free(response);
+    require_assertion_conditions(login, server);
     check("lasso_login_accept_sso", lasso_login_accept_sso(login));
     if (!LASSO_IS_SAML2_NAME_ID(profile->nameIdentifier)) {
         fail("name_identifier", LASSO_ERROR_CAST_FAILED);
@@ -285,6 +321,7 @@ static void accept_mode(int argc, char **argv) {
     name_id = LASSO_SAML2_NAME_ID(profile->nameIdentifier);
     require_line(name_id->content, "name_id");
     require_line(name_id->Format, "format");
+    printf("conditions: valid\n");
     printf("name_id: %s\n", name_id->content);
     printf("format: %s\n", name_id->Format);
     lasso_login_destroy(login);

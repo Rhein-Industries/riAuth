@@ -111,6 +111,86 @@ fn signature_reject(output: &Output) {
     );
 }
 
+fn lifetime_reject(output: &Output) {
+    assert!(!output.status.success(), "{}", show(output));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("lasso lifetime: assertion lifetime is not valid (1)"),
+        "expected Lasso conditions lifetime rejection {}",
+        show(output)
+    );
+    assert!(
+        !stderr.contains("(-111)") && !stderr.contains("lasso audience:"),
+        "lifetime rejection was another Lasso failure {}",
+        show(output)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("name_id:"),
+        "{}",
+        show(output)
+    );
+}
+
+fn without_signatures(xml: &str) -> String {
+    let mut rest = xml;
+    let mut stripped = String::new();
+    while let Some(start) = rest.find("<ds:Signature") {
+        stripped.push_str(&rest[..start]);
+        let end = rest[start..]
+            .find("</ds:Signature>")
+            .expect("signature end")
+            + start
+            + "</ds:Signature>".len();
+        rest = &rest[end..];
+    }
+    stripped.push_str(rest);
+    assert!(!stripped.contains("<ds:Signature"), "signature remained");
+    stripped
+}
+
+fn attribute<'a>(tag: &'a str, name: &str) -> &'a str {
+    let key = format!("{name}=\"");
+    let start = tag.find(&key).unwrap_or_else(|| panic!("{name}")) + key.len();
+    let end = tag[start..]
+        .find('"')
+        .unwrap_or_else(|| panic!("{name} end"));
+    &tag[start..start + end]
+}
+
+fn conditions_range(xml: &str) -> (usize, usize) {
+    let start = xml.find("<saml:Conditions ").expect("conditions");
+    let end = start + xml[start..].find('>').expect("conditions tag");
+    (start, end)
+}
+
+/// Move Conditions NotOnOrAfter back to NotBefore. SubjectConfirmationData keeps
+/// the original expiry. The caller re-signs so Lasso's signature check still passes.
+fn expire_conditions(xml: &str) -> String {
+    let (start, end) = conditions_range(xml);
+    let tag = &xml[start..end];
+    let not_before = attribute(tag, "NotBefore").to_string();
+    let not_after = attribute(tag, "NotOnOrAfter").to_string();
+    assert_ne!(not_before, not_after);
+    assert_eq!(not_before.len(), not_after.len());
+    let at =
+        start + tag.find("NotOnOrAfter=\"").expect("conditions expiry") + "NotOnOrAfter=\"".len();
+    let mut expired = xml.to_string();
+    expired.replace_range(at..at + not_after.len(), &not_before);
+    let (start, end) = conditions_range(&expired);
+    assert_eq!(attribute(&expired[start..end], "NotOnOrAfter"), not_before);
+    assert!(expired.contains(&format!("NotOnOrAfter=\"{not_after}\"")));
+    expired
+}
+
+fn resign(xml: &str, pem: &str, certificate: &str) -> String {
+    let key = risaml::crypto::keys::load_private_key(pem, None).expect("IdP signing key");
+    let assertion =
+        risaml::crypto::construct_saml_signature(xml, false, &key, certificate, RSA256, &[], None)
+            .expect("assertion signature");
+    risaml::crypto::construct_saml_signature(&assertion, true, &key, certificate, RSA256, &[], None)
+        .expect("response signature")
+}
+
 fn sp_metadata(certificate: &str) -> String {
     format!(
         r#"<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="{SP}"><SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol" AuthnRequestsSigned="true" WantAssertionsSigned="true"><KeyDescriptor use="signing"><KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#"><X509Data><X509Certificate>{}</X509Certificate></X509Data></KeyInfo></KeyDescriptor><NameIDFormat>{}</NameIDFormat><AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="{ACS}" index="0" isDefault="true"/></SPSSODescriptor></EntityDescriptor>"#,
@@ -206,7 +286,7 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
         acs_urls: vec![ACS.into()],
         acs_indices: BTreeMap::new(),
         idp_entity_id: None,
-        idp_certificate_pem: idp_cert,
+        idp_certificate_pem: idp_cert.clone(),
         sp_certificates_pem: vec![sp_cert.clone()],
         encryption_certificate_pem: None,
         name_id_format: NameIdFormat::Persistent,
@@ -352,6 +432,17 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
         b'a'
     };
     write_private(&tamper_path, STANDARD.encode(&tampered).as_bytes());
+    let expired_path = dir.join("expired.b64");
+    let expired_xml = resign(
+        &expire_conditions(&without_signatures(&xml)),
+        &idp_keys.active.pem,
+        &idp_cert,
+    );
+    assert!(expired_xml.contains("<ds:Signature"));
+    write_private(
+        &expired_path,
+        STANDARD.encode(expired_xml.as_bytes()).as_bytes(),
+    );
     let accept = |metadata: &Path, response: &Path| {
         let mut args = vec!["accept".to_string()];
         args.extend(prefix(metadata));
@@ -362,7 +453,9 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
     };
     signature_reject(&accept(&idp_metadata_path, &tamper_path));
     signature_reject(&accept(&wrong_metadata_path, &response_path));
+    lifetime_reject(&accept(&idp_metadata_path, &expired_path));
     let accepted = fields(&accept(&idp_metadata_path, &response_path));
+    assert_eq!(accepted["conditions"], "valid");
     assert_eq!(accepted["format"], NameIdFormat::Persistent.uri());
     assert!(xml.contains(&format!(">{}<", accepted["name_id"])));
 }
