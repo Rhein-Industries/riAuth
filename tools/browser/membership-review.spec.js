@@ -157,20 +157,32 @@ test('stale, cancelled, expired and refused reviews stay closed and errors revea
   await page.getByRole('button', { name: 'Stage exact change' }).click();
   await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
   const stale = await page.locator('#membership-id').innerText();
+  const unrelated = await page.request.post(`${fixture.issuer}/api/users`, {
+    headers: bearer(),
+    data: { username: 'm05-unrelated', password: 'unrelated fixture password 2026', display_name: 'Unrelated', admin: false },
+  });
+  expect(unrelated.ok()).toBe(true);
+  await page.getByRole('button', { name: 'Refresh change' }).click();
+  await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
   const updated = await page.request.patch(`${fixture.issuer}/api/users/m05-member`, { headers: bearer(), data: { display_name: 'Changed after staging' } });
   expect(updated.ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh change' }).click();
-  await expect(page.locator('#membership-status')).toHaveText('Stale');
+  await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
   await expect(page.getByRole('button', { name: 'Approve exact change' })).toBeDisabled();
-  await page.getByRole('button', { name: 'Cancel change' }).click();
-  await expect(page.locator('#membership-status')).toHaveText('Cancelled');
-  await expect(page.getByRole('button', { name: 'Cancel change' })).toBeDisabled();
 
   const denied = await stage(page);
   const context = await browser.newContext();
   try {
     const review = await context.newPage();
     await signIn(review, reviewer);
+    await open(review, stale); await acknowledge(review);
+    await review.getByRole('button', { name: 'Approve exact change' }).click();
+    await expect(review.locator('#membership-status')).toHaveText('Stale');
+    await expect(review.getByRole('button', { name: 'Approve exact change' })).toBeDisabled();
+    await open(page, stale);
+    await page.getByRole('button', { name: 'Cancel change' }).click();
+    await expect(page.locator('#membership-status')).toHaveText('Cancelled');
+    await expect(page.getByRole('button', { name: 'Cancel change' })).toBeDisabled();
     await draft(page);
     await page.getByLabel('Complete proposed usernames').fill('m05-reviewer');
     await page.getByLabel('I checked the complete replacement, including every member being removed.').check();

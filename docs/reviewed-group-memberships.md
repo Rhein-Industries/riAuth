@@ -51,10 +51,13 @@ read-only view shows before/after usernames and stable IDs, added/removed/retain
 members, author/reviewers/executor, digest, dependency fingerprints, management
 revision, creation time and expiry. Approve and execute require a fresh explicit
 confirmation and send only the displayed digest. The page disables these actions
-for authors, prior reviewers, affected members, expired/consumed changes and known
-stale proposals. The server remains authoritative: policy or authority drift not
-visible in a revision read is checked inside each final mutation transaction.
-Cancellation remains available for open stale proposals under the service's rules.
+for authors, prior reviewers, affected members, and expired or consumed changes.
+After this view receives HTTP 409 or 403 for the proposal, it also disables approve
+and execute and shows the proposal as stale. Refresh loads the stored proposal and
+sends the live management revision as If-Match. The server accepts that proposal
+when participant authority, the exact membership, and the resource and policy
+fingerprints still match, including when an unrelated audited write has advanced
+the management revision. Cancellation remains available for an open proposal.
 
 Toolbar refresh retains an unsent draft's content and original revision, clears
 its confirmation, and never silently rebases it. **Load current members** explicitly
@@ -82,13 +85,30 @@ the issuer, protected-group configuration, directory configuration, capability
 settings and review bounds. Approval bookkeeping does not advance the management
 revision; an actual group write does.
 
-Approval and final execution revalidate content, all participant authority,
-membership, identity and policy dependencies inside the serialized transaction.
+Approval and final execution revalidate participant authority, the exact membership
+snapshot, the resource fingerprint, and the policy fingerprint inside the serialized
+transaction. The proposal still stores, digest-binds, and audits the management
+revision captured at staging. That stored revision is the staging snapshot.
+Unrelated audited writes may advance `meta.revision` while the proposal stays
+usable. Direct management If-Match, desired-state apply, SCIM ETags, reviewed
+grants, reviewed client policy, client creation, client status, and client endpoint
+plans still require the global management revision. A caller that sends If-Match
+must send the current management revision. An unsent browser draft still stages
+with the revision it loaded, so an unrelated write between load and stage still
+conflicts on If-Match. A display-name change for a member in the before or after
+set still changes the resource fingerprint. Live PAM grants are outside this
+dependency set; the policy fingerprint covers configured approver groups.
 Execution writes the membership and its ordinary group audit, records the executor,
 marks the proposal consumed, and emits the review audit atomically. A fresh replay
 fails. An exact idempotency-key retry returns its existing receipt without a new
-effect. Staging, approval, execution, cancellation and expiry cleanup each have
-`reviewed_memberships.*` audits. Stale proposals can be cancelled and replaced.
+effect, and a failed attempt does not store a receipt. Staging, approval,
+execution, cancellation and expiry cleanup each have `reviewed_memberships.*`
+audits. A rejected open proposal can be cancelled and replaced.
+
+This dependency check applies only to reviewed group membership. It adds no new
+revision counter. Renaming or otherwise changing an affected member still
+invalidates the stored proposal. Other conditional writes keep the single global
+revision.
 
 The shared management writer refuses unreviewed privileged membership changes
 from API/CLI/browser writes, desired-state plans, inbound SCIM, LDAP/Workspace/Entra

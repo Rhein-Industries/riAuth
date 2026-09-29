@@ -193,7 +193,7 @@
       if (row.status === "cancelled") return ["Cancelled", "muted", "This change cannot be approved or executed."];
       if (row.proposal.expires_at <= Date.now() / 1000) return ["Expired", "warn", "The approval window ended. Stage a new proposal for a new review."];
       if (uncertain) return ["Outcome unknown", "warn", "The response was lost. Refresh this change to confirm whether the action completed."];
-      if (row.proposal.base_revision !== currentSession.revision || rejected) return ["Stale", "warn", "A dependency, authority or management revision changed. Stage a new proposal; this approval cannot be reused."];
+      if (rejected) return ["Stale", "warn", "The server rejected this action because authority, membership, policy or a dependency changed. Stage a new proposal; this approval cannot be reused."];
       if (row.status === "approved") return ["Approved", "info", "An independent administrator can execute this exact change once."];
       return ["Awaiting review", "info", "At least one administrator other than the author must approve this exact change."];
     }

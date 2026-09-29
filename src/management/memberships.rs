@@ -228,9 +228,12 @@ fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> R
         }
         revalidate_authority(tx, &approval.reviewer)?;
     }
-    if p.base_revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0)
-        || p.policy_revision != policy_revision(&core.config)?
-    {
+    // Authority, the membership snapshot, resource_revision, and policy_revision
+    // are the dependencies. meta.revision also advances for unrelated audited
+    // writes, so this path does not compare base_revision to it. The staged
+    // value remains on the proposal, in its digest, and in the audit. If-Match
+    // and every other reviewed plan still use the global counter.
+    if p.policy_revision != policy_revision(&core.config)? {
         return Err(Error::conflict(
             "Reviewed membership resource or policy revision changed",
         ));
