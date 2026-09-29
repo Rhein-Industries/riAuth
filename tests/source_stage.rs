@@ -1660,6 +1660,7 @@ impl Upstream {
                     ("code".into(), code),
                     ("iss".into(), self.source.issuer.clone()),
                 ],
+                None,
             )
             .await
             .unwrap()
@@ -1797,6 +1798,7 @@ async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
                     ("state".into(), "replay".into()),
                     ("code".into(), "replay".into()),
                 ],
+                None,
             )
             .await
             .is_err()
@@ -1822,6 +1824,7 @@ async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
                     ("code".into(), "second".into()),
                     ("iss".into(), upstream.source.issuer.clone()),
                 ],
+                None,
             )
             .await
             .is_err()
@@ -2342,6 +2345,7 @@ async fn oauth_only_stage_does_not_invent_authentication_assurance() {
                     ("state".into(), pairs["state"].clone()),
                     ("code".into(), "fixture-code".into()),
                 ],
+                None,
             )
             .await
             .unwrap()["completed"],

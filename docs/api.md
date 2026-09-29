@@ -80,7 +80,7 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET, POST | `/saml/sources/{id}/slo` | Signed upstream logout request or correlated response |
 | GET | `/saml/logout/{ticket}` | Continue browser SAML cleanup of already revoked sessions |
 | GET | `/saml/logout/{ticket}/status` | Capability-bound propagation progress |
-| GET | `/oauth/sources/{id}/callback` | State-bound upstream OIDC/OAuth callback |
+| GET | `/oauth/sources/{id}/callback` | Upstream OIDC/OAuth callback. A browser-started login is redeemed only with its `riauth_source` binding cookie; a missing or different cookie ends the login and does not exchange the code. CLI and embedded-stage logins are not cookie-bound |
 | GET, POST | `/oauth/source-stages/{id}/resume` | Resume an embedded source stage with its `authorization_id`; only POST JSON accepts `otp`, GET rejects factor parameters |
 | POST | `/oauth/source-stages/{id}/cancel` | Cancel that source stage using `authorization_id` |
 | GET | `/.well-known/ssf-configuration` | Public Shared Signals profile metadata; see [ENT-07](enterprise/ENT-07.md) for wire limitations |

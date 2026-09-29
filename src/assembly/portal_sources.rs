@@ -178,6 +178,7 @@ impl Core {
 
     /// Starts a browser login. Only the authorization URL reaches the page; the credential
     /// that finishes the login is set as an HttpOnly cookie for this browser alone.
+    /// The upstream callback redeems its code only when that same cookie is presented.
     pub fn portal_source_start(
         &self,
         sso: Option<&str>,

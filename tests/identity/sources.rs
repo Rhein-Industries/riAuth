@@ -460,12 +460,17 @@ async fn oauth_only_sources_use_pinned_userinfo_and_do_not_invent_oidc_assurance
     ];
     assert_eq!(
         f.core
-            .source_callback("oauth", callback.clone())
+            .source_callback("oauth", callback.clone(), None)
             .await
             .unwrap()["completed"],
         true
     );
-    assert!(f.core.source_callback("oauth", callback).await.is_err());
+    assert!(
+        f.core
+            .source_callback("oauth", callback, None)
+            .await
+            .is_err()
+    );
     let login = f
         .core
         .source_finish(riauth::source::Finish {
@@ -558,7 +563,13 @@ async fn browser_link_finish_needs_the_original_fresh_local_session_and_rolls_ba
     let cookie = reply_cookie(&started, "riauth_source");
     let credential = cookie.split_once('.').unwrap().0.to_owned();
     upstream
-        .callback(&f, &started.body, "subject-browser", json!({}))
+        .callback_with(
+            &f,
+            &started.body,
+            "subject-browser",
+            json!({}),
+            Some(&cookie),
+        )
         .await;
     let finish = |sso: &str| {
         f.core
@@ -625,13 +636,16 @@ async fn browser_source_sign_in_delivery_failure_rolls_back_and_retries_once() {
     let f = Fixture::new();
     let upstream = Upstream::new(&f).await;
     let started = f.core.portal_source_start(None, "upstream", None).unwrap();
-    let credential = reply_cookie(&started, "riauth_source")
-        .split_once('.')
-        .unwrap()
-        .0
-        .to_owned();
+    let cookie = reply_cookie(&started, "riauth_source");
+    let credential = cookie.split_once('.').unwrap().0.to_owned();
     upstream
-        .callback(&f, &started.body, "new-browser-user", json!({}))
+        .callback_with(
+            &f,
+            &started.body,
+            "new-browser-user",
+            json!({}),
+            Some(&cookie),
+        )
         .await;
     assert_eq!(
         f.core.portal_source_review(Some(&credential)).unwrap()["status"],
@@ -707,13 +721,10 @@ async fn browser_and_bearer_source_links_require_an_enrolled_factor_session() {
         .core
         .portal_source_start(Some(&password_only), "upstream", Some(&bound))
         .unwrap();
-    let credential = reply_cookie(&pending, "riauth_source")
-        .split_once('.')
-        .unwrap()
-        .0
-        .to_owned();
+    let cookie = reply_cookie(&pending, "riauth_source");
+    let credential = cookie.split_once('.').unwrap().0.to_owned();
     upstream
-        .callback(&f, &pending.body, "pending", json!({}))
+        .callback_with(&f, &pending.body, "pending", json!({}), Some(&cookie))
         .await;
 
     // A factor imported while a link is pending must be checked again at finish.
@@ -772,14 +783,17 @@ async fn browser_and_bearer_source_links_require_an_enrolled_factor_session() {
         .core
         .portal_source_start(Some(&verified), "upstream", Some(&verified_bound))
         .unwrap();
+    let verified_cookie = reply_cookie(&started, "riauth_source");
+    let verified_credential = verified_cookie.split_once('.').unwrap().0.to_owned();
     upstream
-        .callback(&f, &started.body, "verified", json!({}))
+        .callback_with(
+            &f,
+            &started.body,
+            "verified",
+            json!({}),
+            Some(&verified_cookie),
+        )
         .await;
-    let verified_credential = reply_cookie(&started, "riauth_source")
-        .split_once('.')
-        .unwrap()
-        .0
-        .to_owned();
     assert_eq!(
         f.core
             .portal_source_finish(Some(&verified_credential), Some(&verified), true, None)
@@ -867,4 +881,173 @@ async fn browser_and_bearer_source_links_require_an_enrolled_factor_session() {
         p.core.source_unlink(&passkey, &link_id).unwrap()["unlinked"],
         true
     );
+}
+
+#[tokio::test]
+async fn browser_source_callback_is_redeemed_only_by_the_starting_browser() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f).await;
+    let accounts = || {
+        (
+            f.core.store.list::<User>("users").unwrap().len(),
+            f.core.store.list::<Session>("sessions").unwrap().len(),
+            f.core.store.list::<Value>("source_links").unwrap().len(),
+        )
+    };
+    let before = accounts();
+    let login_row = |body: &Value| {
+        let url = url::Url::parse(body["authorization_url"].as_str().unwrap()).unwrap();
+        let state = url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .unwrap()
+            .1
+            .to_string();
+        f.core
+            .store
+            .get::<Value>("source_logins", &digest(&state))
+            .unwrap()
+            .unwrap()
+    };
+    let hides = |error: &riauth::error::Error, secret: &str| {
+        let shown = error.to_string();
+        assert!(!shown.contains(secret), "{shown}");
+    };
+
+    let started = f.core.portal_source_start(None, "upstream", None).unwrap();
+    let cookie = reply_cookie(&started, "riauth_source");
+    let credential = cookie.split_once('.').unwrap().0.to_owned();
+    let (mismatch, code) = upstream
+        .redeem(&f, &started.body, "phished", json!({}), None)
+        .await;
+    let mismatch = mismatch.unwrap_err();
+    assert_eq!(mismatch.code, "source_browser_mismatch");
+    assert_eq!(mismatch.status.as_u16(), 403);
+    hides(&mismatch, &code);
+    hides(&mismatch, &cookie);
+    assert!(upstream.retains(&code));
+    let burned = login_row(&started.body);
+    assert_eq!(burned["claimed"], true);
+    assert_eq!(burned["failed"], true);
+    assert!(burned["result"].is_null());
+    assert_eq!(burned["browser_binding"], digest(&cookie));
+    assert!(
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .iter()
+            .any(|(_, event)| {
+                event["action"] == "source.login_failed"
+                    && event["actor"] == "upstream"
+                    && event["target"] == "upstream"
+            })
+    );
+    assert_eq!(accounts(), before);
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&credential))
+            .unwrap_err()
+            .code,
+        "source_login_expired"
+    );
+
+    let replay = upstream
+        .complete(&f, &started.body, &code, Some(&cookie))
+        .await
+        .unwrap_err();
+    assert!(upstream.retains(&code));
+    hides(&replay, &code);
+    hides(&replay, &cookie);
+    assert_eq!(accounts(), before);
+
+    let other = f.core.portal_source_start(None, "upstream", None).unwrap();
+    let other_cookie = reply_cookie(&other, "riauth_source");
+    let foreign = upstream
+        .complete(&f, &started.body, &code, Some(&other_cookie))
+        .await
+        .unwrap_err();
+    assert!(upstream.retains(&code));
+    hides(&foreign, &code);
+    hides(&foreign, &cookie);
+    hides(&foreign, &other_cookie);
+
+    // A cookie from the login above is a different browser for this new login.
+    let wrong = f.core.portal_source_start(None, "upstream", None).unwrap();
+    let wrong_cookie = reply_cookie(&wrong, "riauth_source");
+    let wrong_credential = wrong_cookie.split_once('.').unwrap().0.to_owned();
+    let (rejected, wrong_code) = upstream
+        .redeem(
+            &f,
+            &wrong.body,
+            "other-browser",
+            json!({}),
+            Some(&other_cookie),
+        )
+        .await;
+    let rejected = rejected.unwrap_err();
+    assert_eq!(rejected.code, "source_browser_mismatch");
+    assert_eq!(rejected.status.as_u16(), 403);
+    assert!(upstream.retains(&wrong_code));
+    hides(&rejected, &wrong_code);
+    hides(&rejected, &other_cookie);
+    assert_eq!(login_row(&wrong.body)["failed"], true);
+    assert!(login_row(&wrong.body)["result"].is_null());
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&wrong_credential))
+            .unwrap_err()
+            .code,
+        "source_login_expired"
+    );
+    assert!(
+        upstream
+            .complete(&f, &wrong.body, &wrong_code, Some(&wrong_cookie))
+            .await
+            .is_err()
+    );
+    assert!(upstream.retains(&wrong_code));
+
+    let bulky = f.core.portal_source_start(None, "upstream", None).unwrap();
+    let bulky_cookie = "x".repeat(257);
+    let (oversized, bulky_code) = upstream
+        .redeem(&f, &bulky.body, "oversized", json!({}), Some(&bulky_cookie))
+        .await;
+    let oversized = oversized.unwrap_err();
+    assert_eq!(oversized.code, "source_browser_mismatch");
+    assert_eq!(oversized.status.as_u16(), 403);
+    assert!(upstream.retains(&bulky_code));
+    hides(&oversized, &bulky_code);
+    hides(&oversized, &bulky_cookie);
+
+    let (completed, other_code) = upstream
+        .redeem(
+            &f,
+            &other.body,
+            "same-browser",
+            json!({}),
+            Some(&other_cookie),
+        )
+        .await;
+    assert_eq!(completed.unwrap()["completed"], true);
+    assert!(!upstream.retains(&other_code));
+    let stored = login_row(&other.body);
+    assert_eq!(stored["failed"], false);
+    assert_eq!(stored["result"]["subject"], "same-browser");
+    assert_eq!(stored["browser_binding"], digest(&other_cookie));
+    let other_credential = other_cookie.split_once('.').unwrap().0.to_owned();
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&other_credential))
+            .unwrap()["status"],
+        "review"
+    );
+    assert_eq!(accounts(), before);
+    assert!(
+        upstream
+            .complete(&f, &other.body, &other_code, Some(&other_cookie))
+            .await
+            .is_err()
+    );
+    assert!(!upstream.retains(&other_code));
 }

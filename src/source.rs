@@ -187,6 +187,11 @@ struct Login {
     /// Server-owned workflow reservation; never accepted from a source API body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     workflow: Option<WorkflowBinding>,
+    /// Digest of the full browser binding cookie (`credential.digest(state)`).
+    /// CLI, embedded-stage and workflow logins leave this empty, as do records
+    /// written before the cookie was required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_binding: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -475,7 +480,7 @@ impl Core {
             Some((user, session)) => Linker::Browser(user, session),
             None => Linker::Token(None),
         };
-        self.source_start_for(tx, id, &input, linker, None)
+        self.source_start_for(tx, id, &input, linker, None, true)
             .map(|started| started.body)
     }
     fn source_start_in(
@@ -486,7 +491,7 @@ impl Core {
         token: Option<&str>,
         stage: Option<&str>,
     ) -> Result<StartedLogin> {
-        self.source_start_for(tx, id, input, Linker::Token(token), stage)
+        self.source_start_for(tx, id, input, Linker::Token(token), stage, false)
     }
     fn source_start_for(
         &self,
@@ -495,6 +500,7 @@ impl Core {
         input: &Start,
         linker: Linker<'_>,
         stage: Option<&str>,
+        browser_bound: bool,
     ) -> Result<StartedLogin> {
         let source = enabled(tx, id)?;
         if source.oauth_profile.is_some() && input.authentication_transaction.is_some() {
@@ -543,6 +549,8 @@ impl Core {
             attempts: 0,
             stage: stage.map(str::to_owned),
             workflow: None,
+            browser_binding: browser_bound
+                .then(|| digest(&format!("{credential}.{}", digest(&state)))),
         };
         let started = |authorization_url: String, pending: &Login| StartedLogin {
             body: json!({"authorization_url": &authorization_url, "credential": {"issuer":self.config.issuer,"source":id,"token":&credential,"expires_at":pending.expires_at}, "instruction":"Authenticate at the upstream provider, then inspect and finish this request in the CLI"}),
@@ -590,7 +598,17 @@ impl Core {
             self.config.issuer.trim_end_matches('/')
         )
     }
-    pub async fn source_callback(&self, id: &str, pairs: Vec<(String, String)>) -> Result<Value> {
+    /// Redeems an upstream authorization code.
+    ///
+    /// `browser_binding` is the full cookie set when the login started in a browser.
+    /// CLI, embedded-stage and workflow logins pass `None`. A browser login whose
+    /// callback does not present that cookie is ended before the token request.
+    pub async fn source_callback(
+        &self,
+        id: &str,
+        pairs: Vec<(String, String)>,
+        browser_binding: Option<&str>,
+    ) -> Result<Value> {
         let mut seen = BTreeSet::new();
         if pairs
             .iter()
@@ -610,11 +628,15 @@ impl Core {
             .filter(|v| v.len() == 43)
             .ok_or_else(|| Error::bad("Missing source state"))?;
         // Claim before network I/O. Ambiguous network failures require a new login, never code replay.
+        // Own only a bounded cookie. A longer value cannot match and is treated as absent.
+        let presented = browser_binding
+            .filter(|value| value.len() <= 256)
+            .map(str::to_owned);
         let worker = self.clone();
         let source_id = id.to_owned();
         let request_state = state.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
-        let (source, pending, secret) = tokio::task::spawn_blocking(move || {
+        let ready = tokio::task::spawn_blocking(move || {
             crate::context::scope(context, || {
                 worker.store.write(|tx| {
                     let id = source_id.as_str();
@@ -634,17 +656,34 @@ impl Core {
                         .ok_or_else(|| {
                             Error::bad("Source request expired, changed or already used")
                         })?;
+                    if pending.browser_binding.as_deref().is_some_and(|expected| {
+                        !browser_binding_matches(expected, presented.as_deref())
+                    }) {
+                        pending.claimed = true;
+                        pending.failed = true;
+                        tx.put("source_logins", &digest(state), &pending)?;
+                        audit(tx, "upstream", "source.login_failed", id)?;
+                        // Commit the refusal. Err would roll the writer back and leave the code redeemable.
+                        return Ok(None);
+                    }
                     pending.claimed = true;
                     tx.put("source_logins", &digest(state), &pending)?;
                     let secret = tx
                         .get::<String>("source_secrets", id)?
                         .map(zeroize::Zeroizing::new);
-                    Ok((source, pending, secret))
+                    Ok(Some((source, pending, secret)))
                 })
             })
         })
         .await
         .map_err(Error::internal)??;
+        let Some((source, pending, secret)) = ready else {
+            return Err(Error::new(
+                axum::http::StatusCode::FORBIDDEN,
+                "source_browser_mismatch",
+                "This provider returned to a different browser than the one that started sign-in. Start again in that browser.",
+            ));
+        };
         let result = async {
             if get("iss").is_some_and(|v| v != source.issuer) {
                 return Err(Error::bad("Upstream response issuer mismatch"));
@@ -1637,6 +1676,15 @@ fn load_stage(tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<Sou
     }
     Ok(stage)
 }
+/// `expected` is the stored digest of the full binding cookie. A missing, oversized
+/// or different cookie fails closed. The compare covers both cookie halves at once.
+fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
+    let presented = presented.unwrap_or("");
+    presented.len() <= 256
+        && expected.len() == 43
+        && crypto::constant_eq(&digest(presented), expected)
+}
+
 fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
     let mut body = json!({
         "completed": !pending.failed,

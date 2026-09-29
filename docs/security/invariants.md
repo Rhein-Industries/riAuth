@@ -202,12 +202,19 @@ includes request binding; [signin](../../src/signin.rs) `bind_proof`,
 `authorize_attach`, `authorize_decision`, `browser_resume_with`;
 [SAML](../../src/saml.rs) interaction/request hashes and `saml_browser_decide`.
 Proof use is paired with live identity validation, not a caller's asserted user ID.
+[Source](../../src/source.rs) `source_callback` redeems a browser-started upstream
+login only when the callback presents the binding cookie set at start. A missing
+or different cookie ends that login before any token request, and replaying the
+callback with the original cookie does not complete it. CLI, embedded-stage and
+workflow logins have no browser cookie.
 
 **Existing regressions.** [Signin](../../tests/signin_core.rs)
 `proof_is_single_use_and_bound_to_request_and_session`;
 [browser](../../tests/browser_signin.rs) `proof_cannot_be_moved_between_identical_requests`,
 `decision_rejects_changed_session_ref`, `browser_approval_is_delivered_only_to_the_approving_browser`;
-[SAML](../../tests/identity/saml.rs) `saml_force_authn_requires_proof_from_interaction`.
+[SAML](../../tests/identity/saml.rs) `saml_force_authn_requires_proof_from_interaction`;
+[sources](../../tests/identity/sources.rs)
+`browser_source_callback_is_redeemed_only_by_the_starting_browser`.
 
 **Missing coverage / later contract.** Q02-C03 swaps request hash/instance,
 account, session, interaction ID, cookie and callback collector independently.

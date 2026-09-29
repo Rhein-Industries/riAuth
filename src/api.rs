@@ -1813,7 +1813,8 @@ async fn source_callback(
     let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.as_deref().unwrap_or(""))
         .map_err(|_| Error::bad("Invalid source callback query"))?;
     // A login this browser started continues on its review page, which reads the outcome with
-    // the browser's own credential; the callback reply never carries it.
+    // the browser's own credential; the callback reply never carries it. The same cookie is
+    // what allows the code to be redeemed. A duplicate cookie name yields no binding.
     let state = pairs
         .iter()
         .find(|(k, _)| k == "state")
@@ -1822,7 +1823,7 @@ async fn source_callback(
     let continuation = app
         .core
         .portal_source_continuation(binding, state.as_deref());
-    let value = app.core.source_callback(&id, pairs).await;
+    let value = app.core.source_callback(&id, pairs, binding).await;
     if let Some(path) = continuation {
         return see_other(&app, &path, vec![]);
     }
