@@ -219,11 +219,11 @@ nothing, so it has no token to send. When `next_attempt` is reached, one
 later claim replaces the lease and may send. A pin or
 `finish_logout_delivery` for the previous attempt leaves the new attempt in
 place. A failed attempt clears the lease and uses the same backoff as before.
-The HTTP client timeout is five seconds. A call already inside that send can
-still complete after another worker claims the delivery if the first process
-was suspended for the whole 60-second lease. The pin stops a resumed worker
-from starting a POST after the lease was replaced or had reached
-`next_attempt`.
+The HTTP client timeout is five seconds. A process paused after its pin
+commits can resume and start or finish a POST after another worker claims
+the delivery. The pin refuses admission when the lease was already replaced
+or had reached `next_attempt`; it cannot atomically fence the later network
+send. Stale completion still leaves the newer attempt unchanged.
 A delivery older than 24 hours is parked with `next_attempt` at the top of
 the range and an empty lease. Rows are still removed after seven days.
 Claim, pin, and finish do not write an audit row.
@@ -326,11 +326,12 @@ and may send. A pin or `finish_delivery` for the previous attempt leaves the
 new attempt in place. A failed attempt clears the lease and uses the same
 backoff as before. The SET body is still `iss`, `aud`, `iat` equal to
 `created_at`, the stable `jti`, and the event payload. The HTTP client
-timeout stays five seconds, with no redirects. A call already inside that
-send can still complete after another worker claims the delivery if the first
-process was suspended for the whole 60-second lease. The pin stops a resumed
-worker from starting a POST after the lease was replaced, the stream was
-cancelled or moved, or `next_attempt` was reached. Rows older than 24 hours
+timeout stays five seconds, with no redirects. A process paused after its pin
+commits can resume and start or finish a POST after another worker claims
+the delivery. Signing also occurs after that pin. The pin refuses admission
+when the lease was already replaced, the stream was cancelled or moved, or
+`next_attempt` was reached; it cannot atomically fence the later network
+send. Receivers must deduplicate the stable SET `jti`. Rows older than 24 hours
 and rows that already have five attempts stop with `last_failed` and an empty
 lease. Rows are still removed after seven days. Claim, pin, and finish do not
 write an audit row, and they do not change the `ssf_jti` replay window.
@@ -457,9 +458,10 @@ list was unchanged. The test then dropped
   offboarding keep their existing leases. Provisioning and deactivation
   target permits stay in the worker process. Maintenance and alert passes
   run on every worker.
-- A logout or SSF POST already inside the five-second client call can still
-  complete after a later claim if that process stays suspended across the
-  60-second lease. The pin refuses a POST that has not yet been admitted.
+- A process paused after a logout or SSF pin commits can still start or
+  finish its POST after a later claim. Admission and the external network
+  operation are separate; the five-second client timeout does not fence a
+  process suspended across the 60-second lease.
 - Public CI runs the default PostgreSQL target and `q05_replay_concurrency`.
   It does not select `node_security_postgres`, `job_lease_postgres`, or
   `ssf_lease_postgres`.
