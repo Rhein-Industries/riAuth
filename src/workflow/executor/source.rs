@@ -175,6 +175,7 @@ impl Core {
         if checked.definition().id.as_str() != workflow {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
+        version::seal_stale_session(self, token)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let pin = upstream::pin(tx, &source)?;
@@ -189,6 +190,7 @@ impl Core {
             {
                 return Err(Error::forbidden());
             }
+            let reviewed = version::review_pin(self, tx, &checked, true)?;
             let at = now();
             if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
                 if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
@@ -228,6 +230,8 @@ impl Core {
                 in_flight: None,
                 authorization_response: None,
                 credential_mutation: None,
+                reviewed,
+                reviewed_failure: None,
             };
             let request = RequestAuthority {
                 id: request_id.clone(),
@@ -248,6 +252,9 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            if run.reviewed.is_some() {
+                version::track_account_run(tx, &run.record.account, &run_id)?;
+            }
             enrollment::resume_session(self, tx, &checked, &mut run, at)?;
             let RunState::Active { step, attempt } = &run.record.state else {
                 return Err(Error::forbidden());
@@ -307,6 +314,7 @@ impl Core {
         authorization: Option<crate::oidc::Authorization>,
     ) -> Result<SourceStart> {
         let source = Id::new(source).map_err(Error::bad)?;
+        version::seal_stale_session(self, token)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let pin = upstream::pin(tx, &source)?;
@@ -352,6 +360,8 @@ impl Core {
                 in_flight: None,
                 authorization_response: None,
                 credential_mutation: None,
+                reviewed: None,
+                reviewed_failure: None,
             };
             let mut reservation = InFlight {
                 nonce: crypto::id(),
@@ -405,6 +415,7 @@ impl Core {
     /// Poll only the verifier transaction reserved by this run. Consumption,
     /// evidence creation, live-authority checks and finalization share a writer.
     pub fn workflow_source_finish(&self, token: &str, id: &str) -> Result<View> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

@@ -213,6 +213,8 @@ impl Core {
             in_flight: None,
             authorization_response: None,
             credential_mutation: None,
+            reviewed: None,
+            reviewed_failure: None,
         };
         tx.put(REQUESTS, &request_id, &request)?;
         tx.put(RUNS, &run_id, &run)?;

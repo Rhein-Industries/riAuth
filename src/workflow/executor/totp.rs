@@ -352,6 +352,7 @@ impl Core {
         factor: Factor,
         fallback: Option<&str>,
     ) -> Result<TotpChallenge> {
+        version::reject_stale_reviewed(self, id)?;
         self.store
             .write(|tx| {
                 let mut run = load_runtime(tx, id)?;
@@ -492,6 +493,7 @@ impl Core {
         if code.len() > if factor == Factor::Totp { 8 } else { 256 } || challenge.len() > 256 {
             return Err(Error::bad("Invalid factor submission"));
         }
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

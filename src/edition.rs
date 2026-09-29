@@ -353,6 +353,8 @@ const PLATFORM_BUCKETS: &[&str] = &[
     "workflow_requests",
     "workflow_evidence",
     "workflow_active_sessions",
+    "workflow_reviewed",
+    "workflow_account_runs",
 ];
 
 pub fn action_available(action: &str) -> bool {

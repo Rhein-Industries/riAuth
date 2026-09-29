@@ -106,6 +106,7 @@ impl Core {
             &local_definition(PASSWORD_WORKFLOW)?,
             Some(request),
             None,
+            false,
         )
     }
 
@@ -120,6 +121,7 @@ impl Core {
             &local_definition(PASSKEY_WORKFLOW)?,
             Some(request),
             None,
+            false,
         )
     }
 }
@@ -267,6 +269,28 @@ pub(super) fn check(
         pending(tx, run, authority, at)?;
     }
     Ok(())
+}
+
+/// Missing or changed client material fails the reviewed pin closed.
+pub(super) fn client_policy_changed(tx: &Tx<'_>, authority: &RequestAuthority) -> Result<bool> {
+    let Some(pin) = authority.authorization.as_ref() else {
+        return Ok(false);
+    };
+    let key = match bound_key(tx, pin) {
+        Ok(key) => key,
+        Err(error) if error.status == axum::http::StatusCode::FORBIDDEN => return Ok(true),
+        Err(error) => return Err(error),
+    };
+    if tx.get::<Bound>(AUTHORIZATIONS, &key)?.is_none() {
+        return Ok(true);
+    }
+    let Some(client) = tx.get::<Client>("clients", &pin.client)? else {
+        return Ok(true);
+    };
+    if !client.enabled {
+        return Ok(true);
+    }
+    Ok(fingerprint(&client)? != pin.client_fingerprint)
 }
 
 fn grant_identity(

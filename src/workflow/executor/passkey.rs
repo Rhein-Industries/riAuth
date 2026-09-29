@@ -59,11 +59,12 @@ impl Core {
     /// Begin the shipped passkey workflow for this exact live bearer session.
     /// Passkeys satisfy W03's local MFA floor, including accounts with TOTP.
     pub fn workflow_passkey_start(&self, token: &str) -> Result<View> {
-        self.start_local_workflow(token, &local_definition(PASSKEY_WORKFLOW)?)
+        self.start_local_workflow(token, &local_definition(PASSKEY_WORKFLOW)?, false)
     }
 
     /// Reserve one current step attempt and its WebAuthn challenge atomically.
     pub fn workflow_passkey_challenge(&self, token: &str, id: &str) -> Result<PasskeyChallenge> {
+        version::reject_stale_reviewed(self, id)?;
         self.store
             .write(|tx| {
                 let mut run = load_runtime(tx, id)?;
@@ -134,6 +135,7 @@ impl Core {
         id: &str,
         response: PublicKeyCredential,
     ) -> Result<View> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, W06 Platform authoring, and a held W07 extension contract.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, a fail-closed reviewed pin for configured runs, W06 Platform authoring, and a held W07 extension contract.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication, plus request-bound
 configured OIDC consent, for a live bearer session.
@@ -22,6 +22,10 @@ The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
 [OIDC profiles](oidc-profiles.md#platform-conditional-application-policy).
 That policy does not itself select or execute workflow definitions.
+A run loaded from an active `config.toml` workflow stores the reviewed revision,
+fingerprint, and policy digest. A later policy change, a disabled account, or a
+rolled-back revision seals that open run with no new evidence and no grant.
+Restoring the previous policy starts a new run and leaves the sealed run denied.
 Platform now starts four active configured authentication shapes: local password
 alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
@@ -1142,6 +1146,81 @@ of scope. The capability is configured and usable for this active shape when
 the admitted manifest covers the stage. Default, inactive, unsupported, and
 Essentials configurations leave configured and usable false.
 
+## Reviewed configuration pin
+
+A start loaded from an active `config.workflows` entry, whose validated
+definition is that entry, stores a reviewed pin beside `RunBinding`. The pin
+holds the definition revision, the definition fingerprint, and a policy digest.
+The digest is the SHA-256 hex of `riauth.workflow-reviewed/v1`, the active flag
+(`true` or `false`), the workflow id, the revision, and the fingerprint, each
+on its own line. `RunBinding` equality remains the definition id, revision,
+fingerprint, optional source registration, and optional `extension_sha256`.
+
+`workflow_reviewed` keeps the highest adopted pin for that workflow id and is
+retained across restore, so a restored older definition cannot start below it.
+The first start writes it. A higher live revision replaces it when that start
+commits. The same revision, fingerprint, and policy is reused. The same
+revision with a different fingerprint or policy is rejected with
+`Workflow policy changed` and leaves the stored pin unchanged. A live revision
+below the stored pin is rejected with `Workflow version was rolled back`.
+
+Open pinned runs are listed in `workflow_account_runs`, keyed by account, with
+at most 32 run ids. Clearing `workflow_active_sessions` for that run removes
+the id. The account index is invalidated on restore. Disabling a user seals
+every indexed open pinned run in the same user write.
+
+While a pinned run is still active, the executor seals it before a verifier can
+reserve or complete a step. The seal finishes at the snapshot's denied terminal
+when that terminal exists, and as cancelled otherwise. It writes no evidence
+and issues no grant. The stored failure is `policy_changed`
+(`Workflow policy changed`) when the snapshot disagrees with the pin, the
+configured entry is missing or inactive, the live revision is higher, the live
+fingerprint or policy digest differs, the retained pin differs, the request row
+is missing, or a bound authorization or consent client fingerprint no longer
+matches. It is `rolled_back` (`Workflow version was rolled back`) when the live
+revision is below the pin or below the retained pin. It is `user_disabled`
+(`Workflow account is disabled`) when the user row is missing or disabled.
+A disabled account fails the old bearer before a later resume, so the seal is
+committed by the user update itself. A higher revision seals the old run as
+`policy_changed` and can start a different run. Publishing a revision at or
+above the retained pin can start a new run. The sealed run stays denied if the
+old policy returns or the account is enabled again.
+
+Code-owned revisions stay unpinned. That includes the shipped password, passkey,
+source reauthentication, invitation, and password-reset workflows. The pin is
+recorded only for configured start, configured passkey removal, configured
+consent, and configured source-first passkey enrollment. The executor still
+selects active definitions from `config.toml`, not from the persisted
+`workflow_definitions` store.
+
+This executor matches `roadmap/w02-configured-executor-wave15` at
+`06b9793a943d2d0ab15c8990a009449f346adc33`: `RuntimeRun` and
+`start_authorization_workflow` live in `src/workflow/executor.rs`, and
+`workflow_password` lives in `src/workflow/executor/password.rs`. The separate
+`roadmap/w02-runtime-executor` worktree at
+`c03d1f8e831694819edf0adb02d129ea8ca62da9` is a smaller password-only executor.
+Its `RuntimeRun` is `deny_unknown_fields` in `src/workflow/executor.rs`, its
+only public methods are `workflow_start`, `workflow_resume`, `workflow_cancel`,
+and `workflow_password` (all in that file), and it has no
+`start_authorization_workflow`. Its password start is the code-owned essentials
+workflow and stays unpinned. Those worktrees were not edited. They do not gain
+this guard until this branch is merged.
+
+A later W02 merge keeps `reviewed` and `reviewed_failure` optional, with serde
+default and omission when absent, so an unpinned row stays readable by an older
+`deny_unknown_fields` reader. A pinned row carries both fields, and that older
+reader rejects it until it grows the same fields. Finalization that clears
+`workflow_active_sessions` also drops the account index; a finalizer that
+writes a final state without `close` or `clear_active_session` drops the index
+itself. A new verifier entry point that loads a run by id calls
+`reject_stale_reviewed` before reserving or completing a step, and commits a
+seal with `Ok(Err)` or with an earlier write that returns `Ok`. Resume and
+cancel call `reviewed_outcome` and return the sealed view. On the
+runtime-executor tree, `close` untracks the account index if this slice is
+ported, and `workflow_password`, `workflow_resume`, and `workflow_cancel` use
+the same guards. Client fingerprints remain that tree's client-policy pins;
+this slice also seals when those fingerprints change.
+
 ## Left to later work
 
 These are not implemented or established by this slice:
@@ -1175,9 +1254,12 @@ These are not implemented or established by this slice:
 * Binding the remaining security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. New source-verifier runs also pin
   the live source registration, and a guest run pins `extension_sha256` of the
-  module that started it. It does not cover the rest of the `Environment` or
-  any approval record that RI-WF-002 requires. The source receipt separately
-  pins its explicit account link; broader dependency/approval binding remains.
+  module that started it. Configured runs loaded from `config.workflows` store
+  a reviewed pin beside that binding, as described above. The rest of the
+  `Environment`, and the approval record RI-WF-002 requires, remain unbound.
+  The source receipt separately pins its explicit account link. Safe resume of
+  changed content, code-owned revisions outside `config.workflows`, and broader
+  dependency binding remain.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)
@@ -1206,5 +1288,8 @@ These are not implemented or established by this slice:
   assurance, rejection of untrusted upstream MFA, mandatory local factors and
   source-link revocation, with complete transaction rollback snapshots.
   Those other workflow executor paths still lack shared PostgreSQL evidence.
-* Management API, desired-state, storage, versioned approval, editor, templates,
-  and product capability reporting or gating.
+* Management API as the executor's selection source, desired-state and the
+  persisted `workflow_definitions` store as that source, versioned multi-party
+  approval and safe resume, the editor and templates, extensions beyond the
+  existing guest gate, and product capability reporting or gating. The executor
+  still reads active definitions from `config.toml`.

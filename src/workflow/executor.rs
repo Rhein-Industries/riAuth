@@ -13,10 +13,12 @@ mod reset;
 mod source;
 mod totp;
 mod totp_enrollment;
+mod version;
 pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
+pub(crate) use version::seal_disabled_account;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
@@ -72,6 +74,15 @@ pub struct View {
     pub authorization_response: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential_epoch: Option<u64>,
+    /// Reviewed configured revision, omitted for unpinned runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_revision: Option<u32>,
+    /// Digest of the reviewed active policy, omitted for unpinned runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_policy: Option<String>,
+    /// `policy_changed`, `rolled_back`, or `user_disabled` after a fail-closed seal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_failure: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -153,6 +164,11 @@ struct RuntimeRun {
     authorization_response: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     credential_mutation: Option<mutation::Completed>,
+    /// Set only when the run's definition was loaded from `config.workflows`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reviewed: Option<version::ReviewedPin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reviewed_failure: Option<String>,
 }
 
 impl RuntimeRun {
@@ -281,6 +297,9 @@ impl RuntimeRun {
             attempts_used,
             max_attempts,
             executions: self.executions,
+            reviewed_revision: self.reviewed.as_ref().map(|pin| pin.revision),
+            reviewed_policy: self.reviewed.as_ref().map(|pin| pin.policy.clone()),
+            reviewed_failure: self.reviewed_failure.clone(),
         })
     }
 }
@@ -316,7 +335,7 @@ fn clear_active_session(tx: &Tx<'_>, run: &StoredRun) -> Result<()> {
     {
         tx.delete(ACTIVE_SESSIONS, session)?;
     }
-    Ok(())
+    version::untrack_account_run(tx, &run.account, &run.id)
 }
 
 fn authority(
@@ -325,6 +344,7 @@ fn authority(
     run: &StoredRun,
     at: u64,
 ) -> Result<(User, RequestAuthority)> {
+    version::reject_if_stale(core, tx, &run.id)?;
     let request = tx
         .get::<RequestAuthority>(REQUESTS, &run.request)?
         .ok_or_else(Error::forbidden)?;
@@ -1124,7 +1144,7 @@ impl Core {
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
-        self.start_local_workflow(token, &checked)
+        self.start_local_workflow(token, &checked, true)
     }
 
     /// The target ID is pinned to a live account/session/request before any
@@ -1149,7 +1169,7 @@ impl Core {
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
-        self.start_authorization_workflow(token, &checked, None, Some(credential_id))
+        self.start_authorization_workflow(token, &checked, None, Some(credential_id), true)
     }
 
     /// Bind one active configured consent definition to an existing prepared
@@ -1173,18 +1193,23 @@ impl Core {
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
-        self.start_authorization_workflow(token, &checked, Some(authorization), None)
+        self.start_authorization_workflow(token, &checked, Some(authorization), None, true)
     }
 
     /// Begin local-password reauthentication, adding TOTP when enrolled, for a live
     /// bearer session. The session pins the account and is rechecked at every
     /// operation; this entry point does not replace the existing sign-in path.
     pub fn workflow_start(&self, token: &str) -> Result<View> {
-        self.start_local_workflow(token, &local_definition(PASSWORD_WORKFLOW)?)
+        self.start_local_workflow(token, &local_definition(PASSWORD_WORKFLOW)?, false)
     }
 
-    fn start_local_workflow(&self, token: &str, checked: &Validated) -> Result<View> {
-        self.start_authorization_workflow(token, checked, None, None)
+    fn start_local_workflow(
+        &self,
+        token: &str,
+        checked: &Validated,
+        pin_config: bool,
+    ) -> Result<View> {
+        self.start_authorization_workflow(token, checked, None, None, pin_config)
     }
 
     fn start_authorization_workflow(
@@ -1193,6 +1218,7 @@ impl Core {
         checked: &Validated,
         authorization: Option<crate::oidc::Authorization>,
         removal_target: Option<&str>,
+        pin_config: bool,
     ) -> Result<View> {
         let configured_consent = supported_configured_consent(checked.definition());
         let configured_removal = supported_configured_passkey_removal(checked.definition());
@@ -1204,6 +1230,7 @@ impl Core {
         {
             return Err(Error::forbidden());
         }
+        version::seal_stale_session(self, token)?;
         self.store.write(|tx| {
             let (user, session) = self.session(tx, token)?;
             let mfa_definition = (checked.definition().id.as_str() == PASSWORD_WORKFLOW
@@ -1327,6 +1354,7 @@ impl Core {
                 None => checked.clone(),
             };
             let checked = &checked_owned;
+            let reviewed = version::review_pin(self, tx, checked, pin_config)?;
             let at = now();
             if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
                 if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
@@ -1403,6 +1431,8 @@ impl Core {
                 in_flight: None,
                 authorization_response: None,
                 credential_mutation: None,
+                reviewed,
+                reviewed_failure: None,
             };
             let mut request = RequestAuthority {
                 id: request_id.clone(),
@@ -1437,6 +1467,9 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            if run.reviewed.is_some() {
+                version::track_account_run(tx, &run.record.account, &run_id)?;
+            }
             if let Some(module) = guest.as_ref() {
                 run_extension_guest(
                     self,
@@ -1468,10 +1501,18 @@ impl Core {
 
     /// Reloads a run and applies elapsed step/run deadlines durably.
     pub fn workflow_resume(&self, token: &str, id: &str) -> Result<View> {
+        let sealed = version::reviewed_outcome(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
+            if sealed.is_some() {
+                return run.view(&checked);
+            }
+            if let Some(failure) = version::reviewed_failure(self, tx, &run)? {
+                version::seal_reviewed(tx, &mut run, failure)?;
+                return run.view(&checked);
+            }
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, now())?;
                 return run.view(&checked);
@@ -1482,10 +1523,18 @@ impl Core {
     }
 
     pub fn workflow_cancel(&self, token: &str, id: &str) -> Result<View> {
+        let sealed = version::reviewed_outcome(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
+            if sealed.is_some() {
+                return run.view(&checked);
+            }
+            if let Some(failure) = version::reviewed_failure(self, tx, &run)? {
+                version::seal_reviewed(tx, &mut run, failure)?;
+                return run.view(&checked);
+            }
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, now())?;
                 return run.view(&checked);

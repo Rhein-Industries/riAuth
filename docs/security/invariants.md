@@ -673,6 +673,16 @@ journeys without an operator-designed workflow.
 configurable-workflow engine. RI-WF-001 is adjacent enforcement, not proof of
 arbitrary workflow safety. No baseline regression establishes this whole contract.
 
+**Reviewed-version slice.** Configured runs loaded from `config.workflows` store
+the active revision, fingerprint, and policy digest, and `workflow_reviewed`
+retains the highest adopted pin. A policy change, a disabled account, or a
+rolled-back revision seals the open run as denied, with no new evidence and no
+grant. A later compatible revision starts a new run and leaves the sealed run
+denied. Code-owned revisions that are absent from `config.workflows` stay
+unpinned, and the persisted authoring store is not the executor's selection
+source. This is fail-closed invalidation. It has no approval record and no safe
+resume of reviewed content, so it does not establish RI-WF-002.
+
 **Controlled-extension slice.** [The host](../../src/workflow/extension.rs)
 is a held in-process contract. A native registrant shares the server address
 space, and this crate cannot preempt it or interpose on its syscalls. The

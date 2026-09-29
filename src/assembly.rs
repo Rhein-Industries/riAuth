@@ -123,6 +123,13 @@ impl RecordTransitions for IdentityTransitions {
         })?;
         #[cfg(feature = "platform")]
         crate::scim::record_transition(tx, bucket, key, before, after)?;
+        #[cfg(feature = "platform")]
+        if bucket == "users"
+            && before.is_some_and(|prior| prior.get("enabled") == Some(&Value::Bool(true)))
+            && after.is_some_and(|next| next.get("enabled") == Some(&Value::Bool(false)))
+        {
+            crate::workflow::executor::seal_disabled_account(tx, key)?;
+        }
         Ok(())
     }
 }

@@ -419,7 +419,7 @@ impl Core {
     /// Start the built-in path after an existing passkey. Exact configured
     /// password-first enrollment starts through workflow_configured_start.
     pub fn workflow_passkey_enrollment_start(&self, token: &str) -> Result<View> {
-        self.start_local_workflow(token, &local_definition(PASSKEY_ENROLLMENT)?)
+        self.start_local_workflow(token, &local_definition(PASSKEY_ENROLLMENT)?, false)
     }
 
     pub fn workflow_passkey_enrollment_challenge(
@@ -428,6 +428,7 @@ impl Core {
         id: &str,
         name: String,
     ) -> Result<PasskeyChallenge> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
@@ -485,6 +486,7 @@ impl Core {
         id: &str,
         response: RegisterPublicKeyCredential,
     ) -> Result<View> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

@@ -103,6 +103,8 @@ pub const INVALIDATED: &[&str] = &[
     "workflow_requests",
     "workflow_evidence",
     "workflow_active_sessions",
+    // Open configured-run ids. The runs themselves are invalidated above.
+    "workflow_account_runs",
     // A restored controller cursor can schedule work from an older timeline;
     // pending or uncertain jobs must not resume after the recovery gate opens.
     // Fresh cursors are derived from current config on the first worker tick.
@@ -161,6 +163,8 @@ const RETAINED: &[&str] = &[
     "groups",
     "sources",
     "workflow_definitions",
+    // Highest reviewed configured revision. A restored older definition must not start below it.
+    "workflow_reviewed",
     "saml_subjects",
     "directory_users",
     "directory_bindings",

@@ -199,6 +199,28 @@ pub(super) fn check(
     Ok(())
 }
 
+/// Missing or changed client material fails the reviewed pin closed.
+pub(super) fn client_policy_changed(tx: &Tx<'_>, authority: &RequestAuthority) -> Result<bool> {
+    let Some(pin) = authority.consent.as_ref() else {
+        return Ok(false);
+    };
+    let key = match bound_key(tx, pin) {
+        Ok(key) => key,
+        Err(error) if error.status == axum::http::StatusCode::FORBIDDEN => return Ok(true),
+        Err(error) => return Err(error),
+    };
+    if tx.get::<Bound>(CONSENTS, &key)?.is_none() {
+        return Ok(true);
+    }
+    let Some(client) = tx.get::<Client>("clients", &pin.client)? else {
+        return Ok(true);
+    };
+    if !client.enabled || client.settings.source_stage.is_some() {
+        return Ok(true);
+    }
+    Ok(fingerprint(&client)? != pin.client_fingerprint)
+}
+
 pub(super) fn complete(
     core: &Core,
     tx: &Tx<'_>,
@@ -278,6 +300,7 @@ impl Core {
     /// Consume a prepared request only after this bearer explicitly approves or
     /// denies its pinned consent step. The definition supplies no decision.
     pub fn workflow_consent_decide(&self, token: &str, id: &str, approve: bool) -> Result<View> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

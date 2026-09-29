@@ -147,9 +147,13 @@ impl Core {
         if password.len() > 1024 {
             return Err(Error::bad("Password is too long"));
         }
+        version::reject_stale_reviewed(self, id)?;
         let reserved = self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
             owned(self, tx, token, &run.record)?;
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, now())?;
@@ -206,6 +210,9 @@ impl Core {
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
             owned(self, tx, token, &run.record)?;
             let at = now();
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {

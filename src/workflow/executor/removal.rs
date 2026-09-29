@@ -336,6 +336,7 @@ impl Core {
     /// Explicitly commit the exact target pinned when the configured run began.
     /// This endpoint accepts no caller-selected target or workflow signal.
     pub fn workflow_passkey_remove(&self, token: &str, id: &str) -> Result<View> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;

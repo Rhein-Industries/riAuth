@@ -360,6 +360,7 @@ impl Core {
     }
 
     fn workflow_totp_change_start(&self, token: &str, id: &str, requested: Mode) -> Result<Value> {
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
@@ -471,6 +472,7 @@ impl Core {
         if code.len() > 8 {
             return Err(Error::bad("Invalid TOTP code"));
         }
+        version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
