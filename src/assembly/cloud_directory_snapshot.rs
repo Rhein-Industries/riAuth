@@ -11,7 +11,7 @@ use crate::{
     error::{Error, Result},
     store::Tx,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 impl Core {
     pub(crate) fn cloud_snapshot_actor(
@@ -92,6 +92,34 @@ impl Core {
             });
             draft.bounded(settings)?;
             Ok((prior, draft, restarted, authority_digest))
+        })
+    }
+
+    pub(crate) fn cloud_snapshot_stage(
+        &self,
+        token: &str,
+        settings: &Settings,
+        bucket: &str,
+        key: &str,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: &str,
+        prior: Option<(String, u64)>,
+        draft: CloudSnapshotDraft,
+        restarted: bool,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            self.cloud_snapshot_actor(tx, token, settings, &actor.id, revision, authority_digest)?;
+            let current = tx.get::<CloudSnapshotDraft>(bucket, key)?;
+            if current.as_ref().map(|draft| (&draft.id, draft.sequence))
+                != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "Cloud snapshot advanced concurrently; resume the latest cursor",
+                ));
+            }
+            tx.put(bucket, key, &draft)?;
+            Ok(draft.progress(restarted))
         })
     }
 

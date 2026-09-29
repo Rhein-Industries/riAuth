@@ -392,6 +392,18 @@ def main() -> None:
                 or not re.search(r"\.\s*store\s*\.\s*read\s*\(", snapshot_prepare)
             ):
                 errors.append("src/cloud_directory.rs: planning draft authorization/read belongs in assembly")
+            snapshot_stage = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_snapshot.rs").read_text()),
+                "cloud_snapshot_stage",
+            )
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_stage\s*\(", plan_internal)
+                or re.search(r"\breturn\s+self\s*\.\s*store\s*\.\s*write\s*\(", plan_internal)
+                or snapshot_stage is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", snapshot_stage)
+            ):
+                errors.append("src/cloud_directory.rs: planning snapshot staging write belongs in assembly")
             apply_confirmed = rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_confirmed")
             if (
                 apply_confirmed is None

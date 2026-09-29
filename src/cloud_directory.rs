@@ -1301,7 +1301,7 @@ impl CloudSnapshotDraft {
         Ok(())
     }
 
-    fn progress(&self, restarted: bool) -> Value {
+    pub(crate) fn progress(&self, restarted: bool) -> Value {
         json!({"decision":"snapshot_in_progress", "snapshot_id":self.id,
             "phase":if self.snapshot.phase == 0 {"users"} else if self.snapshot.phase == 1 {"groups"} else {"members"},
             "users":self.snapshot.users.len(), "pages":self.snapshot.pages,
@@ -1987,26 +1987,18 @@ impl Core {
             draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
             draft.bounded(&settings)?;
             if !draft.snapshot.complete(&settings) {
-                return self.store.write(|tx| {
-                    self.cloud_snapshot_actor(
-                        tx,
-                        token,
-                        &settings,
-                        &actor.id,
-                        revision,
-                        &authority_digest,
-                    )?;
-                    let current = tx.get::<CloudSnapshotDraft>(bucket, &key)?;
-                    if current.as_ref().map(|draft| (&draft.id, draft.sequence))
-                        != prior.as_ref().map(|(id, sequence)| (id, *sequence))
-                    {
-                        return Err(Error::conflict(
-                            "Cloud snapshot advanced concurrently; resume the latest cursor",
-                        ));
-                    }
-                    tx.put(bucket, &key, &draft)?;
-                    Ok(draft.progress(restarted))
-                });
+                return self.cloud_snapshot_stage(
+                    token,
+                    &settings,
+                    bucket,
+                    &key,
+                    &actor,
+                    revision,
+                    &authority_digest,
+                    prior,
+                    draft,
+                    restarted,
+                );
             }
             let entries = self.store.read(|tx| {
                 self.cloud_snapshot_actor(
