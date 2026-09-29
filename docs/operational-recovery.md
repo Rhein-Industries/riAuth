@@ -4,8 +4,9 @@ Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D04
 `ec76d0c5-2efe-4005-bb49-1f3b54878146`.
 
 This is the first emergency-runbook slice. It chooses among archive restore,
-database-native recovery, and break-glass administrator recovery, then gives
-the preflight, the commands, and the failure stops. The file lists and the
+database-native recovery, break-glass administrator recovery, and a new
+backup key while the store is still serving, then gives the preflight, the
+commands, and the failure stops. The file lists and the
 full restore order stay in the [disaster recovery runbook](disaster-recovery.md).
 Session invalidation and the serving gate stay in
 [restored-state recovery](recovery.md). Day-to-day backup syntax stays in
@@ -43,7 +44,7 @@ job. See [PostgreSQL responsibilities](recovery.md#postgresql-responsibilities-a
 | The live store opens with its database key, and no administrator can authenticate | [Break-glass](#break-glass-administrator) on that store. Leave the data directory and the database in place. |
 | The live store is gone or its database key is gone, and you still have an archive plus its backup key | [Archive restore](#archive-restore) into a new directory or an empty PostgreSQL database. |
 | You have an encrypted redb copy or a PostgreSQL copy that still opens with the database key, and that copy may be older than the last served state | [Database-native recovery](#database-native-recovery). riAuth does not run PITR, `pg_dump`, or failover. |
-| The live store opens and the backup key is gone | Keep serving. Generate a new backup key and take a new archive. Archives made with the lost key stay unreadable. |
+| The live store opens and the backup key is gone | Keep serving. Follow [Backup key lost, store still serving](#backup-key-lost-store-still-serving). Archives made with the lost key stay unreadable. |
 | The database key and every archive-plus-backup-key pair are gone | Initialize a new instance. The old users, subjects, clients, and signing keys stay unrecoverable. See [Unrecoverable cases](disaster-recovery.md#unrecoverable-cases). |
 
 A serving store, with a second enabled human administrator who can still sign
@@ -108,13 +109,15 @@ named below, and passes every expansion in double quotes. Replace each
 | Database-native recovery | `live_config` of the copy that opens |
 | Serving gate after archive restore | `restored_config` under the new output; `recovery_id` on the complete block |
 | Serving gate after database-native recovery | `live_config` of that copy; `recovery_id` on the complete block |
+| Backup key lost, store still serving | `live_config`, `session_file`, `new_backup_key`, `new_archive`; `request_timeout` on the backup block |
 
 File, key, `capabilities`, and `recovery status` blocks do not take a backup,
 write a recovery record, or start a listener. `restore`, `recover-admin`,
 `recovery invalidate`, and `recovery complete` stay in their own blocks.
 When the live store still opens, an administrator can still sign in, and the
-backup key is gone, keep serving and take a new archive with a new backup
-key. That command stays in
+backup key is gone, keep serving and follow
+[Backup key lost, store still serving](#backup-key-lost-store-still-serving).
+Day-to-day backup syntax stays in
 [encrypted backup and restore](operations.md#encrypted-backup-and-restore).
 
 `riauth --json capabilities` needs no store and no key. It prints `edition`,
@@ -131,6 +134,170 @@ the mutating commands below perform the client count.
 
 The archive key check prints a status word and does not print or decode the
 key. Restore still rejects a file that is not base64url for 32 bytes.
+
+## Backup key lost, store still serving
+
+Use this section when the live process still has the store open and the
+backup key that sealed the archives you hold is gone. `riauth doctor` is
+`GET /api/operations/doctor`. It requires `operations.read` on
+`operations/health`. A successful body carries `healthy`, `issuer`,
+`storage`, `encrypted_at_rest`, `enabled_administrators`, and `revision`.
+`encrypted_at_rest` true means this process was started with
+`database_key_file`. This section leaves that file where it is. A process
+that is still up can export after that file has been removed from disk,
+because the open store is already unlocked. Take the archive before that
+process exits. A later start without the database key file needs an
+archive and the backup key that sealed it. A caller who receives
+`storage_unavailable` (exit 6) is in the PostgreSQL outage row above. A
+caller who cannot sign in follows
+[administrator lockout](admin-lockout.md) or
+[break-glass](#break-glass-administrator).
+
+riAuth stores no escrow copy of a backup key and accepts no passphrase for
+one. `keygen` writes 32 new random bytes as base64url, with no prefix and
+no newline, through `write_private`. An existing path is refused before
+that file is linked, and the temporary file is removed. The command opens
+no store and takes no session. It is on `riauth` and on
+`riauth-maintenance`. Use the deployment edition, as the top of this page
+says.
+
+`riauth backup` is `POST /api/operations/backup/stream`. The caller needs
+`operations.backup` on `operations/backup`. That action is absent from
+`PLATFORM_ACTIONS`, so Essentials serves it. A human `user.admin` caller
+is allowed. A non-administrator with no grants receives 403
+`access_denied` from `principal`. Delegated roles have no
+`operations.backup` arm, so they receive the same 403 from `require`. An
+agent needs `operations.backup` on `operations/backup` or `*`. The CLI
+reads the key file before the request. A file it rejects fails as
+`invalid_request`, exit 2. The messages are `Encryption key must be a private file of at most 128 bytes`, `Encryption key must be base64url without padding`, and `Encryption key must contain 32 random bytes`. The request body field is `encryption_key`.
+The server checks that encoding before it takes the export slot. Each
+audit detail object carries `stream_id` and `request_id`, and it omits
+the key and any credential. `operations.backup.started` records
+`max_archive_bytes`. `operations.backup.completed` records `frames`,
+`records`, `bytes`, `transcript`, and `created_at`. A failed or
+cancelled terminal records `reason` and the number of bytes handed to
+the connection.
+
+One export runs at a time. A second request receives 503
+`temporarily_unavailable`, exit 6, with the message `Another backup stream is running; retry after it finishes`. A server that is already shutting down returns
+503, exit 6, with the message `The server is shutting down; retry the backup after it restarts`. Both are `retryable` in the `riauth.cli/v1` error envelope.
+`--request-timeout` bounds each wait for the next bytes. The allowed range
+is 1 through 86400 seconds and the default is 30. The server's
+`backup.stall_timeout_seconds` defaults to 60 and
+`backup.max_duration_seconds` defaults to 3600. The default PostgreSQL
+`pool_size` is 8. A pool of size 1 can have the export's read snapshot
+hold its only storage connection until the stream ends.
+
+The CLI writes a private partial file beside `--out`, and it publishes
+`--out` only after `verify_file` authenticates the `riauth.backup/v3`
+stream with this key. An existing `--out`, including a dangling symbolic
+link, fails before the request as `Backup output already exists` (exit 1).
+A parent directory that cannot hard-link fails before the request as well.
+Cancel, a short read, or a failed authentication removes the partial and
+leaves `--out` absent. The export is a read snapshot plus audit. It leaves
+users, sessions, signing keys, and the database key as they were.
+`operations.backup.started` is committed before that snapshot opens, so
+the new archive contains that audit row. The body writes
+`operations.backup.completed` only after every archive byte was handed to
+the connection. `operations.backup.failed` and
+`operations.backup.cancelled` are the other terminal names. A storage
+error while writing the terminal audit can leave `started` with no
+terminal row. `completed` means the server handed the bytes over. The
+operator's file exists after the CLI publishes it.
+
+Stop this section when any of these is true:
+
+- `doctor` fails, or its `issuer` is a different deployment. Exit 6 with
+  `storage_unavailable` is the PostgreSQL outage row. A process that is
+  already down, with the database key gone, is archive restore when an
+  archive and its backup key remain, and the unrecoverable row when both
+  are gone.
+- The backup caller lacks `operations.backup`. Generating a file does not
+  grant that action.
+- `keygen` or `backup` reports that the path already exists. Keep the
+  first file and choose a new path.
+- The stream returns the 503 for another export or for shutdown. Wait for
+  that export to finish, or retry after the server is serving again.
+- The CLI exits before `data.verified` is true, or `$new_archive` is
+  absent. The live accounts are unchanged. The audit may be
+  `operations.backup.started` followed by `failed` or `cancelled`.
+  `operations.backup.completed` can already be stored when the CLI
+  still has no published file: that row means the server handed the
+  bytes to the connection, and the CLI publishes `$new_archive` only
+  after `verify_file` authenticates them.
+
+`restore`, `recovery invalidate`, `recovery complete`, and `recover-admin`
+stay in their own sections. Pointing `restore --out` at the live data
+directory is outside this section. An archive sealed with the lost key
+stays unreadable under the new key. The recorded R05 drills saw a wrong
+backup key fail as `invalid_request`, exit 2, with the output path absent.
+This section did not repeat that run.
+
+A published archive is checked from the CLI envelope
+`schema_version` `riauth.cli/v1`, `ok` true, and `data.verified` true,
+`data.encrypted` true, `data.api_version` `riauth.backup/v3`, and
+`data.issuer` equal to the `issuer` from `doctor`. `data.backup_file`,
+`data.stream_id`, `data.frames`, `data.records`, and `data.bytes` name
+that file. `keygen` with `--json` returns `data.created` true and
+`data.key_file`. Those fields show that this client authenticated the new
+stream. They do not show that a second directory was restored, that a user
+signed in, or that an external service answered. A scratch restore of
+`$new_archive` with `$new_backup_key` stays in
+[Archive restore](#archive-restore) and was not run for this section.
+
+Confirm the serving store, then stop if this caller cannot read it:
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+session_file="deployment-private/live/operator-session.json"
+
+riauth --config "$live_config" --session-file "$session_file" --json doctor
+```
+
+Generate a new backup key. The path must be new:
+
+```sh
+set -eu
+new_backup_key="deployment-private/keys/backup-key-replacement.key"
+
+test ! -e "$new_backup_key"
+test -d "$(dirname "$new_backup_key")"
+riauth --json keygen --out "$new_backup_key"
+```
+
+Take the archive from the serving API. Put an idle-wait seconds value in
+`request_timeout` from 1 through 86400. The key file and the archive stay
+out of tickets and shell history.
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+session_file="deployment-private/live/operator-session.json"
+new_backup_key="deployment-private/keys/backup-key-replacement.key"
+new_archive="deployment-private/backup-replacement.riauth"
+request_timeout="replace-with-idle-seconds"
+
+test -f "$new_backup_key"
+test ! -e "$new_archive"
+test -d "$(dirname "$new_archive")"
+key_mode() {
+  python3 -c '
+import os, stat, sys
+path = sys.argv[1]
+info = os.stat(path)
+mode = stat.S_IMODE(info.st_mode)
+if not stat.S_ISREG(info.st_mode) or info.st_size > 128 or mode & 0o077:
+    raise SystemExit("reject")
+print("owner-only key file")
+' "$1"
+}
+key_mode "$new_backup_key"
+riauth --config "$live_config" --session-file "$session_file" --json --request-timeout "$request_timeout" backup --key-file "$new_backup_key" --out "$new_archive"
+```
+
+This section sent no request, generated no key, and took no backup. It is
+not a record of a key-loss incident.
 
 ## Archive restore
 
@@ -547,8 +714,12 @@ Still open:
   The procedure is [credential compromise](credential-compromise.md). It
   describes the current CLI and management writers from source. That page
   sent no request and ran no drill.
-- Retrieving an escrowed backup key or database key on another host. The
-  drills recorded wrong-key refusal only.
+- Retrieving an escrowed backup key or database key on another host.
+  riAuth has no escrow store. Replacing a lost backup key while the live
+  store still opens is
+  [Backup key lost, store still serving](#backup-key-lost-store-still-serving).
+  That section was checked against source and was not executed. The drills
+  recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
 - A TLS PostgreSQL connection. The disposable cluster used loopback trust

@@ -272,7 +272,7 @@ The [G05 local reference OIDC rehearsal](roadmap/g05-local-reference-oidc.md) gi
 
 Automatic API conversion does not extract private signing keys, live tokens, sessions or MFA secrets. Explicit private-key import can preserve a reviewed signing domain and `kid`; explicit TOTP secret references can migrate supported factors as described below. Live Authentik cookies and opaque tokens are not imported. Users reauthenticate and enroll any factors that were not migrated, and RPs refresh discovery/JWKS as required by the selected key strategy. Plan existing application sessions and offline token validators explicitly.
 
-Before cutover, preserve the existing Authentik deployment, take and verify a riAuth backup, and record application/proxy configuration. Rollback restores the previous RP routing/configuration and deployment; it does not merge identities or sessions created after cutover. Restore procedures are documented in [operations.md](operations.md).
+Before cutover, preserve the existing Authentik deployment, take and verify a riAuth backup, and record application/proxy configuration. A later loss of that backup key, while riAuth is still serving, follows [Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving). Rollback restores the previous RP routing/configuration and deployment; it does not merge identities or sessions created after cutover. Restore procedures are documented in [operations.md](operations.md).
 
 ## Factors and passkeys
 

@@ -29,7 +29,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
 | [Process roles](roadmap/o01-process-roles.md) | Integrated default, explicit gateway and worker duty gates, and the limits of that slice |
 | [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |
-| [Operational recovery](operational-recovery.md) | Which recovery procedure to run, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
+| [Operational recovery](operational-recovery.md) | Which recovery procedure to run, including a lost backup key while the store still serves, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
 | [Connector dependency incidents](connector-incidents.md) | Read, stop, and retry boundary for LDAP, outbound SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks |
 | [Administrator lockout](admin-lockout.md) | Attempt locks, lost recovery codes, and browser recovery while a second administrator can still sign in |
 | [Deactivation delivery](deactivation-delivery.md) | Investigate incomplete or ambiguous outbound deactivation with the redacted Platform read |

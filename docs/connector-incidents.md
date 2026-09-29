@@ -421,10 +421,12 @@ another administrator can sign in is
 deactivation delivery is
 [deactivation delivery](deactivation-delivery.md). Stopped, retrying, or
 cancelled Shared Signals delivery is
-[SSF delivery](ssf-delivery.md). Escrow of a backup or database
-key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
-after restore, Compose or systemd restore, and Windows device recovery
-remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).
+[SSF delivery](ssf-delivery.md). A lost backup key while the store still serves is
+[Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving).
+Escrow of a backup or database key, PostgreSQL PITR and multi-node failover,
+TLS to PostgreSQL, peer login after restore, Compose or systemd restore, and
+Windows device recovery remain open in
+[operational recovery](operational-recovery.md#remaining-d04-gates).
 Scheduled-offboarding attention is
 [offboarding diagnostics](roadmap/o06-offboarding-diagnostics.md).
 Deactivation delivery is

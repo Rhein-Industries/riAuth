@@ -64,7 +64,7 @@ change.
 
 | Item | Why it is needed | If it is lost |
 | --- | --- | --- |
-| **Backup key** (`riauth keygen` output, 32 random bytes as base64url) | Decrypts every archive made with it. Restore requires it as `--key-file`. | Every archive made with that key is unreadable. There is no passphrase, escrow or recovery path. See [Unrecoverable cases](#unrecoverable-cases). |
+| **Backup key** (`riauth keygen` output, 32 random bytes as base64url) | Decrypts every archive made with it. Restore requires it as `--key-file`. | Every archive made with that key is unreadable. There is no passphrase or escrow. When the live store still opens, replace the key as [Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving) describes. See [Unrecoverable cases](#unrecoverable-cases). |
 | **Database key** (`database_key_file`), when storage is encrypted | Opens the live store, a copied redb file and any PostgreSQL backup, dump or PITR of an encrypted store. **Not** needed to restore an archive: restore re-encrypts records under the key given as `--database-key-file`. | The live store and every database-native copy of it are unreadable. Only an archive and its backup key can rebuild the instance. |
 | **A copy of `riauth.toml`** | Lists the referenced paths and settings you must provision *before* restoring. The archive's copy can be read only by restoring it. It omits `database_key_file` and comments. | Recoverable from the archive after restore, but some Platform files must exist before restore can finish. See [Restore order](#restore-order). |
 | **The exact server and maintenance artifacts**: edition, release version and checksums | Restore and recovery commands must run with the deployment's edition, at the same release that made the archive. See [Choose the binary](#choose-the-binary). | Rebuild the same edition and revision from source, or download the release again. |
@@ -303,9 +303,13 @@ administrator exists. It does not show that any external credential or service w
 
 No riAuth command can repair these:
 
-- **Backup key lost.** Every archive encrypted with it is permanently unreadable. If
-  the live store and its database key survive, generate a new backup key and take a
-  new backup immediately.
+- **Backup key lost.** Every archive encrypted with it stays unreadable. When
+  the live store still opens, follow
+  [Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving).
+  That section generates a new backup key and takes a new archive through the
+  serving API. It was not executed from this page. When that process is
+  already down and the database key is gone as well, the old archives stay
+  sealed with the lost backup key. That case is the unrecoverable row.
 - **Database key lost, for an encrypted store.** The live store, copied redb files, and
   every PostgreSQL backup, dump or PITR of that store are unreadable. Recovery is
   possible only from an archive and its backup key. If both keys are lost, the
