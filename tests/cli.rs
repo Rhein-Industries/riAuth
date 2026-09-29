@@ -1060,6 +1060,156 @@ fn cli_agent_create_requires_binding_and_never_replays_credential() {
 }
 
 #[test]
+fn cli_agent_rotation_requires_binding_and_never_replays_credential() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let creation_revision = current_revision(dir.path(), &config, &session);
+    let old_file = dir.path().join("rotation-old.json");
+    success(cli(&[
+        "--if-revision",
+        &creation_revision,
+        "--idempotency-key",
+        "create-rotation-target",
+        "agent",
+        "create",
+        "rotation-target",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        old_file.to_str().unwrap(),
+    ]));
+    let old_credential: Value = serde_json::from_slice(&std::fs::read(&old_file).unwrap()).unwrap();
+    let old_token = old_credential["token"].as_str().unwrap();
+    let revision = current_revision(dir.path(), &config, &session);
+    let new_file = dir.path().join("rotation-new.json");
+    let retry_file = dir.path().join("rotation-retry.json");
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "rotate-once",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+    assert!(!new_file.exists());
+    let stale = (revision.parse::<u64>().unwrap() + 1).to_string();
+    let (code, error) = failure(cli(&[
+        "--if-revision",
+        &stale,
+        "--idempotency-key",
+        "rotate-stale",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+    assert!(!new_file.exists());
+
+    let first = success(cli(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "rotate-once",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        new_file.to_str().unwrap(),
+    ]));
+    assert_eq!(first["agent"]["id"], "rotation-target");
+    assert!(first.get("credential").is_none());
+    let credential: Value = serde_json::from_slice(&std::fs::read(&new_file).unwrap()).unwrap();
+    let new_token = credential["token"].as_str().unwrap();
+    assert_ne!(new_token, old_token);
+    let (code, replay) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "rotate-once",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--out",
+        retry_file.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert!(!replay.to_string().contains(new_token));
+    assert!(!retry_file.exists());
+    let (code, changed) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "rotate-once",
+        "agent",
+        "rotate",
+        "rotation-target",
+        "--ttl",
+        "7200",
+        "--out",
+        retry_file.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(changed["http_status"], 409);
+    assert!(!retry_file.exists());
+    assert_eq!(
+        current_revision(dir.path(), &config, &session)
+            .parse::<u64>()
+            .unwrap(),
+        revision.parse::<u64>().unwrap() + 1
+    );
+    let agent_cli = |file: &std::path::Path| {
+        invoke(
+            dir.path(),
+            &config,
+            &session,
+            &["--agent-file", file.to_str().unwrap(), "revision"],
+            None,
+        )
+    };
+    assert_eq!(failure(agent_cli(&old_file)).0, 3);
+    assert!(agent_cli(&new_file).status.success());
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "agent.rotate" && event["target"] == "rotation-target"
+            )
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn cli_agent_revoke_requires_bound_retry_and_audits_once() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());

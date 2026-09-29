@@ -229,8 +229,8 @@ pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
 }
 
 /// An uncertain remote retry can learn that issuance committed, but cannot
-/// recover the credential from a receipt. All other management receipts keep
-/// their established actor/key namespace and exact request fingerprint.
+/// recover a created or rotated credential from a receipt. Other management
+/// receipts keep their established actor/key namespace and fingerprint.
 struct AgentIssuanceReceipt {
     key: String,
     fingerprint: String,
@@ -238,7 +238,7 @@ struct AgentIssuanceReceipt {
 }
 
 impl AgentIssuanceReceipt {
-    fn current(actor: &User) -> Result<Option<Self>> {
+    fn current(actor: &User, operation: &str) -> Result<Option<Self>> {
         let Some(context) = crate::context::current() else {
             return Ok(None);
         };
@@ -247,7 +247,7 @@ impl AgentIssuanceReceipt {
             return Err(Error::new(
                 axum::http::StatusCode::PRECONDITION_REQUIRED,
                 "precondition_required",
-                "Agent creation requires Idempotency-Key and If-Match",
+                format!("Agent {operation} requires Idempotency-Key and If-Match"),
             ));
         };
         Ok(Some(Self {
@@ -296,7 +296,7 @@ pub(crate) fn create_agent(
     // Bootstrap and delegation stay restricted to a live human administrator.
     let actor = core.admin(tx, token)?;
     validate_new_agent(&input)?;
-    let receipt = AgentIssuanceReceipt::current(&actor)?;
+    let receipt = AgentIssuanceReceipt::current(&actor, "creation")?;
     if let Some(receipt) = &receipt {
         receipt.check(tx)?;
     }
@@ -355,6 +355,13 @@ pub(crate) fn rotate_agent(
 ) -> Result<Value> {
     let actor = core.admin(tx, token)?;
     validate_agent_rotation_ttl(ttl)?;
+    // A rotation discloses its token only on this first committed response.
+    // Keep the receipt in the same transaction as the old-token deletion and
+    // new-token index, without passing the secret through Core::mutation.
+    let receipt = AgentIssuanceReceipt::current(&actor, "rotation")?;
+    if let Some(receipt) = &receipt {
+        receipt.check(tx)?;
+    }
     let mut agent = tx
         .get::<Agent>("agents", id)?
         .filter(|agent| agent.enabled)
@@ -371,6 +378,9 @@ pub(crate) fn rotate_agent(
     tx.put("agents", id, &agent)?;
     tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
     audit(tx, &actor.id, "agent.rotate", id)?;
+    if let Some(receipt) = receipt {
+        receipt.save(tx, id)?;
+    }
     Ok(
         json!({"agent": agent.view(), "credential": {"issuer": core.config.issuer, "agent_id": id, "token": credential, "expires_at": agent.expires_at}}),
     )

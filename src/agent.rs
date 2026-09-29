@@ -144,11 +144,11 @@ impl Principal {
 impl Core {
     pub fn rotate_agent(&self, token: &str, id: &str, ttl: u64) -> Result<Value> {
         // Retain the existing validation order before receipt lookup; the
-        // writer repeats it at its transaction boundary.
+        // writer repeats it at its transaction boundary. A generic mutation
+        // receipt would persist and replay the plaintext rotated credential.
         management::validate_agent_rotation_ttl(ttl)?;
-        self.mutation(token, |tx| {
-            management::rotate_agent(self, tx, token, id, ttl)
-        })
+        self.store
+            .write(|tx| management::rotate_agent(self, tx, token, id, ttl))
     }
     pub fn principal(&self, tx: &Tx<'_>, token: &str) -> Result<Principal> {
         if token.starts_with("ri_agent_") {

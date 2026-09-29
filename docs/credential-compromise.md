@@ -329,19 +329,24 @@ riauth --config "$live_config" --session-file "$session_file" --idempotency-key 
 
 ## Compromised agent or client credential
 
-`riauth agent rotate ID --ttl SECONDS --out FILE` is
+`riauth --idempotency-key KEY --if-revision REVISION agent rotate ID --ttl SECONDS --out FILE` is
 `POST /api/agents/{id}/rotate`. `rotate_agent` in
 [src/management.rs](../src/management.rs) requires a human administrator.
+HTTP rotation requires `Idempotency-Key` and the current numeric revision in
+`If-Match`; a CLI rotation requires both equivalent flags.
 The lifetime must be from 60 through 2,592,000 seconds or the error is 400
 `Agent lifetime must be 60 seconds to 30 days`. The row must be enabled or
 the error is 404 `Enabled agent not found`. A disabled or deleted parent
 returns 409 `Agent parent is disabled or deleted` before the token changes.
-The writer deletes the old `agent_tokens` entry, stores a new `ri_agent_`
-token and its hash, and keeps the parent, id, permissions, and creation
+The writer deletes the old `agent_tokens` entry, generates a new `ri_agent_`
+token, stores only its hash, and keeps the parent, id, permissions, and creation
 time. `expires_at` becomes `now + ttl`. The audit action is `agent.rotate`.
-The response credential contains the token once. The CLI writes that object
-to `--out` and prints `agent` plus `credential_file`. An existing
-destination is refused before the request. `write_private` also refuses to
+The response credential contains the token only on the first committed request.
+The same transaction stores a redacted issuance receipt and one audit; an
+exact retry returns 409 `credential_already_issued` without a token or a
+second rotation. The CLI writes the first credential to `--out` and prints
+`agent` plus `credential_file`. An existing destination is refused
+before the request. `write_private` also refuses to
 overwrite the file.
 
 `riauth agent revoke ID` is `DELETE /api/agents/{id}`. `revoke_agent`
@@ -370,13 +375,17 @@ same revoke for owned agents. Account disable stays on that patch.
 Human sessions, account epochs, and OAuth families stay as they were
 across `agent rotate` and `agent revoke`.
 
-`rotate_agent` and `revoke_agent` call `core.admin` inside `mutation`.
-The caller who passes is a human administrator, and that caller may omit
-`--idempotency-key`. `mutation` still requires `If-Match` before an agent
-or delegated principal can run a mutation, and `core.admin` still requires
-the human administrator session after that check. Send a key when a retry
-must return the stored credential result. The CLI still refuses an `--out`
-path that already exists, so keep the first file.
+`rotate_agent` and `revoke_agent` require a live human administrator through
+`core.admin`. Rotation uses its dedicated management transaction so the
+generic receipt cannot persist or replay the plaintext credential; revoke
+returns its public view on an exact retry. Both remote writes require a stable
+key and current revision on their first attempt. Preserve the original key,
+revision and body for an exact retry. A CLI rotation retry needs a new unused
+`--out` path if the first path exists, but the server returns only the 409
+issuance signal. Keep the first credential file if it exists. If no credential
+file was written after an uncertain response, inspect the agent and start a
+new rotation with a fresh key and current revision; the prior token is already
+invalid and the first rotated token cannot be recovered from the receipt.
 
 `riauth client rotate-secret CLIENT` is
 `POST /api/clients/{id}/rotate-secret`. The CLI requires
@@ -415,8 +424,10 @@ session_file="deployment-private/live/operator-session.json"
 agent_id="replace-with-agent-id"
 agent_ttl="86400"
 agent_out="deployment-private/live/agent-credential.json"
+current_revision="$(riauth --config "$live_config" --session-file "$session_file" --json revision | jq -r '.data.revision')"
+rotation_request_key="$(uuidgen)"
 
-riauth --config "$live_config" --session-file "$session_file" agent rotate "$agent_id" --ttl "$agent_ttl" --out "$agent_out"
+riauth --config "$live_config" --session-file "$session_file" --if-revision "$current_revision" --idempotency-key "$rotation_request_key" agent rotate "$agent_id" --ttl "$agent_ttl" --out "$agent_out"
 ```
 
 Disable an agent:

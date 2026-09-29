@@ -1760,6 +1760,226 @@ pub fn agent_create_issues_credential_once(backend: Backend) {
     );
 }
 
+fn agent_rotation_http(
+    app: &axum::Router,
+    runtime: &tokio::runtime::Runtime,
+    token: &str,
+    revision: Option<u64>,
+    key: Option<&str>,
+    body: &Value,
+) -> (StatusCode, Value) {
+    let mut request = Request::post("/api/agents/receipt-rotate/rotate")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json");
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    runtime.block_on(async {
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::from(body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        (status, body)
+    })
+}
+
+// Rotation invalidates the old token and commits a redacted receipt with its
+// audit. An uncertain exact retry reports issuance without recovering a token.
+pub fn agent_rotation_issues_credential_once(backend: Backend) {
+    let f = backend.fixture();
+    let ordinary = f.user("ordinary");
+    let old_token = agent(&f, "receipt-rotate", &[("state.read", "state/revision")]);
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let body = json!({"ttl": 7200});
+    let before = f.snapshot().unwrap();
+    for (at, key) in [
+        (None, None),
+        (Some(revision), None),
+        (None, Some("rotate-once")),
+    ] {
+        assert_eq!(
+            agent_rotation_http(&app, &runtime, &f.admin, at, key, &body).0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision),
+            Some("invalid-ttl"),
+            &json!({"ttl": 59})
+        )
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &ordinary,
+            Some(revision),
+            Some("ordinary-denied"),
+            &body
+        )
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &old_token,
+            Some(revision),
+            Some("agent-denied"),
+            &body
+        )
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision + 1),
+            Some("stale"),
+            &body
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before);
+
+    let (status, first) = agent_rotation_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("rotate-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::OK);
+    let new_token = text(&first["credential"], "token");
+    assert_ne!(new_token, old_token);
+    let row: Agent = f
+        .core
+        .store
+        .get("agents", "receipt-rotate")
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.token_hash, digest(&new_token));
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&old_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
+    assert_eq!(audit_count(&f, "agent.rotate"), 1);
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(revision + 1)
+    );
+    let receipts = f.core.store.list::<Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(
+        receipts[0].1["result"],
+        json!({"agent_id":"receipt-rotate","credential_issued":true})
+    );
+    assert!(
+        !serde_json::to_string(&f.snapshot().unwrap())
+            .unwrap()
+            .contains(&new_token)
+    );
+    let committed = f.snapshot().unwrap();
+
+    let (status, replay) = agent_rotation_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("rotate-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&new_token));
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision),
+            Some("rotate-once"),
+            &json!({"ttl": 3600})
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        agent_rotation_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision),
+            Some("fresh-stale"),
+            &body
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&committed);
+
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let (status, replay) = agent_rotation_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("rotate-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&new_token));
+    assert_eq!(audit_count(&f, "agent.rotate"), 1);
+    let (status, recovered) = agent_rotation_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision + 1),
+        Some("recover-with-new-rotation"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::OK);
+    let recovered_token = text(&recovered["credential"], "token");
+    assert_ne!(recovered_token, new_token);
+    assert_eq!(f.core.me(&new_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&recovered_token).is_ok());
+    assert_eq!(audit_count(&f, "agent.rotate"), 2);
+}
+
 // Agent revoke is the secret-free lifecycle write: exact retries return only
 // Agent::view, while a new request against a disabled row cannot audit again.
 pub fn agent_revoke_requires_retry_binding(backend: Backend) {

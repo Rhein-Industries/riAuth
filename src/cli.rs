@@ -1933,6 +1933,9 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             AgentCommand::Rotate { id, ttl, out } => {
                 if out.exists() { bail!("Credential destination already exists"); }
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent rotation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let result = remote.call(Method::POST, &format!("/api/agents/{}/rotate", segment(&id)?), Some(json!({"ttl":ttl})), true).await?;
                 write_private(&out, &serde_json::to_vec(&result["credential"])?, false)?;
                 json!({"agent": result["agent"], "credential_file":out})

@@ -239,7 +239,7 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
 
 #[cfg(feature = "platform")]
 #[tokio::test]
-async fn agent_rotation_replays_one_credential_and_revokes_the_old_one() {
+async fn agent_rotation_issues_one_credential_and_revokes_the_old_one() {
     use axum::http::StatusCode;
     use riauth::crypto::digest;
     use serde_json::json;
@@ -336,8 +336,15 @@ async fn agent_rotation_replays_one_credential_and_revokes_the_old_one() {
     let new_token = text(&rotated["credential"], "token");
     assert_ne!(new_token, old_token);
     assert_eq!(revision(), at + 1);
-    assert_eq!(rotate().await, (StatusCode::OK, rotated.clone()));
+    let (status, replay) = rotate().await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&new_token));
     assert_eq!(revision(), at + 1);
+    let receipts = f.core.store.list::<serde_json::Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+    assert!(!receipts[0].1.to_string().contains(&new_token));
 
     let after: Agent = f
         .core
