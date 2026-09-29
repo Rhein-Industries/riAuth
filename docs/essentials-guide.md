@@ -830,14 +830,18 @@ Still outside this slice:
   including Workspace and Entra directory import.
 - The [capability and compatibility matrix](capability-matrix.md) records
   compiled inclusion, protocol direction, and the peers named by tests.
-  The [Platform forward-auth recipe](recipes/platform-forward-auth.md) and
-  the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md)
-  are the D03 recipes written so far. Both are Platform profiles. The LDAP
-  provider recipe is not the LDAP import left unconfigured above. The other
-  integration recipes (D03) and acceptance against category targets (D05)
-  are still open. The first emergency decision page is
-  [operational recovery](operational-recovery.md) (D04). The rest of D04
-  remains open; the backup commands in this guide remain entry points.
+  The [Platform forward-auth recipe](recipes/platform-forward-auth.md),
+  the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md),
+  and the [OIDC relying-party recipe](recipes/oidc-relying-party.md)
+  are the D03 recipes written so far. Forward auth and the LDAP provider
+  are Platform profiles. The relying-party recipe is the authorization-code
+  fixture, and its client is the in-tree router rather than a named
+  application. The LDAP provider recipe is not the LDAP import left
+  unconfigured above. The other integration recipes (D03) and acceptance
+  against category targets (D05) are still open. The first emergency
+  decision page is [operational recovery](operational-recovery.md) (D04).
+  The rest of D04 remains open; the backup commands in this guide remain
+  entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply

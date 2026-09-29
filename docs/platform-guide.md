@@ -886,14 +886,16 @@ Still outside this slice, as later tasks:
   [server editions](editions.md). This slice does not switch editions.
 - The [capability and compatibility matrix](capability-matrix.md) records
   compiled inclusion, protocol direction, and the peers named by tests.
-  The [Platform forward-auth recipe](recipes/platform-forward-auth.md) and
-  the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md)
-  are the D03 recipes written so far. The LDAP provider recipe is separate
-  from LDAP import. The other integration recipes (D03) and acceptance
-  against category targets (D05) are still open. The first emergency
-  decision page is [operational recovery](operational-recovery.md) (D04).
-  The rest of D04 remains open; the backup commands in this guide remain
-  entry points.
+  The [Platform forward-auth recipe](recipes/platform-forward-auth.md),
+  the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md),
+  and the [OIDC relying-party recipe](recipes/oidc-relying-party.md)
+  are the D03 recipes written so far. The relying-party recipe is the
+  authorization-code fixture, and its client is the in-tree router rather
+  than a named application. The LDAP provider recipe is separate from LDAP
+  import. The other integration recipes (D03) and acceptance against
+  category targets (D05) are still open. The first emergency decision page
+  is [operational recovery](operational-recovery.md) (D04). The rest of D04
+  remains open; the backup commands in this guide remain entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply

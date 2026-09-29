@@ -33,6 +33,8 @@ Verify by starting login **from the application**. After sign-in and consent, it
 
 Keep the client secret and authorization codes out of logs. An application session remains the application's responsibility: configure and test its logout behavior rather than assuming a token or riAuth session revocation closes every existing application session. See [logout delivery](operations.md#diagnostics-and-recovery) and [testing](testing.md) for deployment checks.
 
+The [OIDC relying-party recipe](recipes/oidc-relying-party.md) records the ignored browser test's public client `rp`, the assertions that test makes, and the gap between its in-process router and a named application. The `reports` client above is a separate confidential example. That test was not run for the recipe.
+
 ## Browser sign-in, consent and proxy clients
 
 An interactive authorization from a browser leads to the sign-in page (see the [API contract](api.md#browser-sign-in-and-interaction-pages)). How request parameters behave there:

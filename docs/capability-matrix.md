@@ -191,7 +191,7 @@ this page. CI steps are written for the default Platform build.
 
 | Family | Edition | Direction and profile | Evidence | Limit |
 | --- | --- | --- | --- | --- |
-| OIDC provider | Both | Authorization server. Authorization code with mandatory S256 PKCE; refresh rotation; client credentials; device code; `private_key_jwt`; pinned JWT bearer; RFC 8693 access-token exchange (access tokens only, chains of at most four). PAR, JAR, JARM. DPoP. Response modes `query`, `fragment`, `form_post`, and the `.jwt` forms. JWE `RSA-OAEP-256` with `A256GCM` or `A256CBC-HS512`. Restricted RFC 7591 registration. RP, front-channel, and back-channel logout. Client authentication `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`. | [oidc-profiles.md](oidc-profiles.md). In-tree tests in [`tests/identity/oidc.rs`](../tests/identity/oidc.rs). Chrome back-channel test [`tests/browser.rs`](../tests/browser.rs) is a CI step. | Implicit and hybrid grants are rejected (`Only authorization code is supported`). RFC 7592 management and automatic sector-identifier retrieval are absent. [`scripts/run-conformance.py`](../scripts/run-conformance.py) pins OIDF suite `440eec8` and is not called by CI. No result file is in the tree. No named relying party. |
+| OIDC provider | Both | Authorization server. Authorization code with mandatory S256 PKCE; refresh rotation; client credentials; device code; `private_key_jwt`; pinned JWT bearer; RFC 8693 access-token exchange (access tokens only, chains of at most four). PAR, JAR, JARM. DPoP. Response modes `query`, `fragment`, `form_post`, and the `.jwt` forms. JWE `RSA-OAEP-256` with `A256GCM` or `A256CBC-HS512`. Restricted RFC 7591 registration. RP, front-channel, and back-channel logout. Client authentication `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`. | [OIDC relying-party recipe](recipes/oidc-relying-party.md), [oidc-profiles.md](oidc-profiles.md). In-tree tests in [`tests/identity/oidc.rs`](../tests/identity/oidc.rs). Ignored test `browser_terminal_login_callback_and_signed_backchannel_logout` in [`tests/browser.rs`](../tests/browser.rs) is the integration job's "Real browser and relying party" step. | Implicit and hybrid grants are rejected (`Only authorization code is supported`). RFC 7592 management and automatic sector-identifier retrieval are absent. [`scripts/run-conformance.py`](../scripts/run-conformance.py) pins OIDF suite `440eec8` and is not called by CI. No result file is in the tree. The browser fixture's client is the in-process router, not a named external relying party. |
 | Upstream OIDC | Both | Client of an upstream issuer. Signed code plus S256. Upstream client authentication is `none`, Basic, or POST. Browser completion is cookie-bound; CLI `source start` / `source finish` keeps the session off the callback. | [oidc-profiles.md](oidc-profiles.md). In-tree test [`tests/identity/sources.rs`](../tests/identity/sources.rs). | Encrypted upstream ID tokens and upstream `private_key_jwt` are rejected. No Okta, Entra, or Google OIDC tenant. |
 | Upstream OAuth JSON identity | Both | Client. Pinned userinfo URL, no `openid`, no ID token, no authentication time. | Same guide and `tests/identity/sources.rs`. | Cannot satisfy request-bound reauthentication. Email does not link accounts. |
 | Embedded source stage | Platform client setting | Suspends an interactive authorization for one configured OIDC or OAuth source. Essentials rejects `settings.source_stage`. | [oidc-profiles.md](oidc-profiles.md), [`src/edition.rs`](../src/edition.rs). | A stage is not embedded inside a SAML AuthnRequest. Browser OTP for a required local factor is still a gap in the guide. |
@@ -251,7 +251,7 @@ profile, which is not Apple Safari.
 | nginx | `auth_request` template, headers, WebSocket, revocation, optional Chrome | CI step. Package version not pinned |
 | Traefik v3.7.13 | forwardAuth template, headers, WebSocket origin, revocation | CI step. SHA-256 pinned in the workflow |
 | xmlsec1 | Independent sign, verify, and decrypt of SAML messages | CI step. Not an IdP or SP |
-| Google Chrome | Headless OIDC test RP, portal layout, nginx SSO when `RIAUTH_TEST_BROWSER` is set | CI step. Deb is not checksummed |
+| Google Chrome | Headless user agent for the [OIDC relying-party fixture](recipes/oidc-relying-party.md), plus portal layout and nginx SSO when `RIAUTH_TEST_BROWSER` is set | CI step. Deb is not checksummed |
 | Playwright Chromium, Firefox, WebKit | `setup.spec.js` only | CI step |
 | Authentik | Offline API-export conversion | Fixture in [`tests/identity/operations.rs`](../tests/identity/operations.rs). No Authentik process |
 | Keycloak, Okta, Active Directory | Names in migration-inventory fixtures that stay blocked | Fixture only. No server |
@@ -279,10 +279,13 @@ device were run. The Linux network-filesystem probe described in
 
 ## Still open
 
-The [Platform forward-auth recipe](recipes/platform-forward-auth.md) and the
-[Platform LDAP-provider recipe](recipes/platform-ldap-provider.md) are the
-D03 recipes in this tree. The other D03 integration recipes, D04 emergency
-runbooks, and D05 acceptance against the category targets are still open.
-So are a conformance result, a named relying party or service provider, a
+The [Platform forward-auth recipe](recipes/platform-forward-auth.md), the
+[Platform LDAP-provider recipe](recipes/platform-ldap-provider.md), and the
+[OIDC relying-party recipe](recipes/oidc-relying-party.md) are the D03
+recipes in this tree. The relying-party page's client is the in-tree axum
+fixture, so a named external relying party remains an open peer. The other
+D03 integration recipes, D04 emergency runbooks, and D05 acceptance against
+the category targets are still open. So are a conformance result, a named
+relying party or service provider, a
 Workspace or Entra tenant, a live Vault, a hardware authenticator, and an
 installed-release run of this commit on Linux x86-64 and ARM64.
