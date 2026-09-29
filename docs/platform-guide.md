@@ -879,9 +879,11 @@ the path. It accepts no caller-selected actions.
 
 Plan and apply bind the saved plan's `base_revision`. They refuse a
 delegated human session. An agent with `workflow.write` on
-`workflow/local-password` can plan and apply. Direct mutations elsewhere
-in this guide still require `If-Match` for an agent or a delegated human.
-This procedure uses the administrator session from section 2.
+`workflow/local-password` can plan and apply. This procedure does not pass
+`--if-revision`. The signing-key imports in section 12 and the
+`client create` in section 13 pass `--idempotency-key` and
+`--if-revision` for every caller, including the administrator session from
+section 2. This procedure uses that session.
 
 ### Commands
 
@@ -1126,23 +1128,54 @@ in.
 `source metadata` use the server CLI session. `source start` authenticates
 only when `--link` is set. `source finish` sends no bearer.
 
-`keys import` and `source put` are direct mutations. An agent or a
-delegated human must send `If-Match` with the current revision on those
-commands. The administrator session from section 2 can call them without
-`--if-revision`. A supplied revision that is already stale fails with
-`Configuration revision changed`. Plan and apply bind the saved plan's
-`base_revision`. A delegated human is refused by plan and apply.
+`keys import`, `keys bind`, and `keys generate` are signing-key
+configuration. Every caller, including the administrator session from
+section 2, passes both `--idempotency-key` and `--if-revision`. Read
+`riauth --server http://localhost:9000 revision` immediately before each
+import and substitute that number. `saml-signing-import` and
+`source-sp-import` are separate keys. The client plan and apply between
+the two imports advance the configuration revision, so the second import
+reads `revision` again. A retry of one import repeats that import's key
+and the revision read for that attempt. The receipt is replayed before
+the revision check. A different body or a different If-Match with that
+key returns `Idempotency key was used for a different request`. A supplied
+revision that is already stale fails with `Configuration revision changed`.
+
+The accepted CLI stops when either flag is missing. The message is:
+`Signing-key configuration requires --idempotency-key and --if-revision (from riauth revision)`.
+The source string wraps `riauth revision` in backticks. The HTTP writer
+returns `Signing-key configuration requires Idempotency-Key and If-Match`.
+Both strings were read from accepted commit `03482b5`: the CLI gate covers
+`keys import`, `keys bind`, and `keys generate`, and the HTTP gate is the
+request-context check in `configure_key`. This checkout's `src/cli.rs` and
+`src/assembly/keyring.rs` were compared with that commit and do not contain
+those strings. The global flags exist in this checkout, and the imports
+below pass them. This procedure prints the two imports. `keys bind` and
+`keys generate` stay unprinted, and they were not run.
+
+`source put` follows the scoped-mutation rule. An agent or a delegated
+human sends `If-Match` with the current revision. The administrator
+session from section 2 can call the printed `source put` without
+`--if-revision`. Plan and apply bind the saved plan's `base_revision`.
+A delegated human is refused by plan and apply. Plan and apply do not
+take `--if-revision`.
 
 ### Commands
 
 Import the identity-provider signing key, then import the service-provider
-metadata offline. SAML XML signing requires a local RS256 domain. The
-command also accepts `ES256` and `EdDSA`; those algorithms fail the SAML
-check with `SAML XML signing currently requires a local RS256 signing domain`.
+metadata offline. The revision read belongs to the key import.
+`saml import-sp` stays local and takes neither retry flag. SAML XML signing
+requires a local RS256 domain. The command also accepts `ES256` and
+`EdDSA`; those algorithms fail the SAML check with
+`SAML XML signing currently requires a local RS256 signing domain`.
 Vault bind is a different command and stays outside this slice.
 
 ```sh
-riauth --server http://localhost:9000 keys import saml-signing \
+riauth --server http://localhost:9000 revision
+riauth --server http://localhost:9000 \
+  --idempotency-key saml-signing-import \
+  --if-revision '<revision>' \
+  keys import saml-signing \
   --file deployment-private/platform-lab/idp-private.pem \
   --algorithm RS256
 riauth saml import-sp \
@@ -1222,8 +1255,12 @@ riauth --server http://localhost:9000 saml metadata legacy-sp \
 `metadata_xml` string. There is no `client create --file` flag. The server
 CLI create command accepts `--settings-file` as a `ProviderSettings`
 document, which can carry `signing_key` and `saml` after the same review.
-This section uses the manifest because that is the import report's apply
-path. Attribute mapping fields are in the SAML page. This slice adds none.
+A direct `client create` for this client would also pass a fresh
+`revision` read, its own `--idempotency-key`, and `--if-revision`, as
+section 13 does for `legacy-directory`. This section uses the manifest
+because that is the import report's apply path, and it does not print
+that create. Attribute mapping fields are in the SAML page. This slice
+adds none.
 
 The public metadata URL, relative to this issuer, is
 `/saml/legacy-sp/metadata`. The browser sign-in and logout behavior is the
@@ -1239,7 +1276,11 @@ that source fails with `A public source cannot have a client secret`.
 
 ```sh
 riauth schema source-input
-riauth --server http://localhost:9000 keys import source-sp \
+riauth --server http://localhost:9000 revision
+riauth --server http://localhost:9000 \
+  --idempotency-key source-sp-import \
+  --if-revision '<revision>' \
+  keys import source-sp \
   --file deployment-private/platform-lab/sp-private.pem \
   --algorithm RS256
 ```
@@ -1338,14 +1379,15 @@ The manifest does not put a SAML source. The source is the separate
 
 ### Unrun and peer evidence
 
-This task did not create keys or metadata, did not run `keys import`,
-`saml import-sp`, `validate`, `plan`, `apply`, `saml metadata`,
-`source put`, `source list`, or `source metadata`, and did not run
-`source start` or `source finish`. No service provider loaded the identity
-provider metadata. No upstream identity provider received an AuthnRequest
-or posted a response. Logout, assertion encryption, and a browser
-source-stage run were not exercised. The `xmlsec1` cargo tests in the SAML
-page are test commands, not operator steps, and they were not run.
+This task did not create keys or metadata, did not run `revision` or
+`keys import`, and did not run `saml import-sp`, `validate`, `plan`,
+`apply`, `saml metadata`, `source put`, `source list`, or
+`source metadata`. It did not run `source start` or `source finish`.
+No service provider loaded the identity provider metadata. No upstream
+identity provider received an AuthnRequest or posted a response. Logout,
+assertion encryption, and a browser source-stage run were not exercised.
+The `xmlsec1` cargo tests in the SAML page are test commands, not operator
+steps, and they were not run.
 
 ## 13. Serve one LDAP provider listener
 
@@ -1394,10 +1436,35 @@ The administrator session allows `client.write` on
 needs `ldap.search` on `client/legacy-directory`. `ldap.search` is a
 Platform action. The listener id `legacy` and the client id
 `legacy-directory` must be 1–64 ASCII letters, digits, dots, hyphens,
-underscores, or `@`. `client create` and `agent create` are direct
-mutations. An agent or a delegated human must send `If-Match` with the
-current revision. The administrator session from section 2 can call the
-printed commands without `--if-revision`.
+underscores, or `@`.
+
+`client create` and `client update` require both `--idempotency-key` and
+`--if-revision` for every caller, including the administrator session from
+section 2. Read `riauth --server http://localhost:9000 revision` immediately
+before this create and substitute that number. This create uses the key
+`legacy-directory-create`. A retry repeats that key and the revision read
+for that attempt. The receipt is replayed before the revision check. A
+different body or a different If-Match with that key returns
+`Idempotency key was used for a different request`. A supplied revision
+that is already stale fails with `Configuration revision changed`.
+
+The accepted CLI stops when either flag is missing. The message is:
+`Client writes require --idempotency-key and --if-revision (from riauth revision)`.
+The source string wraps `riauth revision` in backticks. The HTTP writer
+returns `Client writes require Idempotency-Key and If-Match`. Both strings
+were read from accepted commit `03482b5`: `run_client` covers create,
+update, disable, and enable, and `create_client` calls
+`require_client_retry_binding` before `mutation`. The client-write commit
+`b60962c` is an ancestor of `03482b5`. This checkout's `src/cli.rs` and
+`src/core.rs` were compared with that commit and do not contain those
+client-write strings. The global flags exist in this checkout, and the
+create below passes them. Section 7 already passes the same pair on
+`riauthctl client update`. This section prints `client create` only.
+
+`agent create` follows the scoped-mutation rule. An agent or a delegated
+human sends `If-Match` with the current revision. The administrator
+session from section 2 can call the printed `agent create` without
+`--if-revision`.
 
 ### Commands
 
@@ -1420,7 +1487,11 @@ include `profile`.
 
 ```sh
 riauth schema provider
-riauth --server http://localhost:9000 client create legacy-directory \
+riauth --server http://localhost:9000 revision
+riauth --server http://localhost:9000 \
+  --idempotency-key legacy-directory-create \
+  --if-revision '<revision>' \
+  client create legacy-directory \
   --name "Legacy application directory" \
   --scope openid,profile,email,groups \
   --group staff \
@@ -1505,12 +1576,13 @@ credentials.
 
 ### Unrun and peer evidence
 
-This task did not write the settings file, did not create the client or the
-agent, did not add the listener, did not restart `serve`, and did not open
-an LDAP connection. No `ldap3` client and no third-party directory client
-was run. The automated network fixtures described on the LDAP provider page
-are tests in this repository. They are not a result from this lab. Section 9's
-directory import remains a separate, also unrun, procedure.
+This task did not write the settings file, did not run `revision` or
+`client create`, did not create the agent, did not add the listener, did
+not restart `serve`, and did not open an LDAP connection. No `ldap3` client
+and no third-party directory client was run. The automated network fixtures
+described on the LDAP provider page are tests in this repository. They are
+not a result from this lab. Section 9's directory import remains a separate,
+also unrun, procedure.
 
 ## Unverified architecture artifacts
 
