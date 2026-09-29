@@ -58,6 +58,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Account lifecycle](lifecycle.md) | Invitations, email verification, password recovery and what still needs the terminal |
 | [SAML](saml.md) | IdP/source profiles, signatures, encryption and logout |
 | [Platform SAML IdP recipe](recipes/platform-saml-idp.md) | Fixture SP entity, the assertions the ignored xmlsec1 test makes, and the peer gaps that fixture leaves |
+| [Platform SAML source recipe](recipes/platform-saml-source.md) | In-process IdP fixture, the assertions `exercise` makes, and the named-IdP gap that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
 | [Platform inbound SCIM recipe](recipes/platform-inbound-scim.md) | In-process HTTP fixture, the assertions that test makes, and the named-client gap that fixture leaves |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |

@@ -139,6 +139,8 @@ riauth source finish --file deployment-private/source-request.json
 riauth source finish --file deployment-private/source-request.json --yes
 ```
 
+The [Platform SAML source recipe](recipes/platform-saml-source.md) records `exercise` in [tests/identity/saml_source.rs](../tests/identity/saml_source.rs), the assertions that function makes, and the distance from that in-process IdP to a named upstream provider. The non-ignored caller and the ignored xmlsec1 caller were not run for the recipe.
+
 A SAML source can also be selected by an OIDC provider's `settings.source_stage`. Its ACS then redirects to the bound stage resume route instead of requiring standalone `source finish`; source linking, MFA and request binding remain enforced. The source-stage regression currently drives OIDC/OAuth callbacks, so an end-to-end SAML-stage browser run remains acceptance work. See [ENT-11](enterprise/ENT-11.md).
 
 Register the exported SP metadata at the IdP. Its public metadata and ACS endpoints are `/saml/sources/ID/metadata` and `/saml/sources/ID/acs`, relative to the configured issuer. Requests are signed Redirect AuthnRequests with ForceAuthn and an exact POST ACS. The callback requires both a signed response and a separately verified signed assertion, pinned RSA-SHA256 certificates, exact issuer/audience/recipient/request binding, stable NameID, bounded conditions and fresh authentication time. Original namespace context is preserved when independently verifying the assertion. DTDs, external references, ambiguous IDs, unexpected statements and unsafe signature transforms are rejected.
