@@ -528,6 +528,215 @@ cluster with trust authentication and `sslmode=disable`, the same macOS
 dev-profile binary, the host load above, and the pace inside the throughput.
 It assigns no load, recovery, or capacity target.
 
+### Paced `q09-2u-2g` Essentials on macOS, dev profile
+
+These two observations repeat the same shape on Essentials, first redb and
+then disposable loopback PostgreSQL. The worktree HEAD for the build and both
+runs was `6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd`. Each report has that
+`source.commit`, empty `dirty_paths`, `product_run: true`,
+`observations_only: true`, and `performance_claim: false`. The script SHA-256
+is `ecd4ce799087ed095c6604a92a18c2af4f02af33adfa7ac36907184bf4d5c510`, the
+same script blob as the Platform reports above. `source.binary_compiler` is
+`unrecorded`. `source.checkout_rust_toolchain` is `1.98.1`.
+
+The Platform copy above was built from ancestor
+`c7a61c63dc124ddd2af6d91379381d6b9c928af4`. This Essentials binary was built
+from `6ca4779`. The commits after `c7a61c6` through this HEAD are `8c3aa7d` (the pace harness),
+`551ac63` and `6ca4779` (the Platform observation docs), `a5769bb` (an LDAP
+directory-import doc), and `7fb40d8` (the SAML source callback claim move).
+`git diff c7a61c6 HEAD -- src` lists `src/assembly.rs`,
+`src/assembly/source_saml_claim.rs`, and `src/source/saml.rs`.
+`src/background.rs`, `src/api/server.rs`, `Cargo.toml`, `Cargo.lock`, and
+`rust-toolchain.toml` are the same blobs at both commits. Maintenance and
+alerts use a 60-second cadence, and `src/api/server.rs` spawns maintenance
+without a platform feature gate. These rows are separate observations. They
+are not a same-head comparison of edition latency or throughput.
+
+This session built the binary with a new private target and did not use the
+accepted `target/` directory or the Platform copy's directory as
+`CARGO_TARGET_DIR`:
+
+```sh
+export CARGO_INCREMENTAL=0
+export CARGO_TARGET_DIR="$HOME/.cache/riauth-cargo/q09-essentials-6ca4779"
+cargo build -j 4 --locked --offline --no-default-features \
+  --features essentials,test-support --bin riauth
+```
+
+The build started at 2026-09-29T18:37:54Z and Cargo exited 0 at
+2026-09-29T18:39:10Z. `rustc --version --verbose` reported rustc 1.98.1
+(`48a229ceaefd4985c50990b14116b6d856af0985`, 2026-09-01), host
+`aarch64-apple-darwin`, LLVM 22.1.8. The dev-profile file is
+`target/debug/riauth` in that private directory. Fingerprint
+`debug/.fingerprint/riauth-5d519e6836cb5d8a/bin-riauth.json` records features
+`essentials` and `test-support`, with empty rustflags. Its profile field is
+the numeric hash `17270959807823809533`. Before either run, the file was
+copied to
+`/Users/dominik/.cache/riauth-cargo/q09-essentials-6ca4779-kept/riauth` and
+made mode `-r-xr-xr-x`. The copy and the built file were byte-identical:
+205063032 bytes, SHA-256
+`c6f0ba061663393c0d7874e1dac19ccd2bca48d781555e86a7717b4653a8a7dd`.
+Capabilities and runtime `build_features` are `essentials`. Edition is
+`essentials`, version `0.1.1`, target `macos` / `aarch64`. `Cargo.toml`
+declares `test-support = []` and `default = ["platform"]`; this command
+selected neither `default` nor `platform`. A byte search found the rustc hash
+and the private target path embedded by the compiler. It found no full git
+commit and neither `src/assembly/source_saml_claim.rs` nor
+`src/assembly/source_saml_return.rs`. Capabilities report
+`identity.saml_sources` compiled false and `operations.postgresql` compiled
+true. The build log is
+`/Users/dominik/.grok/long-running-background-tasks/q09-essentials-build.log`.
+
+Both runs used `--iterations 12 --warmup 1 --interference-cap 4
+--directory-users 2 --directory-groups 2 --pace-ms 6500` and the build tokens
+`debug`, `1.98.1`, and `essentials,test-support`. `q09-2u-2g` verified true
+on both: the administrator plus `q09-user-0001` and `q09-user-0002`, groups
+`q09-dir-0001` and `q09-dir-0002`, six memberships, and three members in each
+group. The estimated general-request budget is 65. The pace sleeps 71.5
+seconds inside each pass wall clock and outside each latency sample.
+Throughput includes that sleep. For 12 attempts, nearest-rank p99 is the
+slowest attempt. The host was the Apple M4 Max, 16 logical CPUs,
+68719476736 bytes, macOS 26.2, Darwin 25.2.0 arm64 (`dgsPro`), and Python
+3.14.6. PostgreSQL tools were 16.14 from Homebrew. The PostgreSQL cluster
+used the script's ephemeral `127.0.0.1` port, trust authentication, disabled
+unix sockets, `sslmode=disable`, `postgres_local_unencrypted: true`, and pool
+size 8. The riAuth listener was a separate ephemeral loopback port. TLS and
+database encryption were off. The run log is
+`/Users/dominik/.grok/long-running-background-tasks/q09-essentials-run.log`.
+
+#### Essentials redb
+
+The redb command started at 2026-09-29T18:39:56Z and exited 0 at
+2026-09-29T18:42:21Z. Standard error recorded
+`completion=0 product_run=true backend=redb edition=essentials dataset=q09-2u-2g directory_users=2 directory_groups=2 verified=true pace_ms=6500 quiet_maintenance_overlap=true interference_maintenance_overlap=true`.
+Runtime `storage_backend` is `redb`. Both passes had 12 attempts, 12
+successes, 0 session-read errors, empty error statuses and codes, and no
+HTTP 429. Maintenance `finished` increased by 1 and
+`maintenance_cadence_overlap` is true. Maintenance `failed` stayed 0.
+`rate_limited_total` and `worker_rejections_total` stayed 0. The report
+hardware load average, taken before the measured passes, was 10.814453125,
+10.41259765625, 8.58056640625.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 1572 | 3647 | 3647 | 641 | 71.563508 | 0.167683 | 43232 | 67392 | 0.34 | 1166 |
+| Interference | 1146 | 2049 | 2049 | 954 | 71.540708 | 0.167737 | 42288 | 44096 | 0.25 | 1250 |
+
+Quiet RSS started at 67136 KiB and ended at 43456 KiB. Interference RSS
+started at 43568 KiB and ended at 43232 KiB. Sampler read errors were 0.
+Quiet host load went from 10.814453125, 10.41259765625, 8.58056640625 to
+11.53857421875, 10.5947265625, 8.78466796875. Interference host load went
+from 11.53857421875, 10.5947265625, 8.78466796875 to 16.57177734375,
+11.99658203125, 9.44921875.
+
+The writer recorded 4 posts, 2 successes, 2 HTTP 409 conflicts, 0 other
+errors, and 2 revision refreshes. Writer overlap is true. The
+interference-minus-quiet latency summary, in microseconds, is min 313, p50
+-426, p95 -1598, p99 -1598, and max -1598.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 0 |
+| logout_ssf finished | 36 | 36 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 287 |
+| deactivation finished | 286 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 335 | 339 |
+| write_wait_count | 335 | 340 |
+
+Every background `failed` delta is 0. The interference
+`responses_error_total` of 2 equals the writer 409 count. Quiet
+`requests_total` 13 is the 12 measured reads plus the closing metrics read.
+Interference `requests_total` 20 adds the writer's opening revision read, 4
+posts, and 2 revision refreshes.
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-essentials-6ca4779-kept/reports/essentials-redb-maintenance.json`,
+SHA-256 `ccd7d03d43461aa3e3967d32097a39821e379ba4557fb3976d78238b6d5d71f8`.
+The sibling `.stdout.json` is byte-identical. A text search found no password
+and no session token.
+
+#### Essentials PostgreSQL
+
+The PostgreSQL command started at 2026-09-29T18:42:21Z, after the redb
+process had exited, and exited 0 at 2026-09-29T18:44:48Z. Standard error
+recorded
+`completion=0 product_run=true backend=postgresql edition=essentials dataset=q09-2u-2g directory_users=2 directory_groups=2 verified=true pace_ms=6500 quiet_maintenance_overlap=true interference_maintenance_overlap=true`.
+Runtime `storage_backend` is `postgresql`. Both passes had 12 attempts, 12
+successes, 0 session-read errors, empty error statuses and codes, and no
+HTTP 429. Maintenance `finished` increased by 1 and
+`maintenance_cadence_overlap` is true. Maintenance `failed`,
+`rate_limited_total`, and `worker_rejections_total` stayed 0. The report
+hardware load average was 16.57177734375, 11.99658203125, 9.44921875.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 4657 | 8932 | 8932 | 2544 | 71.595949 | 0.167607 | 62032 | 67216 | 0.58 | 1247 |
+| Interference | 5361 | 10236 | 10236 | 3736 | 71.616158 | 0.167560 | 43744 | 63168 | 0.77 | 1210 |
+
+Quiet RSS started at 67104 KiB and ended at 62656 KiB. Interference RSS
+started at 62816 KiB and ended at 43856 KiB. Sampler read errors were 0.
+Quiet host load went from 16.57177734375, 11.99658203125, 9.44921875 to
+13.18408203125, 12.154296875, 9.73388671875. Interference host load went from
+13.18408203125, 12.154296875, 9.73388671875 to 11.48388671875, 12.0,
+9.8720703125.
+
+The writer recorded 4 posts, 2 successes, 2 HTTP 409 conflicts, 0 other
+errors, and 2 revision refreshes. Writer overlap is true. The
+interference-minus-quiet latency summary, in microseconds, is min 1192, p50
+704, p95 1304, p99 1304, and max 1304.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 1 | 0 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 287 |
+| deactivation finished | 286 | 287 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 348 | 360 |
+| write_wait_count | 348 | 360 |
+
+Every background `failed` delta is 0. The interference error total equals the
+writer 409 count, and the request totals have the same composition as the
+redb run.
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-essentials-6ca4779-kept/reports/essentials-postgresql-maintenance.json`,
+SHA-256 `c167db90264d6de018dde46c4107f870883008d0949f723116f8d64fcb2b90e9`.
+The sibling `.stdout.json` is byte-identical. A text search found no password
+and no session token.
+
+Available space on `/System/Volumes/Data` was 88414068 KiB before the build,
+84018572 KiB after it, 83830164 KiB before the redb run, and 81848912 KiB
+after the PostgreSQL run. Each reading is above 8388608 KiB. No `riauth-q09-`
+directory remained, and the copied Essentials process was gone. The Platform
+copy and its two reports were not replaced. This session did not edit the
+accepted worktree or main.
+
+The limits of these observations are the macOS dev profile, the empty
+`test-support` feature in the Cargo fingerprint, trust authentication with
+`sslmode=disable` on the PostgreSQL cluster, loopback HTTP, the host load
+above, and the pace inside the throughput. They assign no load, recovery, or
+capacity target.
+
 ## Relationship to the earlier harnesses
 
 [S01 contention characterization](../../scripts/characterize-contention.sh)
@@ -556,13 +765,13 @@ Core.
 The `q09-8u-8g` macOS dev-profile runs above keep four reports and tie each
 binary hash to the build command, the dev profile, and rustc 1.98.1. The
 paced Platform `q09-2u-2g` runs on redb and PostgreSQL record
-maintenance-overlap observations of the same copied binary. Full publication
-still requires:
+maintenance-overlap observations of the `c7a61c6` copy. The paced Essentials
+`q09-2u-2g` runs on redb and PostgreSQL record that overlap for the `6ca4779`
+dev-profile binary. Full publication still requires:
 
 - Linux x86-64 and Linux ARM64 packaged artifacts when a release build is the claimed artifact
 - TLS, database encryption, and external signing included when the claimed deployment uses them
-- the same maintenance-overlap measurement on Essentials; the recorded overlap is the Platform `q09-2u-2g` redb and PostgreSQL runs above, and the `q09-8u-8g` passes recorded a maintenance `finished` delta of 0
-- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the paced Platform PostgreSQL passes recorded a one-minute load average from 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
+- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the paced Essentials passes recorded a one-minute load average from 10.814453125 to 16.57177734375, the paced Platform PostgreSQL passes recorded 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
 - no numeric load, RPO, or RTO target until a named operator workload exists
 
 The coverage inventory row for Q09 still says the benchmark gap is open. This
