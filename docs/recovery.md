@@ -171,6 +171,9 @@ data from before that stamp cannot be detected.
   older copy of a redb file, or an undetectable PostgreSQL restore, depends on the
   operator running `recovery invalidate`. Tested high availability, RPO and RTO are
   not claimed.
+- **A live credential concern on the serving store.** Stolen sessions, a lost
+  passkey, an agent or client credential, and the default signing key use
+  [credential compromise](credential-compromise.md).
 
 ## Integration notes
 

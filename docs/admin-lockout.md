@@ -10,7 +10,10 @@ Account-email behavior stays in [account email and recovery](lifecycle.md).
 SMTP delivery failure stays in
 [connector dependency incidents](connector-incidents.md). Stopped-store
 break-glass, archive restore, and database-native recovery stay in
-[operational recovery](operational-recovery.md).
+[operational recovery](operational-recovery.md). A stolen session, a lost
+passkey, a compromised agent or client credential, and a signing-key
+concern, while a caller can still reach the serving API, are in
+[credential compromise](credential-compromise.md).
 
 The commands below are the ones in [src/cli.rs](../src/cli.rs). The account
 changes go through `Core::update_user` in [src/core.rs](../src/core.rs) and

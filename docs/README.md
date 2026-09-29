@@ -34,6 +34,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Administrator lockout](admin-lockout.md) | Attempt locks, lost recovery codes, and browser recovery while a second administrator can still sign in |
 | [Deactivation delivery](deactivation-delivery.md) | Investigate incomplete or ambiguous outbound deactivation with the redacted Platform read |
 | [SSF delivery](ssf-delivery.md) | Investigate stopped, retrying, and cancelled outbound Shared Signals delivery with the redacted Platform read |
+| [Credential compromise](credential-compromise.md) | Serving revocation for a stolen session, a lost passkey, a compromised agent or client credential, and a signing-key concern |
 | [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
 | [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |

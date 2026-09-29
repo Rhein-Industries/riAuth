@@ -9,7 +9,10 @@ stored delivery and lists the attention rows this caller may see. It leaves
 the row unchanged.
 
 Enqueue rules for account disable, session revoke, and credential change stay
-in [outbound behavior](enterprise/ENT-07.md#outbound-behavior). The design
+in [outbound behavior](enterprise/ENT-07.md#outbound-behavior). The serving
+commands that enqueue `session-revoked` for one session or for
+`user revoke-sessions` are in
+[credential compromise](credential-compromise.md). The design
 record for this read is
 [SSF delivery diagnostics](roadmap/o06-ssf-delivery-diagnostics.md). Mail,
 logout, and deactivation delivery stay on their own reads.

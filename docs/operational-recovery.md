@@ -542,6 +542,11 @@ Still open:
   investigation procedure is [SSF delivery](ssf-delivery.md). It describes
   Platform `GET /api/operations/ssf` from source. That page did not call the
   route, a receiver, or a dashboard.
+- A stolen session, a lost passkey, a compromised agent or client
+  credential, and a signing-key concern while the store is still serving.
+  The procedure is [credential compromise](credential-compromise.md). It
+  describes the current CLI and management writers from source. That page
+  sent no request and ran no drill.
 - Retrieving an escrowed backup key or database key on another host. The
   drills recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous

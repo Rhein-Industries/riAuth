@@ -321,6 +321,8 @@ No riAuth command can repair these:
   `riauth keys generate <domain>` for a named domain. Confirm the result with
   `riauth keys list`. Relying parties then need the new JWKS.
   Tokens signed by the old key are unaffected until they expire.
+  The serving retention window for `rotate-key` is
+  [credential compromise](credential-compromise.md).
 - **Referenced secret files lost.** riAuth cannot recover them. Re-issue them at the
   issuing service: SMTP, LDAP, SCIM, Workspace or Entra, the Vault token, TLS
   certificates. On Platform, a restore that needs device-trust or RADIUS material

@@ -243,7 +243,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 
 Temporary access routes use the same human sessions. `GET /api/access/requests` and `GET /api/access/grants` list requests/grants (agent readers need `access.read`). `POST /api/access/requests` accepts `group`, `reason`, `ttl`; `POST /api/access/requests/{id}/approve` or `POST /api/access/requests/{id}/deny` requires a configured human approver. `POST /api/access/grants/{id}/revoke` requires an approver or administrator. Self-approval and agent decisions are forbidden. See [ENT-01](enterprise/ENT-01.md).
 
-OAuth access tokens and agent credentials cannot substitute for end-user CLI sessions.
+OAuth access tokens and agent credentials cannot substitute for end-user CLI sessions. The serving procedure for a stolen session, a lost passkey, a compromised agent or client secret, and a signing-key concern is [credential compromise](credential-compromise.md).
 
 ## Management
 

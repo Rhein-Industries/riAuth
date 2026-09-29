@@ -172,6 +172,8 @@ HTTP handlers admit blocking crypto/database work through eight application work
 
 Logout delivery uses signed, audience-bound events, bounded concurrent requests, certificate verification, a five-second timeout and no redirects. The claim stores a lease until `next_attempt` (60 seconds) and pins that lease before the POST. A later worker sends after a new claim replaces an expired lease; a completion for the previous attempt is ignored. Failures retry with increasing delay for up to 24 hours; delivery records remain seven days. Inspect `riauth deliveries` with the corresponding permission. The RP must verify signatures/claims, target `sid`, and reject repeated `jti` values. Outbox delivery does not invalidate an RP that ignores logout events.
 
+Serving responses for a stolen session, a lost passkey, a compromised agent or client credential, and a signing-key concern are in [credential compromise](credential-compromise.md).
+
 For break-glass administrator recovery, stop every server connected to the store and use trusted local filesystem/key access. redb's exclusive file lock prevents another process from opening the store; PostgreSQL recovery refuses other connected riAuth clients. The command sets a new password, revokes sessions and grants, and records `admin.recover` in audit. Existing factors stay enrolled by default. For a passkey-only administrator with no authenticator app, a new password alone would bypass the passkey requirement, so recovery refuses it unless the operator explicitly chooses `--reset-mfa`. That flag removes enrolled passkeys, authenticator settings and recovery codes and records `admin.recover.factors_reset`:
 
 ```sh
