@@ -1084,6 +1084,24 @@ fn cli_agent_rotation_requires_binding_and_never_replays_credential() {
     let revision = current_revision(dir.path(), &config, &session);
     let new_file = dir.path().join("rotation-new.json");
     let retry_file = dir.path().join("rotation-retry.json");
+    // Keep the successful request and its exact retry bound to the same
+    // revision, key and body; only the local credential destination differs.
+    let rotate_with_binding = |at: &str, key: &str, out: &std::path::Path, ttl: Option<&str>| {
+        let mut args = vec![
+            "--if-revision",
+            at,
+            "--idempotency-key",
+            key,
+            "agent",
+            "rotate",
+            "rotation-target",
+        ];
+        if let Some(ttl) = ttl {
+            args.extend(["--ttl", ttl]);
+        }
+        args.extend(["--out", out.to_str().unwrap()]);
+        cli(&args)
+    };
     let (_, missing_key) = failure(cli(&[
         "--if-revision",
         &revision,
@@ -1116,65 +1134,38 @@ fn cli_agent_rotation_requires_binding_and_never_replays_credential() {
     );
     assert!(!new_file.exists());
     let stale = (revision.parse::<u64>().unwrap() + 1).to_string();
-    let (code, error) = failure(cli(&[
-        "--if-revision",
-        &stale,
-        "--idempotency-key",
-        "rotate-stale",
-        "agent",
-        "rotate",
-        "rotation-target",
-        "--out",
-        new_file.to_str().unwrap(),
-    ]));
+    let (code, error) = failure(rotate_with_binding(&stale, "rotate-stale", &new_file, None));
     assert_eq!(code, 5);
     assert_eq!(error["http_status"], 409);
     assert!(!new_file.exists());
 
-    let first = success(cli(&[
-        "--if-revision",
+    let first = success(rotate_with_binding(
         &revision,
-        "--idempotency-key",
         "rotate-once",
-        "agent",
-        "rotate",
-        "rotation-target",
-        "--out",
-        new_file.to_str().unwrap(),
-    ]));
+        &new_file,
+        None,
+    ));
     assert_eq!(first["agent"]["id"], "rotation-target");
     assert!(first.get("credential").is_none());
     let credential: Value = serde_json::from_slice(&std::fs::read(&new_file).unwrap()).unwrap();
     let new_token = credential["token"].as_str().unwrap();
     assert_ne!(new_token, old_token);
-    let (code, replay) = failure(cli(&[
-        "--if-revision",
+    let (code, replay) = failure(rotate_with_binding(
         &revision,
-        "--idempotency-key",
         "rotate-once",
-        "agent",
-        "rotate",
-        "rotation-target",
-        "--out",
-        retry_file.to_str().unwrap(),
-    ]));
+        &retry_file,
+        None,
+    ));
     assert_eq!(code, 5);
     assert_eq!(replay["code"], "credential_already_issued");
     assert!(!replay.to_string().contains(new_token));
     assert!(!retry_file.exists());
-    let (code, changed) = failure(cli(&[
-        "--if-revision",
+    let (code, changed) = failure(rotate_with_binding(
         &revision,
-        "--idempotency-key",
         "rotate-once",
-        "agent",
-        "rotate",
-        "rotation-target",
-        "--ttl",
-        "7200",
-        "--out",
-        retry_file.to_str().unwrap(),
-    ]));
+        &retry_file,
+        Some("7200"),
+    ));
     assert_eq!(code, 5);
     assert_eq!(changed["http_status"], 409);
     assert!(!retry_file.exists());
