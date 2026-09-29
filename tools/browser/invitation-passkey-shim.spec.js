@@ -1,26 +1,31 @@
-// Headless password invitation acceptance on a 390×844 CSS viewport.
+// Headless invitation passkey acceptance with Playwright's simulated credential.
 //
-// Chromium, Firefox, and WebKit each accept one invitation with a password.
-// An expired invitation and a replay of the accepted link are rejected. Success
-// does not sign the browser in. Signing in with the new password and then
-// signing out removes that session. This journey never installs a virtual
-// authenticator and never posts to the invitation passkey endpoints. A visible
-// passkey choice stays unused. Chromium's CDP invitation ceremony stays in
-// invitation-passkey.spec.js. Tokens come from the fixture's
-// loopback SMTP capture, not an external mailbox. The viewport is CSS only.
-// This is not a screen reader, a physical key, a synced passkey, a phone, or
-// a mobile operating system. Playwright is not a CI job.
+// The shim replaces navigator.credentials before the page loads. It generates a
+// P-256 key in the test process, sets the user-present and user-verified bits
+// itself, and keeps the credential discoverable when creation asks for
+// residentKey "required" or "preferred". It does not prompt, it cannot refuse
+// verification, and it is not the browser's authenticator. webauthn-rs still
+// requires those bits for passkey registration and checks the challenge,
+// origin, and relying party; attestation format none is accepted. The server
+// does not prove discoverability. Signing in afterwards sends no allow list,
+// and this shim answers that only for a credential it stored as discoverable.
+// Its credential list is not evidence of the user-verified bit, so this file
+// does not read one. Chromium's CDP virtual authenticator stays in
+// invitation-passkey.spec.js and is not used here. The shim is not a physical
+// key, a synced passkey, a phone, or a mobile operating system. Tokens come
+// from the fixture's loopback SMTP capture, not an external mailbox. The
+// viewport is 390×844 CSS pixels. This is not a screen reader, and Playwright
+// is not a CI job.
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { fixtureStartupMs, startFixture } from './fixture.js';
 
 const VIEWPORT = { width: 390, height: 844 };
-const PASSWORD = 'invite-password-accept-123';
 const EXPIRED = 'This invitation has expired. Ask your administrator for a new invitation.';
 const USED = 'This invitation has already been accepted. Continue to sign in.';
-const PASSWORD_READY = 'Sign in with your new password to open your applications. An application may also require a passkey or authenticator code.';
-const DESCRIPTION_PASSWORD = 'Set a password to activate your account. You will sign in after accepting the invitation.';
-const DESCRIPTION_BOTH = 'Set a password, or add a passkey, to activate your account. You will sign in after accepting the invitation.';
+const BLANK = 'Passkey name must not be blank.';
+const PASSKEY_READY = 'Sign in with your new passkey to open your applications. This page did not sign you in.';
+const DESCRIPTION = 'Set a password, or add a passkey, to activate your account. You will sign in after accepting the invitation.';
 const CSP = /content.security.policy|csp violation|refused to (load|execute|apply|connect|frame)/i;
 
 test.use({ viewport: VIEWPORT, headless: true });
@@ -105,6 +110,13 @@ async function sessionCookies(response) {
   const headers = await response.headersArray();
   return headers.filter((header) => header.name.toLowerCase() === 'set-cookie');
 }
+async function simulated(context) {
+  const stored = await context.credentials.get({ rpId: 'localhost' });
+  return stored.map(({ id, rpId, userHandle }) => ({ id, rpId, userHandle }));
+}
+function clientData(value) {
+  return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+}
 async function capturedBodies() {
   const text = await readFile(fixture.mail_capture, 'utf8');
   const end = text.endsWith('\n') ? text.length : text.lastIndexOf('\n') + 1;
@@ -147,61 +159,23 @@ async function invitationLinks() {
   const password = link('invite-password');
   const expired = link('invite-expired');
   expect(new Set([passkey, password, expired]).size).toBe(3);
-  return { password, expired };
+  return { passkey, expired };
 }
-async function openInvite(page, url) {
-  const ready = page.waitForResponse((result) => result.url().endsWith('/api/capabilities') && result.ok(), { timeout: 15000 });
-  await page.goto(url);
-  await ready;
+async function openInvite(page) {
   await expect(page.locator('#account-title')).toHaveText('Accept your invitation');
   await expect(page.locator('#account-title')).toBeFocused({ timeout: 15000 });
   await expect(page.locator('#account-form')).toBeVisible();
-  await expect(page.locator('#account-password')).toBeVisible();
-  await expect(page.locator('#account-confirm')).toBeVisible();
-  await expect(page.locator('#account-submit')).toHaveText('Accept invitation');
-  await expect.poll(async () => {
-    const offered = await page.locator('#account-passkey-form').isVisible();
-    const description = await page.locator('#account-description').textContent();
-    if (offered && description === DESCRIPTION_BOTH) return 'shown';
-    if (!offered && description === DESCRIPTION_PASSWORD) return 'hidden';
-    return 'pending';
-  }).not.toBe('pending');
-  const choice = await page.locator('#account-passkey-form').isVisible();
+  await expect(page.locator('#account-passkey-form')).toBeVisible();
+  await expect(page.locator('#account-description')).toHaveText(DESCRIPTION);
+  await expect(page.getByRole('button', { name: 'Accept with a passkey' })).toBeVisible();
   expect(page.url()).not.toContain('ri_mail_');
-  expect((await within(page.locator('#account-password'))).height).toBeGreaterThanOrEqual(24);
-  expect((await within(page.locator('#account-confirm'))).height).toBeGreaterThanOrEqual(24);
-  expect((await within(page.locator('#account-submit'))).height).toBeGreaterThanOrEqual(24);
-  if (choice) {
-    expect((await within(page.locator('#account-passkey-submit'))).height).toBeGreaterThanOrEqual(24);
-    await within(page.locator('#account-passkey-name'));
-  }
+  expect((await within(page.locator('#account-passkey-submit'))).height).toBeGreaterThanOrEqual(24);
+  await within(page.locator('#account-passkey-name'));
   await fits(page);
-  return choice;
-}
-async function typePassword(page, browserName) {
-  await tabTo(page, browserName, 'account-password', 12);
-  await page.locator('#account-password').fill('');
-  await page.keyboard.type(PASSWORD);
-  await tabTo(page, browserName, 'account-confirm', 6);
-  await page.locator('#account-confirm').fill('');
-  await page.keyboard.type(PASSWORD);
-  await tabTo(page, browserName, 'account-submit', 6);
 }
 async function expectSignedOut(page, context) {
   expect(await sso(context), 'accept page does not mint a session cookie').toBeUndefined();
   expect(await portalStatus(page)).toBe(401);
-}
-async function keyboardSignIn(page, browserName) {
-  await expect(page.locator('#auth')).toBeVisible();
-  await tabTo(page, browserName, 'login-username', 30);
-  await page.locator('#login-username').fill('invite-password');
-  await tabTo(page, browserName, 'login-password', 10);
-  await page.locator('#login-password').fill(PASSWORD);
-  await tabTo(page, browserName, 'login-otp', 10);
-  await page.locator('#login-otp').fill('');
-  await tabTo(page, browserName, 'password-login', 10);
-  expect((await within(page.locator('#password-login'))).height).toBeGreaterThanOrEqual(24);
-  await page.keyboard.press('Enter');
 }
 async function signOut(page, context, browserName) {
   await tabTo(page, browserName, 'sign-out', 25);
@@ -215,11 +189,14 @@ async function signOut(page, context, browserName) {
   expect(await portalStatus(page)).toBe(401);
 }
 
-test('password invitation acceptance rejects expiry and replay without a session', async ({ page, context, browserName }) => {
+test('simulated credential accepts an invitation passkey without a session', async ({ context, browserName }) => {
   test.setTimeout(180000);
   test.skip(test.info().project.use.headless === false, 'This journey stays headless and does not take the shared desktop');
   const problems = [];
   await arm(context, problems);
+  // Installed before the page exists. This is not a CDP virtual authenticator.
+  await context.credentials.install();
+  const page = await context.newPage();
   const posts = { start: 0, finish: 0, cancel: 0, password: 0 };
   page.on('request', (request) => {
     if (request.method() !== 'POST') return;
@@ -231,81 +208,122 @@ test('password invitation acceptance rejects expiry and replay without a session
   });
   const links = await invitationLinks();
 
-  await openInvite(page, links.expired);
-  await typePassword(page, browserName);
-  const expiredWait = page.waitForResponse((result) => result.url().endsWith('/api/portal/account/accept') && result.request().method() === 'POST');
+  await page.goto(links.expired);
+  test.skip(!(await page.evaluate(() => 'PublicKeyCredential' in window && isSecureContext)),
+    'This engine build has no WebAuthn, so the invitation page hides its passkey choice');
+  await openInvite(page);
+  await tabTo(page, browserName, 'account-passkey-name', 12);
+  await page.locator('#account-passkey-name').fill('Expired key');
+  await tabTo(page, browserName, 'account-passkey-submit', 6);
+  const expiredStart = page.waitForResponse((result) => result.url().endsWith('/api/account/accept/passkey/start') && result.request().method() === 'POST');
   await page.keyboard.press('Enter');
-  const expiredResponse = await expiredWait;
+  const expiredResponse = await expiredStart;
   expect(expiredResponse.status()).toBe(410);
   expect(await expiredResponse.json()).toMatchObject({ error: 'account_code_expired' });
-  expect(await sessionCookies(expiredResponse)).toEqual([]);
   await expect(page.locator('#account-error')).toBeFocused();
   await expect(page.locator('#account-error')).toHaveText(EXPIRED);
   await expect(page.locator('#account-form')).toBeHidden();
   await expect(page.locator('#account-passkey-form')).toBeHidden();
   await expect(page.locator('#account-fallback')).toBeVisible();
   await within(page.locator('#account-error'));
-  await fits(page);
+  expect(posts).toEqual({ start: 1, finish: 0, cancel: 0, password: 0 });
+  expect(await simulated(context)).toEqual([]);
   await expectSignedOut(page, context);
-  expect(posts).toEqual({ start: 0, finish: 0, cancel: 0, password: 1 });
 
-  const passkeyChoice = await openInvite(page, links.password);
-  await typePassword(page, browserName);
-  const accepted = page.waitForResponse((result) => result.url().endsWith('/api/portal/account/accept') && result.request().method() === 'POST');
+  await page.goto(links.passkey);
+  await openInvite(page);
+  await tabTo(page, browserName, 'account-passkey-name', 12);
+  await page.locator('#account-passkey-name').fill('   ');
+  await tabTo(page, browserName, 'account-passkey-submit', 6);
   await page.keyboard.press('Enter');
-  const passwordResponse = await accepted;
-  expect(passwordResponse.status()).toBe(200);
-  expect(await sessionCookies(passwordResponse)).toEqual([]);
-  expect(await passwordResponse.json()).toEqual({ completed: true, login_required: true });
-  const passwordPosted = passwordResponse.request().postDataJSON();
-  expect(Object.keys(passwordPosted).sort()).toEqual(['password', 'token']);
-  expect(passwordPosted.password).toBe(PASSWORD);
-  expect(passwordPosted.token).toMatch(/^ri_mail_[A-Za-z0-9_-]+$/);
+  await expect(page.locator('#account-error')).toBeFocused();
+  await expect(page.locator('#account-error')).toHaveText(BLANK);
+  await expect(page.locator('#account-passkey-name')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#account-form')).toBeVisible();
+  await expect(page.locator('#account-passkey-form')).toBeVisible();
+  expect(posts.start).toBe(1);
+  expect(await simulated(context)).toEqual([]);
+
+  await page.locator('#account-passkey-name').fill('Invitation key');
+  await tabTo(page, browserName, 'account-passkey-submit', 6);
+  const started = page.waitForResponse((result) => result.url().endsWith('/api/account/accept/passkey/start') && result.request().method() === 'POST');
+  const finished = page.waitForResponse((result) => result.url().endsWith('/api/account/accept/passkey/finish') && result.request().method() === 'POST');
+  await page.keyboard.press('Enter');
+  const start = await started;
+  expect(start.status()).toBe(200);
+  expect(new URL(start.url()).origin).toBe(new URL(fixture.issuer).origin);
+  const challenge = await start.json();
+  expect(challenge.public_key.publicKey.rp.id).toBe('localhost');
+  expect(challenge.public_key.publicKey.authenticatorSelection.userVerification).toBe('required');
+  expect(challenge.public_key.publicKey.authenticatorSelection.residentKey).toBe('required');
+  expect(challenge.public_key.publicKey.authenticatorSelection.requireResidentKey).toBe(true);
+  const posted = start.request().postDataJSON();
+  expect(Object.keys(posted).sort()).toEqual(['name', 'token']);
+  expect(posted.name).toBe('Invitation key');
+  expect(posted.token).toMatch(/^ri_mail_/);
+  const finish = await finished;
+  expect(finish.status()).toBe(200);
+  expect(await sessionCookies(finish)).toEqual([]);
+  expect(await finish.json()).toEqual({ completed: true, login_required: true });
+  const finishedBody = finish.request().postDataJSON();
+  expect(Object.keys(finishedBody).sort()).toEqual(['ceremony', 'response', 'token']);
+  expect(finishedBody.ceremony).toMatch(/^ri_invite_enroll_/);
+  expect(finishedBody.token).toMatch(/^ri_mail_/);
+  expect(Object.keys(finishedBody.response).sort()).toEqual(['clientExtensionResults', 'id', 'rawId', 'response', 'type']);
+  expect(finishedBody.response.type).toBe('public-key');
+  const created = clientData(finishedBody.response.response.clientDataJSON);
+  expect(created.type).toBe('webauthn.create');
+  expect(created.origin).toBe(new URL(fixture.issuer).origin);
+  expect(created.crossOrigin).toBe(false);
+  expect(created.challenge).toBe(challenge.public_key.publicKey.challenge);
   await expect(page.locator('#account-complete')).toBeFocused();
   await expect(page.locator('#account-title')).toHaveText('Invitation accepted');
   await expect(page.locator('#account-complete-title')).toHaveText('Your account is ready');
-  await expect(page.locator('#account-complete-text')).toHaveText(PASSWORD_READY);
+  await expect(page.locator('#account-complete-text')).toHaveText(PASSKEY_READY);
   await expect(page.locator('#account-form')).toBeHidden();
   await expect(page.locator('#account-passkey-form')).toBeHidden();
-  await expect(page.locator('#account-fallback')).toBeHidden();
   await within(page.locator('#account-complete-title'));
   await fits(page);
   await expectSignedOut(page, context);
-  expect(posts).toEqual({ start: 0, finish: 0, cancel: 0, password: 2 });
+  const enrolled = await simulated(context);
+  expect(enrolled).toHaveLength(1);
+  expect(enrolled[0].rpId).toBe('localhost');
+  expect(enrolled[0].id).toMatch(/^[A-Za-z0-9_-]+$/);
+  expect(enrolled[0].userHandle).toMatch(/^[A-Za-z0-9_-]+$/);
+  expect(posts).toEqual({ start: 2, finish: 1, cancel: 0, password: 0 });
 
-  await openInvite(page, links.password);
-  await typePassword(page, browserName);
-  const replay = page.waitForResponse((result) => result.url().endsWith('/api/portal/account/accept') && result.request().method() === 'POST');
-  await page.keyboard.press('Enter');
+  await page.goto(links.passkey);
+  await openInvite(page);
+  await page.locator('#account-passkey-name').fill('Another key');
+  const replay = page.waitForResponse((result) => result.url().endsWith('/api/account/accept/passkey/start') && result.request().method() === 'POST');
+  await page.locator('#account-passkey-submit').click();
   const replayResponse = await replay;
   expect(replayResponse.status()).toBe(410);
   expect(await replayResponse.json()).toMatchObject({ error: 'account_code_used' });
-  expect(await sessionCookies(replayResponse)).toEqual([]);
   await expect(page.locator('#account-error')).toBeFocused();
   await expect(page.locator('#account-error')).toHaveText(USED);
   await expect(page.locator('#account-form')).toBeHidden();
   await expect(page.locator('#account-passkey-form')).toBeHidden();
   await expect(page.locator('#account-fallback')).toBeVisible();
-  await within(page.locator('#account-error'));
-  await fits(page);
+  expect(posts).toEqual({ start: 3, finish: 1, cancel: 0, password: 0 });
+  expect(await simulated(context)).toEqual(enrolled);
   await expectSignedOut(page, context);
-  expect(posts).toEqual({ start: 0, finish: 0, cancel: 0, password: 3 });
 
   await page.goto(`${fixture.issuer}/apps`);
-  await keyboardSignIn(page, browserName);
+  await expect(page.locator('#passkey-login')).toBeVisible({ timeout: 15000 });
+  await tabTo(page, browserName, 'passkey-login', 30);
+  expect((await within(page.locator('#passkey-login'))).height).toBeGreaterThanOrEqual(24);
+  await page.keyboard.press('Enter');
   await expect(page.locator('#catalogue')).toBeVisible({ timeout: 20000 });
-  await expect(page.locator('#account-name')).toHaveText('Ida Password');
-  expect((await sso(context))?.value).toMatch(/^ri_sso_/);
+  await expect(page.locator('#account-name')).toHaveText('Ivy Invite');
   expect(await portalStatus(page)).toBe(200);
   await fits(page);
   await signOut(page, context, browserName);
-  await fits(page);
-  expect(posts).toEqual({ start: 0, finish: 0, cancel: 0, password: 3 });
+  expect(await simulated(context)).toEqual(enrolled);
+  expect(posts).toEqual({ start: 3, finish: 1, cancel: 0, password: 0 });
   test.info().annotations.push({
-    type: 'passkey-choice',
-    description: passkeyChoice
-      ? 'shown on the password invitation and left unused; no passkey request was sent'
-      : 'not shown; no passkey request was sent',
+    type: 'authenticator',
+    description: 'Playwright simulated credential; not CDP, not the browser authenticator, and not hardware',
   });
   expect(problems, 'console CSP or page errors').toEqual([]);
 });

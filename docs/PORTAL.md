@@ -289,13 +289,35 @@ password invitation returns `completed` and `login_required`, sets no session
 cookie, and leaves `GET /api/portal` unauthorized. Opening that same link
 again reports that it was already used. The new password signs in, and signing
 out removes the session. The journey does not post to the invitation passkey
-endpoints, so a visible passkey choice stays unused. Passkey acceptance stays
-in `tools/browser/invitation-passkey.spec.js` and remains Chromium-only. The
+endpoints, so a visible passkey choice stays unused. Chromium's CDP invitation
+ceremony stays in `tools/browser/invitation-passkey.spec.js`. The
 viewport is CSS only, and this is not a screen reader. The capture is the
 fixture's loopback SMTP listener, not an external mailbox. Hardware
 authenticators, synced passkeys, a phone hybrid, real mobile devices, screen
 readers, and external email remain open, and this Playwright project is not
 a CI job.
+`tools/browser/invitation-passkey-shim.spec.js` is a separate headless journey
+on the same 390×844 CSS viewport. Chromium, Firefox, and WebKit each install
+Playwright's simulated WebAuthn credential before the page loads. The shim
+replaces `navigator.credentials`, generates a P-256 key in the test process,
+and sets the user-present and user-verified bits itself. It does not prompt,
+cannot refuse verification, and is not the browser's authenticator, a physical
+security key, a synced passkey, a phone, or a mobile operating system.
+webauthn-rs still requires user verification for passkey registration and
+checks the challenge, origin, and relying party. An expired invitation hides
+the form and leaves the shim empty. A whitespace-only name does not start
+enrollment. A named passkey returns `completed` and `login_required`, sets no
+session cookie, and leaves `GET /api/portal` unauthorized. Opening that same
+link again reports that it was already used and does not add a second
+credential. Signing in afterwards sends no allow list, which this shim answers
+only for a credential it stored as discoverable. The server does not prove
+discoverability, and the shim's credential list is not evidence of the
+user-verified bit. Chromium's CDP virtual authenticator stays in
+`tools/browser/invitation-passkey.spec.js` and is not used here. The capture
+is the fixture's loopback SMTP listener, not an external mailbox. The viewport
+is CSS only, and this is not a screen reader. Hardware authenticators, synced
+passkeys, a phone hybrid, real mobile devices, screen readers, and external
+email remain open, and this Playwright project is not a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
