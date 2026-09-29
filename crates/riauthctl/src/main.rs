@@ -145,6 +145,11 @@ enum Command {
         #[arg(long)]
         plan: PathBuf,
     },
+    /// Save the non-secret desired-state manifest. Delivery secrets stay on the server.
+    Export {
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Use a terminal USB authenticator (requires the terminal-usb feature).
     Passkey {
         #[command(subcommand)]
@@ -358,6 +363,7 @@ async fn run(cli: Cli) -> Result<Value> {
             management::plan(&remote, &file, &out, cli.run_id.as_deref()).await
         }
         Command::Apply { plan } => management::apply(&remote, &plan, cli.run_id.as_deref()).await,
+        Command::Export { out } => management::export(&remote, &out, cli.run_id.as_deref()).await,
         Command::Passkey { command } => {
             if remote.is_agent() {
                 bail!("Agent credentials cannot use end-user passkeys");

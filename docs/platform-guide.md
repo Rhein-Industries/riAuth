@@ -169,9 +169,10 @@ running lab server.
 Sections 11 through 13 use that same server CLI session for `plan`, `apply`,
 `keys`, `saml`, `source`, `client create`, and `agent create`. `schema`,
 `validate`, and `saml import-sp` run locally and do not read the session.
-`riauthctl` can create a client and can plan and apply a manifest on the same
-`/api/state` routes, using `~/.config/riauthctl/session.json`. The commands
-printed in those sections are the server CLI forms.
+`riauthctl` can create a client and can plan, apply, and export a manifest on
+the same `/api/state` routes, using `~/.config/riauthctl/session.json`. Export
+writes the non-secret manifest and reports `secrets_included: false`. The
+commands printed in those sections are the server CLI forms.
 
 Terminal USB is a client feature on either edition. The base `riauthctl`
 fails `passkey login` and `passkey enroll` locally, before any request, with:
