@@ -35,6 +35,12 @@ pub struct Delivery {
     pub last_status: Option<u16>,
     #[serde(default)]
     pub last_failed: bool,
+    /// Owner of the current attempt. Absent on a queued or finished row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease: Option<String>,
+    /// Set immediately before this attempt's POST. Absent until that pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch_started: Option<bool>,
 }
 
 pub fn record(
@@ -106,6 +112,8 @@ fn queue_matching(tx: &impl IdentityTx, matches: impl Fn(&RpSession) -> bool) ->
                     delivered_at: None,
                     last_status: None,
                     last_failed: false,
+                    lease: None,
+                    dispatch_started: None,
                 };
                 tx.put("logout_deliveries", &delivery.id, &delivery)?;
             }

@@ -139,7 +139,8 @@ because the name is not compiled ([`src/capability.rs`](../src/capability.rs)).
 On an initialized store, the compiled names that remain enabled are stored
 with the issuer ([`src/node_security.rs`](../src/node_security.rs)). A process
 whose set differs is refused before it binds. `configured` and
-`runtime_ready` stay local. See [node security](roadmap/o03-node-security.md).
+`runtime_ready` stay local. A back-channel logout claim stores a 60-second
+lease and the worker pins it before the POST. See [node security](roadmap/o03-node-security.md).
 
 ## Runtime prerequisites
 

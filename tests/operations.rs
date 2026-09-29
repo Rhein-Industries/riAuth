@@ -410,6 +410,8 @@ fn logout_network_failures_are_visible_and_clear_after_success() {
         delivered_at: None,
         last_status: None,
         last_failed: false,
+        lease: None,
+        dispatch_started: None,
     };
     f.core
         .store

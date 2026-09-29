@@ -2716,11 +2716,14 @@
       ],
       "label": "extend",
       "journey": "module",
-      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer or active set exits 2 before it binds. tests/node_security_postgres.rs starts one gateway and two mismatched serve processes on one disposable PostgreSQL database; both mismatches exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. Shared jobs, the in-memory forward_auth rate limit, and cache freshness remain per process.",
+      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer or active set exits 2 before it binds. tests/node_security_postgres.rs starts one gateway and two mismatched serve processes on one disposable PostgreSQL database; both mismatches exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. A logout claim stores a 60-second lease and begin_logout_dispatch pins it before the POST. tests/job_lease_postgres.rs starts two worker processes on one disposable PostgreSQL database and records one POST for one delivery. SSF deliveries, mail's finish-only lease, maintenance, alerts, connector target permits, the in-memory forward_auth rate limit, and cache freshness remain per process.",
       "implementation": [
         "src/node_security.rs",
         "src/core.rs",
-        "src/capability.rs"
+        "src/capability.rs",
+        "src/assembly/logout.rs",
+        "src/logout.rs",
+        "src/identity/logout_queue.rs"
       ],
       "tests_existing": [
         {
@@ -2739,6 +2742,16 @@
           "ci": "not-in-ci"
         },
         {
+          "ref": "tests/logout_lease.rs::logout_lease_pins_one_attempt_until_expiry",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/job_lease_postgres.rs::two_workers_pin_one_logout_delivery",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
+        {
           "ref": "tests/rate_limits.rs::a_full_shared_rate_table_evicts_its_oldest_window",
           "kind": "rust",
           "ci": "ci-check"
@@ -2747,22 +2760,29 @@
       "tests_run_in_this_task": [
         "node_security::tests::agreement_tracks_issuer_and_active_capabilities_only",
         "node_security::tests::open_refuses_a_different_active_set_without_rewriting_the_store",
-        "capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres"
+        "capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres",
+        "logout_lease_pins_one_attempt_until_expiry",
+        "logout_returns_with_durable_pending_delivery_and_revoked_access",
+        "two_workers_pin_one_logout_delivery"
       ],
       "documentation": [
         "docs/availability.md",
+        "docs/operations.md",
         "docs/testing.md",
         "docs/roadmap/o03-node-security.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Shared-job leases",
+        "SSF deliveries, maintenance, and alerts have no shared dispatch lease",
+        "Mail compares its lease on finish and does not pin before sending",
+        "A logout POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
+        "Connector target permits stay in the worker process",
         "Per-node forward_auth rate limit",
         "Cache freshness",
         "Agreement omits token lifetimes, password policy, trusted proxies, signer files, and the database encryption key",
         "Legacy stores adopt the first successful opener",
-        "PostgreSQL refusal used loopback HTTP without native TLS and unencrypted loopback PostgreSQL",
-        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres"
+        "PostgreSQL runs used loopback HTTP without native TLS and unencrypted loopback PostgreSQL and did not promote the standby",
+        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres or job_lease_postgres"
       ],
       "unverified": []
     },

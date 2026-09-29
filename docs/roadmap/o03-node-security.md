@@ -1,8 +1,8 @@
 # O03 shared security agreement
 
-Status: one stored comparison. O03 stays open. This page records the issuer
-and active-capability check added in this slice, and the coordination that
-was not built.
+Status: one stored comparison and one logout dispatch lease. O03 stays open.
+This page records the issuer and active-capability check, the logout lease
+added after it, and the coordination that was not built.
 
 Active capabilities are the names compiled into the running build and omitted
 from `capabilities.disabled`. `configured`, `runtime_ready`, and `usable`
@@ -107,10 +107,122 @@ the database was gone. Public CI runs `scripts/test-postgres.sh` for the
 default target and `q05_replay_concurrency`. It does not select
 `node_security_postgres`.
 
+## Logout dispatch lease
+
+Back-channel logout is the worker-polled delivery this slice fences.
+`claim_logout_deliveries` ([`src/assembly/logout.rs`](../../src/assembly/logout.rs))
+keeps the due-index hint, then under the store writer increments `attempts`,
+sets `next_attempt` 60 seconds ahead, and stores a new `lease`
+([`src/identity/logout_queue.rs`](../../src/identity/logout_queue.rs)).
+`begin_logout_dispatch` pins `dispatch_started` only while that lease is
+still current and `next_attempt` is still ahead. [`deliver`](../../src/logout.rs)
+calls the pin before the POST. A second claim during that window receives
+nothing, so it has no token to send. When `next_attempt` is reached, one
+later claim replaces the lease and may send. A pin or
+`finish_logout_delivery` for the previous attempt leaves the new attempt in
+place. A failed attempt clears the lease and uses the same backoff as before.
+The HTTP client timeout is five seconds. A call already inside that send can
+still complete after another worker claims the delivery if the first process
+was suspended for the whole 60-second lease. The pin stops a resumed worker
+from starting a POST after the lease was replaced or had reached
+`next_attempt`.
+A delivery older than 24 hours is parked with `next_attempt` at the top of
+the range and an empty lease. Rows are still removed after seven days.
+Claim, pin, and finish do not write an audit row.
+
+Mail, provisioning, deactivation, reconciliation, and offboarding already
+store their own leases. This slice leaves those claim, expiry, quarantine,
+and audit paths as they were. SSF deliveries still advance an attempt
+counter inside their claim write and have no owner token. Maintenance and
+alert passes still run on every worker. Provisioning and deactivation target
+permits remain inside the worker process. The in-memory `forward_auth` rate
+limit and cache freshness are unchanged. Gateway `/readyz` is unchanged.
+
+### Local run
+
+On this checkout the embedded-store filter was:
+
+```sh
+cargo test --locked --offline --features test-support --test logout_lease --test background_logout --test operations --test identity_boundary -- logout_lease_pins_one_attempt_until_expiry logout_returns_with_durable_pending_delivery_and_revoked_access --test-threads=2
+```
+
+It used a private Cargo target, incremental compilation off, and two compiler
+jobs. Cargo finished the test profile in 1m 19s. The only compiler note was
+the existing `__eh_frame` linker warning.
+`logout_lease_pins_one_attempt_until_expiry` passed in 2.02s (1 passed, 0
+failed). `logout_returns_with_durable_pending_delivery_and_revoked_access`
+passed in 2.47s (1 passed, 0 failed). `identity_boundary` compiled and matched
+none of the filter (6 filtered). `operations` compiled and matched none of
+the filter (15 filtered).
+
+The lease test used the test clock. A delivery older than 24 hours was parked
+with `next_attempt` at the top of the range, attempts still 0, and an empty
+lease. One claim stored a lease and left `dispatch_started` empty. A second
+claim in that window was empty. The first pin set `dispatch_started`. A second
+pin and a different lease were refused. At the 60-second `next_attempt` the
+old pin was refused, a new claim stored a different lease with attempts 2,
+and finishing attempt 1 with status 204 left that new lease undelivered.
+Finishing attempt 2 recorded delivery at that clock value and cleared the
+lease. A failed finish cleared the lease, set `last_failed`, and scheduled
+`next_attempt` two seconds later; the next claim after that time stored a new
+lease. The audit action list was unchanged. The background logout test is the
+existing integrated-process delivery: one POST and `attempts == 1`.
+
+`cargo check --locked --offline --no-default-features --features essentials --lib`
+finished in 9.59s on the same private target. Logout delivery is in that
+library. The check reported the existing unused-code warnings in passkey
+workflow registration, `Core.runtime`, and session post-logout return.
+
+The same private target, offline mode, incremental setting, and job cap were
+used for:
+
+```sh
+RIAUTH_PG_TEST_TARGET=job_lease_postgres ./scripts/test-postgres.sh
+```
+
+The script adds `--locked --features test-support`. Cargo finished the test
+profile in 3.27s, and `two_workers_pin_one_logout_delivery` passed in 12.15s
+(1 passed, 0 failed). The harness enables `test-support` and did not set the
+test clock. The only compiler note was the same `__eh_frame` warning.
+
+The test printed:
+
+```text
+worker_a_pid=81344 worker_b_pid=81517 issuer=http://127.0.0.1:9 worker_a_listen=http://127.0.0.1:55925 worker_b_listen=http://127.0.0.1:55926 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable posts=1 attempts=1 lease_cleared=true dispatch_started_while_held=true delivered=true database_dropped=riauth_o03j_rounhm0uplxq4onv6tkk
+```
+
+That was two `riauth serve` worker processes against one new database on the
+script's disposable primary. `SHOW data_directory` matched that primary before
+the database was created. Both used issuer `http://127.0.0.1:9`,
+`browser_ui` false, `process.role` `worker`, and
+`process.accept_partial_duties` true, on distinct loopback listen ports.
+The written configs had no `tls_cert_file` or `tls_key_file`, PostgreSQL
+`local_unencrypted` was true, `ca_file` was absent, and the shared connection
+file named one `host=127.0.0.1` with `sslmode=disable`. The client and its
+back-channel logout URI were created before either worker started. The
+delivery row was planted after both `/healthz` probes succeeded. While the
+receiver held the first POST, the row had attempts 1, a lease,
+`dispatch_started` true, and no `delivered_at`, and the receiver counted one
+POST. After the receiver returned 204, the row was delivered, attempts stayed
+1, and the lease and pin were empty. A further quiet interval still counted
+one POST. The test then killed both workers and dropped
+`riauth_o03j_rounhm0uplxq4onv6tkk`. Public CI runs
+`scripts/test-postgres.sh` for the default target and
+`q05_replay_concurrency`. It does not select `job_lease_postgres`.
+
 ## Still open
 
-- Shared-job leases, duplicate worker dispatch, and cache freshness are
-  unchanged.
+- SSF deliveries have an attempt counter and no owner token. Mail stores a
+  lease and compares it when the attempt finishes; it does not pin before
+  sending. Provisioning, deactivation, reconciliation, and offboarding keep
+  their existing leases. Provisioning and deactivation target permits stay
+  in the worker process. Maintenance and alert passes run on every worker.
+- A logout POST already inside the five-second client call can still
+  complete after a later claim if that process stays suspended across the
+  60-second lease.
+- Public CI runs the default PostgreSQL target and `q05_replay_concurrency`.
+  It does not select `node_security_postgres` or `job_lease_postgres`.
+- Cache freshness remains per process.
 - The `forward_auth` rate limit is still counted in memory on each node.
 - Token lifetimes, password policy, trusted proxies, external signer files,
   and the database encryption key are outside `meta.node_security`.

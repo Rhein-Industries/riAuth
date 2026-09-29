@@ -12,6 +12,10 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+/// How long the claiming worker owns the delivery. The same instant is stored
+/// in `next_attempt`, so a later claim waits out this window and then retries.
+const LOGOUT_LEASE_SECONDS: u64 = 60;
+
 impl LogoutHintTx for Tx<'_> {
     fn logout_client(&self, id: &str) -> Result<Option<Client>> {
         self.get("clients", id)
@@ -21,6 +25,10 @@ impl LogoutHintTx for Tx<'_> {
 impl LogoutDeliveryWorker for Core {
     fn claim_logout_deliveries(&self) -> Result<Vec<(Delivery, String)>> {
         Core::claim_logout_deliveries(self)
+    }
+
+    fn begin_logout_dispatch(&self, id: &str, lease: &str) -> Result<bool> {
+        Core::begin_logout_dispatch(self, id, lease)
     }
 
     fn finish_logout_delivery(&self, id: &str, attempt: u32, status: Option<u16>) -> Result<()> {
@@ -143,8 +151,17 @@ impl Core {
             for (id, mut d) in tx.due::<Delivery>("logout_deliveries", now(), 32)? {
                 if ready.len() == 16 { break; }
                 if d.delivered_at.is_some() || d.next_attempt > now() { continue; }
-                if d.created_at.saturating_add(86400) < now() { d.next_attempt = u64::MAX; tx.put("logout_deliveries", &id, &d)?; continue; }
-                d.attempts += 1; d.next_attempt = now() + 60;
+                if d.created_at.saturating_add(86400) < now() {
+                    d.next_attempt = u64::MAX;
+                    d.lease = None;
+                    d.dispatch_started = None;
+                    tx.put("logout_deliveries", &id, &d)?;
+                    continue;
+                }
+                d.attempts += 1;
+                d.next_attempt = now().saturating_add(LOGOUT_LEASE_SECONDS);
+                d.lease = Some(crate::crypto::id());
+                d.dispatch_started = None;
                 let client = tx.get::<Client>("clients", &d.client_id)?.ok_or_else(|| Error::bad("Logout client is missing"))?;
                 let claims = json!({"iss": crate::issuer::for_client(&self.config.issuer,&client), "aud": d.client_id, "sub": d.subject, "sid": d.sid, "iat": now(), "exp": now() + 120, "jti": d.id, "events": {"http://schemas.openid.net/event/backchannel-logout": {}}});
                 let key = crate::keyring::for_client(tx, &client)?.active;
@@ -162,6 +179,28 @@ impl Core {
         }
         Ok(signed)
     }
+    /// Commit this worker's pin before it POSTs. False means the lease was
+    /// replaced, already pinned, or expired, and the caller must not send.
+    pub fn begin_logout_dispatch(&self, id: &str, lease: &str) -> Result<bool> {
+        if lease.is_empty() {
+            return Ok(false);
+        }
+        self.store.write(|tx| {
+            let Some(mut delivery) = tx.get::<Delivery>("logout_deliveries", id)? else {
+                return Ok(false);
+            };
+            if delivery.delivered_at.is_some()
+                || delivery.lease.as_deref() != Some(lease)
+                || delivery.dispatch_started == Some(true)
+                || delivery.next_attempt <= now()
+            {
+                return Ok(false);
+            }
+            delivery.dispatch_started = Some(true);
+            tx.put("logout_deliveries", id, &delivery)?;
+            Ok(true)
+        })
+    }
     pub fn finish_logout_delivery(
         &self,
         id: &str,
@@ -177,6 +216,8 @@ impl Core {
             }
             d.last_status = status;
             d.last_failed = status.is_none_or(|s| !(200..300).contains(&s));
+            d.lease = None;
+            d.dispatch_started = None;
             if status.is_some_and(|s| (200..300).contains(&s)) {
                 d.delivered_at = Some(now());
             } else {

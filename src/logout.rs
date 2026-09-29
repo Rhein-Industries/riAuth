@@ -81,6 +81,7 @@ pub(crate) fn verify_hint(tx: &impl LogoutHintTx, token: &str, issuer: &str) -> 
 /// Claims and completes logout deliveries using the server's persisted outbox.
 pub trait LogoutDeliveryWorker: Clone + Send + Sync + 'static {
     fn claim_logout_deliveries(&self) -> Result<Vec<(Delivery, String)>>;
+    fn begin_logout_dispatch(&self, id: &str, lease: &str) -> Result<bool>;
     fn finish_logout_delivery(&self, id: &str, attempt: u32, status: Option<u16>) -> Result<()>;
 }
 
@@ -103,6 +104,26 @@ pub async fn deliver<W: LogoutDeliveryWorker>(core: W) -> Result<()> {
         let http = http.clone();
         let core = core.clone();
         jobs.spawn(async move {
+            // The claim committed the lease. Pin it before any bytes are sent.
+            // A replaced or expired lease returns false and this pass does not POST.
+            let admitted = match delivery.lease.clone() {
+                Some(lease) => {
+                    let owner = core.clone();
+                    let id = delivery.id.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::telemetry::in_activity(
+                            crate::telemetry::Activity::LogoutDelivery,
+                            || owner.begin_logout_dispatch(&id, &lease),
+                        )
+                    })
+                    .await
+                    .map_err(Error::internal)??
+                }
+                None => false,
+            };
+            if !admitted {
+                return Ok(());
+            }
             let status = http
                 .post(&delivery.uri)
                 .form(&[("logout_token", token)])

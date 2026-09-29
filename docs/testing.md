@@ -54,6 +54,24 @@ RIAUTH_PG_TEST_TARGET=node_security_postgres ./scripts/test-postgres.sh
 
 The script passes `--locked --features test-support` and `--ignored`. One gateway with another listen address and `browser_ui` false becomes ready with `duties.background_jobs` false. A capability mismatch and an issuer mismatch each exit 2, accept no TCP connection, and leave `riauth_store.records_v1` unchanged. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [node security](roadmap/o03-node-security.md).
 
+## Logout dispatch lease
+
+One embedded store, with the test clock, and the integrated logout regression were run with:
+
+```sh
+cargo test --locked --offline --features test-support --test logout_lease --test background_logout --test operations --test identity_boundary -- logout_lease_pins_one_attempt_until_expiry logout_returns_with_durable_pending_delivery_and_revoked_access --test-threads=2
+```
+
+`logout_lease_pins_one_attempt_until_expiry` checks the 24-hour stop, one pin per attempt, a second pin refused, expiry replacing the lease, a stale 204 leaving the new attempt in place, a failed attempt clearing the lease and retrying at the existing backoff, and an unchanged audit action list. `logout_returns_with_durable_pending_delivery_and_revoked_access` checks one POST and `attempts == 1` from one integrated process. The same command compiled `operations` and `identity_boundary`.
+
+Two worker processes on one disposable PostgreSQL database are selected separately:
+
+```sh
+RIAUTH_PG_TEST_TARGET=job_lease_postgres ./scripts/test-postgres.sh
+```
+
+The script passes `--locked --features test-support` and `--ignored`. Both processes use `process.role = "worker"`, loopback HTTP, no native TLS files, and unencrypted loopback PostgreSQL (`sslmode=disable`). A local receiver holds the first logout POST across the other worker's next tick. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the families this slice left on their existing fences are in [node security](roadmap/o03-node-security.md).
+
 ## Backup memory measurement
 
 `scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.

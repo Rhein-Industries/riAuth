@@ -383,6 +383,8 @@ fn core_cleanup_retains_live_windows_and_logout_records() {
             delivered_at: None,
             last_status: None,
             last_failed: false,
+            lease: None,
+            dispatch_started: None,
         };
         f.core
             .store
