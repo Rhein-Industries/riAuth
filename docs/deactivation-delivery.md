@@ -13,6 +13,8 @@ The detailed list and the follow-up writes stay in
 [offboarding deactivation](scim.md#offboarding-deactivation). Stopping a
 provisioning job stays in
 [connector dependency incidents](connector-incidents.md#outbound-scim).
+Outbound Shared Signals is a separate queue. Its incident read is
+[SSF delivery](ssf-delivery.md).
 
 ## Where the read lives
 

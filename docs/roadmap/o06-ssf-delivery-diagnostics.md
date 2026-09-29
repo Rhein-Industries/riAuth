@@ -2,7 +2,7 @@
 
 Status: one local slice. O06 stays open. Label remains **extend**. Journey remains `module`.
 
-This page records the Platform outbound Shared Signals delivery read added here. It is a description of the current source and local tests, not a dashboard deployment or a change to SSF dispatch.
+This page records the Platform outbound Shared Signals delivery read added here. It is a description of the current source and local tests, not a dashboard deployment or a change to SSF dispatch. The incident procedure is [SSF delivery](../ssf-delivery.md).
 
 Mail delivery status remains `GET /api/operations/mail`. That route returns `id`, `created_at`, `expires_at`, `attempts`, `next_attempt`, `delivered_at`, and `stopped` for every stored row, and omits the recipient, subject, body, proof, and lease. No SMTP error string is stored. `queues.mail_deliveries` pending, failed, and oldest pending age remain on `GET /api/operations/metrics` and the Prometheus queue gauges. Logout delivery state, including `last_failed`, `last_status`, and `attempts`, remains `GET /api/operations/logout`.
 

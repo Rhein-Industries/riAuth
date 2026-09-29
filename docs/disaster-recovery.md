@@ -22,6 +22,8 @@ codes, and browser account recovery while a second administrator can still
 sign in.
 [Deactivation delivery](deactivation-delivery.md) investigates incomplete or
 ambiguous outbound deactivation with the redacted Platform read.
+[SSF delivery](ssf-delivery.md) investigates stopped, retrying, and cancelled
+outbound Shared Signals delivery with the redacted Platform read.
 
 ## What the archive holds
 

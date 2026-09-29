@@ -50,7 +50,9 @@ A serving store, with a second enabled human administrator who can still sign
 in, follows [administrator lockout](admin-lockout.md). That procedure leaves
 the server up. The break-glass row above is the stopped-store command.
 Incomplete or ambiguous outbound deactivation, while the store is still
-serving, follows [deactivation delivery](deactivation-delivery.md).
+serving, follows [deactivation delivery](deactivation-delivery.md). Stopped,
+retrying, or cancelled outbound Shared Signals delivery, while the store is
+still serving, follows [SSF delivery](ssf-delivery.md).
 
 A PostgreSQL outage with the riAuth process still up is a database problem
 first. The disposable PostgreSQL drill saw `/livez` stay at 200, `/readyz`
@@ -536,6 +538,10 @@ Still open:
   is [deactivation delivery](deactivation-delivery.md). It describes
   Platform `GET /api/operations/offboarding/deactivations` from source. That
   page did not call the route, a connector, or a dashboard.
+- Stopped, retrying, or cancelled outbound Shared Signals delivery. The
+  investigation procedure is [SSF delivery](ssf-delivery.md). It describes
+  Platform `GET /api/operations/ssf` from source. That page did not call the
+  route, a receiver, or a dashboard.
 - Retrieving an escrowed backup key or database key on another host. The
   drills recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous

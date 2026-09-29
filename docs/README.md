@@ -33,6 +33,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Connector dependency incidents](connector-incidents.md) | Read, stop, and retry boundary for LDAP, outbound SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks |
 | [Administrator lockout](admin-lockout.md) | Attempt locks, lost recovery codes, and browser recovery while a second administrator can still sign in |
 | [Deactivation delivery](deactivation-delivery.md) | Investigate incomplete or ambiguous outbound deactivation with the redacted Platform read |
+| [SSF delivery](ssf-delivery.md) | Investigate stopped, retrying, and cancelled outbound Shared Signals delivery with the redacted Platform read |
 | [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
 | [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |

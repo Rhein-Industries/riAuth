@@ -1803,7 +1803,10 @@ Still outside this slice, as later tasks:
   [administrator lockout](admin-lockout.md) page covers a serving store when
   a second human administrator can still sign in. The
   [deactivation delivery](deactivation-delivery.md) page covers incomplete or
-  ambiguous outbound disables. The backup commands here are entry points.
+  ambiguous outbound disables. The
+  [SSF delivery](ssf-delivery.md) page covers stopped, retrying, and
+  cancelled outbound Shared Signals deliveries. The backup commands here are
+  entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP directory plan or apply, a SCIM plan

@@ -66,7 +66,8 @@ already attempted, released its lease, and is waiting for the next retry.
 Read `riauth account deliveries` before treating that count as a stopped
 message. `queues.ssf_deliveries.failed` counts a retrying row, a stopped
 failure, and a cancelled row together. Platform `GET /api/operations/ssf`
-splits those states. See [SSF delivery diagnostics](roadmap/o06-ssf-delivery-diagnostics.md).
+splits those states. The incident procedure is [SSF delivery](ssf-delivery.md).
+See [SSF delivery diagnostics](roadmap/o06-ssf-delivery-diagnostics.md).
 
 An occupied connector lane or target returns `connector_overloaded` (HTTP 503,
 exit 6) and `Retry-After: 1`. The message says no work started. A manual
@@ -407,15 +408,18 @@ for this task.
 - An alert receiver that refused, timed out, or redirected.
 - A browser sign-in during any of those outages, a real OIDC or SAML
   relying party, or a multi-node deployment.
-- The LDAP provider listener, inbound SCIM, RADIUS, and Shared Signals
-  delivery. Those are outside this incident.
+- The LDAP provider listener, inbound SCIM, and RADIUS. Outbound Shared
+  Signals attention is [SSF delivery](ssf-delivery.md). This connector page
+  did not call that route or a receiver.
 
 The [A01 coverage inventory](roadmap/coverage-inventory.md) still describes
 D04 at revision `96e23e2`. This page does not finish D04. Lockout while
 another administrator can sign in is
 [administrator lockout](admin-lockout.md). Incomplete or ambiguous
 deactivation delivery is
-[deactivation delivery](deactivation-delivery.md). Escrow of a backup or database
+[deactivation delivery](deactivation-delivery.md). Stopped, retrying, or
+cancelled Shared Signals delivery is
+[SSF delivery](ssf-delivery.md). Escrow of a backup or database
 key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
 after restore, Compose or systemd restore, and Windows device recovery
 remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).
