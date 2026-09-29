@@ -6,14 +6,27 @@ let fixture, stopFixture;
 const reviewer = { username: 'm05-reviewer', password: 'reviewer fixture password 2026' };
 const executor = { username: 'm05-executor', password: 'executor fixture password 2026' };
 const bearer = () => ({ authorization: `Bearer ${fixture.token}` });
+// Management writes require the live revision. Each call reads it immediately
+// beforehand so a prior write in this fixture cannot leave If-Match stale.
+async function bound(request, key) {
+  const state = await request.get(`${fixture.issuer}/api/state/revision`, { headers: bearer() });
+  expect(state.ok()).toBe(true);
+  return { ...bearer(), 'if-match': `"${(await state.json()).revision}"`, 'idempotency-key': key };
+}
 test.beforeAll(async ({ request }) => {
   test.setTimeout(fixtureStartupMs + 20000);
   ({ fixture, stop: stopFixture } = await startFixture());
   for (const user of [reviewer, executor, { username: 'm05-member', password: 'recipient fixture password 2026', admin: false }]) {
-    const response = await request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { admin: true, ...user } });
+    const response = await request.post(`${fixture.issuer}/api/users`, {
+      headers: await bound(request, `m05-create-${user.username}`),
+      data: { admin: true, ...user },
+    });
     expect(response.ok()).toBe(true);
   }
-  const group = await request.post(`${fixture.issuer}/api/groups`, { headers: bearer(), data: { name: 'm05-protected' } });
+  const group = await request.post(`${fixture.issuer}/api/groups`, {
+    headers: await bound(request, 'm05-create-protected-group'),
+    data: { name: 'm05-protected' },
+  });
   expect(group.ok()).toBe(true);
 });
 test.afterAll(async () => { await stopFixture?.(); });
@@ -158,13 +171,16 @@ test('stale, cancelled, expired and refused reviews stay closed and errors revea
   await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
   const stale = await page.locator('#membership-id').innerText();
   const unrelated = await page.request.post(`${fixture.issuer}/api/users`, {
-    headers: bearer(),
+    headers: await bound(page.request, 'm05-unrelated-user'),
     data: { username: 'm05-unrelated', password: 'unrelated fixture password 2026', display_name: 'Unrelated', admin: false },
   });
   expect(unrelated.ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh change' }).click();
   await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
-  const updated = await page.request.patch(`${fixture.issuer}/api/users/m05-member`, { headers: bearer(), data: { display_name: 'Changed after staging' } });
+  const updated = await page.request.patch(`${fixture.issuer}/api/users/m05-member`, {
+    headers: await bound(page.request, 'm05-member-display-name'),
+    data: { display_name: 'Changed after staging' },
+  });
   expect(updated.ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh change' }).click();
   await expect(page.locator('#membership-status')).toHaveText('Awaiting review');
