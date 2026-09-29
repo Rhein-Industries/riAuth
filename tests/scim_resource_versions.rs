@@ -456,3 +456,85 @@ async fn scim_group_create_keeps_the_scim_membership_authority_requirement() {
     f.assert_http_mutation_snapshot(&before);
     assert_eq!(f.core.create_group(&token, "write-only-group").unwrap()["name"], "write-only-group");
 }
+
+#[tokio::test]
+async fn scim_user_patch_keeps_management_projected_fields() {
+    let f = Fixture::new();
+    let agent = f.core.create_agent(&f.admin, NewAgent {
+        id: "scim-live-patch-agent".into(),
+        ttl: 600,
+        parent: None,
+        permissions: ["user.read", "user.write"]
+            .map(|action| Permission { action: action.into(), resource: "user/patch-live".into() })
+            .into(),
+    }).unwrap();
+    let token = text(&agent["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let input = json!({
+        "schemas":[scim::USER],
+        "userName":"patch-live",
+        "displayName":"Original",
+        "active":true,
+        "password":PASSWORD,
+        "emails":[{"value":"orig@example.test","type":"work","primary":true}]
+    });
+    let (status, Some(created_version), created) = request(&app, Method::POST, "/scim/v2/Users", &token, None, Some("create-patch-live"), Some(&input)).await else { panic!("create must return an ETag") };
+    assert_eq!(status, StatusCode::CREATED);
+    let id = text(&created, "id");
+    let path = format!("/scim/v2/Users/{id}");
+    let local_id: String = f.core.store.get("usernames", "patch-live").unwrap().unwrap();
+    f.core.update_user(&f.admin, "patch-live", UserPatch {
+        enabled: Some(false),
+        display_name: Some("Managed".into()),
+        email: Some("managed@example.test".into()),
+        ..Default::default()
+    }).unwrap();
+    let managed: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert!(!managed.enabled);
+    assert_eq!(managed.display_name, "Managed");
+    assert_eq!(managed.email.as_deref(), Some("managed@example.test"));
+    let projected = f.core.scim_get(&token, "Users", &id).unwrap();
+    assert_eq!(projected["active"], false);
+    assert_eq!(projected["displayName"], "Managed");
+    assert_eq!(projected["emails"], json!([{"value":"managed@example.test","primary":true}]));
+    let version = text(&projected["meta"], "version");
+    assert_ne!(version, created_version);
+    let patch = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"add","path":"name.givenName","value":"Ada"}]});
+    let before = f.snapshot().unwrap();
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, Some(&created_version), None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+    let (status, _, _) = request(&app, Method::PATCH, &path, &token, None, None, Some(&patch)).await;
+    assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    f.assert_http_mutation_snapshot(&before);
+
+    let (status, Some(patched_version), patched) = request(&app, Method::PATCH, &path, &token, Some(&version), Some("given-once"), Some(&patch)).await else { panic!("patch must return an ETag") };
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(patched["active"], false);
+    assert_eq!(patched["displayName"], "Managed");
+    assert_eq!(patched["emails"], json!([{"value":"managed@example.test","primary":true}]));
+    assert_eq!(patched["name"]["givenName"], "Ada");
+    assert_ne!(patched_version, version);
+    let stored: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert!(!stored.enabled);
+    assert_eq!(stored.epoch, managed.epoch);
+    assert_eq!(stored.display_name, "Managed");
+    assert_eq!(stored.email.as_deref(), Some("managed@example.test"));
+    let (status, replay_version, replay) = request(&app, Method::PATCH, &path, &token, Some(&version), Some("given-once"), Some(&patch)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay_version.as_deref(), Some(patched_version.as_str()));
+    assert_eq!(replay, patched);
+    let replayed: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert_eq!(replayed.epoch, managed.epoch);
+    assert!(!replayed.enabled);
+
+    let enable = json!({"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"active","value":true}]});
+    let (status, _, enabled) = request(&app, Method::PATCH, &path, &token, Some(&patched_version), Some("enable-live"), Some(&enable)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(enabled["active"], true);
+    assert_eq!(enabled["displayName"], "Managed");
+    assert_eq!(enabled["emails"], json!([{"value":"managed@example.test","primary":true}]));
+    assert_eq!(enabled["name"]["givenName"], "Ada");
+    let enabled_user: User = f.core.store.get("users", &local_id).unwrap().unwrap();
+    assert!(enabled_user.enabled);
+    assert!(enabled_user.epoch > managed.epoch);
+}

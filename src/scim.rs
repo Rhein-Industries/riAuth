@@ -1448,17 +1448,32 @@ impl Core {
                     .transpose()?;
             let member_patch = kind == "Groups" && patch && patches_members(&input);
             let mut data = if patch {
-                let mut base = existing
+                let record = existing
                     .as_ref()
-                    .ok_or_else(|| Error::bad("Patch requires a resource"))?
-                    .data
-                    .clone();
+                    .ok_or_else(|| Error::bad("Patch requires a resource"))?;
+                let mut base = record.data.clone();
                 if member_patch {
                     // A PATCH starts from live SCIM-visible membership. Stored
                     // metadata may lag direct or directory group changes.
-                    base["members"] =
-                        self.scim_view(tx, id.unwrap(), existing.as_ref().unwrap())?["members"]
-                            .clone();
+                    base["members"] = self.scim_view(tx, id.unwrap(), record)?["members"].clone();
+                }
+                if kind == "Users" {
+                    // A PATCH starts from the projected user. Stored SCIM fields
+                    // lag management changes to active, display name, and email.
+                    let user = tx
+                        .get::<User>("users", &record.local_id)?
+                        .ok_or_else(|| Error::missing("User missing"))?;
+                    base["active"] = json!(user.enabled);
+                    base["displayName"] = json!(user.display_name);
+                    let stored_email = read_email(&base)?;
+                    if stored_email != user.email {
+                        base["emails"] = json!(
+                            user.email
+                                .iter()
+                                .map(|email| json!({"value": email, "primary": true}))
+                                .collect::<Vec<_>>()
+                        );
+                    }
                 }
                 patch_resource(&base, input)?
             } else {
