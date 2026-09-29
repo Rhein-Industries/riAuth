@@ -21,7 +21,7 @@ the store is still serving.
 codes, and browser account recovery while a second administrator can still
 sign in.
 [Deactivation delivery](deactivation-delivery.md) investigates incomplete or
-ambiguous outbound deactivation with the accepted redacted Platform read.
+ambiguous outbound deactivation with the redacted Platform read.
 
 ## What the archive holds
 

@@ -533,10 +533,9 @@ Still open:
   SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks. That page
   was checked against source. The provider calls it names were not run.
 - Incomplete or ambiguous deactivation delivery. The investigation procedure
-  is [deactivation delivery](deactivation-delivery.md). It describes the
-  accepted Platform read `GET /api/operations/offboarding/deactivations` at
-  integration commit `58e5ef3`. This slice did not call that route, a
-  connector, or a dashboard.
+  is [deactivation delivery](deactivation-delivery.md). It describes
+  Platform `GET /api/operations/offboarding/deactivations` from source. That
+  page did not call the route, a connector, or a dashboard.
 - Retrieving an escrowed backup key or database key on another host. The
   drills recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous

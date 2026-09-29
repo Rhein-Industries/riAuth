@@ -8,7 +8,7 @@ is incomplete or ambiguous. That includes a row that no offboarding job
 records. The read below counts every stored deactivation and lists the
 attention rows this caller may see. It leaves the row unchanged.
 
-The detailed list and the follow-up writes already in this checkout stay in
+The detailed list and the follow-up writes stay in
 [outbound provisioning](scim.md#outbound-provisioning) and
 [offboarding deactivation](scim.md#offboarding-deactivation). Stopping a
 provisioning job stays in
@@ -16,34 +16,24 @@ provisioning job stays in
 
 ## Where the read lives
 
-The implementation is `Core::offboarding_deactivation_diagnostics` on
-accepted integration commit `58e5ef3c0b15a8ab2e76e423bb6c592982041dc6`
-(`58e5ef3`). On 2026-09-29 the accepted tip was
-`3cfe28b592f0167d93ad8e79e7e3a26ab0927233`. `58e5ef3` is an ancestor of that
-tip, and the deactivation diagnostic sources were identical between them:
-`src/offboarding.rs`, `src/identity/downstream.rs`, `src/api.rs`,
-`src/cli.rs`, `src/agent.rs`, `src/store/maintenance.rs`, and the operations,
-API, editions, agent, and ENT-10 pages that describe this read.
-
-Platform registers
+The read is `Core::offboarding_deactivation_diagnostics` in
+[src/offboarding.rs](../src/offboarding.rs). Platform registers
 
 `GET /api/operations/offboarding/deactivations`
 
-inside `platform_routes`, which is compiled with the `platform` feature.
-The handler is `session_handler!(offboarding_deactivation_diagnostics)`.
-The body is `riauth.offboarding-deactivation-diagnostics/v1`.
+in `platform_routes` in [src/api.rs](../src/api.rs), compiled with the
+`platform` feature. The handler is
+`session_handler!(offboarding_deactivation_diagnostics)`. The body is
+`riauth.offboarding-deactivation-diagnostics/v1`.
 
-This worktree's `OffboardCommand` is Schedule, Reschedule, Cancel, List, and
-Get, and its router does not register the deactivation aggregate. Essentials
-keeps the shared `provisioning_deactivations` bucket and
+Essentials keeps the shared `provisioning_deactivations` bucket and
 `GET /api/provisioning/deactivations`. The redacted aggregate is the
 Platform route above.
 
-The accepted Platform CLI command `riauth offboard diagnostics` calls
-`GET /api/operations/offboarding` and returns
-`riauth.offboarding-diagnostics/v1`. That is the scheduled-job aggregate.
-Its hidden-target token is `inspect_hidden_targets`. There is no `riauth`
-or `riauthctl` command for the deactivation aggregate.
+`riauth offboard diagnostics` calls `GET /api/operations/offboarding` and
+returns `riauth.offboarding-diagnostics/v1`. That is the scheduled-job
+aggregate. Its hidden-target token is `inspect_hidden_targets`. There is
+no `riauth` or `riauthctl` command for the deactivation aggregate.
 
 ## Authorization and the request
 
@@ -69,9 +59,9 @@ check failed. `operations.read` on `operations/reconciliation` does too.
 
 Keep the bearer token out of shell history, tickets, and shared logs. A
 saved CLI session file contains `issuer`, `token`, and `expires_at`. Leave
-that file out of copied output. This page has no shell example because this
-checkout has no subcommand for the read, and a copied command would have to
-carry the token.
+that file out of copied output. This page has no shell example: the read
+has no `riauth` subcommand, and a copied command would have to carry the
+token.
 
 Item visibility is a second check, after the route check:
 
@@ -148,9 +138,8 @@ and no dashboard.
 The read is a storage read. It writes no audit event, changes no queue
 index, and neither claims nor dispatches a deactivation. It loads no
 offboarding job. The body has no job-linkage field and no
-`counts.unreferenced` field. A scheduled job in this checkout is
-`riauth offboard get`. The redacted job aggregate remains
-`GET /api/operations/offboarding` on the accepted Platform build.
+`counts.unreferenced` field. `riauth offboard get` reads one scheduled
+job. The redacted job aggregate is `GET /api/operations/offboarding`.
 
 Each listed item can carry `id`, `account_present`, `target_hidden`,
 `status`, `delivery_state`, `hold`, `hold_recognized`, `outcome`,
@@ -177,9 +166,9 @@ The aggregate omits stored error text, target URLs, remote and external
 identifiers, link material, leases, actors, resolution and dismissal
 records, dispatch-recovery payloads, and unlinked-create payloads. Those
 fields stay on `GET /api/provisioning/deactivations` for a caller with
-`provisioner.read` on the target and `user.read` on the account. In this
-checkout that list is `riauth provision deactivations`, the newest 1000
-rows, in [src/cli.rs](../src/cli.rs).
+`provisioner.read` on the target and `user.read` on the account.
+`riauth provision deactivations` lists the newest 1000 rows
+([src/cli.rs](../src/cli.rs)).
 
 ## Next action
 
@@ -247,11 +236,10 @@ rows.
 
 ## What this page did not run
 
-This slice compared the accepted sources above and wrote this procedure.
-It sent no request to the route. It called no connector and deployed no
-dashboard. It did not re-run the deactivation diagnostic tests recorded on
-the accepted tree, and it did not start PostgreSQL. Essentials still has no
-redacted aggregate. `doctor`, `/readyz`, `/livez`, and the existing
-Prometheus counters keep the behavior described above. The
-[A01 coverage inventory](roadmap/coverage-inventory.md) still describes D04
-at revision `96e23e2`.
+This page records the source behavior of the read. It sent no request to
+the route. It called no connector and deployed no dashboard. It did not
+re-run the deactivation diagnostic tests, and it did not start PostgreSQL.
+Essentials has no redacted aggregate for this route. `doctor`, `/readyz`,
+`/livez`, and the existing Prometheus counters keep the behavior described
+above. The [A01 coverage inventory](roadmap/coverage-inventory.md) still
+describes D04 at revision `96e23e2`.
