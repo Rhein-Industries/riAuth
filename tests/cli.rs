@@ -1199,6 +1199,33 @@ fn cli_invitation_writes_require_retry_binding() {
 }
 
 #[test]
+fn cli_signing_key_rotation_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let at = revision();
+    for args in [
+        vec!["rotate-key"],
+        vec!["--if-revision", &at, "rotate-key"],
+        vec!["--idempotency-key", "key-only", "rotate-key"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Signing-key rotation requires"));
+    }
+    let rotate = ["--if-revision", &at, "--idempotency-key", "cli-rotate-once", "rotate-key"];
+    let first = success(cli(&rotate));
+    assert!(first["kid"].as_str().is_some());
+    assert_eq!(success(cli(&rotate)), first);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, stale) = failure(cli(&["--if-revision", &at, "--idempotency-key", "cli-rotate-stale", "rotate-key"]));
+    assert_eq!(stale["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(events.as_array().unwrap().iter().filter(|event|
+        event["action"] == "signing_key.rotate" && event["target"] == first["kid"]).count(), 1);
+}
+
+#[test]
 fn cli_signing_key_configuration_requires_retry_binding_and_replays_once() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());

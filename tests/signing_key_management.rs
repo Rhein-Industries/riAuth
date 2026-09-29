@@ -41,19 +41,32 @@ async fn configure(
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
-async fn rotate(app: &axum::Router, token: &str, revision: u64, key: &str) -> (StatusCode, Value) {
+async fn rotate(
+    app: &axum::Router,
+    token: &str,
+    revision: Option<u64>,
+    key: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/api/keys/rotate")
+        .header("authorization", format!("Bearer {token}"));
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    let body = if let Some(body) = body {
+        request = request.header("content-type", "application/json");
+        Body::from(body.to_string())
+    } else {
+        Body::empty()
+    };
     let response = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/keys/rotate")
-                .header("authorization", format!("Bearer {token}"))
-                .header("if-match", format!("\"{revision}\""))
-                .header("idempotency-key", key)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(request.body(body).unwrap())
         .await
         .unwrap();
     let status = response.status();
@@ -79,12 +92,16 @@ async fn signing_key_rotation_replays_one_write_and_retains_previous_public_key(
     let before = f.core.jwks().unwrap();
     assert_eq!(before["keys"].as_array().unwrap().len(), 1);
 
-    let (status, _) = rotate(&app, &operator, at, "operator-cannot-rotate-key").await;
+    for (revision, key) in [(None, None), (Some(at), None), (None, Some("key-only"))] {
+        assert_eq!(rotate(&app, &f.admin, revision, key, None).await.0,
+            StatusCode::PRECONDITION_REQUIRED);
+    }
+    let (status, _) = rotate(&app, &operator, Some(at), Some("operator-cannot-rotate-key"), None).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(revision(), at);
     assert_eq!(f.core.jwks().unwrap(), before);
 
-    let request = || rotate(&app, &f.admin, at, "rotate-signing-key-once");
+    let request = || rotate(&app, &f.admin, Some(at), Some("rotate-signing-key-once"), None);
     let (status, first) = request().await;
     assert_eq!(status, StatusCode::OK);
     let kid = first["kid"].as_str().unwrap();
@@ -101,6 +118,14 @@ async fn signing_key_rotation_replays_one_write_and_retains_previous_public_key(
     assert_eq!(revision(), at + 1);
 
     assert_eq!(request().await, (StatusCode::OK, first.clone()));
+    assert_eq!(revision(), at + 1);
+    assert_eq!(f.core.jwks().unwrap(), after);
+    assert_eq!(rotate(&app, &f.admin, Some(at), Some("rotate-signing-key-once"),
+        Some(json!({"different":"body"}))).await.0, StatusCode::CONFLICT);
+    assert_eq!(rotate(&app, &f.admin, Some(at + 1), Some("rotate-signing-key-once"), None).await.0,
+        StatusCode::CONFLICT);
+    assert_eq!(rotate(&app, &f.admin, Some(at), Some("stale-rotation"), None).await.0,
+        StatusCode::CONFLICT);
     assert_eq!(revision(), at + 1);
     assert_eq!(f.core.jwks().unwrap(), after);
     let events = f.core.audit_events(&f.admin, 100).unwrap();

@@ -413,12 +413,7 @@ pub(crate) fn configure_signing_key(
 
 /// Authorize the current actor and rotate the signing key with its retirement
 /// window and scoped audit in the caller's mutation transaction.
-pub(crate) fn rotate_signing_key(
-    core: &Core,
-    tx: &Tx<'_>,
-    token: &str,
-    replacement: SigningKey,
-) -> Result<Value> {
+pub(crate) fn rotate_signing_key(core: &Core, tx: &Tx<'_>, token: &str) -> Result<Value> {
     let actor = core.management(tx, token, "key.rotate", "key/signing")?;
     let mut keys = keys(tx)?;
     keys.retired.retain(|key| key.expires_at > now());
@@ -439,7 +434,8 @@ pub(crate) fn rotate_signing_key(
         jwk: keys.active.jwk()?,
         expires_at,
     });
-    keys.active = replacement;
+    // The receipt lookup and live authority/capacity checks precede key generation.
+    keys.active = SigningKey::generate()?;
     tx.put("meta", "keys", &keys)?;
     crate::delegation::audit_scoped(
         tx,

@@ -475,7 +475,8 @@ pub enum Command {
         #[command(subcommand)]
         command: ReportCommand,
     },
-    /// Rotate the signing key; retain the previous public key during token expiry
+    /// Rotate the signing key; requires --idempotency-key and --if-revision
+    /// Retains the previous public key during token expiry.
     RotateKey,
     /// Manage Shared Signals streams. Inbound push URL is `{issuer}/api/ssf/events` with content type `application/secevent+jwt`.
     Ssf {
@@ -2224,6 +2225,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         }
         Command::Report { command } => export_report(&remote, &command).await?,
         Command::RotateKey => {
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!("Signing-key rotation requires --idempotency-key and --if-revision (from `riauth revision`)");
+            }
             remote
                 .call(Method::POST, "/api/keys/rotate", None, true)
                 .await?

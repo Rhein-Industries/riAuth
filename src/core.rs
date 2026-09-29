@@ -880,14 +880,20 @@ impl Core {
         })
     }
     pub fn rotate_key(&self, token: &str) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Signing-key rotation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.store.read(|tx| {
             self.management(tx, token, "key.rotate", "key/signing")
                 .map(|_| ())
         })?;
-        let replacement = SigningKey::generate()?;
-        self.mutation(token, |tx| {
-            crate::management::rotate_signing_key(self, tx, token, replacement)
-        })
+        self.mutation(token, |tx| crate::management::rotate_signing_key(self, tx, token))
     }
     pub fn cleanup(&self) -> Result<()> {
         let _timer = self.store.telemetry().cleanup.timer();

@@ -318,7 +318,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/provisioning/deactivations/{id}/resolve`, `/api/provisioning/jobs/{id}/resolve` | Record operator evidence (`observed`, `evidence`) for ambiguity no attempt can settle; `provisioner.sync` plus read access to the named account or item |
 | POST | `/api/provisioning/deactivations/{id}/dismiss` | Waive a held, failed or stale row with its exact `revision`, `reason` (`remote_absent` or `permanently_unverifiable`) and `evidence`; requires `Idempotency-Key`, `provisioner.sync`, `provisioner.read` on the target and `user.read` on the account |
 | GET, POST | `/api/keys` | List/import/generate signing-key domains; POST is bearer-only and requires `Idempotency-Key` and `If-Match: "<revision>"` |
-| POST | `/api/keys/rotate` | Authorized signing-key rotation |
+| POST | `/api/keys/rotate` | Authorized signing-key rotation; bearer-only, requires `Idempotency-Key` and `If-Match: "<revision>"`; exact retry returns the committed `kid` |
 | POST | `/api/state/plan` | Versioned manifest; redacted immutable plan |
 | GET | `/api/state/plans/{id}` | Same principal's plan and applied result |
 | POST | `/api/state/apply` | Exact plan, resolved `secrets` map and optional `run_id` |
