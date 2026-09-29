@@ -12,7 +12,7 @@ Behavior and the operator example live in [ldap-provider.md](../ldap-provider.md
 | --- | --- |
 | Check-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing`. This test is not `#[ignore]`, so that command includes it. The workflow text is not a result for this revision. |
 | This revision | `ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation` was not executed while this page was written. No Cargo command was run. |
-| Deployment peer | The test dials loopback with a certificate it just generated. It does not speak to Active Directory, OpenLDAP, `ldapsearch`, or an application directory client. |
+| Deployment peer | The ldap3 test dials loopback with a certificate it just generated. It does not speak to Active Directory. A separate ignored run, [scripts/test-ldap-provider.sh](../../scripts/test-ldap-provider.sh), points local OpenLDAP `ldapsearch` 2.7.1 at one STARTTLS listener. That run is recorded below. |
 
 ## Records the fixture creates
 
@@ -141,7 +141,29 @@ In-process tests in [src/assembly/ldap_server.rs](../../src/assembly/ldap_server
 
 Documented caps that this ldap3 test does not fill: 2,000 selected users, 4 MiB of search output, 128 connections per listener, eight per allowed peer, BER requests of 32 KiB, and 600 operations per minute per peer for category `ldap:{client_id}`. A full rate bucket ends the connection loop rather than returning a result code. Idle reads use a 60-second timeout. Filter depth is capped at 12 and filter nodes at 128.
 
-POSIX and Active Directory schema are not advertised. `sn` is the display name. `entryUUID` is the local user id. The test checks that the attribute is present and does not check its value. No third-party application was pointed at the listener.
+POSIX and Active Directory schema are not advertised. `sn` is the display name. `entryUUID` is the local user id. The ldap3 test checks that the attribute is present and does not check its value. The local `ldapsearch` run below is the third-party client pointed at this listener profile. Active Directory remains unverified.
+
+## Recorded local OpenLDAP ldapsearch
+
+[scripts/test-ldap-provider.sh](../../scripts/test-ldap-provider.sh) runs ignored [tests/ldap_provider_peer.rs](../../tests/ldap_provider_peer.rs) against an operator-supplied OpenLDAP `ldapsearch`. On Darwin, when `LDAPSEARCH` is unset, the script uses `$(brew --prefix openldap)/bin/ldapsearch`. The script does not start `slapd`, a system directory, or a download. The check job and the integration job do not call it.
+
+The recorded run used `/opt/homebrew/opt/openldap/bin/ldapsearch`. `ldapsearch -VV` printed:
+
+```
+ldapsearch: @(#) $OpenLDAP: ldapsearch 2.7.1 (Sep  8 2026 21:55:18) $
+	openldap
+	(LDAP library: OpenLDAP 20701)
+```
+
+`openssl version` was `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)`. The test minted a one-day RSA 2048 CA, `CN=localhost`, `CA:TRUE`, SAN `DNS:localhost` and `IP:127.0.0.1`, and a leaf with `CA:FALSE`, the same SAN, key usage `digitalSignature,keyEncipherment`, and extended key usage `serverAuth`. `ldapsearch` trusted that CA with `LDAPTLS_CACERT` and `LDAPTLS_REQCERT=hard`. The listener was one STARTTLS socket, `listen` `127.0.0.1:0`. That run bound `127.0.0.1:62030`. The agent token was a mode `600` file with no trailing newline, passed with `-y`. The token was not on the command line.
+
+Users `ldap-alice` and `ldap-bob` were durable members of `directory`. `ldap-outsider` was not. The client, base DN, and `ldap.search` permission match the ldap3 fixture above. Alice's TOTP enrollment is not part of this run. The command was:
+
+```
+ldapsearch -x -ZZ -H ldap://127.0.0.1:62030 -D cn=riauth-agent,dc=riauth,dc=test -y <token-file> -b dc=riauth,dc=test -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid
+```
+
+A file containing `wrong-service-token` made `ldapsearch` exit 49 and print `ldap_bind: Invalid credentials (49)`. No `uid` line was returned. The agent token then exited 0. The output contained two `# with pagedResults critical control: size=1` comments, one `uid` on each page, `uid: ldap-alice` and `uid: ldap-bob`, `# numEntries: 2`, and `result: 0 Success`. `ldap-outsider` was absent. After `update_user` set `ldap-bob` `enabled` to false, the same command exited 0 with one page, `uid: ldap-alice`, and `# numEntries: 1`. After `revoke_agent` for `ldap-reader`, the same token file made a new `ldapsearch` exit 49 and print `ldap_bind: Invalid credentials (49)`.
 
 ## Other D03 recipes
 
