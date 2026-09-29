@@ -2916,6 +2916,68 @@ async fn source_stage_callback_result_commits_failure_and_success_once() {
     );
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn stage_linked_user_missing_record_rejects_bound_request_without_code() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, false).await;
+    stage_client(&f, false);
+    let alice = f.user("alice");
+    let (request, _) = authorization(&f, Some("login"), None);
+    let prepared = f.core.authorization_prepare(Some(&alice), request).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    upstream
+        .callback(&f, &prepared["source_stage"], "subject-alice")
+        .await;
+    let key = digest(&format!(
+        "upstream\0{}\0subject-alice",
+        upstream.source.issuer
+    ));
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                &key,
+                &json!({
+                    "source":"upstream",
+                    "issuer":upstream.source.issuer,
+                    "subject":"subject-alice",
+                    "user_id":"removed-user"
+                }),
+            )
+        })
+        .unwrap();
+
+    let denied = f
+        .core
+        .source_stage_resume(&stage_id, &authorization_id, None)
+        .unwrap();
+    assert_eq!(denied["error"], "access_denied");
+    assert_eq!(denied["code_issued"], false);
+    assert!(!query(denied["redirect_uri"].as_str().unwrap()).contains_key("code"));
+    assert!(codes(&f).is_empty());
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stage["used"], true);
+    assert_eq!(stage["cancelled"], true);
+
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage already used"
+    );
+    f.assert_snapshot(&after);
+}
+
 #[tokio::test]
 async fn upstream_account_must_match_the_bound_user_and_link_table() {
     let f = Fixture::new();

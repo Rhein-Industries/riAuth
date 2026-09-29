@@ -4,8 +4,8 @@ use crate::{
     core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
-    model::{AuthenticationTransaction, Session},
-    source::{Login, SourceStage, suspension_hash},
+    model::{AuthenticationTransaction, Session, User},
+    source::{Link, Login, SourceStage, suspension_hash},
     store::Tx,
 };
 use serde_json::Value;
@@ -109,6 +109,15 @@ pub(crate) fn stage_resume_login(tx: &Tx<'_>, stage: &SourceStage) -> Result<Log
                 && !login.failed
         })
         .ok_or_else(|| Error::bad("Source stage login expired or is not bound"))
+}
+
+pub(crate) fn stage_linked_user(tx: &Tx<'_>, key: &str) -> Result<Option<User>> {
+    let link = tx.get::<Link>("source_links", key)?;
+    Ok(link
+        .as_ref()
+        .map(|link| tx.get::<User>("users", &link.user_id))
+        .transpose()?
+        .flatten())
 }
 
 impl Core {

@@ -93,6 +93,7 @@ pub use source_identity::validate_identity as source_validate_identity;
 mod source_stage;
 pub(crate) use source_stage::cleanup_expired_source_state;
 pub(crate) use source_stage::ensure_stage_request_available;
+pub(crate) use source_stage::stage_linked_user;
 pub(crate) use source_stage::stage_resume_login;
 pub(crate) use source_stage::stage_resume_session;
 pub(crate) use source_stage::verify_stage_start_login;

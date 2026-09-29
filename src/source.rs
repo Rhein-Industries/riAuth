@@ -862,15 +862,10 @@ impl Core {
             })));
         };
         let source = enabled(tx, &stage.source_id)?;
-        let link = tx.get::<Link>(
-            "source_links",
+        let linked_user = crate::assembly::stage_linked_user(
+            tx,
             &link_key(&source.id, &source.issuer, &identity.subject),
         )?;
-        let linked_user = link
-            .as_ref()
-            .map(|link| tx.get::<User>("users", &link.user_id))
-            .transpose()?
-            .flatten();
         let mismatch = stage
             .user_id
             .as_ref()
