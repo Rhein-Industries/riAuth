@@ -113,6 +113,7 @@ jobs:
             tar -xOzf "$archive" LICENSE | cmp - ../../LICENSE
             tar -xOzf "$archive" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
           done
+          python3 ../../scripts/check-installed-release-gate.py . "$RIAUTH_COMMIT" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: riauth-linux-${{ matrix.arch }}
