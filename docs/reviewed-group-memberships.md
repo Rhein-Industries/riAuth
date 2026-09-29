@@ -132,7 +132,16 @@ production client: TLS is required, the private CA is verified, and records
 use a keygen database key (`aes256gcm-v1`). The same execute, replay, stale
 If-Match, consumed proposal, and dependency-denial results are required. A
 missing key is refused as a format mismatch, and a different key cannot open
-the sealed records. Standby promotion and `pg_ctl` failover stay in
+the sealed records. That certificate step restarts the same primary. A later
+test stops the primary with `pg_ctl -m immediate` and promotes the disposable
+standby with `pg_ctl promote`. The membership connection lists both loopback
+ports, and riAuth's read-write target selection opens the promoted node. The
+executed membership, its `group.members.reviewed` and
+`reviewed_memberships.execute` audits, and the idempotency receipt are
+unchanged. The original If-Match replays that receipt. A different If-Match or
+a new key is refused. This is a loopback drill with trust authentication. It
+does not elect a leader, measure a recovery objective, or cover failback,
+network partitions, or PITR. The broader fenced failover fixture remains in
 `tests/postgres.rs`.
 
 The shared management writer refuses unreviewed privileged membership changes

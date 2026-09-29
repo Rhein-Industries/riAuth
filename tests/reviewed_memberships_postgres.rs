@@ -3,7 +3,9 @@
 //! pool and opens another against that same database. The HTTP execute race
 //! uses that reopen. One test loads a loopback server certificate and opens
 //! its database with the production TLS client and a keygen database key.
-//! Standby promotion and `pg_ctl` failover stay in `tests/postgres.rs`.
+//! That certificate step restarts the same primary. A later test stops the
+//! primary and promotes the standby. The promotion is a loopback drill, not
+//! production HA.
 #![cfg(feature = "test-support")]
 
 use axum::{
@@ -29,6 +31,7 @@ use std::{
     path::PathBuf,
     process::Command,
     sync::Arc,
+    time::{Duration, Instant},
 };
 use tower::ServiceExt;
 
@@ -37,6 +40,7 @@ const PASSWORD: &str = "test-password-for-fixtures-only";
 struct Disposable {
     control: RefCell<postgres::Client>,
     name: String,
+    standby_port: Option<u16>,
 }
 
 impl Disposable {
@@ -45,6 +49,17 @@ impl Disposable {
     }
 
     fn provision(ca_file: Option<PathBuf>) -> (tempfile::TempDir, PostgresConfig, Self) {
+        Self::open_cluster(ca_file, false)
+    }
+
+    fn provision_replicated() -> (tempfile::TempDir, PostgresConfig, Self) {
+        Self::open_cluster(None, true)
+    }
+
+    fn open_cluster(
+        ca_file: Option<PathBuf>,
+        replicated: bool,
+    ) -> (tempfile::TempDir, PostgresConfig, Self) {
         let root = PathBuf::from(
             std::env::var_os("RIAUTH_TEST_PG_ROOT").expect("use scripts/test-postgres.sh"),
         )
@@ -89,7 +104,46 @@ impl Disposable {
         control
             .batch_execute(&format!("CREATE DATABASE {name} TEMPLATE template0"))
             .unwrap();
-        dir_from_control(control, name, port, ca_file)
+        let standby_port = if replicated {
+            assert!(
+                ca_file.is_none(),
+                "the promotion drill uses the local unencrypted client"
+            );
+            let ports = published.get_ports();
+            assert_eq!(
+                ports.len(),
+                2,
+                "the runner publishes a primary port and a standby port"
+            );
+            let standby_port = ports[1];
+            assert_ne!(port, standby_port);
+            let mut standby = postgres::Config::new();
+            let mut standby = standby
+                .host("127.0.0.1")
+                .port(standby_port)
+                .user("riauth_test")
+                .dbname("postgres")
+                .connect(postgres::NoTls)
+                .unwrap();
+            let actual: String = standby
+                .query_one("SHOW data_directory", &[])
+                .unwrap()
+                .get(0);
+            assert_eq!(
+                PathBuf::from(actual).canonicalize().unwrap(),
+                root.join("standby").canonicalize().unwrap(),
+                "Refusing a standby outside the disposable cluster"
+            );
+            let recovery: bool = standby
+                .query_one("SELECT pg_is_in_recovery()", &[])
+                .unwrap()
+                .get(0);
+            assert!(recovery, "the standby was already promoted");
+            Some(standby_port)
+        } else {
+            None
+        };
+        dir_from_control(control, name, port, ca_file, standby_port)
     }
 
     fn product_sessions(&self) -> Vec<(bool, Option<String>)> {
@@ -138,6 +192,92 @@ impl Disposable {
             .get(0);
         (encoding, value)
     }
+
+    fn identity(&self) -> (u16, bool) {
+        let mut control = self.control.borrow_mut();
+        let port: i32 = control
+            .query_one("SELECT inet_server_port()", &[])
+            .unwrap()
+            .get(0);
+        let recovery: bool = control
+            .query_one("SELECT pg_is_in_recovery()", &[])
+            .unwrap()
+            .get(0);
+        (port as u16, recovery)
+    }
+
+    fn wait_caught_up(&self) {
+        for _ in 0..100 {
+            let row = self
+                .control
+                .borrow_mut()
+                .query_opt(
+                    "SELECT state, sent_lsn::text, replay_lsn::text FROM pg_stat_replication WHERE application_name = 'riauth_test_standby'",
+                    &[],
+                )
+                .unwrap();
+            if let Some(row) = row {
+                let state: String = row.get(0);
+                let sent: Option<String> = row.get(1);
+                let replay: Option<String> = row.get(2);
+                if state == "streaming" && sent.is_some() && sent == replay {
+                    eprintln!("standby replay caught up at {}", sent.unwrap_or_default());
+                    return;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        panic!("standby did not replay the membership commit before promotion");
+    }
+
+    fn standby_has_database(&self, port: u16) {
+        let mut standby = postgres::Config::new();
+        let mut standby = standby
+            .host("127.0.0.1")
+            .port(port)
+            .user("riauth_test")
+            .dbname("postgres")
+            .connect(postgres::NoTls)
+            .unwrap();
+        let recovery: bool = standby
+            .query_one("SELECT pg_is_in_recovery()", &[])
+            .unwrap()
+            .get(0);
+        assert!(recovery, "standby was writable before promotion");
+        let visible: bool = standby
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)",
+                &[&self.name],
+            )
+            .unwrap()
+            .get(0);
+        assert!(
+            visible,
+            "standby did not contain the membership database before promotion"
+        );
+    }
+
+    fn retarget(&self, port: u16) {
+        let mut client = postgres::Config::new();
+        let mut client = client
+            .host("127.0.0.1")
+            .port(port)
+            .user("riauth_test")
+            .dbname("postgres")
+            .connect(postgres::NoTls)
+            .unwrap();
+        let recovery: bool = client
+            .query_one("SELECT pg_is_in_recovery()", &[])
+            .unwrap()
+            .get(0);
+        assert!(!recovery, "promoted standby is still in recovery");
+        let actual: i32 = client
+            .query_one("SELECT inet_server_port()", &[])
+            .unwrap()
+            .get(0);
+        assert_eq!(actual as u16, port);
+        *self.control.borrow_mut() = client;
+    }
 }
 
 fn dir_from_control(
@@ -145,14 +285,21 @@ fn dir_from_control(
     name: String,
     port: u16,
     ca_file: Option<PathBuf>,
+    standby_port: Option<u16>,
 ) -> (tempfile::TempDir, PostgresConfig, Disposable) {
     let dir = tempfile::tempdir().unwrap();
     let connection = dir.path().join("connection");
-    let text = match &ca_file {
-        Some(_) => format!("host=127.0.0.1 port={port} dbname={name} user=riauth_test\n"),
-        None => {
+    let text = match (ca_file.as_ref(), standby_port) {
+        (None, Some(standby_port)) => format!(
+            "host=127.0.0.1,127.0.0.1 port={port},{standby_port} dbname={name} user=riauth_test sslmode=disable\n"
+        ),
+        (Some(_), None) => {
+            format!("host=127.0.0.1 port={port} dbname={name} user=riauth_test\n")
+        }
+        (None, None) => {
             format!("host=127.0.0.1 port={port} dbname={name} user=riauth_test sslmode=disable\n")
         }
+        (Some(_), Some(_)) => panic!("the promotion drill does not use the TLS client"),
     };
     riauth::config::write_private(&connection, text.as_bytes(), false).unwrap();
     let local_unencrypted = ca_file.is_none();
@@ -167,6 +314,7 @@ fn dir_from_control(
         Disposable {
             control: RefCell::new(control),
             name,
+            standby_port,
         },
     )
 }
@@ -208,6 +356,17 @@ struct Harness {
 impl Harness {
     fn new() -> Self {
         let (dir, postgres, database) = Disposable::create();
+        Self::boot(dir, postgres, database)
+    }
+
+    /// Both loopback ports. The product client keeps `target_session_attrs=read-write`,
+    /// so a later open skips a closed primary and uses the promoted standby.
+    fn replicated() -> Self {
+        let (dir, postgres, database) = Disposable::provision_replicated();
+        Self::boot(dir, postgres, database)
+    }
+
+    fn boot(dir: tempfile::TempDir, postgres: PostgresConfig, database: Disposable) -> Self {
         let mut config = Config {
             data_dir: dir.path().join("data"),
             postgres: Some(postgres),
@@ -345,6 +504,71 @@ impl Harness {
             _dir,
             _database,
         }
+    }
+
+    /// Stop the former primary, promote the standby, and open the same database
+    /// on the promoted port. This is not a restart of the primary.
+    fn promote(self) -> Self {
+        let Self {
+            core,
+            admin,
+            _dir,
+            _database,
+        } = self;
+        let config = core.config.clone();
+        assert!(config.reviewed_membership_groups.contains("privileged"));
+        let standby = _database
+            .standby_port
+            .expect("promotion requires both published ports");
+        let (primary, recovery) = _database.identity();
+        assert!(
+            !recovery,
+            "refusing to promote while the writer is already a standby"
+        );
+        assert_ne!(primary, standby);
+        _database.wait_caught_up();
+        _database.standby_has_database(standby);
+        drop(core);
+        let started = Instant::now();
+        fence_primary_and_promote_standby();
+        assert_port_closed(primary);
+        _database.retarget(standby);
+        let core = open_promoted(config);
+        let harness = Self {
+            core,
+            admin,
+            _dir,
+            _database,
+        };
+        harness.assert_product_on(standby, false);
+        assert_port_closed(primary);
+        eprintln!(
+            "fenced primary port {primary} stopped and standby port {standby} promoted in {} ms",
+            started.elapsed().as_millis()
+        );
+        harness
+    }
+
+    fn assert_product_on(&self, port: u16, recovery: bool) {
+        let database = &self._database;
+        let sessions = self
+            .core
+            .store
+            .read(|_| {
+                let sessions = database.product_sessions();
+                assert!(
+                    !sessions.is_empty(),
+                    "product pool has no session on port {port}"
+                );
+                Ok(sessions.len())
+            })
+            .unwrap();
+        let (actual, in_recovery) = self._database.identity();
+        assert_eq!(actual, port, "control connection is on an unexpected port");
+        assert_eq!(in_recovery, recovery);
+        eprintln!(
+            "membership writer port={actual} recovery={in_recovery} product_sessions={sessions}"
+        );
     }
 }
 
@@ -1736,5 +1960,159 @@ fn postgres_encrypted_reviewed_membership_replays_across_reopen() {
     assert_eq!(
         err.message,
         "Encrypted data authentication failed: wrong key or damaged data"
+    );
+}
+
+fn fence_primary_and_promote_standby() {
+    let root = PathBuf::from(
+        std::env::var_os("RIAUTH_TEST_PG_ROOT").expect("use scripts/test-postgres.sh"),
+    );
+    let ctl = PathBuf::from(
+        std::env::var_os("RIAUTH_TEST_PG_CTL").expect("use scripts/test-postgres.sh"),
+    );
+    let stopped = Command::new(&ctl)
+        .arg("-D")
+        .arg(root.join("primary"))
+        .args(["stop", "-m", "immediate", "-w"])
+        .output()
+        .unwrap();
+    assert!(
+        stopped.status.success(),
+        "pg_ctl stop failed: {}\n{}",
+        String::from_utf8_lossy(&stopped.stderr),
+        std::fs::read_to_string(root.join("primary.log")).unwrap_or_default()
+    );
+    let promoted = Command::new(&ctl)
+        .arg("-D")
+        .arg(root.join("standby"))
+        .args(["promote", "-w"])
+        .output()
+        .unwrap();
+    assert!(
+        promoted.status.success(),
+        "pg_ctl promote failed: {}\n{}",
+        String::from_utf8_lossy(&promoted.stderr),
+        std::fs::read_to_string(root.join("standby.log")).unwrap_or_default()
+    );
+}
+
+fn assert_port_closed(port: u16) {
+    let mut config = postgres::Config::new();
+    config
+        .host("127.0.0.1")
+        .port(port)
+        .user("riauth_test")
+        .dbname("postgres")
+        .connect_timeout(Duration::from_secs(2));
+    match config.connect(postgres::NoTls) {
+        Ok(_) => panic!("former primary on port {port} still accepts connections"),
+        Err(error) => eprintln!("former primary port {port} is closed: {error}"),
+    }
+}
+
+fn open_promoted(config: Config) -> Core {
+    let mut last = String::new();
+    for _ in 0..30 {
+        match Core::open(config.clone()) {
+            Ok(core) => return core,
+            Err(error) => {
+                last = error.message;
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+    panic!("promoted standby did not accept the membership pool: {last}");
+}
+
+fn http_execute_once(
+    h: &Harness,
+    executor: &str,
+    change: &Value,
+    live: u64,
+    members: &BTreeSet<String>,
+    key: &str,
+) -> WonExecute {
+    let path = format!("/api/group-membership-changes/{}/execute", id(change));
+    let body = json!({"digest": change["digest"]});
+    let before_receipts = receipt_count(h);
+    let before_reviewed = reviewed_writes(h);
+    let app = riauth::api::router(h.core.clone());
+    let (status, winning_body) = drive(call(
+        &app,
+        "POST",
+        &path,
+        executor,
+        body.clone(),
+        Some(live),
+        Some(key),
+    ));
+    assert_eq!(status, StatusCode::OK, "{winning_body}");
+    assert_eq!(winning_body["status"], "executed");
+    assert_eq!(winning_body["proposal"]["id"], id(change));
+    assert_eq!(
+        winning_body["proposal"]["base_revision"].as_u64().unwrap(),
+        change["proposal"]["base_revision"].as_u64().unwrap()
+    );
+    assert_eq!(&members_of(h), members);
+    assert_eq!(execute_audits(h, id(change)), 1);
+    assert_eq!(reviewed_writes(h), before_reviewed + 1);
+    assert_eq!(receipt_count(h), before_receipts + 1);
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        executor,
+        body.clone(),
+        Some(live),
+        Some(key),
+    ));
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed, winning_body);
+    assert_eq!(receipt_count(h), before_receipts + 1);
+    drop(app);
+    WonExecute {
+        path,
+        body,
+        winning_key: key.to_owned(),
+        winning_body,
+    }
+}
+
+/// Runs last. Stopping the primary leaves the shared cluster without its
+/// original writer, so this must stay after the other ignored tests.
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_z_fenced_standby_promotion_replays_reviewed_membership() {
+    let h = Harness::replicated();
+    let standby = h._database.standby_port.expect("both published ports");
+    let (primary, _) = h._database.identity();
+    h.assert_product_on(primary, false);
+    let reviewer = administrator(&h, "reviewer");
+    let executor = administrator(&h, "executor");
+    let member_id = user_id(&h, "member");
+    let peer_id = user_id(&h, "peer");
+    h.core.create_group(&h.admin, "privileged").unwrap();
+    let change = approved(&h, &reviewer, &["member", "peer"]);
+    let base = change["proposal"]["base_revision"].as_u64().unwrap();
+    user_id(&h, "unrelated");
+    let live = revision(&h);
+    assert!(live > base);
+    let before_receipts = receipt_count(&h);
+    let members = BTreeSet::from([member_id, peer_id]);
+    let won = http_execute_once(&h, &executor, &change, live, &members, "promote-once");
+    let h = h.promote();
+    assert_eq!(members_of(&h), members);
+    assert_eq!(execute_audits(&h, id(&change)), 1);
+    assert_eq!(reviewed_writes(&h), 1);
+    assert_eq!(receipt_count(&h), before_receipts + 1);
+    replay_won(&h, &executor, &won, live, base, "promote");
+    assert_eq!(members_of(&h), members);
+    assert_eq!(execute_audits(&h, id(&change)), 1);
+    assert_eq!(reviewed_writes(&h), 1);
+    assert_eq!(receipt_count(&h), before_receipts + 1);
+    eprintln!(
+        "promoted standby port {standby} replayed membership receipt {} with {} members",
+        won.winning_key,
+        members.len()
     );
 }

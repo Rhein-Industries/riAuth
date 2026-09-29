@@ -4,10 +4,11 @@ set -euo pipefail
 riauth_pg_bin="${PG_BIN:-$(dirname "$(command -v initdb)")}"
 riauth_cargo="${CARGO:-cargo}"
 riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
-# reviewed_memberships_postgres uses the primary database only. Its ignored
-# tests include the HTTP execute race, a pool reopen, and one production TLS
-# database with a keygen record key. That test restarts the primary to load
-# its server certificate. Standby promotion and pg_ctl failover stay outside it.
+# reviewed_memberships_postgres uses this cluster. Its ignored tests include
+# the HTTP execute race, a pool reopen, one production TLS database, and one
+# fenced standby promotion after the other tests. The TLS test restarts the
+# primary in place. The promotion test stops that primary and promotes the
+# standby. That promotion is a loopback drill, not production HA.
 case "$riauth_pg_target" in
   postgres|q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres) ;;
   *) printf 'Unsupported PostgreSQL test target: %s\n' "$riauth_pg_target" >&2; exit 2 ;;
