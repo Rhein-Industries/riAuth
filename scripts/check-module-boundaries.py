@@ -364,11 +364,24 @@ def main() -> None:
             plan_get = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_get")
             if plan_get is None or re.search(r"\.\s*store\b|\bTx\b|\btx\b", plan_get):
                 errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")
+            plan_internal = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_internal")
+            if (
+                plan_internal is None
+                or not re.search(r"\bcloud_snapshot_actor_revision\s*\(", plan_internal)
+                or re.search(r"let\s*\(\s*actor\s*,\s*revision\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", plan_internal)
+            ):
+                errors.append("src/cloud_directory.rs: snapshot actor/revision read belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
                 errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
             cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")
             if cleanup is None or re.search(r"\bmaintenance_page\s*::\s*<\s*Plan\s*>", cleanup):
                 errors.append("src/cloud_directory.rs: reviewed-plan retention belongs in assembly")
+            if (
+                cleanup is None
+                or not re.search(r"\bcloud_snapshot_cleanup\s*\(", cleanup)
+                or re.search(r"\bmaintenance_page\s*::\s*<\s*Cloud(?:Snapshot|Apply)Draft\s*>", cleanup)
+            ):
+                errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

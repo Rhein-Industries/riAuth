@@ -39,9 +39,9 @@ const GOOGLE_USER_READ: &str = "https://www.googleapis.com/auth/admin.directory.
 const GOOGLE_GROUP_READ: &str = "https://www.googleapis.com/auth/admin.directory.group.readonly";
 const GOOGLE_MEMBER_READ: &str =
     "https://www.googleapis.com/auth/admin.directory.group.member.readonly";
-const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
-const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
-const CLOUD_APPLY_SNAPSHOTS: &str = "cloud_directory_apply_snapshots";
+pub(crate) const WORKSPACE_SNAPSHOTS: &str = "workspace_directory_snapshots";
+pub(crate) const ENTRA_SNAPSHOTS: &str = "entra_directory_snapshots";
+pub(crate) const CLOUD_APPLY_SNAPSHOTS: &str = "cloud_directory_apply_snapshots";
 const MAX_GRAPH_CURSOR_BYTES: usize = 8192;
 
 pub use crate::cloud_directory_types::{
@@ -1240,14 +1240,14 @@ impl CloudSnapshot {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct CloudSnapshotDraft {
+pub(crate) struct CloudSnapshotDraft {
     id: String,
     directory: String,
     actor: String,
     revision: u64,
     fingerprint: String,
     authority_digest: String,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
     sequence: u64,
     snapshot: CloudSnapshot,
 }
@@ -1295,10 +1295,10 @@ impl CloudSnapshotDraft {
 /// The apply crawl is separate from planning. Its cursor is tied to the exact
 /// reviewed plan, so a new plan cannot inherit pages from an older one.
 #[derive(Clone, Serialize, Deserialize)]
-struct CloudApplyDraft {
+pub(crate) struct CloudApplyDraft {
     plan_id: String,
     review: ReviewBinding,
-    draft: CloudSnapshotDraft,
+    pub(crate) draft: CloudSnapshotDraft,
 }
 
 impl CloudApplyDraft {
@@ -2052,10 +2052,7 @@ impl Core {
     ) -> Result<Value> {
         let settings = self.cloud_settings(kind, id)?;
         let bucket = settings.snapshot_bucket();
-        let (actor, revision) = self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
-        })?;
+        let (actor, revision) = self.cloud_snapshot_actor_revision(token, &settings.resource())?;
         let (entries, snapshot_prior) = {
             let key = digest(&settings.resource());
             let (prior, mut draft, restarted, authority_digest) = self.store.read(|tx| {
@@ -2427,19 +2424,92 @@ impl Core {
 }
 
 pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
-        for (id, draft) in tx.maintenance_page::<CloudSnapshotDraft>(bucket)? {
-            if draft.expires_at <= at {
-                tx.delete(bucket, &id)?;
-            }
-        }
-    }
-    for (id, apply) in tx.maintenance_page::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS)? {
-        if apply.draft.expires_at <= at {
-            tx.delete(CLOUD_APPLY_SNAPSHOTS, &id)?;
-        }
-    }
+    crate::assembly::cloud_snapshot_cleanup(tx, at)?;
     crate::assembly::cloud_plan_cleanup(tx, at)?;
     crate::assembly::cloud_budget_cleanup(tx, at)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Store;
+
+    fn draft(expires_at: u64) -> CloudSnapshotDraft {
+        CloudSnapshotDraft {
+            id: "draft".into(),
+            directory: "corp".into(),
+            actor: "admin".into(),
+            revision: 1,
+            fingerprint: "source".into(),
+            authority_digest: "authority".into(),
+            expires_at,
+            sequence: 0,
+            snapshot: CloudSnapshot {
+                phase: 0,
+                cursor: None,
+                pagination: Pagination::new(1, 1),
+                phase_ids: BTreeSet::new(),
+                users: BTreeMap::new(),
+                selected: BTreeMap::new(),
+                chosen: BTreeMap::new(),
+                source_bytes: 0,
+                pages: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn snapshot_cleanup_keeps_unexpired_plan_and_apply_drafts() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(&directory.path().join("state.redb")).unwrap();
+        store
+            .write(|tx| {
+                for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
+                    tx.put(bucket, "expired", &draft(10))?;
+                    tx.put(bucket, "retained", &draft(11))?;
+                }
+                for (key, expires_at) in [("expired", 10), ("retained", 11)] {
+                    tx.put(
+                        CLOUD_APPLY_SNAPSHOTS,
+                        key,
+                        &CloudApplyDraft {
+                            plan_id: "plan".into(),
+                            review: ReviewBinding::default(),
+                            draft: draft(expires_at),
+                        },
+                    )?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        store.write(|tx| cleanup(tx, 10)).unwrap();
+        for bucket in [WORKSPACE_SNAPSHOTS, ENTRA_SNAPSHOTS] {
+            assert!(
+                store
+                    .get::<CloudSnapshotDraft>(bucket, "expired")
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                store
+                    .get::<CloudSnapshotDraft>(bucket, "retained")
+                    .unwrap()
+                    .is_some()
+            );
+        }
+        assert!(
+            store
+                .get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, "expired")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, "retained")
+                .unwrap()
+                .is_some()
+        );
+    }
 }
