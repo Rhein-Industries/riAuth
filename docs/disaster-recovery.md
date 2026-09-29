@@ -307,9 +307,11 @@ No riAuth command can repair these:
   the live store still opens, follow
   [Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving).
   That section generates a new backup key and takes a new archive through the
-  serving API. It was not executed from this page. When that process is
-  already down and the database key is gone as well, the old archives stay
-  sealed with the lost backup key. That case is the unrecoverable row.
+  serving API. Its disposable redb drill is recorded in
+  [Backup key lost, store still serving](operational-recovery.md#backup-key-lost-store-still-serving).
+  When that process is already down and the database key is gone as well, the
+  old archives stay sealed with the lost backup key. That case is the
+  unrecoverable row.
 - **Database key lost, for an encrypted store.** The live store, copied redb files, and
   every PostgreSQL backup, dump or PITR of that store are unreadable. Recovery is
   possible only from an archive and its backup key. If both keys are lost, the

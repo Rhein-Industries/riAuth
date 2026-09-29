@@ -231,7 +231,10 @@ stay in their own sections. Pointing `restore --out` at the live data
 directory is outside this section. An archive sealed with the lost key
 stays unreadable under the new key. The recorded R05 drills saw a wrong
 backup key fail as `invalid_request`, exit 2, with the output path absent.
-This section did not repeat that run.
+The disposable redb drill below saw the same exit and code when the first
+archive was opened with the replacement key. The message was
+`Encrypted data authentication failed: wrong key or damaged data`, and the
+output path was absent.
 
 A published archive is checked from the CLI envelope
 `schema_version` `riauth.cli/v1`, `ok` true, and `data.verified` true,
@@ -240,10 +243,11 @@ A published archive is checked from the CLI envelope
 `data.stream_id`, `data.frames`, `data.records`, and `data.bytes` name
 that file. `keygen` with `--json` returns `data.created` true and
 `data.key_file`. Those fields show that this client authenticated the new
-stream. They do not show that a second directory was restored, that a user
-signed in, or that an external service answered. A scratch restore of
-`$new_archive` with `$new_backup_key` stays in
-[Archive restore](#archive-restore) and was not run for this section.
+stream. A scratch restore is a separate command. The disposable redb drill
+below restored the replacement archive into a new directory, left
+`serving_allowed` false, and stopped before `recovery complete` and before
+any login on that restored issuer. The operator steps for that restore stay
+in [Archive restore](#archive-restore).
 
 Confirm the serving store, then stop if this caller cannot read it:
 
@@ -296,13 +300,71 @@ key_mode "$new_backup_key"
 riauth --config "$live_config" --session-file "$session_file" --json --request-timeout "$request_timeout" backup --key-file "$new_backup_key" --out "$new_archive"
 ```
 
-This section sent no request, generated no key, and took no backup. It is
-not a record of a key-loss incident.
+### Disposable redb drill
+
+On 2026-09-29 a loopback drill ran these checks against one temporary
+encrypted redb store. The redacted observations are
+[d04-backup-key-redb-2026-09-29.json](roadmap/evidence/d04-backup-key-redb-2026-09-29.json).
+The binaries were the already built Platform debug `riauth` (SHA-256
+`d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7`) and
+`riauth-maintenance` (SHA-256
+`aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a`).
+The drill removed the temporary store, keys, archives, session, and its
+own server process on exit.
+
+- `riauth --json capabilities` reported edition `platform`, version
+  `0.1.1`, and build features `essentials` and `platform`.
+- Init used a database key and username `drill-admin`. `riauth serve`
+  listened on `127.0.0.1`, and `/readyz` returned 200. Login and `doctor`
+  succeeded. `doctor` reported `healthy` true, `storage` `redb`,
+  `encrypted_at_rest` true, one user, one enabled administrator, store
+  schema 3, configuration revision 0, and issuer
+  `http://127.0.0.1:53106`.
+- `riauth keygen` created the database key and the first backup key, each
+  with `data.created` true. The first `backup` returned `ok` true,
+  `data.verified` true, `data.encrypted` true, `data.api_version`
+  `riauth.backup/v3`, that same issuer, stream `pCzKhM7QAUH8poznEGPhDA`,
+  3 frames, 20 records, and 12566 bytes.
+- Removing only the first backup key left the database key, the live
+  `riauth.redb`, and the first archive in place. `doctor` succeeded again
+  with the same issuer, counts, and revision 0.
+- `riauth-maintenance keygen` created the replacement key with
+  `data.created` true. The second `backup` passed `--request-timeout 120`
+  and returned `ok` true, `data.verified` true, `data.encrypted` true,
+  `data.api_version` `riauth.backup/v3`, the same issuer, stream
+  `UuFttJwvdA4RBUNEXjc1UA`, 3 frames, 22 records, and 13460 bytes.
+- `audit --limit 50` listed `operations.backup.started` and
+  `operations.backup.completed` for both stream ids, with targets under
+  `backup/`. Started details carried `max_archive_bytes` 4294967296.
+  Completed details carried `frames`, `records`, `bytes`, and
+  `created_at`. The live configuration revision stayed 0. The live redb
+  file kept the same inode.
+- Restore of the first archive with the replacement key and the original
+  database key exited 2 with `invalid_request`, HTTP 400, and message
+  `Encrypted data authentication failed: wrong key or damaged data`. The
+  output path was absent.
+- Restore of the replacement archive with the replacement key and the
+  original database key into a new directory returned `restored` true,
+  `verified` true, `storage` `redb`, `encrypted_at_rest` true,
+  `serving_allowed` false, and recovery id
+  `0dd34c51-0980-4a34-b227-47002097e8bf` (`riauth.recovery/v1`). It
+  invalidated one session and one session token and advanced one user
+  epoch. That directory contained `riauth.toml` and `data/riauth.redb`.
+  `recovery status` on that config reported the same pending id, schema
+  3, backend `redb`, and `serving_allowed` false.
+- `doctor` on the original server still succeeded after the scratch
+  restore, with the same issuer and counts.
+
+The drill stopped with the restored serving gate closed. `recovery complete`,
+a restored `serve`, and a login on the restored issuer remain open, together
+with database-key removal, the Essentials binary, PostgreSQL, escrow, a
+relying party, and Compose, systemd, or Windows layouts. Archive frames were
+not decoded.
 
 ## Archive restore
 
 Use an archive you already have. `riauth backup` needs a running server and
-an authenticated CLI session. The redb drill recorded a sessionless backup
+an authenticated CLI session. The R05 redb drill recorded a sessionless backup
 as `operation_failed` (exit 1) with no output file.
 
 Directory restore checks the archive, the backup key, and the new output
@@ -644,15 +706,15 @@ reconciliation; run `riauth recovery status`.
 
 | Failure | Result | What to do |
 | --- | --- | --- |
-| Wrong backup key, damaged v3 archive, unsupported schema, or issuer mismatch | `invalid_request`, exit 2. v3 authentication finishes before `--out` is created. The redb drill saw this for a wrong key and a tampered archive, with the output path absent. The PostgreSQL drill saw a wrong key leave the empty target empty. | Correct the key or choose another archive. The source store is unchanged. |
-| `--out` already exists | `conflict`, exit 5, `Restore requires a new output directory`. The redb drill kept its marker file. | Pick a new path. |
+| Wrong backup key, damaged v3 archive, unsupported schema, or issuer mismatch | `invalid_request`, exit 2. v3 authentication finishes before `--out` is created. The R05 redb drill saw this for a wrong key and a tampered archive, with the output path absent. The lost-backup-key redb drill saw the same exit and code, with the output path absent, for its first archive opened with the replacement key. The PostgreSQL drill saw a wrong key leave the empty target empty. | Correct the key or choose another archive. The source store is unchanged. |
+| `--out` already exists | `conflict`, exit 5, `Restore requires a new output directory`. The R05 redb drill kept its marker file. | Pick a new path. |
 | Parent of `--out` is missing | `invalid_request`, exit 2. The message includes the I/O error. | Create the parent, then retry. |
 | PostgreSQL target already has records, or another riAuth client is connected | `conflict`, exit 5. The occupied-database drill kept the source serving and wrote no output directory. | Restore into an empty database after every node is stopped. |
 | Device-trust file missing or invalid | `invalid_request`, exit 2, `Invalid backup configuration`, before `--out` exists. | Place the file at the archived path and retry. |
 | Reopen fails after import (RADIUS material, edition, issuer, or schema) | The import can remain, with `.riauth.restore-pending.toml` and no published `riauth.toml`. | Discard `$new_output`. Drop and recreate the PostgreSQL database. Do not serve that target. |
-| `serve` while the gate is pending | `conflict`, exit 5. The message names `riauth recovery status`. Both drills saw exit 5 with the listener closed. | Review the pending id, then `recovery complete`. |
-| Wrong `--recovery-id` | `conflict`, exit 5. Both drills left the gate in place. | Read `recovery status` again and use that id. |
-| `--persistent-credentials-reconciled` omitted | `invalid_request`, exit 2, before any write. Both drills left the gate in place. | Review the credential classes, then repeat the command with the flag. |
+| `serve` while the gate is pending | `conflict`, exit 5. The message names `riauth recovery status`. Both R05 drills saw exit 5 with the listener closed. | Review the pending id, then `recovery complete`. |
+| Wrong `--recovery-id` | `conflict`, exit 5. Both R05 drills left the gate in place. | Read `recovery status` again and use that id. |
+| `--persistent-credentials-reconciled` omitted | `invalid_request`, exit 2, before any write. Both R05 drills left the gate in place. | Review the credential classes, then repeat the command with the flag. |
 | `serve` with an unreadable SMTP password file | `invalid_request`, exit 2, `SMTP configuration unusable`, before listeners start. | Replace the file. The recovery gate is unchanged. |
 | Break-glass refusal listed above | `conflict` or `invalid_request`. The account write rolls back. | Choose another password, or add `--reset-mfa` only when that refusal is the one you intend. |
 
@@ -667,14 +729,16 @@ rollback of a migrated store stays in
 
 ## Recorded local drills
 
-These files are observations from 2026-09-29. This task did not regenerate
-them. Both used a disposable Platform binary, generated their own keys and
-accounts, and removed them on exit. Neither opened a deployment store.
+These files are observations from 2026-09-29. The lost-backup-key drill
+added its own file and left the two R05 files as they were. Each drill used
+a disposable store, generated its own keys and accounts, and removed them
+on exit. None opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
 | [r05-local-2026-09-29.json](roadmap/evidence/r05-local-2026-09-29.json) | Disposable localhost redb. Binary SHA-256 `c125134b04154c39d58f953342cc20c2b50b512ebfc58e6fa6cf240a84aa2400`. | 16 checks passed. Wrong key and tampered archive: `invalid_request`, exit 2, output absent. Existing target: `conflict`, exit 5, marker kept. Restore invalidated 2 sessions, `serving_allowed` false, recovery id `cee9065f-38c1-457a-9737-3626de1cd44a`. After completion the restored service returned 200 for readiness, discovery, and JWKS, and accepted a fresh password login. |
 | [r05-postgres-local-2026-09-29.json](roadmap/evidence/r05-postgres-local-2026-09-29.json) | One temporary loopback PostgreSQL 16.14 cluster. Binary SHA-256 `8e26d768ce419a6b31fc22bd517aaf7b07c359a74fc5801990b1b33271333ffa`. | 16 checks passed. Archive restore into an empty database. Database stopped under the live process: liveness 200, readiness 503, login `storage_unavailable` exit 6. Wrong key: `invalid_request`, exit 2, target empty. Occupied source: `conflict`, exit 5, source still serving. Restore invalidated 2 sessions, recovery id `32365f9c-350f-4c7e-87ec-f9c77118677b`. After completion a fresh login and the health checks succeeded. |
+| [d04-backup-key-redb-2026-09-29.json](roadmap/evidence/d04-backup-key-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7`. Replacement key from `riauth-maintenance` SHA-256 `aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a`. | Backup key removed while `doctor` still succeeded. Replacement stream `verified` true, `riauth.backup/v3`, stream `UuFttJwvdA4RBUNEXjc1UA`. Old archive with that key: `invalid_request`, exit 2, output absent. Scratch restore recovery id `0dd34c51-0980-4a34-b227-47002097e8bf`, `serving_allowed` false. Live redb inode unchanged. |
 
 The command lines that produced those files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -715,11 +779,12 @@ Still open:
   describes the current CLI and management writers from source. That page
   sent no request and ran no drill.
 - Retrieving an escrowed backup key or database key on another host.
-  riAuth has no escrow store. Replacing a lost backup key while the live
-  store still opens is
-  [Backup key lost, store still serving](#backup-key-lost-store-still-serving).
-  That section was checked against source and was not executed. The drills
-  recorded wrong-key refusal only.
+  riAuth has no escrow store. The loopback redb drill of
+  [Backup key lost, store still serving](#backup-key-lost-store-still-serving)
+  replaced the backup key while `doctor` still succeeded, refused the old
+  archive under the new key, and scratch-restored the new archive with
+  `serving_allowed` false. Escrow retrieval, database-key removal,
+  `recovery complete`, and a login on the restored issuer remain open.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
 - A TLS PostgreSQL connection. The disposable cluster used loopback trust

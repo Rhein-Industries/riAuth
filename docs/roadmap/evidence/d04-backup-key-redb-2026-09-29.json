@@ -1,0 +1,342 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "redb",
+    "edition": "platform",
+    "version": "0.1.1",
+    "loopback": true,
+    "encrypted_at_rest": true,
+    "database_key_left_in_place": true,
+    "initial_keygen_binary": "riauth",
+    "replacement_keygen_binary": "riauth-maintenance",
+    "backup_request_timeout_seconds": 120,
+    "cargo_build": false,
+    "temporary_files_removed": true,
+    "server_process_stopped": true,
+    "recovery_complete_run": false,
+    "restored_directory_served": false,
+    "restored_issuer_login": false,
+    "archive_frames_decoded": false,
+    "essentials_binary": false,
+    "postgresql": false
+  },
+  "outcome": "passed",
+  "detail": "lost backup key redb drill",
+  "checks": [
+    {
+      "id": "binaries",
+      "exit_code": 0,
+      "observed": {
+        "riauth_sha256": "d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7",
+        "riauth_maintenance_sha256": "aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a",
+        "cargo_build": false
+      }
+    },
+    {
+      "id": "capabilities",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "edition": "platform",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials",
+          "platform"
+        ],
+        "scope": "artifact",
+        "cli_result_schema": "riauth.cli/v1"
+      }
+    },
+    {
+      "id": "keygen_database",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "created": true
+      }
+    },
+    {
+      "id": "keygen_initial",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "created": true
+      }
+    },
+    {
+      "id": "init",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "initialized": true
+      }
+    },
+    {
+      "id": "readyz",
+      "exit_code": 0,
+      "observed": {
+        "http_status": 200
+      }
+    },
+    {
+      "id": "login",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "username": "drill-admin",
+        "expires_at_present": true
+      }
+    },
+    {
+      "id": "doctor_before",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "healthy": true,
+        "issuer": "http://127.0.0.1:53106",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "enabled_administrators": 1,
+        "users": 1,
+        "clients": 0,
+        "revision": 0,
+        "schema_version": 3,
+        "tls": "reverse_proxy",
+        "active_signing_key_present": true
+      }
+    },
+    {
+      "id": "backup_initial",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "verified": true,
+        "encrypted": true,
+        "api_version": "riauth.backup/v3",
+        "issuer": "http://127.0.0.1:53106",
+        "stream_id": "pCzKhM7QAUH8poznEGPhDA",
+        "frames": 3,
+        "records": 20,
+        "bytes": 12566,
+        "created_at_present": true
+      }
+    },
+    {
+      "id": "backup_key_removed",
+      "exit_code": 0,
+      "observed": {
+        "backup_key_absent": true,
+        "database_key_present": true,
+        "live_redb_present": true,
+        "initial_archive_present": true
+      }
+    },
+    {
+      "id": "doctor_after_loss",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "healthy": true,
+        "issuer": "http://127.0.0.1:53106",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "enabled_administrators": 1,
+        "users": 1,
+        "clients": 0,
+        "revision": 0,
+        "schema_version": 3,
+        "tls": "reverse_proxy",
+        "active_signing_key_present": true
+      }
+    },
+    {
+      "id": "keygen_replacement",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "created": true
+      }
+    },
+    {
+      "id": "backup_replacement",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "verified": true,
+        "encrypted": true,
+        "api_version": "riauth.backup/v3",
+        "issuer": "http://127.0.0.1:53106",
+        "stream_id": "UuFttJwvdA4RBUNEXjc1UA",
+        "frames": 3,
+        "records": 22,
+        "bytes": 13460,
+        "created_at_present": true
+      }
+    },
+    {
+      "id": "doctor_after_backup",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "healthy": true,
+        "issuer": "http://127.0.0.1:53106",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "enabled_administrators": 1,
+        "users": 1,
+        "clients": 0,
+        "revision": 0,
+        "schema_version": 3,
+        "tls": "reverse_proxy",
+        "active_signing_key_present": true
+      }
+    },
+    {
+      "id": "audit_backup",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "backup_events": [
+          {
+            "action": "operations.backup.completed",
+            "target_prefix_backup": true,
+            "details": {
+              "stream_id": "UuFttJwvdA4RBUNEXjc1UA",
+              "frames": 3,
+              "records": 22,
+              "bytes": 13460,
+              "created_at": 1790690816
+            }
+          },
+          {
+            "action": "operations.backup.started",
+            "target_prefix_backup": true,
+            "details": {
+              "stream_id": "UuFttJwvdA4RBUNEXjc1UA",
+              "max_archive_bytes": 4294967296
+            }
+          },
+          {
+            "action": "operations.backup.completed",
+            "target_prefix_backup": true,
+            "details": {
+              "stream_id": "pCzKhM7QAUH8poznEGPhDA",
+              "frames": 3,
+              "records": 20,
+              "bytes": 12566,
+              "created_at": 1790690815
+            }
+          },
+          {
+            "action": "operations.backup.started",
+            "target_prefix_backup": true,
+            "details": {
+              "stream_id": "pCzKhM7QAUH8poznEGPhDA",
+              "max_archive_bytes": 4294967296
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "restore_old_with_new_key",
+      "exit_code": 2,
+      "schema_version": "riauth.cli/v1",
+      "ok": false,
+      "error": {
+        "code": "invalid_request",
+        "http_status": 400,
+        "retryable": false,
+        "message": "Encrypted data authentication failed: wrong key or damaged data"
+      }
+    },
+    {
+      "id": "old_archive_output",
+      "exit_code": 0,
+      "observed": {
+        "output_absent": true
+      }
+    },
+    {
+      "id": "restore_scratch",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "restored": true,
+        "verified": true,
+        "issuer": "http://127.0.0.1:53106",
+        "encrypted_at_rest": true,
+        "storage": "redb",
+        "serving_allowed": false,
+        "recovery_id": "0dd34c51-0980-4a34-b227-47002097e8bf",
+        "recovery_policy": "riauth.recovery/v1",
+        "invalidated": {
+          "session_tokens": 1,
+          "sessions": 1
+        },
+        "epoch_advanced_users": 1,
+        "reconcile": {
+          "enabled_accounts": 1,
+          "passwords": 1,
+          "signing_keys": 1
+        }
+      }
+    },
+    {
+      "id": "scratch_files",
+      "exit_code": 0,
+      "observed": {
+        "published_config": true,
+        "pending_config": false,
+        "scratch_redb": true,
+        "live_inode_unchanged": true
+      }
+    },
+    {
+      "id": "recovery_status",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "backend": "redb",
+        "initialized": true,
+        "schema": 3,
+        "serving_allowed": false,
+        "pending_id": "0dd34c51-0980-4a34-b227-47002097e8bf",
+        "pending_policy": "riauth.recovery/v1"
+      }
+    },
+    {
+      "id": "doctor_after_restore",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "healthy": true,
+        "issuer": "http://127.0.0.1:53106",
+        "storage": "redb",
+        "encrypted_at_rest": true,
+        "enabled_administrators": 1,
+        "users": 1,
+        "clients": 0,
+        "revision": 0,
+        "schema_version": 3,
+        "tls": "reverse_proxy",
+        "active_signing_key_present": true
+      }
+    }
+  ]
+}
