@@ -444,6 +444,19 @@ def main() -> None:
                 or re.search(r"let\s*\(\s*prior\s*,\s*mut\s+apply\s*,\s*restarted\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", apply_confirmed)
             ):
                 errors.append("src/cloud_directory.rs: apply snapshot authorization/read belongs in assembly")
+            apply_materialize = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_materialize",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(r"\bcloud_apply_materialize\s*\([\s\S]*\bif\s+entries\s*!=\s*plan\.entries", apply_confirmed)
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", apply_confirmed)
+                or apply_materialize is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", apply_materialize)
+                or not re.search(r"\bcloud_apply_actor\s*\([\s\S]*\bmaterialize_completed_draft\s*\(", apply_materialize)
+            ):
+                errors.append("src/cloud_directory.rs: completed apply snapshot read belongs in assembly")
             apply_stage = rust_function_body(
                 masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
                 "cloud_apply_snapshot_stage",

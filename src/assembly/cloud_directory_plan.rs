@@ -4,7 +4,7 @@ use crate::{
     agent::Principal,
     cloud_directory::{
         CLOUD_APPLY_SNAPSHOTS, Change, CloudApplyDraft, Entry, Plan, Settings, authorize_reconcile,
-        reconcile, removal_impact,
+        materialize_completed_draft, reconcile, removal_impact,
     },
     connector_guard::{ReconciliationDecision, ReconciliationMode, RemovalImpact, plan_content},
     core::Core,
@@ -71,6 +71,20 @@ impl Core {
             .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
         authorize_reconcile(tx, &actor, settings, &expected.entries)?;
         Ok(actor)
+    }
+
+    pub(crate) fn cloud_apply_materialize(
+        &self,
+        token: &str,
+        settings: &Settings,
+        plan: &Plan,
+        reviewed_plan: Option<&str>,
+        apply: &CloudApplyDraft,
+    ) -> Result<Vec<Entry>> {
+        self.store.read(|tx| {
+            self.cloud_apply_actor(tx, token, settings, plan, reviewed_plan)?;
+            materialize_completed_draft(tx, settings, &apply.draft)
+        })
     }
 
     pub(crate) fn cloud_apply_snapshot_prepare(

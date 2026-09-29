@@ -2198,10 +2198,8 @@ impl Core {
                     restarted,
                 );
             }
-            let entries = self.store.read(|tx| {
-                self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
-                materialize(tx, &settings, apply.draft.snapshot.clone().into_users())
-            })?;
+            let entries =
+                self.cloud_apply_materialize(token, &settings, &plan, reviewed_plan, &apply)?;
             if entries != plan.entries {
                 return Err(Error::conflict(
                     "Cloud directory changed after planning; create a new plan",
