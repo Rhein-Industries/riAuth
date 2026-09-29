@@ -922,6 +922,41 @@ def main() -> None:
             source_callback = rust_function_body(source_protocol, "source_callback")
             source_callback_raw = rust_function_body(path.read_text(), "source_callback")
             callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
+            callback_claim = rust_function_body(
+                masked_rust_source(callback_assembly), "source_callback_claim"
+            )
+            callback_claim_raw = rust_function_body(
+                callback_assembly, "source_callback_claim"
+            )
+            callback_claim_compact = re.sub(r"\s+", "", callback_claim_raw or "")
+            if (
+                source_callback is None
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", source_callback)
+                or source_callback_raw is None
+                or not re.search(
+                    r"context::scope\s*\(\s*context\s*,\s*\|\|\s*\{\s*worker\.source_callback_claim\s*\(\s*source_id\s*,\s*request_state\s*,\s*presented\s*\)",
+                    source_callback_raw,
+                )
+                or callback_claim is None
+                or not (0 <= callback_claim_compact.find("self.store.write")
+                        < callback_claim_compact.find('tx.get::<Source>("sources",id)')
+                        < callback_claim_compact.find('tx.get::<Login>("source_logins",&digest(state))')
+                        < callback_claim_compact.find("presented_source_retired(")
+                        < callback_claim_compact.find("browser_binding_matches")
+                        < callback_claim_compact.find("pending.claimed=true")
+                        < callback_claim_compact.find("pending.failed=true")
+                        < callback_claim_compact.find('tx.put("source_logins",&digest(state),&pending)')
+                        < callback_claim_compact.find('audit(tx,"upstream","source.login_failed",id)')
+                        < callback_claim_compact.find("CallbackClaim::Retired")
+                        < callback_claim_compact.find('tx.get::<String>("source_secrets",id)'))
+                or callback_claim_raw is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_callback_claim\s*\(", callback_assembly)
+                or not re.search(r'let\s+source\s*=\s*tx\.get::<Source>\s*\(\s*"sources"\s*,\s*id\s*\)\s*\?', callback_claim_raw)
+                or not re.search(r'p\.expires_at\s*>\s*now\s*\(\s*\)\s*&&\s*!p\.claimed', callback_claim_raw)
+                or not re.search(r"\bpub\(crate\)\s+fn\s+browser_binding_matches\s*\(", path.read_text())
+                or not re.search(r"\bpub\(crate\)\s+fn\s+presented_source_retired\s*\(", path.read_text())
+            ):
+                errors.append("src/source.rs: one-use source callback claim belongs in assembly")
             callback_record = rust_function_body(
                 masked_rust_source(callback_assembly), "source_callback_record"
             )
@@ -931,7 +966,7 @@ def main() -> None:
             callback_record_compact = re.sub(r"\s+", "", callback_record or "")
             if (
                 source_callback is None
-                or len(re.findall(r"\bworker\.store\.write\s*\(", source_callback)) != 1
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", source_callback)
                 or source_callback_raw is None
                 or not re.search(
                     r"context::scope\s*\(\s*context\s*,\s*\|\|\s*worker\.source_callback_record\s*\(\s*state\s*,\s*id\s*,\s*result\s*\)",

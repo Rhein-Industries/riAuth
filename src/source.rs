@@ -189,16 +189,16 @@ pub(crate) struct WorkflowBinding {
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Login {
-    source: String,
+    pub(crate) source: String,
     pub(crate) fingerprint: String,
     poll_hash: String,
     verifier: String,
     nonce: String,
     started_at: u64,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
     target: Option<Identity>,
     authentication: Option<String>,
-    claimed: bool,
+    pub(crate) claimed: bool,
     pub(crate) result: Option<UpstreamIdentity>,
     pub(crate) failed: bool,
     attempts: u32,
@@ -212,7 +212,7 @@ pub(crate) struct Login {
     /// CLI, embedded-stage and workflow logins leave this empty, as do records
     /// written before the cookie was required.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    browser_binding: Option<String>,
+    pub(crate) browser_binding: Option<String>,
     /// Digest of the one-time SAML return token. Present only after a browser-started
     /// ACS accepts the assertion, until the same-site return confirms or ends it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -240,6 +240,12 @@ pub(crate) struct UpstreamIdentity {
     /// Original signed assertion expiry, preserved for delayed workflow use.
     #[serde(default)]
     expires_at: Option<u64>,
+}
+
+pub(crate) enum CallbackClaim {
+    Ready(Source, Login, Option<zeroize::Zeroizing<String>>),
+    Mismatch,
+    Retired,
 }
 
 #[derive(Deserialize)]
@@ -643,68 +649,21 @@ impl Core {
         let source_id = id.to_owned();
         let request_state = state.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
-        enum Claim {
-            Ready(Source, Login, Option<zeroize::Zeroizing<String>>),
-            Mismatch,
-            Retired,
-        }
         let claim = tokio::task::spawn_blocking(move || {
             crate::context::scope(context, || {
-                worker.store.write(|tx| {
-                    let id = source_id.as_str();
-                    let state = request_state.as_str();
-                    // A disabled source still has a record. Filtering it out here
-                    // would roll back and leave this code redeemable after re-enable.
-                    let source = tx.get::<Source>("sources", id)?;
-                    if source.as_ref().is_some_and(|source| source.saml.is_some()) {
-                        return Err(Error::bad("SAML sources require the signed POST ACS"));
-                    }
-                    let mut pending = tx
-                        .get::<Login>("source_logins", &digest(state))?
-                        .filter(|p| p.source == id && p.expires_at > now() && !p.claimed)
-                        .ok_or_else(|| {
-                            Error::bad("Source request expired, changed or already used")
-                        })?;
-                    // Commit the end of the login. Err would roll back and leave the code redeemable
-                    // after the previous keys were restored.
-                    let retire = presented_source_retired(source.as_ref(), &pending.fingerprint);
-                    if retire
-                        || pending.browser_binding.as_deref().is_some_and(|expected| {
-                            !browser_binding_matches(expected, presented.as_deref())
-                        })
-                    {
-                        pending.claimed = true;
-                        pending.failed = true;
-                        tx.put("source_logins", &digest(state), &pending)?;
-                        audit(tx, "upstream", "source.login_failed", id)?;
-                        return Ok(if retire {
-                            Claim::Retired
-                        } else {
-                            Claim::Mismatch
-                        });
-                    }
-                    let source = source.ok_or_else(|| {
-                        Error::bad("Source request expired, changed or already used")
-                    })?;
-                    pending.claimed = true;
-                    tx.put("source_logins", &digest(state), &pending)?;
-                    let secret = tx
-                        .get::<String>("source_secrets", id)?
-                        .map(zeroize::Zeroizing::new);
-                    Ok(Claim::Ready(source, pending, secret))
-                })
+                worker.source_callback_claim(source_id, request_state, presented)
             })
         })
         .await
         .map_err(Error::internal)??;
         let (source, pending, secret) = match claim {
-            Claim::Mismatch => return Err(browser_mismatch()),
-            Claim::Retired => {
+            CallbackClaim::Mismatch => return Err(browser_mismatch()),
+            CallbackClaim::Retired => {
                 return Err(Error::bad(
                     "Source request expired, changed or already used",
                 ));
             }
-            Claim::Ready(source, pending, secret) => (source, pending, secret),
+            CallbackClaim::Ready(source, pending, secret) => (source, pending, secret),
         };
         let result = async {
             if get("iss").is_some_and(|v| v != source.issuer) {
@@ -1678,7 +1637,7 @@ fn load_stage(tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<Sou
 }
 /// `expected` is the stored digest of the full binding cookie. A missing, oversized
 /// or different cookie fails closed. The compare covers both cookie halves at once.
-fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
+pub(crate) fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
     let presented = presented.unwrap_or("");
     presented.len() <= 256
         && expected.len() == 43
