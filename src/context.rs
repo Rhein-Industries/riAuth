@@ -49,7 +49,6 @@ pub(crate) struct Receipt {
     pub(crate) expires_at: u64,
 }
 
-const AGENT_RECEIPT_REDACTION: &str = "agent_issuance_receipts_redacted_v1";
 const REDACTION_PAGE: usize = 128;
 
 fn exact_keys(object: &serde_json::Map<String, Value>, keys: &[&str]) -> bool {
@@ -126,13 +125,15 @@ fn redact_legacy_agent_issuance(receipt: &mut Receipt) -> bool {
     true
 }
 
-/// Complete the one-time redaction before this Core is returned to a server.
-/// Each page commits independently, so interrupted startup resumes safely; the
-/// marker is written only with the final page. Retry keys and expiry survive.
-pub(crate) fn migrate_legacy_agent_receipts(store: &Store) -> Result<()> {
-    if store.get::<bool>("meta", AGENT_RECEIPT_REDACTION)? == Some(true) {
-        return Ok(());
-    }
+/// Inspect every receipt before this Core is returned to a server. An older
+/// writer or restore can add a legacy receipt after a prior scrub, so the
+/// historical completion marker cannot authorize skipping this scan. Each
+/// page commits independently; an interrupted open starts again and safely
+/// skips already-redacted results while retaining every retry key and expiry.
+fn scrub_legacy_agent_receipts_with(
+    store: &Store,
+    mut after_page_commit: impl FnMut() -> Result<()>,
+) -> Result<()> {
     let mut after: Option<String> = None;
     loop {
         let (last, done) = store.write(|tx| {
@@ -144,16 +145,28 @@ pub(crate) fn migrate_legacy_agent_receipts(store: &Store) -> Result<()> {
                     tx.put("receipts", &key, &receipt)?;
                 }
             }
-            if done {
-                tx.put("meta", AGENT_RECEIPT_REDACTION, &true)?;
-            }
             Ok((last, done))
         })?;
+        after_page_commit()?;
         if done {
             return Ok(());
         }
         after = last;
     }
+}
+
+pub(crate) fn scrub_legacy_agent_receipts_on_open(store: &Store) -> Result<()> {
+    scrub_legacy_agent_receipts_with(store, || Ok(()))
+}
+
+/// Test the same scanner after its first page has durably committed.
+#[cfg(feature = "test-support")]
+pub fn interrupt_legacy_agent_receipt_scrub_after_page(store: &Store) -> Result<()> {
+    scrub_legacy_agent_receipts_with(store, || {
+        Err(crate::error::Error::bad(
+            "Injected receipt scrub interruption",
+        ))
+    })
 }
 pub(crate) fn replay_receipt(
     tx: &Tx<'_>,
@@ -203,8 +216,8 @@ pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
         if receipt.expires_at.saturating_add(6 * 86_400) <= now() {
             tx.delete("receipts", &id)?;
         } else if redact_legacy_agent_issuance(&mut receipt) {
-            // A receipt introduced by an older writer or restored after the
-            // startup marker is also scrubbed in a successful transaction.
+            // A receipt introduced by an older writer after startup is also
+            // scrubbed in a successful maintenance transaction.
             tx.put("receipts", &id, &receipt)?;
         }
     }
