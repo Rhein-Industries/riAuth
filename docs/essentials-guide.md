@@ -24,7 +24,9 @@ against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
 
 A new Platform operator uses the [Platform guide](platform-guide.md) for the
-same tasks with the Platform binaries. Assembly limits that are outside
+same tasks with the Platform binaries. That guide's sections 11 through 13
+add configured workflows, SAML, and the LDAP provider listener. Those three
+procedures stay on the Platform page. Assembly limits that are outside
 these tasks stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -826,8 +828,16 @@ Still outside this slice:
   those routes. Section 10 is outbound `riauth provision` only.
 - PostgreSQL, native HTTPS, a trusted proxy, and the released-image small
   layout in [deployment examples](deployment-examples.md).
-- The Platform protocols and administration in the [Platform guide](platform-guide.md),
-  including Workspace and Entra directory import.
+- Configured workflows, SAML identity-provider and source administration,
+  and the LDAP provider listener. Those procedures are sections 11 through
+  13 of the [Platform guide](platform-guide.md). An Essentials configuration
+  rejects a non-empty `workflows` table and a non-empty `ldap_listeners`
+  table with `{field} requires the Platform build`. Client settings `saml`
+  and `ldap` fail with `Client setting {field} requires the Platform build`.
+  A SAML source fails with `SAML source requires the Platform build`.
+- The other Platform protocols and administration in the
+  [Platform guide](platform-guide.md), including Workspace and Entra
+  directory import.
 - The [capability and compatibility matrix](capability-matrix.md) records
   compiled inclusion, protocol direction, and the peers named by tests.
   The [Platform forward-auth recipe](recipes/platform-forward-auth.md),
@@ -842,9 +852,10 @@ Still outside this slice:
   is not the LDAP import left unconfigured above. Other D03 recipes and
   acceptance against category targets (D05) remain open. The first D04
   decision page is [operational recovery](operational-recovery.md); further
-  emergency runbooks remain open. The [connector dependency incidents](connector-incidents.md) page covers
-  read, stop, and retry decisions for external dependencies. The backup
-  commands here are entry points.
+  emergency runbooks remain open. The
+  [connector dependency incidents](connector-incidents.md) page covers read,
+  stop, and retry decisions for external dependencies. The backup commands
+  here are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply

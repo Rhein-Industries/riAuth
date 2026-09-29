@@ -3,29 +3,35 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This is the Platform task guide through its second slice. It walks the same
+This is the Platform task guide through its third slice. It walks the same
 tasks as the [Essentials guide](essentials-guide.md): one small loopback
 install, the first administrator sign-in, one confidential OpenID Connect web
 application, passkey self-service in the browser, and the backup and recovery
 commands that open a restored store, then a local group, claims for that
 application, an audit review, one LDAP directory import, and one outbound
-SCIM target. The binaries are the Platform build. The commands are the ones
-implemented in this tree: `[features]` in [Cargo.toml](../Cargo.toml), the
-[server CLI](../src/cli.rs), [offline maintenance](../src/cli/local.rs), and
-the [standalone client](../crates/riauthctl/src/main.rs).
+SCIM target. Sections 11 through 13 add three Platform-only procedures: one
+configured password workflow, one SAML service provider and one SAML source,
+and one LDAP provider listener. The binaries are the Platform build. The
+commands are the ones implemented in this tree: `[features]` in
+[Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
+[offline maintenance](../src/cli/local.rs), and the
+[standalone client](../crates/riauthctl/src/main.rs).
 
-Reading this page does not mean those steps were executed here. Both slices
-were checked by reading the source and the current docs, then by
+Reading this page does not mean those steps were executed here. The three
+slices were checked by reading the source and the current docs, then by
 `python3 scripts/check-docs.py`. No Cargo build was run, no server was
 started, and no browser, group change, claim preview, audit export, LDAP
-plan, SCIM delivery, backup, or accessibility pass was recorded. The
+plan, SCIM delivery, workflow plan, SAML import, source registration, LDAP
+listener, backup, or accessibility pass was recorded. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
 
-The install below leaves listeners, workflows, PostgreSQL, Workspace, Entra,
-and the other Platform protocols unset. Sections 9 and 10 add the shared LDAP
-import and outbound SCIM steps on this Platform server. Assembly and
+The install below leaves PostgreSQL, Workspace, Entra, RADIUS, proxy, and
+the other Platform protocols unset. Sections 9 and 10 add the shared LDAP
+import and outbound SCIM steps on this Platform server. Sections 11 through
+13 add the configured-workflow, SAML, and LDAP provider procedures. Those
+procedures were read from this tree and were not executed. Assembly and
 downgrade rules stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -83,6 +89,13 @@ change groups and the `local-demo` client. `explain`, `audit`, `report`,
 `directory`, and `provision` use the server CLI session from section 2.
 Pass `--server http://localhost:9000` on those commands so the issuer is the
 running lab server.
+
+Sections 11 through 13 use that same server CLI session for `plan`, `apply`,
+`keys`, `saml`, `source`, `client create`, and `agent create`. `schema`,
+`validate`, and `saml import-sp` run locally and do not read the session.
+`riauthctl` can create a client and can plan and apply a manifest on the same
+`/api/state` routes, using `~/.config/riauthctl/session.json`. The commands
+printed in those sections are the server CLI forms.
 
 Terminal USB is a client feature on either edition. The base `riauthctl`
 fails `passkey login` and `passkey enroll` locally, before any request, with:
@@ -302,9 +315,9 @@ The protocol details are in [OIDC profiles](oidc-profiles.md).
 The same management service is available in the browser at
 <http://localhost:9000/admin> under **Applications**. This slice uses the
 remote command because its flags are the implemented client contract. The
-admin page can also show workflow authoring on Platform. Saving a workflow is
-outside this slice. The [workflow model](workflows.md) is the reference for
-that later task.
+admin page can also show workflow authoring on Platform. Section 11 names
+that authoring path and the runtime configuration. The browser editor was
+not opened here. The [workflow model](workflows.md) remains the reference.
 
 ## 4. Add, rename, or remove your passkey
 
@@ -817,6 +830,688 @@ lifetime, and the rule that delivery is at least once are in
 cannot reach fails delivery. This task did not run a plan or an apply
 against a live peer.
 
+## 11. Select one configured password workflow
+
+This procedure selects one Platform password-only reauthentication workflow
+named `local-password`. The server CLI has no `workflow` subcommand. Two
+stores are involved, and they do different jobs.
+
+The runtime entry is `[workflows.local-password]` in `riauth.toml`. `serve`
+loads that file once at startup. `active = true` is what
+`workflow_configured_start` requires. A definition stored by desired state
+does not set that table and does not start a run.
+
+The authoring entry is one `workflows` item in a `riauth/v1` manifest.
+`riauth plan` and `riauth apply` persist that definition in
+`workflow_definitions`. The browser routes do the same for one definition.
+The [workflow model](workflows.md#active-configured-local-verifier-paths)
+prints this password-only shape, and
+[Essentials and Platform](workflows.md#essentials-and-platform) separates
+authoring from activation.
+
+### Prerequisites
+
+The Platform server from sections 1 and 2 is running, and the server CLI
+session from section 2 exists. Remote commands pass
+`--server http://localhost:9000`.
+
+Editing `riauth.toml` means stopping `riauth serve` first. A second process
+that opens the same redb file fails with code `storage_owned`: the store is
+already owned by another riAuth process. After the edit, start the same
+`riauth --config deployment-private/platform-lab/riauth.toml serve` command.
+Relative paths in that file resolve from the configuration file's directory.
+
+An Essentials configuration with a non-empty `workflows` table fails
+validation with `workflows requires the Platform build`. A manifest with a
+non-empty `workflows` array fails on an Essentials binary with
+`Configured workflows require Platform`.
+
+### Permissions
+
+A human administrator session allows `workflow.write` on
+`workflow/local-password` and `workflow.read` on the same resource. An agent
+needs those permissions on that exact resource. `workflow.write` and
+`workflow.read` are Platform actions.
+
+The start route uses the caller's live session bearer. It is a separate
+check from the authoring permission. The route takes the workflow id from
+the path. It accepts no caller-selected actions.
+
+Plan and apply bind the saved plan's `base_revision`. They refuse a
+delegated human session. An agent with `workflow.write` on
+`workflow/local-password` can plan and apply. Direct mutations elsewhere
+in this guide still require `If-Match` for an agent or a delegated human.
+This procedure uses the administrator session from section 2.
+
+### Commands
+
+Print the local schemas, then write the authoring file. `riauth schema` is
+local. It prints the JSON Schema for `workflow::Definition` and for
+`state::Manifest`.
+
+```sh
+riauth schema workflow
+riauth schema manifest
+```
+
+Write `deployment-private/platform-lab/local-password.json`. The `workflows`
+value is the definition itself. It has no `active` field. Omitted users,
+groups, clients, sources, and source links stay as they are. `issuer` binds
+the file to this lab.
+
+```json
+{
+  "api_version": "riauth/v1",
+  "issuer": "http://localhost:9000",
+  "workflows": [
+    {
+      "format": "riauth.workflow/v1",
+      "id": "local-password",
+      "revision": 1,
+      "category": "authentication",
+      "origin": "configured",
+      "entry": "password",
+      "limits": {"max_duration_seconds": 600, "max_executions": 3},
+      "steps": [
+        {
+          "id": "password",
+          "action": {"type": "verify_password"},
+          "max_attempts": 3,
+          "timeout_seconds": 120,
+          "cancellable": true,
+          "transitions": [
+            {"on": "verified", "to": "success"},
+            {"on": "failed", "to": "denied"}
+          ]
+        }
+      ],
+      "terminals": [
+        {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+        {"id": "denied", "outcome": "denied", "requires": []}
+      ]
+    }
+  ]
+}
+```
+
+```sh
+riauth validate --file deployment-private/platform-lab/local-password.json
+riauth --server http://localhost:9000 plan \
+  --file deployment-private/platform-lab/local-password.json \
+  --out deployment-private/platform-lab/local-password-plan.json
+riauth --server http://localhost:9000 apply \
+  --plan deployment-private/platform-lab/local-password-plan.json
+```
+
+`plan` refuses an existing `--out` with `Plan output already exists`. When
+`removal_impact.review_required` is true, `apply` stops with
+`Inspect desired-state removal_impact and changes, then rerun with --confirm-removals`.
+Read the plan before adding that flag. A plan expires 15 minutes after it is
+created. Apply refuses a stale base revision with
+`Connector plan expired or source configuration or local revision changed; create a new plan`.
+
+Stop `serve`, append the runtime entry to
+`deployment-private/platform-lab/riauth.toml`, and start the same `serve`
+command. The key must equal the definition id. At most 32 workflows are
+accepted. The document must be at most 64 KiB.
+
+```toml
+[workflows.local-password]
+active = true
+
+[workflows.local-password.definition]
+format = "riauth.workflow/v1"
+id = "local-password"
+revision = 1
+category = "authentication"
+origin = "configured"
+entry = "password"
+
+[workflows.local-password.definition.limits]
+max_duration_seconds = 600
+max_executions = 3
+
+[[workflows.local-password.definition.steps]]
+id = "password"
+action = { type = "verify_password" }
+max_attempts = 3
+timeout_seconds = 120
+cancellable = true
+transitions = [
+  { on = "verified", to = "success" },
+  { on = "failed", to = "denied" },
+]
+
+[[workflows.local-password.definition.terminals]]
+id = "success"
+outcome = "authenticated"
+requires = [["password"]]
+
+[[workflows.local-password.definition.terminals]]
+id = "denied"
+outcome = "denied"
+requires = []
+```
+
+`Config::validate` accepts this block because it matches the password-only
+adapter. These names fail that check even when the shape matches:
+`platform-password-totp-reauthentication`,
+`platform-invitation-password-enrollment`,
+`platform-source-reauthentication`, and
+`platform-source-totp-reauthentication`. The error is
+`Configured workflow {name} has no executable adapter`. An id that starts
+with `essentials-` fails workflow validation because that prefix is reserved
+for built-in workflows. Identifiers start with a lowercase letter and then
+use lowercase letters, digits, `_`, or `-`.
+
+There is no CLI wrapper for the start route. After the runtime entry is
+active and `serve` has been restarted, a later caller sends
+`POST /api/workflows/configured/local-password` with that caller's bearer
+session. The body supplies no actions. Continuation routes that already
+exist, and that this procedure does not call, are
+`POST /api/workflows/{id}/password`, `GET /api/workflows/{id}`, and
+`POST /api/workflows/{id}/cancel` for a cancellable step. The generic start
+route does not start consent, password reset, passkey removal, or a
+source-first passkey. Those have their own routes. The shapes left for later
+work are listed in [Left to later work](workflows.md#left-to-later-work).
+
+The browser authoring routes, mounted on Platform, are
+`GET /api/admin/workflows`, `POST /api/admin/workflows/plan`, and
+`POST /api/admin/workflows/apply`. The apply route rejects a body unless it
+contains exactly one workflow and empty users, groups, clients, sources,
+source links, and secrets, with `Workflow editor applies one workflow only`.
+The list reads `workflow_definitions`. Saving there still leaves
+`config.workflows` unchanged.
+
+A stored definition can be read back with the server CLI:
+
+```sh
+riauth --server http://localhost:9000 export \
+  --out deployment-private/platform-lab/state-export.json
+```
+
+`export` refuses an existing `--out`. The file is the visible manifest.
+`secrets_included` is false. Workflows in it are the definitions the caller
+may `workflow.read`.
+
+### Expected observation
+
+`riauth validate` prints `valid` true, `validation` `local_schema`, and
+`secret_values_read` false. `resources` counts users, groups, and clients.
+This file has none of those, so `resources` is 0. Local validate does not
+decide that an adapter can start. A file that is not a definition fails
+while the manifest is read, before that result.
+
+A first plan, on a store with no `local-password` definition, records a
+create for `workflow/local-password`. The command prints `plan_file`,
+`plan_id`, `hash`, `base_revision`, `changes`, `removal_impact`,
+`reconciliation_mode`, and `expires_at`. The plan file is Unix mode 0600.
+An existing destination fails with `Refusing to overwrite` and the path.
+An identical definition already stored produces no workflow change. A later
+edit that keeps revision 1 fails apply with
+`Workflow revision must increase when the definition changes`.
+
+If `serve` starts after the runtime block is saved, `Config::validate` has
+accepted the password-only adapter. A later successful
+`POST /api/workflows/configured/local-password` returns a view whose
+`binding.workflow` is `local-password`, `binding.revision` is 1, and `state`
+is active on step `password`. The public view has no evidence reference.
+The route issues neither a new session nor a downstream OpenID Connect code.
+An account with enrolled TOTP is refused with
+`This account needs a different verifier path`. The `admin` account from
+`init` has no authenticator app, so that account matches this password-only
+shape. An inactive or missing entry returns `Configured workflow is unavailable`.
+A present entry whose id or shape matches no executable adapter returns
+that same message as a conflict.
+
+### Unrun and peer evidence
+
+This task did not write the JSON file, did not edit `riauth.toml`, did not
+stop or restart `serve`, did not run `validate`, `plan`, `apply`, or
+`export`, and did not send the start request. The browser editor was not
+opened. No run id, view, or audit row was recorded. TOTP, recovery-code,
+and passkey configured shapes are described in
+[Local password reauthentication](workflows.md#local-password-reauthentication)
+and were not added here.
+
+## 12. Prepare one SAML service provider and one SAML source
+
+This procedure has two halves. riAuth is the identity provider for one
+service provider, and riAuth is the service provider for one upstream SAML
+identity provider. The command names are the current
+[SamlCommand](../src/cli.rs) and [SourceCommand](../src/cli.rs). The profile
+detail is [Connect your first SAML service provider](saml.md#connect-your-first-saml-service-provider)
+and [Upstream SAML identity providers](saml.md#upstream-saml-identity-providers).
+The desired-state contract is [Desired state](agent.md#desired-state).
+
+This lab's issuer is `http://localhost:9000`. HTTP is the supported loopback
+evaluation case. A public issuer is HTTPS. This task did not configure a
+public HTTPS issuer, and it did not contact a service provider or an
+upstream identity provider.
+
+### Prerequisites
+
+The Platform server from sections 1 and 2 is running, and the server CLI
+session from section 2 exists. Remote commands pass
+`--server http://localhost:9000`.
+
+The operator supplies three local files before the identity-provider half:
+the service provider's metadata XML, an RSA private key PEM, and the matching
+public certificate PEM. `saml import-sp` reads at most 48 KiB plus one byte
+of XML and 16 KiB plus one byte of the certificate. `keys import` reads the
+private key through the private-file reader, limited to 16384 bytes. Keep
+those files owner-readable under `deployment-private/platform-lab/`. This
+task did not create them.
+
+The upstream half needs the same kind of local RSA key, the service-provider
+certificate that matches it, and one to four pinned identity-provider
+certificates. Placeholder PEM text fails certificate parsing. Replace it
+before `source put`.
+
+An Essentials client with `settings.saml` fails with
+`Client setting saml requires the Platform build`. An Essentials source with
+`saml` set fails with `SAML source requires the Platform build`.
+
+### Permissions
+
+The administrator session allows `key.write` on `key/saml-signing` and on
+`key/source-sp`, `client.write` on `client/legacy-sp`, and `source.write` on
+`source/corporate-saml`. An agent needs those exact permissions. An agent
+cannot set `allow_admin_login`. This example leaves that field at its
+default, false, so the upstream source does not sign the local administrator
+in.
+
+`saml import-sp` is local. It returns before any HTTP call.
+`keys import`, `saml metadata`, `source put`, `source list`, and
+`source metadata` use the server CLI session. `source start` authenticates
+only when `--link` is set. `source finish` sends no bearer.
+
+`keys import` and `source put` are direct mutations. An agent or a
+delegated human must send `If-Match` with the current revision on those
+commands. The administrator session from section 2 can call them without
+`--if-revision`. A supplied revision that is already stale fails with
+`Configuration revision changed`. Plan and apply bind the saved plan's
+`base_revision`. A delegated human is refused by plan and apply.
+
+### Commands
+
+Import the identity-provider signing key, then import the service-provider
+metadata offline. SAML XML signing requires a local RS256 domain. The
+command also accepts `ES256` and `EdDSA`; those algorithms fail the SAML
+check with `SAML XML signing currently requires a local RS256 signing domain`.
+Vault bind is a different command and stays outside this slice.
+
+```sh
+riauth --server http://localhost:9000 keys import saml-signing \
+  --file deployment-private/platform-lab/idp-private.pem \
+  --algorithm RS256
+riauth saml import-sp \
+  --file deployment-private/platform-lab/sp-metadata.xml \
+  --entity-id https://sp.example.com/metadata \
+  --idp-certificate deployment-private/platform-lab/idp-certificate.pem \
+  --out deployment-private/platform-lab/sp-import.json
+```
+
+`--entity-id` must be the entity ID printed in that metadata file. The
+import selects one `EntityDescriptor` with that exact value and makes no
+remote fetch. An existing `--out` fails with `Refusing to overwrite` and
+the path.
+
+Read `deployment-private/platform-lab/sp-import.json`. Copy its
+`settings.saml` object into the client manifest below. Set
+`settings.signing_key` to `saml-signing`. Set `scopes` from the report's
+`required_scopes`: `openid` and `saml`, plus `email` when the selected
+NameID format is email. Add scopes for any attribute mappings you review.
+The report's `instruction` says to apply that object through the client
+manifest. The private key must match `idp_certificate_pem`. A mismatch
+fails the client write with
+`SAML IdP certificate must match the selected signing domain`. Leave
+`encryption_certificate_pem` unset unless assertion encryption is a separate
+reviewed choice. The report may still show `sp_encryption_certificate_pem`.
+
+`riauth schema provider` and `riauth schema manifest` print the local
+schemas. The manifest below is the envelope. Replace the empty `saml`
+object with the report's `settings.saml` before validate. An empty object
+does not parse as SAML settings.
+
+```sh
+riauth schema provider
+riauth schema manifest
+```
+
+```json
+{
+  "api_version": "riauth/v1",
+  "issuer": "http://localhost:9000",
+  "clients": [
+    {
+      "client_id": "legacy-sp",
+      "name": "Legacy SAML application",
+      "confidential": false,
+      "service": false,
+      "enabled": true,
+      "redirect_uris": [],
+      "scopes": ["openid", "saml"],
+      "settings": {
+        "signing_key": "saml-signing",
+        "saml": {}
+      }
+    }
+  ]
+}
+```
+
+Save that file as `deployment-private/platform-lab/legacy-sp.json` only
+after `settings.saml` is the reviewed report object. `service` stays false.
+A service client fails SAML validation with
+`Invalid SAML interactive policy client or profile limits`. The client can
+have an empty redirect list.
+
+```sh
+riauth validate --file deployment-private/platform-lab/legacy-sp.json
+riauth --server http://localhost:9000 plan \
+  --file deployment-private/platform-lab/legacy-sp.json \
+  --out deployment-private/platform-lab/legacy-sp-plan.json
+riauth --server http://localhost:9000 apply \
+  --plan deployment-private/platform-lab/legacy-sp-plan.json
+riauth --server http://localhost:9000 saml metadata legacy-sp \
+  --out deployment-private/platform-lab/idp-metadata.xml
+```
+
+`saml metadata` calls `GET /api/saml/legacy-sp/metadata` and writes the
+`metadata_xml` string. There is no `client create --file` flag. The server
+CLI create command accepts `--settings-file` as a `ProviderSettings`
+document, which can carry `signing_key` and `saml` after the same review.
+This section uses the manifest because that is the import report's apply
+path. Attribute mapping fields are in the SAML page. This slice adds none.
+
+The public metadata URL, relative to this issuer, is
+`/saml/legacy-sp/metadata`. The browser sign-in and logout behavior is the
+SAML page's. Registering the exported metadata at a service provider, and
+starting a login from that service provider, is peer work this task did not
+do.
+
+For the upstream source, import a second local RS256 domain and write a
+`SourceInput` file. `riauth schema source-input` prints that schema. Omit
+`client_secret`. A SAML source uses `token_endpoint_auth_method` `none`, an
+empty `token_endpoint`, empty `scopes`, and no OAuth profile. A secret on
+that source fails with `A public source cannot have a client secret`.
+
+```sh
+riauth schema source-input
+riauth --server http://localhost:9000 keys import source-sp \
+  --file deployment-private/platform-lab/sp-private.pem \
+  --algorithm RS256
+```
+
+```json
+{
+  "source": {
+    "id": "corporate-saml",
+    "name": "Corporate SAML",
+    "issuer": "urn:company:idp",
+    "authorization_endpoint": "https://idp.example.com/sso",
+    "client_id": "urn:company:riauth-sp",
+    "token_endpoint_auth_method": "none",
+    "token_endpoint": "",
+    "scopes": [],
+    "auto_provision": false,
+    "saml": {
+      "signing_key": "source-sp",
+      "sp_certificate_pem": "PUBLIC SP CERTIFICATE PEM",
+      "idp_certificates_pem": ["PINNED IDP CERTIFICATE PEM"],
+      "name_id_format": "persistent"
+    }
+  }
+}
+```
+
+Replace both PEM placeholders with the certificate text. `issuer` and
+`client_id` are absolute entity IDs. `authorization_endpoint` is the
+upstream redirect SSO URL, canonical HTTPS, or HTTP on loopback, with no
+query or fragment. `name_id_format` `transient` is rejected. One to four
+pinned certificates are required. `auto_provision` false creates no local
+accounts. `https://idp.example.com/sso` and `urn:company:idp` are the shape
+from the SAML page. They are not a peer that was contacted.
+
+Save the reviewed file as
+`deployment-private/platform-lab/corporate-saml.json`.
+
+```sh
+riauth --server http://localhost:9000 source put \
+  --file deployment-private/platform-lab/corporate-saml.json
+riauth --server http://localhost:9000 source list
+riauth --server http://localhost:9000 source metadata corporate-saml \
+  --out deployment-private/platform-lab/sp-metadata.xml
+```
+
+`source put` posts the file to `/api/sources`. The source signing domain
+must already exist, must be local RS256, and the service-provider
+certificate must match it. A missing domain fails with
+`SAML source signing domain is missing`. A mismatched certificate fails with
+`SAML source SP certificate does not match its signing domain`.
+
+`source metadata` writes the metadata XML privately. The public copy is
+`/saml/sources/corporate-saml/metadata`, and the assertion consumer is
+`/saml/sources/corporate-saml/acs`, both relative to this issuer. Registering
+that metadata at the upstream identity provider was not done.
+
+`source start` and `source finish` are implemented. This task did not run
+them. `source start` refuses an existing `--out` with
+`Source transaction file already exists`, writes the credential privately,
+and prints `authorization_url`, `transaction_file`, and `instruction`.
+The instruction text is `Authenticate at the upstream provider, then inspect and finish this request in the CLI`.
+The saved credential contains `issuer`, `source`, `token`, and `expires_at`.
+The upstream response is delivered to the source ACS on the server.
+`source finish` reads the private transaction file and posts its token.
+`--yes` posts `approve` true and, when the status is `complete`, replaces
+`~/.config/riauth/session.json` and deletes the transaction file. The same
+command without `--yes` posts `approve` false.
+`source start corporate-saml --link` is the linking form and needs the
+server CLI session. A browser source-stage login remains acceptance work in
+[ENT-11](enterprise/ENT-11.md).
+
+### Expected observation
+
+`saml import-sp` prints `report_file` and `unresolved`. The report file also
+contains `settings.saml`, `sp_encryption_certificate_pem`, `metadata_trust`
+with the value `explicit_local_operator_input`, `required_scopes`, and
+`instruction`. On Unix the report, the plan, and both metadata files are
+mode 0600.
+
+`keys import` prints `id`, `active`, and `retained_verification_keys`.
+`active` is the public JWK. The private PEM stays in the operator file.
+Importing a key whose `kid` is already present fails with
+`Signing key id is already in use`.
+
+`saml metadata` prints `metadata_file` and `client_id`. `source list` prints
+the stored sources. `source metadata` prints `source` and `metadata_file`.
+`source put` prints the stored source object. A changed source revokes
+sessions that already carry that source. This example has no such session.
+
+`validate` on the client manifest, once `settings.saml` is the report
+object, prints `valid` true and `secret_values_read` false. `resources`
+counts that one client. Plan and apply follow the same review rules as
+section 11. Apply of a new client records a create for `client/legacy-sp`.
+The manifest does not put a SAML source. The source is the separate
+`source put`.
+
+### Unrun and peer evidence
+
+This task did not create keys or metadata, did not run `keys import`,
+`saml import-sp`, `validate`, `plan`, `apply`, `saml metadata`,
+`source put`, `source list`, or `source metadata`, and did not run
+`source start` or `source finish`. No service provider loaded the identity
+provider metadata. No upstream identity provider received an AuthnRequest
+or posted a response. Logout, assertion encryption, and a browser
+source-stage run were not exercised. The `xmlsec1` cargo tests in the SAML
+page are test commands, not operator steps, and they were not run.
+
+## 13. Serve one LDAP provider listener
+
+The LDAP provider is a read-only LDAPv3 listener in the same process as
+`serve`. It is a different feature from section 9. Section 9's
+`[directories]` table imports users from an upstream directory. This section
+adds `[ldap_listeners]`, one policy client with `settings.ldap`, and one
+service agent. User and group administration stays on the existing user and
+group commands. The behavior page is [LDAP provider](ldap-provider.md).
+That page's `client create --file` form is not a flag in this tree. The
+create command accepts `--settings-file`, and the settings file is a
+`ProviderSettings` document.
+
+### Prerequisites
+
+The Platform server from sections 1 and 2 is running for the client and
+agent commands. The server CLI session from section 2 exists. Pass
+`--server http://localhost:9000`.
+
+`search_groups` and `allowed_groups` name `staff`. Section 6 is the
+procedure that creates `staff` and adds `admin`. That procedure was not
+executed in this task. Until the group exists, `ldap_profile` fails with
+`LDAP search group does not exist`. A search then reports inappropriate
+matching with an empty message. A bind reports invalid credentials. Until
+`admin` is a member, a user bind for `admin` is refused by the client group
+policy and the LDAP bind result is also invalid credentials.
+
+The listener needs a certificate file and a key file. Place them next to
+the configuration as `ldap-fullchain.pem` and `secrets/ldap-key.pem`, or
+change the two paths. Relative paths are resolved from the configuration
+file's directory when the file is loaded. This task did not create a
+certificate.
+
+Stop `serve` before editing `riauth.toml`, then start the same serve
+command. A second opener of the redb store fails with `storage_owned`.
+
+An Essentials configuration with a non-empty `ldap_listeners` table fails
+with `ldap_listeners requires the Platform build`. An Essentials client
+with `settings.ldap` fails with
+`Client setting ldap requires the Platform build`.
+
+### Permissions
+
+The administrator session allows `client.write` on
+`client/legacy-directory` and agent administration. The service credential
+needs `ldap.search` on `client/legacy-directory`. `ldap.search` is a
+Platform action. The listener id `legacy` and the client id
+`legacy-directory` must be 1–64 ASCII letters, digits, dots, hyphens,
+underscores, or `@`. `client create` and `agent create` are direct
+mutations. An agent or a delegated human must send `If-Match` with the
+current revision. The administrator session from section 2 can call the
+printed commands without `--if-revision`.
+
+### Commands
+
+Write `deployment-private/platform-lab/ldap-settings.json`. The object is
+`ProviderSettings`. `ldap` has `base_dn` and `search_groups` only.
+
+```json
+{
+  "ldap": {
+    "base_dn": "dc=lab,dc=test",
+    "search_groups": ["staff"]
+  }
+}
+```
+
+`base_dn` is comma-separated `dc=` labels. Each label is 1–63 ASCII letters,
+digits, or hyphens, and the whole base is at most 253 bytes. `search_groups`
+has one to 32 names. The client must be interactive and its scopes must
+include `profile`.
+
+```sh
+riauth schema provider
+riauth --server http://localhost:9000 client create legacy-directory \
+  --name "Legacy application directory" \
+  --scope openid,profile,email,groups \
+  --group staff \
+  --settings-file deployment-private/platform-lab/ldap-settings.json
+riauth --server http://localhost:9000 agent create ldap-directory \
+  --permission ldap.search=client/legacy-directory \
+  --out deployment-private/platform-lab/ldap-agent.json
+```
+
+`--service` is omitted. A service client fails LDAP settings validation
+with `LDAP requires a simple dc=... base, one to 32 search groups and an interactive policy client`.
+`--require-mfa` is omitted, so the flag stays false. The
+[LDAP provider](ldap-provider.md) example sets `require_mfa` true, which
+rejects a password bind until the account has the required factor.
+`--group staff` sets `allowed_groups` to that one group. A user bind is
+allowed when the account's durable groups intersect that set. The same
+group name is the `search_groups` entry above.
+
+`agent create` writes the credential file at Unix mode 0600 and prints
+`agent` and `credential_file`. The token is inside that file. It is prefixed
+`ri_agent_`. The default lifetime is 86400 seconds. An existing `--out`
+fails with `Credential destination already exists`.
+
+Stop `serve` and append the listener. `allowed_peers` is one to 128
+explicit IP addresses. Unspecified and multicast addresses are rejected
+with `LDAP listeners require one to 128 explicit peer IPs`. At most 16
+listeners are accepted. `local_unencrypted` is a loopback test switch and
+is not this example. With it left false, both TLS files are required, or
+validation fails with
+`LDAP requires certificate and key files for LDAPS or mandatory STARTTLS`.
+
+```toml
+[ldap_listeners.legacy]
+listen = "127.0.0.1:1636"
+client_id = "legacy-directory"
+allowed_peers = ["127.0.0.1"]
+ldaps = true
+tls_cert_file = "ldap-fullchain.pem"
+tls_key_file = "secrets/ldap-key.pem"
+```
+
+The [LDAP provider](ldap-provider.md) example listens on `0.0.0.0:1636` and
+allows the documentation peer `192.0.2.20`. This lab uses the loopback
+address for both the listen address and the only allowed peer. Replace
+`127.0.0.1` in `allowed_peers` with the application host's address when the
+client is not on this machine. The listener accepts the TCP peer address.
+It does not read an HTTP forwarding header.
+
+Start the same `serve` command. With `ldaps = true` the port speaks LDAPS.
+With `ldaps` false and the same certificate files, the port speaks LDAP and
+requires STARTTLS before binds and searches. Certificate files are reloaded
+on a 60-second interval. A failed reload keeps the active certificate and logs
+`LDAP certificate reload failed; retaining current certificate`.
+
+The listener bind does not look up the policy client. A later bind or
+search calls `ldap_profile`. A missing, disabled, or non-LDAP client makes
+that lookup fail. The LDAP result message is empty. A bind in that state
+reports invalid credentials. A search reports insufficient access rights.
+
+A service bind is `cn=riauth-agent,dc=lab,dc=test`. The password is the
+agent token. A user bind is `uid=<username>,ou=users,dc=lab,dc=test` with
+that account's password. Group entries use `cn=<group>,ou=groups,<base>`.
+The attribute and paging limits are on the LDAP provider page. This task
+opened no LDAP connection.
+
+### Expected observation
+
+`client create` prints `client` and `client_secret`. This client is public,
+so `client_secret` is null. The client is enabled. `agent create` prints
+the agent view and the credential path. The token is only in the credential
+file.
+
+After `serve` restarts with the listener block and readable certificate
+files, the process binds `127.0.0.1:1636`. A peer whose IP is not in
+`allowed_peers` is dropped. A bind or search before the client exists, or
+while it is disabled, fails closed. A bind reports invalid credentials. A
+search reports insufficient access rights. The LDAP message is empty. A
+search group that is not a stored group fails inside the server with
+`LDAP search group does not exist`. That search reports inappropriate
+matching, still with an empty message, and a bind reports invalid
+credentials.
+
+### Unrun and peer evidence
+
+This task did not write the settings file, did not create the client or the
+agent, did not add the listener, did not restart `serve`, and did not open
+an LDAP connection. No `ldap3` client and no third-party directory client
+was run. The automated network fixtures described on the LDAP provider page
+are tests in this repository. They are not a result from this lab. Section 9's
+directory import remains a separate, also unrun, procedure.
+
 ## Unverified architecture artifacts
 
 These artifacts are in the tree. This slice did not execute them. The small
@@ -824,7 +1519,7 @@ Platform install above does not configure the extra surfaces they draw.
 
 | Artifact | What it is | What this slice can say |
 | --- | --- | --- |
-| [Architecture system map](architecture.md) | A combined diagram of browsers, the CLI, nginx and Traefik, HTTP, LDAP and RADIUS listeners, redb or PostgreSQL, and external peers. | It is a map of the codebase's surfaces. The install enables none of the LDAP, RADIUS, or proxy listeners. Sections 9 and 10 document a directory client and an outbound SCIM target; those commands were not run. The diagram was not run against this install. |
+| [Architecture system map](architecture.md) | A combined diagram of browsers, the CLI, nginx and Traefik, HTTP, LDAP and RADIUS listeners, redb or PostgreSQL, and external peers. | It is a map of the codebase's surfaces. Sections 9 and 10 document a directory client and an outbound SCIM target. Section 13 documents one LDAP provider listener. Those commands were not run, and the listener was not started. RADIUS and proxy listeners stay unset. The diagram was not run against this install. |
 | [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | A local build observation at source revision `4ca7558`, including native binary hashes and a note that Linux release files were absent. | It is not an observation of this worktree's revision. This task did not rebuild the matrix. |
 | Release archives named by [deployment examples](deployment-examples.md) and [release notes](release-notes.md) | Linux native archives, maintenance archives, `riauthctl` archives, container archives, `SHA256SUMS`, and `build-provenance` files. | They were not downloaded, loaded, or started here. `deploy/compose-small.yml` and `deploy/compose-distributed.yml` remain documented image layouts for a later deployment. |
 | `riauth capabilities` | Artifact catalog for the binary on `PATH`. | `usable` is null until a configured instance reports runtime state. Compiled Platform features are not configured features. |
@@ -852,12 +1547,16 @@ spec and were not checked here.
 
 ## What remains for D01
 
-This page is the Platform half of the task guide through the second slice.
+This page is the Platform half of the task guide through the third slice.
 It does not finish the Platform guide, and it does not finish D01.
 
-Sections 6 through 10 are source-reviewed procedures. The generated `init`
-file still has no directory and no SCIM target until the operator appends
-them. Those commands were not executed here.
+Sections 6 through 13 are source-reviewed procedures. The generated `init`
+file still has no directory, no SCIM target, no workflow, no SAML client,
+and no LDAP listener until the operator adds them. Those commands were not
+executed here. Sections 11 through 13 name the configured workflow, the SAML
+identity-provider and source commands, and the LDAP provider listener.
+No workflow run, service provider, upstream identity provider, or LDAP
+client was contacted.
 
 Still outside this slice, as later tasks:
 
@@ -871,16 +1570,17 @@ Still outside this slice, as later tasks:
   not run here, so that conflict stays unresolved.
 - PostgreSQL and the two-host layout in [deployment examples](deployment-examples.md),
   native HTTPS, and a trusted proxy.
-- Platform additions that this install does not configure: workflow authoring
-  ([workflows](workflows.md)), SAML ([SAML](saml.md)), the LDAP provider
-  ([LDAP provider](ldap-provider.md)), RADIUS ([RADIUS](radius.md)), inbound
-  SCIM ([SCIM](scim.md)), proxy SSO ([proxy](proxy.md)), Workspace and Entra
-  directory import ([Google Workspace](enterprise/ENT-03.md),
+- Platform additions that this install does not configure: RADIUS
+  ([RADIUS](radius.md)), inbound SCIM ([SCIM](scim.md)), proxy SSO
+  ([proxy](proxy.md)), Workspace and Entra directory import
+  ([Google Workspace](enterprise/ENT-03.md),
   [Microsoft Entra](enterprise/ENT-04.md)), device trust, Windows login,
   temporary access, delegated review, Shared Signals, client-certificate
   login, external signing, and the event map. The enterprise notes linked
   from the [documentation index](README.md) are the current references.
-  They are not steps in this slice.
+  They are not steps in this slice. Configured TOTP, recovery-code, passkey,
+  consent, and enrollment workflows remain in
+  [Left to later work](workflows.md#left-to-later-work).
 - Edition transition preflight, plan, and activate. The commands exist on
   the Platform maintenance binary and are documented in
   [server editions](editions.md). This slice does not switch editions.
@@ -903,5 +1603,7 @@ Still outside this slice, as later tasks:
   commands here are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
-  preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply
-  on this revision. Those claims need a run. This page does not supply one.
+  preview, the audit export, an LDAP directory plan or apply, a SCIM plan
+  or apply, a workflow plan or a configured-workflow run, a SAML metadata
+  exchange with a peer, or an LDAP provider bind on this revision. Those
+  claims need a run. This page does not supply one.
