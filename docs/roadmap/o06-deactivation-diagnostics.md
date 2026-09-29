@@ -41,7 +41,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
-- Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
+- Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. That read omits the recipient, subject, body, proof, lease, and `dispatch_started`. No SMTP error string is stored. The owner lease and pre-send pin stay outside that response. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.
 - `riauthctl`, and any new `riauth` diagnostics subcommand. The existing `riauth offboard diagnostics` command remains the job aggregate.
 - Essentials uses [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). That route does not use `user.offboard` and does not publish a missing account's target name. This page's Platform route is unchanged.

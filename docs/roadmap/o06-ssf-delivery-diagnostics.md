@@ -4,7 +4,7 @@ Status: one local slice. O06 stays open. Label remains **extend**. Journey remai
 
 This page records the Platform outbound Shared Signals delivery read added here. It is a description of the current source and local tests, not a dashboard deployment or a change to SSF dispatch. The incident procedure is [SSF delivery](../ssf-delivery.md).
 
-Mail delivery status remains `GET /api/operations/mail`. That route returns `id`, `created_at`, `expires_at`, `attempts`, `next_attempt`, `delivered_at`, and `stopped` for every stored row, and omits the recipient, subject, body, proof, and lease. No SMTP error string is stored. `queues.mail_deliveries` pending, failed, and oldest pending age remain on `GET /api/operations/metrics` and the Prometheus queue gauges. Logout delivery state, including `last_failed`, `last_status`, and `attempts`, remains `GET /api/operations/logout`.
+Mail delivery status remains `GET /api/operations/mail`. That route returns `id`, `created_at`, `expires_at`, `attempts`, `next_attempt`, `delivered_at`, and `stopped` for every stored row, and omits the recipient, subject, body, proof, lease, and `dispatch_started`. The owner lease and pre-send pin stay outside that response. A leased in-flight mail row stays pending; it is outside the unleased-attempt failed count until the lease is cleared. No SMTP error string is stored. `queues.mail_deliveries` pending, failed, and oldest pending age remain on `GET /api/operations/metrics` and the Prometheus queue gauges. Logout delivery state, including `last_failed`, `last_status`, and `attempts`, remains `GET /api/operations/logout`.
 
 ## What an operator can read
 
@@ -37,7 +37,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
-- Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges.
+- Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges. That response omits `dispatch_started` as well as the lease, recipient, subject, body, and proof.
 - Logout delivery state, which stays on `GET /api/operations/logout`.
 - The shared deactivation aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). It uses `provisioner.read` and `user.read`, withholds a missing account, and omits the target name. The Platform read on [deactivation diagnostics](o06-deactivation-diagnostics.md) still uses `user.offboard` and can show a missing account's target name to a full administrator.
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.

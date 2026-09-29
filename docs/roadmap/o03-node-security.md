@@ -1,11 +1,11 @@
 # O03 shared security agreement
 
 Status: one stored comparison, one authentication policy, one explicit
-format 1 record command, one logout dispatch lease, and one SSF dispatch
-lease. O03 stays open.
+format 1 record command, one logout dispatch lease, one SSF dispatch lease,
+and one mail dispatch lease. O03 stays open.
 This page records the issuer and active-capability check, the token-lifetime
 and password-history agreement, the format 1 upgrade, the logout lease, the
-SSF lease, and the coordination that was not built.
+SSF lease, the mail lease, and the coordination that was not built.
 
 Active capabilities are the names compiled into the running build and omitted
 from `capabilities.disabled`. `configured`, `runtime_ready`, and `usable`
@@ -344,12 +344,11 @@ A legacy row that has no `lease` or `dispatch_started` field decodes both as
 empty. `serve` does not rewrite those rows. The first claim of a due legacy
 row stores an owner the same way as a new row.
 
-Mail still compares its lease only when the attempt finishes. Provisioning
-and deactivation keep their quarantine-on-started path and their 180-second
-lease. Reconciliation stays at 900 seconds and offboarding at 60 seconds.
-Maintenance `cleanup` and alert dispatch still run on every worker. The
-in-memory `forward_auth` rate limit and cache freshness are unchanged.
-Gateway `/readyz` is unchanged. This lease does not make O03 complete.
+Provisioning and deactivation keep their quarantine-on-started path and their
+180-second lease. Reconciliation stays at 900 seconds and offboarding at 60
+seconds. Maintenance `cleanup` and alert dispatch still run on every worker.
+The in-memory `forward_auth` rate limit and cache freshness are unchanged.
+Gateway `/readyz` is unchanged. The SSF lease does not make O03 complete.
 
 ### Local run
 
@@ -451,20 +450,175 @@ list was unchanged. The test then dropped
 `scripts/test-postgres.sh` for the default target and
 `q05_replay_concurrency`. It does not select `ssf_lease_postgres`.
 
+## Mail dispatch lease
+
+Account mail uses the same owner shape as logout and SSF.
+`claim_mail` ([`src/lifecycle.rs`](../../src/lifecycle.rs)) keeps the due-index
+hint, then under the store writer increments `attempts`, sets `next_attempt`
+60 seconds ahead, and stores a new `lease`. `begin_mail_dispatch` pins
+`dispatch_started` only while that lease is still current, the attempt number
+matches, the row is not stopped or delivered, and `next_attempt` is still
+ahead. A missing proof, or a message whose `expires_at` has been reached,
+sets `stopped`, clears the body and the owner, and returns before any SMTP
+bytes are written. [`deliver`](../../src/lifecycle.rs) calls that pin before
+it builds the message or opens a connection. A refused pin does not finish
+the attempt and does not open SMTP. A second claim during the window receives
+nothing, so it has no message to send. When `next_attempt` is reached, one
+later claim replaces the lease and may send. A pin or `finish_mail_attempt`
+for the previous attempt leaves the new attempt in place. A failed attempt
+clears the lease and uses the same backoff as before.
+
+The SMTP transport timeout stays 10 seconds per command, and the delivery
+wrapper stays 30 seconds. A dialogue already inside that send can still
+complete after another worker claims the delivery if the first process was
+suspended for the whole 60-second lease. After the pin is stored, that
+attempt sends on the open dialogue. A 250 accepted reply is at least once:
+a later attempt can also be accepted. Finishing the old attempt leaves the
+later owner in place. Recipient checks stay the mailbox parse at send and
+the address check at enqueue. A message that cannot be built after a
+successful pin finishes as a retry and does not open SMTP. Proof revocation
+and message expiry still stop the row.
+
+Claim, pin, and finish do not write an audit row. They do not copy the
+recipient, subject, body, proof, or SMTP password into diagnostics, metrics,
+or audit. `GET /api/operations/mail` still returns `id`, `created_at`,
+`expires_at`, `attempts`, `next_attempt`, `delivered_at`, and `stopped`. It
+omits `lease` and `dispatch_started`. No SMTP error string is stored. Queue
+pending and failed counters keep their existing predicates, so a leased
+in-flight row stays pending and is not counted failed. A retryable finish
+clears the lease, so that unleased attempt counts as failed while the row
+stays pending. A later claim stores a lease again, and the row leaves the
+failed count until the next failed finish.
+
+A legacy row that has no `lease` or `dispatch_started` field decodes both as
+empty. `serve` does not rewrite those rows. The first claim of a due legacy
+row stores an owner the same way as a new row. This lease does not make O03
+complete.
+
+### Local run
+
+On this checkout the embedded-store command was:
+
+```sh
+CARGO_TARGET_DIR=$HOME/.cache/riauth-cargo/o01-split-roles-wave22 \
+CARGO_INCREMENTAL=0 \
+CARGO_BUILD_JOBS=2 \
+CARGO_NET_OFFLINE=true \
+cargo test --locked --offline --features test-support --test mail_lease -- --nocapture --test-threads=2
+```
+
+Cargo finished the test profile in 1m 22s. The only compiler note was the
+existing `__eh_frame` linker warning. `mail_lease` passed 2 tests in 3.41s.
+The tests printed:
+
+```text
+mail_lease_mode=encrypted-redb posts=1 stale_finish_preserved=true cancelled_posts=0 retry_pending=true audit_unchanged=true
+mail_lease_mode=redb posts=1 stale_finish_preserved=true cancelled_posts=0 retry_pending=true audit_unchanged=true
+```
+
+Both used the test clock at 1,700,000,000 for the fence, then wall-clock SMTP.
+A legacy JSON row without the owner fields decoded to empty values, then one
+claim stored a lease and left pending 1 and failed 0. A message already at
+`expires_at` stopped with attempts still 0 and an empty lease. A row already
+at 12 attempts stopped without another increment. One pin set
+`dispatch_started`. A second pin, a different lease, an empty lease, and a
+missing row were refused. At the 60-second `next_attempt` the old pin was
+refused, a new claim stored a different lease with attempts 2, and finishing
+attempt 1 as sent left that new lease undelivered. Finishing attempt 2
+recorded delivery at that clock value and cleared the lease. A failed finish
+cleared the lease, left the row pending, incremented failed by one, and
+scheduled `next_attempt` two seconds later. The next claim stored a new lease
+and that row left the failed count. A deleted proof and an `expires_at`
+reached while the lease was still ahead produced no SMTP, stopped the row,
+and cleared the body. Maintenance cleared an owner when the proof was gone.
+The encrypted run used `database_key_file` on redb. The operations page
+omitted the lease, pin, recipient, subject, body, and proof. The audit action
+list was unchanged.
+
+The same private target then ran the existing mail probe and the two SMTP
+account tests. `RIAUTH_TEST_CONTRACT_PG_ROOT` was unset.
+
+```sh
+cargo test --locked --offline --features test-support --test mail_contention -- --exact idle_mail_probe_preserves_claims_proofs_and_durable_retry --nocapture
+```
+
+Cargo finished that test profile in 3.60s with the same `__eh_frame` note.
+`mail_contention` passed 1 test in 5.96s. Ten idle mail polls on redb and
+encrypted redb took no writer wait, hold, or commit. One claim, a durable
+retry, one successful send, and stale proof or expiry rejection passed on
+both backends.
+
+```sh
+cargo test --locked --offline --features test-support --test identity --no-run
+```
+
+Cargo finished that profile in 8.40s. The built `identity` executable then
+ran `--exact factors_tests::account_verification_is_delivered_through_smtp_and_bound_to_purpose_email_and_epoch`
+(1 passed, 172 filtered, 2.03s) and
+`--exact factors_tests::email_password_reset_preserves_factors_revokes_grants_and_retries_delivery_without_exposing_tokens`
+(1 passed, 172 filtered, 2.57s).
+
+The same private target, offline mode, incremental setting, and job cap were
+used for:
+
+```sh
+RIAUTH_PG_TEST_TARGET=mail_lease_postgres ./scripts/test-postgres.sh
+```
+
+The script adds `--locked --features test-support`. Cargo finished the test
+profile in 3.10s, and both ignored tests passed in 45.89s (2 passed, 0
+failed). The harness enables `test-support` and did not set the test clock
+for the live workers. The only compiler note was the same `__eh_frame`
+warning. About 37 GiB were free on the data volume before the script started.
+
+The tests printed:
+
+```text
+worker_a_pid=12917 worker_b_pid=13329 issuer=http://127.0.0.1:9 worker_a_listen=http://127.0.0.1:52369 worker_b_listen=http://127.0.0.1:52370 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable record_encryption=absent posts=1 attempts=1 lease_cleared=true dispatch_started_while_held=true delivered=true stale_finish_preserved=true cancelled_posts=0 queue_lease_pending=true audit_unchanged=true database_dropped=riauth_o03m_kaehdmg7bfnl0jn34z9z
+worker_a_pid=15140 worker_b_pid=15147 issuer=http://127.0.0.1:9 worker_a_listen=http://127.0.0.1:52755 worker_b_listen=http://127.0.0.1:52756 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable record_encryption=database_key posts=1 attempts=1 lease_cleared=true dispatch_started_while_held=true delivered=true stale_finish_preserved=true cancelled_posts=0 queue_lease_pending=true audit_unchanged=true database_dropped=riauth_o03m_jwrlwkpoco1dmtbluofw
+```
+
+Each line is two `riauth serve` worker processes against one new database on
+the script's disposable primary. `SHOW data_directory` matched that primary
+before the database was created. Both processes used issuer
+`http://127.0.0.1:9`, `browser_ui` false, `process.role` `worker`, and
+`process.accept_partial_duties` true, on distinct loopback listen ports.
+The written configs had no `tls_cert_file` or `tls_key_file`. Mail used
+loopback SMTP with no username and no `password_file`. PostgreSQL
+`local_unencrypted` was true, `ca_file` was absent, and the shared connection
+file named one `host=127.0.0.1` with `sslmode=disable`. The second test also
+set `database_key_file`. The delivery row was planted after both `/healthz`
+probes succeeded. While the receiver held the first message, the row had
+attempts 1, a lease, `dispatch_started` true, and no `delivered_at`, and the
+receiver counted one completed DATA and one TCP accept. After the receiver
+returned 250, the row was delivered, attempts stayed 1, and the lease and pin
+were empty. A further quiet interval still counted one message. The test then
+killed both workers. On that same database, a legacy row claimed once, the
+old pin was refused at 60 seconds, finishing attempt 1 as sent left attempt 2
+undelivered, and finishing attempt 2 recorded delivery. A deleted proof
+produced no SMTP. A leased row stayed pending, and a failed finish kept that
+row pending while failed increased by one. The audit action list was
+unchanged. The test then dropped `riauth_o03m_kaehdmg7bfnl0jn34z9z` and, for
+the database-key run, `riauth_o03m_jwrlwkpoco1dmtbluofw`. Public CI runs
+`scripts/test-postgres.sh` for the default target and
+`q05_replay_concurrency`. It does not select `mail_lease_postgres`.
+
 ## Still open
 
-- Mail stores a lease and compares it when the attempt finishes; it does not
-  pin before sending. Provisioning, deactivation, reconciliation, and
-  offboarding keep their existing leases. Provisioning and deactivation
-  target permits stay in the worker process. Maintenance and alert passes
-  run on every worker.
+- A process paused after a mail pin commits can still start or finish SMTP
+  after a later claim. Admission and the external operation are separate;
+  the 30-second delivery timeout does not fence a process suspended across
+  the 60-second lease. A 250 accepted reply is at least once. Provisioning,
+  deactivation, reconciliation, and offboarding keep their existing leases.
+  Their target permits stay in the worker process. Maintenance and alert
+  passes run on every worker.
 - A process paused after a logout or SSF pin commits can still start or
   finish its POST after a later claim. Admission and the external network
   operation are separate; the five-second client timeout does not fence a
   process suspended across the 60-second lease.
 - Public CI runs the default PostgreSQL target and `q05_replay_concurrency`.
-  It does not select `node_security_postgres`, `job_lease_postgres`, or
-  `ssf_lease_postgres`.
+  It does not select `node_security_postgres`, `job_lease_postgres`,
+  `ssf_lease_postgres`, or `mail_lease_postgres`.
 - Cache freshness remains per process.
 - The `forward_auth` rate limit is still counted in memory on each node.
 - Trusted proxies, external signer files, and the database encryption key
@@ -482,9 +636,9 @@ list was unchanged. The test then dropped
   issuer, active set, and authentication policy.
 - These runs used loopback HTTP. Native TLS stayed off, and none of them
   promoted the standby. The node-security and logout PostgreSQL databases
-  stayed unencrypted. The SSF pair used that same kind of disposable primary:
-  one database had no record encryption, and one used `database_key_file`
-  with `sslmode=disable` and `postgres=local_unencrypted`.
+  stayed unencrypted. The SSF pair and the mail pair each used that same kind
+  of disposable primary: one database had no record encryption, and one used
+  `database_key_file` with `sslmode=disable` and `postgres=local_unencrypted`.
 - Gateway `/readyz` stayed successful while background loops were off. This
   slice did not change that.
 - The comparison does not survey peer health.

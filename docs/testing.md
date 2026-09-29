@@ -90,6 +90,24 @@ RIAUTH_PG_TEST_TARGET=ssf_lease_postgres ./scripts/test-postgres.sh
 
 The script passes `--locked --features test-support` and `--ignored`. Both processes use `process.role = "worker"`, loopback HTTP, no native TLS files, and loopback PostgreSQL with `sslmode=disable`. One test leaves record encryption absent. The other sets `database_key_file` on that same primary. A local receiver holds the first SET POST across the other worker's next tick. After both workers stop, the test checks a stale pin and finish, a moved stream, queue counters, replay, and audit. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the families this slice left on their existing fences are in [node security](roadmap/o03-node-security.md).
 
+## Mail dispatch lease
+
+One embedded store, with the test clock for the fence and wall-clock SMTP for the send, was run with:
+
+```sh
+cargo test --locked --offline --features test-support --test mail_lease -- --nocapture
+```
+
+`mail_lease_pins_one_attempt_until_expiry` and `mail_lease_pins_one_attempt_on_encrypted_redb` check a legacy row, the expiry stop, the 12-attempt stop, one pin per attempt, expiry replacing the lease, a stale sent finish leaving the new attempt in place, a failed attempt clearing the lease and retrying at the existing backoff, a revoked proof and an expired message that do not open SMTP, queue counters that keep a leased row pending, an operations page that omits the recipient, subject, body, proof, lease, and pin, and an unchanged audit action list. The encrypted run uses `database_key_file` on redb.
+
+Two worker processes on one disposable PostgreSQL database are selected separately:
+
+```sh
+RIAUTH_PG_TEST_TARGET=mail_lease_postgres ./scripts/test-postgres.sh
+```
+
+The script passes `--locked --features test-support` and `--ignored`. Both processes use `process.role = "worker"`, loopback HTTP, no native TLS files, and loopback PostgreSQL with `sslmode=disable`. One test leaves record encryption absent. The other sets `database_key_file` on that same primary. A local receiver holds the first SMTP DATA response across the other worker's next tick. After both workers stop, the test checks a stale pin and finish, a revoked proof, queue counters, and audit. A 250 accepted reply is at least once. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the families this slice left on their existing fences are in [node security](roadmap/o03-node-security.md).
+
 ## Backup memory measurement
 
 `scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.
