@@ -109,7 +109,7 @@ fn desired_state_removals_need_exact_review_and_keep_a_truthful_result() {
 }
 
 #[test]
-fn desired_state_client_and_password_disables_require_review() {
+fn desired_state_client_disable_uses_reviewed_status_and_password_disable_requires_plan_review() {
     let f = Fixture::new();
     f.user("alice");
     f.client("app", false);
@@ -122,9 +122,15 @@ fn desired_state_client_and_password_disables_require_review() {
     current.groups.clear();
     current.sources.clear();
     current.source_links.clear();
+    let denied = f.core.plan_state(&f.admin, current.clone()).err().unwrap();
+    assert_eq!(
+        denied.message,
+        "Client enabled changes require a reviewed client status change"
+    );
+    current.clients[0].enabled = true;
     let plan = f.core.plan_state(&f.admin, current).unwrap();
     assert_eq!(plan.removal_impact.disabled_passwords, 1);
-    assert_eq!(plan.removal_impact.disabled_clients, 1);
+    assert_eq!(plan.removal_impact.disabled_clients, 0);
     assert!(plan.removal_impact.review_required);
     assert!(
         f.core
@@ -165,7 +171,7 @@ fn desired_state_client_and_password_disables_require_review() {
             .is_empty()
     );
     assert!(
-        !f.core
+        f.core
             .store
             .get::<riauth::model::Client>("clients", "app")
             .unwrap()
