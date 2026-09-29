@@ -1,5 +1,7 @@
 //! Run `sh tests/edition_transition_cross_build.sh` for the two-build contract.
 #[cfg(feature = "platform")]
+use riauth::delegation::{GrantInput, HumanRole};
+#[cfg(feature = "platform")]
 use riauth::model::NewUser;
 #[cfg(feature = "platform")]
 use riauth::store::Store;
@@ -60,6 +62,14 @@ fn marked_compatible_transition_cross_build() {
     fs::create_dir_all(&root).unwrap();
     let config = Config {
         data_dir: root.join("instance"),
+        database_key_file: if env::var_os("RIAUTH_CROSS_BUILD_ENCRYPTED").is_some() {
+            let key = root.join("database.key");
+            riauth::config::write_private(&key, riauth::crypto::random_token("").as_bytes(), false)
+                .unwrap();
+            Some(key)
+        } else {
+            None
+        },
         ..Default::default()
     };
     let config_path = root.join("riauth.toml");
@@ -81,8 +91,49 @@ fn marked_compatible_transition_cross_build() {
         .as_str()
         .unwrap()
         .to_owned();
+    let revoked = core
+        .login("admin".into(), "fixture-password-only".into(), None)
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.logout(&revoked).unwrap();
+    core.create_user(
+        &session,
+        NewUser {
+            username: "delegate".into(),
+            password: "fixture-delegate-password".into(),
+            email: None,
+            display_name: "Delegate".into(),
+            admin: false,
+        },
+    )
+    .unwrap();
+    core.set_human_grants(
+        &session,
+        "delegate",
+        vec![GrantInput {
+            role: HumanRole::Auditor,
+            scope: "audit/events".into(),
+        }],
+    )
+    .unwrap();
     fs::write(root.join("session_token"), session).unwrap();
     let baseline = core.store.read(|tx| tx.snapshot()).unwrap();
+    assert!(baseline.keys().any(|key| key.starts_with("users/")));
+    assert!(baseline.keys().any(|key| key.starts_with("human_grants/")));
+    assert_eq!(
+        baseline
+            .keys()
+            .filter(|key| key.starts_with("users/"))
+            .count(),
+        2
+    );
+    assert!(
+        baseline
+            .iter()
+            .any(|(key, value)| key.starts_with("sessions/") && value["revoked"] == true)
+    );
     fs::write(
         root.join("baseline.json"),
         serde_json::to_vec(&baseline).unwrap(),
