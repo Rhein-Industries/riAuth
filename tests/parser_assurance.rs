@@ -383,6 +383,7 @@ async fn scim_member_shape_change_must_reject_without_panicking() {
         )
         .unwrap();
     let id = text(&group, "id");
+    let version = text(&group["meta"], "version");
     let input: Value = serde_json::from_slice(include_bytes!(
         "../fuzz/corpus/parsers/scim-members-shape-change"
     ))
@@ -405,7 +406,7 @@ async fn scim_member_shape_change_must_reject_without_panicking() {
                 .method("PATCH")
                 .uri(format!("/scim/v2/Groups/{id}"))
                 .header("authorization", format!("Bearer {credential}"))
-                .header("if-match", format!("\"{}\"", before["meta/revision"]))
+                .header("if-match", &version)
                 .header("content-type", "application/scim+json")
                 .body(Body::from(input.to_string()))
                 .unwrap(),
@@ -426,9 +427,8 @@ async fn scim_member_shape_change_must_reject_without_panicking() {
         outcome.is_ok(),
         "Q07-SCIM-01: member shape change panicked instead of returning a client error; state rollback checks passed"
     );
-    assert_eq!(
-        outcome.unwrap().unwrap_err().status,
-        StatusCode::BAD_REQUEST
-    );
+    let error = outcome.unwrap().unwrap_err();
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
+    assert_eq!(error.message, "Complex PATCH value must be an object or array");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

@@ -1973,14 +1973,15 @@ fn patch_entry(field: &str, value: &Value) -> Result<Value> {
             return Err(Error::bad("Duplicate complex PATCH sub-attribute"));
         }
     }
-    if field == "members"
-        && result.get("value").is_some_and(|value| {
-            value.as_str().is_none_or(|id| {
-                id.is_empty() || id.len() > 256 || id.chars().any(char::is_control)
-            })
-        })
-    {
-        return Err(Error::bad("Invalid member ID"));
+    if field == "members" {
+        // A member object is valid PATCH input. It still needs the required
+        // value; an empty object must not become a stored member.
+        match result.get("value").and_then(Value::as_str) {
+            Some(id) if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) => {
+            }
+            Some(_) => return Err(Error::bad("Invalid member ID")),
+            None => return Err(Error::bad("Member ID required")),
+        }
     }
     Ok(Value::Object(result))
 }
@@ -2383,24 +2384,64 @@ mod patch_tests {
 
     #[test]
     fn members_add_rejects_invalid_intermediate_shapes() {
-        let old = json!({"schemas":[GROUP],"displayName":"test-group","members":[]});
+        let old = json!({"schemas":[GROUP],"displayName":"test-group","members":[{"value":"kept"}]});
         let before = old.clone();
-        for shape in [
-            json!(0),
-            Value::Null,
-            json!(true),
-            json!("member"),
-            json!({}),
-        ] {
+        // Scalars are neither a member object nor an array. The later add must
+        // not run, and a single object remains valid input.
+        for shape in [json!(0), Value::Null, json!(true), json!("member")] {
             let input = patch(json!([
                 {"op":"replace","path":"members","value":shape},
-                {"op":"add","path":"members","value":[]}
+                {"op":"add","path":"members","value":[{"value":"after-invalid"}]}
             ]));
             let error = patch_resource(&old, input).unwrap_err();
             assert_eq!(error.status, StatusCode::BAD_REQUEST, "{shape}");
-            assert_eq!(error.message, "members must be an array", "{shape}");
+            assert_eq!(
+                error.message, "Complex PATCH value must be an object or array",
+                "{shape}"
+            );
             assert_eq!(old, before);
         }
+        for shape in [
+            json!({}),
+            json!([{}]),
+            json!({"display":"no-id"}),
+            json!([{"display":"no-id"}]),
+        ] {
+            let input = patch(json!([
+                {"op":"replace","path":"members","value":shape},
+                {"op":"add","path":"members","value":[{"value":"after-invalid"}]}
+            ]));
+            let error = patch_resource(&old, input).unwrap_err();
+            assert_eq!(error.status, StatusCode::BAD_REQUEST, "{shape}");
+            assert_eq!(error.message, "Member ID required", "{shape}");
+            assert_eq!(old, before);
+        }
+        let error = patch_resource(
+            &old,
+            patch(json!([
+                {"op":"replace","path":"members","value":{"value":""}},
+                {"op":"add","path":"members","value":[{"value":"after-invalid"}]}
+            ])),
+        )
+        .unwrap_err();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "Invalid member ID");
+        assert_eq!(old, before);
+        let added = patch_resource(
+            &old,
+            patch(json!([{"op":"add","path":"members","value":{"value":"solo"}}])),
+        )
+        .unwrap();
+        assert_eq!(
+            added["members"],
+            json!([{"value":"kept"},{"value":"solo"}])
+        );
+        let replaced = patch_resource(
+            &old,
+            patch(json!([{"op":"replace","path":"members","value":{"value":"solo"}}])),
+        )
+        .unwrap();
+        assert_eq!(replaced["members"], json!([{"value":"solo"}]));
     }
 
     #[test]
