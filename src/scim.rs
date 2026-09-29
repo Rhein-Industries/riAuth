@@ -1131,12 +1131,13 @@ fn scim_page_relations(
 
 impl Core {
     fn scim_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
-        self.scim_view_with_relations(tx, id, record, None)
+        // If-Match and write responses share GET's paged relation version.
+        self.scim_read_view(tx, id, record)
     }
 
     fn scim_read_view(&self, tx: &Tx<'_>, id: &str, record: &Record) -> Result<Value> {
         let mut relations = scim_page_relations(tx, &record.kind, &record.owner, &[(id, record)])?;
-        self.scim_view_with_relations(tx, id, record, Some(relations.pop().unwrap()))
+        self.scim_view_with_relations(tx, id, record, relations.pop().unwrap())
     }
 
     fn scim_view_with_relations(
@@ -1144,7 +1145,7 @@ impl Core {
         tx: &Tx<'_>,
         id: &str,
         record: &Record,
-        relations: Option<Vec<Value>>,
+        relations: Vec<Value>,
     ) -> Result<Value> {
         record_binding(&record.kind, record)?;
         let mut value = record.data.clone();
@@ -1165,39 +1166,9 @@ impl Core {
                         .collect::<Vec<_>>()
                 );
             }
-            value["groups"] = if let Some(relations) = relations {
-                Value::Array(relations)
-            } else {
-                let groups = crate::core::durable_groups_for(tx, &user.id)?;
-                let mut visible_groups = Vec::new();
-                for (id, group) in tx.list::<Record>("scim_groups")? {
-                    if !group.deleted
-                        && group.owner == record.owner
-                        && groups.contains(&group.local_id)
-                    {
-                        record_binding("Groups", &group)?;
-                        visible_groups.push(json!({"value":id,"display":name(&group)}));
-                    }
-                }
-                json!(visible_groups)
-            };
+            value["groups"] = Value::Array(relations);
         } else {
-            let group = tx
-                .get::<Group>("groups", &record.local_id)?
-                .ok_or_else(|| Error::missing("Group missing"))?;
-            value["members"] = if let Some(relations) = relations {
-                Value::Array(relations)
-            } else {
-                json!(
-                    tx.list::<Record>("scim_users")?
-                        .into_iter()
-                        .filter(|(_, u)| !u.deleted
-                            && u.owner == record.owner
-                            && group.members.contains(&u.local_id))
-                        .map(|(id, u)| json!({"value":id,"display":name(&u)}))
-                        .collect::<Vec<_>>()
-                )
-            };
+            value["members"] = Value::Array(relations);
         }
         // Include the effective projection so direct management and directory
         // changes to this resource also invalidate its ETag. Hidden password
@@ -1404,7 +1375,7 @@ impl Core {
                 .into_iter()
                 .zip(relations)
                 .map(|((id, record), relations)| {
-                    self.scim_view_with_relations(tx, &id, &record, Some(relations))
+                    self.scim_view_with_relations(tx, &id, &record, relations)
                 })
                 .collect::<Result<_>>()?;
             let page: Vec<_> = page

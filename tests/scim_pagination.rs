@@ -2,9 +2,12 @@
 
 mod common;
 
+use axum::http::StatusCode;
 use common::{backend::Backend, text};
 use riauth::{
     agent::{NewAgent, Permission},
+    context::{self, RequestContext},
+    error::Result,
     scim::{self, Query},
     telemetry::ReadContext,
 };
@@ -524,6 +527,140 @@ fn redb_scim_user_get_pages_related_groups() {
     assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 132);
 }
 
+fn patch_user(
+    f: &common::Fixture,
+    token: &str,
+    id: &str,
+    version: Option<&str>,
+    body: Value,
+) -> Result<Value> {
+    let core = f.core.clone();
+    let token = token.to_owned();
+    let id = id.to_owned();
+    // HTTP installs a request context even when the header is absent.
+    context::scope(
+        Some(RequestContext {
+            if_match: version.map(str::to_owned),
+            ..Default::default()
+        }),
+        move || core.scim_write(&token, "Users", Some(&id), body, true),
+    )
+}
+
+fn scim_if_match_pages_relation_versions(backend: Backend) {
+    let f = backend.fixture();
+    let owner = agent(&f, "if-match-relations-owner");
+    let user = f
+        .core
+        .scim_write(
+            &owner,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"if-match-relations-user"}),
+            false,
+        )
+        .unwrap();
+    let user_id = text(&user, "id");
+    let mut groups = Vec::new();
+    for index in 0..130 {
+        let name = format!("if-match-group-{index:03}");
+        let group = f
+            .core
+            .scim_write(
+                &owner,
+                "Groups",
+                None,
+                json!({"schemas":[scim::GROUP],"displayName":name}),
+                false,
+            )
+            .unwrap();
+        groups.push((text(&group, "id"), name));
+    }
+    groups.sort_by(|left, right| left.0.cmp(&right.0));
+    for index in [0, 128] {
+        f.core
+            .group_member(&f.admin, &groups[index].1, "if-match-relations-user", true)
+            .unwrap();
+    }
+    let current = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    let version = text(&current["meta"], "version");
+    assert_eq!(
+        current["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| text(group, "value"))
+            .collect::<Vec<_>>(),
+        vec![groups[0].0.clone(), groups[128].0.clone()]
+    );
+    let external_id = json!({
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+        "Operations": [{"op": "replace", "path": "externalId", "value": "paged-ext"}]
+    });
+    let before = f.snapshot().unwrap();
+    let missing = patch_user(&f, &owner, &user_id, None, external_id.clone()).unwrap_err();
+    assert_eq!(missing.status, StatusCode::PRECONDITION_REQUIRED);
+    let stale = patch_user(
+        &f,
+        &owner,
+        &user_id,
+        Some("\"stale-relation-version\""),
+        external_id.clone(),
+    )
+    .unwrap_err();
+    assert_eq!(stale.status, StatusCode::PRECONDITION_FAILED);
+    let renamed = patch_user(
+        &f,
+        &owner,
+        &user_id,
+        Some(&version),
+        json!({
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+            "Operations": [{"op": "replace", "path": "userName", "value": "taken-over"}]
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(renamed.status, StatusCode::BAD_REQUEST);
+    assert_eq!(renamed.code, "mutability");
+    f.assert_http_mutation_snapshot(&before);
+
+    let scans = &f.core.store.telemetry().reads;
+    let unbounded_before = scans.scans(ReadContext::Writer, false).sum();
+    let bounded_before = scans.scans(ReadContext::Writer, true).sum();
+    let updated = patch_user(&f, &owner, &user_id, Some(&version), external_id).unwrap();
+    assert_eq!(updated["userName"], "if-match-relations-user");
+    assert_eq!(updated["externalId"], "paged-ext");
+    assert_ne!(updated["meta"]["version"], version);
+    assert_eq!(updated, f.core.scim_get(&owner, "Users", &user_id).unwrap());
+    let unbounded_rows = scans.scans(ReadContext::Writer, false).sum() - unbounded_before;
+    let bounded_rows = scans.scans(ReadContext::Writer, true).sum() - bounded_before;
+    assert!(
+        unbounded_rows < 130,
+        "conditional write materialized {unbounded_rows} unbounded rows"
+    );
+    assert!(
+        bounded_rows >= 130,
+        "conditional write paged only {bounded_rows} related rows"
+    );
+}
+
+#[test]
+fn redb_scim_if_match_pages_relation_versions() {
+    scim_if_match_pages_relation_versions(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_scim_if_match_pages_relation_versions() {
+    scim_if_match_pages_relation_versions(Backend::Postgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_scim_if_match_pages_relation_versions() {
+    scim_if_match_pages_relation_versions(Backend::EncryptedPostgres);
+}
+
 #[test]
 #[ignore = "requires an isolated PostgreSQL test cluster"]
 fn postgres_scim_user_pages_cross_store_scan_boundary() {
@@ -532,6 +669,18 @@ fn postgres_scim_user_pages_cross_store_scan_boundary() {
 
 #[test]
 #[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_scim_user_pages_cross_store_scan_boundary() {
+    scim_user_pages_cross_store_scan_boundary(Backend::EncryptedPostgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
 fn postgres_paged_scim_lists() {
     paged_scim_lists_count_without_building_every_resource(Backend::Postgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_paged_scim_lists() {
+    paged_scim_lists_count_without_building_every_resource(Backend::EncryptedPostgres);
 }
