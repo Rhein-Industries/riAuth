@@ -4,10 +4,13 @@
 The measured operation is GET /api/me (Core::me) on a fresh loopback instance.
 One invocation is one binary and one backend, redb or PostgreSQL. A second pass
 creates empty groups during the same read so writer overlap and the server's
-background counters are both recorded.
+background counters are both recorded. Optional --directory-users and
+--directory-groups add a bounded directory and verify the administrator's
+group index before measurement. Both default to zero.
 
 python3 scripts/q09_benchmark_slice.py --self-check
 python3 scripts/q09_benchmark_slice.py --binary PATH --backend redb --out FILE
+python3 scripts/q09_benchmark_slice.py --binary PATH --directory-users 2 --directory-groups 2
 
 Build the binary in a private CARGO_TARGET_DIR with CARGO_INCREMENTAL=0.
 Do not use another worktree's target directory. A relative --binary is
@@ -37,6 +40,9 @@ SCRIPT = Path(__file__).resolve()
 SCHEMA = "riauth.benchmark-slice/v1"
 GENERAL_LIMIT = 600
 BUDGET_MAX = 500
+INDEX_PAGE_ROWS = 128
+DIRECTORY_USERS_MAX = 32
+DIRECTORY_GROUPS_MAX = 32
 BACKGROUND_JOBS = (
     "reconciliation",
     "provisioning",
@@ -53,14 +59,16 @@ LIMITATIONS = (
     "redb and PostgreSQL are selected with --backend. A backend comparison is two runs at the same settings.",
     "The listener is loopback HTTP without TLS. Database encryption is off.",
     "PostgreSQL uses one disposable loopback cluster with trust auth, sslmode=disable, and local_unencrypted.",
-    "The dataset is a fresh init: one administrator and no extra users or group memberships.",
+    "The default dataset is a fresh init: one administrator and no extra users or group memberships.",
+    "Optional directory flags add users and groups, put the administrator and every extra user in each of those groups, and verify that index before measurement.",
+    "Directory flags are capped at 32 and by the shared general-request budget. That stays inside one 128-row group-index page.",
     "Latency is the client clock around the HTTP exchange, including loopback.",
     "Percentiles are nearest-rank ceil(n*q) over every attempt in the pass, including errors.",
     "Successful throughput is successful attempts divided by that pass's wall time.",
     "RSS and CPU are ps samples of the serve process. The interval is 50 ms.",
     "Host load average is recorded beside the server samples and is not removed from them.",
     "The interference pass is concurrent POST /api/groups with an empty member set, Idempotency-Key, and If-Match.",
-    "Empty groups do not add memberships, so the session read still walks an empty per-user group index.",
+    "Interference creates empty groups and does not change the administrator memberships recorded for the session read.",
     "Server background counters come from /api/operations/metrics. The closing metrics read is inside the delta.",
     "The default general rate limit is 600 requests per minute. Estimated general requests must stay at or below 500.",
     "The serve process profile, compiler, and Linux package identity are unrecorded unless the binary hash is compared outside this script.",
@@ -138,7 +146,37 @@ def parse_cputime(text):
     return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
 
 
-def request_budget(iterations, warmup, interference_cap):
+def directory_plan(users, groups):
+    """Users and memberships the administrator session read will walk."""
+    if not isinstance(users, int) or not isinstance(groups, int) or users < 0 or groups < 0:
+        raise SliceError("directory sizes must be integers >= 0")
+    if users > DIRECTORY_USERS_MAX or groups > DIRECTORY_GROUPS_MAX:
+        raise SliceError(
+            f"directory sizes are capped at {DIRECTORY_USERS_MAX} users and {DIRECTORY_GROUPS_MAX} groups"
+        )
+    extra = [f"q09-user-{index:04d}" for index in range(1, users + 1)]
+    names = [f"q09-dir-{index:04d}" for index in range(1, groups + 1)]
+    memberships = [
+        {"group": name, "username": username}
+        for name in names
+        for username in ("admin", *extra)
+    ]
+    return {
+        "extra_users": users,
+        "extra_usernames": extra,
+        "groups": names,
+        "memberships": memberships,
+        "writes": users + groups + len(memberships),
+    }
+
+
+def request_budget(iterations, warmup, interference_cap, directory_users=0, directory_groups=0):
+    plan = directory_plan(directory_users, directory_groups)
+    # One revision read, one write, and one conflict refresh per directory
+    # mutation, plus the administrator read, user list, group list, and the
+    # pre-write session read used to learn the administrator id.
+    directory_revision_reads = (1 + plan["writes"]) if plan["writes"] else 0
+    directory_verification = 4 if plan["writes"] else 0
     terms = {
         "runtime_capabilities": 1,
         "metrics": 4,
@@ -146,23 +184,38 @@ def request_budget(iterations, warmup, interference_cap):
         "measured_reads": 2 * iterations,
         "revision_reads": 1 + interference_cap,
         "group_creates": interference_cap,
+        "directory_revision_reads": directory_revision_reads,
+        "directory_writes": plan["writes"],
+        "directory_verification": directory_verification,
     }
     return {
         "general_limit_per_minute": GENERAL_LIMIT,
         "estimated_general_requests": sum(terms.values()),
         "terms": terms,
         "login_requests": 1,
+        "directory": {
+            "users": directory_users,
+            "groups": directory_groups,
+            "users_max": DIRECTORY_USERS_MAX,
+            "groups_max": DIRECTORY_GROUPS_MAX,
+            "index_page_rows": INDEX_PAGE_ROWS,
+            "memberships": len(plan["memberships"]),
+        },
     }
 
 
-def validate_shape(iterations, warmup, interference_cap):
+def validate_shape(iterations, warmup, interference_cap, directory_users=0, directory_groups=0):
     if iterations < 1 or warmup < 0 or interference_cap < 1:
         raise SliceError("iterations must be >= 1, warmup >= 0, and interference cap >= 1")
-    budget = request_budget(iterations, warmup, interference_cap)
+    budget = request_budget(
+        iterations, warmup, interference_cap, directory_users, directory_groups,
+    )
     if budget["estimated_general_requests"] > BUDGET_MAX:
         raise SliceError(
             f"estimated general requests {budget['estimated_general_requests']} exceed {BUDGET_MAX}"
         )
+    if directory_groups > INDEX_PAGE_ROWS:
+        raise SliceError("directory group count exceeds one group-index page for the administrator")
     return budget
 
 
@@ -336,8 +389,11 @@ def http_exchange(method, url, body=None, headers=None, timeout=5):
             raw = response.read()
             status = response.status
     except urllib.error.HTTPError as error:
-        raw = error.read()
-        status = error.code
+        try:
+            raw = error.read()
+            status = error.code
+        finally:
+            error.close()
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
         elapsed = int(round((time.perf_counter() - started) * 1_000_000))
         return elapsed, None, None, True
@@ -351,12 +407,15 @@ def http_exchange(method, url, body=None, headers=None, timeout=5):
     return elapsed, status, parsed, unparsed
 
 
-def classify_me(status, parsed, unparsed, username):
+def classify_me(status, parsed, unparsed, username, groups=None):
     if status is None:
         return False, "transport"
     if status == 200 and isinstance(parsed, dict):
         user = parsed.get("user")
         if isinstance(user, dict) and user.get("username") == username:
+            found = parsed.get("groups")
+            if groups is not None and (not isinstance(found, list) or sorted(found) != sorted(groups)):
+                return False, "unexpected_groups"
             return True, None
         return False, "unexpected_body"
     if unparsed:
@@ -599,9 +658,14 @@ def stop_postgres(programs, cluster, root):
     )
 
 
-def measured_pass(base, token, username, iterations, warmup, pid, hidden, interfere=None):
+def measured_pass(base, token, username, iterations, warmup, pid, hidden, expected_groups, interfere=None):
     for _ in range(warmup):
-        http_exchange("GET", base + "/api/me", headers=auth_headers(token), timeout=5)
+        _elapsed, status, parsed, unparsed = http_exchange(
+            "GET", base + "/api/me", headers=auth_headers(token), timeout=5,
+        )
+        ok, code = classify_me(status, parsed, unparsed, username, expected_groups)
+        if not ok:
+            fail(f"warmup session read failed: {code or status}", hidden)
     _before_elapsed, before_status, before_body, _before_unparsed = http_exchange(
         "GET", base + "/api/operations/metrics", headers=auth_headers(token), timeout=5,
     )
@@ -622,7 +686,7 @@ def measured_pass(base, token, username, iterations, warmup, pid, hidden, interf
                 "GET", base + "/api/me", headers=auth_headers(token), timeout=5,
             )
             samples.append(elapsed)
-            ok, code = classify_me(status, parsed, unparsed, username)
+            ok, code = classify_me(status, parsed, unparsed, username, expected_groups)
             if ok:
                 success += 1
             else:
@@ -700,6 +764,156 @@ def group_writer(base, token, cap, start, stop, outcome):
     outcome["revision_refreshes"] = refreshes
 
 
+def expect_status(status, parsed, label, hidden, kind):
+    if status != 200 or not isinstance(parsed, kind):
+        fail(f"{label} failed with status {status}", hidden)
+    return parsed
+
+
+def current_revision(base, token, hidden):
+    _elapsed, status, parsed, _unparsed = http_exchange(
+        "GET", base + "/api/state/revision", headers=auth_headers(token), timeout=15,
+    )
+    document = expect_status(status, parsed, "revision", hidden, dict)
+    revision = document.get("revision")
+    if not isinstance(revision, int):
+        fail("revision response did not include an integer revision", hidden)
+    return revision
+
+
+def bound_write(base, token, method, path, body, revision, hidden):
+    """One idempotent mutation. A single 409 refreshes the revision and retries."""
+    for attempt in (1, 2):
+        headers = auth_headers(token, {
+            "Idempotency-Key": f"q09-dir-{secrets.token_hex(8)}",
+            "If-Match": f'"{revision}"',
+        })
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        _elapsed, status, parsed, _unparsed = http_exchange(
+            method, base + path, body, headers, timeout=60,
+        )
+        if status == 200 and isinstance(parsed, dict):
+            return revision + 1, parsed
+        if status == 409 and attempt == 1:
+            revision = current_revision(base, token, hidden)
+            continue
+        fail(f"{method} {path} failed with status {status}", hidden)
+    fail(f"{method} {path} failed after a revision refresh", hidden)
+
+
+def dataset_shell(plan, verification):
+    return {
+        "kind": "fresh-init" if plan["writes"] == 0 else "session-read-directory",
+        "bootstrap_administrator": "admin",
+        "extra_users": plan["extra_users"],
+        "extra_usernames": list(plan["extra_usernames"]),
+        "groups": list(plan["groups"]),
+        "memberships": list(plan["memberships"]),
+        "session_read_groups": list(plan["groups"]),
+        "session_read_index": "index_user_groups for the bootstrap administrator",
+        "index_page_rows": INDEX_PAGE_ROWS,
+        "within_one_index_page": len(plan["groups"]) <= INDEX_PAGE_ROWS,
+        "verified": True,
+        "verification": verification,
+    }
+
+
+def fresh_dataset():
+    return dataset_shell(
+        directory_plan(0, 0),
+        "no directory requests; dataset is the bootstrap administrator",
+    )
+
+
+def install_directory(base, token, plan, hidden):
+    """Create the directory and require the session read to show it."""
+    _elapsed, status, parsed, _unparsed = http_exchange(
+        "GET", base + "/api/me", headers=auth_headers(token), timeout=15,
+    )
+    me = expect_status(status, parsed, "administrator session", hidden, dict)
+    user = me.get("user")
+    if not isinstance(user, dict) or user.get("username") != "admin" or not isinstance(user.get("id"), str) or not user["id"]:
+        fail("session read did not identify the administrator", hidden)
+    admin_id = user["id"]
+    if me.get("groups") not in ([], None):
+        fail("administrator already has group memberships before directory setup", hidden)
+    revision = current_revision(base, token, hidden)
+    ids = {"admin": admin_id}
+    for username in plan["extra_usernames"]:
+        password = secrets.token_urlsafe(18)
+        hidden.append(password)
+        revision, created = bound_write(
+            base, token, "POST", "/api/users",
+            {"username": username, "password": password, "admin": False},
+            revision, hidden,
+        )
+        if created.get("username") != username or not isinstance(created.get("id"), str) or not created["id"]:
+            fail("user create response did not identify the user", hidden)
+        ids[username] = created["id"]
+    for name in plan["groups"]:
+        revision, created = bound_write(
+            base, token, "POST", "/api/groups", {"name": name}, revision, hidden,
+        )
+        if created.get("name") != name:
+            fail(f"group create response did not name {name}", hidden)
+    expected_members = {name: set() for name in plan["groups"]}
+    for item in plan["memberships"]:
+        username = item["username"]
+        group = item["group"]
+        revision, created = bound_write(
+            base, token, "PUT",
+            f"/api/groups/{group}/members/{username}",
+            None, revision, hidden,
+        )
+        members = created.get("members")
+        if not isinstance(members, list) or ids[username] not in members:
+            fail(f"membership response for {username} in {group} did not contain that user", hidden)
+        expected_members[group].add(ids[username])
+    _elapsed, status, parsed, _unparsed = http_exchange(
+        "GET", base + "/api/me", headers=auth_headers(token), timeout=15,
+    )
+    observed = expect_status(status, parsed, "directory session read", hidden, dict)
+    found = observed.get("groups")
+    if not isinstance(found, list) or sorted(found) != sorted(plan["groups"]):
+        fail("session read groups do not match the directory", hidden)
+    if not isinstance(observed.get("user"), dict) or observed["user"].get("id") != admin_id:
+        fail("directory session read lost the administrator id", hidden)
+    _elapsed, status, parsed, _unparsed = http_exchange(
+        "GET", base + "/api/users", headers=auth_headers(token), timeout=15,
+    )
+    listed_users = expect_status(status, parsed, "user list", hidden, list)
+    usernames = []
+    for entry in listed_users:
+        if not isinstance(entry, dict) or not isinstance(entry.get("username"), str):
+            fail("user list entry did not include a username", hidden)
+        usernames.append(entry["username"])
+    if sorted(usernames) != sorted(["admin", *plan["extra_usernames"]]):
+        fail("user list does not match the directory", hidden)
+    _elapsed, status, parsed, _unparsed = http_exchange(
+        "GET", base + "/api/groups", headers=auth_headers(token), timeout=15,
+    )
+    listed_groups = expect_status(status, parsed, "group list", hidden, list)
+    by_name = {}
+    for entry in listed_groups:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not isinstance(entry.get("members"), list):
+            fail("group list entry did not include members", hidden)
+        by_name[entry["name"]] = set(entry["members"])
+    if set(by_name) != set(plan["groups"]):
+        fail("group list does not match the directory", hidden)
+    member_counts = {}
+    for name, expected in expected_members.items():
+        if by_name[name] != expected:
+            fail(f"members of {name} do not match the directory", hidden)
+        member_counts[name] = len(expected)
+    return dataset_shell(plan, {
+        "method": "GET /api/me, GET /api/users, and GET /api/groups before measurement",
+        "session_groups": sorted(found),
+        "usernames": sorted(usernames),
+        "member_counts": member_counts,
+    })
+
+
 def latency_delta(interference, quiet):
     delta = {}
     for key in ("min_us", "p50_us", "p95_us", "p99_us", "max_us"):
@@ -709,10 +923,16 @@ def latency_delta(interference, quiet):
     return delta
 
 
-def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=False):
+def run_slice(
+    binary, backend, iterations, warmup, interference_cap,
+    fixture=False, directory_users=0, directory_groups=0,
+):
     if backend not in ("redb", "postgresql"):
         raise SliceError("backend must be redb or postgresql")
-    budget = validate_shape(iterations, warmup, interference_cap)
+    budget = validate_shape(
+        iterations, warmup, interference_cap, directory_users, directory_groups,
+    )
+    plan = directory_plan(directory_users, directory_groups)
     binary = absolute_binary(binary)
     hidden = []
     source = source_identity()
@@ -783,7 +1003,14 @@ def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=Fal
             fail(f"runtime storage_backend is {runtime.get('storage_backend')}", hidden)
         if runtime.get("scope") != "instance":
             fail("runtime capabilities scope is not instance", hidden)
-        quiet = measured_pass(base, token, username, iterations, warmup, server.pid, hidden)
+        if plan["writes"]:
+            dataset = install_directory(base, token, plan, hidden)
+        else:
+            dataset = fresh_dataset()
+        expected_groups = dataset["session_read_groups"]
+        quiet = measured_pass(
+            base, token, username, iterations, warmup, server.pid, hidden, expected_groups,
+        )
         outcome = {"success": 0, "conflict": 0, "error": 0, "posts": 0, "revision_refreshes": 0}
         start = threading.Event()
         stop = threading.Event()
@@ -795,7 +1022,7 @@ def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=Fal
         )
         writer.start()
         interference = measured_pass(
-            base, token, username, iterations, warmup, server.pid, hidden,
+            base, token, username, iterations, warmup, server.pid, hidden, expected_groups,
             interfere={"start": start, "stop": stop, "thread": writer},
         )
         report = {
@@ -808,8 +1035,9 @@ def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=Fal
                 "method": "GET",
                 "route": "/api/me",
                 "core": "Core::me",
-                "success": "HTTP 200 and user.username equals the bootstrap administrator",
+                "success": "HTTP 200, user.username equals the bootstrap administrator, and groups equal the recorded session-read index",
             },
+            "dataset": dataset,
             "protocol": {
                 "script": "scripts/q09_benchmark_slice.py",
                 "sha256": digest(SCRIPT),
@@ -835,6 +1063,8 @@ def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=Fal
                 "iterations": iterations,
                 "warmup": warmup,
                 "interference_cap": interference_cap,
+                "directory_users": directory_users,
+                "directory_groups": directory_groups,
                 "username": username,
                 "database_encryption": False,
                 "tls": False,
@@ -903,7 +1133,16 @@ def fixture_main(argv):
 def serve_fixture(host, port):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    state = {"requests": 0, "groups": 0, "metrics_calls": 0, "lock": threading.Lock()}
+    state = {
+        "requests": 0,
+        "groups": 0,
+        "metrics_calls": 0,
+        "revision": 1,
+        "admin_id": "admin-id",
+        "accounts": {"admin": "admin-id"},
+        "directory": {},
+        "lock": threading.Lock(),
+    }
     delay = float(os.environ.get("Q09_FIXTURE_ME_DELAY", "0.02"))
     token = "q09-fixture-token"
 
@@ -915,8 +1154,9 @@ def serve_fixture(host, port):
 
         def body(self):
             length = int(self.headers.get("Content-Length", "0") or 0)
-            if length:
-                self.rfile.read(length)
+            if not length:
+                return b""
+            return self.rfile.read(length)
 
         def send_json(self, status, payload):
             raw = json.dumps(payload).encode()
@@ -929,13 +1169,59 @@ def serve_fixture(host, port):
         def authorized(self):
             return self.headers.get("Authorization") == f"Bearer {token}"
 
+        def json_body(self, raw):
+            if not raw:
+                return {}
+            try:
+                document = json.loads(raw.decode())
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            return document if isinstance(document, dict) else None
+
+        def commit_mutation(self, apply):
+            if not self.authorized():
+                self.send_json(401, {"error": "unauthorized", "error_description": "unauthorized"})
+                return
+            if not self.headers.get("Idempotency-Key") or self.headers.get("If-Match") is None:
+                self.send_json(428, {
+                    "error": "precondition_required",
+                    "error_description": "Idempotency-Key and If-Match required",
+                })
+                return
+            with state["lock"]:
+                if self.headers.get("If-Match") != f'"{state["revision"]}"':
+                    status, payload = 409, {"error": "conflict", "error_description": "revision changed"}
+                else:
+                    status, payload = apply()
+                    if status == 200:
+                        state["revision"] += 1
+            self.send_json(status, payload)
+
         def do_GET(self):
+            path = self.path.split("?", 1)[0]
             with state["lock"]:
                 state["requests"] += 1
-            if self.path == "/readyz":
+                revision = state["revision"]
+                session_groups = sorted(
+                    name for name, members in state["directory"].items() if state["admin_id"] in members
+                )
+                users = [
+                    {"id": user_id, "username": username}
+                    for username, user_id in sorted(state["accounts"].items())
+                ]
+                groups = [
+                    {"name": name, "members": sorted(members)}
+                    for name, members in sorted(state["directory"].items())
+                ]
+                if path == "/api/operations/metrics":
+                    state["metrics_calls"] += 1
+                    metrics_calls = state["metrics_calls"]
+                    group_count = state["groups"]
+                    request_count = state["requests"]
+            if path == "/readyz":
                 self.send_json(200, {"ok": True})
                 return
-            if self.path == "/api/capabilities":
+            if path == "/api/capabilities":
                 self.send_json(200, {
                     "scope": "instance",
                     "edition": "essentials",
@@ -946,51 +1232,104 @@ def serve_fixture(host, port):
             if not self.authorized():
                 self.send_json(401, {"error": "unauthorized", "error_description": "unauthorized"})
                 return
-            if self.path == "/api/me":
+            if path == "/api/me":
                 time.sleep(delay)
-                self.send_json(200, {"user": {"username": "admin"}, "groups": []})
+                self.send_json(200, {
+                    "user": {"id": state["admin_id"], "username": "admin"},
+                    "groups": session_groups,
+                })
                 return
-            if self.path == "/api/state/revision":
-                self.send_json(200, {"revision": 1})
+            if path == "/api/state/revision":
+                self.send_json(200, {"revision": revision})
                 return
-            if self.path == "/api/operations/metrics":
-                with state["lock"]:
-                    state["metrics_calls"] += 1
-                    jobs = {
-                        name: {"finished": 0, "failed": 0, "active": 0}
-                        for name in BACKGROUND_JOBS
-                    }
-                    jobs["logout_ssf"]["finished"] = state["metrics_calls"]
-                    payload = {
-                        "requests_total": state["requests"],
-                        "responses_error_total": 0,
-                        "rate_limited_total": 0,
-                        "worker_rejections_total": 0,
-                        "runtime": {
-                            "write_wait": {"count": state["groups"], "seconds": 0},
-                            "write_hold": {"count": state["groups"], "seconds": 0},
-                            "cleanup": {"count": 0, "seconds": 0},
-                            "cleanup_errors": 0,
-                            "background": {"jobs": jobs},
-                        },
-                    }
-                self.send_json(200, payload)
+            if path == "/api/users":
+                self.send_json(200, users)
+                return
+            if path == "/api/groups":
+                self.send_json(200, groups)
+                return
+            if path == "/api/operations/metrics":
+                jobs = {
+                    name: {"finished": 0, "failed": 0, "active": 0}
+                    for name in BACKGROUND_JOBS
+                }
+                jobs["logout_ssf"]["finished"] = metrics_calls
+                self.send_json(200, {
+                    "requests_total": request_count,
+                    "responses_error_total": 0,
+                    "rate_limited_total": 0,
+                    "worker_rejections_total": 0,
+                    "runtime": {
+                        "write_wait": {"count": group_count, "seconds": 0},
+                        "write_hold": {"count": group_count, "seconds": 0},
+                        "cleanup": {"count": 0, "seconds": 0},
+                        "cleanup_errors": 0,
+                        "background": {"jobs": jobs},
+                    },
+                })
                 return
             self.send_json(404, {"error": "not_found", "error_description": "not found"})
 
         def do_POST(self):
-            self.body()
+            raw = self.body()
+            path = self.path.split("?", 1)[0]
             with state["lock"]:
                 state["requests"] += 1
-            if self.path == "/api/login":
+            if path == "/api/login":
                 self.send_json(200, {"session_token": token})
                 return
-            if self.path == "/api/groups" and self.authorized():
-                with state["lock"]:
+            if path == "/api/users":
+                document = self.json_body(raw)
+                username = None if document is None else document.get("username")
+                if not isinstance(username, str) or not username:
+                    self.send_json(400, {"error": "invalid_request", "error_description": "username required"})
+                    return
+
+                def apply(username=username):
+                    if username in state["accounts"]:
+                        return 409, {"error": "conflict", "error_description": "user exists"}
+                    user_id = f"id-{username}"
+                    state["accounts"][username] = user_id
+                    return 200, {"id": user_id, "username": username}
+
+                self.commit_mutation(apply)
+                return
+            if path == "/api/groups":
+                document = self.json_body(raw)
+                name = None if document is None else document.get("name")
+                if not isinstance(name, str) or not name:
+                    self.send_json(400, {"error": "invalid_request", "error_description": "name required"})
+                    return
+
+                def apply(name=name):
+                    if name in state["directory"]:
+                        return 409, {"error": "conflict", "error_description": "group exists"}
+                    state["directory"][name] = set()
                     state["groups"] += 1
-                self.send_json(200, {"name": "recorded"})
+                    return 200, {"name": name, "members": []}
+
+                self.commit_mutation(apply)
                 return
             self.send_json(401, {"error": "unauthorized", "error_description": "unauthorized"})
+
+        def do_PUT(self):
+            self.body()
+            path = self.path.split("?", 1)[0]
+            parts = path.split("/")
+            with state["lock"]:
+                state["requests"] += 1
+            if len(parts) != 6 or parts[1:3] != ["api", "groups"] or parts[4] != "members":
+                self.send_json(404, {"error": "not_found", "error_description": "not found"})
+                return
+            group, username = parts[3], parts[5]
+
+            def apply(group=group, username=username):
+                if group not in state["directory"] or username not in state["accounts"]:
+                    return 404, {"error": "not_found", "error_description": "not found"}
+                state["directory"][group].add(state["accounts"][username])
+                return 200, {"name": group, "members": sorted(state["directory"][group])}
+
+            self.commit_mutation(apply)
 
     server = ThreadingHTTPServer((host, port), Handler)
     server.serve_forever()
@@ -1007,21 +1346,49 @@ def main(argv=None):
     parser.add_argument("--iterations", type=int, default=80)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--interference-cap", type=int, default=30)
+    parser.add_argument("--directory-users", type=int, default=0)
+    parser.add_argument("--directory-groups", type=int, default=0)
     parser.add_argument("--out")
     args = parser.parse_args(argv)
     if args.self_check:
-        if args.binary or args.out or args.backend != "redb":
-            raise SliceError("--self-check takes no binary, backend, or output file")
+        if args.binary or args.out or args.backend != "redb" or args.directory_users or args.directory_groups:
+            raise SliceError("--self-check takes no binary, backend, directory size, or output file")
         report = run_slice(sys.executable, "redb", 12, 1, 4, fixture=True)
         code = completion_code(report)
         if code != 0 or report["product_run"] or not report["interference"]["overlap"]:
             raise SliceError(f"self-check failed with completion code {code}")
-        print("q09 benchmark slice self-check passed product_run=false overlap=true")
+        if report["dataset"]["kind"] != "fresh-init" or report["dataset"]["extra_users"] != 0:
+            raise SliceError("self-check baseline dataset was not a fresh init")
+        directory = run_slice(
+            sys.executable, "redb", 4, 0, 1, fixture=True, directory_users=2, directory_groups=2,
+        )
+        directory_code = completion_code(directory)
+        observed = directory["dataset"]
+        counts = observed["verification"]["member_counts"]
+        if (
+            directory_code != 0
+            or directory["product_run"]
+            or not directory["interference"]["overlap"]
+            or observed["kind"] != "session-read-directory"
+            or not observed["verified"]
+            or observed["extra_users"] != 2
+            or observed["session_read_groups"] != ["q09-dir-0001", "q09-dir-0002"]
+            or len(observed["memberships"]) != 6
+            or counts != {"q09-dir-0001": 3, "q09-dir-0002": 3}
+            or directory["passes"]["quiet"]["success"] != 4
+            or directory["passes"]["interference"]["success"] != 4
+        ):
+            raise SliceError(f"self-check directory failed with completion code {directory_code}")
+        print(
+            "q09 benchmark slice self-check passed product_run=false overlap=true "
+            "directory_verified=true"
+        )
         return 0
     if not args.binary:
         raise SliceError("--binary is required unless --self-check is set")
     report = run_slice(
         args.binary, args.backend, args.iterations, args.warmup, args.interference_cap,
+        directory_users=args.directory_users, directory_groups=args.directory_groups,
     )
     code = completion_code(report)
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
@@ -1032,7 +1399,10 @@ def main(argv=None):
     sys.stdout.write(encoded)
     print(
         f"q09 benchmark slice completion={code} product_run={str(report['product_run']).lower()} "
-        f"backend={report['settings']['backend']} edition={report['runtime']['edition']}",
+        f"backend={report['settings']['backend']} edition={report['runtime']['edition']} "
+        f"directory_users={report['dataset']['extra_users']} "
+        f"directory_groups={len(report['dataset']['groups'])} "
+        f"verified={str(report['dataset']['verified']).lower()}",
         file=sys.stderr,
     )
     return code

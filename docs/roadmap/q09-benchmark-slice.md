@@ -13,11 +13,21 @@ group index. Essentials and Platform share this Core path. redb and PostgreSQL
 are the two store backends behind it. One invocation of the script measures
 one binary and one backend.
 
-The dataset is a fresh `init`: the bootstrap administrator, no extra users,
-and no group memberships. Database encryption is off. The listener is loopback
-HTTP without TLS. PostgreSQL, when selected, is a disposable loopback cluster
-with trust authentication, `sslmode=disable`, `local_unencrypted`, and pool
-size 8.
+The default dataset is a fresh `init`: the bootstrap administrator, no extra
+users, and no group memberships. `--directory-users` and `--directory-groups`
+default to zero. When either is greater than zero, the script creates that
+many extra users and groups, then adds the administrator and every extra user
+to each of those groups. `GET /api/me` walks the administrator's per-user
+group index (`index_user_groups`), so those group names are the session-read
+dataset. Each flag is at most 32, and the general-request estimate for setup
+plus measurement must stay at or below 500. That cap is inside one 128-row
+index page. The script reads the administrator, the user list, and the group
+list before the timed passes and stops if they disagree with the directory it
+created.
+
+Database encryption is off. The listener is loopback HTTP without TLS.
+PostgreSQL, when selected, is a disposable loopback cluster with trust
+authentication, `sslmode=disable`, `local_unencrypted`, and pool size 8.
 
 A quiet pass sends the session read from one client. An interference pass
 repeats it while a second client sends `POST /api/groups` for empty groups,
@@ -38,7 +48,8 @@ Each report uses schema `riauth.benchmark-slice/v1` and sets
 - artifact path, byte size, and SHA-256
 - capability edition, build features, package version, and target, plus the running instance's edition and storage backend
 - hardware description and host load average
-- iteration count, warmup, interference cap, and the estimated general-rate-limit budget
+- iteration count, warmup, interference cap, directory size, and the estimated general-rate-limit budget
+- the dataset: fresh init, or the verified users, groups, memberships, and administrator session-read groups
 - for each pass: attempts, successes, error statuses and error codes, nearest-rank p50/p95/p99 latency over every attempt, successful throughput, `ps` RSS/CPU samples of the serve process, server counter deltas, and host load
 - writer successes, conflicts, and errors, and the arithmetic difference of the latency percentiles
 
@@ -72,6 +83,9 @@ python3 scripts/q09_benchmark_slice.py \
   --out /tmp/q09-session-read.json
 ```
 
+Add `--directory-users N --directory-groups G` for a verified larger directory.
+The default remains one administrator and no memberships.
+
 Repeat with `--features platform` and, separately, `--backend postgresql` when
 `initdb`, `pg_ctl`, and `createdb` are installed. Keep the JSON from each run.
 Compare runs only when the commit, security settings, dataset, and hardware
@@ -84,17 +98,24 @@ as their working directory, and the report records the absolute artifact path.
 
 ## Evidence for this slice
 
-The check that runs with the source is `--self-check` and
+The check that runs with this commit is `--self-check` and
 `tests/test_q09_benchmark_slice.py`. The fixture proves the script's
 percentiles, error accounting, redaction, RSS/CPU sampling, background-counter
-delta, and group-writer overlap. It does not enforce riAuth's `If-Match`
-rules; a product run is what meets the real server.
+delta, and group-writer overlap. It also builds a two-user, two-group
+directory, requires `Idempotency-Key` and `If-Match` on those writes, and
+checks the administrator's session-read groups, the user list, and each
+group's members. Password values used for the extra users stay out of the
+report. A product run is what meets the real server's revision bumps and
+password hashing.
 
-No riAuth binary was executed for this slice. This worktree had no `target/`
-directory, and a full Cargo build was not started. The binary compiler and
-build profile are therefore unrecorded. There is no session-read latency,
-throughput, RSS, or error count for Essentials, Platform, redb, or PostgreSQL
-in this commit.
+Accepted commit `5892563` follows the benchmark script through `e3b3d59`.
+Four small macOS product observations from that same head were reported for
+Essentials and Platform, each on redb and PostgreSQL: 80 quiet reads and 80
+interference reads, with zero read errors. Those JSON reports are not in this
+worktree. This commit does not repeat them and does not publish their latency,
+throughput, or RSS. It also does not measure the larger directory against a
+riAuth binary. No private binary was present, and this change does not start
+a Cargo build.
 
 ## Relationship to the earlier harnesses
 
@@ -126,7 +147,7 @@ Full publication still requires product runs, not the fixture:
 - Essentials and Platform binaries from the same commit, each measured on redb and on PostgreSQL, with the four reports kept
 - the binary hash tied to the build command, profile, and toolchain that produced it
 - Linux x86-64 and Linux ARM64 packaged artifacts when a release build is the claimed artifact
-- a named larger directory when the claim is about group-index or scan cost, recorded beside this fresh-init slice
+- a product run of a named larger directory, using the verified `--directory-users` and `--directory-groups` dataset, before any claim about group-index or scan cost; the fixture directory is not that run
 - TLS, database encryption, and external signing included when the claimed deployment uses them
 - a run long enough to overlap the 60-second maintenance cadence when the claim is about that background job
 - host load left in the report, and the run repeated when the machine is busy enough to dominate the samples

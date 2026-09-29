@@ -36,10 +36,27 @@ class Percentiles(unittest.TestCase):
 
     def test_budget_stays_under_the_general_limit(self):
         budget = benchmark.validate_shape(80, 5, 30)
-        self.assertLessEqual(budget["estimated_general_requests"], benchmark.BUDGET_MAX)
+        self.assertEqual(budget["estimated_general_requests"], 236)
+        self.assertEqual(budget["directory"]["memberships"], 0)
         self.assertLess(budget["estimated_general_requests"], budget["general_limit_per_minute"])
+        wide = benchmark.validate_shape(80, 5, 30, 8, 8)
+        self.assertEqual(wide["directory"]["memberships"], 72)
+        self.assertLessEqual(wide["estimated_general_requests"], benchmark.BUDGET_MAX)
         with self.assertRaises(benchmark.SliceError):
             benchmark.validate_shape(400, 5, 30)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.validate_shape(80, 5, 30, 32, 32)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.directory_plan(-1, 1)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.directory_plan(benchmark.DIRECTORY_USERS_MAX + 1, 0)
+        plan = benchmark.directory_plan(2, 2)
+        self.assertEqual(plan["extra_usernames"], ["q09-user-0001", "q09-user-0002"])
+        self.assertEqual(
+            [item["username"] for item in plan["memberships"] if item["group"] == "q09-dir-0001"],
+            ["admin", "q09-user-0001", "q09-user-0002"],
+        )
+        self.assertEqual(plan["writes"], 10)
 
     def test_redaction_and_completion_codes(self):
         clean = {"passes": {"quiet": {"errors": 0, "error_statuses": {}},
@@ -62,6 +79,18 @@ class Percentiles(unittest.TestCase):
 
     def test_session_read_classification(self):
         self.assertEqual(benchmark.classify_me(200, {"user": {"username": "admin"}}, False, "admin"), (True, None))
+        self.assertEqual(
+            benchmark.classify_me(
+                200, {"user": {"username": "admin"}, "groups": ["q09-dir-0001"]}, False, "admin", ["q09-dir-0001"],
+            ),
+            (True, None),
+        )
+        self.assertEqual(
+            benchmark.classify_me(
+                200, {"user": {"username": "admin"}, "groups": []}, False, "admin", ["q09-dir-0001"],
+            )[1],
+            "unexpected_groups",
+        )
         self.assertEqual(benchmark.classify_me(200, {"user": {"username": "other"}}, False, "admin")[1], "unexpected_body")
         self.assertEqual(benchmark.classify_me(429, {"error": "rate_limited"}, False, "admin")[1], "rate_limited")
         self.assertEqual(benchmark.classify_me(None, None, True, "admin")[1], "transport")
@@ -101,8 +130,64 @@ class FixtureRun(unittest.TestCase):
         self.assertTrue(report["limitations"])
         self.assertEqual(report["settings"]["database_encryption"], False)
         self.assertEqual(report["settings"]["tls"], False)
+        self.assertEqual(report["dataset"]["kind"], "fresh-init")
+        self.assertEqual(report["dataset"]["extra_users"], 0)
+        self.assertEqual(report["dataset"]["session_read_groups"], [])
+        self.assertEqual(report["settings"]["directory_users"], 0)
+        self.assertEqual(report["settings"]["directory_groups"], 0)
         with self.assertRaises(benchmark.SliceError):
             benchmark.main(["--self-check", "--out", "fixture.json"])
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.main(["--self-check", "--directory-users", "2"])
+
+    def test_directory_fixture_verifies_memberships_and_redacts_secrets(self):
+        secrets = []
+        real = benchmark.secrets.token_urlsafe
+
+        def capture(nbytes=16):
+            value = "q09-secret-" + real(6)
+            secrets.append(value)
+            return value
+
+        benchmark.secrets.token_urlsafe = capture
+        try:
+            report = benchmark.run_slice(
+                benchmark.sys.executable, "redb", 4, 0, 1,
+                fixture=True, directory_users=2, directory_groups=2,
+            )
+        finally:
+            benchmark.secrets.token_urlsafe = real
+        encoded = json.dumps(report)
+        self.assertGreaterEqual(len(secrets), 3)
+        for secret in secrets:
+            self.assertNotIn(secret, encoded)
+        self.assertNotIn("password", encoded)
+        data = report["dataset"]
+        self.assertEqual(data["kind"], "session-read-directory")
+        self.assertTrue(data["verified"])
+        self.assertTrue(data["within_one_index_page"])
+        self.assertEqual(data["extra_users"], 2)
+        self.assertEqual(data["session_read_groups"], ["q09-dir-0001", "q09-dir-0002"])
+        self.assertEqual(len(data["memberships"]), 6)
+        self.assertEqual(
+            data["verification"]["usernames"],
+            ["admin", "q09-user-0001", "q09-user-0002"],
+        )
+        self.assertEqual(
+            data["verification"]["member_counts"],
+            {"q09-dir-0001": 3, "q09-dir-0002": 3},
+        )
+        self.assertEqual(report["passes"]["quiet"]["success"], 4)
+        self.assertEqual(report["passes"]["quiet"]["errors"], 0)
+        self.assertEqual(report["passes"]["interference"]["success"], 4)
+        self.assertEqual(report["passes"]["quiet"]["server_counter_delta"]["write_wait_count"], 0)
+        self.assertGreater(report["interference"]["writer"]["success"], 0)
+        self.assertEqual(
+            report["passes"]["interference"]["server_counter_delta"]["write_wait_count"],
+            report["interference"]["writer"]["success"],
+        )
+        self.assertFalse(report["product_run"])
+        self.assertFalse(report["performance_claim"])
 
 
 PROBE_BINARY = """#!/usr/bin/env python3
