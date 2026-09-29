@@ -11,8 +11,14 @@ use std::collections::BTreeSet;
 
 const PENDING: &str = "pending";
 
-/// Groups conferred by an unexpired, unrevoked grant. This does not read `Group.members`.
+/// Groups conferred by an unexpired, unrevoked grant with no known third-party
+/// credential exposure. This does not read `Group.members`.
 pub fn extra_groups(tx: &Tx<'_>, user_id: &str, now: u64) -> Result<BTreeSet<String>> {
+    // Older records may contain a grant approved before a third-party
+    // credential exposure was fenced. Do not project its authority online.
+    if crate::delegation::credential_exposure(tx, user_id)?.is_some() {
+        return Ok(BTreeSet::new());
+    }
     Ok(tx
         .user_access_grants::<AccessGrant>(user_id)?
         .into_iter()

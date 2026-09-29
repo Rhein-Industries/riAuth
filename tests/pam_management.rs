@@ -4,11 +4,14 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use common::{Fixture, text};
+use common::{Fixture, PASSWORD, text};
 use riauth::{
+    agent::{NewAgent, Permission},
     config::Config,
     core::Core,
     crypto::now,
+    delegation::{GrantInput, HumanRole},
+    model::{Group, NewUser, UserPatch},
     pam::{AccessGrant, AccessRequest, NewAccessRequest},
 };
 use serde_json::{Value, json};
@@ -81,6 +84,28 @@ impl PamFixture {
             alice,
             approver,
         }
+    }
+
+    fn user(&self, username: &str) -> String {
+        self.core
+            .create_user(
+                &self.admin,
+                NewUser {
+                    username: username.into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: username.into(),
+                    admin: false,
+                },
+            )
+            .unwrap();
+        text(
+            &self
+                .core
+                .login(username.into(), PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        )
     }
 }
 
@@ -781,4 +806,305 @@ async fn expired_grant_revoke_rejects_fresh_writes_but_replays_committed_result(
     assert_eq!(f.audit_count("access.revoke", &grant_id), 0);
     assert_eq!(f.audit_count("access.revoke", &live_id), 1);
     assert_eq!(f.revision(), after_restart);
+}
+
+#[tokio::test]
+async fn temporary_access_fences_parent_agent_and_help_desk_credentials_until_end() {
+    let f = PamFixture::new();
+    let operator = f.user("operator");
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "operator",
+            vec![GrantInput {
+                role: HumanRole::HelpDesk,
+                scope: "user/alice".into(),
+            }],
+        )
+        .unwrap();
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "operator-agent".into(),
+                permissions: vec![Permission {
+                    action: "user.write".into(),
+                    resource: "*".into(),
+                }],
+                ttl: 3600,
+                parent: Some("operator".into()),
+            },
+        )
+        .unwrap();
+    let agent_token = text(&agent["credential"], "token");
+    assert!(f.core.me(&agent_token).is_ok());
+    f.core
+        .update_user(
+            &operator,
+            "alice",
+            UserPatch {
+                display_name: Some("Supported Alice".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Release window".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = f
+        .core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    let grant_id = text(&decision["grant"], "id");
+    let alice_id = text(&f.core.me(&f.alice).unwrap()["user"], "id");
+    let revision = f.revision();
+    assert_eq!(
+        f.core
+            .update_user(
+                &agent_token,
+                "alice",
+                UserPatch {
+                    password: Some("captured-during-grant".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        f.core
+            .update_user(
+                &operator,
+                "alice",
+                UserPatch {
+                    display_name: Some("Support during grant".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(f.revision(), revision);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &alice_id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!(["ops"]));
+    assert!(
+        !f.core
+            .store
+            .get::<Group>("groups", "ops")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&alice_id)
+    );
+    assert!(f.core.me(&agent_token).is_ok());
+
+    let f = f.reopen();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!(["ops"]));
+    assert_eq!(
+        f.core
+            .update_user(
+                &agent_token,
+                "alice",
+                UserPatch {
+                    password: Some("captured-after-restart".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(f.revision(), revision);
+
+    let app = riauth::api::router(f.core.clone());
+    let path = format!("/api/access/grants/{grant_id}/revoke");
+    let approver = f.approver.clone();
+    let retry = || bearer(&path, &approver, "release-grant", Some(revision), None);
+    let committed = send(&app, retry()).await;
+    assert_eq!(committed.0, StatusCode::OK);
+    assert_eq!(send(&app, retry()).await, committed);
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 1);
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+    f.core
+        .update_user(
+            &operator,
+            "alice",
+            UserPatch {
+                display_name: Some("Support after grant".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    f.core
+        .update_user(
+            &agent_token,
+            "alice",
+            UserPatch {
+                password: Some("new-after-revoke".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let alice = text(
+        &f.core
+            .login("alice".into(), "new-after-revoke".into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert_eq!(f.core.me(&alice).unwrap()["groups"], json!([]));
+
+    let bob = f.user("bob");
+    f.core
+        .update_user(
+            &agent_token,
+            "bob",
+            UserPatch {
+                password: Some("known-before-approval".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&bob).is_err());
+    let bob = text(
+        &f.core
+            .login("bob".into(), "known-before-approval".into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let request = f
+        .core
+        .request_access(
+            &bob,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Exposed credentials cannot be elevated".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let bob_request_id = text(&request, "id");
+    let revision = f.revision();
+    assert_eq!(
+        f.core
+            .decide_access(&f.approver, &bob_request_id, true)
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.revision(), revision);
+    assert_eq!(f.audit_count("access.approve", &bob_request_id), 0);
+    assert_eq!(f.core.me(&bob).unwrap()["groups"], json!([]));
+
+    let carol = f.user("carol");
+    let request = f
+        .core
+        .request_access(
+            &carol,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Short independent grant".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let decision = f
+        .core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    let carol_grant_id = text(&decision["grant"], "id");
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &carol_grant_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &carol_grant_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&carol).unwrap()["groups"], json!([]));
+    f.core
+        .update_user(
+            &agent_token,
+            "carol",
+            UserPatch {
+                password: Some("new-after-expiry".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(f.audit_count("access.revoke", &carol_grant_id), 0);
+    drop(app);
+    let f = f.reopen();
+    let app = riauth::api::router(f.core.clone());
+    assert_eq!(send(&app, retry()).await, committed);
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 1);
+    assert!(f.core.me(&agent_token).is_ok());
+    assert_eq!(f.core.me(&alice).unwrap()["groups"], json!([]));
+    assert_eq!(
+        f.core
+            .decide_access(&f.approver, &bob_request_id, true)
+            .unwrap_err()
+            .status,
+        StatusCode::CONFLICT
+    );
+}
+
+#[test]
+fn legacy_exposed_credential_cannot_project_a_still_live_temporary_grant() {
+    let f = PamFixture::new();
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Pre-upgrade grant".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    f.core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!(["ops"]));
+    let alice_id = text(&f.core.me(&f.alice).unwrap()["user"], "id");
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "support_credential_exposure",
+                &alice_id,
+                &json!({"actor_id":"agent:legacy","at":now(),"verified_email":null}),
+            )
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+    let f = f.reopen();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+    assert!(
+        !f.core
+            .store
+            .get::<Group>("groups", "ops")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&alice_id)
+    );
 }

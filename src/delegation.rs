@@ -150,7 +150,17 @@ pub(crate) fn credential_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<C
     tx.get(CREDENTIAL_EXPOSURE, user_id)
 }
 
-/// Called by every scoped third-party credential writer in its user mutation.
+/// A temporary group can authorize a protected application without appearing
+/// in durable membership. Credential writers and HelpDesk grants must treat it
+/// as live privileged access until expiry or revocation removes the projection.
+fn has_protected_or_temporary_access(config: &Config, tx: &Tx<'_>, user_id: &str) -> Result<bool> {
+    if crate::management::has_reviewed_membership(config, tx, user_id)? {
+        return Ok(true);
+    }
+    Ok(!crate::pam::extra_groups(tx, user_id, now())?.is_empty())
+}
+
+/// Called by scoped third-party user credential writers in their mutation.
 /// A credential change after a human grant or protected membership would transfer
 /// that person's authority to the operator, so it must be refused.
 pub(crate) fn mark_credential_exposure(
@@ -164,7 +174,7 @@ pub(crate) fn mark_credential_exposure(
     }
     if user.admin
         || !stored(tx, &user.id)?.is_empty()
-        || crate::management::has_reviewed_membership(config, tx, &user.id)?
+        || has_protected_or_temporary_access(config, tx, &user.id)?
     {
         return Err(Error::forbidden());
     }
@@ -295,9 +305,7 @@ pub(crate) fn active(tx: &Tx<'_>, config: &Config, user_id: &str) -> Result<Vec<
                                         .values()
                                         .any(|names| names.contains(name))
                                     && stored(tx, &user.id)?.is_empty()
-                                    && !crate::management::has_reviewed_membership(
-                                        config, tx, &user.id,
-                                    )?
+                                    && !has_protected_or_temporary_access(config, tx, &user.id)?
                             } else {
                                 false
                             }
@@ -355,7 +363,7 @@ pub(crate) fn bind(
                     .values()
                     .any(|names| names.contains(name))
                 || !stored(tx, &target.id)?.is_empty()
-                || crate::management::has_reviewed_membership(config, tx, &target.id)?
+                || has_protected_or_temporary_access(config, tx, &target.id)?
             {
                 return Err(Error::forbidden());
             }

@@ -197,6 +197,13 @@ pub(crate) fn decide_access(
         return Err(Error::missing("Access request expired"));
     }
     require_revision(tx)?;
+    // A third-party operator may already control credentials exposed before
+    // this request. Do not confer a temporary group to that known credential.
+    if approve && crate::delegation::credential_exposure(tx, &request.user_id)?.is_some() {
+        return Err(Error::conflict(
+            "Requester needs independent credential recovery before temporary access approval",
+        ));
+    }
     let at = now();
     request.decided_at = Some(at);
     request.decided_by = Some(actor.id.clone());
