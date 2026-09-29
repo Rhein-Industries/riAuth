@@ -206,7 +206,12 @@ Proof use is paired with live identity validation, not a caller's asserted user 
 login only when the callback presents the binding cookie set at start. A missing
 or different cookie ends that login before any token request, and replaying the
 callback with the original cookie does not complete it. CLI, embedded-stage and
-workflow logins have no browser cookie.
+workflow logins have no browser cookie. A browser-started SAML assertion is accepted
+at the ACS without that cookie, because a cross-site POST does not send it. Finish
+stays closed until a same-site return presents both the start cookie and a one-time
+cookie set on the ACS response. A return that has the one-time cookie but not the
+start cookie ends the login before a session or link is written. CLI, embedded-stage
+and workflow SAML logins are not cookie-bound.
 
 **Existing regressions.** [Signin](../../tests/signin_core.rs)
 `proof_is_single_use_and_bound_to_request_and_session`;
@@ -214,7 +219,9 @@ workflow logins have no browser cookie.
 `decision_rejects_changed_session_ref`, `browser_approval_is_delivered_only_to_the_approving_browser`;
 [SAML](../../tests/identity/saml.rs) `saml_force_authn_requires_proof_from_interaction`;
 [sources](../../tests/identity/sources.rs)
-`browser_source_callback_is_redeemed_only_by_the_starting_browser`.
+`browser_source_callback_is_redeemed_only_by_the_starting_browser`;
+[SAML sources](../../tests/identity/saml_source.rs)
+`saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_replay_and_cli`.
 
 **Missing coverage / later contract.** Q02-C03 swaps request hash/instance,
 account, session, interaction ID, cookie and callback collector independently.

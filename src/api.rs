@@ -597,6 +597,7 @@ fn platform_routes() -> Router<App> {
             "/saml/sources/{id}/acs",
             post(saml_source_acs).layer(DefaultBodyLimit::max(96 * 1024)),
         )
+        .route("/saml/sources/{id}/return", get(saml_source_browser_return))
         .route("/saml/logout/{ticket}", get(saml_logout_next))
         .route("/saml/logout/{ticket}/status", get(saml_logout_status))
         .route(
@@ -3768,11 +3769,80 @@ async fn saml_source_acs(
     Path(id): Path<String>,
     Form(pairs): Form<Vec<(String, String)>>,
 ) -> Result<Response> {
-    app.run(move |core| {
-        let value = core.saml_source_callback(&id, pairs)?;
-        source_stage_redirect(core, value)
-    })
-    .await
+    let source_id = id.clone();
+    let mut value = app
+        .run(move |core| core.saml_source_callback(&id, pairs))
+        .await?;
+    // The raw return token is only a cookie. CLI and stage bodies never have one.
+    let token = value
+        .get("browser_return")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    if let Some(body) = value.as_object_mut() {
+        body.remove("browser_return");
+    }
+    if let Some(token) = token {
+        let cookie = app.core.binding_cookie(
+            crate::portal::sources::RETURN_KIND,
+            crate::portal::sources::ID,
+            &token,
+            &app.core.cookie_path(),
+            600,
+        );
+        let path = format!(
+            "{}saml/sources/{source_id}/return",
+            app.core.cookie_path()
+        );
+        return see_other(&app, &path, vec![cookie]);
+    }
+    source_stage_redirect(&app.core, value)
+}
+
+#[cfg(feature = "platform")]
+async fn saml_source_browser_return(
+    State(app): State<App>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let started = binding_cookie(
+        &app.core,
+        &headers,
+        crate::portal::sources::KIND,
+        crate::portal::sources::ID,
+    )
+    .map(str::to_owned);
+    let returned = binding_cookie(
+        &app.core,
+        &headers,
+        crate::portal::sources::RETURN_KIND,
+        crate::portal::sources::ID,
+    )
+    .map(str::to_owned);
+    let continue_path = format!("{}account/sources/continue", app.core.cookie_path());
+    let clear = app.core.binding_cookie(
+        crate::portal::sources::RETURN_KIND,
+        crate::portal::sources::ID,
+        "",
+        &app.core.cookie_path(),
+        0,
+    );
+    // Success and a burned return both land on the review page. A missing return
+    // cookie still redirects, and does not clear a cookie this request did not spend.
+    match app
+        .run(move |core| {
+            core.saml_source_browser_return(&id, started.as_deref(), returned.as_deref())
+        })
+        .await
+    {
+        Ok(()) => see_other(&app, &continue_path, vec![clear]),
+        Err(error) if error.code == "source_browser_mismatch" => {
+            see_other(&app, &continue_path, vec![clear])
+        }
+        Err(error) if error.status == StatusCode::BAD_REQUEST => {
+            see_other(&app, &continue_path, vec![])
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(feature = "platform")]

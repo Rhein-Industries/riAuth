@@ -192,6 +192,18 @@ struct Login {
     /// written before the cookie was required.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     browser_binding: Option<String>,
+    /// Digest of the one-time SAML return token. Present only after a browser-started
+    /// ACS accepts the assertion, until the same-site return confirms or ends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_return: Option<String>,
+    /// False only while a browser-started SAML login is waiting for its return.
+    /// Older rows omit it and were not waiting on that return.
+    #[serde(default = "legacy_browser_return_confirmed")]
+    browser_return_confirmed: bool,
+}
+
+fn legacy_browser_return_confirmed() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -539,6 +551,11 @@ impl Core {
             workflow: None,
             browser_binding: browser_bound
                 .then(|| digest(&format!("{credential}.{}", digest(&state)))),
+            browser_return: None,
+            // The Lax start cookie is absent from a cross-site SAML POST, so that
+            // login stays unfinished until the same-site return. OIDC checks the
+            // cookie on its callback and is finishable immediately.
+            browser_return_confirmed: !(browser_bound && source.saml.is_some()),
         };
         let started = |authorization_url: String, pending: &Login| StartedLogin {
             body: json!({"authorization_url": &authorization_url, "credential": {"issuer":self.config.issuer,"source":id,"token":&credential,"expires_at":pending.expires_at}, "instruction":"Authenticate at the upstream provider, then inspect and finish this request in the CLI"}),
@@ -666,11 +683,7 @@ impl Core {
         .await
         .map_err(Error::internal)??;
         let Some((source, pending, secret)) = ready else {
-            return Err(Error::new(
-                axum::http::StatusCode::FORBIDDEN,
-                "source_browser_mismatch",
-                "This provider returned to a different browser than the one that started sign-in. Start again in that browser.",
-            ));
+            return Err(browser_mismatch());
         };
         let result = async {
             if get("iss").is_some_and(|v| v != source.issuer) {
@@ -861,6 +874,11 @@ impl Core {
         otp: Option<&str>,
         expected_user: Option<&str>,
     ) -> Result<Result<Value>> {
+        // Browser-started SAML is unfinished until the same-site return. OIDC already
+        // checked its cookie, and rows written before the handoff default confirmed.
+        if pending.browser_binding.is_some() && !pending.browser_return_confirmed {
+            return Err(Error::unauthorized());
+        }
         if pending.workflow.is_some() {
             return Err(Error::forbidden());
         }
@@ -1040,6 +1058,7 @@ impl Core {
         }
         tx.put("sessions", &sid, &session)?;
         tx.put("session_tokens", &session.token_hash, &sid)?;
+        clear_browser_return(tx, pending)?;
         tx.delete("source_polls", &pending.poll_hash)?;
         tx.delete("source_logins", state)?;
         audit(
@@ -1673,6 +1692,21 @@ fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
         && crypto::constant_eq(&digest(presented), expected)
 }
 
+fn browser_mismatch() -> Error {
+    Error::new(
+        axum::http::StatusCode::FORBIDDEN,
+        "source_browser_mismatch",
+        "This provider returned to a different browser than the one that started sign-in. Start again in that browser.",
+    )
+}
+
+fn clear_browser_return(tx: &Tx<'_>, pending: &Login) -> Result<()> {
+    if let Some(token) = &pending.browser_return {
+        tx.delete("source_returns", token)?;
+    }
+    Ok(())
+}
+
 fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
     let mut body = json!({
         "completed": !pending.failed,
@@ -1698,6 +1732,7 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     saml::cleanup(tx, at)?;
     for (id, pending) in tx.maintenance_page::<Login>("source_logins")? {
         if pending.expires_at < at {
+            clear_browser_return(tx, &pending)?;
             tx.delete("source_polls", &pending.poll_hash)?;
             tx.delete("source_logins", &id)?;
         }

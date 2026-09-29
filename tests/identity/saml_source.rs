@@ -156,19 +156,8 @@ impl Upstream {
         self.sign(&response, true)
     }
 }
-pub(super) fn begin(f: &Fixture, source: &Source, link: Option<&str>) -> (String, String, String) {
-    let start = f
-        .core
-        .source_start(
-            &source.id,
-            Start {
-                link: link.is_some(),
-                authentication_transaction: None,
-            },
-            link,
-        )
-        .unwrap();
-    let url = url::Url::parse(start["authorization_url"].as_str().unwrap()).unwrap();
+fn decode_redirect(source: &Source, authorization_url: &str, acs: &str) -> (String, String) {
+    let url = url::Url::parse(authorization_url).unwrap();
     let fields = url
         .query_pairs()
         .into_owned()
@@ -197,15 +186,30 @@ pub(super) fn begin(f: &Fixture, source: &Source, link: Option<&str>) -> (String
     let doc = roxmltree::Document::parse(&xml).unwrap();
     let root = doc.root_element();
     assert_eq!(root.attribute("ForceAuthn"), Some("true"));
-    assert_eq!(
-        root.attribute("AssertionConsumerServiceURL"),
-        Some(f.core.saml_source_callback_url(&source.id).as_str())
-    );
+    assert_eq!(root.attribute("AssertionConsumerServiceURL"), Some(acs));
     (
         fields["RelayState"].clone(),
         root.attribute("ID").unwrap().into(),
-        text(&start["credential"], "token"),
     )
+}
+pub(super) fn begin(f: &Fixture, source: &Source, link: Option<&str>) -> (String, String, String) {
+    let start = f
+        .core
+        .source_start(
+            &source.id,
+            Start {
+                link: link.is_some(),
+                authentication_transaction: None,
+            },
+            link,
+        )
+        .unwrap();
+    let (relay, request) = decode_redirect(
+        source,
+        start["authorization_url"].as_str().unwrap(),
+        &f.core.saml_source_callback_url(&source.id),
+    );
+    (relay, request, text(&start["credential"], "token"))
 }
 fn submit(f: &Fixture, source: &Source, state: &str, response: &str) -> Value {
     f.core
@@ -592,4 +596,529 @@ fn exercise(xmlsec: Option<&Path>) {
         .source_unlink(&alice, links[0]["id"].as_str().unwrap())
         .unwrap();
     assert!(f.core.me(&token).is_err());
+}
+
+fn install_saml(f: &Fixture) -> (Source, Upstream) {
+    let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    let cert = saml_tests::cert(&key, "Upstream IdP");
+    let upstream = Upstream {
+        key,
+        cert,
+        xmlsec: None,
+        dir: tempfile::tempdir().unwrap(),
+    };
+    riauth::config::write_private(
+        &upstream.dir.path().join("idp.key"),
+        &upstream.key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let sp = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let source = Source {
+        saml: Some(Settings {
+            slo_redirect_url: None,
+            slo_post_url: None,
+            signing_key: "signing".into(),
+            sp_certificate_pem: saml_tests::cert(&sp, "riAuth source SP"),
+            idp_certificates_pem: vec![upstream.cert.clone()],
+            name_id_format: NameIdFormat::Persistent,
+            name_attribute: Some("display".into()),
+            email_attribute: Some("email".into()),
+            email_verified_attribute: Some("verified".into()),
+            require_encrypted_assertions: false,
+        }),
+        oauth_profile: None,
+        id: "enterprise".into(),
+        name: "Enterprise SAML".into(),
+        issuer: "urn:example:enterprise-idp".into(),
+        authorization_endpoint: "https://enterprise.example.test/sso".into(),
+        token_endpoint: "".into(),
+        client_id: "urn:example:riauth-sp".into(),
+        token_endpoint_auth_method: riauth::jose::ClientAuthMethod::None,
+        jwks: Default::default(),
+        scopes: Default::default(),
+        enabled: true,
+        auto_provision: true,
+        groups: Default::default(),
+        trusted_mfa_acr: Default::default(),
+        allow_admin_login: false,
+    };
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    (source, upstream)
+}
+
+fn login_row(f: &Fixture, relay: &str) -> Value {
+    f.core
+        .store
+        .get::<Value>("source_logins", &digest(relay))
+        .unwrap()
+        .unwrap()
+}
+
+fn accounts(f: &Fixture) -> (usize, usize, usize) {
+    (
+        f.core
+            .store
+            .list::<riauth::model::User>("users")
+            .unwrap()
+            .len(),
+        f.core
+            .store
+            .list::<riauth::model::Session>("sessions")
+            .unwrap()
+            .len(),
+        f.core
+            .store
+            .list::<Value>("source_links")
+            .unwrap()
+            .len(),
+    )
+}
+
+fn failed_audits(f: &Fixture) -> usize {
+    f.core
+        .store
+        .list::<Value>("audit")
+        .unwrap()
+        .iter()
+        .filter(|(_, event)| {
+            event["action"] == "source.login_failed"
+                && event["actor"] == "upstream"
+                && event["target"] == "enterprise"
+        })
+        .count()
+}
+
+fn hides(error: &riauth::error::Error, secrets: &[&str]) {
+    let shown = error.to_string();
+    for secret in secrets {
+        assert!(!shown.contains(secret), "{shown}");
+    }
+}
+
+fn cookie_value(cookies: &[String], name: &str) -> String {
+    let prefix = format!("{name}=");
+    cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .and_then(|pair| pair.strip_prefix(&prefix))
+        })
+        .unwrap_or_else(|| panic!("{name}"))
+        .to_owned()
+}
+
+struct StartedBrowser {
+    relay: String,
+    request: String,
+    cookie: String,
+    credential: String,
+}
+
+fn browser_begin(f: &Fixture, source: &Source) -> StartedBrowser {
+    let started = f
+        .core
+        .portal_source_start(None, &source.id, None)
+        .unwrap();
+    let cookie = cookie_value(&started.cookies, "riauth_source");
+    let (relay, request) = decode_redirect(
+        source,
+        started.body["authorization_url"].as_str().unwrap(),
+        &f.core.saml_source_callback_url(&source.id),
+    );
+    let credential = cookie.split_once('.').unwrap().0.to_owned();
+    let row = login_row(f, &relay);
+    assert_eq!(
+        row["browser_binding"],
+        digest(&format!("{credential}.{}", digest(&relay)))
+    );
+    assert_eq!(row["browser_return_confirmed"], false);
+    assert!(row["browser_return"].is_null());
+    StartedBrowser {
+        relay,
+        request,
+        cookie,
+        credential,
+    }
+}
+
+struct HttpReply {
+    status: u16,
+    location: String,
+    set_cookie: Option<String>,
+    referrer: String,
+    body: String,
+}
+
+async fn read_reply(response: axum::response::Response) -> HttpReply {
+    use http_body_util::BodyExt;
+    let status = response.status().as_u16();
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
+    let set_cookie = response
+        .headers()
+        .get("set-cookie")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let referrer = response
+        .headers()
+        .get("referrer-policy")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_owned();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    HttpReply {
+        status,
+        location,
+        set_cookie,
+        referrer,
+        body: String::from_utf8_lossy(&bytes).into_owned(),
+    }
+}
+
+async fn post_acs(core: &riauth::core::Core, id: &str, relay: &str, xml: &str) -> HttpReply {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let body = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("SAMLResponse", &STANDARD.encode(xml))
+        .append_pair("RelayState", relay)
+        .finish();
+    let response = riauth::api::router(core.clone())
+        .oneshot(
+            Request::post(format!("/saml/sources/{id}/acs"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    read_reply(response).await
+}
+
+async fn get_return(core: &riauth::core::Core, id: &str, cookie: Option<&str>) -> HttpReply {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+    let mut request = Request::get(format!("/saml/sources/{id}/return"))
+        .body(Body::empty())
+        .unwrap();
+    if let Some(cookie) = cookie {
+        request.headers_mut().insert(
+            "cookie",
+            axum::http::HeaderValue::from_str(cookie).unwrap(),
+        );
+    }
+    read_reply(
+        riauth::api::router(core.clone())
+            .oneshot(request)
+            .await
+            .unwrap(),
+    )
+    .await
+}
+
+fn cookie_assignment(header: &str) -> (String, String) {
+    let (name, value) = header.split(';').next().unwrap().split_once('=').unwrap();
+    (name.to_owned(), value.to_owned())
+}
+
+fn relay_response(upstream: &Upstream, source: &Source, acs: &str, request: &str) -> String {
+    upstream.response(source, acs, request, None, false)
+}
+
+/// Browser SAML cannot trust the Lax start cookie on the cross-site ACS POST.
+/// Finish stays closed until a same-site return presents that cookie and the
+/// one-time cookie set on the ACS response.
+#[tokio::test]
+async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_replay_and_cli() {
+    let f = Fixture::new();
+    let (source, upstream) = install_saml(&f);
+    let acs = f.core.saml_source_callback_url(&source.id);
+    let before = accounts(&f);
+    let listed = f.core.portal_source_list().unwrap();
+    assert!(listed["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|source| source["id"] == "enterprise"));
+
+    // CLI: the ACS body has no return token, and a return call does not end the login.
+    let (relay, request, credential) = begin(&f, &source, None);
+    let cli = post_acs(
+        &f.core,
+        &source.id,
+        &relay,
+        &relay_response(&upstream, &source, &acs, &request),
+    )
+    .await;
+    assert_eq!(cli.status, 200);
+    assert!(cli.set_cookie.is_none());
+    let cli_body: Value = serde_json::from_str(&cli.body).unwrap();
+    assert_eq!(cli_body["completed"], true);
+    assert!(cli_body.get("browser_return").is_none());
+    assert!(!cli.body.contains(&credential));
+    assert!(!cli.body.contains(&relay));
+    let cli_row = login_row(&f, &relay);
+    assert!(cli_row["browser_binding"].is_null());
+    assert!(cli_row["browser_return"].is_null());
+    assert_eq!(cli_row["browser_return_confirmed"], true);
+    assert_eq!(cli_row["result"]["subject"], "opaque-subject");
+    assert_eq!(finish(&f, &credential, false).unwrap()["status"], "review");
+    let unused = f
+        .core
+        .saml_source_browser_return(&source.id, None, None)
+        .unwrap_err();
+    assert_eq!(unused.status.as_u16(), 400);
+    assert_eq!(unused.code, "invalid_request");
+    let junk = f
+        .core
+        .saml_source_browser_return(&source.id, Some("not-a-cookie"), Some("not-a-return"))
+        .unwrap_err();
+    assert_eq!(junk.status.as_u16(), 400);
+    hides(&junk, &[&credential, &relay]);
+    assert_eq!(finish(&f, &credential, false).unwrap()["status"], "review");
+    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert_eq!(accounts(&f), before);
+
+    // A rejected assertion stores no return token and does not redirect.
+    let rejected = browser_begin(&f, &source);
+    let bad = upstream.response(
+        &source,
+        &acs,
+        &rejected.request,
+        Some((
+            "urn:example:riauth-sp</saml:Audience>",
+            "urn:attacker</saml:Audience>",
+        )),
+        false,
+    );
+    let rejected_acs = post_acs(&f.core, &source.id, &rejected.relay, &bad).await;
+    assert_eq!(rejected_acs.status, 200);
+    assert!(rejected_acs.set_cookie.is_none());
+    let rejected_body: Value = serde_json::from_str(&rejected_acs.body).unwrap();
+    assert_eq!(rejected_body["completed"], false);
+    assert!(rejected_body.get("browser_return").is_none());
+    assert!(!rejected_acs.body.contains(&rejected.cookie));
+    assert!(!rejected_acs.body.contains(&rejected.relay));
+    let rejected_row = login_row(&f, &rejected.relay);
+    assert_eq!(rejected_row["failed"], true);
+    assert!(rejected_row["result"].is_null());
+    assert!(rejected_row["browser_return"].is_null());
+    assert!(finish(&f, &rejected.credential, false).is_err());
+    assert_eq!(accounts(&f), before);
+
+    // Missing start cookie: the return token is real, so the login ends.
+    let missing = browser_begin(&f, &source);
+    let missing_audits = failed_audits(&f);
+    let missing_acs = post_acs(
+        &f.core,
+        &source.id,
+        &missing.relay,
+        &relay_response(&upstream, &source, &acs, &missing.request),
+    )
+    .await;
+    assert_eq!(missing_acs.status, 303);
+    let (return_name, missing_token) = cookie_assignment(missing_acs.set_cookie.as_deref().unwrap());
+    assert_eq!(return_name, "riauth_source_return");
+    assert!(!missing_acs.body.contains(&missing_token));
+    assert!(!missing_acs.location.contains(&missing_token));
+    let burned = f
+        .core
+        .saml_source_browser_return(&source.id, None, Some(&missing_token))
+        .unwrap_err();
+    assert_eq!(burned.status.as_u16(), 403);
+    assert_eq!(burned.code, "source_browser_mismatch");
+    hides(&burned, &[&missing.cookie, &missing_token, &missing.relay]);
+    let missing_row = login_row(&f, &missing.relay);
+    assert_eq!(missing_row["failed"], true);
+    assert!(missing_row["result"].is_null());
+    assert!(missing_row["browser_return"].is_null());
+    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    let too_late = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&missing.cookie), Some(&missing_token))
+        .unwrap_err();
+    assert_eq!(too_late.status.as_u16(), 400);
+    assert_ne!(too_late.code, "source_browser_mismatch");
+    assert!(too_late.to_string().contains("already used"));
+    hides(&too_late, &[&missing.cookie, &missing_token, &missing.relay]);
+    assert!(finish(&f, &missing.credential, true).is_err());
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&missing.credential))
+            .unwrap_err()
+            .code,
+        "source_login_expired"
+    );
+    assert_eq!(failed_audits(&f), missing_audits + 1);
+    assert_eq!(accounts(&f), before);
+
+    // Foreign browser: B's start cookie with A's return token ends A and does not adopt it.
+    let first = browser_begin(&f, &source);
+    let second = browser_begin(&f, &source);
+    let foreign_audits = failed_audits(&f);
+    let first_acs = post_acs(
+        &f.core,
+        &source.id,
+        &first.relay,
+        &relay_response(&upstream, &source, &acs, &first.request),
+    )
+    .await;
+    assert_eq!(first_acs.status, 303);
+    let (_, first_token) = cookie_assignment(first_acs.set_cookie.as_deref().unwrap());
+    assert!(finish(&f, &first.credential, false).is_err());
+    assert_eq!(login_row(&f, &first.relay)["failed"], false);
+    assert_eq!(login_row(&f, &first.relay)["result"]["subject"], "opaque-subject");
+    let foreign = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&second.cookie), Some(&first_token))
+        .unwrap_err();
+    assert_eq!(foreign.status.as_u16(), 403);
+    assert_eq!(foreign.code, "source_browser_mismatch");
+    hides(
+        &foreign,
+        &[&first.cookie, &second.cookie, &first_token, &first.relay, &second.relay],
+    );
+    let foreign_row = login_row(&f, &first.relay);
+    assert_eq!(foreign_row["failed"], true);
+    assert!(foreign_row["result"].is_null());
+    assert_eq!(login_row(&f, &second.relay)["failed"], false);
+    assert!(login_row(&f, &second.relay)["result"].is_null());
+    let still_foreign = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&first.cookie), Some(&first_token))
+        .unwrap_err();
+    assert_eq!(still_foreign.status.as_u16(), 400);
+    assert_ne!(still_foreign.code, "source_browser_mismatch");
+    assert!(finish(&f, &first.credential, true).is_err());
+    assert_eq!(failed_audits(&f), foreign_audits + 1);
+    assert_eq!(accounts(&f), before);
+
+    // Success: the POST omits the Lax start cookie. Both cookies confirm on the return.
+    // Replay of that return or the ACS leaves the confirmed login in place.
+    let started = browser_begin(&f, &source);
+    let signed = relay_response(&upstream, &source, &acs, &started.request);
+    let posted = post_acs(&f.core, &source.id, &started.relay, &signed).await;
+    assert_eq!(posted.status, 303);
+    assert_eq!(posted.referrer, "no-referrer");
+    assert!(posted.location.ends_with("/saml/sources/enterprise/return"));
+    let cookie_header = posted.set_cookie.as_deref().unwrap();
+    assert!(cookie_header.contains("HttpOnly"));
+    assert!(cookie_header.contains("SameSite=Lax"));
+    assert!(!cookie_header.contains("SameSite=None"));
+    assert!(!cookie_header.contains("Secure"));
+    assert!(cookie_header.contains("Max-Age=600"));
+    assert!(cookie_header.contains("Path=/"));
+    let (return_name, token) = cookie_assignment(cookie_header);
+    assert_eq!(return_name, "riauth_source_return");
+    assert!(!posted.body.contains(&token));
+    assert!(!posted.location.contains(&token));
+    assert!(!posted.location.contains(&started.relay));
+    assert!(!posted.body.contains(&started.cookie));
+    let waiting = login_row(&f, &started.relay);
+    assert_eq!(waiting["failed"], false);
+    assert_eq!(waiting["browser_return_confirmed"], false);
+    assert_eq!(waiting["result"]["subject"], "opaque-subject");
+    assert_eq!(waiting["browser_return"], digest(&token));
+    assert_ne!(waiting["browser_return"], token);
+    assert_eq!(
+        f.core.store.list::<String>("source_returns").unwrap().len(),
+        1
+    );
+    let early = finish(&f, &started.credential, false).unwrap_err();
+    assert_eq!(early.status.as_u16(), 401);
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    // The start cookie alone, or an oversized return cookie, must not end the login.
+    let start_only = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), None)
+        .unwrap_err();
+    assert_eq!(start_only.status.as_u16(), 400);
+    let oversized = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&"x".repeat(257)))
+        .unwrap_err();
+    assert_eq!(oversized.status.as_u16(), 400);
+    hides(&oversized, &[&started.cookie, &token]);
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    let prefetch = get_return(&f.core, &source.id, None).await;
+    assert_eq!(prefetch.status, 303);
+    assert!(prefetch.set_cookie.is_none());
+    assert!(prefetch.location.ends_with("/account/sources/continue"));
+    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    let both = format!(
+        "riauth_source={}; riauth_source_return={token}",
+        started.cookie
+    );
+    let wrong_provider = get_return(&f.core, "other", Some(&both)).await;
+    assert_eq!(wrong_provider.status, 303);
+    assert!(wrong_provider.set_cookie.is_none());
+    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        f.core.store.list::<String>("source_returns").unwrap().len(),
+        1
+    );
+    let confirmed = get_return(&f.core, &source.id, Some(&both)).await;
+    assert_eq!(confirmed.status, 303);
+    assert_eq!(confirmed.referrer, "no-referrer");
+    assert!(confirmed.location.ends_with("/account/sources/continue"));
+    assert!(!confirmed.location.contains(&token));
+    let clearing = confirmed.set_cookie.as_deref().unwrap();
+    assert!(clearing.starts_with("riauth_source_return="));
+    assert!(clearing.contains("Max-Age=0"));
+    let open = login_row(&f, &started.relay);
+    assert_eq!(open["browser_return_confirmed"], true);
+    assert!(open["browser_return"].is_null());
+    assert_eq!(open["failed"], false);
+    assert_eq!(open["result"]["subject"], "opaque-subject");
+    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    let replay_return = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&token))
+        .unwrap_err();
+    assert_eq!(replay_return.status.as_u16(), 400);
+    assert_eq!(replay_return.code, "invalid_request");
+    assert!(replay_return.to_string().contains("already used"));
+    hides(&replay_return, &[&started.cookie, &token, &started.relay]);
+    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], true);
+    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    let replay_acs = post_acs(&f.core, &source.id, &started.relay, &signed).await;
+    assert_ne!(replay_acs.status, 303);
+    assert!(replay_acs.set_cookie.is_none());
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], true);
+    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    let review = f
+        .core
+        .portal_source_review(Some(&started.credential))
+        .unwrap();
+    assert_eq!(review["status"], "review");
+    assert_eq!(review["subject"], "opaque-subject");
+    assert_eq!(accounts(&f), before);
+    let session = finish(&f, &started.credential, true).unwrap();
+    assert_eq!(session["status"], "complete");
+    assert!(f.core.me(&text(&session, "session_token")).is_ok());
+    let (users, sessions, links) = accounts(&f);
+    let (users_before, sessions_before, links_before) = before;
+    assert_eq!(users, users_before + 1);
+    assert_eq!(sessions, sessions_before + 1);
+    assert_eq!(links, links_before + 1);
+    assert!(finish(&f, &started.credential, true).is_err());
+    assert!(f.core.me(&text(&session, "session_token")).is_ok());
 }

@@ -24,6 +24,9 @@ use serde_json::Value;
 /// a digest of its callback state, as `credential.digest`.
 pub(crate) const KIND: &str = "source";
 pub(crate) const ID: &str = "browser";
+/// Set on the SAML ACS response. The cross-site POST does not carry `KIND`.
+#[cfg(feature = "platform")]
+pub(crate) const RETURN_KIND: &str = "source_return";
 
 #[cfg(feature = "test-support")]
 thread_local! {

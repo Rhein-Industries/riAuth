@@ -14,7 +14,7 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use roxmltree::{Document, Node};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 pub use super::saml_types::Settings;
 pub(crate) use super::saml_types::UpstreamSession;
@@ -210,8 +210,21 @@ impl Core {
                 tx.put("saml_source_replays", &key, &expiry.saturating_add(30))?;
                 Ok(identity)
             });
+            let mut return_token = None;
             match result {
-                Ok(identity) => current.result = Some(identity),
+                Ok(identity) => {
+                    current.result = Some(identity);
+                    // The POST itself cannot see the Lax start cookie. Hold finish
+                    // until a same-site return presents that cookie and this token.
+                    if current.browser_binding.is_some() {
+                        let token = crypto::random_token("");
+                        let token_digest = digest(&token);
+                        current.browser_return = Some(token_digest.clone());
+                        current.browser_return_confirmed = false;
+                        tx.put("source_returns", &token_digest, &digest(state))?;
+                        return_token = Some(token);
+                    }
+                }
                 Err(_) => current.failed = true,
             };
             tx.put("source_logins", &digest(state), &current)?;
@@ -225,9 +238,100 @@ impl Core {
                 },
                 id,
             )?;
-            super::callback_body(tx, &current, &digest(state))
+            let mut body = super::callback_body(tx, &current, &digest(state))?;
+            if let Some(token) = return_token {
+                body["browser_return"] = json!(token);
+            }
+            Ok(body)
         })
     }
+
+    /// Confirms a browser-started SAML login. `returned` is the one-time token from the
+    /// ACS response; `started` is the Lax cookie from `portal_source_start`. A missing
+    /// or unknown return token does not end the login. A real return token whose start
+    /// cookie is missing or belongs to another browser does.
+    pub fn saml_source_browser_return(
+        &self,
+        id: &str,
+        started: Option<&str>,
+        returned: Option<&str>,
+    ) -> Result<()> {
+        let Some(returned) = returned.filter(|value| value.len() <= 256) else {
+            return Err(Error::bad("SAML browser return expired or already used"));
+        };
+        let started = started
+            .filter(|value| value.len() <= 256)
+            .map(str::to_owned);
+        let returned_digest = digest(returned);
+        let outcome = self.store.write(|tx| {
+            take_browser_return(tx, id, started.as_deref(), &returned_digest)
+        })?;
+        match outcome {
+            BrowserReturn::Confirmed => Ok(()),
+            BrowserReturn::Burned => Err(super::browser_mismatch()),
+            BrowserReturn::Unknown => {
+                Err(Error::bad("SAML browser return expired or already used"))
+            }
+        }
+    }
+}
+
+enum BrowserReturn {
+    Confirmed,
+    Burned,
+    Unknown,
+}
+
+fn take_browser_return(
+    tx: &Tx<'_>,
+    id: &str,
+    started: Option<&str>,
+    returned_digest: &str,
+) -> Result<BrowserReturn> {
+    let Some(login_key) = tx.get::<String>("source_returns", returned_digest)? else {
+        return Ok(BrowserReturn::Unknown);
+    };
+    let Some(mut pending) = tx.get::<Login>("source_logins", &login_key)? else {
+        tx.delete("source_returns", returned_digest)?;
+        return Ok(BrowserReturn::Unknown);
+    };
+    // A token for another provider stays usable on the provider that issued it.
+    if pending.source != id {
+        return Ok(BrowserReturn::Unknown);
+    }
+    let bound = pending.browser_return.as_deref().unwrap_or("");
+    if bound.len() != returned_digest.len() || !crypto::constant_eq(bound, returned_digest) {
+        tx.delete("source_returns", returned_digest)?;
+        return Ok(BrowserReturn::Unknown);
+    }
+    if pending.expires_at <= now()
+        || pending.failed
+        || pending.result.is_none()
+        || pending.browser_binding.is_none()
+        || pending.browser_return_confirmed
+    {
+        tx.delete("source_returns", returned_digest)?;
+        return Ok(BrowserReturn::Unknown);
+    }
+    let source = super::enabled(tx, id)?;
+    if pending.fingerprint != source.fingerprint()? {
+        return Err(Error::bad("SAML source changed; restart login"));
+    }
+    if !super::browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(""), started)
+    {
+        pending.failed = true;
+        pending.result = None;
+        super::clear_browser_return(tx, &pending)?;
+        pending.browser_return = None;
+        tx.put("source_logins", &login_key, &pending)?;
+        audit(tx, "upstream", "source.login_failed", id)?;
+        return Ok(BrowserReturn::Burned);
+    }
+    super::clear_browser_return(tx, &pending)?;
+    pending.browser_return = None;
+    pending.browser_return_confirmed = true;
+    tx.put("source_logins", &login_key, &pending)?;
+    Ok(BrowserReturn::Confirmed)
 }
 fn limits() -> risaml::xml::XmlLimits {
     risaml::xml::XmlLimits {

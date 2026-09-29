@@ -10,7 +10,7 @@ Browsers can sign in (passkey, or password with an optional TOTP or recovery cod
 | --- | --- |
 | List or revoke your sessions and remembered consent | `riauth session list`, `riauth session revoke ID`, `riauth consents` |
 | Approve a device-flow login | `riauth device approve CODE` |
-| Sign in with or link a SAML upstream source | `riauth source start ID --out FILE`, `riauth source finish --file FILE` (OIDC and OAuth sources also work in the browser: see [the portal](PORTAL.md#upstream-sign-in-providers)) |
+| Sign in with or link a SAML upstream source | The platform portal can start it. The ACS POST does not finish that login; a same-site return must present both the start cookie and the one-time cookie set on the ACS response. The CLI remains `riauth source start ID --out FILE`, `riauth source finish --file FILE`. OIDC and OAuth sources also work in the browser: see [the portal](PORTAL.md#upstream-sign-in-providers) |
 | Administration | every `user`, `group`, `client` and other management command |
 
 Browser users recover a forgotten local password with **Forgot your password?** on the sign-in pages (below). An administrator can still set one with `riauth user passwd NAME`, which signs the user out everywhere, clears a lockout and keeps their factors. A lost authenticator app or passkey is factor recovery, which is separate: sign in with a recovery code, or ask an administrator, who can run `riauth user reset-mfa NAME`. Users without a terminal should enroll passkeys in the portal rather than TOTP, because TOTP enrollment and recovery-code rotation still need the terminal; see [current limitations](limitations.md).

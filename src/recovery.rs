@@ -93,6 +93,7 @@ pub const INVALIDATED: &[&str] = &[
     "radius_requests",
     "source_logins",
     "source_polls",
+    "source_returns",
     "source_stages",
     "source_stage_requests",
     "windows_tickets",

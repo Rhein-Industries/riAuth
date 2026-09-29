@@ -37,9 +37,9 @@ Responses are JSON, protocol redirects, signed/encrypted JWTs, protocol form/ifr
 | POST | `/api/portal/sign-out` | No body or `{}`: revoke the cookie's session, queue SSO logout and clear the cookie; may return `saml_logout_url`. `{"scope":"browser"}`: for a terminal-approved browser, only unlink this browser |
 | GET | `/api/portal/requests/{code}` | End-user CLI bearer; inspect the code, account, issuer, `requested_from`, and `reauthentication_required` (true once the session is older than 240 s) |
 | POST | `/api/portal/requests/{code}` | End-user CLI bearer and `{"approve":true\|false}`; approval requires authentication within five minutes |
-| GET | `/api/portal/sources` | Public; enabled OIDC and OAuth sources a browser can sign in with, `{"sources":[{"id","name"}]}`. SAML sources stay in the CLI |
+| GET | `/api/portal/sources` | Public; enabled sources a browser can sign in with, `{"sources":[{"id","name"}]}`. The platform build includes SAML; its ACS POST does not finish the login |
 | POST | `/api/portal/sources/{id}/start` | Write guard. `{}` signs in; `{"link":{"expected_user_id","expected_session_id"}}` links the page's account and needs this browser's own local sign-in within five minutes. 200 `{"authorization_url","expires_at","source"}` plus the HttpOnly `riauth_source` binding cookie holding the one-use credential; the credential is never in the body. `source_start` bucket |
-| GET | `/account/sources/continue` | Review page. `/oauth/sources/{id}/callback` answers a login started with that cookie with a 303 here instead of JSON |
+| GET | `/account/sources/continue` | Review page. `/oauth/sources/{id}/callback`, and a SAML return that spent its one-time cookie, answer a browser-started login with a 303 here instead of JSON |
 | POST | `/api/portal/sources/review` | Write guard and the binding cookie; the same non-consuming review as `riauth source finish` (`status`, provider, upstream account, `linking`, `local_user`, `local_otp_required`, `auto_provision`). 401 `source_login_expired` when the login ended; 403 `access_denied` when the account rules refuse it |
 | POST | `/api/portal/sources/finish` | Write guard and the binding cookie; `{"approve":false}` forgets the login, `{"approve":true,"otp":string\|null}` finishes it. A sign-in points this browser's SSO cookie at a browser-owned session (no bearer token exists); a link keeps the current session. 401 `invalid_code` leaves the login open for another code. Clears the binding cookie. `login` bucket |
 | GET | `/api/portal/sources/links` | SSO; `{"links":[{"id","source","name","issuer","subject"}],"linkable","can_change","local_session",…}` |
@@ -76,7 +76,8 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET | `/saml/{id}/metadata` | Signed SAML IdP metadata |
 | GET, POST | `/saml/{id}/sso` | Signed AuthnRequest / LogoutRequest / LogoutResponse; an interactive AuthnRequest from a browser gets `303` to `/saml/resume/{id}` |
 | GET | `/saml/sources/{id}/metadata` | Signed SAML SP metadata for an upstream source |
-| POST | `/saml/sources/{id}/acs` | Signed/encrypted source assertion, bound to terminal login |
+| POST | `/saml/sources/{id}/acs` | Signed/encrypted source assertion. CLI and embedded-stage logins finish from this POST. A browser-started login is not finished here: the response sets a one-time HttpOnly `SameSite=Lax` `riauth_source_return` cookie and `303`s to the return route. The token is not in the URL or body |
+| GET | `/saml/sources/{id}/return` | Same-site handoff. Confirms the browser login only when the `riauth_source` cookie and the one-time return cookie are both present, then `303`s to `/account/sources/continue` and clears the return cookie. A valid return cookie without the start cookie ends the login. A missing return cookie does not |
 | GET, POST | `/saml/sources/{id}/slo` | Signed upstream logout request or correlated response |
 | GET | `/saml/logout/{ticket}` | Continue browser SAML cleanup of already revoked sessions |
 | GET | `/saml/logout/{ticket}/status` | Capability-bound propagation progress |

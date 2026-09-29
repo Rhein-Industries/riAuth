@@ -249,6 +249,7 @@ pub(crate) fn discard(tx: &Tx<'_>, attempt: &Attempt, binding: &Binding) -> Resu
         if login.workflow.as_ref() != Some(binding) || login.nonce != attempt.nonce {
             return Err(Error::forbidden());
         }
+        super::clear_browser_return(tx, &login)?;
         tx.delete("source_polls", &login.poll_hash)?;
         tx.delete("source_logins", &attempt.login)?;
     }

@@ -56,14 +56,15 @@ fn reply(body: Value, cookies: Vec<String>) -> BrowserReply {
     }
 }
 
-/// Enabled sources a browser can use. A SAML source answers with a cross-site POST, which
-/// does not carry the browser's Lax login cookie, so SAML sign-in stays in the CLI for now.
+/// Enabled sources a browser can use. Platform SAML is included: the cross-site ACS
+/// POST does not carry the Lax start cookie, so that POST only stores the assertion
+/// and a one-time return, and a same-site return checks both cookies.
 fn browser_sources(tx: &Tx<'_>) -> Result<Vec<Source>> {
     let mut sources: Vec<Source> = tx
         .list::<Source>("sources")?
         .into_iter()
         .map(|(_, source)| source)
-        .filter(|source| source.enabled && source.saml.is_none())
+        .filter(|source| source.enabled && (cfg!(feature = "platform") || source.saml.is_none()))
         .collect();
     sources.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(sources)
@@ -178,7 +179,8 @@ impl Core {
 
     /// Starts a browser login. Only the authorization URL reaches the page; the credential
     /// that finishes the login is set as an HttpOnly cookie for this browser alone.
-    /// The upstream callback redeems its code only when that same cookie is presented.
+    /// An OIDC or OAuth callback redeems its code only when that same cookie is presented.
+    /// SAML keeps the cookie for the same-site return after the ACS POST.
     pub fn portal_source_start(
         &self,
         sso: Option<&str>,
@@ -213,10 +215,15 @@ impl Core {
                 .as_str()
                 .and_then(|url| url::Url::parse(url).ok())
                 .ok_or_else(|| Error::internal("source authorization URL missing"))?;
-            let state = authorization
-                .query_pairs()
-                .find(|(key, _)| key == "state")
-                .map(|(_, value)| digest(&value))
+            // OIDC puts the login state in `state`. SAML puts the same value in `RelayState`.
+            let state = ["state", "RelayState"]
+                .into_iter()
+                .find_map(|key| {
+                    authorization
+                        .query_pairs()
+                        .find(|(candidate, _)| candidate == key)
+                        .map(|(_, value)| digest(&value))
+                })
                 .ok_or_else(|| Error::internal("source login state missing"))?;
             Ok(reply(
                 json!({
