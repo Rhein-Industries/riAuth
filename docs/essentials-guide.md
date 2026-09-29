@@ -473,9 +473,11 @@ Still outside this slice:
 - PostgreSQL, native HTTPS, a trusted proxy, and the released-image small
   layout in [deployment examples](deployment-examples.md).
 - The Platform protocols and administration in the [Platform guide](platform-guide.md).
-- A capability and compatibility matrix (D02), tested integration recipes
-  (D03), emergency runbooks beyond the entry points above (D04), and
-  acceptance against category targets (D05).
+- The [capability and compatibility matrix](capability-matrix.md) records
+  compiled inclusion, protocol direction, and the peers named by tests.
+  Tested integration recipes (D03), emergency runbooks beyond the entry
+  points above (D04), and acceptance against category targets (D05) are
+  still open.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, or restore on this revision. Those claims need
   a run. This slice does not supply one.

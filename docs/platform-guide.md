@@ -523,9 +523,11 @@ tasks above:
 - Edition transition preflight, plan, and activate. The commands exist on
   the Platform maintenance binary and are documented in
   [server editions](editions.md). This slice does not switch editions.
-- A capability and compatibility matrix (D02), tested integration recipes
-  (D03), emergency runbooks beyond the entry points above (D04), and
-  acceptance against category targets (D05).
+- The [capability and compatibility matrix](capability-matrix.md) records
+  compiled inclusion, protocol direction, and the peers named by tests.
+  Tested integration recipes (D03), emergency runbooks beyond the entry
+  points above (D04), and acceptance against category targets (D05) are
+  still open.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, or restore on this revision. Those claims need
   a run. This slice does not supply one.

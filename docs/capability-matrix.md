@@ -1,0 +1,283 @@
+# Capability and compatibility matrix
+
+This page reads source revision `fdcbfee0950112986e5955f39bd28103d8b0319c`.
+It records compiled inclusion, runtime prerequisites, protocol profile and
+direction, peers named by tests, and known limits for Essentials, Platform,
+and `riauthctl`.
+
+The [A02 product contract](roadmap/product-contracts.md) and its
+[capability matrix JSON](roadmap/capability-matrix.json) are the target
+contract prepared against `96e23e2`. They are not this page. Where they
+disagree with the source below, this page follows the source. The
+[Q08 bundle note](roadmap/q08-exact-edition-bundles.md) records a different
+commit, `4ca7558`, and its binary hashes do not apply here.
+
+Labels used below:
+
+| Label | Meaning |
+| --- | --- |
+| **Implemented** | The behavior is in this revision's source. |
+| **In-tree test** | A test file asserts it. Writing this page did not run the test, Cargo, or CI. |
+| **CI step** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) is written to run that test. No workflow result was collected for this commit. |
+| **Recorded drill** | A JSON file under [roadmap/evidence](roadmap/evidence/) records a local run. Neither file stores a git revision. |
+| **Roadmap** | Only the A02 contract asks for it. |
+| **Untested peer** | No test in this repository connects to that product, tenant, or device. |
+
+`riauth capabilities` (and `riauth --json capabilities`) calls
+[`capability::artifact`](../src/capability.rs). Scope is `artifact`, schema
+`riauth.capabilities/v2`, and `enabled`, `configured`, `runtime_ready`, and
+`usable` are null. It does not open a database. A running server's
+`GET /api/capabilities` is scope `instance`. Its `usable` flag is local
+readiness. External peer health is outside that snapshot.
+
+## Assemblies
+
+The server crate refuses to compile until feature `essentials` is selected
+([`src/lib.rs`](../src/lib.rs)). The Cargo default is `platform`, which
+includes `essentials` ([`Cargo.toml`](../Cargo.toml)).
+
+| Piece | How it is selected | What that build contains |
+| --- | --- | --- |
+| Essentials `riauth` and `riauth-maintenance` | `--no-default-features --features essentials` | 60 capability names. Same identity, authorization, revocation, and credential code as Platform. |
+| Platform `riauth` and `riauth-maintenance` | default features, or `--features platform` | All 86 names. Adds the listeners, routes, and agent actions below. |
+| `riauthctl` | separate crate, default features empty ([`crates/riauthctl`](../crates/riauthctl/Cargo.toml)) | Remote HTTP administration. No server crate, redb, or PostgreSQL dependency. |
+| `riauthctl` with `terminal-usb` | `--features terminal-usb` | Adds CTAP2 USB passkey login and enrollment. |
+
+`riauth-maintenance` is the offline binary for `init`, `prepare-setup`,
+`restore`, `recover-admin`, `migrate-postgres`, `keygen`, `import-authentik`,
+and `transition-preflight` / `transition-plan` / `transition-activate`
+([`src/cli/local.rs`](../src/cli/local.rs)). It uses the same feature set as
+the server build that produced it. `riauthctl` has none of those commands.
+
+The check job's main `cargo test` line uses the default Platform feature set
+plus `test-support` and `fuzzing`. `test-support` is what lets cloud tests
+point at a loopback fake. Shipped builds leave it off. The essentials binary
+in that job is the USB-boundary build, which runs
+`legacy_usb_commands_fail_locally_with_client_guidance`. Integration steps
+also use the default Platform build. An in-tree test on that job is coverage
+of the Platform build unless the row says otherwise.
+
+### Names compiled in both editions
+
+`portal.user_applications`, `portal.terminal_sign_in`,
+`directory.ldap_sync`, `identity.ldap_authentication`, `identity.passkeys`,
+`identity.email_verification`, `identity.invitations`,
+`identity.email_password_reset`, `operations.postgresql`,
+`operations.shared_rate_limits`, `operations.native_tls`, `oidc.par`,
+`oidc.jar`, `oidc.jarm`, `oidc.claims_requests`, `oidc.dpop`,
+`oidc.bound_key`, `oidc.pairwise_subjects`, `oidc.resource_indicators`,
+`oidc.key_domains`, `oidc.jwe`, `oidc.provider_issuers`,
+`oidc.frontchannel_logout`, `oidc.session_management`,
+`identity.oidc_sources`, `identity.oauth_sources`, `identity.source_linking`,
+`identity.totp_import`, `agents.source_manifests`,
+`directory.scim_outbound`, `operations.prometheus`,
+`operations.schema_migrations`, `oidc.private_key_jwt`,
+`oidc.federated_machine_grants`, `oidc.token_exchange`,
+`oidc.dynamic_registration`, `oidc.code.pkce_s256`, `oidc.device`,
+`oidc.refresh_rotation`, `oidc.native_redirects`,
+`oidc.request_bound_reauthentication`, `agents.scoped_credentials`,
+`agents.plan_apply`, `agents.atomic_idempotency`,
+`agents.conditional_mutations`, `agents.audit_run_id`, `agents.schema`,
+`oidc.browser_terminal_handoff`, `oidc.rp_logout`, `oidc.backchannel_logout`,
+`oidc.claim_mappings`, `oidc.scope_policies`, `oidc.provider_settings`,
+`oidc.cors`, `operations.encrypted_backup_restore`,
+`operations.encrypted_storage`, `identity.recovery_codes`,
+`identity.self_password_change`, `operations.audit_review`,
+`operations.csv_export`.
+
+The registry is [`FEATURES`](../src/agent.rs) minus
+[`PLATFORM_FEATURES`](../src/agent.rs).
+
+### Names compiled only in Platform
+
+`audit.self_hosted_event_map`, `saml.idp_signed_browser_sso`,
+`saml.sp_initiated_logout`, `saml.logout_fanout`, `saml.upstream_logout`,
+`saml.assertion_encryption`, `radius.pap`, `radius.radsec`, `radius.eap_tls`,
+`agents.certificate_bindings`, `directory.ldap_provider`,
+`proxy.forward_auth_sso`, `proxy.shared_domain_sso`, `proxy.reverse_proxy`,
+`operations.vault_transit_signing`, `identity.saml_sources`,
+`directory.scim_inbound`, `access.temporary_entitlements`,
+`identity.scheduled_offboarding`, `identity.windows_device_login`,
+`agents.parent_ownership`, `directory.workspace_sync`,
+`directory.entra_sync`, `identity.https_client_certificates`,
+`identity.device_trust`, `ssf.push`.
+
+Essentials also omits agent actions `ldap.search`, `certificate.read`,
+`certificate.write`, `mtls.read`, `mtls.bind`, `radius.enroll`,
+`user.offboard`, `access.read`, `device.enroll`, `ssf.manage`,
+`ssf.configure`, `workflow.read`, and `workflow.write`
+([`PLATFORM_ACTIONS`](../src/edition.rs)). Directory wildcards and
+`workspace/…` or `entra/…` resources are rejected on Essentials. Parent-owned
+agents are rejected. The artifact schema list still includes `workflow`;
+`radius-certificate`, `windows-device`, `windows-login`,
+`client-certificate`, and `cloud-directory-plan` are omitted
+([`src/schema.rs`](../src/schema.rs)).
+
+Essentials rejects configuration that carries `proxy_listeners`,
+`radius_listeners`, `ldap_listeners`, `workspace_directories`,
+`entra_directories`, `signers`, `workflows`, `pam_approvers`,
+`client_certificates`, or `device_trust`, plus Workspace or Entra
+reconciliation controllers, `rate_limits` keys `saml`, `forward_auth`, and
+`outpost_start`, and client settings `saml`, `radius`, `ldap`, `proxy`,
+`source_stage`, `require_device_trust`, and certificate ACR. A SAML source
+is rejected. An initialized store without edition provenance, a store last
+activated as Platform, or a store that still holds a Platform record family
+refuses Essentials open ([`src/edition.rs`](../src/edition.rs),
+[`src/edition/transition.rs`](../src/edition/transition.rs)). Platform HTTP
+routes, including inbound SCIM, SAML, proxy and outpost, certificate login,
+Windows, cloud directories, SSF, workflows, the event map, and temporary
+access, are registered only with the `platform` feature
+([`src/api.rs`](../src/api.rs)).
+
+The only `capabilities.disabled` entry either build accepts is
+`identity.device_trust`, and only when that name is compiled. Every other
+known name fails with `Capability {name} cannot be disabled by this build`.
+Putting a Platform-only name in that list on Essentials fails earlier,
+because the name is not compiled ([`src/capability.rs`](../src/capability.rs)).
+
+## Runtime prerequisites
+
+On an instance document, `enabled` is true unless the name is in
+`capabilities.disabled`. `configured` is true for every name that the table
+below does not list. `runtime_ready` is null except for the embedded reverse
+proxy, RADIUS, and the LDAP provider, which need a live bound listener.
+`usable` is compiled, enabled, configured, and ready (null ready counts as
+ready).
+
+| Names | `configured` becomes true when |
+| --- | --- |
+| `operations.postgresql` | `[postgres]` is set |
+| `operations.native_tls` | TLS certificate and key files are both set |
+| `operations.encrypted_storage` | a database key file is set |
+| `identity.email_verification`, `identity.invitations`, `identity.email_password_reset` | `[mail]` is present and its local SMTP material checks pass |
+| `directory.ldap_sync`, `identity.ldap_authentication` | at least one `[directories]` entry |
+| `directory.scim_outbound` | at least one `[scim_targets]` entry |
+| `directory.workspace_sync` | at least one Workspace directory |
+| `directory.entra_sync` | at least one Entra directory |
+| `directory.ldap_provider` | at least one LDAP listener |
+| `proxy.forward_auth_sso` | an enabled client with valid proxy settings |
+| `proxy.shared_domain_sso` | one of those clients sets a shared domain |
+| `proxy.reverse_proxy` | listeners, routes, and matching client origins; the listener must be running |
+| `radius.pap` | any RADIUS listener whose material and NAS clients are ready, and that listener is running. A ready RadSec or EAP listener also marks PAP configured |
+| `radius.radsec` | a ready running listener with TLS transport |
+| `radius.eap_tls`, `agents.certificate_bindings` | every EAP-TLS listener is ready, at least one exists, and one is running |
+| `saml.idp_signed_browser_sso` | an enabled SAML client |
+| `saml.sp_initiated_logout`, `saml.logout_fanout` | that client has an SLO URL |
+| `saml.assertion_encryption` | that client has an encryption certificate |
+| `saml.upstream_logout` | an enabled SAML source with an SLO URL |
+| `identity.oidc_sources`, `identity.oauth_sources`, `identity.saml_sources` | an enabled source of that kind |
+| `identity.source_linking` | any enabled source |
+| `identity.https_client_certificates` | the profile validates and its verifier material loads |
+| `identity.device_trust` | `[device_trust]` validates |
+| `operations.vault_transit_signing` | at least one signer |
+| `access.temporary_entitlements` | at least one PAM approver |
+| `ssf.push` | at least one stored SSF stream |
+
+`directory.scim_inbound`, `identity.windows_device_login`,
+`identity.scheduled_offboarding`, `agents.parent_ownership`, and
+`audit.self_hosted_event_map` have no extra instance prerequisite. `usable:
+true` means the route can serve. It does not mean a SCIM client, Windows
+host, or event-map peer is connected. Backup encryption is mandatory in the
+product sense ([limitations](limitations.md)); `operations.encrypted_backup_restore`
+does not itself check that a backup key file exists.
+
+## Protocol profiles
+
+Direction is from riAuth's side. "In-tree test" paths were not executed for
+this page. CI steps are written for the default Platform build.
+
+| Family | Edition | Direction and profile | Evidence | Limit |
+| --- | --- | --- | --- | --- |
+| OIDC provider | Both | Authorization server. Authorization code with mandatory S256 PKCE; refresh rotation; client credentials; device code; `private_key_jwt`; pinned JWT bearer; RFC 8693 access-token exchange (access tokens only, chains of at most four). PAR, JAR, JARM. DPoP. Response modes `query`, `fragment`, `form_post`, and the `.jwt` forms. JWE `RSA-OAEP-256` with `A256GCM` or `A256CBC-HS512`. Restricted RFC 7591 registration. RP, front-channel, and back-channel logout. Client authentication `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`. | [oidc-profiles.md](oidc-profiles.md). In-tree tests in [`tests/identity/oidc.rs`](../tests/identity/oidc.rs). Chrome back-channel test [`tests/browser.rs`](../tests/browser.rs) is a CI step. | Implicit and hybrid grants are rejected (`Only authorization code is supported`). RFC 7592 management and automatic sector-identifier retrieval are absent. [`scripts/run-conformance.py`](../scripts/run-conformance.py) pins OIDF suite `440eec8` and is not called by CI. No result file is in the tree. No named relying party. |
+| Upstream OIDC | Both | Client of an upstream issuer. Signed code plus S256. Upstream client authentication is `none`, Basic, or POST. Browser completion is cookie-bound; CLI `source start` / `source finish` keeps the session off the callback. | [oidc-profiles.md](oidc-profiles.md). In-tree test [`tests/identity/sources.rs`](../tests/identity/sources.rs). | Encrypted upstream ID tokens and upstream `private_key_jwt` are rejected. No Okta, Entra, or Google OIDC tenant. |
+| Upstream OAuth JSON identity | Both | Client. Pinned userinfo URL, no `openid`, no ID token, no authentication time. | Same guide and `tests/identity/sources.rs`. | Cannot satisfy request-bound reauthentication. Email does not link accounts. |
+| Embedded source stage | Platform client setting | Suspends an interactive authorization for one configured OIDC or OAuth source. Essentials rejects `settings.source_stage`. | [oidc-profiles.md](oidc-profiles.md), [`src/edition.rs`](../src/edition.rs). | A stage is not embedded inside a SAML AuthnRequest. Browser OTP for a required local factor is still a gap in the guide. |
+| SAML IdP | Platform | Identity provider. Signed HTTP-Redirect and HTTP-POST AuthnRequest, HTTP-POST response, signed metadata, signed assertion and response. Optional assertion encryption (AES-256-GCM, RSA-OAEP). NameID persistent, transient, email, unspecified. SP-initiated SLO and IdP logout fan-out over Redirect/POST. IdP-initiated login only at `/saml/{client}/init` when enabled. | [saml.md](saml.md). In-tree tests [`tests/identity/saml.rs`](../tests/identity/saml.rs), [`tests/identity/saml_logout.rs`](../tests/identity/saml_logout.rs). CI runs the three ignored xmlsec1 filters. | SOAP, artifact, ECP, and encrypted NameID are outside the profile. xmlsec1 checks signatures; it is not a service provider. No named SP. |
+| SAML source | Platform | Service provider. Signed Redirect AuthnRequest, POST ACS, optional encrypted assertions, optional Redirect/POST SLO. Stable persistent, email, and unspecified NameIDs. | [saml.md](saml.md). In-tree test [`tests/identity/saml_source.rs`](../tests/identity/saml_source.rs). CI xmlsec filter. | Transient NameIDs, unsolicited IdP-initiated source login, artifact, SOAP, and ECP are not advertised. No named upstream IdP. |
+| LDAP import and password check | Both | Client of an external directory. Search and simple bind. Local accounts are created or disabled in riAuth. Directory passwords are not copied. | [ldap.md](ldap.md). CI step [`scripts/test-ldap.sh`](../scripts/test-ldap.sh) with ignored [`tests/ldap.rs`](../tests/ldap.rs). | The harness is loopback OpenLDAP `slapd` (distro package, version not pinned) with core, cosine, and inetOrgPerson. Active Directory attribute names in the guide have no AD server in the tests. |
+| LDAP provider | Platform | Read-only LDAPv3 server. Simple bind, LDAPS, mandatory STARTTLS, root DSE, Who Am I, equality, presence, substring, and boolean filters, RFC 2696 paging. | [ldap-provider.md](ldap-provider.md). In-tree test `ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation` in [`tests/identity/network.rs`](../tests/identity/network.rs), using `ldap3` against riAuth. The check job's `cargo test` is written to run it. | Add, modify, delete, modifyDN, and compare return unwilling to perform. POSIX and AD schema emulation is not advertised. The client in that test is not a third-party directory product. |
+| SCIM inbound | Platform | Server at `/scim/v2`. Users and Groups: GET, POST, PUT, PATCH, DELETE, filtered list, POST `.search`. Sort is advertised. Bulk is advertised false. | [scim.md](scim.md), [`src/scim.rs`](../src/scim.rs). In-tree tests [`tests/scim_filters.rs`](../tests/scim_filters.rs), [`tests/scim_pagination.rs`](../tests/scim_pagination.rs), and the SCIM HTTP test in [`tests/identity/http.rs`](../tests/identity/http.rs). | Nested groups and enterprise or custom schemas are rejected. No named SCIM client. The A02 contract still lists sort among initial exclusions; this tree implements sort with a 4,096-candidate cap. |
+| SCIM outbound | Both | Client. Selected users and optional groups. Disable records per-target deactivation intent. `automatic` controllers can deliver it; `manual-review` and `guarded-automatic` wait. | [scim.md](scim.md). In-tree tests [`tests/offboarding.rs`](../tests/offboarding.rs), [`tests/reconciliation_jobs.rs`](../tests/reconciliation_jobs.rs). | Remote accounts are deactivated, not deleted. No named target. Delivery is not implied by recording intent. |
+| RADIUS | Platform | Server. PAP and EAP-TLS (method 13) on UDP, and the same on RadSec (TLS, RFC 6614). Message-Authenticator required. Access-Request only. | [radius.md](radius.md). In-tree tests in [`tests/identity/network.rs`](../tests/identity/network.rs) and [`tests/identity/radius_eap.rs`](../tests/identity/radius_eap.rs). The EAP test uses the `openssl` crate as the TLS client. | Accounting, CHAP, MS-CHAP, PEAP, TTLS, CoA, and Disconnect are outside the profile. No FreeRADIUS or hardware NAS. |
+| Forward auth | Platform | Outpost for nginx `auth_request` and Traefik forwardAuth. Embedded login is authorization code plus S256. Proxy clients cannot redeem codes at `/oauth/token`. | [proxy.md](proxy.md), [`deploy/nginx-forward-auth.conf`](../deploy/nginx-forward-auth.conf), [`deploy/traefik-forward-auth.yml`](../deploy/traefik-forward-auth.yml). CI steps: ignored [`tests/outpost.rs`](../tests/outpost.rs) with distro nginx, and [`tests/outpost_traefik.rs`](../tests/outpost_traefik.rs) with Traefik **v3.7.13** (sha256 pinned in the workflow). | Confidential clients and clients that require PAR, JAR, or DPoP are rejected for this profile. riAuth does not install or upgrade the proxy. An open WebSocket is not rechecked by the nginx or Traefik path. |
+| Embedded reverse proxy | Platform | Server listener. HTTP/1.1 reverse proxy with WebSocket upgrade. Open sockets recheck authorization every 30 seconds. | [proxy.md](proxy.md). In-tree test `rust_reverse_proxy_terminal_sso_headers_websocket_and_revocation` in `tests/outpost.rs`. | No managed gateway fleet and no credential injection. |
+| Shared Signals | Platform | Receive and send signed push (`urn:ietf:rfc:8935`). Events for account disable, session revoke, and credential change. | [ENT-07](enterprise/ENT-07.md), [`src/ssf.rs`](../src/ssf.rs). In-tree test [`tests/ssf.rs`](../tests/ssf.rs). | Poll (`urn:ietf:rfc:8936`), stream verification, and SSF subject-management endpoints are absent. Apple Business Manager is named in the guide as untested. |
+| Workspace sync | Platform | Client of Admin SDK Directory. Inbound users and selected groups. Direct service-account JWT, or a broker that speaks client-credentials. Reviewed plan before local writes. | [ENT-03](enterprise/ENT-03.md). In-tree mock [`tests/cloud_directory.rs`](../tests/cloud_directory.rs). | No Workspace tenant. Outbound directory writes are absent. `test-support` is required for the fake peer. |
+| Entra sync | Platform | Client of Microsoft Graph. Inbound users and selected groups. Client secret or certificate credential. Reviewed plan before local writes. | [ENT-04](enterprise/ENT-04.md). Same mock test file. | No Entra tenant. |
+| Device trust | Platform | Local nonce-bound JWT under a configured key. Fails closed when a client requires it and the verifier is absent. | [ENT-06](enterprise/ENT-06.md), [`src/device_trust.rs`](../src/device_trust.rs). In-tree test [`tests/device_trust.rs`](../tests/device_trust.rs). | Does not call Google Verified Access. No managed Chrome enrollment. |
+| HTTPS client certificates | Platform | Direct TLS client-certificate authentication when trust material loads. Certificate AMR is not an MFA claim. | [ENT-05](enterprise/ENT-05.md). | Essentials uses the ordinary TLS acceptor and has no client-certificate verifier. |
+| Vault Transit | Platform | External signer for ID, access, UserInfo, JARM, and back-channel logout tokens. The private key stays in Vault. | [kms.md](kms.md). In-tree stand-in in [`tests/identity/operations.rs`](../tests/identity/operations.rs). | No live Vault server. |
+| Windows device login | Platform | Enrollment and ticket protocol for a separate device host. | [ENT-13](enterprise/ENT-13.md), [`src/windows_login.rs`](../src/windows_login.rs), [`tests/windows_login.rs`](../tests/windows_login.rs), [`windows/README.md`](../windows/README.md). | The guide states that no Windows interactive login has been tested. [limitations.md](limitations.md) says a packaged credential provider is not included. This page did not build or run Windows. |
+| Workflows | Platform for configured definitions | Seven shipped builtin definitions are the Essentials profile (`essentials-passkey-sign-in`, `essentials-password-sign-in`, `essentials-passkey-enrollment`, `essentials-invitation`, `essentials-password-reset`, `essentials-consent`, `essentials-sensitive-action`). Platform adds `riauth.workflow/v1` authoring and the configured executor paths in [workflows.md](workflows.md). | [`src/workflow/essentials.rs`](../src/workflow/essentials.rs), [`tests/workflow_model.rs`](../tests/workflow_model.rs). | Custom stage execution, and several verifier and browser paths, are still listed as later work in that guide. The editor does not author new conditions, custom stages, or source references. |
+| Browser administration | Both, with Platform sections | `/admin` for applications, people, and groups, calling the same management service as the API and `riauthctl`. Platform adds workflow authoring, connectors, temporary access, and the event map. | [PORTAL.md](PORTAL.md). In-tree tests [`tests/admin_ui.rs`](../tests/admin_ui.rs), [`tests/policy_simulation.rs`](../tests/policy_simulation.rs). | Help-desk page controls are not tailored to delegated roles; the server still enforces the exact permission. |
+| Passkeys in the browser | Both | WebAuthn enrollment and sign-in on the portal. | [passkeys.md](passkeys.md), [PORTAL.md](PORTAL.md). Specs under [`tools/browser`](../tools/browser) use a Chromium virtual authenticator. | Those specs are not the CI Playwright command. Physical keys, synced passkeys, phone hybrid, iOS, Android, and screen readers are manual gates in the [Essentials](essentials-guide.md) and [Platform](platform-guide.md) guides. |
+| Terminal USB | `riauthctl` optional feature | CTAP2 USB on the client. The server binary rejects the old commands with `Terminal USB passkeys moved to riauthctl; install/build riauthctl with --features terminal-usb`. The base client rejects them with `USB passkeys are unavailable in this build; rebuild riauthctl with --features terminal-usb`. | [`src/cli/usb.rs`](../src/cli/usb.rs), [`crates/riauthctl/src/usb.rs`](../crates/riauthctl/src/usb.rs). CI builds the Essentials server, checks the Essentials and Platform dependency trees for USB crates, tests base `riauthctl`, and `cargo check`s `terminal-usb`. | No hardware authenticator run. USB needs interactive touch or PIN. |
+| redb and backup | Both | One owning process for redb. `riauth backup` writes encrypted v3 streams (default 4 GiB). Legacy JSON backup is v2 and capped at 64 MiB. Restore invalidates sessions and grants. | [limitations.md](limitations.md), [recovery.md](recovery.md). Recorded drill [r05-local-2026-09-29.json](roadmap/evidence/r05-local-2026-09-29.json) (Platform binary, localhost redb, 16 checks passed). | The JSON does not name a commit, so it is not a pass record for this revision. Keys and referenced secret files are outside the archive. The drill's own `external_gates` still include a real relying party and Vault. |
+| PostgreSQL | Both | Multiple service processes may share one database. Replication, election, and fencing stay with the deployment. | [availability.md](availability.md). CI steps [`scripts/test-postgres.sh`](../scripts/test-postgres.sh) and [`scripts/test-contracts-postgres.sh`](../scripts/test-contracts-postgres.sh) use the distro `postgresql` package, version not pinned. Recorded drill [r05-postgres-local-2026-09-29.json](roadmap/evidence/r05-postgres-local-2026-09-29.json) quotes `pg_ctl (PostgreSQL) 16.14 (Homebrew)` on a loopback cluster. | That drill is not the CI replication script, does not name a commit, and leaves PITR, multi-node failover, and TLS to PostgreSQL in `external_gates`. |
+
+`riauthctl` commands, all remote, are `status`, `discovery`, `login`,
+`whoami`, `logout`, `revision`, `inventory`, `user`, `group`, `client`,
+`session`, `request`, `device`, `authorize`, `plan`, and `apply`, plus
+`passkey` when `terminal-usb` is compiled
+([`crates/riauthctl/src/main.rs`](../crates/riauthctl/src/main.rs)). The
+issuer must be canonical HTTPS, or HTTP on loopback. Discovery's token
+endpoint must be `--server` plus `/oauth/token`. Redirects are rejected.
+In-tree coverage is a local TCP fixture in
+[`crates/riauthctl/tests/security.rs`](../crates/riauthctl/tests/security.rs).
+The check job is written to run that suite without default features. The
+client cannot activate a capability the server build omitted.
+
+## Peers the repository actually names
+
+Versions are pinned only where the workflow pins them. "CI step" means the
+integration job on `ubuntu-24.04` is written to run the test. This page did
+not run it. Package versions for `postgresql`, `slapd`, `nginx`, `xmlsec1`,
+and Google Chrome are whatever that runner installs. Chrome is the unpinned
+`google-chrome-stable_current_amd64.deb`. Playwright is
+`@playwright/test` 1.63.0; CI installs Chromium, Firefox, and WebKit and runs
+only [`tools/browser/setup.spec.js`](../tools/browser/setup.spec.js) on all
+three projects. That spec is first-administrator cookie setup. It is not a
+passkey journey. The WebKit project uses Playwright's Desktop Safari device
+profile, which is not Apple Safari.
+
+| Peer | What is exercised | Status |
+| --- | --- | --- |
+| PostgreSQL server | Loopback clusters, including a primary and standby in `scripts/test-postgres.sh` | CI step. Separate Homebrew 16.14 drill, no commit id |
+| OpenLDAP `slapd` | Loopback import, STARTTLS, password login, MFA, fail-closed sync | CI step |
+| riAuth LDAP listener | `ldap3` against this server's LDAPS and STARTTLS | Check-job test. Not an external directory |
+| nginx | `auth_request` template, headers, WebSocket, revocation, optional Chrome | CI step. Package version not pinned |
+| Traefik v3.7.13 | forwardAuth template, headers, WebSocket origin, revocation | CI step. SHA-256 pinned in the workflow |
+| xmlsec1 | Independent sign, verify, and decrypt of SAML messages | CI step. Not an IdP or SP |
+| Google Chrome | Headless OIDC test RP, portal layout, nginx SSO when `RIAUTH_TEST_BROWSER` is set | CI step. Deb is not checksummed |
+| Playwright Chromium, Firefox, WebKit | `setup.spec.js` only | CI step |
+| Authentik | Offline API-export conversion | Fixture in [`tests/identity/operations.rs`](../tests/identity/operations.rs). No Authentik process |
+| Keycloak, Okta, Active Directory | Names in migration-inventory fixtures that stay blocked | Fixture only. No server |
+| Workspace, Entra, Vault | Loopback mocks | Fixture only. No tenant and no Vault server |
+| RADIUS NAS | In-process client and OpenSSL EAP-TLS | No FreeRADIUS and no hardware NAS |
+
+Other Playwright specs (`signin`, `portal`, `admin`, `accessibility-journeys`,
+`workflow-editor`) are in the tree and are not in the CI command. The
+coverage inventory's older note that Playwright never starts is stale against
+current `ci.yml`; that command still does not run those files.
+
+## Release, Linux, and Windows
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) is written
+to package Essentials and Platform native archives and images, plus
+`riauthctl` and edition-matched `riauth-maintenance` archives, for
+`linux/amd64` and `linux/arm64`, when a `v*` tag points at current `main`.
+Server and base client release builds omit terminal USB. This commit is not
+that tag. No release asset was downloaded for it. The draft `v0.1.1` assets
+described in the Q08 note belong to commit `5ef0261`, not to this revision.
+
+No Windows interactive logon, no Apple Safari.app, and no iOS or Android
+device were run. The Linux network-filesystem probe described in
+[limitations.md](limitations.md) was not run for this page.
+
+## Still open
+
+D03 integration recipes, D04 emergency runbooks, and D05 acceptance against
+the category targets are still open. So are a conformance result, a named
+relying party or service provider, a Workspace or Entra tenant, a live Vault,
+a hardware authenticator, and an installed-release run of this commit on
+Linux x86-64 and ARM64.

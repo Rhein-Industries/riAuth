@@ -24,6 +24,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Operations](operations.md) | TLS, probes, metrics, backups, restore, maintenance and releases |
 | [Linux image deployments](deployment-examples.md) | Single-owner redb and two-host PostgreSQL Compose examples with operator steps |
 | [Server editions](editions.md) | Essentials and Platform build commands, assembly behavior and preview limits |
+| [Capability matrix](capability-matrix.md) | Compiled Essentials, Platform, and riauthctl inclusion, runtime prerequisites, protocol direction, tested peers, and known limits |
 | [Configuration example](../examples/riauth.toml) | Base configuration; optional feature blocks are in their guides |
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
 | [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |

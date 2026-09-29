@@ -163,4 +163,7 @@ Native ARM64 release execution and broader packaged integration gates remain
 unverified until the release jobs run. The local binary reports
 `compiled_features` only; the running server's
 `features` list reports locally usable profiles. Neither asserts that an
-external peer is healthy or that a caller is authorized.
+external peer is healthy or that a caller is authorized. The
+[capability matrix](capability-matrix.md) lists those compiled names, the
+runtime fields, each protocol's direction, and the peers the repository
+tests name.
