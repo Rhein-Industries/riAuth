@@ -554,11 +554,9 @@ pub(crate) async fn session(
                     .map(str::to_owned)
                     .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 remote
-                    .request_api_receipted(
+                    .revoke_session_receipted(
                         &verified,
-                        Method::DELETE,
                         &path,
-                        None::<&()>,
                         credential.token(),
                         options.run_id,
                         &key,

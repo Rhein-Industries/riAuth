@@ -36,6 +36,12 @@ struct MutationHeaders {
     idempotency_key: String,
 }
 
+struct RequestHeaders<'a> {
+    bearer: Option<&'a str>,
+    run_id: Option<&'a str>,
+    mutation: Option<&'a MutationHeaders>,
+}
+
 pub(crate) enum Credential {
     Session(SavedSession),
     Agent(AgentCredential),
@@ -120,9 +126,11 @@ impl Remote {
                 Method::GET,
                 "/.well-known/openid-configuration",
                 None::<&()>,
-                None,
-                None,
-                None,
+                RequestHeaders {
+                    bearer: None,
+                    run_id: None,
+                    mutation: None,
+                },
             )
             .await?;
         if document.get("issuer").and_then(Value::as_str) != Some(&self.issuer) {
@@ -246,33 +254,44 @@ impl Remote {
         bearer: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<Value> {
-        self.request_at(&verified.api_base, method, path, body, bearer, run_id, None)
-            .await
-    }
-
-    /// Session revocation has a caller-bound receipt but no configuration
-    /// revision. Preserve the exact selected-session request key across CLI retries.
-    pub(crate) async fn request_api_receipted<T: Serialize + ?Sized>(
-        &self,
-        verified: &VerifiedIssuer,
-        method: Method,
-        path: &str,
-        body: Option<&T>,
-        bearer: &str,
-        run_id: Option<&str>,
-        idempotency_key: &str,
-    ) -> Result<Value> {
         self.request_at(
             &verified.api_base,
             method,
             path,
             body,
-            Some(bearer),
-            run_id,
-            Some(&MutationHeaders {
-                revision: None,
-                idempotency_key: idempotency_key.to_owned(),
-            }),
+            RequestHeaders {
+                bearer,
+                run_id,
+                mutation: None,
+            },
+        )
+        .await
+    }
+
+    /// Session revocation has a caller-bound receipt but no configuration
+    /// revision. Preserve the exact selected-session request key across CLI retries.
+    pub(crate) async fn revoke_session_receipted(
+        &self,
+        verified: &VerifiedIssuer,
+        path: &str,
+        bearer: &str,
+        run_id: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<Value> {
+        let mutation = MutationHeaders {
+            revision: None,
+            idempotency_key: idempotency_key.to_owned(),
+        };
+        self.request_at(
+            &verified.api_base,
+            Method::DELETE,
+            path,
+            None::<&()>,
+            RequestHeaders {
+                bearer: Some(bearer),
+                run_id,
+                mutation: Some(&mutation),
+            },
         )
         .await
     }
@@ -374,9 +393,11 @@ impl Remote {
             method,
             path,
             body,
-            Some(credential.token()),
-            run_id,
-            Some(&headers),
+            RequestHeaders {
+                bearer: Some(credential.token()),
+                run_id,
+                mutation: Some(&headers),
+            },
         )
         .await
     }
@@ -387,25 +408,23 @@ impl Remote {
         method: Method,
         path: &str,
         body: Option<&T>,
-        bearer: Option<&str>,
-        run_id: Option<&str>,
-        mutation: Option<&MutationHeaders>,
+        headers: RequestHeaders<'_>,
     ) -> Result<Value> {
         if !path.starts_with('/') || path.starts_with("//") || path.contains('#') {
             bail!("Invalid API path");
         }
         let url = format!("{}{}", base.trim_end_matches('/'), path);
         let mut request = self.http.request(method, &url);
-        if let Some(token) = bearer {
+        if let Some(token) = headers.bearer {
             request = request.bearer_auth(token);
         }
         if let Some(body) = body {
             request = request.json(body);
         }
-        if let Some(run_id) = run_id {
+        if let Some(run_id) = headers.run_id {
             request = request.header("x-riauth-run-id", run_id);
         }
-        if let Some(mutation) = mutation {
+        if let Some(mutation) = headers.mutation {
             if let Some(revision) = mutation.revision {
                 request = request.header("if-match", format!("\"{revision}\""));
             }
