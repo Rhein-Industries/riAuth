@@ -702,12 +702,17 @@ password. The guest has no imports, one 64 KiB page, no network and no
 filesystem. Fuel is 1–10,000. Wasmi 0.40.0 has no epoch or interrupt API.
 `Store::call_hook` and `call_resumable` pause only around host functions, and
 this guest links none, so `route` runs on the caller until it returns or spends
-its fuel. The 1–30 second field is that many thousands of fuel units. The
-first call charges 7 fuel per function-body byte and skips IR translation
-when that charge exceeds the installed budget. `Module::new` still validates
-the body before fuel is installed. A translation that fits still runs on the
-caller, without a wall-clock interrupt, and then `route` does too until it
-returns or spends the fuel that remains. Before
+its fuel. The 1–30 second field is that many thousands of fuel units. Admission
+refuses a function body whose 7-fuel-per-byte translation charge exceeds
+`min(manifest fuel, timeout_seconds × 1,000)` before `Module::new`, as
+`timeout` when that timeout budget is strictly smaller and as `fuel`
+otherwise. At the 10,000 fuel cap the body can be at most 1,428 bytes.
+`check` validates a fitting body once, and the first `execute` reuses that
+module. A later `execute` parses the bytes again, so each call pays the
+translation charge. A tighter step budget can still skip translation on the
+first call. A charge that fits still translates on the caller, without a
+wall-clock interrupt, and then `route` does too until it returns or spends
+the fuel that remains. Validation of a fitting body is not fuel-metered. Before
 compilation the gate allows one `() -> i32` function, two exports, and at most
 32 i32 locals, and it rejects a data segment. At the call, Wasmi reserves a
 value stack of 64 `UntypedVal` slots (8 bytes each, at least 512 bytes) and

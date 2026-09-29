@@ -18,11 +18,15 @@
 //!
 //! Admission applies a separate resource cap before `Module::new`: one
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
-//! and no data segment. `Module::new` validates that body and does not build
-//! Wasmi IR. The first call charges 7 fuel for each byte of the function body
-//! and does not translate when the charge exceeds the fuel still in the store.
-//! A charge that fits is translated as a whole on the caller. Validation in
-//! `Module::new` is not fuel-metered, and neither step is a wall-clock interrupt.
+//! and no data segment. A function body whose translation charge exceeds
+//! `min(manifest fuel, timeout_seconds * FUEL_PER_SECOND)` is refused before
+//! `Module::new`. Wasmi 0.40.0 charges [`GUEST_TRANSLATION_FUEL_PER_BYTE`]
+//! fuel per body byte on the first call. The refusal uses the same rule as
+//! execution: `timeout` when the timeout budget is strictly smaller than the
+//! manifest fuel, and `fuel` otherwise. `check` validates a body that fits
+//! once. The first `execute` reuses that module. A later `execute` parses the
+//! bytes again, so every call pays the translation charge. Validation of a
+//! fitting body is not fuel-metered, and it is not a wall-clock interrupt.
 //!
 //! The interpreter value stack is allocated when `route` is called.
 //! `ResourceLimiter` does not account for it. This guest sets the Wasmi
@@ -73,6 +77,13 @@ pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
 /// Instruction budget charged for one manifest second. This is Wasmi fuel,
 /// not a wall-clock second.
 pub const FUEL_PER_SECOND: u64 = 1_000;
+/// Fuel Wasmi 0.40.0 charges per function-body byte before lazy translation.
+///
+/// `CompilationMode::LazyTranslation` validates in `Module::new` and stores the
+/// body without a deferred validator, so the first call charges this translation
+/// cost and not the separate validation cost. At the 10,000 fuel cap that is
+/// 1,428 body bytes.
+pub const GUEST_TRANSLATION_FUEL_PER_BYTE: u64 = 7;
 /// Guest output occupies memory at offset 0. The host writes the input frame
 /// at this offset and nowhere else.
 pub const INPUT_OFFSET: usize = 4_096;
@@ -123,7 +134,7 @@ impl Denial {
 
 /// Manifest that passed the bounds. Module bytes stay here so execution uses
 /// the same image that was hashed; [`Debug`] does not print them.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Checked {
     stage: Id,
     outputs: Vec<Label>,
@@ -136,6 +147,10 @@ pub struct Checked {
     module_len: u32,
     module_sha256: [u8; 32],
     module: Vec<u8>,
+    /// Wasmi image of `module`. The first execution reuses it. A later
+    /// execution parses `module` again so translation fuel is charged again.
+    #[cfg(feature = "platform")]
+    prepared: PreparedGuest,
 }
 
 impl fmt::Debug for Checked {
@@ -155,6 +170,24 @@ impl fmt::Debug for Checked {
             .finish_non_exhaustive()
     }
 }
+
+impl PartialEq for Checked {
+    fn eq(&self, other: &Self) -> bool {
+        self.stage == other.stage
+            && self.outputs == other.outputs
+            && self.permissions == other.permissions
+            && self.fuel == other.fuel
+            && self.memory_bytes == other.memory_bytes
+            && self.max_input_bytes == other.max_input_bytes
+            && self.max_output_bytes == other.max_output_bytes
+            && self.timeout_seconds == other.timeout_seconds
+            && self.module_len == other.module_len
+            && self.module_sha256 == other.module_sha256
+            && self.module == other.module
+    }
+}
+
+impl Eq for Checked {}
 
 impl Checked {
     pub fn stage(&self) -> &Id {
@@ -279,7 +312,8 @@ pub(crate) fn covers(checked: &Checked, definition: &Definition) -> bool {
 }
 
 /// Validate bounds, pin the module hash, and on Platform reject a module that
-/// is not the fixed guest shape. The bytes are retained for [`execute`].
+/// is not the fixed guest shape. A body that fits the translation budget is
+/// validated once. The bytes and that prepared module are retained for [`execute`].
 pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     if document.is_empty() {
         return Err(Denial::Malformed);
@@ -334,7 +368,7 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
         return Err(Denial::Integrity);
     }
     #[cfg(feature = "platform")]
-    admit(&module)?;
+    let prepared = admit(&module, manifest.fuel, manifest.timeout_seconds)?;
     Ok(Checked {
         stage,
         outputs,
@@ -347,6 +381,8 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
         module_len,
         module_sha256,
         module,
+        #[cfg(feature = "platform")]
+        prepared,
     })
 }
 
@@ -488,22 +524,12 @@ fn execute_guest(
         checked.permissions(),
         checked.max_input_bytes,
     )?;
-    admit(&checked.module)?;
     let timeout_fuel = u64::from(bounds.timeout_seconds).saturating_mul(FUEL_PER_SECOND);
     let manifest_fuel = u64::from(checked.fuel);
     let timeout_tighter = timeout_fuel < manifest_fuel;
     let fuel = timeout_fuel.min(manifest_fuel);
-    let mut config = guest_config();
-    config.set_stack_limits(
-        wasmi::StackLimits::new(
-            GUEST_VALUE_STACK_SLOTS,
-            GUEST_VALUE_STACK_SLOTS,
-            GUEST_CALL_DEPTH,
-        )
-        .expect("guest value stack fits"),
-    );
-    let engine = wasmi::Engine::new(&config);
-    let module = wasmi::Module::new(&engine, &checked.module).map_err(|_| Denial::Malformed)?;
+    let module = checkout_module(checked)?;
+    let engine = module.engine().clone();
     let mut store = wasmi::Store::new(
         &engine,
         wasmi::StoreLimitsBuilder::new()
@@ -572,6 +598,40 @@ fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
 }
 
 #[cfg(feature = "platform")]
+struct PreparedGuest {
+    inner: std::sync::Arc<PreparedGuestInner>,
+}
+
+#[cfg(feature = "platform")]
+struct PreparedGuestInner {
+    module: wasmi::Module,
+    /// Wasmi caches a successful translation and permanently fails a translation
+    /// that ran out of fuel. Either result would change the next call's budget.
+    spent: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(feature = "platform")]
+impl Clone for PreparedGuest {
+    fn clone(&self) -> Self {
+        Self {
+            inner: std::sync::Arc::clone(&self.inner),
+        }
+    }
+}
+
+#[cfg(feature = "platform")]
+impl PreparedGuest {
+    fn new(module: wasmi::Module) -> Self {
+        Self {
+            inner: std::sync::Arc::new(PreparedGuestInner {
+                module,
+                spent: std::sync::atomic::AtomicBool::new(false),
+            }),
+        }
+    }
+}
+
+#[cfg(feature = "platform")]
 fn guest_config() -> wasmi::Config {
     let mut config = wasmi::Config::default();
     config.consume_fuel(true);
@@ -586,14 +646,59 @@ fn guest_config() -> wasmi::Config {
     config.wasm_tail_call(false);
     config.wasm_saturating_float_to_int(false);
     config.enforced_limits(wasmi::EnforcedLimits::strict());
+    config.set_stack_limits(
+        wasmi::StackLimits::new(
+            GUEST_VALUE_STACK_SLOTS,
+            GUEST_VALUE_STACK_SLOTS,
+            GUEST_CALL_DEPTH,
+        )
+        .expect("guest value stack fits"),
+    );
     config
 }
 
 #[cfg(feature = "platform")]
-fn admit(wasm: &[u8]) -> Result<(), Denial> {
-    admit_sections(wasm)?;
-    let config = guest_config();
-    let engine = wasmi::Engine::new(&config);
+fn admit(wasm: &[u8], fuel: u32, timeout_seconds: u32) -> Result<PreparedGuest, Denial> {
+    let body_len = admit_sections(wasm)?;
+    admit_translation_budget(fuel, timeout_seconds, body_len)?;
+    Ok(PreparedGuest::new(fresh_module(wasm)?))
+}
+
+#[cfg(feature = "platform")]
+fn admit_translation_budget(fuel: u32, timeout_seconds: u32, body_len: u32) -> Result<(), Denial> {
+    let manifest_fuel = u64::from(fuel);
+    let timeout_fuel = u64::from(timeout_seconds).saturating_mul(FUEL_PER_SECOND);
+    let budget = timeout_fuel.min(manifest_fuel);
+    let charge = u64::from(body_len).saturating_mul(GUEST_TRANSLATION_FUEL_PER_BYTE);
+    if charge > budget {
+        if timeout_fuel < manifest_fuel {
+            Err(Denial::Timeout)
+        } else {
+            Err(Denial::Fuel)
+        }
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "platform")]
+fn checkout_module(checked: &Checked) -> Result<wasmi::Module, Denial> {
+    let first = checked.prepared.inner.spent.compare_exchange(
+        false,
+        true,
+        std::sync::atomic::Ordering::AcqRel,
+        std::sync::atomic::Ordering::Acquire,
+    );
+    if first.is_ok() {
+        Ok(checked.prepared.inner.module.clone())
+    } else {
+        fresh_module(&checked.module)
+    }
+}
+
+#[cfg(feature = "platform")]
+fn fresh_module(wasm: &[u8]) -> Result<wasmi::Module, Denial> {
+    let engine = wasmi::Engine::new(&guest_config());
     let module = wasmi::Module::new(&engine, wasm).map_err(|_| Denial::Malformed)?;
     if module.imports().next().is_some() {
         return Err(Denial::Permission);
@@ -619,11 +724,11 @@ fn admit(wasm: &[u8]) -> Result<(), Denial> {
                     .is_some_and(|pages| u32::from(pages) == 1) => {}
         _ => return Err(Denial::Limit),
     }
-    Ok(())
+    Ok(module)
 }
 
 #[cfg(feature = "platform")]
-fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
+fn admit_sections(wasm: &[u8]) -> Result<u32, Denial> {
     if wasm.len() < 8 || wasm[0..4] != [0x00, b'a', b's', b'm'] || wasm[4..8] != [1, 0, 0, 0] {
         return Err(Denial::Malformed);
     }
@@ -633,6 +738,7 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
     let mut saw_function = false;
     let mut saw_memory = false;
     let mut saw_code = false;
+    let mut body_len = None;
     while cursor < wasm.len() {
         let id = wasm[cursor];
         cursor += 1;
@@ -681,7 +787,7 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
             8 => return Err(Denial::Limit),
             10 => {
                 saw_code = true;
-                admit_code(payload)?;
+                body_len = Some(admit_code(payload)?);
             }
             11 => admit_data(payload)?,
             _ => {}
@@ -690,7 +796,7 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
     if !saw_type || !saw_function || !saw_memory || !saw_code {
         return Err(Denial::Limit);
     }
-    Ok(())
+    body_len.ok_or(Denial::Limit)
 }
 
 #[cfg(feature = "platform")]
@@ -740,13 +846,13 @@ fn admit_exports(payload: &[u8]) -> Result<(), Denial> {
 }
 
 #[cfg(feature = "platform")]
-fn admit_code(payload: &[u8]) -> Result<(), Denial> {
+fn admit_code(payload: &[u8]) -> Result<u32, Denial> {
     let (count, cursor) = take_leb(payload, 0)?;
     if count != MAX_GUEST_FUNCTIONS {
         return Err(Denial::Limit);
     }
-    let (size, cursor) = take_leb(payload, cursor)?;
-    let size = usize::try_from(size).map_err(|_| Denial::Malformed)?;
+    let (body_len, cursor) = take_leb(payload, cursor)?;
+    let size = usize::try_from(body_len).map_err(|_| Denial::Malformed)?;
     let end = cursor.checked_add(size).ok_or(Denial::Malformed)?;
     if end != payload.len() {
         return Err(Denial::Malformed);
@@ -772,7 +878,7 @@ fn admit_code(payload: &[u8]) -> Result<(), Denial> {
             return Err(Denial::Limit);
         }
     }
-    Ok(())
+    Ok(body_len)
 }
 
 #[cfg(feature = "platform")]
@@ -844,6 +950,17 @@ pub(crate) mod fixture {
         body.extend(i32_const(5));
         body.push(0x0f);
         body.extend(vec![0x01; nops]);
+        module(&body, &[], &[])
+    }
+
+    /// `allow`, then `return`, then `bytes` of opcode `0xff`.
+    ///
+    /// The tail is inside the function body and is not a valid instruction.
+    pub fn allow_with_invalid_tail(bytes: usize) -> Vec<u8> {
+        let mut body = store_label(*b"allo", Some(b'w'));
+        body.extend(i32_const(5));
+        body.push(0x0f);
+        body.extend(vec![0xff; bytes]);
         module(&body, &[], &[])
     }
 
@@ -1225,6 +1342,7 @@ mod tests {
         assert_eq!(MAX_GUEST_LOCALS, 32);
         assert_eq!(GUEST_VALUE_STACK_SLOTS, 64);
         assert_eq!(GUEST_CALL_DEPTH, 16);
+        assert_eq!(GUEST_TRANSLATION_FUEL_PER_BYTE, 7);
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
         assert!(cargo.contains("dep:wasmi"));
@@ -1569,12 +1687,18 @@ mod tests {
     }
 
     #[cfg(feature = "platform")]
+    fn translation_charge(module: &[u8]) -> u64 {
+        let body = admit_sections(module).expect("fixture has one function body");
+        u64::from(body).saturating_mul(GUEST_TRANSLATION_FUEL_PER_BYTE)
+    }
+
+    #[cfg(feature = "platform")]
     #[test]
-    fn translation_fuel_skips_unreachable_bytes_that_would_still_allow() {
-        // Wasmi 0.40.0 charges 7 fuel per function-body byte and does not
-        // translate when that charge exceeds the store. Twelve thousand
-        // unreachable nops sit above the 10,000 fuel cap even at one fuel
-        // per byte. The same prefix with an empty tail returns `allow`.
+    fn admission_refuses_a_large_unreachable_body_before_validation() {
+        // Twelve thousand unreachable bytes exceed the 10,000 fuel cap even at
+        // one fuel per byte, so admission must refuse them before `Module::new`.
+        // An illegal opcode in that tail would be `malformed` if the validator
+        // walked it. A short unreachable tail still returns `allow`.
         let bare = fixture::allow_with_unreachable_tail(0);
         assert_eq!(
             run(
@@ -1588,18 +1712,98 @@ mod tests {
             .as_str(),
             "allow"
         );
-        let padded = fixture::allow_with_unreachable_tail(12_000);
-        assert!(check(&fixture::document(&padded, |_| {})).is_ok());
+        let fitting = fixture::allow_with_unreachable_tail(32);
+        assert!(translation_charge(&fitting) <= u64::from(MAX_FUEL));
         assert_eq!(
             run(
-                &padded,
+                &fitting,
                 |_| {},
                 GuestFacts::default(),
                 &BTreeSet::new(),
                 bounds()
             )
+            .unwrap()
+            .as_str(),
+            "allow"
+        );
+        let unreachable = fixture::allow_with_unreachable_tail(12_000);
+        assert!(unreachable.len() <= usize::try_from(MAX_MODULE_BYTES).unwrap());
+        assert!(translation_charge(&unreachable) > u64::from(MAX_FUEL));
+        assert_eq!(
+            check(&fixture::document(&unreachable, |_| {})).unwrap_err(),
+            Denial::Fuel
+        );
+        let invalid = fixture::allow_with_invalid_tail(12_000);
+        assert!(translation_charge(&invalid) > u64::from(MAX_FUEL));
+        assert_eq!(
+            check(&fixture::document(&invalid, |_| {})).unwrap_err(),
+            Denial::Fuel
+        );
+        let invalid_small = fixture::allow_with_invalid_tail(1);
+        assert!(translation_charge(&invalid_small) <= u64::from(MAX_FUEL));
+        assert_eq!(
+            check(&fixture::document(&invalid_small, |_| {})).unwrap_err(),
+            Denial::Malformed
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn low_budgets_refuse_translation_and_a_repeat_call_pays_again() {
+        let bare = fixture::allow_with_unreachable_tail(0);
+        let charge = translation_charge(&bare);
+        let charge = u32::try_from(charge).unwrap();
+        assert!(charge > 1 && charge < MAX_FUEL);
+        assert_eq!(
+            check(&fixture::document(&bare, |value| {
+                value["fuel"] = serde_json::json!(charge - 1);
+            }))
             .unwrap_err(),
             Denial::Fuel
+        );
+        let exact = check(&fixture::document(&bare, |value| {
+            value["fuel"] = serde_json::json!(charge);
+        }))
+        .unwrap();
+        assert_eq!(
+            execute(&exact, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
+            Denial::Fuel
+        );
+        // The prepared module has already translated or failed. A second call
+        // parses again and still cannot pay both translation and `route`.
+        assert_eq!(
+            execute(&exact, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
+            Denial::Fuel
+        );
+        let wide = fixture::allow_with_unreachable_tail(200);
+        let wide_charge = translation_charge(&wide);
+        assert!(wide_charge > 1_000 && wide_charge <= u64::from(MAX_FUEL));
+        assert_eq!(
+            check(&fixture::document(&wide, |value| {
+                value["timeout_seconds"] = serde_json::json!(1);
+            }))
+            .unwrap_err(),
+            Denial::Timeout
+        );
+        let checked = check(&fixture::document(&wide, |_| {})).unwrap();
+        assert_eq!(
+            execute(
+                &checked,
+                &GuestFacts::default(),
+                &BTreeSet::new(),
+                StepBounds {
+                    timeout_seconds: 1,
+                    max_output_bytes: 128,
+                }
+            )
+            .unwrap_err(),
+            Denial::Timeout
+        );
+        assert_eq!(
+            execute(&checked, &GuestFacts::default(), &BTreeSet::new(), bounds())
+                .unwrap()
+                .as_str(),
+            "allow"
         );
     }
 
