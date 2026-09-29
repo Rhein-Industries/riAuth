@@ -218,11 +218,14 @@ async fn passkey_cancel<const SAML: bool>(
     Json(input): Json<PasskeyCancel>,
 ) -> Result<Json<Value>> {
     browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| {
         let binding = binding(core, &headers, SAML, &id);
-        let interaction = format!("{}:{id}", if SAML { "saml" } else { "oidc" });
-        core.browser_passkey_cancel(&input.ceremony, &interaction, binding)
-            .map(Json)
+        if SAML {
+            core.browser_passkey_cancel(&input.ceremony, &format!("saml:{id}"), binding).map(Json)
+        } else {
+            core.authorize_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony).map(Json)
+        }
     })
     .await
 }

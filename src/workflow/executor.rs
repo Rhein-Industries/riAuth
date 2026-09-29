@@ -19,7 +19,11 @@ pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
 pub(crate) use version::seal_disabled_account;
-pub(crate) use consent::browser_consent_decide_in;
+pub(crate) use consent::{
+    browser_consent_decide_in, browser_passkey_consent_cancel_in,
+    browser_passkey_consent_decide_in, browser_passkey_consent_finish_in,
+    browser_passkey_consent_ready_in, browser_passkey_consent_start_in,
+};
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,

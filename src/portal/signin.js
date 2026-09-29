@@ -161,8 +161,14 @@
     const host = next.application?.host;
     $("signin-app-host").textContent = host ? `You'll return to ${host}` : ""; $("signin-app-host").hidden = !host;
     const account = next.account, pinned = next.pinned === true && !!account;
+    const configuredPasskey = next.kind === "authorize" && next.requirements?.configured_passkey === true && !!account;
     $("signin-account").hidden = !pinned;
     $("signin-account-text").textContent = pinned ? `Signed in as ${account.display_name} (@${account.username})` : "";
+    $("signin-switch").hidden = configuredPasskey;
+    $("signin-form").hidden = configuredPasskey;
+    $("signin-divider").hidden = configuredPasskey || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
+    $("signin-passkey").textContent = configuredPasskey ? "Verify with your passkey" : "Sign in with a passkey";
+    $("signin-passkey-cancel").textContent = configuredPasskey ? "Cancel passkey verification" : "Cancel passkey sign-in";
     // Keep what the user typed across polls; reset it when the account changes.
     const changed = current !== "authenticate" || previous?.session_ref !== next.session_ref || previous?.pinned !== next.pinned;
     $("signin-username").readOnly = pinned;
@@ -173,7 +179,7 @@
     $("signin-requirement").hidden = !mfa;
     $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code.`;
     $("signin-cancel").textContent = `Cancel and return to ${app()}`;
-    const key = `${next.pinned}:${next.session_ref}`;
+    const key = `${next.pinned}:${next.session_ref}:${configuredPasskey}`;
     if (flowKey !== key) {
       void flow?.cancel(); passkeyAttempt += 1;
       $("signin-passkey-cancel").hidden = true;

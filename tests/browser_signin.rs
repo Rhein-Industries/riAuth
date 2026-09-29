@@ -1002,6 +1002,137 @@ async fn configured_browser_consent_binds_preparation_session_and_decision_once(
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn configured_browser_passkey_consent_reauth_is_bound_and_one_use() {
+    let mut f = Fixture::new();
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("browser-passkey-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 4;
+    definition.steps[0].transitions[0].to = Id::new("passkey").unwrap();
+    let mut passkey = workflow::builtin(&Id::new("essentials-passkey-sign-in").unwrap())
+        .unwrap().steps.remove(0);
+    passkey.max_attempts = 2;
+    passkey.timeout_seconds = 120;
+    passkey.transitions[0].to = Id::new("consent").unwrap();
+    definition.steps.insert(1, passkey);
+    definition.steps[2].timeout_seconds = 120;
+    definition.terminals[0].requires = vec![vec![
+        workflow::Proof::Session, workflow::Proof::Passkey, workflow::Proof::Consent,
+    ]];
+    definition.terminals[0].max_proof_age_seconds = Some(120);
+    f.core.config.workflows.insert("browser-passkey-consent".into(), ConfiguredWorkflow {
+        active: true, definition,
+    });
+    f.core.config.browser_consent_workflow = Some("browser-passkey-consent".into());
+    f.core.config.validate().unwrap();
+    client(&f, "app", true, true, Default::default());
+    let alice = f.user("alice");
+    f.user("bob");
+    let (mut authenticator, _) = enroll(&f, &alice);
+    let alice_sso = browser(&f, "alice");
+    let bob_sso = browser(&f, "bob");
+    let alice_sid = sid(&f, &alice_sso);
+    let stored: Session = f.core.store.get("sessions", &alice_sid).unwrap().unwrap();
+    let app = riauth::api::router(f.core.clone());
+    let verifier = crypto::random_token("");
+    let mut request = f.request("app", &verifier);
+    request.prompt = Some("login consent".into());
+    let i = start(&f, &app, &request, Some(&alice_sso)).await;
+    let state = get_state(&app, &i, Some(&alice_sso)).await.body;
+    assert_eq!(state["status"], "authenticate");
+    assert_eq!(state["requirements"]["configured_passkey"], true);
+    assert_ne!(decide(&app, &i, Some(&alice_sso), true, &state).await.status, StatusCode::OK);
+    let wrong = call(&app, post(&i.path("/passkey/start"), &i.cookies(Some(&bob_sso)), json!({}))).await;
+    assert_ne!(wrong.status, StatusCode::OK);
+    let mut started = call(&app, post(&i.path("/passkey/start"), &i.cookies(Some(&alice_sso)), json!({}))).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    assert_eq!(started.body["workflow"]["state"]["step"], "passkey");
+    let pending: Value = f.core.store.get("browser_authorizations", &i.id).unwrap().unwrap();
+    let run_id = text(&pending, "configured_run");
+    let prepared = text(&pending["request"], "transaction_id");
+    assert_eq!(call(&app, post(&i.path("/passkey/start"), &i.cookies(Some(&alice_sso)), json!({}))).await.status, StatusCode::CONFLICT);
+    let canceled = call(&app, post(&i.path("/passkey/cancel"), &i.cookies(Some(&alice_sso)),
+        json!({"ceremony": started.body["ceremony"]}))).await;
+    assert_eq!(canceled.status, StatusCode::OK, "{}", canceled.text);
+    assert_eq!(canceled.body["status"], "authenticate");
+    assert_eq!(call(&app, post(&i.path("/passkey/cancel"), &i.cookies(Some(&alice_sso)),
+        json!({"ceremony": started.body["ceremony"]}))).await.status, StatusCode::CONFLICT);
+    started = call(&app, post(&i.path("/passkey/start"), &i.cookies(Some(&alice_sso)), json!({}))).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    let proof = authenticator.do_authentication(
+        origin(), serde_json::from_value(started.body["public_key"].clone()).unwrap(),
+    ).unwrap();
+    let body = json!({"ceremony": started.body["ceremony"], "credential": proof});
+    assert_ne!(call(&app, post(&i.path("/passkey/finish"), &i.cookies(Some(&bob_sso)), body.clone())).await.status, StatusCode::OK);
+    let finished = call(&app, post(&i.path("/passkey/finish"), &i.cookies(Some(&alice_sso)), body.clone())).await;
+    assert_eq!(finished.status, StatusCode::OK, "{}", finished.text);
+    assert_eq!(finished.body["status"], "consent");
+    assert_ne!(decide(&app, &i, Some(&bob_sso), true, &finished.body).await.status, StatusCode::OK);
+    let approved = decide(&app, &i, Some(&alice_sso), true, &finished.body).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text);
+    assert_eq!(approved.body["status"], "complete");
+    assert_eq!(call(&app, post(&i.path("/passkey/finish"), &i.cookies(Some(&alice_sso)), body)).await.status, StatusCode::CONFLICT);
+    assert_eq!(decide(&app, &i, Some(&alice_sso), true, &finished.body).await.status, StatusCode::CONFLICT);
+    assert!(f.core.store.get::<Value>("authentication", &digest(&prepared)).unwrap().is_none());
+    assert!(f.core.store.list::<Value>("consents").unwrap().is_empty());
+    let completed: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    assert_eq!(completed["record"]["state"]["outcome"], "consent_granted");
+    for step in completed["record"]["steps"].as_array().unwrap() {
+        let receipt: Value = f.core.store.get("workflow_evidence", step["evidence"].as_str().unwrap()).unwrap().unwrap();
+        assert_eq!(receipt["consumed"], true);
+    }
+    let after: Session = f.core.store.get("sessions", &alice_sid).unwrap().unwrap();
+    assert_eq!(serde_json::to_value(after.identity).unwrap(), serde_json::to_value(stored.identity).unwrap());
+    let callback = resume(&app, &i, Some(&alice_sso)).await.location();
+    let grant = grant(&f, &callback);
+    assert_eq!(grant.identity.session_id, alice_sid);
+    assert_eq!(grant.identity.amr, vec!["webauthn", "mfa"]);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let mut denied_request = f.request("app", &crypto::random_token(""));
+    denied_request.prompt = Some("login consent".into());
+    let denied = start(&f, &app, &denied_request, Some(&alice_sso)).await;
+    let unused = call(&app, post(&denied.path("/passkey/start"), &denied.cookies(Some(&alice_sso)), json!({}))).await;
+    assert_eq!(unused.status, StatusCode::OK, "{}", unused.text);
+    let denial = decide(&app, &denied, Some(&alice_sso), false,
+        &get_state(&app, &denied, Some(&alice_sso)).await.body).await;
+    assert_eq!(denial.status, StatusCode::OK, "{}", denial.text);
+    assert_eq!(call(&app, post(&denied.path("/passkey/cancel"),
+        &denied.cookies(Some(&alice_sso)), json!({"ceremony": unused.body["ceremony"]}))).await.status,
+        StatusCode::CONFLICT);
+    assert!(resume(&app, &denied, Some(&alice_sso)).await.location().contains("access_denied"));
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let mut expiring = f.request("app", &crypto::random_token(""));
+    expiring.prompt = Some("login consent".into());
+    let j = start(&f, &app, &expiring, Some(&alice_sso)).await;
+    let challenge = call(&app, post(&j.path("/passkey/start"), &j.cookies(Some(&alice_sso)), json!({}))).await;
+    assert_eq!(challenge.status, StatusCode::OK, "{}", challenge.text);
+    assert_eq!(call(&app, post(&j.path("/passkey/cancel"), &j.cookies(Some(&alice_sso)),
+        json!({"ceremony": challenge.body["ceremony"]}))).await.status, StatusCode::OK);
+    let pending: Value = f.core.store.get("browser_authorizations", &j.id).unwrap().unwrap();
+    let expired_run = text(&pending, "configured_run");
+    f.core.store.write(|tx| {
+        let mut row: Value = tx.get("workflow_runs", &expired_run)?.unwrap();
+        row["record"]["started_at"] = json!(now() - 121);
+        tx.put("workflow_runs", &expired_run, &row)
+    }).unwrap();
+    let expired = get_state(&app, &j, Some(&alice_sso)).await;
+    assert_eq!(expired.body["status"], "unavailable");
+    assert_ne!(decide(&app, &j, Some(&alice_sso), true, &expired.body).await.status, StatusCode::OK);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+    let mut next_request = f.request("app", &crypto::random_token(""));
+    next_request.prompt = Some("login consent".into());
+    let next = start(&f, &app, &next_request, Some(&alice_sso)).await;
+    let admitted = call(&app, post(&next.path("/passkey/start"), &next.cookies(Some(&alice_sso)), json!({}))).await;
+    assert_eq!(admitted.status, StatusCode::OK, "{}", admitted.text);
+    let settled: Value = f.core.store.get("workflow_runs", &expired_run).unwrap().unwrap();
+    assert_eq!(settled["record"]["state"]["state"], "expired");
+}
+
 #[tokio::test]
 async fn implicit_consent_auto_continues_after_sign_in() {
     let f = Fixture::new();

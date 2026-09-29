@@ -43,9 +43,12 @@ struct Pending {
     /// collects the callback; a terminal approval leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     approved_by: Option<String>,
-    /// Opted-in session-only configured consent; the exact preparation is in request.
+    /// Opted-in configured consent; the exact preparation is in request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     configured_consent: Option<String>,
+    /// Durable passkey reauthentication run owned by this interaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    configured_run: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     configured_client: Option<String>,
 }
@@ -117,11 +120,18 @@ impl Core {
             let configured_consent = self.config.browser_consent_workflow.as_deref();
             #[cfg(not(feature = "platform"))]
             let configured_consent: Option<&str> = None;
+            #[cfg(feature = "platform")]
+            let configured_passkey = configured_consent.is_some_and(|name| {
+                self.config.workflows.get(name).is_some_and(|entry| {
+                    entry.active && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                })
+            });
+            #[cfg(not(feature = "platform"))]
+            let configured_passkey = false;
             if configured_consent.is_some()
                 && (client.settings.source_stage.is_some()
-                    || request.has_prompt("login")
                     || request.has_prompt("select_account")
-                    || request.max_age == Some(0))
+                    || (!configured_passkey && (request.has_prompt("login") || request.max_age == Some(0))))
             {
                 return Err(Error::oauth("interaction_required", "This request needs another consent path"));
             }
@@ -220,6 +230,7 @@ impl Core {
                 requested_from,
                 approved_by: None,
                 configured_consent: configured_consent.map(str::to_owned),
+                configured_run: None,
                 configured_client,
             };
             tx.put(
@@ -401,7 +412,7 @@ impl Core {
         self.store.read(|tx| {
             let p = interaction(tx, id, binding)?;
             let session = self.browser_session(tx, sso)?;
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })
     }
     /// Browser password sign-in for this request. The body is the interaction state.
@@ -426,6 +437,28 @@ impl Core {
         sso: Option<&str>,
     ) -> Result<Value> {
         let (p, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        if let (Some(workflow), Some(cookie), Some(_)) = (p.configured_consent.as_deref(), sso, pin.as_deref()) {
+            if self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+            }) {
+                return self.store.write(|tx| {
+                    let mut p = undecided(interaction(tx, id, binding)?)?;
+                    let session = self.browser_session(tx, Some(cookie))?.ok_or_else(Error::unauthorized)?;
+                    let client = tx.get::<Client>("clients", &p.request.client_id)?.ok_or_else(Error::forbidden)?;
+                    if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str()) {
+                        return Err(Error::conflict("Authorization client changed"));
+                    }
+                    let (run_id, challenge) = crate::workflow::executor::browser_passkey_consent_start_in(
+                        self, tx, workflow, id, cookie, &session, &p.request,
+                        p.expires_at, p.configured_run.as_deref())?;
+                    p.configured_run = Some(run_id);
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                    Ok(json!(challenge))
+                });
+            }
+        }
+        if p.configured_run.is_some() { return Err(Error::forbidden()); }
         self.browser_passkey_start(pin.as_deref(), &format!("oidc:{id}"), &p.browser_hash)
     }
     pub fn authorize_passkey_finish(
@@ -436,7 +469,32 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.authorize_open(id, binding, sso)?;
+        let (p, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(feature = "platform")]
+        if p.configured_run.is_some() {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let workflow = p.configured_consent.as_deref().ok_or_else(Error::forbidden)?;
+                let run_id = p.configured_run.as_deref().ok_or_else(Error::forbidden)?;
+                let cookie = sso.ok_or_else(Error::unauthorized)?;
+                let session = self.browser_session(tx, Some(cookie))?.ok_or_else(Error::unauthorized)?;
+                let view = crate::workflow::executor::browser_passkey_consent_finish_in(
+                    self, tx, workflow, id, cookie, &session, &p.request,
+                    run_id, ceremony, response)?;
+                if let Some(callback) = view.authorization_response {
+                    p.callback = Some(callback);
+                    p.approved_by = Some(session.id.clone());
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                }
+                Ok(BrowserReply { form_post: false, body: self.status_for(tx, &p, Some(session), sso)?,
+                    location: None, refresh: None, cookies: vec![] })
+            });
+        }
+        if p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                crate::workflow::supported_configured_passkey_consent(&entry.definition)
+            })
+        }) && pin.is_some() { return Err(Error::forbidden()); }
         let staged = self.browser_passkey_finish(
             ceremony,
             response,
@@ -445,6 +503,33 @@ impl Core {
             pin.as_deref(),
         )?;
         self.authorize_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+    pub fn authorize_passkey_cancel(
+        &self, id: &str, binding: Option<&str>, sso: Option<&str>, ceremony: &str,
+    ) -> Result<Value> {
+        #[cfg(not(feature = "platform"))]
+        let _ = sso;
+        let p = self.store.read(|tx| undecided(interaction(tx, id, binding)?))?;
+        #[cfg(feature = "platform")]
+        if p.configured_run.is_some() {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let workflow = p.configured_consent.as_deref().ok_or_else(Error::forbidden)?;
+                let run_id = p.configured_run.as_deref().ok_or_else(Error::forbidden)?;
+                let cookie = sso.ok_or_else(Error::unauthorized)?;
+                let session = self.browser_session(tx, Some(cookie))?.ok_or_else(Error::unauthorized)?;
+                let view = crate::workflow::executor::browser_passkey_consent_cancel_in(
+                    self, tx, workflow, id, cookie, &session, &p.request, run_id, ceremony)?;
+                if let Some(callback) = view.authorization_response {
+                    p.callback = Some(callback);
+                    p.approved_by = Some(session.id.clone());
+                    tx.put("browser_authorizations", &p.id, &p)?;
+                }
+                self.status_for(tx, &p, Some(session), sso)
+            });
+        }
+        if p.configured_run.is_some() { return Err(Error::forbidden()); }
+        self.browser_passkey_cancel(ceremony, &format!("oidc:{id}"), binding)
     }
     /// Approves as this browser's session, or denies without one. The body is the state.
     pub fn authorize_decision(
@@ -462,6 +547,9 @@ impl Core {
             if let Some(workflow) = p.configured_consent.as_deref() {
                 #[cfg(feature = "platform")]
                 {
+                    let passkey = self.config.workflows.get(workflow).is_some_and(|entry| {
+                        entry.active && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                    });
                     if approve {
                         let client = tx.get::<Client>("clients", &p.request.client_id)?
                             .ok_or_else(Error::forbidden)?;
@@ -474,21 +562,38 @@ impl Core {
                         }) {
                             return Err(account_changed());
                         }
-                        p.callback = Some(crate::workflow::executor::browser_consent_decide_in(
-                            self, tx, workflow, id, sso.ok_or_else(Error::unauthorized)?,
-                            session, &p.request, p.expires_at,
-                        )?);
+                        p.callback = Some(if passkey {
+                            crate::workflow::executor::browser_passkey_consent_decide_in(
+                                self, tx, workflow, id, sso.ok_or_else(Error::unauthorized)?,
+                                session, &p.request,
+                                p.configured_run.as_deref().ok_or_else(Error::forbidden)?, true,
+                            )?
+                        } else {
+                            if p.configured_run.is_some() { return Err(Error::forbidden()); }
+                            crate::workflow::executor::browser_consent_decide_in(
+                                self, tx, workflow, id, sso.ok_or_else(Error::unauthorized)?,
+                                session, &p.request, p.expires_at,
+                            )?
+                        });
                         p.approved_by = Some(session.id.clone());
                         audit(tx, &session.identity.user_id, "browser.authorization.decided", &p.request.client_id)?;
                     } else {
                         let actor = session.as_ref().map_or("anonymous", |value| value.identity.user_id.as_str());
-                        p.callback = Some(self.authorization_denied(tx, &p.request, actor)?);
+                        p.callback = Some(if let Some(run_id) = p.configured_run.as_deref() {
+                            let session = session.as_ref().ok_or_else(Error::unauthorized)?;
+                            crate::workflow::executor::browser_passkey_consent_decide_in(
+                                self, tx, workflow, id, sso.ok_or_else(Error::unauthorized)?,
+                                session, &p.request, run_id, false,
+                            )?
+                        } else {
+                            self.authorization_denied(tx, &p.request, actor)?
+                        });
                     }
                     if let Some(proof) = p.authentication.take() {
                         tx.delete("authentication", &proof)?;
                     }
                     tx.put("browser_authorizations", &p.id, &p)?;
-                    return self.status_for(tx, &p, session);
+                    return self.status_for(tx, &p, session, sso);
                 }
                 #[cfg(not(feature = "platform"))]
                 {
@@ -545,7 +650,7 @@ impl Core {
                 tx.delete("authentication", &proof)?;
             }
             tx.put("browser_authorizations", &p.id, &p)?;
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })
     }
     /// The undecided request and the account it is pinned to: the browser session's user,
@@ -558,6 +663,17 @@ impl Core {
     ) -> Result<(Pending, Option<String>)> {
         self.store.read(|tx| {
             let p = undecided(interaction(tx, id, binding)?)?;
+            #[cfg(feature = "platform")]
+            if let Some(workflow) = p.configured_consent.as_deref() {
+                if self.config.browser_consent_workflow.as_deref() != Some(workflow)
+                    || self.config.workflows.get(workflow).is_none_or(|entry| {
+                        !entry.active || !(crate::workflow::supported_configured_session_consent(&entry.definition)
+                            || crate::workflow::supported_configured_passkey_consent(&entry.definition))
+                    })
+                {
+                    return Err(Error::conflict("Browser consent workflow changed"));
+                }
+            }
             let pin = if p.request.has_prompt("select_account") {
                 None
             } else {
@@ -625,7 +741,7 @@ impl Core {
             let session = tx.get::<Session>("sessions", holder)?.filter(|s| {
                 !s.revoked && s.expires_at > now() && self.identity_user(tx, &s.identity).is_ok()
             });
-            self.status_for(tx, &p, session)
+            self.status_for(tx, &p, session, sso)
         })?;
         Ok(BrowserReply {
             form_post: false,
@@ -698,7 +814,9 @@ impl Core {
         Ok(true)
     }
     /// The §4.5 state for `session`, the browser's live session if any.
-    fn status_for(&self, tx: &Tx<'_>, p: &Pending, session: Option<Session>) -> Result<Value> {
+    fn status_for(&self, tx: &Tx<'_>, p: &Pending, session: Option<Session>, sso: Option<&str>) -> Result<Value> {
+        #[cfg(not(feature = "platform"))]
+        let _ = sso;
         let request = &p.request;
         let name = tx
             .get::<Client>("clients", &request.client_id)?
@@ -751,7 +869,8 @@ impl Core {
             #[cfg(feature = "platform")]
             let selected = self.config.browser_consent_workflow.as_deref() == Some(workflow)
                 && self.config.workflows.get(workflow).is_some_and(|entry| {
-                    entry.active && crate::workflow::supported_configured_session_consent(&entry.definition)
+                    entry.active && (crate::workflow::supported_configured_session_consent(&entry.definition)
+                        || crate::workflow::supported_configured_passkey_consent(&entry.definition))
                 });
             #[cfg(not(feature = "platform"))]
             let selected = false;
@@ -797,16 +916,49 @@ impl Core {
             Some(s) => !consent_satisfied(tx, &client, request, &scopes, &s.identity.user_id)?,
             None => request.has_prompt("consent") || !client.settings.implicit_consent,
         }};
-        state["requirements"] = json!({"mfa": mfa, "browser": browser});
+        #[cfg(feature = "platform")]
+        let configured_passkey = p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+            })
+        });
+        #[cfg(not(feature = "platform"))]
+        let configured_passkey = false;
+        state["requirements"] = json!({"mfa": mfa, "browser": browser, "configured_passkey": configured_passkey});
         state["consent"] = json!({"required": required, "scopes": scopes, "attributes": null, "resource": request.resource, "remember_default": p.configured_consent.is_none(), "remember_enabled": p.configured_consent.is_none()});
         if !browser {
             return unavailable(state, "step_up_unavailable", None);
         }
         let Some(session) = session else {
+            if p.configured_run.is_some() {
+                return unavailable(state, "access_denied", Some("Bound browser session is unavailable".into()));
+            }
             state["status"] = json!("authenticate");
             state["reason"] = json!("sign_in");
             return Ok(state);
         };
+        #[cfg(feature = "platform")]
+        if configured_passkey {
+            if !needs_reauthentication(&client, request, &session.identity) {
+                return unavailable(state, "access_denied", Some("Passkey reauthentication is not required".into()));
+            }
+            let ready = if let Some(run_id) = p.configured_run.as_deref() {
+                let Some(cookie) = sso else {
+                    return unavailable(state, "access_denied", Some("Bound browser session is unavailable".into()));
+                };
+                match crate::workflow::executor::browser_passkey_consent_ready_in(
+                    self, tx, p.configured_consent.as_deref().ok_or_else(Error::forbidden)?,
+                    &p.id, cookie, &session, request, run_id,
+                ) {
+                    Ok(ready) => ready,
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => return unavailable(state, "access_denied", Some("Bound consent run is unavailable".into())),
+                }
+            } else { false };
+            state["status"] = json!(if ready { "consent" } else { "authenticate" });
+            if !ready { state["reason"] = json!("step_up"); }
+            return Ok(state);
+        }
         if p.configured_consent.is_some() && needs_reauthentication(&client, request, &session.identity) {
             return unavailable(state, "step_up_unavailable", None);
         }
