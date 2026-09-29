@@ -1122,3 +1122,253 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert!(finish(&f, &started.credential, true).is_err());
     assert!(f.core.me(&text(&session, "session_token")).is_ok());
 }
+
+fn put_saml(f: &Fixture, source: &Source) {
+    f.core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+}
+
+fn post(
+    f: &Fixture,
+    source: &Source,
+    relay: &str,
+    response: &str,
+) -> riauth::error::Result<Value> {
+    f.core.saml_source_callback(
+        &source.id,
+        vec![
+            ("SAMLResponse".into(), STANDARD.encode(response)),
+            ("RelayState".into(), relay.into()),
+        ],
+    )
+}
+
+fn saml_links(f: &Fixture) -> Vec<Value> {
+    f.core
+        .store
+        .list::<Value>("source_links")
+        .unwrap()
+        .into_iter()
+        .map(|(_, link)| link)
+        .collect()
+}
+
+fn replay_entries(f: &Fixture) -> usize {
+    f.core
+        .store
+        .list::<u64>("saml_source_replays")
+        .unwrap()
+        .len()
+}
+
+fn replacement_idp(name: &str) -> Upstream {
+    let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+    Upstream {
+        cert: saml_tests::cert(&key, name),
+        key,
+        xmlsec: None,
+        dir: tempfile::tempdir().unwrap(),
+    }
+}
+
+/// Old and new pinned IdP certificates both verify. A removed certificate cannot
+/// authenticate, and restoring it does not finish a login presented while that
+/// certificate was absent. An unpresented login can still complete after the
+/// original certificates are restored. Issuer, audience and link rules stay put.
+#[test]
+fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and_rollback_replay() {
+    let f = Fixture::new();
+    let (mut source, old) = install_saml(&f);
+    let new_idp = replacement_idp("Replacement IdP");
+    let acs = f.core.saml_source_callback_url(&source.id);
+    source
+        .saml
+        .as_mut()
+        .unwrap()
+        .idp_certificates_pem = vec![old.cert.clone(), new_idp.cert.clone()];
+    put_saml(&f, &source);
+
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = old.response(&source, &acs, &request, None, false);
+    let body = post(&f, &source, &relay, &response).unwrap();
+    assert_eq!(body["completed"], true);
+    assert!(!body.to_string().contains("samlp:Response"));
+    let first = finish(&f, &credential, true).unwrap();
+    let user_id = text(&first["user"], "id");
+    let session_old = text(&first, "session_token");
+    assert!(f.core.me(&session_old).is_ok());
+
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = new_idp.response(&source, &acs, &request, None, false);
+    assert_eq!(
+        post(&f, &source, &relay, &response).unwrap()["completed"],
+        true
+    );
+    let second = finish(&f, &credential, true).unwrap();
+    assert_eq!(text(&second["user"], "id"), user_id);
+    let session_new = text(&second, "session_token");
+    assert!(f.core.me(&session_old).is_ok());
+    assert!(f.core.me(&session_new).is_ok());
+    let links = saml_links(&f);
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["source"], "enterprise");
+    assert_eq!(links[0]["issuer"], source.issuer);
+    assert_eq!(links[0]["subject"], "opaque-subject");
+    assert_eq!(links[0]["user_id"], user_id);
+
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = new_idp.response(
+        &source,
+        &acs,
+        &request,
+        Some((
+            "urn:example:riauth-sp</saml:Audience>",
+            "urn:attacker</saml:Audience>",
+        )),
+        false,
+    );
+    let audience = post(&f, &source, &relay, &response).unwrap();
+    assert_eq!(audience["completed"], false);
+    assert!(!audience.to_string().contains("samlp:Response"));
+    assert!(finish(&f, &credential, true).is_err());
+    assert_eq!(saml_links(&f).len(), 1);
+    assert!(f.core.me(&session_old).is_ok());
+
+    let mut foreign = source.clone();
+    foreign.issuer = "urn:example:other-idp".into();
+    let rejected = f
+        .core
+        .source_put(
+            &f.admin,
+            SourceInput {
+                source: foreign,
+                client_secret: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(rejected.code, "conflict");
+    hides(&rejected, &[&old.cert, &new_idp.cert, "urn:example:other-idp"]);
+    assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
+    assert!(f.core.me(&session_old).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+
+    let (parked, parked_request, parked_credential) = begin(&f, &source, None);
+    let parked_response = old.response(&source, &acs, &parked_request, None, false);
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![new_idp.cert.clone()];
+    put_saml(&f, &source);
+    assert_eq!(login_row(&f, &parked)["claimed"], false);
+    assert_eq!(login_row(&f, &parked)["failed"], false);
+    assert!(f.core.me(&session_old).is_err());
+    assert!(f.core.me(&session_new).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    source
+        .saml
+        .as_mut()
+        .unwrap()
+        .idp_certificates_pem = vec![old.cert.clone(), new_idp.cert.clone()];
+    put_saml(&f, &source);
+    assert_eq!(
+        post(&f, &source, &parked, &parked_response).unwrap()["completed"],
+        true
+    );
+    let parked_session = finish(&f, &parked_credential, true).unwrap();
+    assert_eq!(text(&parked_session["user"], "id"), user_id);
+    let session_parked = text(&parked_session, "session_token");
+    assert!(f.core.me(&session_parked).is_ok());
+
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![new_idp.cert.clone()];
+    put_saml(&f, &source);
+    assert!(f.core.me(&session_parked).is_err());
+    assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
+    assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
+    let fresh = {
+        let (relay, request, credential) = begin(&f, &source, None);
+        let response = new_idp.response(&source, &acs, &request, None, false);
+        assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+        finish(&f, &credential, true).unwrap()
+    };
+    assert_eq!(text(&fresh["user"], "id"), user_id);
+    let session_cutover = text(&fresh, "session_token");
+    assert!(f.core.me(&session_cutover).is_ok());
+
+    let replays_before_stale = replay_entries(&f);
+    let (stale, stale_request, stale_credential) = begin(&f, &source, None);
+    let stale_response = old.response(&source, &acs, &stale_request, None, false);
+    let stale_body = post(&f, &source, &stale, &stale_response).unwrap();
+    assert_eq!(stale_body["completed"], false);
+    assert!(!stale_body.to_string().contains(&old.cert));
+    let stale_row = login_row(&f, &stale);
+    assert_eq!(stale_row["failed"], true);
+    assert_eq!(stale_row["claimed"], true);
+    assert!(stale_row["result"].is_null());
+    assert!(finish(&f, &stale_credential, true).is_err());
+    assert!(post(&f, &source, &stale, &stale_response).is_err());
+    assert_eq!(replay_entries(&f), replays_before_stale);
+    assert!(f.core.me(&session_cutover).is_ok());
+
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![old.cert.clone()];
+    put_saml(&f, &source);
+    assert!(f.core.me(&session_cutover).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert!(finish(&f, &stale_credential, true).is_err());
+    let stale_replay = post(&f, &source, &stale, &stale_response).unwrap_err();
+    assert_eq!(stale_replay.code, "invalid_request");
+    assert!(stale_replay.to_string().contains("already used"));
+    hides(&stale_replay, &[&old.cert, &stale, &stale_response]);
+    assert_eq!(login_row(&f, &stale)["failed"], true);
+    assert_eq!(saml_links(&f).len(), 1);
+    let restored = {
+        let (relay, request, credential) = begin(&f, &source, None);
+        let response = old.response(&source, &acs, &request, None, false);
+        assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+        finish(&f, &credential, true).unwrap()
+    };
+    assert_eq!(text(&restored["user"], "id"), user_id);
+    let session_restored = text(&restored, "session_token");
+    assert!(f.core.me(&session_restored).is_ok());
+
+    let (retired, retired_request, retired_credential) = begin(&f, &source, None);
+    let retired_response = old.response(&source, &acs, &retired_request, None, false);
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![new_idp.cert.clone()];
+    put_saml(&f, &source);
+    assert!(f.core.me(&session_restored).is_err());
+    let replays_before_retire = replay_entries(&f);
+    let retired_error = post(&f, &source, &retired, &retired_response).unwrap_err();
+    assert_eq!(retired_error.code, "invalid_request");
+    assert!(retired_error.to_string().contains("SAML source changed"));
+    hides(
+        &retired_error,
+        &[&old.cert, &new_idp.cert, &retired, &retired_response],
+    );
+    let retired_row = login_row(&f, &retired);
+    assert_eq!(retired_row["failed"], true);
+    assert_eq!(retired_row["claimed"], true);
+    assert!(retired_row["result"].is_null());
+    assert_eq!(replay_entries(&f), replays_before_retire);
+    let retired_again = post(&f, &source, &retired, &retired_response).unwrap_err();
+    assert_eq!(retired_again.code, "invalid_request");
+    assert!(retired_again.to_string().contains("already used"));
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![old.cert.clone()];
+    put_saml(&f, &source);
+    assert!(finish(&f, &retired_credential, true).is_err());
+    let retired_rollback = post(&f, &source, &retired, &retired_response).unwrap_err();
+    assert_eq!(retired_rollback.code, "invalid_request");
+    assert!(retired_rollback.to_string().contains("already used"));
+    hides(&retired_rollback, &[&old.cert, &retired, &retired_response]);
+    assert_eq!(login_row(&f, &retired)["failed"], true);
+    assert_eq!(saml_links(&f).len(), 1);
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = old.response(&source, &acs, &request, None, false);
+    assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+    assert_eq!(
+        text(&finish(&f, &credential, true).unwrap()["user"], "id"),
+        user_id
+    );
+}

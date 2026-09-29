@@ -154,7 +154,13 @@ impl Core {
         let encoded = params
             .get("SAMLResponse")
             .ok_or_else(|| Error::bad("Missing SAMLResponse"))?;
-        let (source, pending) = self.store.write(|tx| {
+        // Commit the retirement. Err would roll back and let this RelayState
+        // complete after the previous IdP certificate is restored.
+        enum Claim {
+            Ready(Source, Login),
+            Retired,
+        }
+        let claim = self.store.write(|tx| {
             let source = super::enabled(tx, id)?;
             let settings = source
                 .saml
@@ -165,13 +171,25 @@ impl Core {
                 .get::<Login>("source_logins", &digest(state))?
                 .filter(|p| p.source == id && !p.claimed && p.expires_at > now())
                 .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
-            if pending.fingerprint != source.fingerprint()? {
-                return Err(Error::bad("SAML source changed; restart login"));
+            let retire = match source.fingerprint() {
+                Ok(fingerprint) => fingerprint != pending.fingerprint,
+                Err(_) => true,
+            };
+            if retire {
+                pending.claimed = true;
+                pending.failed = true;
+                tx.put("source_logins", &digest(state), &pending)?;
+                audit(tx, "upstream", "source.login_failed", id)?;
+                return Ok(Claim::Retired);
             }
             pending.claimed = true;
             tx.put("source_logins", &digest(state), &pending)?;
-            Ok((source, pending))
+            Ok(Claim::Ready(source, pending))
         })?;
+        let (source, pending) = match claim {
+            Claim::Retired => return Err(Error::bad("SAML source changed; restart login")),
+            Claim::Ready(source, pending) => (source, pending),
+        };
         let result = (|| {
             let xml = String::from_utf8(
                 STANDARD
