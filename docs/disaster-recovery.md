@@ -14,6 +14,9 @@ in the current `riauth` or `riauth-maintenance` build.
 [Operational recovery decisions](operational-recovery.md) chooses which procedure
 to run, lists the preflight and the failure stops, and separates the recorded
 local drills from PostgreSQL PITR and peer recovery.
+[Connector dependency incidents](connector-incidents.md) covers LDAP, outbound
+SCIM, Workspace, Entra, SMTP, Vault Transit, and alert-webhook failures while
+the store is still serving.
 
 ## What the archive holds
 

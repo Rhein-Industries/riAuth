@@ -515,9 +515,10 @@ Still open:
 - Lockout while another administrator can still sign in, including attempt
   locks, lost recovery codes, and browser account recovery. Break-glass above
   is the stopped-store command for a named account.
-- Connector and dependency incidents: LDAP, outbound SCIM, Workspace, Entra,
-  SMTP delivery, Vault Transit, and alert webhooks. This slice only says
-  when their files are read.
+- Live connector and dependency failures. The decision page is
+  [connector dependency incidents](connector-incidents.md) for LDAP, outbound
+  SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks. That page
+  was checked against source. The provider calls it names were not run.
 - Retrieving an escrowed backup key or database key on another host. The
   drills recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous

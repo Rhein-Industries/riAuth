@@ -842,7 +842,9 @@ Still outside this slice:
   is not the LDAP import left unconfigured above. Other D03 recipes and
   acceptance against category targets (D05) remain open. The first D04
   decision page is [operational recovery](operational-recovery.md); further
-  emergency runbooks remain open. The backup commands here are entry points.
+  emergency runbooks remain open. The [connector dependency incidents](connector-incidents.md) page covers
+  read, stop, and retry decisions for external dependencies. The backup
+  commands here are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply
