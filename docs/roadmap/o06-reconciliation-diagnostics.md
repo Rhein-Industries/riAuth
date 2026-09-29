@@ -32,7 +32,7 @@ The aggregate omits stored error text, `last_outcome`, job `outcome`, authority 
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
 - Connector lag. `next_run` advances when a job is enqueued, which is not sync completion, and schedules and jobs store no completion timestamp or remote high-water mark. The measurement gap is recorded in [provisioning job diagnostics](o06-provisioning-job-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
-- Storage pressure and key problems.
+- Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
 - Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
 - Deactivation delivery. Incomplete and failed rows, including rows no offboarding job records, are [deactivation diagnostics](o06-deactivation-diagnostics.md). That read pages the deactivation bucket and does not load offboarding jobs.

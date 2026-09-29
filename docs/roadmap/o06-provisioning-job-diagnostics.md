@@ -41,7 +41,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
 - Connector lag, for the reason in the section above. This read does not add a completion timestamp or a remote watermark.
 - Node mismatch, which remains [O03](coverage-inventory.md).
-- Storage pressure and key problems. Doctor still reports the active signing key id after `jwk()` succeeds. The store has no size or disk-pressure API. Listing `key_domains` decodes every domain and is not a bounded page.
+- Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - An Essentials redacted deactivation aggregate. The Platform read stays on [deactivation diagnostics](o06-deactivation-diagnostics.md). The account check for that aggregate is `user.offboard`, which Essentials does not make available, and the missing-account administrator path would publish the stored target name.
 - Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored.
 - Logout delivery state, which stays on `GET /api/operations/logout`.
