@@ -1915,6 +1915,148 @@ async fn stage_resume_consumes_retried_request_after_cancel() {
 }
 
 #[tokio::test]
+async fn expired_stage_cleanup_preserves_newer_index_then_allows_retry() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let first = f.core.authorization_prepare(None, request.clone()).unwrap();
+    let first_id = text(&first["source_stage"], "stage_id");
+    let first_authorization = text(&first["source_stage"], "authorization_id");
+    let first_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &first_id)
+        .unwrap()
+        .unwrap();
+    let first_login = text(&first_stage, "login_key");
+    let suspension = text(&first_stage, "suspension_hash");
+    f.core
+        .source_stage_cancel(&first_id, &first_authorization)
+        .unwrap();
+
+    let second = f.core.authorization_prepare(None, request.clone()).unwrap();
+    let second_id = text(&second["source_stage"], "stage_id");
+    let second_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &second_id)
+        .unwrap()
+        .unwrap();
+    let second_login = text(&second_stage, "login_key");
+    let second_poll = text(
+        &f.core
+            .store
+            .get::<Value>("source_logins", &second_login)
+            .unwrap()
+            .unwrap(),
+        "poll_hash",
+    );
+    assert_eq!(second_stage["suspension_hash"], suspension);
+    let expire = |bucket: &str, key: &str| {
+        f.core
+            .store
+            .write(|tx| {
+                let mut record: Value = tx.get(bucket, key)?.unwrap();
+                record["expires_at"] = json!(1u64);
+                tx.put(bucket, key, &record)
+            })
+            .unwrap();
+    };
+    let cleanup = || {
+        f.core
+            .store
+            .write(|tx| riauth::source::cleanup(tx, now()))
+            .unwrap();
+    };
+
+    expire("source_logins", &first_login);
+    expire("source_stages", &first_id);
+    cleanup();
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &first_login)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_stages", &first_id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .as_deref(),
+        Some(second_id.as_str())
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &second_login)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_polls", &second_poll)
+            .unwrap()
+            .as_deref(),
+        Some(second_login.as_str())
+    );
+
+    expire("source_logins", &second_login);
+    expire("source_stages", &second_id);
+    cleanup();
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &second_login)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_polls", &second_poll)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_stages", &second_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .is_none()
+    );
+    let third = f.core.authorization_prepare(None, request).unwrap();
+    let third_id = text(&third["source_stage"], "stage_id");
+    assert_ne!(third_id, first_id);
+    assert_ne!(third_id, second_id);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .as_deref(),
+        Some(third_id.as_str())
+    );
+}
+
+#[tokio::test]
 async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
     let f = Fixture::new();
     let upstream = Upstream::new(&f, true).await;

@@ -1033,6 +1033,30 @@ def main() -> None:
                         < persist_rejection_compact.find("Ok(())"))
             ):
                 errors.append("src/source.rs: terminal source stage rejection writes belong in assembly")
+            source_cleanup = rust_function_body(path.read_text(), "cleanup")
+            source_cleanup_compact = re.sub(r"\s+", "", source_cleanup or "")
+            expiry_cleanup = rust_function_body(source_stage_assembly, "cleanup_expired_source_state")
+            expiry_cleanup_compact = re.sub(r"\s+", "", expiry_cleanup or "")
+            if (
+                source_cleanup_compact != "saml::cleanup(tx,at)?;crate::assembly::cleanup_expired_source_state(tx,at)"
+                or not re.search(r"\bpub\s+fn\s+cleanup\s*\(\s*tx\s*:\s*&Tx", path.read_text())
+                or expiry_cleanup is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+cleanup_expired_source_state\s*\(", source_stage_assembly)
+                or not (0 <= expiry_cleanup_compact.find('tx.maintenance_page::<Login>("source_logins")?')
+                        < expiry_cleanup_compact.find("pending.expires_at<at")
+                        < expiry_cleanup_compact.find("super::clear_browser_return(tx,&pending)?")
+                        < expiry_cleanup_compact.find('tx.delete("source_polls",&pending.poll_hash)?')
+                        < expiry_cleanup_compact.find('tx.delete("source_logins",&id)?')
+                        < expiry_cleanup_compact.find('tx.maintenance_page::<SourceStage>("source_stages")?')
+                        < expiry_cleanup_compact.find("stage.expires_at<at")
+                        < expiry_cleanup_compact.find('tx.get::<String>("source_stage_requests",&stage.suspension_hash)?')
+                        < expiry_cleanup_compact.find("==Some(id.as_str())")
+                        < expiry_cleanup_compact.find('tx.delete("source_stage_requests",&stage.suspension_hash)?')
+                        < expiry_cleanup_compact.find('tx.delete("source_stages",&id)?')
+                        < expiry_cleanup_compact.find("Ok(())"))
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::cleanup_expired_source_state\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: expiry cleanup storage belongs in assembly")
             source_finish_assembly = (SRC / "assembly/source_finish.rs").read_text()
             source_finish = rust_function_body(source_finish_assembly, "source_finish")
             source_finish_compact = re.sub(r"\s+", "", source_finish or "")
@@ -1110,7 +1134,7 @@ def main() -> None:
                 or clear_return is None
                 or not re.search(r'tx\.delete\s*\(\s*"source_returns"\s*,\s*token\s*\)', clear_return)
                 or not re.search(r"\bpub\(crate\)\s+use\s+source_finish::clear_browser_return\s*;", (SRC / "assembly.rs").read_text())
-                or not re.search(r"\bassembly::clear_browser_return\b", path.read_text())
+                or not re.search(r"\bsuper::clear_browser_return\s*\(", source_stage_assembly)
             ):
                 errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")

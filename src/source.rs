@@ -10,7 +10,6 @@ pub(crate) mod workflow;
 pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
-    assembly::clear_browser_return,
     core::{Core, audit, require_factor_session, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -457,12 +456,12 @@ pub(crate) struct SourceStage {
     pub(crate) id: String,
     authorization_id: String,
     request_hash: String,
-    suspension_hash: String,
+    pub(crate) suspension_hash: String,
     request: crate::oidc::Authorization,
     source_id: String,
     user_id: Option<String>,
     nonce: String,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
     used: bool,
     cancelled: bool,
     pub(crate) login_key: String,
@@ -1401,26 +1400,7 @@ pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Re
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     saml::cleanup(tx, at)?;
-    for (id, pending) in tx.maintenance_page::<Login>("source_logins")? {
-        if pending.expires_at < at {
-            clear_browser_return(tx, &pending)?;
-            tx.delete("source_polls", &pending.poll_hash)?;
-            tx.delete("source_logins", &id)?;
-        }
-    }
-    for (id, stage) in tx.maintenance_page::<SourceStage>("source_stages")? {
-        if stage.expires_at < at {
-            if tx
-                .get::<String>("source_stage_requests", &stage.suspension_hash)?
-                .as_deref()
-                == Some(id.as_str())
-            {
-                tx.delete("source_stage_requests", &stage.suspension_hash)?;
-            }
-            tx.delete("source_stages", &id)?;
-        }
-    }
-    Ok(())
+    crate::assembly::cleanup_expired_source_state(tx, at)
 }
 
 fn oauth_identity(profile: &OAuthProfile, claims: &Value) -> Result<UpstreamIdentity> {

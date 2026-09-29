@@ -85,6 +85,7 @@ mod source_catalog;
 mod source_finish;
 pub(crate) use source_finish::clear_browser_return;
 mod source_stage;
+pub(crate) use source_stage::cleanup_expired_source_state;
 #[cfg(feature = "platform")]
 mod ssf;
 #[cfg(feature = "platform")]

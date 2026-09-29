@@ -66,3 +66,26 @@ impl Core {
             .write(|tx| self.cancel_stage(tx, stage_id, authorization_id))
     }
 }
+
+pub(crate) fn cleanup_expired_source_state(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (id, pending) in tx.maintenance_page::<Login>("source_logins")? {
+        if pending.expires_at < at {
+            super::clear_browser_return(tx, &pending)?;
+            tx.delete("source_polls", &pending.poll_hash)?;
+            tx.delete("source_logins", &id)?;
+        }
+    }
+    for (id, stage) in tx.maintenance_page::<SourceStage>("source_stages")? {
+        if stage.expires_at < at {
+            if tx
+                .get::<String>("source_stage_requests", &stage.suspension_hash)?
+                .as_deref()
+                == Some(id.as_str())
+            {
+                tx.delete("source_stage_requests", &stage.suspension_hash)?;
+            }
+            tx.delete("source_stages", &id)?;
+        }
+    }
+    Ok(())
+}
