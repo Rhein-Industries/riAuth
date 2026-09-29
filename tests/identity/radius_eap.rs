@@ -1243,6 +1243,274 @@ async fn eap_tls_fragment_bounds_reject_oversized_and_inconsistent_flights() {
     drop(servers);
 }
 
+#[test]
+fn agent_eap_bind_cannot_capture_temporary_access_and_replays_existing_binding() {
+    use riauth::{
+        agent::{NewAgent, Permission},
+        pam::{AccessGrant, NewAccessRequest},
+    };
+
+    let mut f = Fixture::new();
+    let subject = f.user("subject");
+    let expired = f.user("expired");
+    f.user("parent");
+    let approver = f.user("approver");
+    f.core.create_group(&f.admin, "ops").unwrap();
+    f.core
+        .config
+        .pam_approvers
+        .insert("ops".into(), strings(&["approver"]));
+    f.core
+        .create_client(
+            &f.admin,
+            NewClient {
+                client_id: "wifi".into(),
+                name: "Wi-Fi".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: strings(&["openid", "radius"]),
+                allowed_groups: strings(&["ops"]),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    radius: Some(Settings {
+                        eap_tls: true,
+                        reply: vec![],
+                    }),
+                    default_acr_values: vec![CERTIFICATE_ACR.into()],
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let (ca, ca_key) = cert("EAP private CA", 51, None);
+    let (server, server_key) = cert("localhost", 52, Some((&ca, &ca_key)));
+    let (existing_cert, _) = cert("existing", 53, Some((&ca, &ca_key)));
+    let (active_cert, _) = cert("active", 54, Some((&ca, &ca_key)));
+    let (expired_cert, _) = cert("expired", 55, Some((&ca, &ca_key)));
+    let dir = f._dir.path();
+    crl(dir, &ca, &ca_key, None);
+    std::fs::write(dir.join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(
+        &dir.join("server.key"),
+        &server_key.private_key_to_pem_pkcs8().unwrap(),
+        false,
+    )
+    .unwrap();
+    riauth::config::write_private(&dir.join("radius.secret"), SECRET, false).unwrap();
+    f.core.config.radius_listeners.insert(
+        "wifi".into(),
+        Listener {
+            eap_tls: Some(EapConfig {
+                certificate_file: dir.join("server.pem"),
+                key_file: dir.join("server.key"),
+                client_ca_file: dir.join("ca.pem"),
+                client_crl_file: dir.join("clients.crl.pem"),
+                ocsp_response_file: None,
+                tls12: false,
+                fragment_size: 1024,
+            }),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [(
+                "nas".into(),
+                Nas {
+                    peer: "127.0.0.1".parse().unwrap(),
+                    client_id: "wifi".into(),
+                    shared_secret_file: Some(dir.join("radius.secret")),
+                    certificate_sha256: None,
+                },
+            )]
+            .into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        },
+    );
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "eap-manager".into(),
+                permissions: vec!["subject", "expired"]
+                    .into_iter()
+                    .map(|name| Permission {
+                        action: "certificate.write".into(),
+                        resource: format!("user/{name}"),
+                    })
+                    .chain(std::iter::once(Permission {
+                        action: "radius.enroll".into(),
+                        resource: "radius/wifi".into(),
+                    }))
+                    .collect(),
+                ttl: 3600,
+                parent: Some("parent".into()),
+            },
+        )
+        .unwrap();
+    let agent = text(&created["credential"], "token");
+    let input = |username: &str, cert: &X509| CertificateInput {
+        username: username.into(),
+        listener: "wifi".into(),
+        certificate_chain_pem: String::from_utf8(cert.to_pem().unwrap()).unwrap(),
+    };
+
+    let existing = input("subject", &existing_cert);
+    let admin_binding = f
+        .core
+        .radius_certificate_bind(&f.admin, existing.clone())
+        .unwrap();
+    let request = f
+        .core
+        .request_access(
+            &subject,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Temporary network access".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = f
+        .core
+        .decide_access(&approver, &text(&request, "id"), true)
+        .unwrap();
+    let grant_id = text(&decision["grant"], "id");
+    let subject_id = text(&f.core.me(&subject).unwrap()["user"], "id");
+    assert_eq!(f.core.me(&subject).unwrap()["groups"], json!(["ops"]));
+    // A duplicate binding returns its original result without changing exposure.
+    assert_eq!(
+        f.core.radius_certificate_bind(&agent, existing).unwrap(),
+        admin_binding
+    );
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, input("subject", &active_cert))
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+    f.assert_snapshot(&before);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &subject_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !f.core
+            .store
+            .get::<Group>("groups", "ops")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&subject_id)
+    );
+
+    f.core.revoke_access(&approver, &grant_id).unwrap();
+    assert_eq!(f.core.me(&subject).unwrap()["groups"], json!([]));
+    let after_revoke = input("subject", &active_cert);
+    let bound = f
+        .core
+        .radius_certificate_bind(&agent, after_revoke.clone())
+        .unwrap();
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, after_revoke)
+            .unwrap(),
+        bound
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &subject_id)
+            .unwrap()
+            .is_some()
+    );
+    let events = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "certificate.bind" && event["target"] == bound["id"]
+            })
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "agent.credential_exposure"
+                    && event["target"] == subject_id
+            })
+            .count(),
+        1
+    );
+    let exposed_request = f
+        .core
+        .request_access(
+            &subject,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Prior credential exposure".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.core
+            .decide_access(&approver, &text(&exposed_request, "id"), true)
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::CONFLICT
+    );
+
+    let expired_request = f
+        .core
+        .request_access(
+            &expired,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Short access".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let expired_decision = f
+        .core
+        .decide_access(&approver, &text(&expired_request, "id"), true)
+        .unwrap();
+    let expired_id = text(&expired_decision["grant"], "id");
+    let expired_input = input("expired", &expired_cert);
+    assert_eq!(
+        f.core
+            .radius_certificate_bind(&agent, expired_input.clone())
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &expired_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &expired_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&expired).unwrap()["groups"], json!([]));
+    f.core
+        .radius_certificate_bind(&agent, expired_input)
+        .unwrap();
+}
+
 fn cert(name: &str, serial: u32, issuer: Option<(&X509, &PKey<Private>)>) -> (X509, PKey<Private>) {
     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
     let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();

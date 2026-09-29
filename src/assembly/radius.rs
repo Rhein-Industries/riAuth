@@ -409,6 +409,12 @@ impl Core {
             {
                 return Err(Error::conflict("User has too many EAP certificates"));
             }
+            if actor.agent {
+                // The agent can hold this certificate's private key and sign in
+                // as the target. Fence live temporary access and record prior
+                // exposure before any new binding becomes usable.
+                crate::delegation::mark_credential_exposure(&self.config, tx, &actor, &user)?;
+            }
             let certificate = Certificate {
                 id: crate::crypto::id(),
                 username: user.username,
