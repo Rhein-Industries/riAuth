@@ -43,10 +43,12 @@ def port():
         return listener.getsockname()[1]
 
 
-def request(base, path, body=None, token=None):
+def request(base, path, body=None, token=None, extra_headers=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if extra_headers:
+        headers.update(extra_headers)
     payload = json.dumps(body).encode() if body is not None else None
     call = urllib.request.Request(base + path, data=payload, headers=headers)
     try:
@@ -95,10 +97,15 @@ def token(base):
 
 
 def post_agent(base, bearer, identifier, permission, parent=None):
+    revision_status, revision_body = request(base, "/api/state/revision", token=bearer)
+    assert revision_status == 200, f"Agent revision read returned {revision_status}"
+    revision = json.loads(revision_body)["revision"]
     body = {"id": identifier, "ttl": 3600, "permissions": [permission]}
     if parent is not None:
         body["parent"] = parent
-    return request(base, "/api/agents", body, bearer)[0]
+    headers = {"If-Match": f'"{revision}"',
+               "Idempotency-Key": f"a05-agent-create-{identifier}"}
+    return request(base, "/api/agents", body, bearer, headers)[0]
 
 
 def check_agent_boundary(base):
