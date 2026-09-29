@@ -574,8 +574,7 @@ impl Core {
         };
         if let Some(settings) = &source.saml {
             let authorization = settings.authorization(tx, self, &source, &pending, &state)?;
-            tx.put("source_logins", &digest(&state), &pending)?;
-            tx.put("source_polls", &pending.poll_hash, &digest(&state))?;
+            self.persist_source_start(tx, &state, &pending)?;
             let mut started = started(authorization, &pending);
             started.body["instruction"] = json!(
                 "Authenticate at the upstream provider, then inspect and finish this request in the CLI"
@@ -601,8 +600,7 @@ impl Core {
                 .query_pairs_mut()
                 .extend_pairs([("nonce", pending.nonce.as_str()), ("max_age", "0")]);
         }
-        tx.put("source_logins", &digest(&state), &pending)?;
-        tx.put("source_polls", &pending.poll_hash, &digest(&state))?;
+        self.persist_source_start(tx, &state, &pending)?;
         Ok(started(authorize.to_string(), &pending))
     }
     pub fn source_callback_url(&self, id: &str) -> String {

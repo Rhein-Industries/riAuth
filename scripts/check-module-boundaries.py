@@ -843,6 +843,29 @@ def main() -> None:
                 or not re.search(r"\bpub\(crate\)\s+fn\s+source_start_in\s*\(", source_protocol)
             ):
                 errors.append("src/source.rs: source start writer belongs in assembly")
+            source_start_for = rust_function_body(path.read_text(), "source_start_for")
+            source_start_for_compact = re.sub(r"\s+", "", source_start_for or "")
+            persist_start = rust_function_body(source_catalog, "persist_source_start")
+            persist_start_compact = re.sub(r"\s+", "", persist_start or "")
+            start_call = "self.persist_source_start(tx,&state,&pending)?"
+            first_start = source_start_for_compact.find(start_call)
+            second_start = source_start_for_compact.find(start_call, first_start + 1)
+            if (
+                source_start_for is None
+                or source_start_for_compact.count(start_call) != 2
+                or not (0 <= source_start_for_compact.find(
+                    "settings.authorization(tx,self,&source,&pending,&state)?"
+                ) < first_start < source_start_for_compact.find("letmutauthorize=")
+                    < source_start_for_compact.find("ifsource.oauth_profile.is_none()")
+                    < second_start)
+                or re.search(r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"source_(?:logins|polls)"', source_start_for)
+                or persist_start is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_start\s*\(", source_catalog)
+                or not (0 <= persist_start_compact.find('tx.put("source_logins",&digest(state),pending)?')
+                        < persist_start_compact.find('tx.put("source_polls",&pending.poll_hash,&digest(state))?')
+                        < persist_start_compact.find("Ok(())"))
+            ):
+                errors.append("src/source.rs: source start one-use reservation belongs in assembly")
             source_unlink = rust_function_body(
                 masked_rust_source(source_catalog), "source_unlink"
             )

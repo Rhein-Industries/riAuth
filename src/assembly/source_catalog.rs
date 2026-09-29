@@ -2,8 +2,10 @@
 
 use crate::{
     core::Core,
+    crypto::digest,
     error::Result,
-    source::{Source, SourceInput, Start},
+    source::{Login, Source, SourceInput, Start},
+    store::Tx,
 };
 use serde_json::{Value, json};
 
@@ -29,6 +31,19 @@ impl Core {
             self.source_start_in(tx, id, &input, token, None)
                 .map(|started| started.body)
         })
+    }
+
+    /// Keep the callback state and its credential lookup in the caller's write transaction.
+    /// Browser starts and embedded stages use the same reservation after their binding checks.
+    pub(crate) fn persist_source_start(
+        &self,
+        tx: &Tx<'_>,
+        state: &str,
+        pending: &Login,
+    ) -> Result<()> {
+        tx.put("source_logins", &digest(state), pending)?;
+        tx.put("source_polls", &pending.poll_hash, &digest(state))?;
+        Ok(())
     }
 
     pub fn source_unlink(&self, token: &str, link_id: &str) -> Result<Value> {
