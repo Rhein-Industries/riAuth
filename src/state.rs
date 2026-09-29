@@ -130,6 +130,11 @@ pub struct Plan {
     pub hash: String,
     pub issuer: String,
     pub base_revision: u64,
+    /// Membership, member identity, ownership, and membership policy for a
+    /// group-only manifest. Absent on every other plan, which still compares
+    /// `base_revision` with `meta.revision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_dependencies: Option<String>,
     pub expires_at: u64,
     pub manifest: Manifest,
     pub changes: Vec<Change>,
@@ -749,6 +754,110 @@ fn require_immediate_grant_actor(actor: &Principal) -> Result<()> {
     }
 }
 
+const GROUP_DEPENDENCY_VERSION: &str = "riauth/desired-state-groups/v1";
+
+/// Only a manifest that names groups, and no other resource family, may
+/// ignore an unrelated management revision. A target-state fingerprint binds
+/// cross-resource migration identity and stays on the global counter.
+fn group_only(manifest: &Manifest) -> bool {
+    manifest.target_state_fingerprint.is_none()
+        && !manifest.groups.is_empty()
+        && manifest.users.is_empty()
+        && manifest.clients.is_empty()
+        && manifest.sources.is_empty()
+        && manifest.source_links.is_empty()
+        && manifest.workflows.is_empty()
+}
+
+fn group_dependency_canonical(value: &impl Serialize) -> Result<String> {
+    let mut value = serde_json::to_value(value).map_err(Error::internal)?;
+    value.sort_all_objects();
+    Ok(digest(&format!("{GROUP_DEPENDENCY_VERSION}\n{value}")))
+}
+
+fn group_person_dependency(tx: &Tx<'_>, id: &str) -> Result<Value> {
+    let user = tx.get::<User>("users", id)?;
+    let username_id = match &user {
+        Some(user) => tx.get::<String>("usernames", &user.username)?,
+        None => None,
+    };
+    // The whole record is hashed so a display name, credential, or subject
+    // change invalidates the plan. Only the digest leaves this function.
+    Ok(json!({
+        "user": user,
+        "username_id": username_id,
+        "credential_exposure": crate::delegation::credential_exposure(tx, id)?,
+        "elevation_provenance": tx.get::<Value>(crate::delegation::ELEVATION_PROVENANCE, id)?,
+        "membership_fence": tx.get::<Value>("reviewed_membership_holders", id)?,
+        "directory_binding": tx.get::<Value>("directory_users", id)?,
+        "cloud_binding": tx.get::<Value>("cloud_directory_users", id)?,
+        "grant_generation": tx.get::<u64>("human_grant_generations", id)?.unwrap_or(0),
+    }))
+}
+
+fn group_dependency_digest(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    manifest: &Manifest,
+) -> Result<String> {
+    let mut groups = Vec::new();
+    for spec in &manifest.groups {
+        let live = tx.get::<Group>("groups", &spec.name)?;
+        if live.as_ref().is_some_and(|group| group.name != spec.name) {
+            return Err(Error::conflict("Group identity does not match its key"));
+        }
+        let mut ids = BTreeSet::new();
+        if let Some(group) = &live {
+            ids.extend(group.members.iter().cloned());
+        }
+        let mut resolved = BTreeMap::new();
+        for username in &spec.members {
+            let id = tx.get::<String>("usernames", username)?;
+            if let Some(id) = &id {
+                ids.insert(id.clone());
+            }
+            resolved.insert(username.clone(), id);
+        }
+        let mut people = BTreeMap::new();
+        for id in &ids {
+            people.insert(id.clone(), group_person_dependency(tx, id)?);
+        }
+        groups.push(json!({
+            "name": spec.name,
+            "live_members": live.map(|group| group.members),
+            "resolved": resolved,
+            "people": people,
+        }));
+    }
+    group_dependency_canonical(&json!({
+        "policy": {
+            "issuer": config.issuer,
+            "reviewed_membership_groups": config.reviewed_membership_groups,
+            "pam_approvers": config.pam_approvers,
+            "capabilities": config.capabilities,
+            "directories": config.directories,
+            "workspace_directories": config.workspace_directories,
+            "entra_directories": config.entra_directories,
+        },
+        "groups": groups,
+    }))
+}
+
+fn plan_revision_current(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    plan: &Plan,
+    revision: u64,
+) -> Result<bool> {
+    if let Some(expected) = &plan.group_dependencies {
+        if !group_only(&plan.manifest) {
+            return Ok(false);
+        }
+        return Ok(group_dependency_digest(config, tx, &plan.manifest)? == *expected);
+    }
+    Ok(plan.base_revision == revision)
+}
+
 fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     for spec in &plan.manifest.users {
         actor.require("user.write", &format!("user/{}", spec.username))?;
@@ -851,7 +960,7 @@ impl Core {
                 if stored.actor == actor.id
                     && stored.result.is_none()
                     && plan.expires_at > now()
-                    && plan.base_revision == revision
+                    && plan_revision_current(&self.config, tx, plan, revision)?
                     && plan.issuer == self.config.issuer
                     && plan.reconciliation_mode == mode
                     && plan.removal_impact == impact
@@ -890,23 +999,41 @@ impl Core {
     }
     pub fn plan_state(&self, token: &str, manifest: Manifest) -> Result<Plan> {
         manifest.validate()?;
-        let (actor, revision, changes, impact, authority_digest) = self.store.preview(|tx| {
-            let actor = self.principal(tx, token)?;
-            if actor.delegated { return Err(Error::forbidden()); }
-            manifest.require_issuer(&self.config.issuer)?;
-            manifest.require_target_state(tx, &self.config.issuer)?;
-            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-            let impact = state_removal_impact(tx, &manifest)?;
-            let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
-            let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
-            Ok((actor, revision, changes, impact, authority_digest))
-        })?;
+        let (actor, revision, changes, impact, authority_digest, group_dependencies) =
+            self.store.preview(|tx| {
+                let actor = self.principal(tx, token)?;
+                if actor.delegated {
+                    return Err(Error::forbidden());
+                }
+                manifest.require_issuer(&self.config.issuer)?;
+                manifest.require_target_state(tx, &self.config.issuer)?;
+                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                let impact = state_removal_impact(tx, &manifest)?;
+                let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
+                // Capture dependencies before preview reconciliation mutates the
+                // group inside this transaction. Preview then aborts.
+                let group_dependencies = if group_only(&manifest) {
+                    Some(group_dependency_digest(&self.config, tx, &manifest)?)
+                } else {
+                    None
+                };
+                let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
+                Ok((
+                    actor,
+                    revision,
+                    changes,
+                    impact,
+                    authority_digest,
+                    group_dependencies,
+                ))
+            })?;
         let mut plan = Plan {
             api_version: "riauth.plan/v1".into(),
             plan_id: crypto::id(),
             hash: String::new(),
             issuer: self.config.issuer.clone(),
             base_revision: revision,
+            group_dependencies,
             expires_at: now() + 900,
             manifest,
             changes,
@@ -917,9 +1044,16 @@ impl Core {
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
+            let dependencies_current = match &plan.group_dependencies {
+                Some(expected) => {
+                    group_dependency_digest(&self.config, tx, &plan.manifest)? == *expected
+                }
+                None => true,
+            };
             if current.id != actor.id
                 || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
                 || ReviewBinding::new(tx, &current, &())?.authority_digest != authority_digest
+                || !dependencies_current
             {
                 return Err(Error::conflict(
                     "Instance or plan authority changed during planning; plan again",
@@ -959,22 +1093,80 @@ impl Core {
         self.store.write(|tx| {
             let actor = self.principal(tx, token)?;
             if actor.delegated { return Err(Error::forbidden()); }
+            let context = crate::context::current();
+            let supplied_revision = context.as_ref().and_then(|item| item.revision);
+            let fingerprint = context.as_ref().map(|item| item.fingerprint.clone());
+            // Receipts bind this family only. Other manifests keep their
+            // previous apply behavior, including ignoring an idempotency key.
+            let group_plan = input.plan.group_dependencies.is_some();
+            let receipt_key = if group_plan {
+                context.as_ref().and_then(|item| {
+                    item.idempotency_key
+                        .as_ref()
+                        .map(|key| digest(&format!("{}\0{key}", actor.id)))
+                })
+            } else {
+                None
+            };
+            let receipt_permissions = if receipt_key.is_some() {
+                Some(serde_json::to_value(&actor.permissions).map_err(Error::internal)?)
+            } else {
+                None
+            };
+            if let Some(key) = &receipt_key
+                && let Some(result) = crate::context::replay_receipt(
+                    tx,
+                    key,
+                    fingerprint.as_deref().unwrap_or(""),
+                    receipt_permissions.as_ref().unwrap(),
+                )?
+            {
+                return Ok(result);
+            }
             let mut stored = tx.get::<StoredPlan>("plans", &input.plan.plan_id)?.ok_or_else(|| Error::missing("Plan not found; create a new plan"))?;
             if stored.actor != actor.id || input.plan.issuer != self.config.issuer { return Err(Error::forbidden()); }
             input.plan.manifest.require_issuer(&self.config.issuer)?;
             if serde_json::to_value(&input.plan).map_err(Error::internal)? != serde_json::to_value(&stored.plan).map_err(Error::internal)? {
                 return Err(Error::conflict("Plan was modified; create a new plan"));
             }
+            if group_plan {
+                if !group_only(&input.plan.manifest) {
+                    return Err(Error::conflict(
+                        "Desired-state group dependencies do not match this manifest",
+                    ));
+                }
+                // If-Match remains the live management revision. The stored
+                // base_revision is not that header.
+                if let Some(expected) = supplied_revision {
+                    let current = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                    if expected != current {
+                        return Err(Error::conflict("Configuration revision changed"));
+                    }
+                }
+            }
             if let Some(result) = stored.result.as_ref() {
                 validate_state_review(tx, &actor, &stored)?;
                 return Ok(result.clone());
             }
+            if group_plan {
+                let live = group_dependency_digest(&self.config, tx, &input.plan.manifest)?;
+                if input.plan.group_dependencies.as_deref() != Some(live.as_str()) {
+                    return Err(Error::conflict("Desired-state group dependencies changed"));
+                }
+            }
             input.plan.manifest
                 .require_target_state(tx, &self.config.issuer)?;
             let impact = state_removal_impact(tx, &input.plan.manifest)?;
+            // A matching group digest replaces the global revision comparison.
+            // Expiry, authority, impact, and removal confirmation stay here.
+            let revision = if group_plan {
+                tx.get::<u64>("meta", "revision")?.unwrap_or(0)
+            } else {
+                input.plan.base_revision
+            };
             ApplyGate {
                 id: &input.plan.plan_id,
-                revision: input.plan.base_revision,
+                revision,
                 expires_at: input.plan.expires_at,
                 fingerprint_matches: input.plan.issuer == self.config.issuer
                     && input.plan.reconciliation_mode == self.config.state_reconciliation_mode,
@@ -999,6 +1191,15 @@ impl Core {
             tx.put("audit", &format!("{:020}-{}", event.at, event.id), &event)?;
             stored.result = Some(result.clone());
             tx.put("plans", &input.plan.plan_id, &stored)?;
+            if let Some(key) = receipt_key {
+                crate::context::save_receipt(
+                    tx,
+                    &key,
+                    fingerprint.unwrap_or_default(),
+                    receipt_permissions.unwrap(),
+                    &result,
+                )?;
+            }
             Ok(result)
         })
     }

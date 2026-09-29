@@ -3,9 +3,10 @@
 //! pool and opens another against that same database. The HTTP execute race
 //! uses that reopen. One test loads a loopback server certificate and opens
 //! its database with the production TLS client and a keygen database key.
-//! That certificate step restarts the same primary. A later test stops the
-//! primary and promotes the standby. The promotion is a loopback drill, not
-//! production HA.
+//! That certificate step restarts the same primary. One group-only
+//! desired-state test reopens the pool and does not fence the primary. A later
+//! test stops the primary and promotes the standby. The promotion is a
+//! loopback drill, not production HA.
 #![cfg(feature = "test-support")]
 
 use axum::{
@@ -14,6 +15,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use riauth::{
+    agent::{Agent, NewAgent, Permission},
     config::Config,
     context::{self, RequestContext},
     core::Core,
@@ -23,6 +25,7 @@ use riauth::{
         GroupMembershipInput, NewClient, NewUser, ProviderSettings, User, UserPatch,
     },
     postgres_store::PostgresConfig,
+    state::{ApplyRequest, GroupSpec, Manifest, Plan},
 };
 use serde_json::{Value, json};
 use std::{
@@ -743,6 +746,471 @@ fn drive<T>(future: impl std::future::Future<Output = T>) -> T {
         .build()
         .unwrap()
         .block_on(future)
+}
+
+fn group_manifest(name: &str, members: &[&str]) -> Manifest {
+    serde_json::from_value(
+        json!({"api_version":"riauth/v1","groups":[{"name":name,"members":members}]}),
+    )
+    .unwrap()
+}
+
+fn plan_groups(h: &Harness, name: &str, members: &[&str]) -> Plan {
+    h.core
+        .plan_state(&h.admin, group_manifest(name, members))
+        .unwrap()
+}
+
+fn apply_to(plan: &Plan) -> ApplyRequest {
+    ApplyRequest {
+        plan: plan.clone(),
+        secrets: Default::default(),
+        run_id: None,
+    }
+}
+
+fn group_members(h: &Harness, name: &str) -> BTreeSet<String> {
+    h.core
+        .store
+        .get::<Group>("groups", name)
+        .unwrap()
+        .unwrap()
+        .members
+}
+
+fn audit_count(h: &Harness, action: &str) -> usize {
+    h.core
+        .audit_events(&h.admin, 1000)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == action)
+        .count()
+}
+
+fn rename_user(h: &Harness, username: &str, display_name: &str) {
+    h.core
+        .update_user(
+            &h.admin,
+            username,
+            UserPatch {
+                display_name: Some(display_name.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+}
+
+fn put_display_name(h: &Harness, id: &str, display_name: &str) -> User {
+    let saved: User = h.core.store.get("users", id).unwrap().unwrap();
+    let mut renamed = saved.clone();
+    renamed.display_name = display_name.into();
+    h.core
+        .store
+        .write(|tx| tx.put("users", id, &renamed))
+        .unwrap();
+    saved
+}
+
+fn restore_user(h: &Harness, id: &str, saved: &User) {
+    h.core.store.write(|tx| tx.put("users", id, saved)).unwrap();
+}
+
+fn apply_json(plan: &Plan, run_id: Option<&str>) -> Value {
+    json!({"plan": plan, "secrets": {}, "run_id": run_id})
+}
+
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_group_desired_state_dependencies_and_replay() {
+    let mut h = Harness::new();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    let alice = user_id(&h, "alice");
+    let bob = user_id(&h, "bob");
+    user_id(&h, "stranger");
+    h.core.create_group(&h.admin, "ordinary").unwrap();
+    h.core
+        .group_member(&h.admin, "ordinary", "alice", true)
+        .unwrap();
+    let plan = plan_groups(&h, "ordinary", &["alice", "bob"]);
+    assert!(
+        plan.group_dependencies
+            .as_ref()
+            .is_some_and(|d| !d.is_empty())
+    );
+    assert_eq!(plan.base_revision, revision(&h));
+    rename_user(&h, "stranger", "Unrelated");
+    assert!(revision(&h) > plan.base_revision);
+    deny(
+        &h,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("group-stale".into()),
+                    fingerprint: "group-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || h.core.apply_state(&h.admin, apply_to(&plan)),
+            )
+        },
+        409,
+        "Configuration revision changed",
+    );
+    assert_eq!(receipt_count(&h), 0);
+
+    let saved = put_display_name(&h, &alice, "Renamed");
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state group dependencies changed",
+    );
+    restore_user(&h, &alice, &saved);
+    h.core
+        .store
+        .write(|tx| tx.put("directory_users", &alice, &json!({"directory":"lab"})))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state group dependencies changed",
+    );
+    h.core
+        .store
+        .write(|tx| tx.delete("directory_users", &alice))
+        .unwrap();
+    h.core
+        .group_member(&h.admin, "ordinary", "stranger", true)
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state group dependencies changed",
+    );
+    h.core
+        .group_member(&h.admin, "ordinary", "stranger", false)
+        .unwrap();
+    h.core
+        .config
+        .reviewed_membership_groups
+        .insert("ordinary".into());
+    h.core.config.validate().unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state group dependencies changed",
+    );
+    h.core.config.reviewed_membership_groups.remove("ordinary");
+    h.core.config.validate().unwrap();
+    let mut tampered = plan.clone();
+    tampered.group_dependencies = Some("tampered".into());
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&tampered)),
+        409,
+        "Plan was modified; create a new plan",
+    );
+
+    let original: Value = h.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mut raw = original.clone();
+    raw["plan"]["manifest"]["users"] = json!([{
+        "username": "alice",
+        "display_name": "Test User",
+        "email": "alice@example.test"
+    }]);
+    h.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &raw))
+        .unwrap();
+    let stored: Value = h.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mutated: Plan = serde_json::from_value(stored["plan"].clone()).unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mutated)),
+        409,
+        "Desired-state group dependencies do not match this manifest",
+    );
+    h.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &original))
+        .unwrap();
+
+    h.core.create_group(&h.admin, "crew").unwrap();
+    let agent = h
+        .core
+        .create_agent(
+            &h.admin,
+            NewAgent {
+                id: "group-planner".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "group.members".into(),
+                    resource: "group/crew".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let crew = h
+        .core
+        .plan_state(&agent, group_manifest("crew", &["alice"]))
+        .unwrap();
+    let record: Agent = h
+        .core
+        .store
+        .get("agents", "group-planner")
+        .unwrap()
+        .unwrap();
+    h.core
+        .store
+        .write(|tx| {
+            let mut cleared = record.clone();
+            cleared.permissions.clear();
+            tx.put("agents", "group-planner", &cleared)
+        })
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&agent, apply_to(&crew)),
+        409,
+        "Connector plan content or authority changed; create and review a new plan",
+    );
+
+    h.core.create_group(&h.admin, "shift").unwrap();
+    let shift = group_manifest("shift", &["alice"]);
+    let first = h.core.state_reconcile(&h.admin, shift.clone()).unwrap();
+    assert_eq!(first["decision"], "awaiting_review");
+    assert_eq!(first["reason"], "manual_mode");
+    assert!(first["plan"]["group_dependencies"].as_str().is_some());
+    let shift_base = first["plan"]["base_revision"].as_u64().unwrap();
+    rename_user(&h, "stranger", "Moved");
+    assert!(revision(&h) > shift_base);
+    let second = h.core.state_reconcile(&h.admin, shift.clone()).unwrap();
+    assert_eq!(second["plan"]["plan_id"], first["plan"]["plan_id"]);
+    assert_eq!(
+        second["plan"]["base_revision"],
+        first["plan"]["base_revision"]
+    );
+    let saved = put_display_name(&h, &alice, "Shifted");
+    let third = h.core.state_reconcile(&h.admin, shift).unwrap();
+    assert_ne!(third["plan"]["plan_id"], first["plan"]["plan_id"]);
+    restore_user(&h, &alice, &saved);
+    assert!(group_members(&h, "shift").is_empty());
+    let shift_plan: Plan = serde_json::from_value(first["plan"].clone()).unwrap();
+    let shifted = h.core.apply_state(&h.admin, apply_to(&shift_plan)).unwrap();
+    assert_eq!(shifted["applied"], true);
+    assert_eq!(group_members(&h, "shift"), [alice.clone()].into());
+    assert_eq!(
+        h.core.apply_state(&h.admin, apply_to(&shift_plan)).unwrap(),
+        shifted
+    );
+
+    let mut mixed: Manifest =
+        serde_json::from_value(h.core.export_state(&h.admin).unwrap()["manifest"].clone()).unwrap();
+    mixed.users.retain(|user| user.username == "alice");
+    mixed.groups = vec![GroupSpec {
+        name: "ordinary".into(),
+        members: ["alice".into()].into(),
+    }];
+    mixed.clients.clear();
+    mixed.sources.clear();
+    mixed.source_links.clear();
+    mixed.workflows.clear();
+    let mixed = h.core.plan_state(&h.admin, mixed).unwrap();
+    assert!(mixed.group_dependencies.is_none());
+    user_id(&h, "extra");
+    assert!(revision(&h) > mixed.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mixed)),
+        409,
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    h.core
+        .group_member(&h.admin, "crew", "alice", true)
+        .unwrap();
+    h.core.group_member(&h.admin, "crew", "bob", true).unwrap();
+    let removal = plan_groups(&h, "crew", &["alice"]);
+    assert_eq!(removal.removal_impact.removed_memberships, 1);
+    assert!(removal.group_dependencies.is_some());
+    rename_user(&h, "stranger", "After removal");
+    assert!(revision(&h) > removal.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&removal)),
+        409,
+        "Connector removals require explicit review; confirm this exact plan ID after inspecting removal_impact and changes",
+    );
+    let removed = h
+        .core
+        .apply_state_confirmed(&h.admin, apply_to(&removal), Some(&removal.plan_id))
+        .unwrap();
+    assert_eq!(removed["applied"], true);
+    assert_eq!(group_members(&h, "crew"), [alice.clone()].into());
+    assert_eq!(
+        h.core.apply_state(&h.admin, apply_to(&removal)).unwrap(),
+        removed
+    );
+    assert_eq!(receipt_count(&h), 0);
+    assert_eq!(group_members(&h, "ordinary"), [alice.clone()].into());
+
+    let live = revision(&h);
+    assert!(live > plan.base_revision);
+    let app = riauth::api::router(h.core.clone());
+    let body = apply_json(&plan, None);
+    let (status, stale) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("group-stale"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["error_description"], "Configuration revision changed");
+    assert_eq!(receipt_count(&h), 0);
+    let saved = put_display_name(&h, &alice, "Renamed");
+    let (status, denied) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("group-deny"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        denied["error_description"],
+        "Desired-state group dependencies changed"
+    );
+    assert_eq!(receipt_count(&h), 0);
+    restore_user(&h, &alice, &saved);
+    assert_eq!(revision(&h), live);
+
+    let reconciles = audit_count(&h, "group.reconcile");
+    let applies = audit_count(&h, "state.apply");
+    let (status, applied) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("group-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(
+        group_members(&h, "ordinary"),
+        [alice.clone(), bob.clone()].into()
+    );
+    assert_eq!(audit_count(&h, "group.reconcile"), reconciles + 1);
+    assert_eq!(audit_count(&h, "state.apply"), applies + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("group-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audit_count(&h, "group.reconcile"), reconciles + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, other_match) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("group-once"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_match["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, other_body) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("group-once"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("group-fresh"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipt_count(&h), 1);
+    let current = revision(&h);
+    assert_eq!(current, live + 1);
+    let (status, again) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(current),
+        Some("group-current"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again, applied);
+    assert_eq!(audit_count(&h, "group.reconcile"), reconciles + 1);
+    assert_eq!(audit_count(&h, "state.apply"), applies + 1);
+    assert_eq!(receipt_count(&h), 1);
+
+    drop(app);
+    let expected = group_members(&h, "ordinary");
+    let h = h.reopen();
+    let app = riauth::api::router(h.core.clone());
+    let (status, opened) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body,
+        Some(live),
+        Some("group-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipt_count(&h), 1);
+    assert_eq!(audit_count(&h, "group.reconcile"), reconciles + 1);
+    assert_eq!(group_members(&h, "ordinary"), expected);
+    drop(app);
 }
 
 #[test]

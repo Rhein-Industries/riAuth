@@ -90,10 +90,15 @@ snapshot, the resource fingerprint, and the policy fingerprint inside the serial
 transaction. The proposal still stores, digest-binds, and audits the management
 revision captured at staging. That stored revision is the staging snapshot.
 Unrelated audited writes may advance `meta.revision` while the proposal stays
-usable. Direct management If-Match, desired-state apply, SCIM ETags, reviewed
-grants, reviewed client policy, client creation, client status, and client endpoint
-plans still require the global management revision. A caller that sends If-Match
-must send the current management revision. An unsent browser draft still stages
+usable. Direct management If-Match, reviewed grants, reviewed client policy,
+client creation, client status, and client endpoint plans still require the
+global management revision. A desired-state manifest that names any resource
+besides groups still compares its stored base revision with that counter. A
+groups-only manifest keeps the stored base revision and compares live group
+membership, member identity and ownership, and membership policy; see
+[removal safeguards](removal-safeguards.md). SCIM User and Group If-Match
+compares the resource ETag. A caller that sends If-Match on this membership
+flow must send the current management revision. An unsent browser draft still stages
 with the revision it loaded, so an unrelated write between load and stage still
 conflicts on If-Match. A display-name change for a member in the before or after
 set still changes the resource fingerprint. Live PAM grants are outside this

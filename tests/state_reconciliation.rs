@@ -1,16 +1,24 @@
-//! Focused desired-state controller and exact removal review checks.
+//! Focused desired-state controller, removal review, and group dependency checks.
 #[path = "common/mod.rs"]
 mod common;
 
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use common::Fixture;
+use http_body_util::BodyExt;
 use riauth::{
     agent::{Agent, NewAgent, Permission},
     config::Config,
     connector_guard::ReconciliationMode,
-    model::User,
-    state::{ApplyRequest, Manifest},
+    context::{self, RequestContext},
+    model::{Group, User, UserPatch},
+    state::{ApplyRequest, GroupSpec, Manifest, Plan},
 };
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
+use tower::ServiceExt;
 
 fn manifest(value: serde_json::Value) -> Manifest {
     serde_json::from_value(value).unwrap()
@@ -385,4 +393,506 @@ fn desired_state_controller_modes_replan_and_hold_sensitive_changes() {
     let sensitive = f.core.state_reconcile(&f.admin, rotate).unwrap();
     assert_eq!(sensitive["decision"], "awaiting_review");
     assert_eq!(sensitive["reason"], "change_review_required");
+}
+
+fn revision(f: &Fixture) -> u64 {
+    f.core.store.get("meta", "revision").unwrap().unwrap_or(0)
+}
+
+fn user_id(f: &Fixture, name: &str) -> String {
+    f.core.store.get("usernames", name).unwrap().unwrap()
+}
+
+fn members(f: &Fixture, name: &str) -> BTreeSet<String> {
+    f.core
+        .store
+        .get::<Group>("groups", name)
+        .unwrap()
+        .unwrap()
+        .members
+}
+
+fn audits(f: &Fixture, action: &str) -> usize {
+    f.core
+        .audit_events(&f.admin, 1000)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == action)
+        .count()
+}
+
+fn receipts(f: &Fixture) -> usize {
+    f.core.store.list::<Value>("receipts").unwrap().len()
+}
+
+fn groups(name: &str, members: &[&str]) -> Manifest {
+    manifest(json!({"api_version":"riauth/v1","groups":[{"name":name,"members":members}]}))
+}
+
+fn request(plan: &Plan) -> ApplyRequest {
+    ApplyRequest {
+        plan: plan.clone(),
+        secrets: Default::default(),
+        run_id: None,
+    }
+}
+
+fn refused(f: &Fixture, action: impl FnOnce() -> riauth::error::Result<Value>, message: &str) {
+    let before = f.snapshot().unwrap();
+    let err = action().unwrap_err();
+    assert_eq!(err.status.as_u16(), 409, "{err}");
+    assert_eq!(err.message, message);
+    f.assert_snapshot(&before);
+}
+
+fn rename(f: &Fixture, username: &str, display_name: &str) {
+    f.core
+        .update_user(
+            &f.admin,
+            username,
+            UserPatch {
+                display_name: Some(display_name.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+}
+
+fn put_display_name(f: &Fixture, id: &str, display_name: &str) -> User {
+    let saved: User = f.core.store.get("users", id).unwrap().unwrap();
+    let mut renamed = saved.clone();
+    renamed.display_name = display_name.into();
+    f.core
+        .store
+        .write(|tx| tx.put("users", id, &renamed))
+        .unwrap();
+    saved
+}
+
+fn restore_user(f: &Fixture, id: &str, saved: &User) {
+    f.core.store.write(|tx| tx.put("users", id, saved)).unwrap();
+}
+
+fn apply_json(plan: &Plan, run_id: Option<&str>) -> Value {
+    json!({"plan": plan, "secrets": {}, "run_id": run_id})
+}
+
+async fn call(
+    app: &axum::Router,
+    token: &str,
+    body: Value,
+    revision: Option<u64>,
+    key: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri("/api/state/apply")
+        .header("host", "localhost:9000")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json");
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    let response = app
+        .clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[test]
+fn group_desired_state_keeps_policy_authority_and_ownership() {
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.user("bob");
+    f.user("stranger");
+    let alice_id = user_id(&f, "alice");
+    let bob_id = user_id(&f, "bob");
+    f.core.create_group(&f.admin, "ordinary").unwrap();
+    f.core
+        .group_member(&f.admin, "ordinary", "alice", true)
+        .unwrap();
+    let plan = f
+        .core
+        .plan_state(&f.admin, groups("ordinary", &["alice", "bob"]))
+        .unwrap();
+    assert!(
+        plan.group_dependencies
+            .as_ref()
+            .is_some_and(|d| !d.is_empty())
+    );
+    assert_eq!(plan.base_revision, revision(&f));
+    rename(&f, "stranger", "Unrelated");
+    assert!(revision(&f) > plan.base_revision);
+    refused(
+        &f,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("group-stale".into()),
+                    fingerprint: "group-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || f.core.apply_state(&f.admin, request(&plan)),
+            )
+        },
+        "Configuration revision changed",
+    );
+    assert_eq!(receipts(&f), 0);
+
+    let saved = put_display_name(&f, &alice_id, "Renamed");
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state group dependencies changed",
+    );
+    restore_user(&f, &alice_id, &saved);
+    f.core
+        .store
+        .write(|tx| tx.put("directory_users", &alice_id, &json!({"directory":"lab"})))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state group dependencies changed",
+    );
+    f.core
+        .store
+        .write(|tx| tx.delete("directory_users", &alice_id))
+        .unwrap();
+    f.core
+        .group_member(&f.admin, "ordinary", "stranger", true)
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state group dependencies changed",
+    );
+    f.core
+        .group_member(&f.admin, "ordinary", "stranger", false)
+        .unwrap();
+    f.core
+        .config
+        .reviewed_membership_groups
+        .insert("ordinary".into());
+    f.core.config.validate().unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state group dependencies changed",
+    );
+    f.core.config.reviewed_membership_groups.remove("ordinary");
+    f.core.config.validate().unwrap();
+    let mut tampered = plan.clone();
+    tampered.group_dependencies = Some("tampered".into());
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&tampered)),
+        "Plan was modified; create a new plan",
+    );
+
+    let original: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mut raw = original.clone();
+    raw["plan"]["manifest"]["users"] = json!([{
+        "username": "alice",
+        "display_name": "Test User",
+        "email": "alice@example.test"
+    }]);
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &raw))
+        .unwrap();
+    let stored: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mutated: Plan = serde_json::from_value(stored["plan"].clone()).unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mutated)),
+        "Desired-state group dependencies do not match this manifest",
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &original))
+        .unwrap();
+
+    f.core.create_group(&f.admin, "crew").unwrap();
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "group-planner".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "group.members".into(),
+                    resource: "group/crew".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let crew = f
+        .core
+        .plan_state(&agent, groups("crew", &["alice"]))
+        .unwrap();
+    let record: Agent = f
+        .core
+        .store
+        .get("agents", "group-planner")
+        .unwrap()
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut cleared = record.clone();
+            cleared.permissions.clear();
+            tx.put("agents", "group-planner", &cleared)
+        })
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&agent, request(&crew)),
+        "Connector plan content or authority changed; create and review a new plan",
+    );
+
+    f.core.create_group(&f.admin, "shift").unwrap();
+    let shift = groups("shift", &["alice"]);
+    let first = f.core.state_reconcile(&f.admin, shift.clone()).unwrap();
+    assert_eq!(first["decision"], "awaiting_review");
+    assert_eq!(first["reason"], "manual_mode");
+    assert!(first["plan"]["group_dependencies"].as_str().is_some());
+    let shift_base = first["plan"]["base_revision"].as_u64().unwrap();
+    rename(&f, "stranger", "Moved");
+    assert!(revision(&f) > shift_base);
+    let second = f.core.state_reconcile(&f.admin, shift.clone()).unwrap();
+    assert_eq!(second["plan"]["plan_id"], first["plan"]["plan_id"]);
+    assert_eq!(
+        second["plan"]["base_revision"],
+        first["plan"]["base_revision"]
+    );
+    let saved = put_display_name(&f, &alice_id, "Shifted");
+    let third = f.core.state_reconcile(&f.admin, shift).unwrap();
+    assert_ne!(third["plan"]["plan_id"], first["plan"]["plan_id"]);
+    restore_user(&f, &alice_id, &saved);
+    assert!(members(&f, "shift").is_empty());
+    let shift_plan: Plan = serde_json::from_value(first["plan"].clone()).unwrap();
+    let shifted = f.core.apply_state(&f.admin, request(&shift_plan)).unwrap();
+    assert_eq!(shifted["applied"], true);
+    assert_eq!(members(&f, "shift"), [alice_id.clone()].into());
+    assert_eq!(
+        f.core.apply_state(&f.admin, request(&shift_plan)).unwrap(),
+        shifted
+    );
+
+    let mut mixed: Manifest =
+        serde_json::from_value(f.core.export_state(&f.admin).unwrap()["manifest"].clone()).unwrap();
+    mixed.users.retain(|user| user.username == "alice");
+    mixed.groups = vec![GroupSpec {
+        name: "ordinary".into(),
+        members: ["alice".into()].into(),
+    }];
+    mixed.clients.clear();
+    mixed.sources.clear();
+    mixed.source_links.clear();
+    mixed.workflows.clear();
+    let mixed = f.core.plan_state(&f.admin, mixed).unwrap();
+    assert!(mixed.group_dependencies.is_none());
+    f.user("extra");
+    assert!(revision(&f) > mixed.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    f.core
+        .group_member(&f.admin, "crew", "alice", true)
+        .unwrap();
+    f.core.group_member(&f.admin, "crew", "bob", true).unwrap();
+    let removal = f
+        .core
+        .plan_state(&f.admin, groups("crew", &["alice"]))
+        .unwrap();
+    assert_eq!(removal.removal_impact.removed_memberships, 1);
+    assert!(removal.group_dependencies.is_some());
+    rename(&f, "stranger", "After removal");
+    assert!(revision(&f) > removal.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&removal)),
+        "Connector removals require explicit review; confirm this exact plan ID after inspecting removal_impact and changes",
+    );
+    let removed = f
+        .core
+        .apply_state_confirmed(&f.admin, request(&removal), Some(&removal.plan_id))
+        .unwrap();
+    assert_eq!(removed["applied"], true);
+    assert_eq!(members(&f, "crew"), [alice_id.clone()].into());
+    assert_eq!(
+        f.core.apply_state(&f.admin, request(&removal)).unwrap(),
+        removed
+    );
+
+    assert_eq!(members(&f, "ordinary"), [alice_id.clone()].into());
+    let reconciles = audits(&f, "group.reconcile");
+    let applies = audits(&f, "state.apply");
+    let applied = f.core.apply_state(&f.admin, request(&plan)).unwrap();
+    assert_eq!(applied["applied"], true);
+    assert!(applied["revision"].as_u64().unwrap() > plan.base_revision);
+    assert_eq!(members(&f, "ordinary"), [alice_id, bob_id].into());
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    assert_eq!(audits(&f, "state.apply"), applies + 1);
+    assert_eq!(
+        f.core.apply_state(&f.admin, request(&plan)).unwrap(),
+        applied
+    );
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    assert_eq!(
+        f.core.plan_status(&f.admin, &plan.plan_id).unwrap()["plan"]["base_revision"],
+        plan.base_revision
+    );
+    assert_eq!(receipts(&f), 0);
+}
+
+#[tokio::test]
+async fn group_desired_state_http_replays_the_same_request() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.user("bob");
+    f.user("stranger");
+    let alice_id = user_id(&f, "alice");
+    let bob_id = user_id(&f, "bob");
+    f.core.create_group(&f.admin, "ordinary").unwrap();
+    f.core
+        .group_member(&f.admin, "ordinary", "alice", true)
+        .unwrap();
+    let plan = f
+        .core
+        .plan_state(&f.admin, groups("ordinary", &["alice", "bob"]))
+        .unwrap();
+    rename(&f, "stranger", "Unrelated");
+    let live = revision(&f);
+    assert!(live > plan.base_revision);
+    let app = riauth::api::router(f.core.clone());
+    let body = apply_json(&plan, None);
+    let (status, stale) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("group-stale"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["error_description"], "Configuration revision changed");
+    assert_eq!(receipts(&f), 0);
+
+    let saved = put_display_name(&f, &alice_id, "Renamed");
+    let (status, denied) = call(&app, &f.admin, body.clone(), Some(live), Some("group-deny")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        denied["error_description"],
+        "Desired-state group dependencies changed"
+    );
+    assert_eq!(receipts(&f), 0);
+    restore_user(&f, &alice_id, &saved);
+    assert_eq!(revision(&f), live);
+
+    let reconciles = audits(&f, "group.reconcile");
+    let applies = audits(&f, "state.apply");
+    let (status, applied) =
+        call(&app, &f.admin, body.clone(), Some(live), Some("group-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(members(&f, "ordinary"), [alice_id, bob_id].into());
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    assert_eq!(audits(&f, "state.apply"), applies + 1);
+    assert_eq!(receipts(&f), 1);
+    let (status, replayed) =
+        call(&app, &f.admin, body.clone(), Some(live), Some("group-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    assert_eq!(receipts(&f), 1);
+
+    let (status, other_match) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("group-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_match["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, other_body) = call(
+        &app,
+        &f.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("group-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(live),
+        Some("group-fresh"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipts(&f), 1);
+    let current = revision(&f);
+    assert_eq!(current, live + 1);
+    let (status, again) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(current),
+        Some("group-current"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again, applied);
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    assert_eq!(audits(&f, "state.apply"), applies + 1);
+    assert_eq!(receipts(&f), 1);
+
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let (status, opened) = call(&app, &f.admin, body, Some(live), Some("group-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipts(&f), 1);
+    assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    drop(app);
 }
