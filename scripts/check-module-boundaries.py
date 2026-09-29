@@ -96,6 +96,25 @@ def masked_rust_source(source: str) -> str:
     return "".join(result)
 
 
+def rust_function_body(source: str, name: str) -> str | None:
+    """Find a named function body in masked Rust source for a narrow boundary check."""
+    match = re.search(rf"\bfn\s+{re.escape(name)}\s*\(", source)
+    if match is None:
+        return None
+    start = source.find("{", match.end())
+    if start == -1:
+        return None
+    depth = 0
+    for pos in range(start, len(source)):
+        if source[pos] == "{":
+            depth += 1
+        elif source[pos] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start + 1:pos]
+    return None
+
+
 def root_module(path: Path) -> str:
     return path.relative_to(SRC).parts[0].removesuffix(".rs")
 
@@ -341,6 +360,10 @@ def main() -> None:
             or '"cloud_directory_runs"' in path.read_text()
         ):
             errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
+        if path == SRC / "cloud_directory.rs":
+            plan_get = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_get")
+            if plan_get is None or re.search(r"\.\s*store\b|\bTx\b|\btx\b", plan_get):
+                errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

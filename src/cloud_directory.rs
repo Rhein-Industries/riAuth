@@ -1957,24 +1957,7 @@ impl Core {
     }
     pub fn cloud_plan_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
-        self.store.read(|tx| {
-            let plan = tx
-                .get::<Plan>("cloud_directory_plans", id)?
-                .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-            if plan.kind != provider.as_str() {
-                return Err(Error::missing("Cloud directory plan not found"));
-            }
-            let actor = self.management(
-                tx,
-                token,
-                "directory.read",
-                &format!("{}/{}", plan.kind, plan.directory),
-            )?;
-            if actor.id != plan.actor {
-                return Err(Error::forbidden());
-            }
-            Ok(json!(plan))
-        })
+        self.cloud_plan_get_authorized(token, provider.as_str(), id)
     }
     /// Controller trigger for one cloud directory. An in-progress apply crawl
     /// resumes its exact plan without starting a new planning crawl.

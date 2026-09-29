@@ -8,6 +8,8 @@ mod cloud_directory_budget;
 #[cfg(feature = "platform")]
 pub(crate) use cloud_directory_budget::cleanup as cloud_budget_cleanup;
 #[cfg(feature = "platform")]
+mod cloud_directory_plan;
+#[cfg(feature = "platform")]
 mod device_trust;
 mod directory;
 pub use directory::cleanup as directory_cleanup;
