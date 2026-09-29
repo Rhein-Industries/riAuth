@@ -29,7 +29,7 @@ The aggregate omits stored error text, `last_outcome`, job `outcome`, authority 
 
 ## What remains open
 
-- Dashboards.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
 - Connector lag. `next_run` advances when a job is enqueued, which is not sync completion, and this read does not add a completion time.
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems.

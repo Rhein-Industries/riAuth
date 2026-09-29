@@ -26,7 +26,7 @@ Storage telemetry records each page as a bounded scan because the limit is 128, 
 
 ## What remains open
 
-- Dashboards.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
 - Connector lag. A reconciliation schedule's `next_run` is the next enqueue time. Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems. Doctor still reports the active signing key id after `jwk()` succeeds. It does not report disk pressure or a key-problem series.

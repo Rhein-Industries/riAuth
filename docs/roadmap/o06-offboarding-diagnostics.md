@@ -30,7 +30,7 @@ The read does not write an audit event. It is not on the maintenance hot path an
 
 ## What remains open
 
-- Dashboards.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
 - Connector lag. A schedule's `next_run` advances when a job is enqueued, which is not a measure of sync completion.
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems.
