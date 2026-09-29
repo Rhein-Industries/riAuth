@@ -1,4 +1,5 @@
 use crate::{
+    agent::Principal,
     crypto::now,
     error::Result,
     store::{Store, Tx},
@@ -47,6 +48,18 @@ pub(crate) struct Receipt {
     pub(crate) permissions: Value,
     pub(crate) result: Value,
     pub(crate) expires_at: u64,
+}
+
+/// Keep the generic management receipt scope stable for direct writers that
+/// return a secret-free result and for one-time issuance markers alike.
+pub(crate) fn management_permissions(tx: &Tx<'_>, actor: &Principal) -> Result<Value> {
+    if actor.delegated {
+        Ok(
+            json!({"human_grants": actor.grants, "generation": tx.get::<u64>("human_grant_generations", &actor.id)?.unwrap_or(0)}),
+        )
+    } else {
+        serde_json::to_value(&actor.permissions).map_err(crate::error::Error::internal)
+    }
 }
 
 const REDACTION_PAGE: usize = 128;
@@ -125,12 +138,69 @@ fn redact_legacy_agent_issuance(receipt: &mut Receipt) -> bool {
     true
 }
 
+/// Older direct client create and rotate calls used Core::mutation and stored
+/// the generated secret as the entire result. Match only those two exact
+/// response envelopes; registration and other secret-return receipts retain
+/// their own replay contract.
+fn legacy_client_issuance_id(receipt: &Receipt) -> Option<&str> {
+    let result = receipt.result.as_object()?;
+    let secret = result.get("client_secret")?.as_str()?;
+    if !secret.starts_with("ri_client_") {
+        return None;
+    }
+    if exact_keys(result, &["client_id", "client_secret"]) {
+        return result
+            .get("client_id")?
+            .as_str()
+            .filter(|id| !id.is_empty());
+    }
+    if !exact_keys(result, &["client", "client_secret"]) {
+        return None;
+    }
+    let client = result.get("client")?.as_object()?;
+    if !exact_keys(
+        client,
+        &[
+            "client_id",
+            "name",
+            "confidential",
+            "redirect_uris",
+            "scopes",
+            "allowed_groups",
+            "require_mfa",
+            "enabled",
+            "service",
+            "settings",
+        ],
+    ) || client.get("confidential") != Some(&Value::Bool(true))
+    {
+        return None;
+    }
+    client
+        .get("client_id")?
+        .as_str()
+        .filter(|id| !id.is_empty())
+}
+
+fn redact_legacy_client_issuance(receipt: &mut Receipt) -> bool {
+    let Some(id) = legacy_client_issuance_id(receipt).map(str::to_owned) else {
+        return false;
+    };
+    receipt.result = json!({"client_id": id, "credential_issued": true});
+    true
+}
+
+fn redact_legacy_issuance(receipt: &mut Receipt) -> bool {
+    // Inspect both independently; the response envelopes are disjoint.
+    redact_legacy_agent_issuance(receipt) || redact_legacy_client_issuance(receipt)
+}
+
 /// Inspect every receipt before this Core is returned to a server. An older
 /// writer or restore can add a legacy receipt after a prior scrub, so the
 /// historical completion marker cannot authorize skipping this scan. Each
 /// page commits independently; an interrupted open starts again and safely
 /// skips already-redacted results while retaining every retry key and expiry.
-fn scrub_legacy_agent_receipts_with(
+fn scrub_legacy_issuance_receipts_with(
     store: &Store,
     mut after_page_commit: impl FnMut() -> Result<()>,
 ) -> Result<()> {
@@ -141,7 +211,7 @@ fn scrub_legacy_agent_receipts_with(
             let done = page.len() < REDACTION_PAGE;
             let last = page.last().map(|(key, _)| key.clone());
             for (key, mut receipt) in page {
-                if redact_legacy_agent_issuance(&mut receipt) {
+                if redact_legacy_issuance(&mut receipt) {
                     tx.put("receipts", &key, &receipt)?;
                 }
             }
@@ -155,14 +225,14 @@ fn scrub_legacy_agent_receipts_with(
     }
 }
 
-pub(crate) fn scrub_legacy_agent_receipts_on_open(store: &Store) -> Result<()> {
-    scrub_legacy_agent_receipts_with(store, || Ok(()))
+pub(crate) fn scrub_legacy_issuance_receipts_on_open(store: &Store) -> Result<()> {
+    scrub_legacy_issuance_receipts_with(store, || Ok(()))
 }
 
 /// Test the same scanner after its first page has durably committed.
 #[cfg(feature = "test-support")]
 pub fn interrupt_legacy_agent_receipt_scrub_after_page(store: &Store) -> Result<()> {
-    scrub_legacy_agent_receipts_with(store, || {
+    scrub_legacy_issuance_receipts_with(store, || {
         Err(crate::error::Error::bad(
             "Injected receipt scrub interruption",
         ))
@@ -215,7 +285,7 @@ pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
     for (id, mut receipt) in tx.maintenance_page::<Receipt>("receipts")? {
         if receipt.expires_at.saturating_add(6 * 86_400) <= now() {
             tx.delete("receipts", &id)?;
-        } else if redact_legacy_agent_issuance(&mut receipt) {
+        } else if redact_legacy_issuance(&mut receipt) {
             // A receipt introduced by an older writer after startup is also
             // scrubbed in a successful maintenance transaction.
             tx.put("receipts", &id, &receipt)?;
