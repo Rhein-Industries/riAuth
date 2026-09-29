@@ -1134,7 +1134,10 @@ def main() -> None:
                 or clear_return is None
                 or not re.search(r'tx\.delete\s*\(\s*"source_returns"\s*,\s*token\s*\)', clear_return)
                 or not re.search(r"\bpub\(crate\)\s+use\s+source_finish::clear_browser_return\s*;", (SRC / "assembly.rs").read_text())
-                or not re.search(r"\bsuper::clear_browser_return\s*\(", source_stage_assembly)
+                or not re.search(
+                    r'#\[cfg\(feature\s*=\s*"platform"\)\]\s*use\s+crate::assembly::clear_browser_return\s*;',
+                    path.read_text(),
+                )
             ):
                 errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
