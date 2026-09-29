@@ -429,6 +429,10 @@
   }
 
   // ---- Confirmation and secret dialogs -----------------------------------------------------
+  function clearConfirmInvalid() {
+    $("confirm-input").removeAttribute("aria-invalid");
+    $("confirm-input").removeAttribute("aria-describedby");
+  }
   function confirmAction({ title, text, ok, danger = false, input = null, run, overrides }) {
     const dialog = $("confirm-dialog");
     confirmOpener = document.activeElement;
@@ -436,11 +440,20 @@
     $("confirm-ok").textContent = ok; $("confirm-ok").classList.toggle("danger", danger);
     $("confirm-field").hidden = !input; $("confirm-input").value = "";
     if (input) { $("confirm-label").textContent = input.label; $("confirm-input").type = input.type || "text"; }
+    $("confirm-error").textContent = "";
     $("confirm-error").hidden = true;
+    clearConfirmInvalid();
     let key = null;
     confirmRun = async () => {
       const entered = $("confirm-input").value;
-      if (input && !entered) { $("confirm-error").textContent = `Enter ${input.label.toLowerCase()}.`; $("confirm-error").hidden = false; $("confirm-input").focus(); return; }
+      if (input && !entered) {
+        $("confirm-error").textContent = `Enter ${input.label.toLowerCase()}.`;
+        $("confirm-error").hidden = false;
+        $("confirm-input").setAttribute("aria-invalid", "true");
+        $("confirm-input").setAttribute("aria-describedby", "confirm-error");
+        $("confirm-error").focus();
+        return;
+      }
       key = key || requestKey();
       $("confirm-ok").disabled = true; $("confirm-cancel").disabled = true; $("confirm-form").setAttribute("aria-busy", "true");
       try {
@@ -453,7 +466,7 @@
         $("confirm-ok").disabled = false; $("confirm-cancel").disabled = false; $("confirm-form").removeAttribute("aria-busy");
       }
     };
-    $("confirm-input").oninput = () => { key = null; };
+    $("confirm-input").oninput = () => { key = null; clearConfirmInvalid(); };
     dialog.showModal();
     (input ? $("confirm-input") : $("confirm-cancel")).focus();
   }
@@ -461,7 +474,7 @@
   $("confirm-cancel").addEventListener("click", () => $("confirm-dialog").close());
   $("confirm-dialog").addEventListener("cancel", (event) => { if ($("confirm-ok").disabled) event.preventDefault(); });
   $("confirm-dialog").addEventListener("close", () => {
-    $("confirm-input").value = ""; confirmRun = null;
+    $("confirm-input").value = ""; clearConfirmInvalid(); confirmRun = null;
     const target = confirmOpener && confirmOpener.isConnected ? confirmOpener : document.querySelector("#view h1");
     if (target) target.focus();
   });

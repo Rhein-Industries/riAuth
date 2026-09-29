@@ -192,6 +192,41 @@ test('signed-in account controls stay inside a 320 pixel viewport', async ({ pag
   await fits(page);
 });
 
+test('empty administrator password confirmation focuses the error', async ({ page, browserName }) => {
+  test.setTimeout(90000);
+  const admin = fixture.admin;
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(`${fixture.issuer}/apps`);
+  await page.locator('#login-username').fill(admin.username);
+  await page.locator('#login-password').fill(admin.password);
+  await page.locator('#password-login').click();
+  await expect(page.locator('#catalogue')).toBeVisible();
+  await page.goto(`${fixture.issuer}/admin#/people/bob`);
+  await page.getByRole('button', { name: 'Set a new password' }).click();
+  const dialog = page.locator('#confirm-dialog');
+  const field = page.locator('#confirm-input');
+  const error = page.locator('#confirm-error');
+  await expect(field).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter new password.');
+  await expect(field).toHaveAttribute('aria-invalid', 'true');
+  await expect(field).toHaveAttribute('aria-describedby', 'confirm-error');
+  expect(await onScreen(error)).toBe(true);
+  expect(await error.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none');
+  const dialogFits = await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= window.innerWidth + 1);
+  expect(dialogFits).toBe(true);
+  await axe(page);
+  const backKey = browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Shift+Tab' : 'Shift+Tab';
+  await page.keyboard.press(backKey);
+  await expect(field).toBeFocused();
+  await page.keyboard.type('x');
+  await expect(field).not.toHaveAttribute('aria-invalid');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await fits(page);
+});
+
 test('keyboard cancellation of a Chromium virtual authenticator is announced', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'CDP virtual authenticators exist only in Chromium');
   test.setTimeout(90000);
