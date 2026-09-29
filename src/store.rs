@@ -525,6 +525,14 @@ impl Store {
 fn record_key(bucket: &str, key: &str) -> String {
     format!("{bucket}/{key}")
 }
+// Bind the LDAP projection to the fields of the persisted Group, irrespective
+// of JSON field order or unknown fields in a restored source record.
+fn group_source_digest<T: Serialize>(value: &T) -> Result<String> {
+    let value = serde_json::to_value(value).map_err(Error::internal)?;
+    let group: crate::model::Group = serde_json::from_value(value).map_err(Error::internal)?;
+    let bytes = serde_json::to_vec(&group).map_err(Error::internal)?;
+    Ok(URL_SAFE_NO_PAD.encode(Sha256::digest(&bytes)))
+}
 fn decode<T: DeserializeOwned>(key: Option<&[u8; 32]>, name: &str, value: &[u8]) -> Result<T> {
     match key {
         Some(key) => serde_json::from_slice(&crypto::unseal(key, name.as_bytes(), value)?)
@@ -862,13 +870,23 @@ impl Tx<'_> {
         key: &str,
         value: &T,
     ) -> Result<()> {
+        let group_digest = (bucket == "groups")
+            .then(|| group_source_digest(value))
+            .transpose()?;
         let name = record_key(bucket, key);
         let plain = Zeroizing::new(serde_json::to_vec(value).map_err(Error::internal)?);
         let bytes = match self.key {
             Some(key) => crypto::seal(key, name.as_bytes(), &plain)?,
             None => plain.to_vec(),
         };
-        self.raw_put(&name, Some(bytes))
+        if group_digest.is_some() {
+            self.raw_put(&record_key(maintenance::GROUP_SOURCE_DIGESTS, key), None)?;
+        }
+        self.raw_put(&name, Some(bytes))?;
+        if let Some(digest) = group_digest {
+            self.import_record(maintenance::GROUP_SOURCE_DIGESTS, key, &digest)?;
+        }
+        Ok(())
     }
     pub fn delete(&self, bucket: &str, key: &str) -> Result<()> {
         let transitions = self.transitions.ok_or_else(|| {

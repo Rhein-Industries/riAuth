@@ -22,6 +22,8 @@ Create a policy client with `settings.ldap` through `client create --file` or a 
 
 The local groups must exist. `allowed_groups`, the client policy, configured MFA and default assurance values control user binds. A client requiring device trust rejects password binds: LDAP creates a new session and does not implement the session-bound device challenge protocol, so trust from another browser or CLI session cannot be inherited. `search_groups` independently selects directory visibility for a scoped service credential. Email and group attributes require the corresponding scopes. A user bind can search only its own selected entry and its memberships. A service bind can search enabled users selected by durable membership in the configured groups. It cannot retrieve password hashes, factor secrets, recovery codes or arbitrary user attributes.
 
+LDAP checks two small Group metadata records in the search snapshot: the indexed name and digest of its `name` and `members`, and a source-side digest refreshed by every Group import. A raw import that changes those fields without rebuilding its binding fails closed. Ordinary paged binding checks no longer load the encoded `Group.members` value. This assumes Group writes go through riAuth's transactional store; changes made directly to database records outside that store bypass the digest update. Index rebuilds still read one full Group at a time, and service searches still load configured visibility Groups for member selection. RFC 2696 paging limits response pages, not those remaining source-record costs.
+
 Configure a listener in `riauth.toml`:
 
 ```toml

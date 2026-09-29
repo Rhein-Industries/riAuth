@@ -379,6 +379,39 @@ pub fn direct_restore_postgres_archive_into_redb() {
     assert_eq!(source.snapshot().unwrap(), before);
 }
 
+/// The name/content binding and source digest commit together on both backends.
+pub fn group_binding_metadata(backend: Backend) {
+    let f = backend.fixture();
+    let name = "large-binding-group";
+    let mut group = Group {
+        name: name.into(),
+        members: BTreeSet::from([format!("stale-{}", "x".repeat(200_000))]),
+    };
+    f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
+    let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
+    let source: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
+    assert_eq!(binding["name"], name);
+    assert_eq!(binding["source_digest"], source);
+    assert_eq!(source.len(), 43);
+
+    group.members.insert("visible-user".into());
+    f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
+    let changed: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
+    let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
+    assert_ne!(source, changed);
+    assert_eq!(binding["source_digest"], changed);
+
+    f.core.store.write(|tx| tx.rebuild_indexes()).unwrap();
+    let rebuilt: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
+    let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
+    assert_eq!(rebuilt, changed);
+    assert_eq!(binding["source_digest"], changed);
+
+    f.core.store.write(|tx| tx.delete("groups", name)).unwrap();
+    assert!(f.core.store.get::<Value>("index_group_bindings", name).unwrap().is_none());
+    assert!(f.core.store.get::<String>("index_group_source_digests", name).unwrap().is_none());
+}
+
 /// S02: a large group directory has the same live membership and snapshot
 /// behavior on both storage backends, including the 128-row index page edge.
 pub fn indexed_user_group_membership(backend: Backend) {

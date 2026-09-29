@@ -10,11 +10,9 @@ use crate::{
 use ldap3_proto::proto::{
     LdapFilter, LdapPartialAttribute, LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope,
 };
-use serde::de::{SeqAccess, Visitor};
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
-    fmt,
     net::IpAddr,
 };
 
@@ -23,42 +21,10 @@ const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
 const GROUP_INDEX_PAGE: usize = 16;
 const MAX_RESULT_BYTES: usize = 4 * 1024 * 1024;
 
-// Validate the durable Group shape and key binding without allocating its
-// potentially large members set. Storage still reads one encoded record.
-#[derive(serde::Deserialize)]
-struct GroupHeader {
-    name: String,
-    #[serde(rename = "members", deserialize_with = "skip_group_members")]
-    _members: (),
-}
-
-fn skip_group_members<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> std::result::Result<(), D::Error> {
-    struct MemberIds;
-    impl<'de> Visitor<'de> for MemberIds {
-        type Value = ();
-
-        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("a sequence of Group member IDs")
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut members: A) -> std::result::Result<(), A::Error> {
-            while members.next_element::<String>()?.is_some() {}
-            Ok(())
-        }
-    }
-    deserializer.deserialize_seq(MemberIds)
-}
-
-fn require_group_binding(tx: &Tx<'_>, name: &str) -> Result<()> {
-    let group = tx
-        .get::<GroupHeader>("groups", name)?
-        .ok_or_else(|| Error::internal("LDAP Group index has a missing Group"))?;
-    if group.name != name {
-        return Err(Error::internal("LDAP Group record binding mismatch"));
-    }
-    Ok(())
+/// Both Group metadata rows are checked in the caller's snapshot. Absence is
+/// returned separately so a configured missing Group keeps its public error.
+fn group_binding(tx: &Tx<'_>, name: &str) -> Result<bool> {
+    tx.group_binding(name)
 }
 
 /// The membership index is hash ordered, while memberOf is Group-name
@@ -270,7 +236,9 @@ fn for_each_visible_group(
                 "LDAP Group membership index has a mismatched key",
             ));
         }
-        require_group_binding(tx, &name)?;
+        if !group_binding(tx, &name)? {
+            return Err(Error::internal("LDAP Group index has a missing Group"));
+        }
         member_ids.sort();
         member_ids.dedup();
         visit(name, member_ids)?;
@@ -316,7 +284,9 @@ fn ensure_unique_group_dn(
                 indexed = true;
                 continue;
             }
-            require_group_binding(tx, &other_name)?;
+            if !group_binding(tx, &other_name)? {
+                return Err(Error::internal("LDAP Group index has a missing Group"));
+            }
             for id in visible.keys() {
                 if tx.user_has_group_index(id, &other_name)? {
                     return Err(Error::conflict("LDAP group DNs collide"));
@@ -361,7 +331,7 @@ impl Core {
         let settings = client.settings.ldap.clone().ok_or_else(Error::forbidden)?;
         settings.validate(&client)?;
         for group in &settings.search_groups {
-            if tx.get::<Group>("groups", group)?.is_none() {
+            if !group_binding(tx, group)? {
                 return Err(Error::bad("LDAP search group does not exist"));
             }
         }
@@ -492,13 +462,26 @@ impl Core {
                 return Ok((rows, revision));
             }
             let self_user = authorize(self, tx, cid, auth)?;
-            // Visit only members of the configured visibility groups. Retain
-            // at most the provider's selected-user limit, ordered by User key;
-            // a group may contain many missing or disabled member IDs. After
-            // one page's worth of User point reads, scan Users in pages for
-            // this group rather than making more member lookups.
+            // User-authenticated searches probe only their own membership.
+            // Agent searches visit members of the configured visibility groups
+            // and retain at most the provider's selected-user limit, ordered
+            // by User key. After one page's worth of User point reads, scan
+            // Users in pages rather than reading more stale/disabled IDs.
             let mut users = BTreeMap::new();
             for name in &settings.search_groups {
+                if let Some(me) = self_user.as_ref() {
+                    // A user-authenticated search can select only this User.
+                    // ldap_profile checked every configured Group's source
+                    // and binding in this snapshot. Probe this User's
+                    // membership without another full Group read.
+                    if !users.contains_key(&me.id)
+                        && tx.user_has_group_index(&me.id, name)?
+                        && let Some(user) = tx.get::<User>("users", &me.id)?
+                    {
+                        retain_selected(&mut users, &me.id, user)?;
+                    }
+                    continue;
+                }
                 let group = tx
                     .get::<Group>("groups", name)?
                     .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
@@ -1057,11 +1040,38 @@ mod tests {
         query.base = "dc=riauth,dc=test".into();
         query.scope = LdapSearchScope::Subtree;
         query.filter = LdapFilter::Present("uid".into());
+        let before_self_bytes = scans.bytes(ReadContext::Read);
         let (self_rows, _) = core
             .ldap_search_entries("ldap", Some(&user_auth), &query, false)
             .unwrap();
+        let baseline_self_bytes = scans.bytes(ReadContext::Read) - before_self_bytes;
         assert_eq!(self_rows.len(), 1);
         assert_eq!(self_rows[0].dn, "uid=selected,ou=users,dc=riauth,dc=test");
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "directory")?.unwrap();
+                group
+                    .members
+                    .insert(format!("stale-{}", "x".repeat(200_000)));
+                tx.put("groups", "directory", &group)
+            })
+            .unwrap();
+        let before_large_bytes = scans.bytes(ReadContext::Read);
+        let (large_rows, _) = core
+            .ldap_search_entries("ldap", Some(&user_auth), &query, false)
+            .unwrap();
+        let large_bytes = scans.bytes(ReadContext::Read) - before_large_bytes;
+        assert_eq!(large_rows.len(), self_rows.len());
+        assert_eq!(large_rows[0].dn, self_rows[0].dn);
+        assert_eq!(large_rows[0].attributes.len(), self_rows[0].attributes.len());
+        for (before, after) in self_rows[0].attributes.iter().zip(&large_rows[0].attributes) {
+            assert_eq!(before.atype, after.atype);
+            assert_eq!(before.vals, after.vals);
+        }
+        assert!(
+            large_bytes < baseline_self_bytes + 16_384,
+            "self search loaded Group.members: {baseline_self_bytes} -> {large_bytes}"
+        );
 
         query.base = "cn=a000,ou=groups,dc=riauth,dc=test".into();
         query.scope = LdapSearchScope::Base;
@@ -1218,9 +1228,11 @@ mod tests {
         };
         let scans = &core.store.telemetry().reads;
         let before_unbounded = scans.scans(ReadContext::Read, false).count();
+        let before_bytes = scans.bytes(ReadContext::Read);
         let (rows, _) = core
             .ldap_search_entries("ldap", Some(&agent), &query, false)
             .unwrap();
+        let baseline_bytes = scans.bytes(ReadContext::Read) - before_bytes;
         assert_eq!(
             scans.scans(ReadContext::Read, false).count(),
             before_unbounded
@@ -1242,6 +1254,122 @@ mod tests {
                 "stale IDs must not enter the projection"
             );
         }
+
+        // The stale member changes no visible output or source-binding read
+        // size. Its 200 KiB source record is not fetched for the projection.
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "z-related")?.unwrap();
+                group
+                    .members
+                    .insert(format!("stale-{}", "x".repeat(200_000)));
+                tx.put("groups", "z-related", &group)
+            })
+            .unwrap();
+        let before_expanded = scans.bytes(ReadContext::Read);
+        let (expanded, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let expanded_bytes = scans.bytes(ReadContext::Read) - before_expanded;
+        assert_eq!(expanded.len(), rows.len());
+        for (before, after) in rows.iter().zip(&expanded) {
+            assert_eq!(before.dn, after.dn);
+            assert_eq!(before.attributes.len(), after.attributes.len());
+            for (before, after) in before.attributes.iter().zip(&after.attributes) {
+                assert_eq!(before.atype, after.atype);
+                assert_eq!(before.vals, after.vals);
+            }
+        }
+        assert!(
+            expanded_bytes < baseline_bytes + 16_384,
+            "Group projection loaded members: {baseline_bytes} -> {expanded_bytes}"
+        );
+        let digest: String = core
+            .store
+            .get("index_group_source_digests", "z-related")
+            .unwrap()
+            .unwrap();
+        core.store
+            .write(|tx| {
+                tx.put(
+                    "index_group_bindings",
+                    "z-related",
+                    &crate::store::maintenance::GroupBinding {
+                        name: "wrong-name".into(),
+                        source_digest: digest.clone(),
+                    },
+                )
+            })
+            .unwrap();
+        let stale_binding = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap_err();
+        assert_eq!(
+            stale_binding.status,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        core.store
+            .write(|tx| {
+                tx.put(
+                    "index_group_bindings",
+                    "z-related",
+                    &crate::store::maintenance::GroupBinding {
+                        name: "z-related".into(),
+                        source_digest: digest.clone(),
+                    },
+                )
+            })
+            .unwrap();
+        // Bypass ordinary Group index maintenance to model a raw source drift.
+        // Matching metadata alone must not authorize the forged source name.
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "z-related")?.unwrap();
+                group.name = "wrong-source-name".into();
+                tx.import_record("groups", "z-related", &group)
+            })
+            .unwrap();
+        assert_ne!(
+            core.store
+                .get::<String>("index_group_source_digests", "z-related")
+                .unwrap(),
+            Some(digest.clone()),
+            "raw source import must change the source-side digest"
+        );
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "z-related")?.unwrap();
+                group.name = "z-related".into();
+                tx.import_record("groups", "z-related", &group)
+            })
+            .unwrap();
+        core.store
+            .write(|tx| {
+                tx.put(
+                    "index_group_bindings",
+                    "orphan",
+                    &crate::store::maintenance::GroupBinding {
+                        name: "orphan".into(),
+                        source_digest: digest.clone(),
+                    },
+                )
+            })
+            .unwrap();
+        assert!(
+            core.store
+                .read(|tx| group_binding(tx, "orphan"))
+                .is_err(),
+            "a projected name alone must not establish a source Group"
+        );
+        core.store
+            .write(|tx| tx.delete("index_group_bindings", "orphan"))
+            .unwrap();
 
         // The later visible member makes the case variant collide even when
         // every Group entry is outside the query's scope and filter.
@@ -1797,8 +1925,15 @@ mod tests {
                 tx.delete(&fold, "TEAM")?;
                 tx.delete(&fold, "team")?;
                 tx.delete(&directory_fold, "directory")?;
+                for name in ["TEAM", "team", "directory"] {
+                    tx.delete("index_group_bindings", name)?;
+                    tx.delete("index_group_source_digests", name)?;
+                }
                 assert!(tx.group_dn_fold_page("team", None)?.is_empty());
                 assert!(tx.group_dn_fold_page("directory", None)?.is_empty());
+                assert!(tx
+                    .get::<serde_json::Value>("index_group_bindings", "team")?
+                    .is_none());
                 Ok(())
             })
             .unwrap();
@@ -1806,17 +1941,26 @@ mod tests {
 
         // Only Core::open may rebuild these rows; a direct rebuild would miss
         // the startup migration and activation-preflight contract.
-        let core = Core::open(config).unwrap();
+        let core = Core::open(config.clone()).unwrap();
         assert_eq!(
             core.store.get::<u32>("meta", "index_version").unwrap(),
-            Some(5)
+            Some(crate::store::maintenance::INDEX_VERSION)
         );
         let activation: serde_json::Value = core
             .store
             .get("meta", "version_activation")
             .unwrap()
             .unwrap();
-        assert_eq!(activation["index_version"], 5);
+        assert_eq!(
+            activation["index_version"],
+            crate::store::maintenance::INDEX_VERSION
+        );
+        for name in ["TEAM", "team", "directory"] {
+            let binding: serde_json::Value = core.store.get("index_group_bindings", name).unwrap().unwrap();
+            let digest: String = core.store.get("index_group_source_digests", name).unwrap().unwrap();
+            assert_eq!(binding["name"], name);
+            assert_eq!(binding["source_digest"], digest);
+        }
         assert_eq!(
             core.store
                 .read(|tx| tx.group_dn_fold_page("team", None))
@@ -1843,6 +1987,41 @@ mod tests {
             filter: LdapFilter::Present("uid".into()),
             attrs: vec![],
         };
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
+        );
+
+        // v6 has the old name-only binding but no source digest. Startup must
+        // rebuild both metadata rows before the filtered collision is served.
+        core.store
+            .write(|tx| {
+                let mut activation: serde_json::Value =
+                    tx.get("meta", "version_activation")?.unwrap();
+                activation["index_version"] = serde_json::json!(6);
+                tx.put("meta", "version_activation", &activation)?;
+                tx.put("meta", "index_version", &6u32)?;
+                for name in ["TEAM", "team", "directory"] {
+                    tx.put("index_group_bindings", name, &name)?;
+                    tx.delete("index_group_source_digests", name)?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        drop(core);
+        let core = Core::open(config).unwrap();
+        assert_eq!(
+            core.store.get::<u32>("meta", "index_version").unwrap(),
+            Some(crate::store::maintenance::INDEX_VERSION)
+        );
+        for name in ["TEAM", "team", "directory"] {
+            let binding: serde_json::Value = core.store.get("index_group_bindings", name).unwrap().unwrap();
+            let digest: String = core.store.get("index_group_source_digests", name).unwrap().unwrap();
+            assert_eq!(binding["name"], name);
+            assert_eq!(binding["source_digest"], digest);
+        }
         assert_eq!(
             core.ldap_search_entries("ldap", Some(&agent), &query, false)
                 .unwrap_err()

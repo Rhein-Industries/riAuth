@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 5;
+pub const INDEX_VERSION: u32 = 7;
 pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -15,6 +15,8 @@ pub const QUEUES: [&str; 6] = [
 // Outbound SCIM user links, grouped by local user for the disable transition.
 const USER_LINKS: &str = "index_user_provisioning_links";
 const GROUP_DN_FOLDS: &str = "index_group_dn_folds";
+pub(super) const GROUP_BINDINGS: &str = "index_group_bindings";
+pub(super) const GROUP_SOURCE_DIGESTS: &str = "index_group_source_digests";
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
 // Imported records can approach the archive's per-frame limit. The ordinary
 // maintenance PAGE would decode 128 such records before returning to rebuild.
@@ -24,6 +26,11 @@ pub struct QueueStats {
     pub pending: u64,
     pub failed: u64,
     pub oldest_pending_seconds: u64,
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct GroupBinding {
+    pub name: String,
+    pub source_digest: String,
 }
 fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
     if bucket == "offboard_jobs" {
@@ -260,6 +267,22 @@ impl Tx<'_> {
         before: Option<&crate::model::Group>,
         after: Option<&crate::model::Group>,
     ) -> Result<()> {
+        // The source digest is written independently by import_record after
+        // the raw Group value. A bypassing raw import changes that digest but
+        // not this binding, so LDAP fails closed without fetching Group.members.
+        if let Some(group) = after {
+            self.put(
+                GROUP_BINDINGS,
+                id,
+                &GroupBinding {
+                    name: group.name.clone(),
+                    source_digest: group_source_digest(group)?,
+                },
+            )?;
+        } else if before.is_some() {
+            self.delete(GROUP_BINDINGS, id)?;
+            self.delete(GROUP_SOURCE_DIGESTS, id)?;
+        }
         let fold_bucket = format!(
             "{GROUP_DN_FOLDS}/{}",
             crypto::digest(&id.to_ascii_lowercase())
@@ -289,6 +312,23 @@ impl Tx<'_> {
             }
         }
         Ok(())
+    }
+    /// Validate the Group key/name and its last indexed source content using
+    /// only two small records from the caller's snapshot. The source digest
+    /// is refreshed on every raw Group import, including imports that skip indexes.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_binding(&self, name: &str) -> Result<bool> {
+        let binding = self.get::<GroupBinding>(GROUP_BINDINGS, name)?;
+        let source_digest = self.get::<String>(GROUP_SOURCE_DIGESTS, name)?;
+        match (binding, source_digest) {
+            (None, None) => Ok(false),
+            (Some(binding), Some(source_digest))
+                if binding.name == name && binding.source_digest == source_digest =>
+            {
+                Ok(true)
+            }
+            _ => Err(Error::internal("LDAP Group record binding mismatch")),
+        }
     }
     /// Read only this user's durable memberships. Each storage range is bounded;
     /// the result can still contain every group when the user belongs to all of them.
@@ -580,6 +620,8 @@ impl Tx<'_> {
             "index_user_access_grants".into(),
             "index_user_groups".into(),
             GROUP_DN_FOLDS.into(),
+            GROUP_BINDINGS.into(),
+            GROUP_SOURCE_DIGESTS.into(),
             USER_LINKS.into(),
         ];
         for bucket in COUNTED {
@@ -618,7 +660,8 @@ impl Tx<'_> {
             self.update_grant_index(&id, None, Some(&value))
         })?;
         self.for_each_rebuild_page::<crate::model::Group>("groups", check, |id, group| {
-            self.update_group_index(&id, None, Some(&group))
+            self.update_group_index(&id, None, Some(&group))?;
+            self.put(GROUP_SOURCE_DIGESTS, &id, &group_source_digest(&group)?)
         })?;
         self.for_each_rebuild_page::<Value>("provisioning_links", check, |id, link| {
             self.update_link_index(&id, None, Some(&link))
