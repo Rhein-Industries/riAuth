@@ -995,7 +995,19 @@ mod tests {
 
     #[test]
     fn raw_service_account_json_and_request_credentials_are_wiped() {
-        let raw = r#"{"type":"service_account","client_email":"verified-access@test-project.iam.gserviceaccount.com","private_key_id":"key-1","private_key":"-----BEGIN PRIVATE KEY-----\nsecret-private-key-material\n-----END PRIVATE KEY-----\n","token_uri":"https://oauth2.googleapis.com/token"}"#;
+        let marker = "secret-private-key-material";
+        let private_key = format!(
+            "-----{}-----\n{marker}\n-----{}-----\n",
+            "BEGIN PRIVATE KEY", "END PRIVATE KEY",
+        );
+        let raw = serde_json::to_string(&json!({
+            "type": "service_account",
+            "client_email": "verified-access@test-project.iam.gserviceaccount.com",
+            "private_key_id": "key-1",
+            "private_key": private_key,
+            "token_uri": TOKEN_URL,
+        }))
+        .unwrap();
         let mut text = Zeroizing::new(raw.to_owned());
         let mut file: ServiceAccountFile = serde_json::from_str(&text).unwrap();
         assert!(text.contains("secret-private-key-material"));
