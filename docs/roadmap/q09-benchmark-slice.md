@@ -737,6 +737,331 @@ The limits of these observations are the macOS dev profile, the empty
 above, and the pace inside the throughput. They assign no load, recovery, or
 capacity target.
 
+### Paced `q09-2u-2g` Linux ARM64 release binaries in Docker's VM
+
+These four observations repeat that shape in order: Essentials redb,
+Essentials PostgreSQL, Platform redb, then Platform PostgreSQL. Each report
+has `source.commit` `cc186af5777e44c74f4dfe3fc67886573f745b66`, empty
+`dirty_paths`, `product_run: true`, `observations_only: true`, and
+`performance_claim: false`. The script SHA-256 is
+`ecd4ce799087ed095c6604a92a18c2af4f02af33adfa7ac36907184bf4d5c510`.
+`source.binary_compiler` is `unrecorded`. `source.checkout_rust_toolchain`
+is `1.98.1`. That commit is the harness checkout where the script ran.
+`6ca4779` is an ancestor of it, and the script blob is the same at both
+commits.
+
+The measured binaries were compiled from
+`6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd`. Q08's `container/build.sh`
+printed `source_commit=6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd` and ran:
+
+```sh
+cargo build --release --locked --no-default-features \
+  --features essentials --bins --target aarch64-unknown-linux-gnu -j 4
+cargo build --release --locked --no-default-features \
+  --features platform --bins --target aarch64-unknown-linux-gnu -j 4
+```
+
+with `CARGO_INCREMENTAL=0` and `CARGO_BUILD_JOBS=4`. Neither command names
+`test-support`. At that commit `Cargo.toml` sets `default = ["platform"]`
+and `platform = ["essentials", ...]`. `--no-default-features` leaves the
+default set off. The platform command still compiles the essentials
+dependency, so capabilities `build_features` are `essentials` for the first
+binary and `essentials`, `platform` for the second. The report `build`
+tokens are `features` `essentials` or `platform`, `profile` `release`, and
+`toolchain` `1.98.1`. `rustc -Vv` in the Q08 build log reported rustc 1.98.1
+(`48a229ceaefd4985c50990b14116b6d856af0985`, 2026-09-01), host
+`aarch64-unknown-linux-gnu`, LLVM 22.1.8, and cargo 1.98.1. Cargo finished
+the essentials server in 3m 07s and the platform server in 3m 20s, both as
+the `release` profile. The build container uname was `Linux 08ba64ae7e60
+7.0.12-linuxkit #1 SMP PREEMPT Fri Aug 14 16:27:59 UTC 2026 aarch64`.
+
+From `6ca4779` to this checkout, `git diff -- src` names `src/assembly.rs`,
+`src/assembly/source_saml_record.rs`, and `src/source/saml.rs`. `Cargo.toml`,
+`Cargo.lock`, `rust-toolchain.toml`, and `scripts/q09_benchmark_slice.py`
+are the same blobs. These Linux binaries were compiled before that SAML
+record move. Essentials capabilities report `identity.saml_sources` compiled
+false. Platform capabilities report it compiled true. Both report version
+`0.1.1` and target `linux` / `aarch64`. The macOS rows above used
+dev-profile binaries on Darwin. The macOS Essentials fingerprint also named
+`test-support`. These four rows stand on their own measurements.
+
+`file` and `readelf` in the Q08 build log, and `file` again in the
+measurement container, describe both `riauth` servers as ELF 64-bit LSB pie
+executables, ARM aarch64, dynamically linked, interpreter
+`/lib/ld-linux-aarch64.so.1`, for GNU/Linux 3.7.0, stripped, Class ELF64,
+Machine AArch64. Essentials BuildID
+`2768345aaf193ff729e6a55d4d690b04b0c09f27`, 36324648 bytes, SHA-256
+`5feac36b7ad5d292cafb192b673f4353f8fa424e90a35d667d8fa7f41cac74eb`. Platform
+BuildID `d7afe1ac9db44bec234f7aca3dbcdd4405428650`, 49302784 bytes, SHA-256
+`606a2ce5d72de16fe8749efdb3504fd81471c88118008180667a013ccffea79d`. The
+private copies are
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/essentials/riauth`
+and
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/platform/riauth`,
+mode `-r-xr-xr-x`. Those hashes match the Q08 artifact files and the
+`sha256sum` lines in that build log. This session did not run Cargo and did
+not edit the Q08 tree. Each report stores `artifact.path` as the container
+mount, `/evidence/bin/essentials/riauth` or `/evidence/bin/platform/riauth`.
+
+The measurement image is the local tag `q09-linux-arm64-runtime:cc186af`,
+id `sha256:a04d38b65247359a288a139686b942190737eca25ef1ccf504b93c7a532fb4fd`,
+linux/arm64. Its base is
+`docker.io/library/rust:1.98.1-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546`,
+plus Python, procps, and PostgreSQL. The run identity was
+`uid=10000(q09bench)`, Debian GNU/Linux 13 (trixie), Python 3.13.5,
+procps-ng 4.0.4, and `initdb (PostgreSQL) 17.11 (Debian 17.11-0+deb13u1)`.
+That uid ran the benchmark and `initdb`. The container had no memory limit
+flag. MemTotal was 8021540 kB, `nproc` was 16, and cgroup `memory.max` was
+`max`. Process uname was `Linux c274e21b3548 7.0.12-linuxkit #1 SMP PREEMPT
+Fri Aug 14 16:27:59 UTC 2026 aarch64`. Docker server 29.7.2 reports
+linux/arm64. The Mac host in the launcher log is Darwin `dgsPro` 25.2.0
+arm64, Apple M4 Max, `hw.memsize` 68719476736, 16 CPUs, macOS 26.2. The
+linuxkit kernel is Docker Desktop's Linux VM. These files are the local Q08
+build copies from `6ca4779`. The logs record no release-workflow run id and
+no published bundle name.
+
+The container set `safe.directory=*` so uid 10000 could read the mounted
+worktree. The script then recorded the checkout above. A `ps` probe before
+the product runs returned `rss_kib` 21500 and `cpu_seconds` 0.0. procps-ng
+4.0.4 prints CPU time in whole seconds, and the product samples are 0.0 or
+1.0. Sampler read errors on those passes are 0. The script file stayed as it
+was, so the protocol hash above is the script file hash.
+
+Every run used a new directory and the binary of that edition, with
+`--iterations 12 --warmup 1 --interference-cap 4 --directory-users 2
+--directory-groups 2 --pace-ms 6500`. The verified dataset is `q09-2u-2g`:
+administrator `admin`, extra users `q09-user-0001` and `q09-user-0002`,
+groups `q09-dir-0001` and `q09-dir-0002`, three members in each group, and
+six memberships. The estimated general-request budget is 65. TLS and database
+encryption are off. PostgreSQL runs set `postgres_local_unencrypted: true`
+and pool size 8, with trust authentication, `sslmode=disable`, and ephemeral
+loopback ports. The listener is `127.0.0.1` ephemeral. The 6500 ms pace sits
+between measured reads, inside the pass wall clock and outside each latency
+sample. For 12 attempts, nearest-rank `ceil(n*q)` selects the maximum for
+both p95 and p99. Every pass had 12 attempts, 12 successes, 0 session-read
+errors, empty error statuses and codes, maintenance `finished` delta 1,
+`failed` 0, and `maintenance_cadence_overlap` true. Elapsed time is 71.53 to
+71.61 seconds. The writer on every run recorded 4 posts, 2 successes, 2 HTTP
+409 conflicts, 0 other errors, 2 revision refreshes, and overlap true. Quiet
+`requests_total` is 13 and interference `requests_total` is 20. Interference
+`responses_error_total` is 2, the same count as the writer 409 responses.
+`rate_limited_total` and `worker_rejections_total` are 0. `cleanup_count` is
+1 and `cleanup_errors` is 0. Mail and reconciliation `finished` are 14.
+`manual_connector` finished is 0. Every background `failed` delta is 0. On
+every pass, RSS at the start equals the minimum and RSS at the end equals
+the maximum.
+
+Q08's local installed-smoke note records a separate transition. Platform
+could not open an Essentials store because the configured active capabilities
+did not match the initialized instance, and a preflight refused disabling
+`access.temporary_entitlements`. Each run here started from a fresh directory
+and the matching edition binary. That transition stays with Q08.
+
+The inner log is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/reports/run.log`,
+SHA-256
+`e7f6077489223f423fdbc60b2022b0aa90238c42591d408423887237fae3eb72`.
+It ends `END fail=0` and `RUN_OK`. The host launcher log is
+`/Users/dominik/.grok/long-running-background-tasks/q09-linux-run.log`,
+SHA-256
+`9db149c9e806d6c0288dc678f202ac333ee9e2b8ea748eff959c5639a3c1cb01`.
+The image build log is
+`/Users/dominik/.grok/long-running-background-tasks/q09-linux-image.log`,
+SHA-256
+`6125aa7d937bb4993c1a89d9827c1d3a7b9568c43f30e0b85ff4704fde8d4bb3`.
+
+#### Essentials redb
+
+The redb command started at 2026-09-29T19:00:51Z and exited 0 at
+2026-09-29T19:03:15Z. Standard error recorded
+`completion=0 product_run=true backend=redb edition=essentials dataset=q09-2u-2g directory_users=2 directory_groups=2 verified=true pace_ms=6500 quiet_maintenance_overlap=true interference_maintenance_overlap=true`.
+Runtime `storage_backend` is `redb`. The report hardware load average, taken
+before the measured passes, was 0.6689453125, 0.99951171875, 1.1220703125.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 1112 | 2377 | 2377 | 274 | 71.531113 | 0.167759 | 48540 | 49108 | 0.0 | 1274 |
+| Interference | 1488 | 3234 | 3234 | 457 | 71.546728 | 0.167723 | 49224 | 49312 | 0.0 | 1277 |
+
+Quiet host load went from 0.6689453125, 0.99951171875, 1.1220703125 to
+0.56640625, 0.8837890625, 1.0703125. Interference host load went from
+0.56640625, 0.8837890625, 1.0703125 to 0.173828125, 0.6953125,
+0.9892578125. The interference-minus-quiet latency summary, in
+microseconds, is min 183, p50 376, p95 857, p99 857, and max 857.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 1 |
+| logout_ssf finished | 35 | 35 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 286 |
+| deactivation finished | 286 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 335 | 339 |
+| write_wait_count | 335 | 339 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/reports/essentials-redb-maintenance.json`,
+SHA-256 `3e4ab3f00a8ffa4c85ad9127ca276790c920d6abcdc3d7391deea5b6c2b2625e`.
+The sibling `.stdout.json` is byte-identical, so it has the same hash. A
+text search found no password and no session token.
+
+#### Essentials PostgreSQL
+
+The PostgreSQL command started at 2026-09-29T19:03:15Z and exited 0 at
+2026-09-29T19:05:40Z. Standard error recorded the same completion line with
+`backend=postgresql edition=essentials` and both maintenance overlaps true.
+Runtime `storage_backend` is `postgresql`. The report hardware load average,
+taken before the measured passes, was 0.173828125, 0.6953125, 0.9892578125.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 5746 | 23371 | 23371 | 1833 | 71.600958 | 0.167596 | 48640 | 49056 | 0.0 | 1299 |
+| Interference | 5680 | 11581 | 11581 | 3270 | 71.597363 | 0.167604 | 49168 | 49320 | 1.0 | 1283 |
+
+Quiet host load went from 0.15966796875, 0.68359375, 0.98388671875 to
+0.44091796875, 0.6611328125, 0.95556640625. Interference host load went from
+0.44091796875, 0.6611328125, 0.95556640625 to 0.2353515625, 0.55029296875,
+0.89404296875. The interference-minus-quiet latency summary, in
+microseconds, is min 1437, p50 -66, p95 -11790, p99 -11790, and max -11790.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 1 |
+| logout_ssf finished | 35 | 35 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 287 |
+| deactivation finished | 286 | 287 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 348 | 360 |
+| write_wait_count | 348 | 360 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/reports/essentials-postgresql-maintenance.json`,
+SHA-256 `0e6f24f6a2b9029dd409aad95457d81b407a843f4e72632d67b3d92c84e9c789`.
+The sibling `.stdout.json` is byte-identical. A text search found no password
+and no session token.
+
+#### Platform redb
+
+The redb command started at 2026-09-29T19:05:40Z and exited 0 at
+2026-09-29T19:08:03Z. Standard error recorded the same completion line with
+`backend=redb edition=platform` and both maintenance overlaps true. Runtime
+`storage_backend` is `redb` and edition is `platform`. The report hardware
+load average, taken before the measured passes, was 0.2353515625,
+0.55029296875, 0.89404296875.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 971 | 2053 | 2053 | 354 | 71.539595 | 0.167739 | 52740 | 53368 | 0.0 | 1282 |
+| Interference | 1036 | 3062 | 3062 | 511 | 71.53881 | 0.167741 | 53464 | 53524 | 1.0 | 1283 |
+
+Quiet host load went from 0.2353515625, 0.55029296875, 0.89404296875 to
+0.4208984375, 0.50634765625, 0.8486328125. Interference host load went from
+0.4208984375, 0.50634765625, 0.8486328125 to 0.3212890625, 0.44580078125,
+0.80078125. The interference-minus-quiet latency summary, in microseconds,
+is min 157, p50 65, p95 1009, p99 1009, and max 1009.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 0 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 287 | 286 |
+| deactivation finished | 287 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 341 | 344 |
+| write_wait_count | 341 | 344 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/reports/platform-redb-maintenance.json`,
+SHA-256 `e1d5105355e551fac587c99e42c2f2e14791223f5bb6bd88bec87e30a62a4865`.
+The sibling `.stdout.json` is byte-identical. A text search found no password
+and no session token.
+
+#### Platform PostgreSQL
+
+The PostgreSQL command started at 2026-09-29T19:08:03Z and exited 0 at
+2026-09-29T19:10:31Z. Standard error recorded the same completion line with
+`backend=postgresql edition=platform` and both maintenance overlaps true.
+Runtime `storage_backend` is `postgresql`. The report hardware load average,
+taken before the measured passes, was 0.3212890625, 0.44580078125,
+0.80078125.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 6138 | 9809 | 9809 | 2947 | 71.60338 | 0.16759 | 53232 | 53700 | 0.0 | 1288 |
+| Interference | 6617 | 13722 | 13722 | 2313 | 71.607087 | 0.167581 | 53704 | 53880 | 1.0 | 1287 |
+
+Quiet host load went from 0.5361328125, 0.48828125, 0.81298828125 to
+0.2880859375, 0.42724609375, 0.76904296875. Interference host load went from
+0.2880859375, 0.42724609375, 0.76904296875 to 0.13330078125, 0.3447265625,
+0.7109375. The interference-minus-quiet latency summary, in microseconds, is
+min -634, p50 479, p95 3913, p99 3913, and max 3913.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 1 |
+| logout_ssf finished | 35 | 35 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 287 |
+| deactivation finished | 286 | 287 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 353 | 365 |
+| write_wait_count | 353 | 365 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-6ca4779/reports/platform-postgresql-maintenance.json`,
+SHA-256 `ee87cfcdd28ae69e5ea65255bdb1a9f460d453a6ef2225578f49c1af2a969a02`.
+The sibling `.stdout.json` is byte-identical. A text search found no password
+and no session token.
+
+Available space on `/System/Volumes/Data` was 68039628 KiB at
+2026-09-29T19:00:51Z and 61793948 KiB when the container exited at
+2026-09-29T19:10:32Z. Both readings are above 8388608 KiB. The named container
+`q09-linux-arm64-cc186af` was removed. No `riauth-q09-` directory remained.
+The macOS Platform copy, the macOS Essentials copy, and their four maintenance
+reports still have the hashes recorded above. This session did not edit the
+accepted worktree or main.
+
+The limits of these observations are the Docker Desktop linuxkit VM, the
+release profile of the `6ca4779` binaries, trust authentication with
+`sslmode=disable`, loopback HTTP, whole-second procps CPU samples, the load
+averages above, and the pace inside the throughput. They assign no load,
+recovery, or capacity target.
+
 ## Relationship to the earlier harnesses
 
 [S01 contention characterization](../../scripts/characterize-contention.sh)
@@ -767,11 +1092,15 @@ binary hash to the build command, the dev profile, and rustc 1.98.1. The
 paced Platform `q09-2u-2g` runs on redb and PostgreSQL record
 maintenance-overlap observations of the `c7a61c6` copy. The paced Essentials
 `q09-2u-2g` runs on redb and PostgreSQL record that overlap for the `6ca4779`
-dev-profile binary. Full publication still requires:
+dev-profile binary. The paced Linux ARM64 rows record that overlap for both
+editions and both backends inside Docker Desktop's linuxkit VM. Their
+`source.commit` is harness checkout `cc186af`. The measured files are the
+release-profile `aarch64-unknown-linux-gnu` copies Q08 built from `6ca4779`.
+Full publication still requires:
 
-- Linux x86-64 and Linux ARM64 packaged artifacts when a release build is the claimed artifact
+- a Linux x86-64 packaged artifact when a release build is the claimed artifact, and a published Linux ARM64 package identity for that release; the ARM64 rows on this page are the local VM copies above
 - TLS, database encryption, and external signing included when the claimed deployment uses them
-- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the paced Essentials passes recorded a one-minute load average from 10.814453125 to 16.57177734375, the paced Platform PostgreSQL passes recorded 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
+- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the Linux ARM64 container passes recorded a one-minute load average from 0.13330078125 to 0.6689453125 beside MemTotal 8021540 kB, the paced Essentials macOS passes recorded 10.814453125 to 16.57177734375, the paced Platform PostgreSQL passes recorded 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
 - no numeric load, RPO, or RTO target until a named operator workload exists
 
 The coverage inventory row for Q09 still says the benchmark gap is open. This
