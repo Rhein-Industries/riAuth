@@ -327,23 +327,35 @@ neither a new session nor a downstream OIDC code.
 
 ## Configured OIDC consent
 
-Platform accepts an active configured `consent` definition only with two steps:
-`session` (`resume_session`) routes `verified` to `consent` and `failed` to
-`denied`; `consent` (`request_consent`) routes `granted` to `success`
-(`consent_granted`) and `denied` to `denied`. Routes are unconditional, and
-success requires `[["session", "consent"]]`. Both steps allow one attempt; the
-run lasts at most 120 seconds and the consent step at most 120 seconds. The
-live session, prepared transaction or request references can expire sooner. The
-generic `POST /api/workflows/configured/{workflow}` does not start consent.
-The built-in example above has different limits and is not this configured path.
+Platform accepts two exact active configured `consent` graphs. The existing
+`session` (`resume_session`) → `consent` (`request_consent`) graph requires
+`[["session", "consent"]]`, allows one attempt per step and lasts at most 120
+seconds. It handles requests that need no reauthentication. The new
+`session` → `passkey` (`verify_passkey`) → `consent` graph requires
+`[["session", "passkey", "consent"]]` with proof age at most 120 seconds. It
+handles requests that need reauthentication, such as `prompt=login` or
+`max_age=0`, for accounts with an enrolled passkey. Its run lasts at most 120
+seconds with at most five executions; the passkey step allows up to three
+attempts and 120 seconds, and consent allows one attempt and 120 seconds.
+All routes are unconditional, and neither graph can reach approval from a
+static transition. The live session, prepared transaction or request reference
+can expire sooner. The generic `POST /api/workflows/configured/{workflow}` does
+not start consent. The built-in example above has different limits and is not
+either configured path.
 
 Prepare an OIDC `Authorization` for the same live bearer session, review its
 client and scopes, then send the complete JSON with `transaction_id` and no
 `decision` to `POST /api/workflows/configured/{workflow}/consent`. It rejects
-requests needing reauthentication, silent or account-selection prompts, browser
-bindings and embedded source stages. With the same bearer, send
+the wrong reauthentication graph, silent or account-selection prompts, browser
+bindings and embedded source stages. For the passkey graph, call
+`POST /api/workflows/{id}/passkey/start` and then
+`POST /api/workflows/{id}/passkey` with the signed WebAuthn assertion before
+approving. With the same bearer, send
 `{"approve":true}` or `{"approve":false}` to
-`POST /api/workflows/{id}/consent`. `GET /api/workflows/{id}` resumes the run;
+`POST /api/workflows/{id}/consent`. Explicit denial is also accepted while the
+passkey step is active and discards any pending challenge. Failed assertions
+consume bounded passkey attempts; they never create a consent proof.
+`GET /api/workflows/{id}` resumes the run;
 `POST /api/workflows/{id}/cancel` cancels only an active, cancellable step. The
 final view's
 `authorization_response` contains the existing issuer's code callback on
@@ -351,9 +363,13 @@ approval or denial callback without a code.
 
 The executor pins the account and epoch, live session, OIDC request hash and
 client, prepared transaction, workflow request, run and definition. It emits
-session proof from the live session; only the explicit approval emits consent
-proof. Completion consumes the one-use transaction and bound receipts in the
-same write as the existing issuer's response. Ordinary authorization cannot use
+session proof from the live session; only a verified WebAuthn assertion emits
+passkey proof, and only explicit approval emits consent proof. In the passkey
+graph, the fresh assurance applies only to the resulting OIDC grant, never to
+the stored bearer session. Final approval marks the exact prepared transaction
+reauthenticated and consumes it and the bound receipts in the same write as
+the existing issuer's code response. Denial spends that transaction and returns
+the normal denial callback without a code. Ordinary authorization cannot use
 that reserved transaction. An ordinary decision with its transaction ID spends
 that exact preparation and prevents its later consent reservation. An ordinary
 no-ID decision with a bearer requires an ID while that account has a bound
@@ -363,8 +379,10 @@ over by the deciding account. Later use of one of those IDs by that account
 conflicts, while another account can still decide it. A later admitted
 preparation remains usable. Expiry and cancellation discard only the pending
 transaction; completed and closed runs retain replay protection for that
-transaction. No new session or remembered consent grant is created. Browser
-and remembered-consent adapters are not connected.
+transaction. No new session or remembered consent grant is created. Other
+configured consent graphs, including password or TOTP reauthentication, are
+unsupported. Browser-initiated and remembered-consent adapters are not
+connected.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation

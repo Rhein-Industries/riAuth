@@ -17,6 +17,8 @@ pub(super) struct Pin {
     client: String,
     client_fingerprint: String,
     expires_at: u64,
+    #[serde(default)]
+    reauthentication: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,6 +75,7 @@ pub(super) fn bind(
     authority: &mut RequestAuthority,
     session: &Session,
     request: &Authorization,
+    reauthentication: bool,
     at: u64,
 ) -> Result<()> {
     if request.decision.is_some()
@@ -88,7 +91,7 @@ pub(super) fn bind(
     }
     let (client, _) = crate::oidc::validate_authorization(tx, request)?;
     if client.settings.source_stage.is_some()
-        || needs_reauthentication(&client, request, &session.identity)
+        || needs_reauthentication(&client, request, &session.identity) != reauthentication
     {
         return Err(Error::conflict("This request needs a different workflow"));
     }
@@ -124,6 +127,7 @@ pub(super) fn bind(
         client: client.id.clone(),
         client_fingerprint: fingerprint(&client)?,
         expires_at,
+        reauthentication,
     };
     let mut request = request.clone();
     request.transaction_id = None;
@@ -224,6 +228,7 @@ pub(super) fn client_policy_changed(tx: &Tx<'_>, authority: &RequestAuthority) -
 pub(super) fn complete(
     core: &Core,
     tx: &Tx<'_>,
+    checked: &Validated,
     run: &StoredRun,
     outcome: super::super::Outcome,
     evidence: &[StoredEvidence],
@@ -237,20 +242,52 @@ pub(super) fn complete(
     }
     let (_, authority) = super::authority(core, tx, run, at)?;
     let approved = outcome == super::super::Outcome::ConsentGranted;
+    let reauthentication = super::super::supported_configured_passkey_consent(checked.definition());
+    let expected = if reauthentication {
+        &[Proof::Session, Proof::Passkey, Proof::Consent][..]
+    } else {
+        &[Proof::Session, Proof::Consent][..]
+    };
     if !matches!(
         outcome,
         super::super::Outcome::ConsentGranted | super::super::Outcome::Denied
     ) || (approved
-        && (evidence.len() != 2
-            || evidence[0].proof != Proof::Session
-            || evidence[1].proof != Proof::Consent))
+        && !evidence
+            .iter()
+            .map(|receipt| receipt.proof)
+            .eq(expected.iter().copied()))
     {
         return Err(Error::forbidden());
     }
     let mut bound = pending(tx, run, &authority, at)?;
-    let session: Session = tx
+    if bound.pin.reauthentication != reauthentication {
+        return Err(Error::forbidden());
+    }
+    let mut session: Session = tx
         .get("sessions", &bound.session)?
         .ok_or_else(Error::forbidden)?;
+    if approved && reauthentication {
+        let proof = &evidence[1];
+        if proof.step.as_str() != "passkey"
+            || !matches!(proof.action, Action::VerifyPasskey {})
+            || proof.verified_at < run.started_at
+            || proof.verified_at > at
+            || proof.expires_at <= at
+        {
+            return Err(Error::forbidden());
+        }
+        // This fresh assurance belongs only to the OIDC grant. Never mutate
+        // the bearer session or create a replacement session here.
+        session.identity.auth_time = proof.verified_at;
+        session.identity.mfa = true;
+        session.identity.amr = vec!["webauthn".into(), "mfa".into()];
+        session.identity.source = None;
+        let mut prepared: AuthenticationTransaction = tx
+            .get("authentication", &bound.pin.authentication)?
+            .ok_or_else(Error::forbidden)?;
+        prepared.authenticated_session = Some(session.id.clone());
+        tx.put("authentication", &bound.pin.authentication, &prepared)?;
+    }
     let mut request = bound.request.clone();
     request.decision = Some(if approved { "approve" } else { "deny" }.into());
     let response = core.authorize_workflow(
@@ -261,7 +298,10 @@ pub(super) fn complete(
             bound.pin.authentication.clone(),
         ),
     )?;
-    if bound.expires_at <= now() || session.expires_at <= now() {
+    if bound.expires_at <= now()
+        || session.expires_at <= now()
+        || (approved && evidence.iter().any(|receipt| receipt.expires_at <= now()))
+    {
         return Err(Error::conflict("Consent expired during completion"));
     }
     tx.delete("authentication", &bound.pin.authentication)?;
@@ -315,10 +355,15 @@ impl Core {
             let RunState::Active { step, attempt } = &run.record.state else {
                 unreachable!()
             };
+            let early_denial = !approve
+                && super::super::supported_configured_passkey_consent(checked.definition())
+                && checked.step(step).map(|s| &s.action) == Some(&Action::VerifyPasskey {});
             if !supported_configured_consent(checked.definition())
-                || checked.step(step).map(|s| &s.action) != Some(&Action::RequestConsent {})
-                || run.in_flight.is_some()
-                || run.executions >= checked.definition().limits.max_executions
+                || (!early_denial
+                    && checked.step(step).map(|s| &s.action) != Some(&Action::RequestConsent {}))
+                || (!early_denial && run.in_flight.is_some())
+                || (run.executions >= checked.definition().limits.max_executions
+                    && (!early_denial || run.in_flight.is_none()))
             {
                 return Err(Error::forbidden());
             }
@@ -328,6 +373,14 @@ impl Core {
                 || request.source.is_some()
             {
                 return Err(Error::forbidden());
+            }
+            let had_reservation = run.in_flight.is_some();
+            if early_denial {
+                // An explicit refusal may close the request before the user
+                // completes WebAuthn. Discard its reserved challenge in the
+                // same write so a late assertion cannot revive the run.
+                passkey::discard(tx, &run)?;
+                run.in_flight = None;
             }
             let at = now();
             let evidence = approve.then(|| StoredEvidence {
@@ -358,13 +411,21 @@ impl Core {
                     AttemptResult::Failed
                 },
             });
-            run.executions += 1;
+            if !early_denial || !had_reservation {
+                run.executions += 1;
+            }
             finish_step(
                 self,
                 tx,
                 &checked,
                 &mut run,
-                Label::fixed(if approve { "granted" } else { "denied" }),
+                Label::fixed(if approve {
+                    "granted"
+                } else if early_denial {
+                    "failed"
+                } else {
+                    "denied"
+                }),
                 evidence,
                 at,
             )?;

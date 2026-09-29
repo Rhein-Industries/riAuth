@@ -404,7 +404,10 @@ impl Category {
                             purpose: EmailPurpose::Reset
                         }
                 )
-                | (Consent, ResumeSession {} | RequestConsent {})
+                | (
+                    Consent,
+                    ResumeSession {} | VerifyPasskey {} | RequestConsent {}
+                )
                 | (
                     SensitiveAction,
                     ResumeSession {}

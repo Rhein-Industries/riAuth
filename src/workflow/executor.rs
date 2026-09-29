@@ -26,7 +26,8 @@ use super::{
     configured_environment, configured_password_path, configured_source_first_passkey_enrollment,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     extension_gate, supported_configured_consent, supported_configured_extension_password,
-    supported_configured_passkey, supported_configured_passkey_enrollment,
+    supported_configured_passkey, supported_configured_passkey_consent,
+    supported_configured_passkey_enrollment,
     supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
     supported_configured_password_reset, supported_configured_password_totp_enrollment,
     supported_configured_password_totp_passkey_removal,
@@ -939,7 +940,7 @@ impl CompletionStore for TxCompletion<'_, '_> {
             super::Outcome::ConsentGranted | super::Outcome::Denied
         ) {
             current.authorization_response =
-                consent::complete(self.core, self.tx, run, terminal.outcome, evidence, at)
+                consent::complete(self.core, self.tx, &checked, run, terminal.outcome, evidence, at)
                     .map_err(storage_invalid)?;
         }
         if terminal.outcome == super::Outcome::Denied {
@@ -1240,6 +1241,8 @@ impl Core {
             let checked = mfa_definition.as_ref().unwrap_or(checked);
             let configured_password = configured_password_path(checked.definition());
             let configured_passkey = supported_configured_passkey(checked.definition());
+            let configured_passkey_consent =
+                supported_configured_passkey_consent(checked.definition());
             let configured_enrollment =
                 supported_configured_passkey_enrollment(checked.definition());
             let configured_first_passkey =
@@ -1286,7 +1289,8 @@ impl Core {
                 || configured_enrollment
                 || configured_totp_enrollment
                 || configured_totp_replacement
-                || configured_removal)
+                || configured_removal
+                || configured_passkey_consent)
                 && !user.has_passkeys
             {
                 return Err(Error::conflict(
@@ -1456,7 +1460,15 @@ impl Core {
             };
             if let Some(authorization) = authorization.as_ref() {
                 if configured_consent {
-                    consent::bind(tx, &run.record, &mut request, &session, authorization, at)?;
+                    consent::bind(
+                        tx,
+                        &run.record,
+                        &mut request,
+                        &session,
+                        authorization,
+                        configured_passkey_consent,
+                        at,
+                    )?;
                 } else {
                     authorization::bind(tx, &run.record, &mut request, authorization, at)?;
                 }

@@ -5,9 +5,12 @@ use common::{Fixture, PASSWORD, text};
 use riauth::{
     crypto::{self, digest, now},
     model::{AuthenticationTransaction, Code, Session},
-    workflow::{self, ConfiguredWorkflow, Id, Origin, Outcome, Proof, RunState},
+    workflow::{self, ConfiguredWorkflow, Environment, Id, Origin, Outcome, Proof, RunState},
 };
 use serde_json::{Value, json};
+use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+
+const ORIGIN: &str = "http://localhost:9000";
 
 fn consent_definition() -> workflow::Definition {
     let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
@@ -17,6 +20,301 @@ fn consent_definition() -> workflow::Definition {
     definition.steps[1].timeout_seconds = 120;
     definition.terminals[0].requires = vec![vec![Proof::Session, Proof::Consent]];
     definition
+}
+
+fn passkey_consent_definition() -> workflow::Definition {
+    let mut definition = consent_definition();
+    definition.id = Id::new("passkey-consent").unwrap();
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 4;
+    definition.steps[0].transitions[0].to = Id::new("passkey").unwrap();
+    let mut passkey = workflow::builtin(&Id::new("essentials-passkey-sign-in").unwrap())
+        .unwrap()
+        .steps
+        .remove(0);
+    passkey.max_attempts = 2;
+    passkey.timeout_seconds = 120;
+    passkey.transitions[0].to = Id::new("consent").unwrap();
+    definition.steps.insert(1, passkey);
+    definition.terminals[0].requires = vec![vec![Proof::Session, Proof::Passkey, Proof::Consent]];
+    definition.terminals[0].max_proof_age_seconds = Some(120);
+    definition
+}
+
+fn enroll(f: &Fixture, token: &str) -> WebauthnAuthenticator<SoftPasskey> {
+    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let start = f
+        .core
+        .passkey_register_start(token, "Consent key".into())
+        .unwrap();
+    let response = signer
+        .do_registration(
+            ORIGIN.parse().unwrap(),
+            serde_json::from_value(start["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    f.core
+        .passkey_register_finish(token, &text(&start, "ceremony"), response)
+        .unwrap();
+    signer
+}
+
+#[test]
+fn configured_passkey_consent_reauthenticates_exact_preparation_once() {
+    let mut f = Fixture::new();
+    let definition = passkey_consent_definition();
+    assert!(workflow::validate(definition.clone(), &Environment::essentials()).is_err());
+    f.core.config.workflows.insert(
+        "passkey-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition,
+        },
+    );
+    f.core.config.validate().unwrap();
+    let mut forged = f.core.config.clone();
+    forged
+        .workflows
+        .get_mut("passkey-consent")
+        .unwrap()
+        .definition
+        .terminals[0]
+        .requires = vec![vec![Proof::Session, Proof::Consent]];
+    assert!(forged.validate().is_err());
+
+    f.client("app", false);
+    let alice_initial = f.user("reauth-consent-alice");
+    let bob_initial = f.user("reauth-consent-bob");
+    let mut signer = enroll(&f, &alice_initial);
+    let _bob_signer = enroll(&f, &bob_initial);
+    let alice = text(
+        &f.core
+            .login("reauth-consent-alice".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let alice_other = text(
+        &f.core
+            .login("reauth-consent-alice".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let bob = text(
+        &f.core
+            .login("reauth-consent-bob".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let session_id: String = f
+        .core
+        .store
+        .get("session_tokens", &digest(&alice))
+        .unwrap()
+        .unwrap();
+    let before: Value = f.core.store.get("sessions", &session_id).unwrap().unwrap();
+    let session_count = f.core.store.list::<Session>("sessions").unwrap().len();
+    let prepare = |f: &Fixture| {
+        let mut request = f.request("app", &crypto::random_token(""));
+        request.decision = None;
+        request.prompt = Some("login".into());
+        request.max_age = Some(0);
+        let prepared = f
+            .core
+            .authorization_prepare(Some(&alice), request.clone())
+            .unwrap();
+        assert_eq!(prepared["reauthentication_required"], true);
+        request.transaction_id = Some(text(&prepared, "transaction_id"));
+        request
+    };
+
+    let denied_request = prepare(&f);
+    let denied = f
+        .core
+        .workflow_configured_consent_start(&alice, "passkey-consent", denied_request.clone())
+        .unwrap();
+    assert!(
+        matches!(denied.state, RunState::Active { ref step, .. } if step.as_str() == "passkey")
+    );
+    assert!(
+        f.core
+            .workflow_consent_decide(&alice, &denied.id, true)
+            .is_err()
+    );
+    let denied_challenge = f
+        .core
+        .workflow_passkey_challenge(&alice, &denied.id)
+        .unwrap();
+    let stale_proof = signer
+        .do_authentication(
+            ORIGIN.parse().unwrap(),
+            serde_json::from_value(denied_challenge.public_key).unwrap(),
+        )
+        .unwrap();
+    let denied = f
+        .core
+        .workflow_consent_decide(&alice, &denied.id, false)
+        .unwrap();
+    assert!(matches!(
+        denied.state,
+        RunState::Finished {
+            outcome: Outcome::Denied,
+            ..
+        }
+    ));
+    assert!(
+        denied
+            .authorization_response
+            .unwrap()
+            .contains("access_denied")
+    );
+    let mut ordinary_denied = denied_request;
+    ordinary_denied.decision = Some("approve".into());
+    assert!(f.core.authorize(&alice, ordinary_denied).is_err());
+    assert!(f.core.store.list::<Code>("codes").unwrap().is_empty());
+
+    let request = prepare(&f);
+    let mut changed = request.clone();
+    changed.state = Some("another request".into());
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "passkey-consent", changed)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&bob, "passkey-consent", request.clone())
+            .is_err()
+    );
+    let run = f
+        .core
+        .workflow_configured_consent_start(&alice, "passkey-consent", request.clone())
+        .unwrap();
+    let mut ordinary = request.clone();
+    ordinary.decision = Some("approve".into());
+    assert!(f.core.authorize(&alice, ordinary.clone()).is_err());
+    let _challenge = f.core.workflow_passkey_challenge(&alice, &run.id).unwrap();
+    assert!(matches!(
+        f.core.workflow_passkey(&alice, &run.id, stale_proof).unwrap().state,
+        RunState::Active { ref step, attempt: 2 } if step.as_str() == "passkey"
+    ));
+    assert!(f.core.store.list::<Code>("codes").unwrap().is_empty());
+    let challenge = f.core.workflow_passkey_challenge(&alice, &run.id).unwrap();
+    let proof = signer
+        .do_authentication(
+            ORIGIN.parse().unwrap(),
+            serde_json::from_value(challenge.public_key).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_passkey(&bob, &run.id, proof.clone())
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_passkey(&alice_other, &run.id, proof.clone())
+            .is_err()
+    );
+    assert!(matches!(
+        f.core.workflow_passkey(&alice, &run.id, proof.clone()).unwrap().state,
+        RunState::Active { ref step, .. } if step.as_str() == "consent"
+    ));
+    assert!(f.core.store.list::<Code>("codes").unwrap().is_empty());
+    let f = f.reopen_with(|config| assert!(config.workflows["passkey-consent"].active));
+    assert!(matches!(
+        f.core.workflow_resume(&alice, &run.id).unwrap().state,
+        RunState::Active { ref step, .. } if step.as_str() == "consent"
+    ));
+    let finished = f
+        .core
+        .workflow_consent_decide(&alice, &run.id, true)
+        .unwrap();
+    assert!(matches!(
+        finished.state,
+        RunState::Finished {
+            outcome: Outcome::ConsentGranted,
+            ..
+        }
+    ));
+    let redirect = url::Url::parse(finished.authorization_response.as_deref().unwrap()).unwrap();
+    let code = redirect
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .to_string();
+    let issued: Code = f.core.store.get("codes", &digest(&code)).unwrap().unwrap();
+    assert_eq!(issued.identity.user_id, before["identity"]["user_id"]);
+    assert_eq!(issued.identity.session_id, session_id);
+    assert_eq!(issued.identity.amr, ["webauthn", "mfa"]);
+    assert!(issued.identity.mfa);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("sessions", &session_id)
+            .unwrap()
+            .unwrap(),
+        before
+    );
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        session_count
+    );
+    assert!(
+        f.core
+            .workflow_consent_decide(&alice, &run.id, true)
+            .is_err()
+    );
+    assert!(f.core.authorize(&alice, ordinary).is_err());
+    assert!(f.core.workflow_passkey(&alice, &run.id, proof).is_err());
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let consent_denial = prepare(&f);
+    let denial_run = f
+        .core
+        .workflow_configured_consent_start(&alice, "passkey-consent", consent_denial.clone())
+        .unwrap();
+    let challenge = f
+        .core
+        .workflow_passkey_challenge(&alice, &denial_run.id)
+        .unwrap();
+    let proof = signer
+        .do_authentication(
+            ORIGIN.parse().unwrap(),
+            serde_json::from_value(challenge.public_key).unwrap(),
+        )
+        .unwrap();
+    f.core.workflow_passkey(&alice, &denial_run.id, proof).unwrap();
+    let denied = f
+        .core
+        .workflow_consent_decide(&alice, &denial_run.id, false)
+        .unwrap();
+    assert!(matches!(
+        denied.state,
+        RunState::Finished { outcome: Outcome::Denied, .. }
+    ));
+    assert!(denied.authorization_response.unwrap().contains("access_denied"));
+    let mut denied_replay = consent_denial;
+    denied_replay.decision = Some("approve".into());
+    assert!(f.core.authorize(&alice, denied_replay).is_err());
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let expired = prepare(&f);
+    let expired_key = digest(expired.transaction_id.as_deref().unwrap());
+    f.core
+        .store
+        .write(|tx| {
+            let mut prepared: AuthenticationTransaction =
+                tx.get("authentication", &expired_key)?.unwrap();
+            prepared.expires_at = now().saturating_sub(1);
+            tx.put("authentication", &expired_key, &prepared)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_configured_consent_start(&alice, "passkey-consent", expired)
+            .is_err()
+    );
 }
 
 #[test]
@@ -77,17 +375,27 @@ fn configured_consent_requires_prepared_explicit_one_use_decision() {
     assert!(run.authorization_response.is_none());
     assert!(f.core.store.list::<Code>("codes").unwrap().is_empty());
     let stored: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
-    let mut changed_run = stored.clone();
+    let mut tamper_request = f.request("app", &crypto::random_token(""));
+    tamper_request.decision = None;
+    tamper_request.transaction_id = Some(text(
+        &f.core
+            .authorization_prepare(Some(&bob), tamper_request.clone())
+            .unwrap(),
+        "transaction_id",
+    ));
+    let tampered = f
+        .core
+        .workflow_configured_consent_start(&bob, "local-consent", tamper_request)
+        .unwrap();
+    let mut changed_run: Value = f.core.store.get("workflow_runs", &tampered.id).unwrap().unwrap();
     changed_run["definition"]["steps"][1]["max_attempts"] = json!(2);
     f.core
         .store
-        .write(|tx| tx.put("workflow_runs", &run.id, &changed_run))
+        .write(|tx| tx.put("workflow_runs", &tampered.id, &changed_run))
         .unwrap();
-    assert!(f.core.workflow_resume(&alice, &run.id).is_err());
-    f.core
-        .store
-        .write(|tx| tx.put("workflow_runs", &run.id, &stored))
-        .unwrap();
+    assert!(f.core.workflow_resume(&bob, &tampered.id).is_err());
+    let sealed: Value = f.core.store.get("workflow_runs", &tampered.id).unwrap().unwrap();
+    assert_eq!(sealed["record"]["state"]["state"], "finished");
     let session_reference = stored["record"]["steps"][0]["evidence"].as_str().unwrap();
     let session_receipt: Value = f
         .core
