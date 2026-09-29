@@ -1,0 +1,21 @@
+{
+  "backend": "postgresql",
+  "history": [],
+  "initialized": true,
+  "lineage": {
+    "observed": {
+      "database_oid": 16384,
+      "records_oid": 16387,
+      "system_identifier": "7691049866347831010"
+    },
+    "recorded": {
+      "database_oid": 16384,
+      "records_oid": 16387,
+      "system_identifier": "7691049866347831010"
+    }
+  },
+  "pending": null,
+  "policy": "riauth.recovery/v1",
+  "schema": 3,
+  "serving_allowed": true
+}
