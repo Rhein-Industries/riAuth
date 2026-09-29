@@ -189,6 +189,8 @@ mod platform {
             created_at: 1,
             next_attempt: 1,
             attempts: 0,
+            lease: None,
+            dispatch_started: None,
             delivered_at: None,
             last_status: None,
             last_failed: false,
