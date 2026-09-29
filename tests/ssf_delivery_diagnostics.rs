@@ -40,6 +40,8 @@ fn delivery(id: &str, stream_id: &str, event: &str) -> Delivery {
         last_failed: false,
         stopped: false,
         jti: format!("SECRET-JTI-{id}"),
+        lease: None,
+        dispatch_started: None,
     }
 }
 

@@ -2803,14 +2803,17 @@
       ],
       "label": "extend",
       "journey": "module",
-      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer, active set, token lifetime, or password_history exits 2 before it binds. A format 1 agreement is refused by serve and left unchanged until riauth-maintenance security-agreement-record writes one format 2 row. A connected riauth session or a different policy leaves that row in place. tests/node_security_postgres.rs starts one gateway and mismatched serve processes on one disposable PostgreSQL database; capability, issuer, access-token lifetime 600, and password_history 0 each exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The matching gateway uses another data directory. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. A logout claim stores a 60-second lease and begin_logout_dispatch pins it before the POST. tests/job_lease_postgres.rs starts two worker processes on one disposable PostgreSQL database and records one POST for one delivery. SSF deliveries, mail's finish-only lease, maintenance, alerts, connector target permits, the in-memory forward_auth rate limit, and cache freshness remain per process.",
+      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer, active set, token lifetime, or password_history exits 2 before it binds. A format 1 agreement is refused by serve and left unchanged until riauth-maintenance security-agreement-record writes one format 2 row. A connected riauth session or a different policy leaves that row in place. tests/node_security_postgres.rs starts one gateway and mismatched serve processes on one disposable PostgreSQL database; capability, issuer, access-token lifetime 600, and password_history 0 each exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The matching gateway uses another data directory. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. A logout claim stores a 60-second lease and begin_logout_dispatch pins it before the POST. tests/job_lease_postgres.rs starts two worker processes on one disposable PostgreSQL database and records one POST for one delivery. An SSF claim stores that same 60-second lease and deliver_once pins it before the SET POST. tests/ssf_lease.rs covers redb and encrypted redb. tests/ssf_lease_postgres.rs starts two workers on one disposable PostgreSQL database, holds one POST, and checks a stale finish and a moved stream. One of those databases uses database_key_file with sslmode=disable. Mail's finish-only lease, maintenance, alerts, connector target permits, the in-memory forward_auth rate limit, and cache freshness remain per process. An SSF POST already inside the five-second client timeout can still finish after a later claim if that process was suspended across the lease.",
       "implementation": [
         "src/node_security.rs",
         "src/core.rs",
         "src/capability.rs",
         "src/assembly/logout.rs",
         "src/logout.rs",
-        "src/identity/logout_queue.rs"
+        "src/identity/logout_queue.rs",
+        "src/ssf.rs",
+        "src/assembly/ssf.rs",
+        "src/identity/signals.rs"
       ],
       "tests_existing": [
         {
@@ -2859,6 +2862,26 @@
           "ci": "not-in-ci"
         },
         {
+          "ref": "tests/ssf_lease.rs::ssf_lease_pins_one_attempt_until_expiry",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf_lease.rs::ssf_lease_pins_one_attempt_on_encrypted_redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/ssf_lease_postgres.rs::two_workers_pin_one_ssf_delivery",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
+        {
+          "ref": "tests/ssf_lease_postgres.rs::two_workers_pin_one_ssf_delivery_with_database_key",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
+        {
           "ref": "tests/rate_limits.rs::a_full_shared_rate_table_evicts_its_oldest_window",
           "kind": "rust",
           "ci": "ci-check"
@@ -2874,19 +2897,32 @@
         "format1_record_is_one_row_and_a_different_policy_binds_nothing",
         "logout_lease_pins_one_attempt_until_expiry",
         "logout_returns_with_durable_pending_delivery_and_revoked_access",
-        "two_workers_pin_one_logout_delivery"
+        "two_workers_pin_one_logout_delivery",
+        "ssf_lease_pins_one_attempt_until_expiry",
+        "ssf_lease_pins_one_attempt_on_encrypted_redb",
+        "ssf_delivery_diagnostics_reports_failures_without_secrets",
+        "redb_ssf_delivery_diagnostics_pages_exact_counts",
+        "failed_delivery_retries_then_records_failure",
+        "http_500_is_bounded_and_429_retries",
+        "ssf_idle_probe_preserves_claim_receipt_and_retry",
+        "delivery_workers_attribute_writes_and_skip_idle_queues",
+        "two_workers_pin_one_ssf_delivery",
+        "two_workers_pin_one_ssf_delivery_with_database_key"
       ],
       "documentation": [
         "docs/availability.md",
         "docs/operations.md",
         "docs/testing.md",
-        "docs/roadmap/o03-node-security.md"
+        "docs/ssf-delivery.md",
+        "docs/enterprise/ENT-07.md",
+        "docs/roadmap/o03-node-security.md",
+        "docs/roadmap/o06-ssf-delivery-diagnostics.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "SSF deliveries, maintenance, and alerts have no shared dispatch lease",
+        "Maintenance and alerts have no shared dispatch lease",
         "Mail compares its lease on finish and does not pin before sending",
-        "A logout POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
+        "A logout or SSF POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
         "Connector target permits stay in the worker process",
         "Per-node forward_auth rate limit",
         "Cache freshness",
@@ -2894,8 +2930,8 @@
         "Format 1 stays unchanged until security-agreement-record; serve does not infer the missing lifetimes, and the command cannot see another node's unpublished configuration",
         "After security-agreement-record commits, the previous release refuses the store; rollback is the pre-command backup",
         "Legacy stores adopt the first successful opener",
-        "PostgreSQL runs used loopback HTTP without native TLS and unencrypted loopback PostgreSQL and did not promote the standby",
-        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres or job_lease_postgres"
+        "PostgreSQL runs used loopback HTTP without native TLS and did not promote the standby. The SSF database-key run keeps sslmode=disable",
+        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres, job_lease_postgres, or ssf_lease_postgres"
       ],
       "unverified": []
     },

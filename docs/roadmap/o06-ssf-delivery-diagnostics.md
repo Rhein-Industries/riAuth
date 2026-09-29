@@ -42,7 +42,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - The shared deactivation aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). It uses `provisioner.read` and `user.read`, withholds a missing account, and omits the target name. The Platform read on [deactivation diagnostics](o06-deactivation-diagnostics.md) still uses `user.offboard` and can show a missing account's target name to a full administrator.
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.
 - `riauthctl`, and any new `riauth` diagnostics subcommand.
-- SSF claim, finish, and cancel. This read leaves `claim_deliveries`, `finish_delivery`, and `cancel_pending` on their existing write paths.
+- SSF claim, finish, and cancel. This read does not call `claim_deliveries`, `finish_delivery`, or `cancel_pending`. Those writes now store the O03 owner lease and pre-send pin. The response still omits `lease` and `dispatch_started`.
 - A production deadline for walking every delivery value. The retained list is at most 50 rows, and the read is paged, but each stored value is still decoded in full and has no size cap on this path.
 
 ## Local check

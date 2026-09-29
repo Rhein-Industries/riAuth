@@ -65,6 +65,12 @@ pub struct Delivery {
     #[serde(default)]
     pub stopped: bool,
     pub jti: String,
+    /// Owner of the current attempt. Absent on a queued, finished, or legacy row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease: Option<String>,
+    /// Set immediately before this attempt's POST. Absent until that pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch_started: Option<bool>,
 }
 
 #[cfg(feature = "platform")]
@@ -105,6 +111,8 @@ pub(crate) fn enqueue(
                 last_failed: false,
                 stopped: false,
                 jti: id.clone(),
+                lease: None,
+                dispatch_started: None,
             };
             tx.put("ssf_deliveries", &delivery.id, &delivery)?;
         }

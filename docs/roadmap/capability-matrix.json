@@ -1322,9 +1322,9 @@
           "label": "extend",
           "journey": "module",
           "gaps": [
-            "SSF deliveries, maintenance, and alerts have no shared dispatch lease",
+            "Maintenance and alerts have no shared dispatch lease",
             "Mail compares its lease on finish and does not pin before sending",
-            "A logout POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
+            "A logout or SSF POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
             "Connector target permits stay in the worker process",
             "Per-node forward_auth rate limit",
             "Cache freshness",
@@ -1332,8 +1332,8 @@
             "Format 1 stays unchanged until security-agreement-record; serve does not infer the missing lifetimes, and the command cannot see another node's unpublished configuration",
             "After security-agreement-record commits, the previous release refuses the store; rollback is the pre-command backup",
             "Legacy stores adopt the first successful opener",
-            "PostgreSQL runs used loopback HTTP without native TLS and unencrypted loopback PostgreSQL and did not promote the standby",
-            "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres or job_lease_postgres"
+            "PostgreSQL runs used loopback HTTP without native TLS and did not promote the standby. The SSF database-key run keeps sslmode=disable",
+            "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres, job_lease_postgres, or ssf_lease_postgres"
           ]
         },
         "O04": {

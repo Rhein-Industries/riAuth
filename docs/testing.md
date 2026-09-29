@@ -72,6 +72,24 @@ RIAUTH_PG_TEST_TARGET=job_lease_postgres ./scripts/test-postgres.sh
 
 The script passes `--locked --features test-support` and `--ignored`. Both processes use `process.role = "worker"`, loopback HTTP, no native TLS files, and unencrypted loopback PostgreSQL (`sslmode=disable`). A local receiver holds the first logout POST across the other worker's next tick. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the families this slice left on their existing fences are in [node security](roadmap/o03-node-security.md).
 
+## SSF dispatch lease
+
+One embedded store, with the test clock, was run with:
+
+```sh
+cargo test --locked --offline --features test-support --test ssf_lease --test ssf_delivery_diagnostics -- --nocapture
+```
+
+`ssf_lease_pins_one_attempt_until_expiry` and `ssf_lease_pins_one_attempt_on_encrypted_redb` check a legacy row, the 24-hour stop, the five-attempt stop, one pin per attempt, expiry replacing the lease, a stale 204 leaving the new attempt in place, a failed attempt clearing the lease and retrying at the existing backoff, a moved or deleted stream that does not POST, one SET whose `jti` and `iat` stay on the delivery, an unchanged `ssf_jti` replay row, an unchanged audit action list, and pending/failed counters that ignore the owner lease. The diagnostics file checks that the operations response still omits the endpoint, subject, audience, JTI, credential type, raw event, lease, and pin. `postgres_ssf_delivery_diagnostics_pages_exact_counts` stayed ignored. It is not the `ssf_lease_postgres` target.
+
+Two worker processes on one disposable PostgreSQL database are selected separately:
+
+```sh
+RIAUTH_PG_TEST_TARGET=ssf_lease_postgres ./scripts/test-postgres.sh
+```
+
+The script passes `--locked --features test-support` and `--ignored`. Both processes use `process.role = "worker"`, loopback HTTP, no native TLS files, and loopback PostgreSQL with `sslmode=disable`. One test leaves record encryption absent. The other sets `database_key_file` on that same primary. A local receiver holds the first SET POST across the other worker's next tick. After both workers stop, the test checks a stale pin and finish, a moved stream, queue counters, replay, and audit. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the families this slice left on their existing fences are in [node security](roadmap/o03-node-security.md).
+
 ## Backup memory measurement
 
 `scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.

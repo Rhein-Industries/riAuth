@@ -318,7 +318,17 @@ impl Core {
         })
     }
 
-    pub fn deliver_once(&self) -> Result<Vec<Value>> {
+    pub fn claim_ssf_deliveries(&self) -> Result<Vec<Delivery>> {
+        Ok(self
+            .claim_ssf_batch()?
+            .into_iter()
+            .map(|(delivery, _, _)| delivery)
+            .collect())
+    }
+
+    fn claim_ssf_batch(
+        &self,
+    ) -> Result<Vec<(Delivery, crate::crypto::SigningKey, Option<String>)>> {
         // The due index commits with each delivery. An empty snapshot needs no
         // writer; a concurrent enqueue will be picked up by a later pass. Treat
         // this only as a hint: reread claims, stream state and retries below.
@@ -329,7 +339,18 @@ impl Core {
         {
             return Ok(Vec::new());
         }
-        let pending = self.store.write(|tx| claim_deliveries(tx))?;
+        self.store.write(|tx| claim_deliveries(tx))
+    }
+
+    /// Commit this worker's pin before it POSTs. False means the lease was
+    /// replaced, already pinned, expired, or the stream was cancelled or moved,
+    /// and the caller must not send.
+    pub fn begin_ssf_dispatch(&self, id: &str, lease: &str) -> Result<bool> {
+        self.store.write(|tx| begin_dispatch(tx, id, lease))
+    }
+
+    pub fn deliver_once(&self) -> Result<Vec<Value>> {
+        let pending = self.claim_ssf_batch()?;
         let http = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .redirect(reqwest::redirect::Policy::none())
@@ -337,6 +358,13 @@ impl Core {
             .map_err(Error::internal)?;
         let mut results = Vec::new();
         for (delivery, key, authorization) in pending {
+            let admitted = match delivery.lease.as_deref() {
+                Some(lease) => self.begin_ssf_dispatch(&delivery.id, lease)?,
+                None => false,
+            };
+            if !admitted {
+                continue;
+            }
             let claims = event_body(&delivery, &self.config.issuer, delivery.created_at);
             let status = match self.sign_jwt(&key, &claims, "secevent+jwt") {
                 Ok(token) => {
@@ -358,7 +386,7 @@ impl Core {
                 }
                 Err(_) => None,
             };
-            self.finish_delivery(&delivery.id, delivery.attempts, status)?;
+            self.finish_ssf_delivery(&delivery.id, delivery.attempts, status)?;
             if status.is_none_or(|code| !(200..300).contains(&code)) {
                 tracing::warn!(
                     stream_id = %delivery.stream_id,
@@ -373,7 +401,7 @@ impl Core {
         Ok(results)
     }
 
-    fn finish_delivery(&self, id: &str, attempt: u32, status: Option<u16>) -> Result<()> {
+    pub fn finish_ssf_delivery(&self, id: &str, attempt: u32, status: Option<u16>) -> Result<()> {
         self.store
             .write(|tx| finish_delivery(tx, id, attempt, status))
     }

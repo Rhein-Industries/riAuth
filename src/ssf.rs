@@ -25,6 +25,9 @@ pub use crate::identity::signals::{
 };
 const PUSH_LEGACY: &str = "https://schemas.openid.net/secevent/risc/delivery-method/push";
 pub const MAX_ATTEMPTS: u32 = 5;
+/// How long the claiming worker owns the delivery. The same instant is stored
+/// in `next_attempt`, so a later claim waits out this window and then retries.
+pub(crate) const LEASE_SECONDS: u64 = 60;
 pub(crate) const MAX_SET_AGE: u64 = 7 * 86_400;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -603,8 +606,14 @@ pub(crate) fn event_body(delivery: &Delivery, issuer: &str, at: u64) -> Value {
     })
 }
 
+fn clear_owner(delivery: &mut Delivery) {
+    delivery.lease = None;
+    delivery.dispatch_started = None;
+}
+
 /// Claim each due delivery before leaving the write transaction for HTTP.
-/// The same signing key and attempt number are then carried to the sender.
+/// The same signing key, attempt number, and owner lease are then carried to
+/// the sender. The lease lives in `next_attempt` as well, 60 seconds ahead.
 pub(crate) fn claim_deliveries(
     tx: &impl SsfTx,
 ) -> Result<Vec<(Delivery, SigningKey, Option<String>)>> {
@@ -619,6 +628,7 @@ pub(crate) fn claim_deliveries(
         if delivery.attempts >= MAX_ATTEMPTS || delivery.created_at.saturating_add(86_400) < now() {
             delivery.stopped = true;
             delivery.last_failed = true;
+            clear_owner(&mut delivery);
             tx.put_delivery(&id, &delivery)?;
             continue;
         }
@@ -626,26 +636,66 @@ pub(crate) fn claim_deliveries(
             delivery.stopped = true;
             delivery.last_failed = true;
             delivery.attempts += 1;
+            clear_owner(&mut delivery);
             tx.put_delivery(&id, &delivery)?;
             continue;
         }
         let Some(stream) = tx.stream(&delivery.stream_id)? else {
             delivery.stopped = true;
+            clear_owner(&mut delivery);
             tx.put_delivery(&id, &delivery)?;
             continue;
         };
         if stream.endpoint_url != delivery.uri {
             delivery.stopped = true;
+            clear_owner(&mut delivery);
             tx.put_delivery(&id, &delivery)?;
             continue;
         }
         delivery.attempts += 1;
-        delivery.next_attempt = now().saturating_add(60);
+        delivery.next_attempt = now().saturating_add(LEASE_SECONDS);
+        delivery.lease = Some(crate::crypto::id());
+        delivery.dispatch_started = None;
         let key = tx.active_signing_key()?;
         tx.put_delivery(&id, &delivery)?;
         ready.push((delivery, key, stream.authorization_header));
     }
     Ok(ready)
+}
+
+/// Commit this worker's pin before it POSTs. False means the lease was
+/// replaced, already pinned, expired, or the stream was cancelled or moved,
+/// and the caller must not send.
+pub(crate) fn begin_dispatch(tx: &impl SsfTx, id: &str, lease: &str) -> Result<bool> {
+    if lease.is_empty() {
+        return Ok(false);
+    }
+    let Some(mut delivery) = tx.delivery(id)? else {
+        return Ok(false);
+    };
+    if delivery.delivered_at.is_some() || delivery.lease.as_deref() != Some(lease) {
+        return Ok(false);
+    }
+    if delivery.stopped {
+        clear_owner(&mut delivery);
+        tx.put_delivery(id, &delivery)?;
+        return Ok(false);
+    }
+    if delivery.dispatch_started == Some(true) || delivery.next_attempt <= now() {
+        return Ok(false);
+    }
+    match tx.stream(&delivery.stream_id)? {
+        Some(stream) if stream.endpoint_url == delivery.uri => {}
+        _ => {
+            delivery.stopped = true;
+            clear_owner(&mut delivery);
+            tx.put_delivery(id, &delivery)?;
+            return Ok(false);
+        }
+    }
+    delivery.dispatch_started = Some(true);
+    tx.put_delivery(id, &delivery)?;
+    Ok(true)
 }
 
 /// Ignore stale HTTP completions when a newer attempt or stream change won.
@@ -662,6 +712,7 @@ pub(crate) fn finish_delivery(
         return Ok(());
     }
     delivery.last_status = status;
+    clear_owner(&mut delivery);
     let success = status.is_some_and(|code| (200..300).contains(&code));
     let retry = match status {
         Some(code) if (200..300).contains(&code) => false,
