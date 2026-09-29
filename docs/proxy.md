@@ -59,7 +59,7 @@ The single-app Traefik template removes any client-supplied `X-Original-URL`, so
 
 Agents manage the settings through existing `client.write`, conditional updates and immutable manifest plan/apply. Deploying nginx or Traefik configuration remains an infrastructure action. riAuth does not install, update or orchestrate remote nginx or Traefik instances. The embedded reverse proxy and shared-domain profile below are available. No bypass-path rules or Basic credential injection are enabled by this profile.
 
-Run `RIAUTH_TEST_NGINX=/path/to/nginx cargo test --test outpost -- --ignored`; set `RIAUTH_TEST_BROWSER=/path/to/chrome` to exercise a real browser as well. Tests use disposable loopback services and a private nginx configuration, with actual CLI approval, encoded return queries, header/cookie isolation, logout and policy checks. See [Authentik forward auth](https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/) for the upstream integration model.
+Run `RIAUTH_TEST_NGINX=/path/to/nginx cargo test --test outpost -- --ignored`; set `RIAUTH_TEST_BROWSER=/path/to/chrome` to exercise a real browser as well. Tests use disposable loopback services and a private nginx configuration, with actual CLI approval, encoded return queries, header/cookie isolation, logout and policy checks. The [forward-auth recipe](recipes/platform-forward-auth.md) lists the fixture substitutions, the statuses those ignored tests assert, and the gap between the CI script, a run of this revision, and a deployment peer. See [Authentik forward auth](https://docs.goauthentik.io/add-secure-apps/providers/proxy/forward_auth/) for the upstream integration model.
 
 
 ## Traefik forwardAuth

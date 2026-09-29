@@ -886,9 +886,10 @@ Still outside this slice, as later tasks:
   [server editions](editions.md). This slice does not switch editions.
 - The [capability and compatibility matrix](capability-matrix.md) records
   compiled inclusion, protocol direction, and the peers named by tests.
-  Tested integration recipes (D03), emergency runbooks beyond the entry
-  points above (D04), and acceptance against category targets (D05) are
-  still open.
+  The [Platform forward-auth recipe](recipes/platform-forward-auth.md) is
+  the one D03 recipe written so far. The other integration recipes (D03),
+  emergency runbooks beyond the entry points above (D04), and acceptance
+  against category targets (D05) are still open.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply
