@@ -45,16 +45,21 @@ A connector failure leaves both probes on their existing answers.
 `healthy`, `schema_version`, `revision`, `issuer`, `storage`,
 `encrypted_at_rest`, `active_signing_key`, `users`, `enabled_administrators`,
 `clients`, `pending_logout_deliveries`, `tls`, and `checked_at`. There is no
-connector, mail, Vault, or webhook field. `riauth deliveries` is the logout
-outbox, not mail and not SCIM.
+connector, mail, Vault, webhook, or offboarding field. `riauth deliveries` is
+the logout outbox, not mail and not SCIM. Incomplete scheduled offboarding is
+`riauth offboard diagnostics` (`GET /api/operations/offboarding`), which is
+separate from `doctor`.
 
 Counters in `riauth metrics` reset at process start. `runtime.signing_errors`,
 `runtime.alert_delivery_errors`, and `runtime.cleanup_errors` are those
 process counters. `runtime.background` is lane admission.
 `runtime.background.jobs.*.finished` counts local passes that returned. It
 is not a remote delivery result. `queues` counts `mail_deliveries`,
-`provisioning_jobs`, and `provisioning_deactivations`, among the other
-outboxes. For mail, `queues.mail_deliveries.failed` includes a row that has
+`provisioning_jobs`, `offboard_jobs`, and `provisioning_deactivations`, among
+the other outboxes. `queues.offboard_jobs.failed` counts a job whose `status`
+is `failed`. A `done` offboarding job with incomplete downstream work is
+neither pending nor failed in that queue. For mail,
+`queues.mail_deliveries.failed` includes a row that has
 already attempted, released its lease, and is waiting for the next retry.
 Read `riauth account deliveries` before treating that count as a stopped
 message.
@@ -89,6 +94,16 @@ set -eu
 config="deployment-private/live/riauth.toml"
 
 riauth --config "$config" --json doctor
+```
+
+`offboard diagnostics` is the Platform scheduled-offboarding read. It does
+not change a job.
+
+```sh
+set -eu
+config="deployment-private/live/riauth.toml"
+
+riauth --config "$config" --json offboard diagnostics
 ```
 
 ```sh
@@ -394,3 +409,6 @@ another administrator can sign in is
 key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
 after restore, Compose or systemd restore, and Windows device recovery
 remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).
+Scheduled-offboarding attention is
+[offboarding diagnostics](roadmap/o06-offboarding-diagnostics.md). This
+incident page did not execute that read against a directory.

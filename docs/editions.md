@@ -111,10 +111,11 @@ maintenance pass encounters them after startup preflight.
 
 Cloud Workspace/Entra synchronization, inbound SCIM, Windows login, device-trust
 verification, temporary-access approval, scheduled offboarding and Vault Transit
-signing engines also compile only in Platform. Shared configuration, temporary
-access, offboarding and remote-key records remain decodable for downgrade
-inspection; an Essentials binary still refuses to restore or open a store that
-retains them. Restore a Platform archive with Platform, then use the handoff
+signing engines also compile only in Platform. The scheduled-offboarding
+diagnostic route is Platform because a serving Essentials store cannot retain
+`offboard_jobs`. Shared configuration, temporary access, offboarding and
+remote-key records remain decodable for downgrade inspection; an Essentials
+binary still refuses to restore or open a store that retains them. Restore a Platform archive with Platform, then use the handoff
 below ([disaster recovery](disaster-recovery.md#choose-the-binary)). Outbound SCIM deactivation intent, which every account
 disable records for linked targets, and its scoped-controller delivery are shared
 by both editions. Essentials refuses a retained remote signing key before

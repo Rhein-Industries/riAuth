@@ -55,6 +55,7 @@ riauth offboard reschedule <job-id> --execute-at 2027-03-15T00:00:00+00:00 --tim
 riauth offboard cancel <job-id>
 riauth offboard list
 riauth offboard get <job-id>
+riauth offboard diagnostics
 ```
 
 HTTP:
@@ -64,9 +65,14 @@ HTTP:
 - `POST /api/offboard/jobs/{id}/cancel`
 - `GET /api/offboard/jobs`
 - `GET /api/offboard/jobs/{id}`
+- `GET /api/operations/offboarding` for the redacted aggregate; `operations.read` on `operations/offboarding`
 
 Running, done and cancelled jobs cannot be rescheduled. Cancelling a done or failed job conflicts. Cancelling an already cancelled job returns the job without a second audit event.
 
+## Operator diagnostic
+
+`GET /api/operations/offboarding` and `riauth offboard diagnostics` are a Platform read. A serving Essentials process cannot retain `offboard_jobs`, so the route is on the Platform router. Permission is `operations.read` on `operations/offboarding`. Counts include every job. Attention items include jobs the caller may `user.offboard`, and omit target names the caller may not `provisioner.read`. The state uses the same classification as `downstream.state`. The diagnostic omits the job result, dismissal and resolution evidence, target URLs, remote identifiers, lease owners, and hold text outside the known hold tokens. `next_action` names the follow-up. `remote_completion_verified` is true only when `downstream_state` is `delivered`. `affects_readiness` is false. Doctor and `queues.offboard_jobs.failed` still count a failed job by `status: failed`; a done job with incomplete downstream work is visible on this read. The scan covers the offboard job bucket. The response lists at most 50 jobs and 32 non-succeeded visible targets per job. See [offboarding diagnostics](../roadmap/o06-offboarding-diagnostics.md).
+
 ## Audit
 
-`offboard.schedule`, `offboard.reschedule`, `offboard.cancel` and `offboard.execute` record the actor, the job id and the username (`<job-id>/<username>`). These actions bump the configuration revision. Job records and audit events do not contain passwords, tokens or SCIM credentials.
+`offboard.schedule`, `offboard.reschedule`, `offboard.cancel` and `offboard.execute` record the actor, the job id and the username (`<job-id>/<username>`). These actions bump the configuration revision. Job records and audit events do not contain passwords, tokens or SCIM credentials. The diagnostic read does not record an audit event.

@@ -398,7 +398,7 @@ pub enum Command {
         #[command(subcommand)]
         command: UserCommand,
     },
-    /// Schedule, reschedule or cancel local user offboarding
+    /// Schedule, reschedule, cancel, or inspect local user offboarding
     Offboard {
         #[command(subcommand)]
         command: OffboardCommand,
@@ -932,6 +932,8 @@ pub enum OffboardCommand {
     Get {
         id: String,
     },
+    /// Redacted counts and attention items for scheduled offboarding
+    Diagnostics,
 }
 #[derive(Subcommand)]
 pub enum GroupCommand {
@@ -2439,6 +2441,11 @@ async fn run_offboard(remote: &Remote, command: OffboardCommand) -> Result<Value
                     None,
                     true,
                 )
+                .await
+        }
+        OffboardCommand::Diagnostics => {
+            remote
+                .call(Method::GET, "/api/operations/offboarding", None, true)
                 .await
         }
         OffboardCommand::Cancel { id } => {

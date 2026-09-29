@@ -410,7 +410,7 @@ The waiver records reason, evidence, actor, time, prior status and reviewed row
 revision, also audited as `provisioner.deactivate.dismiss`. A previously
 ambiguous row stays `delivery_state: ambiguous`; otherwise it reads as
 `dismissed`. The offboarding summary remains `incomplete` once no targets are
-pending. Dismissal performs no remote request or managed-link update.
+pending. That aggregate is [offboarding diagnostics](roadmap/o06-offboarding-diagnostics.md). Dismissal performs no remote request or managed-link update.
 
 The intent and waiver survive cleanup and restart. Retry and resolve reject a
 dismissed row; repeated enqueue for the same disable preserves it. A new disable

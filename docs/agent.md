@@ -33,7 +33,7 @@ Additional scoped enterprise actions are:
 | Action/resource | Purpose |
 | --- | --- |
 | `mtls.read=user/<username>`, `mtls.bind=user/<username>` | Inspect or change HTTPS client-certificate bindings; separate from RADIUS `certificate.read` / `certificate.write`. |
-| `user.offboard=user/<username>` | Schedule, inspect, reschedule or cancel offboarding. Per-target SCIM deactivation details also need `provisioner.read` on that target. |
+| `user.offboard=user/<username>` | Schedule, inspect, reschedule or cancel offboarding. Per-target SCIM deactivation details also need `provisioner.read` on that target. The aggregate diagnostic still withholds this username without this permission. |
 | `ssf.configure=ssf/<id>` or `ssf.configure=*` | Read or change an owned outbound Shared Signals stream; `*` permits creation with a generated ID. |
 | `ssf.manage=ssf/<id>` | Register pinned inbound signing trust or bind approved local subjects for the selected Shared Signals stream. |
 | `audit.read=audit/events` | Audit review, audit CSV export and the Events Map; does not grant user CSV access. |
@@ -42,7 +42,7 @@ Additional scoped enterprise actions are:
 PAM requester and approver actions use human sessions and configured approvers;
 agent permissions do not grant a human session. See the [PAM contract](enterprise/ENT-01.md).
 
-Grant `operations.backup=operations/backup` only to a backup custodian: backups contain the **entire instance**, including private signing keys, MFA secrets and credential records. This permission is broader than resource-scoped inventory access. `operations.read=operations/health` allows doctor, `operations.read=operations/metrics` allows metrics, and `operations.read=operations/logout` allows outbox inspection. `key.rotate=key/signing` permits signing-key rotation; `session.revoke=session/<id>` permits that session's revocation.
+Grant `operations.backup=operations/backup` only to a backup custodian: backups contain the **entire instance**, including private signing keys, MFA secrets and credential records. This permission is broader than resource-scoped inventory access. `operations.read=operations/health` allows doctor, `operations.read=operations/metrics` allows metrics, `operations.read=operations/logout` allows outbox inspection, and `operations.read=operations/offboarding` allows the scheduled-offboarding diagnostic. `key.rotate=key/signing` permits signing-key rotation; `session.revoke=session/<id>` permits that session's revocation.
 
 ## Delegated human administration (M04 first slice)
 

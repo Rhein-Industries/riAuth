@@ -12,6 +12,9 @@
 //! means the local revocation committed; each target's outcome is read live from
 //! its own row, and `downstream.state` is `delivered` only after every target
 //! confirmed the deactivation.
+//!
+//! `Core::offboarding_diagnostics` reuses that classification for an operator
+//! aggregate. Attention items are redacted. The read does not change readiness.
 
 pub use crate::offboarding_types::{ACTIONS, BUCKET, Job, MAX_ATTEMPTS, Status};
 use crate::{
@@ -25,7 +28,7 @@ use crate::{
     store::Tx,
 };
 use axum::http::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 const LEASE_SECONDS: u64 = 60;
@@ -204,15 +207,63 @@ fn audit_target(job: &Job) -> String {
 /// toward `state`, so a hidden pending target never reads as delivered.
 fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
     let mut value = serde_json::to_value(job).map_err(Error::internal)?;
+    let Some(rollup) = downstream_rollup(tx, job, viewer)? else {
+        return Ok(value);
+    };
+    value["downstream"] = json!({
+        "state": rollup.state,
+        "targets": rollup.full_targets,
+        "hidden_targets": rollup.hidden,
+    });
+    Ok(value)
+}
+
+const DIAGNOSTIC_ITEMS: usize = 50;
+const DIAGNOSTIC_TARGETS: usize = 32;
+const KNOWN_HOLDS: &[&str] = &[
+    "unlinked_create_requires_settlement",
+    "recovered_dispatch",
+    "awaiting_dispatch_ack",
+    "target_unconfigured",
+    "awaiting_controller",
+    "awaiting_controller_authority",
+    "awaiting_prior_delivery",
+    "manual_mode",
+    "removal_review_required",
+    "guarded_removal",
+    "retry",
+];
+
+struct AttentionTarget {
+    name: String,
+    delivery: String,
+    action: &'static str,
+    body: Value,
+}
+
+struct DownstreamRollup {
+    state: &'static str,
+    hidden: usize,
+    recorded: usize,
+    full_targets: Vec<Value>,
+    attention_targets: Vec<AttentionTarget>,
+}
+
+fn downstream_rollup(
+    tx: &Tx<'_>,
+    job: &Job,
+    viewer: Option<&Principal>,
+) -> Result<Option<DownstreamRollup>> {
     let Some(recorded) = job
         .result
         .as_ref()
         .and_then(|result| result["downstream"]["targets"].as_array())
         .filter(|targets| !targets.is_empty())
     else {
-        return Ok(value);
+        return Ok(None);
     };
-    let mut targets = Vec::new();
+    let mut full_targets = Vec::new();
+    let mut attention_targets = Vec::new();
     let (mut hidden, mut open, mut delivered, mut resolved) = (0usize, 0usize, 0usize, 0usize);
     for entry in recorded {
         let target = entry["target"].as_str().unwrap_or_default();
@@ -230,24 +281,51 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
             hidden += 1;
             continue;
         }
-        targets.push(match row {
-            Some(row) => json!({
-                "target": target,
-                "delivery": id,
-                "delivery_state": row.delivery_state(),
-                "status": row.status,
-                "hold": row.hold,
-                "outcome": row.outcome,
-                "attempts": row.attempts,
-                "last_error": row.last_error,
-                "delivered_at": row.delivered_at,
-                "resolution": row.resolution,
-                "uncertain": row.uncertain,
-                "dismissal": row.dismissal,
-            }),
+        match row {
+            Some(row) => {
+                let delivery_state = row.delivery_state();
+                full_targets.push(json!({
+                    "target": target,
+                    "delivery": id,
+                    "delivery_state": delivery_state,
+                    "status": row.status,
+                    "hold": row.hold,
+                    "outcome": row.outcome,
+                    "attempts": row.attempts,
+                    "last_error": row.last_error,
+                    "delivered_at": row.delivered_at,
+                    "resolution": row.resolution,
+                    "uncertain": row.uncertain,
+                    "dismissal": row.dismissal,
+                }));
+                if delivery_state != "succeeded" {
+                    attention_targets.push(attention_target(target, id, &row, delivery_state));
+                }
+            }
             // Ordinary terminal rows are retained for 90 days; waivers persist.
-            None => json!({"target": target, "delivery": id, "status": "expired"}),
-        });
+            None => {
+                full_targets.push(json!({"target": target, "delivery": id, "status": "expired"}));
+                attention_targets.push(AttentionTarget {
+                    name: target.to_owned(),
+                    delivery: id.to_owned(),
+                    action: "delivery_record_expired",
+                    body: json!({
+                        "target": target,
+                        "delivery": id,
+                        "delivery_state": "expired",
+                        "status": "expired",
+                        "hold": Value::Null,
+                        "hold_recognized": true,
+                        "outcome": Value::Null,
+                        "attempts": 0,
+                        "last_error": Value::Null,
+                        "delivered_at": Value::Null,
+                        "uncertain": false,
+                        "next_action": "delivery_record_expired",
+                    }),
+                });
+            }
+        }
     }
     // `resolved` counts operator attestations toward completion without
     // reporting them as delivered.
@@ -260,8 +338,318 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
     } else {
         "incomplete"
     };
-    value["downstream"] = json!({"state": state, "targets": targets, "hidden_targets": hidden});
-    Ok(value)
+    Ok(Some(DownstreamRollup {
+        state,
+        hidden,
+        recorded: recorded.len(),
+        full_targets,
+        attention_targets,
+    }))
+}
+
+fn attention_target(
+    target: &str,
+    id: &str,
+    row: &Deactivation,
+    delivery_state: &str,
+) -> AttentionTarget {
+    let status = deactivation_status_name(row.status);
+    let recognized = row
+        .hold
+        .as_deref()
+        .is_none_or(|hold| KNOWN_HOLDS.contains(&hold));
+    let hold = row
+        .hold
+        .as_deref()
+        .filter(|hold| KNOWN_HOLDS.contains(hold));
+    let last_error = row.last_error.as_deref().and_then(redacted_text);
+    let action = target_next_action(delivery_state, status, hold, last_error.is_some());
+    AttentionTarget {
+        name: target.to_owned(),
+        delivery: id.to_owned(),
+        action,
+        body: json!({
+            "target": target,
+            "delivery": id,
+            "delivery_state": delivery_state,
+            "status": status,
+            "hold": hold,
+            "hold_recognized": recognized,
+            "outcome": public_outcome(row.outcome.as_deref()),
+            "attempts": row.attempts,
+            "last_error": last_error,
+            "delivered_at": row.delivered_at,
+            "uncertain": row.uncertain,
+            "next_action": action,
+        }),
+    }
+}
+
+fn deactivation_status_name(status: downstream::Status) -> &'static str {
+    match status {
+        downstream::Status::Pending => "pending",
+        downstream::Status::Running => "running",
+        downstream::Status::Delivered => "delivered",
+        downstream::Status::Superseded => "superseded",
+        downstream::Status::Stale => "stale",
+        downstream::Status::Failed => "failed",
+        downstream::Status::Dismissed => "dismissed",
+    }
+}
+
+fn redacted_text(message: &str) -> Option<String> {
+    let cleaned: String = message
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(200)
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.to_owned())
+    }
+}
+
+fn public_outcome(outcome: Option<&str>) -> Option<&str> {
+    match outcome {
+        Some(
+            "deactivated" | "already_inactive" | "reviewed_delivery" | "remote_active"
+            | "remote_inactive",
+        ) => outcome,
+        _ => None,
+    }
+}
+
+fn target_next_action(
+    delivery_state: &str,
+    status: &str,
+    hold: Option<&str>,
+    last_error: bool,
+) -> &'static str {
+    match delivery_state {
+        "ambiguous" => "attest_remote_state",
+        "dismissed" => "waiver_is_not_remote_delivery",
+        "resolved" => "attestation_is_not_remote_delivery",
+        "expired" => "delivery_record_expired",
+        "cancelled" => "account_changed_before_delivery",
+        "failed" if status == "stale" => "inspect_and_replan",
+        "failed" => "retry_or_replan_deactivation",
+        "pending" => match hold {
+            Some(
+                "manual_mode"
+                | "removal_review_required"
+                | "guarded_removal"
+                | "awaiting_controller"
+                | "target_unconfigured",
+            ) => "review_provisioning_plan",
+            Some("awaiting_controller_authority") => "restore_controller_authority",
+            Some("awaiting_prior_delivery") => "wait_for_provisioning_job",
+            Some(
+                "awaiting_dispatch_ack"
+                | "unlinked_create_requires_settlement"
+                | "recovered_dispatch",
+            ) => "wait_for_dispatch_settlement",
+            Some("retry") => "wait_for_retry",
+            _ if last_error => "inspect_deactivation",
+            _ => "wait_for_deactivation",
+        },
+        _ => "inspect_deactivation",
+    }
+}
+
+fn job_status_name(status: Status) -> &'static str {
+    match status {
+        Status::Scheduled => "scheduled",
+        Status::Running => "running",
+        Status::Done => "done",
+        Status::Cancelled => "cancelled",
+        Status::Failed => "failed",
+    }
+}
+
+fn needs_attention(job: &Job, rollup: Option<&DownstreamRollup>) -> bool {
+    match job.status {
+        Status::Failed => true,
+        Status::Done => matches!(
+            rollup.map(|rollup| rollup.state),
+            Some("pending" | "incomplete")
+        ),
+        Status::Scheduled | Status::Running => job.last_error.is_some(),
+        Status::Cancelled => false,
+    }
+}
+
+fn attention_rank(job: &Job, rollup: Option<&DownstreamRollup>) -> u8 {
+    if job.status == Status::Failed {
+        0
+    } else if rollup.is_some_and(|rollup| rollup.state == "incomplete") {
+        1
+    } else if rollup.is_some_and(|rollup| rollup.state == "pending") {
+        2
+    } else {
+        3
+    }
+}
+
+fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>) -> &'static str {
+    if job.status == Status::Failed {
+        return "inspect_local_failure";
+    }
+    if matches!(job.status, Status::Scheduled | Status::Running) && job.last_error.is_some() {
+        return if job.status == Status::Running {
+            "wait_for_worker"
+        } else {
+            "wait_for_local_retry"
+        };
+    }
+    let Some(rollup) = rollup else {
+        return "inspect_offboarding_job";
+    };
+    if rollup.hidden > 0 {
+        return "inspect_hidden_targets";
+    }
+    let actions: Vec<&str> = rollup
+        .attention_targets
+        .iter()
+        .map(|target| target.action)
+        .collect();
+    match rollup.state {
+        "incomplete" => {
+            if actions
+                .iter()
+                .any(|action| *action == "attest_remote_state")
+            {
+                "attest_remote_state"
+            } else if !actions.is_empty()
+                && actions.iter().all(|action| {
+                    matches!(
+                        *action,
+                        "waiver_is_not_remote_delivery" | "attestation_is_not_remote_delivery"
+                    )
+                })
+            {
+                "confirm_waiver_not_delivery"
+            } else {
+                "inspect_deactivation"
+            }
+        }
+        "pending" => {
+            if actions
+                .iter()
+                .any(|action| *action == "review_provisioning_plan")
+            {
+                "review_provisioning_plan"
+            } else if actions
+                .iter()
+                .any(|action| *action == "restore_controller_authority")
+            {
+                "restore_controller_authority"
+            } else if actions
+                .iter()
+                .any(|action| *action == "attest_remote_state")
+            {
+                "attest_remote_state"
+            } else if actions.iter().any(|action| {
+                matches!(
+                    *action,
+                    "inspect_deactivation"
+                        | "retry_or_replan_deactivation"
+                        | "inspect_and_replan"
+                        | "delivery_record_expired"
+                )
+            }) {
+                "inspect_deactivation"
+            } else {
+                "wait_for_deactivation"
+            }
+        }
+        _ => "inspect_offboarding_job",
+    }
+}
+
+#[derive(Default, Serialize)]
+struct DiagnosticCounts {
+    jobs: u64,
+    scheduled: u64,
+    running: u64,
+    failed: u64,
+    cancelled: u64,
+    done: u64,
+    downstream_pending: u64,
+    downstream_incomplete: u64,
+    downstream_delivered: u64,
+    downstream_resolved: u64,
+    no_downstream_targets: u64,
+    attention: u64,
+    withheld: u64,
+    withheld_attention: u64,
+}
+
+struct ListedItem {
+    rank: u8,
+    id: String,
+    body: Value,
+}
+
+fn count_job(counts: &mut DiagnosticCounts, job: &Job, rollup: Option<&DownstreamRollup>) {
+    counts.jobs = counts.jobs.saturating_add(1);
+    let status = match job.status {
+        Status::Scheduled => &mut counts.scheduled,
+        Status::Running => &mut counts.running,
+        Status::Failed => &mut counts.failed,
+        Status::Cancelled => &mut counts.cancelled,
+        Status::Done => &mut counts.done,
+    };
+    *status = status.saturating_add(1);
+    let downstream = match rollup.map(|rollup| rollup.state) {
+        Some("pending") => &mut counts.downstream_pending,
+        Some("incomplete") => &mut counts.downstream_incomplete,
+        Some("delivered") => &mut counts.downstream_delivered,
+        Some("resolved") => &mut counts.downstream_resolved,
+        _ => &mut counts.no_downstream_targets,
+    };
+    *downstream = downstream.saturating_add(1);
+    if needs_attention(job, rollup) {
+        counts.attention = counts.attention.saturating_add(1);
+    }
+}
+
+fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>) -> ListedItem {
+    let mut targets: Vec<&AttentionTarget> = rollup
+        .map(|rollup| rollup.attention_targets.iter().collect())
+        .unwrap_or_default();
+    targets.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.delivery.cmp(&right.delivery))
+    });
+    let targets_omitted = targets.len().saturating_sub(DIAGNOSTIC_TARGETS);
+    let targets: Vec<&Value> = targets
+        .into_iter()
+        .take(DIAGNOSTIC_TARGETS)
+        .map(|target| &target.body)
+        .collect();
+    ListedItem {
+        rank: attention_rank(job, rollup),
+        id: job.id.clone(),
+        body: json!({
+            "id": job.id,
+            "username": job.username,
+            "status": job_status_name(job.status),
+            "attempts": job.attempts,
+            "last_error": job.last_error.as_deref().and_then(redacted_text),
+            "execute_at": job.execute_at,
+            "next_attempt": job.next_attempt,
+            "downstream_state": rollup.map(|rollup| rollup.state),
+            "recorded_targets": rollup.map(|rollup| rollup.recorded).unwrap_or(0),
+            "hidden_targets": rollup.map(|rollup| rollup.hidden).unwrap_or(0),
+            "remote_completion_verified": rollup.is_some_and(|rollup| rollup.state == "delivered"),
+            "next_action": job_next_action(job, rollup),
+            "targets_omitted": targets_omitted,
+            "targets": targets,
+        }),
+    }
 }
 
 fn load(tx: &Tx<'_>, id: &str) -> Result<Job> {
@@ -446,6 +834,55 @@ impl Core {
             let job = load(tx, id)?;
             actor.require("user.offboard", &format!("user/{}", job.username))?;
             view(tx, &job, Some(&actor))
+        })
+    }
+
+    /// Counts for every scheduled-offboarding job, plus redacted attention items
+    /// the caller may already inspect. `status: done` is local revocation only.
+    /// A hidden target still decides `downstream_state`. This read does not
+    /// change readiness, doctor, or queue indexes.
+    pub fn offboarding_diagnostics(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.management(tx, token, "operations.read", "operations/offboarding")?;
+            let mut counts = DiagnosticCounts::default();
+            let mut listed = Vec::new();
+            for (_, job) in tx.list::<Job>(BUCKET)? {
+                let rollup = downstream_rollup(tx, &job, Some(&actor))?;
+                count_job(&mut counts, &job, rollup.as_ref());
+                let visible = actor.allows("user.offboard", &format!("user/{}", job.username));
+                if !visible {
+                    counts.withheld = counts.withheld.saturating_add(1);
+                    if needs_attention(&job, rollup.as_ref()) {
+                        counts.withheld_attention = counts.withheld_attention.saturating_add(1);
+                    }
+                    continue;
+                }
+                if !needs_attention(&job, rollup.as_ref()) {
+                    continue;
+                }
+                listed.push(attention_item(&job, rollup.as_ref()));
+            }
+            listed.sort_by(|left, right| {
+                left.rank
+                    .cmp(&right.rank)
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            let truncated = listed.len() > DIAGNOSTIC_ITEMS;
+            listed.truncate(DIAGNOSTIC_ITEMS);
+            let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
+            Ok(json!({
+                "schema_version": "riauth.offboarding-diagnostics/v1",
+                "checked_at": now(),
+                "affects_readiness": false,
+                "limits": {
+                    "attention_items": DIAGNOSTIC_ITEMS,
+                    "targets_per_item": DIAGNOSTIC_TARGETS,
+                },
+                "counts": counts,
+                "listed": items.len(),
+                "truncated": truncated,
+                "items": items,
+            }))
         })
     }
 

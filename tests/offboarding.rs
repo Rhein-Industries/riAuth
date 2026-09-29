@@ -3757,3 +3757,469 @@ fn claiming_due_jobs_is_bounded_with_a_large_retained_history() {
         id
     );
 }
+
+fn deactivation(
+    id: &str,
+    target: &str,
+    user: &User,
+    status: downstream::Status,
+) -> downstream::Deactivation {
+    downstream::Deactivation {
+        id: id.into(),
+        link: format!("link-{id}"),
+        target: target.into(),
+        target_url: format!("https://{target}.secret.example/scim"),
+        user_id: user.id.clone(),
+        username: user.username.clone(),
+        epoch: user.epoch,
+        remote_id: format!("remote-secret-{target}"),
+        external_id: format!("ext-secret-{target}"),
+        link_digest: "digest".into(),
+        status,
+        hold: None,
+        attempts: 1,
+        next_attempt: 1,
+        lease_owner: Some("SECRET-LEASE".into()),
+        lease_until: 9,
+        dispatch_started: Some(false),
+        actor: Some("SECRET-ACTOR".into()),
+        last_error: None,
+        outcome: Some("https://outcome.secret.example".into()),
+        created_at: 1,
+        delivered_at: None,
+        uncertain: false,
+        resolution: None,
+        dismissal: None,
+        dispatch_recoveries: Vec::new(),
+        unlinked_create: None,
+    }
+}
+
+fn plant(core: &Core, job_id: &str, row: &downstream::Deactivation) {
+    core.store
+        .write(|tx| {
+            tx.put(downstream::BUCKET, &row.id, row)?;
+            let mut job = tx.get::<Job>(BUCKET, job_id)?.unwrap();
+            let result = job.result.as_mut().unwrap();
+            result["downstream"]["targets"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"target": row.target, "delivery": row.id}));
+            tx.put(BUCKET, job_id, &job)?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+fn count(report: &Value, key: &str) -> u64 {
+    report["counts"][key].as_u64().unwrap()
+}
+
+fn attention<'a>(report: &'a Value, username: &str) -> &'a Value {
+    report["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["username"] == username)
+        .unwrap()
+}
+
+fn assert_redacted(value: &Value) {
+    const FORBIDDEN: &[&str] = &[
+        "result",
+        "dismissal",
+        "resolution",
+        "target_url",
+        "remote_id",
+        "external_id",
+        "evidence",
+        "lease_owner",
+        "link",
+    ];
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                assert!(!FORBIDDEN.contains(&key.as_str()), "leaked key {key}");
+                assert_redacted(child);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                assert_redacted(item);
+            }
+        }
+        Value::String(text) => {
+            assert!(!text.contains("SECRET-"), "{text}");
+            assert!(!text.contains("secret.example"), "{text}");
+            assert!(!text.contains("https://"), "{text}");
+            assert!(!text.contains("remote-secret"), "{text}");
+            assert!(!text.contains("ext-secret"), "{text}");
+            assert!(!text.contains("link-"), "{text}");
+        }
+        _ => {}
+    }
+}
+
+/// Local failure, a waiver, a verified delivery, an attestation, a retry, and a
+/// held target stay classifiable without copying evidence into the aggregate.
+#[test]
+fn offboarding_diagnostics_reports_incomplete_and_failed_without_secrets() {
+    let f = Fixture::new();
+    let empty = f.core.offboarding_diagnostics(&f.admin).unwrap();
+    assert_eq!(empty["schema_version"], "riauth.offboarding-diagnostics/v1");
+    assert_eq!(empty["affects_readiness"], false);
+    assert_eq!(empty["limits"]["attention_items"], 50);
+    assert_eq!(empty["limits"]["targets_per_item"], 32);
+    assert_eq!(count(&empty, "jobs"), 0);
+    assert_eq!(count(&empty, "attention"), 0);
+    assert_eq!(empty["listed"], 0);
+    assert_eq!(empty["truncated"], false);
+    assert_eq!(empty["items"], json!([]));
+    assert!(empty.get("healthy").is_none());
+
+    for username in ["cara", "alice", "beth", "dave", "eve", "frank", "gina"] {
+        add_user(&f, username, false);
+    }
+    let cara = job_id(&schedule(&f.core, &f.admin, "cara", soon(3600), "UTC"));
+    let alice = job_id(&schedule(&f.core, &f.admin, "alice", soon(3600), "UTC"));
+    for attempt in 1..=5 {
+        age(&f.core, &alice);
+        assert!(
+            f.core
+                .offboard_process("alice-worker", |_| BeforeCommit::RetryableFailure)
+                .unwrap()
+        );
+        assert_eq!(stored(&f.core, &alice).attempts, attempt);
+    }
+    assert_eq!(stored(&f.core, &alice).status, Status::Failed);
+    assert!(account(&f.core, "alice").enabled);
+
+    let beth = job_id(&schedule(&f.core, &f.admin, "beth", soon(3600), "UTC"));
+    age(&f.core, &beth);
+    assert!(
+        f.core
+            .offboard_process("beth-worker", |_| BeforeCommit::Proceed)
+            .unwrap()
+    );
+    assert!(!account(&f.core, "beth").enabled);
+    let mut waived = deactivation(
+        "d-payroll",
+        "payroll",
+        &account(&f.core, "beth"),
+        downstream::Status::Dismissed,
+    );
+    waived.hold = Some("SECRET-HOLD-TOKEN".into());
+    waived.last_error = Some("\u{0001}remote deactivation failed\u{0007}".into());
+    waived.dismissal = Some(downstream::Dismissal {
+        reason: downstream::DismissalReason::RemoteAbsent,
+        evidence: "SECRET-EVIDENCE".into(),
+        by: "operator".into(),
+        at: 1,
+        previous_status: downstream::Status::Failed,
+        revision: "rev".into(),
+    });
+    plant(&f.core, &beth, &waived);
+
+    let dave = job_id(&schedule(&f.core, &f.admin, "dave", soon(3600), "UTC"));
+    age(&f.core, &dave);
+    assert!(
+        f.core
+            .offboard_process("dave-worker", |_| BeforeCommit::Proceed)
+            .unwrap()
+    );
+    let mut delivered = deactivation(
+        "d-directory",
+        "directory",
+        &account(&f.core, "dave"),
+        downstream::Status::Delivered,
+    );
+    delivered.outcome = Some("deactivated".into());
+    delivered.delivered_at = Some(2);
+    delivered.last_error = None;
+    plant(&f.core, &dave, &delivered);
+
+    let eve = job_id(&schedule(&f.core, &f.admin, "eve", soon(3600), "UTC"));
+    age(&f.core, &eve);
+    assert!(
+        f.core
+            .offboard_process("eve-worker", |_| BeforeCommit::Proceed)
+            .unwrap()
+    );
+    let mut attested = deactivation(
+        "d-hr",
+        "hr",
+        &account(&f.core, "eve"),
+        downstream::Status::Failed,
+    );
+    attested.resolution = Some(downstream::Resolution {
+        observed: downstream::Observed::Applied,
+        evidence: "SECRET-RESOLUTION".into(),
+        by: "operator".into(),
+        at: 1,
+        create_settlement: None,
+    });
+    plant(&f.core, &eve, &attested);
+
+    let frank = job_id(&schedule(&f.core, &f.admin, "frank", soon(3600), "UTC"));
+    age(&f.core, &frank);
+    assert!(
+        f.core
+            .offboard_process("frank-worker", |_| BeforeCommit::RetryableFailure)
+            .unwrap()
+    );
+    assert_eq!(stored(&f.core, &frank).status, Status::Scheduled);
+    assert!(stored(&f.core, &frank).last_error.is_some());
+
+    let gina = job_id(&schedule(&f.core, &f.admin, "gina", soon(3600), "UTC"));
+    age(&f.core, &gina);
+    assert!(
+        f.core
+            .offboard_process("gina-worker", |_| BeforeCommit::Proceed)
+            .unwrap()
+    );
+    let mut held = deactivation(
+        "d-wiki",
+        "wiki",
+        &account(&f.core, "gina"),
+        downstream::Status::Pending,
+    );
+    held.hold = Some("awaiting_controller".into());
+    held.outcome = None;
+    held.last_error = None;
+    held.attempts = 0;
+    plant(&f.core, &gina, &held);
+
+    let executes = targets(&f.core, "offboard.execute").len();
+    assert_eq!(executes, 5);
+    let report = f.core.offboarding_diagnostics(&f.admin).unwrap();
+    assert_eq!(targets(&f.core, "offboard.execute").len(), executes);
+    assert_eq!(
+        report["schema_version"],
+        "riauth.offboarding-diagnostics/v1"
+    );
+    assert_eq!(report["affects_readiness"], false);
+    assert!(report["checked_at"].is_u64());
+    assert!(report.get("healthy").is_none());
+    assert_eq!(count(&report, "jobs"), 7);
+    assert_eq!(count(&report, "scheduled"), 2);
+    assert_eq!(count(&report, "running"), 0);
+    assert_eq!(count(&report, "failed"), 1);
+    assert_eq!(count(&report, "cancelled"), 0);
+    assert_eq!(count(&report, "done"), 4);
+    assert_eq!(count(&report, "downstream_pending"), 1);
+    assert_eq!(count(&report, "downstream_incomplete"), 1);
+    assert_eq!(count(&report, "downstream_delivered"), 1);
+    assert_eq!(count(&report, "downstream_resolved"), 1);
+    assert_eq!(count(&report, "no_downstream_targets"), 3);
+    assert_eq!(count(&report, "attention"), 4);
+    assert_eq!(count(&report, "withheld"), 0);
+    assert_eq!(count(&report, "withheld_attention"), 0);
+    assert_eq!(report["listed"], 4);
+    assert_eq!(report["truncated"], false);
+    let names: Vec<&str> = report["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["username"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["alice", "beth", "gina", "frank"]);
+    assert_redacted(&report);
+
+    let failed = attention(&report, "alice");
+    assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["attempts"], 5);
+    assert_eq!(failed["next_action"], "inspect_local_failure");
+    assert!(
+        failed["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("before changes were committed")
+    );
+    assert!(failed["downstream_state"].is_null());
+    assert_eq!(failed["remote_completion_verified"], false);
+    assert_eq!(failed["recorded_targets"], 0);
+    assert_eq!(failed["targets"], json!([]));
+
+    let waived_job = f.core.offboard_get(&f.admin, &beth).unwrap();
+    assert_eq!(waived_job["downstream"]["state"], "incomplete");
+    let waived_view = reported(&waived_job, "payroll");
+    assert_eq!(waived_view["dismissal"]["evidence"], "SECRET-EVIDENCE");
+    assert_eq!(waived_view["hold"], "SECRET-HOLD-TOKEN");
+    assert_eq!(waived_view["outcome"], "https://outcome.secret.example");
+    assert_eq!(
+        waived_view["last_error"],
+        "\u{0001}remote deactivation failed\u{0007}"
+    );
+    let waived_item = attention(&report, "beth");
+    assert_eq!(waived_item["status"], "done");
+    assert_eq!(waived_item["downstream_state"], "incomplete");
+    assert_eq!(waived_item["next_action"], "confirm_waiver_not_delivery");
+    assert_eq!(waived_item["remote_completion_verified"], false);
+    assert_eq!(waived_item["hidden_targets"], 0);
+    assert_eq!(waived_item["recorded_targets"], 1);
+    let waived_target = &waived_item["targets"][0];
+    assert_eq!(waived_target["target"], "payroll");
+    assert_eq!(waived_target["delivery"], "d-payroll");
+    assert_eq!(waived_target["delivery_state"], "dismissed");
+    assert_eq!(waived_target["status"], "dismissed");
+    assert_eq!(
+        waived_target["next_action"],
+        "waiver_is_not_remote_delivery"
+    );
+    assert_eq!(waived_target["last_error"], "remote deactivation failed");
+    assert_eq!(waived_target["hold"], Value::Null);
+    assert_eq!(waived_target["hold_recognized"], false);
+    assert_eq!(waived_target["outcome"], Value::Null);
+    assert_eq!(waived_target["uncertain"], false);
+
+    let delivered_job = f.core.offboard_get(&f.admin, &dave).unwrap();
+    assert_eq!(delivered_job["downstream"]["state"], "delivered");
+    assert!(
+        report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["username"] != "dave")
+    );
+    let attested_job = f.core.offboard_get(&f.admin, &eve).unwrap();
+    assert_eq!(attested_job["downstream"]["state"], "resolved");
+    assert_eq!(
+        attested_job["downstream"]["targets"][0]["resolution"]["evidence"],
+        "SECRET-RESOLUTION"
+    );
+    assert!(attested_job["downstream"]["state"] != "delivered");
+
+    let retry = attention(&report, "frank");
+    assert_eq!(retry["status"], "scheduled");
+    assert_eq!(retry["next_action"], "wait_for_local_retry");
+    assert!(
+        retry["last_error"]
+            .as_str()
+            .unwrap()
+            .contains("before changes")
+    );
+    assert!(retry["downstream_state"].is_null());
+    assert_eq!(retry["remote_completion_verified"], false);
+
+    let held_job = f.core.offboard_get(&f.admin, &gina).unwrap();
+    assert_eq!(held_job["downstream"]["state"], "pending");
+    let held_item = attention(&report, "gina");
+    assert_eq!(held_item["downstream_state"], "pending");
+    assert_eq!(held_item["next_action"], "review_provisioning_plan");
+    assert_eq!(held_item["remote_completion_verified"], false);
+    assert_eq!(held_item["targets"][0]["target"], "wiki");
+    assert_eq!(held_item["targets"][0]["hold"], "awaiting_controller");
+    assert_eq!(held_item["targets"][0]["hold_recognized"], true);
+    assert_eq!(held_item["targets"][0]["last_error"], Value::Null);
+    assert_eq!(held_item["targets"][0]["delivery_state"], "pending");
+    assert!(stored(&f.core, &cara).status == Status::Scheduled);
+    assert!(
+        report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["username"] != "cara")
+    );
+
+    let doctor = f.core.doctor(&f.admin).unwrap();
+    assert_eq!(doctor["healthy"], true);
+    for key in doctor.as_object().unwrap().keys() {
+        assert!(key != "offboarding" && key != "downstream_incomplete");
+    }
+    let stats = f
+        .core
+        .store
+        .read(|tx| tx.queue_stats(BUCKET, crypto::now()))
+        .unwrap();
+    assert_eq!(stats.pending, 2);
+    assert_eq!(stats.failed, 1);
+
+    let operations = agent(
+        &f,
+        "offboard-ops",
+        &[("operations.read", "operations/offboarding")],
+    );
+    let withheld = f.core.offboarding_diagnostics(&operations).unwrap();
+    assert_eq!(count(&withheld, "jobs"), 7);
+    assert_eq!(count(&withheld, "attention"), 4);
+    assert_eq!(count(&withheld, "withheld"), 7);
+    assert_eq!(count(&withheld, "withheld_attention"), 4);
+    assert_eq!(withheld["listed"], 0);
+    assert_eq!(withheld["items"], json!([]));
+    assert_redacted(&withheld);
+    let hidden_body = withheld.to_string();
+    for needle in [
+        "alice",
+        "beth",
+        "cara",
+        "dave",
+        "eve",
+        "frank",
+        "gina",
+        "payroll",
+        "wiki",
+        "directory",
+        "hr",
+    ] {
+        assert!(!hidden_body.contains(needle), "{needle} in {hidden_body}");
+    }
+
+    let scoped = agent(
+        &f,
+        "offboard-beth",
+        &[
+            ("operations.read", "operations/offboarding"),
+            ("user.offboard", "user/beth"),
+        ],
+    );
+    let scoped_report = f.core.offboarding_diagnostics(&scoped).unwrap();
+    assert_eq!(scoped_report["listed"], 1);
+    assert_eq!(scoped_report["items"][0]["username"], "beth");
+    assert_eq!(scoped_report["items"][0]["hidden_targets"], 1);
+    assert_eq!(scoped_report["items"][0]["recorded_targets"], 1);
+    assert_eq!(scoped_report["items"][0]["targets"], json!([]));
+    assert_eq!(scoped_report["items"][0]["downstream_state"], "incomplete");
+    assert_eq!(
+        scoped_report["items"][0]["next_action"],
+        "inspect_hidden_targets"
+    );
+    assert_eq!(count(&scoped_report, "withheld"), 6);
+    assert_eq!(count(&scoped_report, "withheld_attention"), 3);
+    assert_eq!(count(&scoped_report, "attention"), 4);
+    assert_redacted(&scoped_report);
+    assert!(!scoped_report.to_string().contains("payroll"));
+
+    let denied = agent(&f, "offboard-only", &[("user.offboard", "*")]);
+    assert_eq!(
+        f.core.offboarding_diagnostics(&denied).unwrap_err().code,
+        "access_denied"
+    );
+    assert_eq!(targets(&f.core, "offboard.execute").len(), executes);
+
+    let template = stored(&f.core, &alice);
+    f.core
+        .store
+        .write(|tx| {
+            for n in 0..50 {
+                let mut extra = template.clone();
+                extra.id = format!("extra-{n}");
+                tx.put(BUCKET, &extra.id, &extra)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let flooded = f.core.offboarding_diagnostics(&f.admin).unwrap();
+    assert_eq!(count(&flooded, "jobs"), 57);
+    assert_eq!(count(&flooded, "failed"), 51);
+    assert_eq!(count(&flooded, "attention"), 54);
+    assert_eq!(count(&flooded, "withheld"), 0);
+    assert_eq!(flooded["listed"], 50);
+    assert_eq!(flooded["truncated"], true);
+    assert!(
+        flooded["items"].as_array().unwrap().iter().all(|item| {
+            item["status"] == "failed" && item["remote_completion_verified"] == false
+        })
+    );
+    assert_redacted(&flooded);
+    assert_eq!(targets(&f.core, "offboard.execute").len(), executes);
+}

@@ -325,6 +325,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/state/export` | Visible manifest, revision, no credential material |
 | GET | `/api/state/revision` | Revision for conditional mutations |
 | GET | `/api/operations/doctor` | Storage/key/admin diagnostics |
+| GET | `/api/operations/offboarding` | Platform scheduled-offboarding counts and at most 50 redacted attention items; `operations.read` on `operations/offboarding`; a username also needs `user.offboard` on that stored user |
 | GET | `/api/operations/metrics` | Process counters and capacity |
 | GET | `/api/operations/prometheus` | Authenticated Prometheus text metrics |
 | GET | `/api/operations/mail` | Redacted email-delivery state |

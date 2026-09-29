@@ -1349,7 +1349,9 @@
           "journey": "module",
           "gaps": [
             "Dashboards",
-            "Connector/offboarding diagnostics"
+            "Connector lag",
+            "Storage pressure and key problems",
+            "Failed jobs outside scheduled offboarding"
           ]
         },
         "O07": {
