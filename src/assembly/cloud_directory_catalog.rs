@@ -11,6 +11,13 @@ impl Core {
         })
     }
 
+    pub(crate) fn cloud_operation_authorize_probe(&self, token: &str, scope: &str) -> Result<()> {
+        self.store.read(|tx| {
+            self.management(tx, token, "directory.sync", scope)?;
+            Ok(())
+        })
+    }
+
     pub(crate) fn cloud_operation_missing_groups(
         &self,
         token: &str,

@@ -235,10 +235,7 @@ impl Core {
     /// save a plan, change connector state, or return upstream directory records.
     pub fn cloud_test_connection(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let scope = resource(kind, id)?;
-        self.store.read(|tx| {
-            self.management(tx, token, "directory.sync", &scope)?;
-            Ok(())
-        })?;
+        self.cloud_operation_authorize_probe(token, &scope)?;
         let checked_at = now();
         let result = self.cloud_connection_probe(kind, id);
         self.store.read(|tx| {

@@ -644,6 +644,35 @@ def main() -> None:
                 )
             ):
                 errors.append("src/cloud_operations.rs: scoped connection check read belongs in assembly")
+            probe = rust_function_body(masked_rust_source(path.read_text()), "cloud_test_connection")
+            probe_auth = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_authorize_probe"
+            )
+            probe_auth_raw = rust_function_body(catalog_source, "cloud_operation_authorize_probe")
+            probe_call = (
+                re.search(r"\bself\.cloud_operation_authorize_probe\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;", probe)
+                if probe is not None
+                else None
+            )
+            if (
+                probe is None
+                or probe_call is None
+                or not (
+                    0 <= probe.find("resource(kind, id)")
+                    < probe_call.start()
+                    < probe.find("let checked_at")
+                    < probe.find("cloud_connection_probe")
+                )
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe[:probe.find("cloud_connection_probe")])
+                or probe_auth is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", probe_auth)
+                or probe_auth_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)\s*\?[\s\S]*Ok\s*\(\s*\(\s*\)\s*\)',
+                    probe_auth_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: pre-probe sync authorization belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:

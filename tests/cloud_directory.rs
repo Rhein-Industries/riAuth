@@ -3510,6 +3510,65 @@ fn cloud_operations_authorizes_before_missing_configuration() {
     fixture.assert_snapshot(&before);
 }
 
+#[test]
+fn cloud_connection_probe_authorizes_scope_before_upstream() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let outside = agent_token(
+        &fixture,
+        "outside-cloud-probe",
+        vec![permission("directory.sync", "workspace/other")],
+    );
+    let syncer = agent_token(
+        &fixture,
+        "cloud-probe",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let before = fixture.snapshot().unwrap();
+
+    assert_eq!(
+        fixture
+            .core
+            .cloud_test_connection(&outside, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_test_connection("invalid", "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_test_connection("invalid", "unknown", "corp")
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+
+    let result = fixture
+        .core
+        .cloud_test_connection(&syncer, "workspace", "corp")
+        .unwrap();
+    assert_eq!(result["kind"], "workspace");
+    assert_eq!(result["id"], "corp");
+    assert_eq!(result["connected"], true);
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_redacted(&result);
+    fixture.assert_snapshot(&before);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
     use axum::{
