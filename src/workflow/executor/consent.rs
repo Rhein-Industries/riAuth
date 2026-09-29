@@ -745,6 +745,10 @@ fn browser_reauthentication_run(
     Ok((run, checked))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn browser_passkey_run(
     core: &Core,
     tx: &Tx<'_>,

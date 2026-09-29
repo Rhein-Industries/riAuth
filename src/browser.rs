@@ -464,6 +464,10 @@ impl Core {
     }
 
     #[cfg(feature = "platform")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Browser interaction, session, workflow and submitted credentials are distinct authority inputs"
+    )]
     fn authorize_totp_password(
         &self,
         id: &str,
