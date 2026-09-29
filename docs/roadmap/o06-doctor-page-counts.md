@@ -27,10 +27,10 @@ Storage telemetry records each page as a bounded scan because the limit is 128, 
 ## What remains open
 
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
-- Connector lag. A reconciliation schedule's `next_run` is the next enqueue time. Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
+- Connector lag. Schedules and reconciliation jobs store no completion timestamp or remote high-water mark, and `next_run` moves when a job is enqueued. The measurement gap is recorded in [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems. Doctor still reports the active signing key id after `jwk()` succeeds. It does not report disk pressure or a key-problem series.
-- Provisioning-job error text, which stays on the provisioning job read.
+- Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
 - An Essentials redacted deactivation aggregate. The Platform read stays on [deactivation diagnostics](o06-deactivation-diagnostics.md). Essentials keeps `GET /api/provisioning/deactivations`. The account check for that aggregate is `user.offboard`, which Essentials does not make available, and the missing-account administrator path would publish the stored target name.
 - A production deadline for walking every user, client, and logout value. The counts are paged, and each page is released, but each stored value is still decoded in full and has no size cap on this path.
 - `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.

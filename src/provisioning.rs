@@ -449,6 +449,118 @@ fn job_view(tx: &Tx<'_>, job: &Job, viewer: &Principal) -> Result<Value> {
     )
 }
 
+const DIAGNOSTIC_ITEMS: usize = 50;
+
+#[derive(Default, Serialize)]
+struct ProvisioningJobCounts {
+    jobs: u64,
+    pending: u64,
+    failed: u64,
+    ambiguous: u64,
+    succeeded: u64,
+    with_error: u64,
+    attention: u64,
+    withheld: u64,
+    withheld_attention: u64,
+}
+
+struct ListedProvisioningJob {
+    rank: u8,
+    id: String,
+    body: Value,
+}
+
+fn count_provisioning_job(counts: &mut ProvisioningJobCounts, state: &str, has_error: bool) {
+    counts.jobs = counts.jobs.saturating_add(1);
+    let slot = match state {
+        "pending" => &mut counts.pending,
+        "failed" => &mut counts.failed,
+        "ambiguous" => &mut counts.ambiguous,
+        "succeeded" => &mut counts.succeeded,
+        _ => &mut counts.failed,
+    };
+    *slot = slot.saturating_add(1);
+    if has_error {
+        counts.with_error = counts.with_error.saturating_add(1);
+    }
+}
+
+fn provisioning_attention_action(state: &str, has_error: bool) -> Option<&'static str> {
+    match state {
+        "failed" => Some("inspect_provisioning_job"),
+        "ambiguous" => Some("review_ambiguous_delivery"),
+        "pending" if has_error => Some("wait_for_retry"),
+        _ => None,
+    }
+}
+
+fn provisioning_attention_rank(state: &str) -> u8 {
+    match state {
+        "failed" => 0,
+        "ambiguous" => 1,
+        "pending" => 2,
+        _ => 3,
+    }
+}
+
+fn provisioning_attention_item(
+    id: &str,
+    job: &Job,
+    state: &str,
+    has_error: bool,
+    action: &str,
+) -> ListedProvisioningJob {
+    ListedProvisioningJob {
+        rank: provisioning_attention_rank(state),
+        id: id.to_owned(),
+        body: json!({
+            "id": id,
+            "target": job.plan.target,
+            "delivery_state": state,
+            "has_error": has_error,
+            "attempts": job.attempts,
+            "processed": job.cursor,
+            "total": job.total.max(job.plan.resources.len()),
+            "next_attempt": job.next_attempt,
+            "next_action": action,
+        }),
+    }
+}
+
+fn sort_provisioning_attention(items: &mut [ListedProvisioningJob]) {
+    items.sort_by(|left, right| {
+        left.rank
+            .cmp(&right.rank)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+/// Keep the best `DIAGNOSTIC_ITEMS` rows. Worse rows are dropped immediately.
+fn retain_provisioning_attention(
+    items: &mut Vec<ListedProvisioningJob>,
+    item: ListedProvisioningJob,
+) {
+    if items.len() < DIAGNOSTIC_ITEMS {
+        items.push(item);
+        if items.len() == DIAGNOSTIC_ITEMS {
+            sort_provisioning_attention(items);
+        }
+        return;
+    }
+    let keep = {
+        let worst = items.last().expect("the retained list is full");
+        (item.rank, item.id.as_str()) < (worst.rank, worst.id.as_str())
+    };
+    if !keep {
+        return;
+    }
+    items.pop();
+    let pos = items.partition_point(|existing| {
+        (existing.rank, existing.id.as_str()) < (item.rank, item.id.as_str())
+    });
+    items.insert(pos, item);
+}
+
 /// Older or interrupted jobs may not have recorded their current item yet.
 /// Recover it only from the retained snapshot at the exact cursor; target
 /// authority alone cannot identify or authorize an ambiguous resource.
@@ -1199,6 +1311,88 @@ impl Core {
             Ok(Value::Array(views))
         })
     }
+
+    /// Counts for every stored provisioning job, plus at most 50 redacted
+    /// attention rows. Rows are read one storage page at a time. Attention is
+    /// a failed job, an ambiguous job, or a pending job that already has
+    /// `error`. Error text, the plan, and the lease stay on the job read.
+    /// This read does not claim, dispatch, or change readiness. It is not a
+    /// connector-lag measurement: schedules and reconciliation jobs store no
+    /// completion timestamp or remote high-water mark.
+    pub fn provisioning_job_diagnostics(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.management(
+                tx,
+                token,
+                "operations.read",
+                "operations/provisioning",
+            )?;
+            let mut counts = ProvisioningJobCounts::default();
+            let mut listed = Vec::with_capacity(DIAGNOSTIC_ITEMS);
+            let mut visible_attention = 0u64;
+            let mut after: Option<String> = None;
+            let page_size = crate::store::maintenance::PAGE;
+            loop {
+                let page = tx.scan::<Job>("provisioning_jobs", after.as_deref(), page_size)?;
+                let Some(last_key) = page.last().map(|(key, _)| key.clone()) else {
+                    break;
+                };
+                if after
+                    .as_ref()
+                    .is_some_and(|previous| last_key.as_str() <= previous.as_str())
+                {
+                    return Err(Error::internal(
+                        "Provisioning job diagnostic page did not advance",
+                    ));
+                }
+                let full = page.len() == page_size;
+                after = Some(last_key);
+                for (id, job) in page {
+                    let state = delivery_state(&job);
+                    let has_error = job.error.is_some();
+                    count_provisioning_job(&mut counts, state, has_error);
+                    let visible = actor.allows(
+                        "provisioner.read",
+                        &format!("provisioner/{}", job.plan.target),
+                    );
+                    if !visible {
+                        counts.withheld = counts.withheld.saturating_add(1);
+                    }
+                    let Some(action) = provisioning_attention_action(state, has_error) else {
+                        continue;
+                    };
+                    counts.attention = counts.attention.saturating_add(1);
+                    if !visible {
+                        counts.withheld_attention = counts.withheld_attention.saturating_add(1);
+                        continue;
+                    }
+                    visible_attention = visible_attention.saturating_add(1);
+                    retain_provisioning_attention(
+                        &mut listed,
+                        provisioning_attention_item(&id, &job, state, has_error, action),
+                    );
+                }
+                if !full {
+                    break;
+                }
+            }
+            if listed.len() < DIAGNOSTIC_ITEMS {
+                sort_provisioning_attention(&mut listed);
+            }
+            let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
+            Ok(json!({
+                "schema_version": "riauth.provisioning-job-diagnostics/v1",
+                "checked_at": now(),
+                "affects_readiness": false,
+                "limits": { "attention_items": DIAGNOSTIC_ITEMS },
+                "counts": counts,
+                "listed": items.len(),
+                "truncated": visible_attention > u64::try_from(DIAGNOSTIC_ITEMS).unwrap_or(u64::MAX),
+                "items": items,
+            }))
+        })
+    }
+
     fn claim_provisioning(&self) -> Result<Option<(Job, crate::background::TargetPermit)>> {
         let background = crate::background::Background::shared(&self.store);
         self.store.write(|tx| {

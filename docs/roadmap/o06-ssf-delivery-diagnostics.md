@@ -33,10 +33,10 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 ## What remains open
 
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
-- Connector lag. A reconciliation schedule's `next_run` is the next enqueue time. Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
+- Connector lag. Schedules and reconciliation jobs store no completion timestamp or remote high-water mark, and `next_run` moves when a job is enqueued. The measurement gap is recorded in [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems.
-- Provisioning-job error text, which stays on the provisioning job read.
+- Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
 - Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges.
 - Logout delivery state, which stays on `GET /api/operations/logout`.
 - An Essentials redacted deactivation aggregate. Deactivation delivery on Platform stays on [deactivation diagnostics](o06-deactivation-diagnostics.md).

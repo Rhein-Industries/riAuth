@@ -571,6 +571,11 @@ pub fn router(core: Core) -> Router {
             "/api/operations/reconciliation",
             get(reconciliation_diagnostics),
         )
+        // Both editions: operations.read and provisioner.read are not platform-only.
+        .route(
+            "/api/operations/provisioning",
+            get(provisioning_job_diagnostics),
+        )
         .route("/api/operations/metrics", get(metrics))
         .route("/api/operations/prometheus", get(prometheus))
         .route("/api/operations/backup", post(backup))
@@ -3288,6 +3293,7 @@ session_handler!(provisioning_targets, provisioning_targets);
 session_handler!(reconciliation_schedules, reconciliation_schedules);
 session_handler!(reconciliation_jobs, reconciliation_jobs);
 session_handler!(reconciliation_diagnostics, reconciliation_diagnostics);
+session_handler!(provisioning_job_diagnostics, provisioning_job_diagnostics);
 async fn reconciliation_event(
     State(app): State<App>,
     headers: HeaderMap,
