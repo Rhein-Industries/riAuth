@@ -8,7 +8,8 @@ Password and source paths require TOTP or a one-time recovery code when enrolled
 verifiers and finalize through the W03 store boundary. These canonical chains
 can also complete an explicitly approved downstream OIDC request. No path
 issues a new session. Connected credential mutations cover passkey enrollment
-and removal, TOTP enrollment authorized by a fresh existing-passkey proof or
+authorized by a fresh existing-passkey or local-password proof, passkey removal,
+TOTP enrollment authorized by a fresh existing-passkey proof or
 fresh local-password proof for a password-only account, TOTP replacement
 authorized by an existing-passkey proof or both fresh password and current-TOTP
 proofs for a local account without a passkey, mail-proven password recovery, and
@@ -26,10 +27,10 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
-It supports five configured enrollment shapes: a live session and fresh verified
+It supports six configured enrollment shapes: a live session and fresh verified
 existing passkey followed by passkey registration, a new TOTP secret or TOTP
 replacement; or a password-only account's live session and fresh local-password
-proof followed by its first TOTP secret; or a local TOTP account without a
+proof followed by its first passkey or TOTP secret; or a local TOTP account without a
 passkey using fresh password and current-TOTP proofs before replacement.
 It also supports one configured recovery shape: explicit reset-mail verification
 and password reset in the same transaction, plus one configured sensitive action:
@@ -469,8 +470,9 @@ and `credential_epoch`. Previous sessions cannot resume or reuse the result.
 Sign in again after enrollment.
 
 This session-bound adapter supports adding a passkey after verification of an
-existing passkey. Invitation first-passkey enrollment uses the separate mail-bound
-adapter below. First-passkey enrollment through a password/TOTP session and
+existing passkey or, for a password-only account, after a fresh local-password
+proof as described below. Invitation first-passkey enrollment uses the separate
+mail-bound adapter below. First-passkey enrollment through a TOTP session and
 other credential mutations still require their own bound adapters. Persisted
 mutation receipts alone cannot enable those success outcomes.
 
@@ -486,7 +488,28 @@ proof age, and cancellable steps. The existing `/passkey/start`, `/passkey`,
 real ceremonies. The definition and request remain pinned across restart;
 cancellation or expiry discards a pending ceremony, and completion uses the
 same atomic epoch change and session revocation described above. Config,
-start and resume reject other configured passkey enrollment shapes.
+start and resume reject other configured passkey enrollment shapes except the
+password-only first-passkey path below.
+
+### Password-only first-passkey enrollment
+
+Platform also accepts the exact configured `session → password → enroll` path
+for a local account with no existing passkey, TOTP factor or pending TOTP
+enrollment. The live session and request-bound password receipt precede a
+workflow-owned WebAuthn registration. Success requires session, password and
+enrolled proofs; the run lasts at most 600 seconds, allows at most eight
+executions and three password attempts, and limits success proofs to 120
+seconds. All steps are cancellable, with failed routes to denial.
+
+Start at `POST /api/workflows/configured/{workflow}`, verify the password at
+`POST /api/workflows/{id}/password`, then use the existing
+`/passkey-enrollment/start` and `/passkey-enrollment` endpoints. The ceremony
+is bound to the account, session, request, run and attempt; ordinary passkey
+finish cannot consume it. Cancellation or expiry discards it. Final
+registration, epoch change, revocation, audit, receipt consumption and run
+completion share one writer. The bearer gains no MFA assurance and no session
+is issued. This path does not accept an invitation proof or an upstream-only
+account.
 
 ## Configured TOTP enrollment
 
@@ -879,12 +902,12 @@ These are not implemented or established by this slice:
   association remain unconnected.
   No workflow issues a session. Endpoint parity has not been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
-  authorized passkey enrollment and removal, existing-passkey or password-only
-  TOTP enrollment, existing-passkey or password-and-current-TOTP replacement,
-  mail-proven password reset
-  and invitation first-password/first-passkey enrollment: session-authorized
-  first-passkey enrollment through password/TOTP, other TOTP replacement and
-  other initial credential paths remain blocked pending their real adapters.
+  authorized passkey enrollment and removal, password-only first-passkey
+  enrollment, existing-passkey or password-only TOTP enrollment, existing-passkey
+  or password-and-current-TOTP replacement, mail-proven password reset, and
+  invitation first-password/first-passkey enrollment: session-authorized
+  first-passkey enrollment through TOTP, other TOTP replacement and other
+  initial credential paths remain blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,

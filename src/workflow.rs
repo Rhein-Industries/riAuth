@@ -209,21 +209,32 @@ pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
             .any(|transition| transition.on == Label::fixed("failed") && transition.to == denied.id)
 }
 
-/// The existing UV passkey verifier and registration mutation support one
-/// configured enrollment path. No transition can skip either live-session or
-/// fresh-factor evidence, or complete without the registration capability.
+/// Add a passkey after existing UV proof. No transition can skip either the
+/// live session or fresh factor, or complete without registration capability.
 pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -> bool {
+    supported_configured_passkey_change(definition, false)
+}
+
+/// A local password-only account may add its first passkey only through a
+/// live session, fresh password receipt and workflow-owned WebAuthn ceremony.
+pub(crate) fn supported_configured_password_passkey_enrollment(definition: &Definition) -> bool {
+    supported_configured_passkey_change(definition, true)
+}
+
+fn supported_configured_passkey_change(definition: &Definition, password: bool) -> bool {
+    let max_duration = if password { 600 } else { 1_200 };
+    let max_executions = if password { 8 } else { 16 };
     if definition.origin != Origin::Configured
         || definition.category != Category::Enrollment
         || definition.steps.len() != 3
         || definition.terminals.len() != 2
         || definition.entry != definition.steps[0].id
-        || definition.limits.max_duration_seconds > 1_200
-        || definition.limits.max_executions > 16
+        || definition.limits.max_duration_seconds > max_duration
+        || definition.limits.max_executions > max_executions
     {
         return false;
     }
-    let [session, passkey, enroll] = definition.steps.as_slice() else {
+    let [session, factor, enroll] = definition.steps.as_slice() else {
         return false;
     };
     let success = definition
@@ -250,13 +261,20 @@ pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -
                 transition.on == Label::fixed("failed") && &transition.to == failed
             })
     };
+    let factor_name = if password { "password" } else { "passkey" };
+    let factor_proof = if password { Proof::Password } else { Proof::Passkey };
+    let factor_action = if password {
+        matches!(factor.action, Action::VerifyPassword {})
+    } else {
+        matches!(factor.action, Action::VerifyPasskey {})
+    };
     session.id.as_str() == "session"
-        && passkey.id.as_str() == "passkey"
+        && factor.id.as_str() == factor_name
         && enroll.id.as_str() == "enroll"
         && success.id.as_str() == "success"
         && denied.id.as_str() == "denied"
         && matches!(session.action, Action::ResumeSession {})
-        && matches!(passkey.action, Action::VerifyPasskey {})
+        && factor_action
         && matches!(
             enroll.action,
             Action::EnrollCredential {
@@ -264,22 +282,22 @@ pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -
             }
         )
         && session.max_attempts == 1
-        && passkey.max_attempts <= 3
+        && factor.max_attempts <= 3
         && enroll.max_attempts == 1
         && session.timeout_seconds <= 60
-        && passkey.timeout_seconds <= 300
+        && factor.timeout_seconds <= 300
         && enroll.timeout_seconds <= 300
         && session.cancellable
-        && passkey.cancellable
+        && factor.cancellable
         && enroll.cancellable
         && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
         && success.requires.len() == 1
         && success.requires[0].len() == 3
-        && [Proof::Session, Proof::Passkey, Proof::Enrolled]
+        && [Proof::Session, factor_proof, Proof::Enrolled]
             .into_iter()
             .all(|proof| success.requires[0].contains(&proof))
-        && routes(session, "verified", &passkey.id, &denied.id)
-        && routes(passkey, "verified", &enroll.id, &denied.id)
+        && routes(session, "verified", &factor.id, &denied.id)
+        && routes(factor, "verified", &enroll.id, &denied.id)
         && routes(enroll, "completed", &success.id, &denied.id)
 }
 

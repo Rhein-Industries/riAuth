@@ -10,9 +10,40 @@ use crate::{
 };
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    ExistingPasskey,
+    FirstPasskey,
+}
+
+impl Mode {
+    fn from_definition(definition: &Definition) -> Result<Self> {
+        if supported_configured_password_passkey_enrollment(definition) {
+            Ok(Self::FirstPasskey)
+        } else if definition.id.as_str() == PASSKEY_ENROLLMENT
+            || supported_configured_passkey_enrollment(definition)
+        {
+            Ok(Self::ExistingPasskey)
+        } else {
+            Err(Error::forbidden())
+        }
+    }
+
+    fn proof(self) -> Proof {
+        match self {
+            Self::ExistingPasskey => Proof::Passkey,
+            Self::FirstPasskey => Proof::Password,
+        }
+    }
+}
+
 fn binding(run: &RuntimeRun, reservation: &InFlight) -> Result<String> {
     serde_json::to_string(&(
-        "workflow-passkey-enrollment/v1",
+        if supported_configured_password_passkey_enrollment(&run.definition) {
+            "workflow-first-passkey-enrollment/v1"
+        } else {
+            "workflow-passkey-enrollment/v1"
+        },
         &run.record.id,
         &run.record.account,
         run.record.account_epoch,
@@ -93,25 +124,27 @@ pub(super) fn resume_session(
     )
 }
 
-/// Grant only this mutation the verified passkey's assurance. The stored bearer
-/// remains unchanged and a recovery-code/session assertion cannot replace UV.
+/// Freshen only this mutation's local session from its exact verifier receipt.
+/// The stored bearer retains its assurance; a password-first path never asserts MFA.
 fn verified_session(
     core: &Core,
     tx: &Tx<'_>,
     checked: &Validated,
     run: &RuntimeRun,
     at: u64,
-) -> Result<(User, Session, RequestAuthority)> {
+) -> Result<(User, Session, RequestAuthority, Mode)> {
+    let mode = Mode::from_definition(checked.definition())?;
     let (user, request) = authority(core, tx, &run.record, at)?;
     let RunState::Active { step, .. } = &run.record.state else {
         return Err(Error::forbidden());
     };
-    if (run.record.binding.workflow.as_str() != PASSKEY_ENROLLMENT
-        && !supported_configured_passkey_enrollment(checked.definition()))
-        || !user.has_passkeys
-        || request.source.is_some()
+    if request.source.is_some()
         || request.authorization.is_some()
         || request.consent.is_some()
+        || request.recovery.is_some()
+        || request.invitation.is_some()
+        || request.removal.is_some()
+        || request.requires_mfa
         || run.credential_mutation.is_some()
         || run.record.steps.len() != 2
         || checked.step(step).map(|s| &s.action)
@@ -121,19 +154,42 @@ fn verified_session(
     {
         return Err(Error::forbidden());
     }
+    match mode {
+        Mode::ExistingPasskey if !user.has_passkeys => return Err(Error::forbidden()),
+        Mode::FirstPasskey => {
+            if user.has_passkeys
+                || crate::passkey::passkey_count(tx, &user.id)? != 0
+                || user.totp_secret.is_some()
+                || user.totp_pending.is_some()
+            {
+                return Err(Error::forbidden());
+            }
+            crate::password::require_local(tx, &user)?;
+            if let Err(error) = crate::password::unlocked(tx, &user)? {
+                return Err(error);
+            }
+        }
+        _ => {}
+    }
     let mut auth_time = None;
     for (recorded, proof) in run
         .record
         .steps
         .iter()
-        .zip([Proof::Session, Proof::Passkey])
+        .zip([Proof::Session, mode.proof()])
     {
+        let step = checked.step(&recorded.step).ok_or_else(Error::forbidden)?;
+        if recorded.signal != Label::fixed("verified")
+            || step.action.proof(&recorded.signal) != Some(proof)
+        {
+            return Err(Error::forbidden());
+        }
         let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
         let evidence: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
         super::super::evidence::check_evidence(
             &run.record,
             recorded,
-            checked.step(&recorded.step).ok_or_else(Error::forbidden)?,
+            step,
             proof,
             reference,
             &evidence,
@@ -142,7 +198,7 @@ fn verified_session(
         )
         .map_err(invalid_error)?;
         evidence_authority(core, tx, &run.record, &evidence, at)?;
-        if proof == Proof::Passkey {
+        if proof == mode.proof() {
             auth_time = Some(evidence.verified_at);
         }
     }
@@ -154,12 +210,16 @@ fn verified_session(
         epoch: user.epoch,
         session_id: session.id.clone(),
         auth_time: auth_time.ok_or_else(Error::forbidden)?,
-        mfa: true,
-        amr: vec!["webauthn".into(), "mfa".into()],
+        mfa: mode == Mode::ExistingPasskey,
+        amr: if mode == Mode::ExistingPasskey {
+            vec!["webauthn".into(), "mfa".into()]
+        } else {
+            vec!["pwd".into()]
+        },
         source: None,
     };
     crate::passkey::require_fresh_factor(&user, &session)?;
-    Ok((user, session, request))
+    Ok((user, session, request, mode))
 }
 
 /// This value cannot be serialized or reconstructed from a stored receipt.
@@ -167,6 +227,7 @@ pub(super) struct Verified {
     before: StoredRun,
     evidence: StoredEvidence,
     registration: VerifiedRegistration,
+    mode: Mode,
 }
 
 impl Verified {
@@ -195,7 +256,42 @@ impl Verified {
         if !self.matches(run, terminal) || !evidence.contains(&self.evidence) {
             return Err(Error::forbidden());
         }
+        let saved = load_runtime(tx, &run.id)?;
+        if Mode::from_definition(saved.validated()?.definition())? != self.mode
+            || saved.record != *run
+            || saved.in_flight.is_some()
+            || saved.credential_mutation.is_some()
+        {
+            return Err(Error::forbidden());
+        }
         let (user, request) = authority(core, tx, run, now())?;
+        if request.requires_mfa
+            || request.source.is_some()
+            || request.authorization.is_some()
+            || request.consent.is_some()
+            || request.recovery.is_some()
+            || request.invitation.is_some()
+            || request.removal.is_some()
+        {
+            return Err(Error::forbidden());
+        }
+        match self.mode {
+            Mode::ExistingPasskey if !user.has_passkeys => return Err(Error::forbidden()),
+            Mode::FirstPasskey => {
+                if user.has_passkeys
+                    || crate::passkey::passkey_count(tx, &user.id)? != 0
+                    || user.totp_secret.is_some()
+                    || user.totp_pending.is_some()
+                {
+                    return Err(Error::forbidden());
+                }
+                crate::password::require_local(tx, &user)?;
+                if let Err(error) = crate::password::unlocked(tx, &user)? {
+                    return Err(error);
+                }
+            }
+            _ => {}
+        }
         let expected = self.registration.mutation()?;
         if expected.account != user.id || expected.from_epoch != user.epoch {
             return Err(Error::forbidden());
@@ -216,8 +312,8 @@ impl Verified {
 }
 
 impl Core {
-    /// Add a passkey using fresh UV by an existing passkey. Other enrollment
-    /// branches stay unavailable until their verifier/mutation adapters exist.
+    /// Start the built-in path after an existing passkey. Exact configured
+    /// password-first enrollment starts through workflow_configured_start.
     pub fn workflow_passkey_enrollment_start(&self, token: &str) -> Result<View> {
         self.start_local_workflow(token, &local_definition(PASSKEY_ENROLLMENT)?)
     }
@@ -239,7 +335,7 @@ impl Core {
                 return Err(Error::conflict("Enrollment is already pending"));
             }
             let at = now();
-            let (user, session, request) = verified_session(self, tx, &checked, &run, at)?;
+            let (user, session, request, _) = verified_session(self, tx, &checked, &run, at)?;
             let RunState::Active { step, attempt } = &run.record.state else {
                 unreachable!()
             };
@@ -302,7 +398,7 @@ impl Core {
                 return run.view(&checked);
             }
             let at = now();
-            let (user, session, request) = verified_session(self, tx, &checked, &run, at)?;
+            let (user, session, request, mode) = verified_session(self, tx, &checked, &run, at)?;
             if run.record.state
                 != (RunState::Active {
                     step: reservation.step.clone(),
@@ -337,6 +433,7 @@ impl Core {
                 before: run.record.clone(),
                 evidence: evidence.clone(),
                 registration,
+                mode,
             };
             run.attempts.push(Attempt {
                 step: reservation.step,
