@@ -147,8 +147,13 @@ async fn call(
     if let Some(rev) = rev {
         request = request.header("if-match", format!("\"{rev}\""));
     }
-    // Keep these authority probes distinct under the user update receipt contract.
-    if method == "PATCH" && (uri.starts_with("/api/users/") || uri.starts_with("/api/admin/users/")) {
+    // Keep these authority probes distinct under the direct write receipt contract.
+    if method == "PATCH" && (
+        uri.starts_with("/api/users/")
+            || uri.starts_with("/api/admin/users/")
+            || uri.starts_with("/api/clients/")
+            || uri.starts_with("/api/admin/clients/")
+    ) {
         request = request.header("idempotency-key", uuid::Uuid::new_v4().to_string());
     }
     let payload = if let Some(body) = body {

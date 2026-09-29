@@ -246,6 +246,7 @@ async fn populated_client_round_trips_through_management_http() {
                 .header("content-type", "application/json")
                 .header("authorization", format!("Bearer {}", f.admin))
                 .header("if-match", format!("\"{revision}\""))
+                .header("idempotency-key", "client-config-create")
                 .body(Body::from(serde_json::to_vec(&new).unwrap()))
                 .unwrap(),
         )

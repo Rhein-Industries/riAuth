@@ -295,11 +295,16 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         ],
         None,
     ));
+    let client_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["client", "create", "terminal", "--group", "engineering"],
+        &["--if-revision", &client_revision, "--idempotency-key", "binary-create-terminal", "client", "create", "terminal", "--group", "engineering"],
         None,
     ));
     success(invoke(
@@ -443,14 +448,14 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         std::fs::read(first_secret).unwrap(),
         std::fs::read(second_secret).unwrap()
     );
-    let forbidden = agent_call(&["--if-revision", &revision, "client", "disable", "terminal"]);
+    let forbidden = agent_call(&["--if-revision", &revision, "--idempotency-key", "stale-disable-terminal", "client", "disable", "terminal"]);
     // The stale revision is checked before mutation; a fresh request then reaches resource authorization.
     assert_eq!(forbidden.status.code(), Some(5));
     let revision = success(agent_call(&["revision"]))["revision"]
         .as_u64()
         .unwrap()
         .to_string();
-    let forbidden = agent_call(&["--if-revision", &revision, "client", "disable", "terminal"]);
+    let forbidden = agent_call(&["--if-revision", &revision, "--idempotency-key", "forbidden-disable-terminal", "client", "disable", "terminal"]);
     assert_eq!(forbidden.status.code(), Some(4));
     exercise_source_and_factor_plans(dir.path(), &config, &session);
     let key = dir.path().join("backup.key");
@@ -1102,6 +1107,73 @@ fn cli_group_writes_require_retry_binding_and_replay_once() {
     }
 }
 
+#[test]
+fn cli_client_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "client", "create", "cli-app"],
+        vec!["--idempotency-key", "missing-create-revision", "client", "create", "cli-app"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Client writes require"));
+    }
+    let create = [
+        "--if-revision", &at, "--idempotency-key", "cli-create-app",
+        "client", "create", "cli-app",
+    ];
+    let first = success(cli(&create));
+    assert_eq!(first["client"]["client_id"], "cli-app");
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-create-app",
+        "client", "create", "cli-app", "--name", "Changed",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-stale-create",
+        "client", "create", "stale-app",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let update_at = revision();
+    for args in [
+        vec!["--if-revision", &update_at, "client", "update", "cli-app", "--name", "Renamed"],
+        vec!["--idempotency-key", "missing-update-revision", "client", "update", "cli-app", "--name", "Renamed"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Client writes require"));
+    }
+    let update = [
+        "--if-revision", &update_at, "--idempotency-key", "cli-update-app",
+        "client", "update", "cli-app", "--name", "Renamed",
+    ];
+    let updated = success(cli(&update));
+    assert_eq!(updated["name"], "Renamed");
+    assert_eq!(success(cli(&update)), updated);
+    assert_eq!(revision().parse::<u64>().unwrap(), update_at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &update_at, "--idempotency-key", "cli-update-app",
+        "client", "update", "cli-app", "--name", "Different",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &update_at, "--idempotency-key", "cli-stale-update",
+        "client", "update", "cli-app", "--name", "Stale",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let (_, error) = failure(cli(&["--if-revision", &revision(), "client", "disable", "cli-app"]));
+    assert!(error["message"].as_str().unwrap().contains("Client writes require"));
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["client.create", "client.update"] {
+        assert_eq!(events.as_array().unwrap().iter().filter(|event| event["action"] == action).count(), 1);
+    }
+}
+
 /// M03: the CLI's direct and desired-state application writes reach the same
 /// management seam as the HTTP API, with the same type, retry and stale rules.
 #[test]
@@ -1190,6 +1262,8 @@ fn cli_application_writes_share_management_seam() {
     let (code, error) = failure(call(&[
         "--if-revision",
         &at,
+        "--idempotency-key",
+        "cli-downgrade-signed",
         "client",
         "update",
         "cli-signed",
@@ -1224,6 +1298,8 @@ fn cli_application_writes_share_management_seam() {
     let (code, _) = failure(call(&[
         "--if-revision",
         &stale,
+        "--idempotency-key",
+        "cli-stale-update-signed",
         "client",
         "update",
         "cli-signed",
@@ -1234,6 +1310,8 @@ fn cli_application_writes_share_management_seam() {
     let updated = success(call(&[
         "--if-revision",
         &at,
+        "--idempotency-key",
+        "cli-update-signed",
         "client",
         "update",
         "cli-signed",

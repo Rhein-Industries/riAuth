@@ -436,7 +436,7 @@ async fn client_policy_review_binds_exact_content_authority_dependencies_and_blo
                 auth,
                 patch.clone(),
                 Some(revision(&f)),
-                None,
+                Some("direct-policy-denied"),
             )
             .await;
             assert_eq!(status, StatusCode::CONFLICT, "{error}");
@@ -562,7 +562,7 @@ async fn client_policy_review_binds_exact_content_authority_dependencies_and_blo
             Auth::Bearer(&scoped),
             json!({"name":"Renamed", "allowed_groups":[], "require_mfa":false}),
             Some(revision(&f)),
-            None
+            Some("scoped-client-name-update")
         )
         .await
         .0,
@@ -983,11 +983,13 @@ async fn client_policy_review_binds_exact_content_authority_dependencies_and_blo
     let server_url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let before = f.snapshot().unwrap();
+    let at = revision(&f).to_string();
     let denied = cli(
         &f,
         &server_url,
         &f.admin,
         &[
+            "--if-revision", &at, "--idempotency-key", "direct-policy-cli-denied",
             "client",
             "update",
             "app",

@@ -260,7 +260,7 @@ async fn exact_status_revokes_bound_grants_once_and_blocks_api_cli_state_bypass(
             auth,
             json!(input()),
             Some(revision(&f)),
-            None,
+            Some("direct-status-denied"),
         )
         .await;
         assert_eq!(response.0, StatusCode::CONFLICT, "{}", response.1);
@@ -586,9 +586,10 @@ async fn exact_status_revokes_bound_grants_once_and_blocks_api_cli_state_bypass(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let server_url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let at = revision(&f).to_string();
     for args in [
-        vec!["client", "enable", "app"],
-        vec!["client", "update", "app", "--enabled", "true"],
+        vec!["--if-revision", &at, "--idempotency-key", "direct-enable-denied", "client", "enable", "app"],
+        vec!["--if-revision", &at, "--idempotency-key", "direct-update-denied", "client", "update", "app", "--enabled", "true"],
     ] {
         let denied = cli(&binary, &f, &server_url, &f.admin, &args).await;
         assert_eq!(denied.1["error"]["http_status"], 409, "{denied:?}");

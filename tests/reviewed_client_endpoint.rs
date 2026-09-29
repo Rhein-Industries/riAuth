@@ -282,7 +282,7 @@ async fn endpoints_bind_exact_content_block_all_writers_and_preserve_credentials
                 actor,
                 patch.clone(),
                 Some(revision(&f)),
-                None,
+                Some("direct-endpoint-denied"),
             )
             .await;
             let denied_owner_channel = matches!(actor, Auth::Bearer(token) if token == owner)
@@ -624,12 +624,14 @@ async fn endpoints_bind_exact_content_block_all_writers_and_preserve_credentials
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let at = revision(&f).to_string();
     let denied = cli(
         &binary,
         &f,
         &url,
         &f.admin,
         &[
+            "--if-revision", &at, "--idempotency-key", "direct-redirect-denied",
             "client",
             "update",
             "app",
@@ -658,6 +660,7 @@ async fn endpoints_bind_exact_content_block_all_writers_and_preserve_credentials
             &url,
             &f.admin,
             &[
+                "--if-revision", &at, "--idempotency-key", "direct-logout-denied",
                 "client",
                 "update",
                 "app",

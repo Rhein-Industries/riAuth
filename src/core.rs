@@ -604,6 +604,7 @@ impl Core {
         })
     }
     pub fn create_client(&self, token: &str, input: NewClient) -> Result<Value> {
+        Self::require_client_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.management(
                 tx,
@@ -637,6 +638,7 @@ impl Core {
         })
     }
     pub fn update_client(&self, token: &str, cid: &str, patch: ClientPatch) -> Result<Value> {
+        Self::require_client_retry_binding()?;
         self.mutation(token, |tx| {
             let principal = self.principal(tx, token)?;
             let action = if principal.delegated {
@@ -689,6 +691,18 @@ impl Core {
             )?;
             Ok(written.client.view())
         })
+    }
+    fn require_client_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Client writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
     }
     pub fn rotate_client_secret(&self, token: &str, cid: &str) -> Result<Value> {
         if let Some(context) = crate::context::current()

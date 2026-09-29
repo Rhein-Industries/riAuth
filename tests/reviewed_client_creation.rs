@@ -866,12 +866,13 @@ async fn configured_creation_review_binds_content_authority_dependencies_and_iss
     let server_url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let before = f.snapshot().unwrap();
+    let at = revision(&f).to_string();
     let denied = cli(
         &f,
         &binary,
         &server_url,
         &f.admin,
-        &["client", "create", "direct-cli", "--scope", "openid"],
+        &["--if-revision", &at, "--idempotency-key", "direct-create-denied", "client", "create", "direct-cli", "--scope", "openid"],
     )
     .await;
     assert_eq!(denied.0, 5);

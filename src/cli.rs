@@ -2599,6 +2599,16 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
         .await
 }
 async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
+    if matches!(
+        &command,
+        ClientCommand::Create { .. }
+            | ClientCommand::Update { .. }
+            | ClientCommand::Disable { .. }
+            | ClientCommand::Enable { .. }
+    ) && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+    {
+        bail!("Client writes require --idempotency-key and --if-revision (from `riauth revision`)");
+    }
     let (id, patch) = match command {
         ClientCommand::List => return remote.call(Method::GET, "/api/clients", None, true).await,
         ClientCommand::EndpointReview { command } => return client_endpoint::run(remote, command).await,

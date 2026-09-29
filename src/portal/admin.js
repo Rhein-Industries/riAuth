@@ -1163,7 +1163,7 @@
     if (last) {
       bindForm(form, async (key) => {
         const body = draftBody(d);
-        const result = await api("POST", "admin/clients", body, { key });
+        const result = await api("POST", "admin/clients", body, { revision: data.revision, key });
         d.created = { client: result.client, secret: result.client_secret || null, connection: d.checked ? d.checked.connection : null };
         await saved(`Created ${body.name}.`);
       }, { 409: (error) => /already exists/i.test(error.message) ? "An application with this client ID was created meanwhile. Go back and choose another client ID." : undefined }, "Creating…");
