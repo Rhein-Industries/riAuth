@@ -1980,6 +1980,240 @@ pub fn agent_rotation_issues_credential_once(backend: Backend) {
     assert_eq!(audit_count(&f, "agent.rotate"), 2);
 }
 
+// Before the dedicated issuance writer, Core::mutation saved its full agent
+// response in this generic Receipt envelope. Reopen must redact the stored
+// result while keeping the digest key, fingerprint, scope and expiry intact.
+pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
+    let f = backend.fixture();
+    let admin_id = user(&f, "admin").id;
+    let creation_revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
+    let input = NewAgent {
+        id: "legacy-issuance".into(),
+        ttl: 3600,
+        parent: None,
+        permissions: vec![Permission {
+            action: "state.read".into(),
+            resource: "state/revision".into(),
+        }],
+    };
+    let created = f.core.create_agent(&f.admin, input.clone()).unwrap();
+    let old_token = text(&created["credential"], "token");
+    let rotation_revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let rotated = f.core.rotate_agent(&f.admin, &input.id, 7200).unwrap();
+    let new_token = text(&rotated["credential"], "token");
+    let committed_revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let create_audits = audit_count(&f, "agent.create");
+    let rotate_audits = audit_count(&f, "agent.rotate");
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
+
+    let create_key = digest(&format!("{admin_id}\0legacy-create-key"));
+    let rotate_key = digest(&format!("{admin_id}\0legacy-rotate-key"));
+    let expiry = now() + 3600;
+    // Frozen result shape from the pre-redaction Core::mutation writer at
+    // 28ee2fa (Agent::view plus the credential object), with live test tokens.
+    let legacy_result = |response: &Value| {
+        let agent = &response["agent"];
+        let credential = &response["credential"];
+        json!({
+            "agent": {
+                "id": agent["id"],
+                "parent_user": agent["parent_user"],
+                "permissions": agent["permissions"],
+                "expires_at": agent["expires_at"],
+                "created_at": agent["created_at"],
+                "enabled": agent["enabled"]
+            },
+            "credential": {
+                "issuer": credential["issuer"],
+                "agent_id": credential["agent_id"],
+                "token": credential["token"],
+                "expires_at": credential["expires_at"]
+            }
+        })
+    };
+    let legacy_created = legacy_result(&created);
+    let legacy_rotated = legacy_result(&rotated);
+    assert_eq!(legacy_created, created);
+    assert_eq!(legacy_rotated, rotated);
+    let generic = |fingerprint: &str, result: Value| json!({"fingerprint": fingerprint, "permissions": [], "result": result, "expires_at": expiry});
+    let dcr = generic(
+        "legacy-dcr-fingerprint",
+        json!({"client_id":"dcr-client","registration_access_token":"dcr-secret-sentinel"}),
+    );
+    let client = generic(
+        "legacy-client-fingerprint",
+        json!({"client_secret":"client-secret-sentinel"}),
+    );
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "receipts",
+                &create_key,
+                &generic("legacy-create-fingerprint", legacy_created),
+            )?;
+            tx.put(
+                "receipts",
+                &rotate_key,
+                &generic("legacy-rotate-fingerprint", legacy_rotated),
+            )?;
+            tx.put("receipts", "unrelated-dcr", &dcr)?;
+            tx.put("receipts", "unrelated-client", &client)?;
+            // Force the startup migration through more than one committed page.
+            for index in 0..130 {
+                tx.put(
+                    "receipts",
+                    &format!("unrelated-{index:03}"),
+                    &generic(&format!("other-{index}"), json!({"status":"committed"})),
+                )?;
+            }
+            // The fixture has already opened the current Core. Remove only this
+            // migration marker to represent a store written by the older binary.
+            tx.delete("meta", "agent_issuance_receipts_redacted_v1")?;
+            Ok(())
+        })
+        .unwrap();
+    let seeded = f.snapshot().unwrap();
+    assert!(
+        seeded[&format!("receipts/{create_key}")]["result"]
+            .to_string()
+            .contains(&old_token)
+    );
+    assert!(
+        seeded[&format!("receipts/{rotate_key}")]["result"]
+            .to_string()
+            .contains(&new_token)
+    );
+
+    let f = f.reopen_with(|_| {});
+    let stored = f.snapshot().unwrap();
+    let marker = json!({"agent_id":"legacy-issuance","credential_issued":true});
+    for (key, fingerprint) in [
+        (&create_key, "legacy-create-fingerprint"),
+        (&rotate_key, "legacy-rotate-fingerprint"),
+    ] {
+        let before = &seeded[&format!("receipts/{key}")];
+        let after = &stored[&format!("receipts/{key}")];
+        assert_eq!(after["fingerprint"], fingerprint);
+        assert_eq!(after["permissions"], json!([]));
+        assert_eq!(after["expires_at"], expiry);
+        assert_eq!(after["result"], marker);
+        for field in ["fingerprint", "permissions", "expires_at"] {
+            assert_eq!(after[field], before[field]);
+        }
+    }
+    assert_eq!(stored["receipts/unrelated-dcr"], dcr);
+    assert_eq!(stored["receipts/unrelated-client"], client);
+    assert_eq!(stored["meta/agent_issuance_receipts_redacted_v1"], true);
+    let serialized = serde_json::to_string(&stored).unwrap();
+    assert!(!serialized.contains(&old_token));
+    assert!(!serialized.contains(&new_token));
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(committed_revision)
+    );
+    assert_eq!(audit_count(&f, "agent.create"), create_audits);
+    assert_eq!(audit_count(&f, "agent.rotate"), rotate_audits);
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&old_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&new_token))
+            .unwrap()
+            .as_deref(),
+        Some(input.id.as_str())
+    );
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
+
+    let request = |key: &str, fingerprint: &str, revision: u64| riauth::context::RequestContext {
+        idempotency_key: Some(key.into()),
+        fingerprint: fingerprint.into(),
+        revision: Some(revision),
+        ..Default::default()
+    };
+    let denied_create = riauth::context::scope(
+        Some(request(
+            "legacy-create-key",
+            "legacy-create-fingerprint",
+            creation_revision,
+        )),
+        || f.core.create_agent(&f.admin, input.clone()),
+    )
+    .unwrap_err();
+    assert_eq!(denied_create.code, "credential_already_issued");
+    let denied_rotate = riauth::context::scope(
+        Some(request(
+            "legacy-rotate-key",
+            "legacy-rotate-fingerprint",
+            rotation_revision,
+        )),
+        || f.core.rotate_agent(&f.admin, &input.id, 7200),
+    )
+    .unwrap_err();
+    assert_eq!(denied_rotate.code, "credential_already_issued");
+    let changed_request = riauth::context::scope(
+        Some(request(
+            "legacy-rotate-key",
+            "changed-fingerprint",
+            rotation_revision,
+        )),
+        || f.core.rotate_agent(&f.admin, &input.id, 7200),
+    )
+    .unwrap_err();
+    assert_eq!(changed_request.code, "conflict");
+    assert!(changed_request.message.contains("different request"));
+    f.assert_snapshot(&stored);
+
+    // A late legacy row after the one-time marker is scrubbed by the bounded
+    // maintenance pass without changing revision, audit or credential indexes.
+    let late_key = digest(&format!("{admin_id}\0late-legacy-key"));
+    f.core
+        .store
+        .write(|tx| tx.put("receipts", &late_key, &generic("late-fingerprint", rotated)))
+        .unwrap();
+    // The durable maintenance cursor must reach the late row even when a
+    // prior page is full of unrelated receipts.
+    for _ in 0..3 {
+        f.core.store.write(riauth::context::cleanup).unwrap();
+    }
+    let late = f
+        .core
+        .store
+        .get::<Value>("receipts", &late_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(late["result"], marker);
+    assert!(!late.to_string().contains(&new_token));
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(committed_revision)
+    );
+    assert_eq!(audit_count(&f, "agent.rotate"), rotate_audits);
+}
+
 // Agent revoke is the secret-free lifecycle write: exact retries return only
 // Agent::view, while a new request against a disabled row cannot audit again.
 pub fn agent_revoke_requires_retry_binding(backend: Backend) {
