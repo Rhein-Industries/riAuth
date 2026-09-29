@@ -1666,9 +1666,10 @@ Still outside this slice, as later tasks:
   the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md),
   the [OIDC relying-party recipe](recipes/oidc-relying-party.md),
   the [Platform SAML IdP recipe](recipes/platform-saml-idp.md),
-  and the [LDAP import recipe](recipes/ldap-import.md)
-  are the D03 recipes written so far. The LDAP import recipe covers both
-  editions. The relying-party recipe is the
+  the [LDAP import recipe](recipes/ldap-import.md),
+  and the [upstream OIDC recipe](recipes/upstream-oidc.md)
+  are the D03 recipes written so far. The LDAP import recipe and the
+  upstream OIDC recipe cover both editions. The relying-party recipe is the
   authorization-code fixture, and its client is the in-tree router rather
   than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
   A named service provider remains an open peer. SAML source remains a

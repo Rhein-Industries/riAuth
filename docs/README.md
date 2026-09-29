@@ -51,6 +51,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [API](api.md) | HTTP routes, authentication and error contracts |
 | [OIDC profiles](oidc-profiles.md) | OAuth/OIDC grants, claims, keys and upstream sources |
 | [OIDC relying-party recipe](recipes/oidc-relying-party.md) | In-tree public client `rp`, the assertions the ignored browser test makes, and the peer gaps that fixture leaves |
+| [Upstream OIDC recipe](recipes/upstream-oidc.md) | In-process issuer fixture, the assertions that test makes, and the Okta, Entra, and Google gap that fixture leaves |
 | [Portal](PORTAL.md) | Browser and terminal sign-in, passkey management, application launch, policy and event-map page |
 | [Passkeys](passkeys.md) | Browser passkeys, USB and split WebAuthn ceremonies |
 | [Account lifecycle](lifecycle.md) | Invitations, email verification, password recovery and what still needs the terminal |

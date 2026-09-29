@@ -152,6 +152,8 @@ The `bound_key` scope follows Authentik's ID-token profile: it produces `dpop+id
 
 ## Upstream OIDC sources
 
+The [upstream OIDC recipe](recipes/upstream-oidc.md) records the in-process issuer fixture `upstream_oidc_pkce_pinned_keys_claim_validation_and_terminal_completion`, the assertions that test makes, and the fact that Okta, Entra, and Google are not connected. That test was not run for the recipe.
+
 Inspect `riauth schema source-input` for direct configuration or `source` for manifest entries. A source contains exact issuer/authorization/token endpoints, upstream client ID/auth method, pinned public JWKS, scopes, approved provisioning groups and trusted MFA ACRs. Supply its client secret through a private input file or versioned manifest reference.
 
 ```sh

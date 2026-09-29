@@ -192,7 +192,7 @@ this page. CI steps are written for the default Platform build.
 | Family | Edition | Direction and profile | Evidence | Limit |
 | --- | --- | --- | --- | --- |
 | OIDC provider | Both | Authorization server. Authorization code with mandatory S256 PKCE; refresh rotation; client credentials; device code; `private_key_jwt`; pinned JWT bearer; RFC 8693 access-token exchange (access tokens only, chains of at most four). PAR, JAR, JARM. DPoP. Response modes `query`, `fragment`, `form_post`, and the `.jwt` forms. JWE `RSA-OAEP-256` with `A256GCM` or `A256CBC-HS512`. Restricted RFC 7591 registration. RP, front-channel, and back-channel logout. Client authentication `none`, `client_secret_basic`, `client_secret_post`, `private_key_jwt`. | [OIDC relying-party recipe](recipes/oidc-relying-party.md), [oidc-profiles.md](oidc-profiles.md). In-tree tests in [`tests/identity/oidc.rs`](../tests/identity/oidc.rs). Ignored test `browser_terminal_login_callback_and_signed_backchannel_logout` in [`tests/browser.rs`](../tests/browser.rs) is the integration job's "Real browser and relying party" step. | Implicit and hybrid grants are rejected (`Only authorization code is supported`). RFC 7592 management and automatic sector-identifier retrieval are absent. [`scripts/run-conformance.py`](../scripts/run-conformance.py) pins OIDF suite `440eec8` and is not called by CI. No result file is in the tree. The browser fixture's client is the in-process router, not a named external relying party. |
-| Upstream OIDC | Both | Client of an upstream issuer. Signed code plus S256. Upstream client authentication is `none`, Basic, or POST. Browser completion is cookie-bound; CLI `source start` / `source finish` keeps the session off the callback. | [oidc-profiles.md](oidc-profiles.md). In-tree test [`tests/identity/sources.rs`](../tests/identity/sources.rs). | Encrypted upstream ID tokens and upstream `private_key_jwt` are rejected. No Okta, Entra, or Google OIDC tenant. |
+| Upstream OIDC | Both | Client of an upstream issuer. Signed code plus S256. Upstream client authentication is `none`, Basic, or POST. Browser completion is cookie-bound; CLI `source start` / `source finish` keeps the session off the callback. | [Upstream OIDC recipe](recipes/upstream-oidc.md), [oidc-profiles.md](oidc-profiles.md). Function `upstream_oidc_pkce_pinned_keys_claim_validation_and_terminal_completion` in [`tests/identity/sources.rs`](../tests/identity/sources.rs). The check job's `cargo test --all-targets --features test-support,fuzzing --locked` does not pass `--ignored`, and this function is not ignored. This page did not run that command. | Encrypted upstream ID tokens and upstream `private_key_jwt` are rejected. The recipe issuer is an in-process loopback `POST /token` signed with riAuth's own active key. No Okta, Entra, or Google OIDC tenant. |
 | Upstream OAuth JSON identity | Both | Client. Pinned userinfo URL, no `openid`, no ID token, no authentication time. | Same guide and `tests/identity/sources.rs`. | Cannot satisfy request-bound reauthentication. Email does not link accounts. |
 | Embedded source stage | Platform client setting | Suspends an interactive authorization for one configured OIDC or OAuth source. Essentials rejects `settings.source_stage`. | [oidc-profiles.md](oidc-profiles.md), [`src/edition.rs`](../src/edition.rs). | A stage is not embedded inside a SAML AuthnRequest. Browser OTP for a required local factor is still a gap in the guide. |
 | SAML IdP | Platform | Identity provider. Signed HTTP-Redirect and HTTP-POST AuthnRequest, HTTP-POST response, signed metadata, signed assertion and response. Optional assertion encryption (AES-256-GCM, RSA-OAEP). NameID persistent, transient, email, unspecified. SP-initiated SLO and IdP logout fan-out over Redirect/POST. IdP-initiated login only at `/saml/{client}/init` when enabled. | [Platform SAML IdP recipe](recipes/platform-saml-idp.md), [saml.md](saml.md). In-tree tests [`tests/identity/saml.rs`](../tests/identity/saml.rs), [`tests/identity/saml_logout.rs`](../tests/identity/saml_logout.rs). The recipe follows the integration job's "Independent SAML XML signature and encryption" step. The upstream-source and logout xmlsec1 steps are separate. | SOAP, artifact, ECP, and encrypted NameID are outside the profile. xmlsec1 checks signatures; it is not a service provider. No named SP. |
@@ -282,13 +282,16 @@ device were run. The Linux network-filesystem probe described in
 The [Platform forward-auth recipe](recipes/platform-forward-auth.md), the
 [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md), the
 [OIDC relying-party recipe](recipes/oidc-relying-party.md), the
-[Platform SAML IdP recipe](recipes/platform-saml-idp.md), and the
-[LDAP import recipe](recipes/ldap-import.md) are the D03
+[Platform SAML IdP recipe](recipes/platform-saml-idp.md), the
+[LDAP import recipe](recipes/ldap-import.md), and the
+[upstream OIDC recipe](recipes/upstream-oidc.md) are the D03
 recipes in this tree. The relying-party page's client is the in-tree axum
 fixture, so a named external relying party remains an open peer. The SAML
 IdP page checks signatures with xmlsec1, so a named service provider remains
 an open peer. The import page follows disposable loopback OpenLDAP, so a
-real Active Directory directory remains an open peer. The other D03
+real Active Directory directory remains an open peer. The upstream OIDC
+page's issuer is the in-process loopback token endpoint, so Okta, Entra,
+and Google remain unconnected. The other D03
 integration recipes, D04 emergency runbooks, and D05 acceptance against
 the category targets are still open. So are a
 conformance result, a named relying party or service provider, a
