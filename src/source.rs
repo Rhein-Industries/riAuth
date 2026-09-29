@@ -629,6 +629,8 @@ impl Core {
     /// `browser_binding` is the full cookie set when the login started in a browser.
     /// CLI, embedded-stage and workflow logins pass `None`. A browser login whose
     /// callback does not present that cookie is ended before the token request.
+    /// A login whose pinned source changed is ended in the same write, so restoring
+    /// the previous keys does not finish it or redeem its code.
     pub async fn source_callback(
         &self,
         id: &str,
@@ -662,7 +664,12 @@ impl Core {
         let source_id = id.to_owned();
         let request_state = state.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
-        let ready = tokio::task::spawn_blocking(move || {
+        enum Claim {
+            Ready(Source, Login, Option<zeroize::Zeroizing<String>>),
+            Mismatch,
+            Retired,
+        }
+        let claim = tokio::task::spawn_blocking(move || {
             crate::context::scope(context, || {
                 worker.store.write(|tx| {
                     let id = source_id.as_str();
@@ -673,38 +680,50 @@ impl Core {
                     }
                     let mut pending = tx
                         .get::<Login>("source_logins", &digest(state))?
-                        .filter(|p| {
-                            p.source == id
-                                && p.expires_at > now()
-                                && !p.claimed
-                                && p.fingerprint == source.fingerprint().unwrap_or_default()
-                        })
+                        .filter(|p| p.source == id && p.expires_at > now() && !p.claimed)
                         .ok_or_else(|| {
                             Error::bad("Source request expired, changed or already used")
                         })?;
-                    if pending.browser_binding.as_deref().is_some_and(|expected| {
-                        !browser_binding_matches(expected, presented.as_deref())
-                    }) {
+                    // Commit the end of the login. Err would roll back and leave the code redeemable
+                    // after the previous keys were restored.
+                    let retire = match source.fingerprint() {
+                        Ok(fingerprint) => fingerprint != pending.fingerprint,
+                        Err(_) => true,
+                    };
+                    if retire
+                        || pending.browser_binding.as_deref().is_some_and(|expected| {
+                            !browser_binding_matches(expected, presented.as_deref())
+                        })
+                    {
                         pending.claimed = true;
                         pending.failed = true;
                         tx.put("source_logins", &digest(state), &pending)?;
                         audit(tx, "upstream", "source.login_failed", id)?;
-                        // Commit the refusal. Err would roll the writer back and leave the code redeemable.
-                        return Ok(None);
+                        return Ok(if retire {
+                            Claim::Retired
+                        } else {
+                            Claim::Mismatch
+                        });
                     }
                     pending.claimed = true;
                     tx.put("source_logins", &digest(state), &pending)?;
                     let secret = tx
                         .get::<String>("source_secrets", id)?
                         .map(zeroize::Zeroizing::new);
-                    Ok(Some((source, pending, secret)))
+                    Ok(Claim::Ready(source, pending, secret))
                 })
             })
         })
         .await
         .map_err(Error::internal)??;
-        let Some((source, pending, secret)) = ready else {
-            return Err(browser_mismatch());
+        let (source, pending, secret) = match claim {
+            Claim::Mismatch => return Err(browser_mismatch()),
+            Claim::Retired => {
+                return Err(Error::bad(
+                    "Source request expired, changed or already used",
+                ));
+            }
+            Claim::Ready(source, pending, secret) => (source, pending, secret),
         };
         let result = async {
             if get("iss").is_some_and(|v| v != source.issuer) {
@@ -806,9 +825,21 @@ impl Core {
                     let mut current = tx
                         .get::<Login>("source_logins", &digest(&state))?
                         .ok_or_else(|| Error::bad("Source request expired"))?;
+                    // Identity was checked against the keys captured at claim. A replacement
+                    // committed before this write must not be stored for a later rollback.
+                    let trust_changed = match tx.get::<Source>("sources", &id)? {
+                        Some(source) => match source.fingerprint() {
+                            Ok(fingerprint) => fingerprint != current.fingerprint,
+                            Err(_) => true,
+                        },
+                        None => true,
+                    };
                     match result {
-                        Ok(identity) => current.result = Some(identity),
-                        Err(_) => current.failed = true,
+                        Ok(identity) if !trust_changed => current.result = Some(identity),
+                        _ => {
+                            current.failed = true;
+                            current.result = None;
+                        }
                     }
                     tx.put("source_logins", &digest(&state), &current)?;
                     audit(

@@ -1051,3 +1051,325 @@ async fn browser_source_callback_is_redeemed_only_by_the_starting_browser() {
     );
     assert!(!upstream.retains(&other_code));
 }
+
+fn public_jwk(key: &crypto::SigningKey) -> riauth::jose::PublicJwk {
+    serde_json::from_value(key.jwk().unwrap()).unwrap()
+}
+
+fn put_source(f: &Fixture, source: &riauth::source::Source) {
+    f.core
+        .source_put(
+            &f.admin,
+            riauth::source::SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+}
+
+fn source_login_row(f: &Fixture, start: &Value) -> Value {
+    let url = url::Url::parse(start["authorization_url"].as_str().unwrap()).unwrap();
+    let state = url
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    f.core
+        .store
+        .get::<Value>("source_logins", &digest(&state))
+        .unwrap()
+        .unwrap()
+}
+
+fn source_links(f: &Fixture) -> Vec<Value> {
+    f.core
+        .store
+        .list::<Value>("source_links")
+        .unwrap()
+        .into_iter()
+        .map(|(_, link)| link)
+        .collect()
+}
+
+fn session_count(f: &Fixture) -> usize {
+    f.core
+        .store
+        .list::<riauth::model::Session>("sessions")
+        .unwrap()
+        .len()
+}
+
+async fn signed_callback(
+    f: &Fixture,
+    upstream: &Upstream,
+    start: &Value,
+    key: &crypto::SigningKey,
+    subject: &str,
+    override_claims: Value,
+) -> (riauth::error::Result<Value>, String, String) {
+    let url = url::Url::parse(start["authorization_url"].as_str().unwrap()).unwrap();
+    let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+    let mut claims = json!({
+        "iss": upstream.source.issuer,
+        "sub": subject,
+        "aud": "upstream-client",
+        "iat": now(),
+        "exp": now() + 300,
+        "auth_time": now(),
+        "nonce": query["nonce"],
+        "email": "rotate@example.test",
+        "email_verified": true,
+        "name": "Rotated User",
+        "acr": "urn:upstream:mfa"
+    });
+    if let Some(extra) = override_claims.as_object() {
+        claims.as_object_mut().unwrap().extend(extra.clone());
+    }
+    let token = key.sign(&claims, false).unwrap();
+    let code = crypto::random_token("");
+    upstream.codes.lock().unwrap().insert(
+        code.clone(),
+        (
+            query["code_challenge"].clone(),
+            json!({"id_token": &token, "access_token": "mock-access"}),
+        ),
+    );
+    let value = upstream.complete(f, start, &code, None).await;
+    (value, code, token)
+}
+
+/// Old and new pinned keys both verify. A removed key cannot authenticate, and
+/// restoring it does not finish a login that was presented or answered while the
+/// key was absent. Issuer, audience, link and secret-only session rules stay put.
+#[tokio::test]
+async fn oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_rollback_replay() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f).await;
+    let old = upstream.key.clone();
+    let new_key = crypto::SigningKey::generate_algorithm("ES256").unwrap();
+    let mut source = upstream.source.clone();
+    source.jwks.keys = vec![public_jwk(&old), public_jwk(&new_key)];
+    put_source(&f, &source);
+    let subject = "rotated-subject";
+
+    let started = upstream.start(&f, None);
+    let (old_login, _, old_token) =
+        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    let old_login = old_login.unwrap();
+    assert_eq!(old_login["completed"], true);
+    assert!(!old_login.to_string().contains(&old_token));
+    let first = upstream.finish(&f, &started, true).unwrap();
+    let user_id = text(&first["user"], "id");
+    let session_old = text(&first, "session_token");
+    assert!(f.core.me(&session_old).is_ok());
+
+    let started = upstream.start(&f, None);
+    let (new_login, _, _) =
+        signed_callback(&f, &upstream, &started, &new_key, subject, json!({})).await;
+    assert_eq!(new_login.unwrap()["completed"], true);
+    let second = upstream.finish(&f, &started, true).unwrap();
+    assert_eq!(text(&second["user"], "id"), user_id);
+    let session_new = text(&second, "session_token");
+    assert!(f.core.me(&session_old).is_ok());
+    assert!(f.core.me(&session_new).is_ok());
+    let links = source_links(&f);
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0]["source"], "upstream");
+    assert_eq!(links[0]["issuer"], source.issuer);
+    assert_eq!(links[0]["subject"], subject);
+    assert_eq!(links[0]["user_id"], user_id);
+
+    let started = upstream.start(&f, None);
+    let (audience, _, audience_token) = signed_callback(
+        &f,
+        &upstream,
+        &started,
+        &new_key,
+        subject,
+        json!({"aud": "other-client"}),
+    )
+    .await;
+    let audience = audience.unwrap();
+    assert_eq!(audience["completed"], false);
+    assert!(!audience.to_string().contains(&audience_token));
+    assert!(upstream.finish(&f, &started, true).is_err());
+    assert_eq!(source_links(&f).len(), 1);
+    assert!(f.core.me(&session_old).is_ok());
+
+    let mut foreign = source.clone();
+    foreign.issuer = "http://127.0.0.1:9".into();
+    let rejected = f
+        .core
+        .source_put(
+            &f.admin,
+            riauth::source::SourceInput {
+                source: foreign,
+                client_secret: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(rejected.code, "conflict");
+    assert!(!rejected.to_string().contains("source-client-secret"));
+    assert_eq!(source_links(&f)[0]["issuer"], source.issuer);
+    assert!(f.core.me(&session_old).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+
+    source.jwks.keys = vec![public_jwk(&new_key)];
+    put_source(&f, &source);
+    assert!(f.core.me(&session_old).is_err());
+    assert!(f.core.me(&session_new).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert_eq!(source_links(&f)[0]["subject"], subject);
+    assert_eq!(source_links(&f)[0]["issuer"], source.issuer);
+
+    let started = upstream.start(&f, None);
+    let (fresh, _, _) =
+        signed_callback(&f, &upstream, &started, &new_key, subject, json!({})).await;
+    assert_eq!(fresh.unwrap()["completed"], true);
+    let session_cutover = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    assert!(f.core.me(&session_cutover).is_ok());
+    assert_eq!(text(&f.core.me(&session_cutover).unwrap()["user"], "id"), user_id);
+
+    let sessions_before_stale = session_count(&f);
+    let started = upstream.start(&f, None);
+    let (stale, stale_code, stale_token) =
+        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    let stale = stale.unwrap();
+    assert_eq!(stale["completed"], false);
+    assert!(!stale.to_string().contains(&stale_token));
+    let stale_row = source_login_row(&f, &started);
+    assert_eq!(stale_row["failed"], true);
+    assert_eq!(stale_row["claimed"], true);
+    assert!(stale_row["result"].is_null());
+    assert!(upstream.finish(&f, &started, true).is_err());
+    assert!(
+        upstream
+            .complete(&f, &started, &stale_code, None)
+            .await
+            .is_err()
+    );
+    assert_eq!(session_count(&f), sessions_before_stale);
+    assert!(f.core.me(&session_cutover).is_ok());
+
+    source.jwks.keys = vec![public_jwk(&old)];
+    put_source(&f, &source);
+    assert!(f.core.me(&session_cutover).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert!(upstream.finish(&f, &started, true).is_err());
+    let replay = upstream
+        .complete(&f, &started, &stale_code, None)
+        .await
+        .unwrap_err();
+    assert_eq!(replay.code, "invalid_request");
+    hides_rotation(&replay, &stale_token);
+    assert_eq!(source_login_row(&f, &started)["failed"], true);
+    assert_eq!(source_links(&f).len(), 1);
+
+    let started = upstream.start(&f, None);
+    let (restored, _, _) =
+        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    assert_eq!(restored.unwrap()["completed"], true);
+    let session_restored = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    assert!(f.core.me(&session_restored).is_ok());
+
+    let parked = upstream.start(&f, None);
+    source.jwks.keys = vec![public_jwk(&new_key)];
+    put_source(&f, &source);
+    assert!(f.core.me(&session_restored).is_err());
+    let (retired, retired_code, retired_token) =
+        signed_callback(&f, &upstream, &parked, &old, subject, json!({})).await;
+    let retired = retired.unwrap_err();
+    assert_eq!(retired.code, "invalid_request");
+    hides_rotation(&retired, &retired_token);
+    assert!(upstream.retains(&retired_code));
+    let retired_row = source_login_row(&f, &parked);
+    assert_eq!(retired_row["failed"], true);
+    assert_eq!(retired_row["claimed"], true);
+    assert!(retired_row["result"].is_null());
+    source.jwks.keys = vec![public_jwk(&old)];
+    put_source(&f, &source);
+    assert!(upstream.finish(&f, &parked, true).is_err());
+    let retired_replay = upstream
+        .complete(&f, &parked, &retired_code, None)
+        .await
+        .unwrap_err();
+    assert_eq!(retired_replay.code, "invalid_request");
+    hides_rotation(&retired_replay, &retired_token);
+    assert!(upstream.retains(&retired_code));
+    assert_eq!(source_login_row(&f, &parked)["failed"], true);
+
+    let started = upstream.start(&f, None);
+    let (after_rollback, _, _) =
+        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    assert_eq!(after_rollback.unwrap()["completed"], true);
+    assert_eq!(
+        text(&upstream.finish(&f, &started, true).unwrap()["user"], "id"),
+        user_id
+    );
+
+    let caught = upstream.start(&f, None);
+    let core = f.core.clone();
+    let admin = f.admin.clone();
+    let mut during = source.clone();
+    during.jwks.keys = vec![public_jwk(&new_key)];
+    *upstream.on_exchange.lock().unwrap() = Some(Box::new(move || {
+        core.source_put(
+            &admin,
+            riauth::source::SourceInput {
+                source: during,
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    }));
+    let sessions_before_exchange = session_count(&f);
+    let (exchange, exchange_code, exchange_token) =
+        signed_callback(&f, &upstream, &caught, &old, subject, json!({})).await;
+    let exchange = exchange.unwrap();
+    assert_eq!(exchange["completed"], false);
+    assert!(!exchange.to_string().contains(&exchange_token));
+    assert!(!upstream.retains(&exchange_code));
+    let exchange_row = source_login_row(&f, &caught);
+    assert_eq!(exchange_row["failed"], true);
+    assert!(exchange_row["result"].is_null());
+    assert_eq!(session_count(&f), sessions_before_exchange);
+    source.jwks.keys = vec![public_jwk(&old)];
+    put_source(&f, &source);
+    assert!(upstream.finish(&f, &caught, true).is_err());
+    let exchange_replay = upstream
+        .complete(&f, &caught, &exchange_code, None)
+        .await
+        .unwrap_err();
+    assert_eq!(exchange_replay.code, "invalid_request");
+    hides_rotation(&exchange_replay, &exchange_token);
+    assert_eq!(source_login_row(&f, &caught)["failed"], true);
+
+    let started = upstream.start(&f, None);
+    let (final_login, _, _) =
+        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    assert_eq!(final_login.unwrap()["completed"], true);
+    let session_final = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    f.core
+        .source_put(
+            &f.admin,
+            riauth::source::SourceInput {
+                source: source.clone(),
+                client_secret: Some("replacement-source-secret".into()),
+            },
+        )
+        .unwrap();
+    assert!(f.core.me(&session_final).is_ok());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert_eq!(source_links(&f).len(), 1);
+    assert_eq!(source_links(&f)[0]["issuer"], source.issuer);
+    assert_eq!(source_links(&f)[0]["user_id"], user_id);
+}
+
+fn hides_rotation(error: &riauth::error::Error, token: &str) {
+    let shown = error.to_string();
+    assert!(!shown.contains(token), "{shown}");
+    assert!(!shown.contains("source-client-secret"), "{shown}");
+    assert!(!shown.contains("replacement-source-secret"), "{shown}");
+}

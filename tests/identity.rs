@@ -128,10 +128,13 @@ fn dpop_proof(
 
 type UpstreamCodes =
     std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (String, Value)>>>;
+type UpstreamHook = std::sync::Arc<std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>>;
 struct Upstream {
     source: riauth::source::Source,
     key: crypto::SigningKey,
     codes: UpstreamCodes,
+    /// Runs inside the token response, after the code is accepted and before it is returned.
+    on_exchange: UpstreamHook,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Upstream {
@@ -146,12 +149,15 @@ impl Upstream {
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let codes: UpstreamCodes = Default::default();
         let records = codes.clone();
+        let on_exchange: UpstreamHook = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let exchange = on_exchange.clone();
         let app = Router::new().route(
             "/token",
             post(
                 move |headers: axum::http::HeaderMap,
                       Form(form): Form<std::collections::HashMap<String, String>>| {
                     let records = records.clone();
+                    let exchange = exchange.clone();
                     async move {
                         use base64::engine::general_purpose::STANDARD;
                         assert_eq!(
@@ -169,6 +175,10 @@ impl Upstream {
                         let (challenge, tokens) =
                             records.lock().unwrap().remove(&form["code"]).unwrap();
                         assert_eq!(digest(&form["code_verifier"]), challenge);
+                        let hook = exchange.lock().unwrap().take();
+                        if let Some(hook) = hook {
+                            hook();
+                        }
                         Json(tokens)
                     }
                 },
@@ -209,6 +219,7 @@ impl Upstream {
             source,
             key,
             codes,
+            on_exchange,
             server,
         }
     }

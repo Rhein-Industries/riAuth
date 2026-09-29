@@ -626,7 +626,9 @@ identity data cannot invent OIDC authentication time or MFA assurance.
 `source_stage_resume`, `load_stage`, `enforce_pending_stage`, `verify_identity`,
 `validate_identity`; [SAML sources](../../src/source/saml.rs) verify upstream
 responses. OIDC source nonce/authentication time and configured trusted MFA ACR
-are checked. [SAML](../../src/saml.rs) `stale` deliberately treats zero
+are checked. `source_callback` ends a login when its pinned source changed
+before the code is exchanged, and drops an identity when the keys change before
+that identity is stored. Restoring the previous keys does not finish that login. [SAML](../../src/saml.rs) `stale` deliberately treats zero
 `auth_time` as exempt from the terminal freshness rule; request `max_age` and
 factor operations are separate rules, not satisfied by that exemption.
 
@@ -636,6 +638,8 @@ factor operations are separate rules, not satisfied by that exemption.
 `prompt_and_max_age_still_require_a_fresh_transaction`,
 `local_totp_is_still_required_when_upstream_is_not_mfa`,
 `oauth_only_stage_does_not_invent_authentication_assurance`;
+[sources](../../tests/identity/sources.rs)
+`oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_rollback_replay`;
 [browser](../../tests/browser_signin.rs) `oauth_source_session_is_exempt_from_terminal_freshness`.
 
 **Missing coverage / later contract.** Q02-C07 changes stage/request/account/
