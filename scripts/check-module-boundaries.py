@@ -903,6 +903,53 @@ def main() -> None:
             ):
                 errors.append("src/source.rs: session-scoped source link read belongs in assembly")
             source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
+            pending_stage = rust_function_body(source_stage_assembly, "enforce_pending_stage")
+            pending_compact = re.sub(r"\s+", "", pending_stage or "")
+            pending_caller = rust_function_body(
+                (SRC / "assembly/oidc.rs").read_text(), "authorize_session_proof_inner"
+            )
+            caller_compact = re.sub(r"\s+", "", pending_caller or "")
+            suspension = rust_function_body(path.read_text(), "suspension_hash")
+            suspension_compact = re.sub(r"\s+", "", suspension or "")
+            if (
+                rust_function_body(source_protocol, "enforce_pending_stage") is not None
+                or pending_stage is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+enforce_pending_stage\s*\(", source_stage_assembly)
+                or not (0 <= pending_compact.find("letkey=suspension_hash(request)?")
+                        < pending_compact.find('tx.get::<String>("source_stage_requests",&key)?')
+                        < pending_compact.find('tx.get::<SourceStage>("source_stages",&id)?')
+                        < pending_compact.find("stage.expires_at<=now()")
+                        < pending_compact.find("stage.suspension_hash!=key")
+                        < pending_compact.find("stage.request.client_id!=request.client_id")
+                        < pending_compact.find("ifstage.cancelled")
+                        < pending_compact.find("if!stage.used")
+                        < pending_compact.find("lethash=request.request_hash()?")
+                        < pending_compact.find("request.transaction_id.as_deref()")
+                        < pending_compact.find("!crypto::constant_eq(token,&stage.transaction)")
+                        < pending_compact.find('tx.get::<AuthenticationTransaction>("authentication",&digest(token))?')
+                        < pending_compact.find("record.expires_at>now()")
+                        < pending_compact.find("record.source_stage.as_deref()==Some(stage.id.as_str())")
+                        < pending_compact.find("record.request_hash==hash")
+                        < pending_compact.find("record.authenticated_session.as_deref()==Some(session.id.as_str())")
+                        < pending_compact.rfind("Ok(())"))
+                or pending_compact.count("returnOk(());") != 3
+                or pending_compact.count('"login_required","Completetheembeddedsourcestage"') != 4
+                or '"access_denied","Thesourcestagewascancelled"' not in pending_compact
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", pending_stage)
+                or suspension is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+suspension_hash\s*\(", path.read_text())
+                or not (0 <= suspension_compact.find("request.decision=None")
+                        < suspension_compact.find("request.transaction_id=None")
+                        < suspension_compact.find("request.request_binding=None")
+                        < suspension_compact.find("request.request_hash()"))
+                or pending_caller is None
+                or "crate::source::enforce_pending_stage" in pending_caller
+                or not (0 <= caller_compact.find("ifsession.expires_at<=now()||session.revoked")
+                        < caller_compact.find("mark_direct_decision(")
+                        < caller_compact.find("super::source_stage::enforce_pending_stage(tx,&request,&session)?")
+                        < caller_compact.find('ifrequest.has_prompt("none")'))
+            ):
+                errors.append("src/source.rs: pending source-stage storage reads belong in assembly")
             stage_creation = rust_function_body(source_protocol, "begin_source_stage")
             stage_creation_compact = re.sub(r"\s+", "", stage_creation or "")
             stage_creation_raw = rust_function_body(path.read_text(), "begin_source_stage")

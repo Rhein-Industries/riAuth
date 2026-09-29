@@ -791,7 +791,7 @@ impl Core {
                 mark_direct_decision(tx, &request_hash, &session.identity.user_id, now())?;
             }
         }
-        crate::source::enforce_pending_stage(tx, &request, &session)?;
+        super::source_stage::enforce_pending_stage(tx, &request, &session)?;
         if request.has_prompt("none") && !remembered {
             return Err(Error::oauth(
                 "consent_required",

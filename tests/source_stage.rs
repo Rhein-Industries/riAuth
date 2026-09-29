@@ -2099,12 +2099,35 @@ async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
         .store
         .write(|tx| tx.put("authentication", &transaction_key, &forged))
         .unwrap();
+    let pending_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending_stage["used"], false);
     let mut attempted = request.clone();
     attempted.decision = Some("approve".into());
     attempted.transaction_id = Some(transaction.clone());
+    let denied = f.core.authorize(&alice, attempted).unwrap_err();
+    assert_eq!(denied.code, "login_required");
+    assert_eq!(denied.message, "Complete the embedded source stage");
     assert_eq!(
-        f.core.authorize(&alice, attempted).unwrap_err().code,
-        "login_required"
+        f.core
+            .store
+            .get::<Value>("source_stages", &stage_id)
+            .unwrap(),
+        Some(pending_stage)
+    );
+    let proof_after_denial: Value = f
+        .core
+        .store
+        .get("authentication", &transaction_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        proof_after_denial["authenticated_session"].as_str(),
+        forged.authenticated_session.as_deref()
     );
     assert!(codes(&f).is_empty());
     forged.authenticated_session = None;
@@ -2179,6 +2202,21 @@ async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
         .unwrap();
     assert_eq!(resume["status"], "complete");
     assert_eq!(resume["code_issued"], true);
+    let completed_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(completed_stage["used"], true);
+    assert_eq!(completed_stage["cancelled"], false);
+    assert!(
+        f.core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &transaction_key)
+            .unwrap()
+            .is_none()
+    );
     assert!(!resume.to_string().contains("ri_session_"));
     let params = query(resume["redirect_uri"].as_str().unwrap());
     assert!(params["code"].starts_with("ri_code_"));

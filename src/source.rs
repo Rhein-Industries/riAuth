@@ -459,15 +459,15 @@ pub(crate) struct SourceStage {
     authorization_id: String,
     request_hash: String,
     pub(crate) suspension_hash: String,
-    request: crate::oidc::Authorization,
+    pub(crate) request: crate::oidc::Authorization,
     source_id: String,
     user_id: Option<String>,
     nonce: String,
     pub(crate) expires_at: u64,
-    used: bool,
-    cancelled: bool,
+    pub(crate) used: bool,
+    pub(crate) cancelled: bool,
     pub(crate) login_key: String,
-    transaction: String,
+    pub(crate) transaction: String,
     browser_id: Option<String>,
 }
 
@@ -1288,60 +1288,7 @@ pub(crate) fn stage_authentication_required(
         }
     }
 }
-pub(crate) fn enforce_pending_stage(
-    tx: &Tx<'_>,
-    request: &crate::oidc::Authorization,
-    session: &Session,
-) -> Result<()> {
-    let key = suspension_hash(request)?;
-    let Some(id) = tx.get::<String>("source_stage_requests", &key)? else {
-        return Ok(());
-    };
-    let Some(stage) = tx.get::<SourceStage>("source_stages", &id)? else {
-        return Ok(());
-    };
-    if stage.expires_at <= now()
-        || stage.suspension_hash != key
-        || stage.request.client_id != request.client_id
-    {
-        return Ok(());
-    }
-    if stage.cancelled {
-        return Err(Error::oauth(
-            "access_denied",
-            "The source stage was cancelled",
-        ));
-    }
-    if !stage.used {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    }
-    let hash = request.request_hash()?;
-    let Some(token) = request.transaction_id.as_deref() else {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    };
-    if !crypto::constant_eq(token, &stage.transaction) {
-        return Err(Error::oauth(
-            "login_required",
-            "Complete the embedded source stage",
-        ));
-    }
-    tx.get::<AuthenticationTransaction>("authentication", &digest(token))?
-        .filter(|record| {
-            record.expires_at > now()
-                && record.source_stage.as_deref() == Some(stage.id.as_str())
-                && record.request_hash == hash
-                && record.authenticated_session.as_deref() == Some(session.id.as_str())
-        })
-        .ok_or_else(|| Error::oauth("login_required", "Complete the embedded source stage"))?;
-    Ok(())
-}
-fn suspension_hash(request: &crate::oidc::Authorization) -> Result<String> {
+pub(crate) fn suspension_hash(request: &crate::oidc::Authorization) -> Result<String> {
     let mut request = request.clone();
     request.decision = None;
     request.transaction_id = None;
