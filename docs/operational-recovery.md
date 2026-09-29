@@ -150,8 +150,14 @@ still reported `encrypted_at_rest` true, and `backup` published a verified
 `riauth.backup/v3` archive. Those observations are in
 [Database key file removed while serving](#database-key-file-removed-while-serving).
 Take the archive before that process exits. A later start without the
-database key file needs an archive and the backup key that sealed it. That
-restart remains untested. A caller who receives
+database key file needs an archive and the backup key that sealed it. A
+disposable loopback drill recorded that restart: exit 2,
+`invalid_request`, HTTP 400, and
+`Encryption key must be a private file of at most 128 bytes`.
+No TCP connection to the listen port succeeded, and the live `riauth.redb`
+inode, size, mtime, and SHA-256 were unchanged. See
+[Restart after the database key file is lost](#restart-after-the-database-key-file-is-lost).
+A caller who receives
 `storage_unavailable` (exit 6) is in the PostgreSQL outage row above. A
 caller who cannot sign in follows
 [administrator lockout](admin-lockout.md) or
@@ -414,6 +420,52 @@ server process on exit.
 The restored serving gate stayed closed. The drill did not run
 `recovery complete`, did not serve the restored directory, and did not
 restart the original process after the database key file was gone.
+A later disposable store tested that restart. See
+[Restart after the database key file is lost](#restart-after-the-database-key-file-is-lost).
+
+### Restart after the database key file is lost
+
+On 2026-09-29 a loopback drill used a new temporary encrypted redb store.
+After `/readyz` returned 200, it removed only the database key file, saw
+`/readyz` return 200 again, stopped that process, and started `riauth serve`
+again with the original config once the same loopback port accepted a bind.
+The redacted observations are
+[d04-database-key-restart-redb-2026-09-29.json](roadmap/evidence/d04-database-key-restart-redb-2026-09-29.json).
+The binary was the already built Essentials debug `riauth` (SHA-256
+`264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`).
+The drill removed the temporary store, key, and its own server process on
+exit. Leave a deployment database key file where it is. This drill used a
+disposable temp file so the restart could be observed.
+
+- `riauth --json capabilities` reported edition `essentials`, version
+  `0.1.1`, and build feature `essentials`.
+- Init used username `drill-admin` and a database key from `riauth keygen`.
+  `riauth serve` listened on `127.0.0.1`. The issuer was
+  `http://127.0.0.1:58339`. `/readyz` returned 200.
+- Removing the database key file left `riauth.redb` in place. The
+  configuration still named `database_key_file`. The same process stayed up,
+  and `/readyz` returned 200 again.
+- The drill stopped that process. Its command line contained the temporary
+  config. The process was gone. The original listen port accepted a bind
+  30228 ms later, and the restart used that same config.
+- The restart passed `--json` and was bounded by 15 seconds. It exited in
+  153 ms with process exit 2. The JSON body had `ok` false, `error.code`
+  `invalid_request`, `error.http_status` 400, `error.retryable` false,
+  `exit_code` 2, and `error.message`
+  `Encryption key must be a private file of at most 128 bytes`.
+  Stderr was `error: Encryption key must be a private file of at most 128 bytes`.
+- During that process, no TCP connection to the listen port succeeded, and
+  stderr did not contain `riAuth listening`.
+- The live `riauth.redb` inode `316409002`, size 61440, mtime
+  `1790692308992832967`, and SHA-256
+  `d4987e11d8735345321790b50230768e5119c496dfd399e043f2d8415e5bc0a5`
+  were the same before and after the restart. The database key file was
+  still absent.
+
+`recovery complete` and a login on a restored issuer remain in
+[Remaining D04 gates](#remaining-d04-gates). This run used the Essentials
+debug binary above. PostgreSQL, escrow, a relying party, and the Compose,
+systemd, and Windows layouts stay in those gates.
 
 ## Archive restore
 
@@ -783,10 +835,11 @@ rollback of a migrated store stays in
 
 ## Recorded local drills
 
-These files are observations from 2026-09-29. The lost-backup-key drill and
-the database-key-file drill added their own files and left the two R05 files
-as they were. Each drill used a disposable store, generated its own keys and
-accounts, and removed them on exit. None opened a deployment store.
+These files are observations from 2026-09-29. The lost-backup-key drill, the
+database-key-file drill, and the database-key restart drill added their own
+files and left the two R05 files as they were. Each drill used a disposable
+store, generated its own keys and accounts, and removed them on exit. None
+opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
@@ -794,6 +847,7 @@ accounts, and removed them on exit. None opened a deployment store.
 | [r05-postgres-local-2026-09-29.json](roadmap/evidence/r05-postgres-local-2026-09-29.json) | One temporary loopback PostgreSQL 16.14 cluster. Binary SHA-256 `8e26d768ce419a6b31fc22bd517aaf7b07c359a74fc5801990b1b33271333ffa`. | 16 checks passed. Archive restore into an empty database. Database stopped under the live process: liveness 200, readiness 503, login `storage_unavailable` exit 6. Wrong key: `invalid_request`, exit 2, target empty. Occupied source: `conflict`, exit 5, source still serving. Restore invalidated 2 sessions, recovery id `32365f9c-350f-4c7e-87ec-f9c77118677b`. After completion a fresh login and the health checks succeeded. |
 | [d04-backup-key-redb-2026-09-29.json](roadmap/evidence/d04-backup-key-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7`. Replacement key from `riauth-maintenance` SHA-256 `aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a`. | Backup key removed while `doctor` still succeeded. Replacement stream `verified` true, `riauth.backup/v3`, stream `UuFttJwvdA4RBUNEXjc1UA`. Old archive with that key: `invalid_request`, exit 2, output absent. Scratch restore recovery id `0dd34c51-0980-4a34-b227-47002097e8bf`, `serving_allowed` false. Live redb inode unchanged. |
 | [d04-database-key-removed-redb-2026-09-29.json](roadmap/evidence/d04-database-key-removed-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `7ede8878de9ad3d3a1b560ac41b6e15830cc54f81a6b187e674a9174cea0948d`. Backup key from `riauth-maintenance` SHA-256 `b987de72bb557822ea7e00563dc99b19616258a8c7e40e394eee2d5ae35b51ae`. | Database key file removed after `doctor` succeeded. Later `doctor` kept `encrypted_at_rest` true. New archive stream `uP2vJJcNEoamH3pg7VZgkQ`, `verified` true, `riauth.backup/v3`. Scratch restore with a new database key, recovery id `35f9b68a-5bf5-4a5e-8bd7-595644c75297`, `serving_allowed` false. Live redb inode unchanged. |
+| [d04-database-key-restart-redb-2026-09-29.json](roadmap/evidence/d04-database-key-restart-redb-2026-09-29.json) | Disposable loopback encrypted redb. Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Database key file removed while `/readyz` returned 200. After that process stopped and the listen port accepted a bind, restart with the original config exited 2 in 153 ms: `invalid_request`, HTTP 400, `Encryption key must be a private file of at most 128 bytes`. No listener. Live redb inode, size, mtime, and SHA-256 unchanged. |
 
 The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -840,9 +894,12 @@ Still open:
   archive under the new key, and scratch-restored the new archive with
   `serving_allowed` false. A later loopback drill removed only the database
   key file of a process that was already serving, then exported a new archive
-  and scratch-restored it with a new database key. Escrow retrieval, a restart
-  after that file is gone, `recovery complete`, and a login on the restored
-  issuer remain open.
+  and scratch-restored it with a new database key. Another disposable
+  loopback store lost only its database key file while `/readyz` returned
+  200. After that process stopped, `serve` with the original config exited 2
+  with `invalid_request` before the listener opened, and the live redb was
+  unchanged. Escrow retrieval, `recovery complete`, and a login on the
+  restored issuer remain open.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
 - A TLS PostgreSQL connection. The disposable cluster used loopback trust
