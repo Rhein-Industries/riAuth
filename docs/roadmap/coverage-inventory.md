@@ -331,7 +331,7 @@ Implementation and doc paths are relative to `src/` and `docs/` unless shown oth
 | Q08 | Test exact shipped bundles | P0 | **build** | `none` | Release smoke checks only `docker run ... --json capabilities`, notice equality, and copyright files. There are no edition bundles, no excluded-capability checks, and no rejection tests. | `.github/workflows/release.yml`, `scripts/package-release.sh` | — | `release-notes.md` | Bundle tests per edition/backend/architecture |
 | Q09 | Publish reproducible benchmarks | P2 | **build** | `none` | No benchmarks exist in the repository. | — | — | — | All |
 | Q10 | Gate releases on upgrade and recovery | P0 | **build** | `module` | The release reuses CI and a smoke test. Upgrade/restore tests exist only as in-process tests; no installed-artifact upgrade, restore, or rollback gate exists. | `.github/workflows/release.yml` | `tests/operations.rs` | `operations.md`, `release-notes.md` | Artifact-level gate |
-| Q11 | Publish verifiable releases and independent review evidence | P1 | **extend** | `module` | Releases ship SHA256SUMS and `build-provenance.json` (explicitly not a cryptographic attestation), plus generated third-party notices and SECURITY.md. There is no signing, SBOM, or independent review record. *Unverified:* Published v0.1.1 asset set. | `scripts/package-release.sh`, `scripts/generate-third-party-notices.py` | — | `SECURITY.md`, `release-notes.md`, `THIRD_PARTY_NOTICES.md` | Signatures; SBOM; Review scope record |
+| Q11 | Publish verifiable releases and independent review evidence | P1 | **extend** | `module` | The release workflow source requests four pinned `actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6` steps, one provenance attestation and three SPDX package-document attestations, with package-job `id-token: write`, `contents: read`, and `attestations: write`. No attestation bundle was produced, and `signed_artifact` stays false. The Linux packager source calls the SPDX producer and the asset checks require those documents; no release SBOM was produced. Draft v0.1.1 is the older four-file x86_64 set and is not a current accepted complete release. There is no independent review record. *Unverified:* A checked-tag run of this request and offline verification of its bundles. | `.github/workflows/release.yml`, `scripts/check-release-attestation.py`, `scripts/spdx_sbom.py`, `scripts/package-release.sh` | `tests/test_release_attestation.py`, `tests/test_release_evidence.py`, `tests/test_spdx_sbom.py` | `roadmap/q11-release-evidence.md`, `SECURITY.md`, `release-notes.md` | Release-job bundles; release SBOM from that job; independent review record; Linux ARM64 release execution |
 
 ### D — Documentation and product acceptance
 
@@ -379,7 +379,7 @@ Nothing below was established by this inventory. Each needs its own evidence bef
 - Q03: Any OIDF run outcome.
 - Q04: CI pass status at base 96e23e2.
 - Q06: Latest Playwright run results.
-- Q11: Published v0.1.1 asset set.
+- Q11: A checked-tag release run, its attestation bundles, and offline verification of those bundles. The 2026-09-29 read of draft v0.1.1 still shows only the older four x86_64 assets and is not a current accepted complete release.
 - Edition assignments in the capability table are proposals pending A02.
 - Journey levels were judged from code, tests, and docs. No journey was executed in a browser or against a peer for this inventory.
 

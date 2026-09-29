@@ -182,6 +182,7 @@ class SpdxProducer(unittest.TestCase):
             kwargs.get("no_default_features", False),
             named,
             kwargs.get("expectations", {}),
+            local_unsigned=kwargs.get("local_unsigned", False),
         )
 
     def assert_failed(self, completed, message):
@@ -1026,6 +1027,68 @@ class SpdxProducer(unittest.TestCase):
             self.assertEqual(lock.read_bytes(), before)
             self.assertNotIn("This output is a release SBOM.", completed.stderr)
 
+    def test_local_unsigned_label_is_opt_in(self):
+        metadata, lock_packages, _, _ = closure_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            plain = self.assemble(
+                directory / "plain", metadata, lock_packages, [("sample.bin", b"sample-bytes")],
+            )
+            labeled = self.assemble(
+                directory / "labeled", metadata, lock_packages, [("sample.bin", b"sample-bytes")],
+                local_unsigned=True,
+            )
+            meta_path = directory / "metadata.json"
+            lock_path = directory / "Cargo.lock"
+            sample = directory / "sample.bin"
+            meta_path.write_text(json.dumps(metadata))
+            lock_path.write_bytes(render_lock(lock_packages))
+            sample.write_bytes(b"sample-bytes")
+            out = directory / "cli.json"
+            completed = self.cli([
+                "produce",
+                "--metadata", str(meta_path),
+                "--lock", str(lock_path),
+                "--target", TARGET,
+                "--no-default-features",
+                "--local-unsigned",
+                "--file", f"sample.bin={sample}",
+                "--out", str(out),
+            ])
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            cli_document = json.loads(out.read_text())
+            accepted = self.cli([
+                "verify",
+                "--metadata", str(meta_path),
+                "--lock", str(lock_path),
+                "--target", TARGET,
+                "--no-default-features",
+                "--local-unsigned",
+                "--file", f"sample.bin={sample}",
+                "--document", str(out),
+            ])
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertIn("SPDX document matches the locked metadata and input files", accepted.stdout)
+            rejected = self.cli([
+                "verify",
+                "--metadata", str(meta_path),
+                "--lock", str(lock_path),
+                "--target", TARGET,
+                "--no-default-features",
+                "--file", f"sample.bin={sample}",
+                "--document", str(out),
+            ])
+            self.assert_failed(rejected, "does not match the locked metadata and input files")
+        self.assertNotIn(spdx.LOCAL_UNSIGNED, plain["creationInfo"]["comment"])
+        self.assertNotIn(spdx.NOT_OFFICIAL, plain["creationInfo"]["comment"])
+        for document in (labeled, cli_document):
+            comment = document["creationInfo"]["comment"]
+            self.assertIn(spdx.HONESTY, comment)
+            self.assertIn(spdx.NOT_ATTESTATION, comment)
+            self.assertIn(spdx.LOCAL_UNSIGNED, comment)
+            self.assertIn(spdx.NOT_OFFICIAL, comment)
+            self.assertNotIn("This output is a release SBOM.", spdx.canonical_bytes(document).decode())
+
 
 def lone_metadata(name, version="0.1.1"):
     root_id = f"path+file:///tmp/q11-package#{name}@{version}"
@@ -1114,6 +1177,9 @@ class LinuxPackageDocuments(unittest.TestCase):
             self.assertIn(f"lock_sha256={server_hash}.", platform_doc["creationInfo"]["comment"])
             self.assertIn(f"lock_sha256={client_hash}.", client["creationInfo"]["comment"])
             self.assertNotIn(client_hash, essentials["creationInfo"]["comment"])
+            self.assertNotIn(spdx.LOCAL_UNSIGNED, essentials["creationInfo"]["comment"])
+            self.assertNotIn(spdx.NOT_OFFICIAL, platform_doc["creationInfo"]["comment"])
+            self.assertNotIn(spdx.LOCAL_UNSIGNED, client["creationInfo"]["comment"])
 
     def test_missing_or_invalid_graph_writes_nothing(self):
         with tempfile.TemporaryDirectory() as directory:

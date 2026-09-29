@@ -414,8 +414,11 @@ build transitions and backup/restore. Check dependency inventory: no terminal
 USB stack in either server or base client. Test the optional USB client on each
 OS/architecture actually claimed, using named physical hardware and permissions.
 Publish verifiable signatures, checksums, dependency inventories, notices and
-truthful provenance with the exact tested bundle. Current checksums/provenance
-are not cryptographic attestation, signing or an SBOM.
+truthful provenance with the exact tested bundle. Current checksums and
+`riauth.build/v4` provenance are not cryptographic attestation. The release
+workflow source requests GitHub artifact attestations for the packaged files
+and their SPDX package documents. This checkout has no attestation bundle,
+so that request is not a completed signature or a release SBOM.
 
 macOS and Windows server/client/maintenance releases are not declared supported
 by this contract. Windows login integration P12 is a distinct Platform component,

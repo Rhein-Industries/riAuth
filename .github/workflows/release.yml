@@ -39,6 +39,10 @@ jobs:
     uses: ./.github/workflows/ci.yml
   package:
     needs: checks
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +118,46 @@ jobs:
             tar -xOzf "$archive" THIRD_PARTY_NOTICES.md | cmp - ../../THIRD_PARTY_NOTICES.md
           done
           python3 ../../scripts/check-installed-release-gate.py . "$RIAUTH_COMMIT" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+      - name: Record exact subject digests
+        run: |
+          dist=target/dist
+          arch="$RIAUTH_ARCH"
+          tmp="${RUNNER_TEMP}/riauth-subjects"
+          mkdir -p "$tmp"
+          (
+            cd "$dist"
+            sha256sum -- * > "$tmp/all-subjects.txt"
+            sha256sum -- \
+              "riauth-essentials-linux-$arch.tar.gz" \
+              "riauth-maintenance-essentials-linux-$arch.tar.gz" \
+              "riauth-essentials-linux-$arch.docker.tar.gz" \
+              > "$tmp/essentials-subjects.txt"
+            sha256sum -- \
+              "riauth-platform-linux-$arch.tar.gz" \
+              "riauth-maintenance-platform-linux-$arch.tar.gz" \
+              "riauth-platform-linux-$arch.docker.tar.gz" \
+              > "$tmp/platform-subjects.txt"
+            sha256sum -- "riauthctl-linux-$arch.tar.gz" > "$tmp/riauthctl-subjects.txt"
+          )
+      - name: Attest packaged file provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/riauth-subjects/all-subjects.txt
+      - name: Attest Essentials package inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/riauth-subjects/essentials-subjects.txt
+          sbom-path: target/dist/riauth-essentials-linux-${{ matrix.arch }}.spdx.json
+      - name: Attest Platform package inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/riauth-subjects/platform-subjects.txt
+          sbom-path: target/dist/riauth-platform-linux-${{ matrix.arch }}.spdx.json
+      - name: Attest riauthctl package inventory
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/riauth-subjects/riauthctl-subjects.txt
+          sbom-path: target/dist/riauthctl-linux-${{ matrix.arch }}.spdx.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: riauth-linux-${{ matrix.arch }}
