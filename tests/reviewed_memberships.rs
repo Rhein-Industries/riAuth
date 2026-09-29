@@ -1404,3 +1404,181 @@ async fn reviewed_membership_depends_on_authority_and_policy_not_unrelated_revis
         "Reviewed change actor authority changed",
     );
 }
+
+#[tokio::test]
+async fn reviewed_membership_http_execute_race_commits_once() {
+    let mut f = Fixture::new();
+    f.core.config.reviewed_membership_groups = ["privileged".into()].into();
+    f.core.config.validate().unwrap();
+    let reviewer = administrator(&f, "reviewer");
+    let executor = administrator(&f, "executor");
+    f.user("member");
+    f.user("peer");
+    let member_id: String = f.core.store.get("usernames", "member").unwrap().unwrap();
+    let peer_id: String = f.core.store.get("usernames", "peer").unwrap().unwrap();
+    f.core.create_group(&f.admin, "privileged").unwrap();
+    let change = approved(&f, &reviewer, "privileged", &["member", "peer"]);
+    let base = change["proposal"]["base_revision"].as_u64().unwrap();
+    f.user("unrelated");
+    let live = revision(&f.core);
+    assert!(live > base);
+    let path = format!("/api/group-membership-changes/{}/execute", id(&change));
+    let body = json!({"digest": change["digest"]});
+    let before_receipts = receipt_count(&f);
+    let app = riauth::api::router(f.core.clone());
+    let barrier = Arc::new(tokio::sync::Barrier::new(4));
+    let race = |key: &'static str, matched: u64| {
+        let app = app.clone();
+        let path = path.clone();
+        let executor = executor.clone();
+        let body = body.clone();
+        let barrier = Arc::clone(&barrier);
+        async move {
+            barrier.wait().await;
+            let (status, body) = call(
+                &app,
+                "POST",
+                &path,
+                &executor,
+                body,
+                Some(matched),
+                Some(key),
+            )
+            .await;
+            (key, status, body)
+        }
+    };
+    let (first, second, other, stale) = tokio::join!(
+        race("race-same", live),
+        race("race-same", live),
+        race("race-other", live),
+        race("race-stale", base),
+    );
+    assert_eq!(stale.0, "race-stale");
+    assert_eq!(stale.1, StatusCode::CONFLICT);
+    assert_eq!(
+        stale.2["error_description"],
+        "Configuration revision changed"
+    );
+    let same = [first, second];
+    let same_ok = same
+        .iter()
+        .filter(|(_, status, _)| *status == StatusCode::OK)
+        .count();
+    let (winning_key, winning_body) = match (same_ok, other.1) {
+        (2, StatusCode::CONFLICT) => {
+            assert_eq!(same[0].2, same[1].2);
+            assert_eq!(
+                other.2["error_description"],
+                "Configuration revision changed"
+            );
+            ("race-same", same[0].2.clone())
+        }
+        (0, StatusCode::OK) => {
+            for (_, status, body) in &same {
+                assert_eq!(*status, StatusCode::CONFLICT);
+                assert_eq!(body["error_description"], "Configuration revision changed");
+            }
+            ("race-other", other.2.clone())
+        }
+        (ok_same, status) => panic!("unexpected execute split: same_ok={ok_same} other={status}"),
+    };
+    assert_eq!(winning_body["status"], "executed");
+    assert_eq!(winning_body["proposal"]["id"], id(&change));
+    assert_eq!(
+        winning_body["proposal"]["base_revision"].as_u64().unwrap(),
+        base
+    );
+    assert_eq!(
+        group_members(&f),
+        [member_id.clone(), peer_id.clone()].into()
+    );
+    assert_eq!(execute_audits(&f, id(&change)), 1);
+    let reviewed_writes = f
+        .core
+        .audit_events(&f.admin, 1000)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "group.members.reviewed")
+        .count();
+    assert_eq!(reviewed_writes, 1);
+    assert_eq!(receipt_count(&f), before_receipts + 1);
+
+    // The stored receipt matches this key, If-Match and body, so it is returned
+    // before the revision guard sees that the apply advanced meta.revision.
+    let (status, replayed) = call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some(winning_key),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed, winning_body);
+    let (status, mismatch) = call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(base),
+        Some(winning_key),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        mismatch["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, changed) = call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        json!({"digest": "different-digest"}),
+        Some(live),
+        Some(winning_key),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        changed["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh) = call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some("race-fresh"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(fresh["error_description"], "Configuration revision changed");
+    let (status, consumed) = call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body,
+        Some(revision(&f.core)),
+        Some("race-consumed"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        consumed["error_description"],
+        "Reviewed membership already consumed or cancelled"
+    );
+    assert_eq!(execute_audits(&f, id(&change)), 1);
+    assert_eq!(receipt_count(&f), before_receipts + 1);
+    assert_eq!(group_members(&f), [member_id, peer_id].into());
+    drop(app);
+}
