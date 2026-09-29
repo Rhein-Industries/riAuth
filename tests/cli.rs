@@ -1353,6 +1353,271 @@ fn cli_certificate_bind_and_revoke_require_retry_binding() {
     }
 }
 
+#[cfg(feature = "platform")]
+fn radius_certificate_files(dir: &Path) -> (PathBuf, PathBuf) {
+    use openssl::{
+        asn1::Asn1Time,
+        bn::BigNum,
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::{PKey, Private},
+        x509::{
+            X509, X509NameBuilder,
+            extension::{BasicConstraints, ExtendedKeyUsage, KeyUsage, SubjectAlternativeName},
+        },
+    };
+    let key = || {
+        PKey::from_ec_key(
+            EcKey::generate(&EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap()).unwrap(),
+        )
+        .unwrap()
+    };
+    let name = |text: &str| {
+        let mut name = X509NameBuilder::new().unwrap();
+        name.append_entry_by_text("CN", text).unwrap();
+        name.build()
+    };
+    let ca_key = key();
+    let ca_name = name("RADIUS retry root");
+    let mut ca = X509::builder().unwrap();
+    ca.set_version(2).unwrap();
+    ca.set_serial_number(&BigNum::from_u32(1).unwrap().to_asn1_integer().unwrap()).unwrap();
+    ca.set_subject_name(&ca_name).unwrap();
+    ca.set_issuer_name(&ca_name).unwrap();
+    ca.set_pubkey(&ca_key).unwrap();
+    ca.set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap()).unwrap();
+    ca.set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap()).unwrap();
+    ca.append_extension(BasicConstraints::new().critical().ca().build().unwrap()).unwrap();
+    ca.append_extension(KeyUsage::new().critical().key_cert_sign().crl_sign().build().unwrap()).unwrap();
+    ca.sign(&ca_key, MessageDigest::sha256()).unwrap();
+    let ca = ca.build();
+    std::fs::write(dir.join("ca.pem"), ca.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(&dir.join("ca.key"), &ca_key.private_key_to_pem_pkcs8().unwrap(), false).unwrap();
+    std::fs::write(dir.join("index.txt"), "").unwrap();
+    std::fs::write(dir.join("crlnumber"), "01\n").unwrap();
+    std::fs::write(dir.join("ca.cnf"), "[ca]\ndefault_ca=CA\n[CA]\ndatabase=index.txt\ncertificate=ca.pem\nprivate_key=ca.key\ndefault_md=sha256\ndefault_crl_days=1\ncrlnumber=crlnumber\n").unwrap();
+    let crl = Command::new("openssl")
+        .current_dir(dir)
+        .args(["ca", "-config", "ca.cnf", "-gencrl", "-out", "clients.crl.pem", "-batch"])
+        .output()
+        .unwrap();
+    assert!(crl.status.success(), "{}", String::from_utf8_lossy(&crl.stderr));
+
+    let leaf = |serial: u32, common_name: &str| -> (X509, PKey<Private>) {
+        let leaf_key = key();
+        let mut certificate = X509::builder().unwrap();
+        certificate.set_version(2).unwrap();
+        certificate.set_serial_number(&BigNum::from_u32(serial).unwrap().to_asn1_integer().unwrap()).unwrap();
+        certificate.set_subject_name(&name(common_name)).unwrap();
+        certificate.set_issuer_name(ca.subject_name()).unwrap();
+        certificate.set_pubkey(&leaf_key).unwrap();
+        certificate.set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap()).unwrap();
+        certificate.set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap()).unwrap();
+        certificate.append_extension(BasicConstraints::new().critical().build().unwrap()).unwrap();
+        certificate.append_extension(KeyUsage::new().critical().digital_signature().build().unwrap()).unwrap();
+        certificate.append_extension(ExtendedKeyUsage::new().server_auth().client_auth().build().unwrap()).unwrap();
+        let san = SubjectAlternativeName::new()
+            .dns("localhost")
+            .build(&certificate.x509v3_context(Some(&ca), None))
+            .unwrap();
+        certificate.append_extension(san).unwrap();
+        certificate.sign(&ca_key, MessageDigest::sha256()).unwrap();
+        (certificate.build(), leaf_key)
+    };
+    let (server, server_key) = leaf(2, "RADIUS server");
+    std::fs::write(dir.join("server.pem"), server.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(&dir.join("server.key"), &server_key.private_key_to_pem_pkcs8().unwrap(), false).unwrap();
+    let (first, _) = leaf(3, "First RADIUS client");
+    let (second, _) = leaf(4, "Second RADIUS client");
+    let first_file = dir.join("client-one.pem");
+    let second_file = dir.join("client-two.pem");
+    std::fs::write(&first_file, first.to_pem().unwrap()).unwrap();
+    std::fs::write(&second_file, second.to_pem().unwrap()).unwrap();
+    riauth::config::write_private(&dir.join("radius.secret"), b"radius-retry-fixture-secret-32-bytes", false).unwrap();
+    (first_file, second_file)
+}
+
+#[cfg(feature = "platform")]
+#[test]
+fn cli_and_http_radius_certificate_writes_require_bound_retry_and_audit_once() {
+    use riauth::{
+        agent::{NewAgent, Permission},
+        model::{NewClient, NewUser, ProviderSettings},
+        radius::{Listener, Nas, Settings, Transport, eap::Config as EapConfig},
+    };
+    use serde_json::json;
+    let dir = TempDir::new().unwrap();
+    let (first_file, second_file) = radius_certificate_files(dir.path());
+    let mut wrong_scope_agent = String::new();
+    let (config, session, _server) = serve_with_admin_configured(dir.path(), |path| {
+        let mut value = riauth::config::Config::load(path).unwrap();
+        let core = riauth::core::Core::open(value.clone()).unwrap();
+        let admin = core.login("admin".into(), "cli-integration-password".into(), None).unwrap()["session_token"]
+            .as_str().unwrap().to_owned();
+        core.create_client(&admin, NewClient {
+            client_id: "radius-fixture".into(),
+            name: "RADIUS retry fixture".into(),
+            confidential: false,
+            redirect_uris: vec![],
+            scopes: ["openid".to_owned(), "radius".to_owned()].into(),
+            allowed_groups: Default::default(),
+            require_mfa: false,
+            service: false,
+            settings: ProviderSettings {
+                radius: Some(Settings { eap_tls: true, reply: vec![] }),
+                default_acr_values: vec![riauth::radius::eap::CERTIFICATE_ACR.into()],
+                ..Default::default()
+            },
+        }).unwrap();
+        for username in ["alice", "bob"] {
+            core.create_user(&admin, NewUser {
+                username: username.into(),
+                password: "cli-integration-password".into(),
+                email: None,
+                display_name: username.into(),
+                admin: false,
+            }).unwrap();
+        }
+        wrong_scope_agent = core.create_agent(&admin, NewAgent {
+            id: "radius-other-user-agent".into(),
+            permissions: vec![
+                Permission { action: "certificate.write".into(), resource: "user/bob".into() },
+                Permission { action: "radius.enroll".into(), resource: "radius/lan".into() },
+            ],
+            ttl: 3600,
+            parent: None,
+        }).unwrap()["credential"]["token"].as_str().unwrap().to_owned();
+        drop(core);
+        value.radius_listeners.insert("lan".into(), Listener {
+            eap_tls: Some(EapConfig {
+                certificate_file: dir.path().join("server.pem"),
+                key_file: dir.path().join("server.key"),
+                client_ca_file: dir.path().join("ca.pem"),
+                client_crl_file: dir.path().join("clients.crl.pem"),
+                ocsp_response_file: None,
+                tls12: false,
+                fragment_size: 1024,
+            }),
+            listen: "127.0.0.1:0".parse().unwrap(),
+            transport: Transport::Udp,
+            nas: [("fixture".into(), Nas {
+                peer: "127.0.0.1".parse().unwrap(),
+                client_id: "radius-fixture".into(),
+                shared_secret_file: Some(dir.path().join("radius.secret")),
+                certificate_sha256: None,
+            })].into(),
+            tls_cert_file: None,
+            tls_key_file: None,
+            client_ca_file: None,
+        });
+        std::fs::write(path, toml::to_string_pretty(&value).unwrap()).unwrap();
+    });
+    let issuer = riauth::config::Config::load(&config).unwrap().issuer;
+    let saved: Value = serde_json::from_slice(&std::fs::read(&session).unwrap()).unwrap();
+    let token = saved["token"].as_str().unwrap();
+    let http = reqwest::blocking::Client::new();
+    let url = format!("{issuer}/api/radius/certificates");
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap();
+    let first_pem = std::fs::read_to_string(&first_file).unwrap();
+    let second_pem = std::fs::read_to_string(&second_file).unwrap();
+    let body = |pem: &str| json!({"username":"admin","listener":"lan","certificate_chain_pem":pem});
+    let post = |key: Option<&str>, at: Option<u64>, pem: &str| {
+        let mut request = http.post(&url).bearer_auth(token).json(&body(pem));
+        if let Some(key) = key { request = request.header("idempotency-key", key); }
+        if let Some(at) = at { request = request.header("if-match", format!("\"{at}\"")); }
+        request.send().unwrap()
+    };
+    let delete = |id: &str, key: Option<&str>, at: Option<u64>| {
+        let mut request = http.delete(format!("{url}/{id}")).bearer_auth(token);
+        if let Some(key) = key { request = request.header("idempotency-key", key); }
+        if let Some(at) = at { request = request.header("if-match", format!("\"{at}\"")); }
+        request.send().unwrap()
+    };
+
+    let initial = revision();
+    for (key, at) in [(None, None), (Some("missing-revision"), None), (None, Some(initial))] {
+        assert_eq!(post(key, at, &first_pem).status(), reqwest::StatusCode::PRECONDITION_REQUIRED);
+    }
+    assert_eq!(http.post(&url).bearer_auth(&wrong_scope_agent)
+        .header("idempotency-key", "wrong-user-scope")
+        .header("if-match", format!("\"{initial}\""))
+        .json(&json!({"username":"alice","listener":"lan","certificate_chain_pem":first_pem}))
+        .send().unwrap().status(), reqwest::StatusCode::FORBIDDEN);
+    for args in [
+        vec!["--if-revision", &initial.to_string(), "radius", "bind-certificate", "admin", "--listener", "lan", "--file", first_file.to_str().unwrap()],
+        vec!["--idempotency-key", "missing-revision", "radius", "bind-certificate", "admin", "--listener", "lan", "--file", first_file.to_str().unwrap()],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("RADIUS certificate writes require"));
+    }
+    assert_eq!(revision(), initial);
+    assert!(success(cli(&["radius", "certificates"])).as_array().unwrap().is_empty());
+
+    let first_at = revision().to_string();
+    let bind_first = ["--if-revision", &first_at, "--idempotency-key", "radius-cli-bind",
+        "radius", "bind-certificate", "admin", "--listener", "lan", "--file", first_file.to_str().unwrap()];
+    let first = success(cli(&bind_first));
+    let first_id = first["id"].as_str().unwrap().to_owned();
+    assert_eq!(success(cli(&bind_first)), first);
+    assert_eq!(revision(), initial + 1);
+    let (_, changed) = failure(cli(&["--if-revision", &first_at, "--idempotency-key", "radius-cli-bind",
+        "radius", "bind-certificate", "admin", "--listener", "lan", "--file", second_file.to_str().unwrap()]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&["--if-revision", &first_at, "--idempotency-key", "radius-cli-stale",
+        "radius", "bind-certificate", "admin", "--listener", "lan", "--file", second_file.to_str().unwrap()]));
+    assert_eq!(stale["http_status"], 409);
+
+    let second_at = revision();
+    let response = post(Some("radius-http-bind"), Some(second_at), &second_pem);
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let second: Value = response.json().unwrap();
+    let second_id = second["id"].as_str().unwrap().to_owned();
+    assert_eq!(post(Some("radius-http-bind"), Some(second_at), &second_pem).json::<Value>().unwrap(), second);
+    assert_eq!(revision(), second_at + 1);
+    assert_eq!(post(Some("radius-http-bind"), Some(second_at), &first_pem).status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(post(Some("radius-http-stale"), Some(second_at), &second_pem).status(), reqwest::StatusCode::CONFLICT);
+
+    let first_revoke_at = revision().to_string();
+    for args in [
+        vec!["--if-revision", &first_revoke_at, "radius", "revoke-certificate", &first_id],
+        vec!["--idempotency-key", "missing-revoke-revision", "radius", "revoke-certificate", &first_id],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("RADIUS certificate writes require"));
+    }
+    let first_revoke = ["--if-revision", &first_revoke_at, "--idempotency-key", "radius-cli-revoke",
+        "radius", "revoke-certificate", &first_id];
+    let revoked = success(cli(&first_revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&first_revoke)), revoked);
+    assert_eq!(revision(), first_revoke_at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&["--if-revision", &first_revoke_at, "--idempotency-key", "radius-cli-revoke",
+        "radius", "revoke-certificate", &second_id]));
+    assert_eq!(changed["http_status"], 409);
+
+    let second_revoke_at = revision();
+    for (key, at) in [(None, None), (Some("missing-revision"), None), (None, Some(second_revoke_at))] {
+        assert_eq!(delete(&second_id, key, at).status(), reqwest::StatusCode::PRECONDITION_REQUIRED);
+    }
+    let response = delete(&second_id, Some("radius-http-revoke"), Some(second_revoke_at));
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let revoked: Value = response.json().unwrap();
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(delete(&second_id, Some("radius-http-revoke"), Some(second_revoke_at)).json::<Value>().unwrap(), revoked);
+    assert_eq!(revision(), second_revoke_at + 1);
+    assert_eq!(delete(&first_id, Some("radius-http-revoke"), Some(second_revoke_at)).status(), reqwest::StatusCode::CONFLICT);
+    assert!(success(cli(&["radius", "certificates"])).as_array().unwrap().is_empty());
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for (action, id) in [("certificate.bind", &first_id), ("certificate.bind", &second_id),
+        ("certificate.revoke", &first_id), ("certificate.revoke", &second_id)] {
+        assert_eq!(events.as_array().unwrap().iter()
+            .filter(|event| event["action"] == action && event["target"] == id.as_str()).count(), 1,
+            "{action} was audited more than once for {id}");
+    }
+}
+
 #[test]
 fn cli_invitation_writes_require_retry_binding() {
     let dir = TempDir::new().unwrap();

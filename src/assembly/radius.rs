@@ -8,6 +8,7 @@ use crate::{
     radius::{Listener, Packet, RadiusClaim, Settings, WireAttributes, eap, fingerprint},
     store::Tx,
 };
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, net::IpAddr};
@@ -67,6 +68,19 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
 }
 
 impl Core {
+    fn require_radius_certificate_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "RADIUS certificate writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
+
     fn radius_eap_profile(&self, listener: &str) -> Result<&eap::Config> {
         self.config
             .radius_listeners
@@ -342,6 +356,7 @@ impl Core {
         validate_name(&input.username)?;
         validate_name(&input.listener)?;
         self.radius_eap_authorize_bind(token, &input.username, &input.listener)?;
+        Self::require_radius_certificate_retry_binding()?;
         let prepared =
             eap::prepare_certificate_binding(&input, || self.radius_eap_profile(&input.listener))?;
         self.radius_eap_bind_commit(
@@ -450,6 +465,7 @@ impl Core {
     }
 
     pub fn radius_certificate_revoke(&self, token: &str, id: &str) -> Result<Value> {
+        Self::require_radius_certificate_retry_binding()?;
         self.mutation(token, |tx| {
             let key = tx
                 .get::<String>("radius_certificate_ids", id)?

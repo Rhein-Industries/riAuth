@@ -1479,13 +1479,21 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Radius { command } => match command {
             RadiusCommand::Certificates => remote.call(Method::GET, "/api/radius/certificates", None, true).await?,
             RadiusCommand::BindCertificate { username, listener, file } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("RADIUS certificate writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 use std::io::Read;
                 let mut certificate = String::new();
                 fs::File::open(file)?.take(32769).read_to_string(&mut certificate)?;
                 if certificate.len() > 32768 { anyhow::bail!("Certificate chain exceeds 32 KiB"); }
                 remote.call(Method::POST, "/api/radius/certificates", Some(json!({"username":username,"listener":listener,"certificate_chain_pem":certificate})), true).await?
             },
-            RadiusCommand::RevokeCertificate { id } => remote.call(Method::DELETE, &format!("/api/radius/certificates/{}", segment(&id)?), None, true).await?,
+            RadiusCommand::RevokeCertificate { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("RADIUS certificate writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/radius/certificates/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::WindowsDevice { command } => match command {
             WindowsDeviceCommand::Enroll { id, username, display_name, offline_ttl } => {
