@@ -843,9 +843,11 @@ Still outside this slice:
   The [Platform forward-auth recipe](recipes/platform-forward-auth.md),
   the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md),
   the [OIDC relying-party recipe](recipes/oidc-relying-party.md),
-  and the [Platform SAML IdP recipe](recipes/platform-saml-idp.md)
+  the [Platform SAML IdP recipe](recipes/platform-saml-idp.md),
+  and the [LDAP import recipe](recipes/ldap-import.md)
   are the D03 recipes written so far. Forward auth, the LDAP provider,
-  and the SAML IdP are Platform profiles. The relying-party recipe is the
+  and the SAML IdP are Platform profiles. The LDAP import recipe covers
+  both editions. The relying-party recipe is the
   authorization-code fixture, and its client is the in-tree router rather
   than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
   A named service provider remains an open peer. The LDAP provider recipe

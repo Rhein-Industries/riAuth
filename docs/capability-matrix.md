@@ -197,7 +197,7 @@ this page. CI steps are written for the default Platform build.
 | Embedded source stage | Platform client setting | Suspends an interactive authorization for one configured OIDC or OAuth source. Essentials rejects `settings.source_stage`. | [oidc-profiles.md](oidc-profiles.md), [`src/edition.rs`](../src/edition.rs). | A stage is not embedded inside a SAML AuthnRequest. Browser OTP for a required local factor is still a gap in the guide. |
 | SAML IdP | Platform | Identity provider. Signed HTTP-Redirect and HTTP-POST AuthnRequest, HTTP-POST response, signed metadata, signed assertion and response. Optional assertion encryption (AES-256-GCM, RSA-OAEP). NameID persistent, transient, email, unspecified. SP-initiated SLO and IdP logout fan-out over Redirect/POST. IdP-initiated login only at `/saml/{client}/init` when enabled. | [Platform SAML IdP recipe](recipes/platform-saml-idp.md), [saml.md](saml.md). In-tree tests [`tests/identity/saml.rs`](../tests/identity/saml.rs), [`tests/identity/saml_logout.rs`](../tests/identity/saml_logout.rs). The recipe follows the integration job's "Independent SAML XML signature and encryption" step. The upstream-source and logout xmlsec1 steps are separate. | SOAP, artifact, ECP, and encrypted NameID are outside the profile. xmlsec1 checks signatures; it is not a service provider. No named SP. |
 | SAML source | Platform | Service provider. Signed Redirect AuthnRequest, POST ACS, optional encrypted assertions, optional Redirect/POST SLO. Stable persistent, email, and unspecified NameIDs. | [saml.md](saml.md). In-tree test [`tests/identity/saml_source.rs`](../tests/identity/saml_source.rs). CI xmlsec filter. | Transient NameIDs, unsolicited IdP-initiated source login, artifact, SOAP, and ECP are not advertised. No named upstream IdP. |
-| LDAP import and password check | Both | Client of an external directory. Search and simple bind. Local accounts are created or disabled in riAuth. Directory passwords are not copied. | [ldap.md](ldap.md). CI step [`scripts/test-ldap.sh`](../scripts/test-ldap.sh) with ignored [`tests/ldap.rs`](../tests/ldap.rs). | The harness is loopback OpenLDAP `slapd` (distro package, version not pinned) with core, cosine, and inetOrgPerson. Active Directory attribute names in the guide have no AD server in the tests. |
+| LDAP import and password check | Both | Client of an external directory. Search and simple bind. Local accounts are created or disabled in riAuth. Directory passwords are not copied. | [LDAP import recipe](recipes/ldap-import.md), [ldap.md](ldap.md). CI step [`scripts/test-ldap.sh`](../scripts/test-ldap.sh) with ignored [`tests/ldap.rs`](../tests/ldap.rs). | The harness is loopback OpenLDAP `slapd` (distro package, version not pinned) with core, cosine, and inetOrgPerson. Active Directory attribute names in the guide have no AD server in the tests. |
 | LDAP provider | Platform | Read-only LDAPv3 server. Simple bind, LDAPS, mandatory STARTTLS, root DSE, Who Am I, equality, presence, substring, and boolean filters, RFC 2696 paging. | [LDAP-provider recipe](recipes/platform-ldap-provider.md), [ldap-provider.md](ldap-provider.md). In-tree test `ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation` in [`tests/identity/network.rs`](../tests/identity/network.rs), using `ldap3` against riAuth. The check job's `cargo test` is written to run it. | Add, modify, delete, modifyDN, and compare return unwilling to perform. POSIX and AD schema emulation is not advertised. The client in that test is not a third-party directory product. |
 | SCIM inbound | Platform | Server at `/scim/v2`. Users and Groups: GET, POST, PUT, PATCH, DELETE, filtered list, POST `.search`. Sort is advertised. Bulk is advertised false. | [scim.md](scim.md), [`src/scim.rs`](../src/scim.rs). In-tree tests [`tests/scim_filters.rs`](../tests/scim_filters.rs), [`tests/scim_pagination.rs`](../tests/scim_pagination.rs), and the SCIM HTTP test in [`tests/identity/http.rs`](../tests/identity/http.rs). | Nested groups and enterprise or custom schemas are rejected. No named SCIM client. The A02 contract still lists sort among initial exclusions; this tree implements sort with a 4,096-candidate cap. |
 | SCIM outbound | Both | Client. Selected users and optional groups. Disable records per-target deactivation intent. `automatic` controllers can deliver it; `manual-review` and `guarded-automatic` wait. | [scim.md](scim.md). In-tree tests [`tests/offboarding.rs`](../tests/offboarding.rs), [`tests/reconciliation_jobs.rs`](../tests/reconciliation_jobs.rs). | Remote accounts are deactivated, not deleted. No named target. Delivery is not implied by recording intent. |
@@ -246,7 +246,7 @@ profile, which is not Apple Safari.
 | Peer | What is exercised | Status |
 | --- | --- | --- |
 | PostgreSQL server | Loopback clusters, including a primary and standby in `scripts/test-postgres.sh` | CI step. Separate Homebrew 16.14 drill, no commit id |
-| OpenLDAP `slapd` | Loopback import, STARTTLS, password login, MFA, fail-closed sync | CI step |
+| OpenLDAP `slapd` | Loopback import, STARTTLS, password login, MFA, fail-closed sync | CI step. [LDAP import recipe](recipes/ldap-import.md). No Active Directory server |
 | riAuth LDAP listener | `ldap3` against this server's LDAPS and STARTTLS | Check-job test. Not an external directory |
 | nginx | `auth_request` template, headers, WebSocket, revocation, optional Chrome | CI step. Package version not pinned |
 | Traefik v3.7.13 | forwardAuth template, headers, WebSocket origin, revocation | CI step. SHA-256 pinned in the workflow |
@@ -281,13 +281,16 @@ device were run. The Linux network-filesystem probe described in
 
 The [Platform forward-auth recipe](recipes/platform-forward-auth.md), the
 [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md), the
-[OIDC relying-party recipe](recipes/oidc-relying-party.md), and the
-[Platform SAML IdP recipe](recipes/platform-saml-idp.md) are the D03
+[OIDC relying-party recipe](recipes/oidc-relying-party.md), the
+[Platform SAML IdP recipe](recipes/platform-saml-idp.md), and the
+[LDAP import recipe](recipes/ldap-import.md) are the D03
 recipes in this tree. The relying-party page's client is the in-tree axum
 fixture, so a named external relying party remains an open peer. The SAML
 IdP page checks signatures with xmlsec1, so a named service provider remains
-an open peer. The other D03 integration recipes, D04 emergency runbooks, and
-D05 acceptance against the category targets are still open. So are a
+an open peer. The import page follows disposable loopback OpenLDAP, so a
+real Active Directory directory remains an open peer. The other D03
+integration recipes, D04 emergency runbooks, and D05 acceptance against
+the category targets are still open. So are a
 conformance result, a named relying party or service provider, a
 Workspace or Entra tenant, a live Vault, a hardware authenticator, and an
 installed-release run of this commit on Linux x86-64 and ARM64.

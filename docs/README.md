@@ -56,6 +56,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Platform SAML IdP recipe](recipes/platform-saml-idp.md) | Fixture SP entity, the assertions the ignored xmlsec1 test makes, and the peer gaps that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
+| [LDAP import recipe](recipes/ldap-import.md) | Disposable OpenLDAP fixture, the assertions the ignored import test makes, and the peer gaps that fixture leaves |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |
 | [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md) | Fixture LDAPS and STARTTLS listener, ldap3 search and denial results, and the peer gaps that fixture leaves |
 | [RADIUS](radius.md) | PAP, RadSec, EAP-TLS, certificate lifecycle and policy |
