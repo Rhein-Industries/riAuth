@@ -549,6 +549,18 @@ fn preserve_proven_bindings(
                 .and_then(|id| identity.users_by_id.get(id))
         };
         if let Some(live) = live {
+            // The username and the recorded Authentik account are the binding later
+            // conversions use. Display and contact fields stay editable.
+            if spec.username != live.username {
+                return Err(proven());
+            }
+            let recorded = spec
+                .attributes
+                .get("riauth.migration.authentik")
+                .map(canonical_value);
+            if recorded != live.authentik {
+                return Err(proven());
+            }
             for (cid, previous) in &live.subjects {
                 if spec.subjects.get(cid) != Some(previous) {
                     return Err(proven());

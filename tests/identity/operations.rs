@@ -3933,6 +3933,192 @@ fn authentik_reimport_preserves_proven_issuer_subject_bindings() {
 }
 
 #[test]
+fn authentik_reimport_keeps_recorded_account_binding() {
+    let f = Fixture::new();
+    let issuer = f.core.config.issuer.clone();
+    let bundle = |state: Option<&serde_json::Value>| {
+        let mut input = json!({
+            "api_version": "riauth.authentik-import/v1",
+            "issuer": issuer,
+            "users": [{
+                "pk": 42, "uid": "uid-42", "uuid": "uuid-42", "username": "alice",
+                "name": "Alice", "groups": [], "attributes": {}, "type": "internal",
+                "is_active": true, "roles": []
+            }],
+            "groups": [], "providers": [], "applications": [], "policy_bindings": [],
+            "sources": [],
+            "passwords": {"alice": {"reference": "env:ALICE", "version": "v1"}},
+            "clients": {}
+        });
+        if let Some(state) = state {
+            input["target_state"] = state.clone();
+        }
+        input
+    };
+    let convert = |input: serde_json::Value| {
+        riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap()
+    };
+    let secrets = [("env:ALICE".into(), PASSWORD.into())];
+    let apply = |manifest: riauth::state::Manifest| {
+        let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+        f.core
+            .apply_state(
+                &f.admin,
+                riauth::state::ApplyRequest {
+                    plan,
+                    secrets: secrets.clone().into(),
+                    run_id: None,
+                },
+            )
+            .unwrap();
+    };
+    let stored_attribute = || {
+        f.core.export_state(&f.admin).unwrap()["manifest"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|user| user["username"] == "alice")
+            .unwrap()["attributes"]["riauth.migration.authentik"]
+            .clone()
+    };
+
+    let first = convert(bundle(None));
+    assert_eq!(first["ready_for_plan"], true, "{}", first["blockers"]);
+    apply(serde_json::from_value(first["manifest"].clone()).unwrap());
+    let attribute = stored_attribute();
+    assert_eq!(attribute, json!({"pk": "42", "uuid": "uuid-42"}));
+
+    let state = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+    let report = convert(bundle(Some(&state)));
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    assert!(report["manifest"]["target_state_fingerprint"].is_string());
+    let ready: riauth::state::Manifest =
+        serde_json::from_value(report["manifest"].clone()).unwrap();
+    assert_eq!(
+        ready
+            .users
+            .iter()
+            .find(|user| user.username == "alice")
+            .unwrap()
+            .attributes
+            .get("riauth.migration.authentik"),
+        Some(&attribute)
+    );
+    apply(ready.clone());
+    assert_eq!(stored_attribute(), attribute);
+
+    let reject = |manifest: riauth::state::Manifest| {
+        let error = f.core.plan_state(&f.admin, manifest).err().unwrap();
+        assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+        assert!(
+            error
+                .message
+                .contains("Manifest would change a proven subject or issuer binding"),
+            "{}",
+            error.message
+        );
+    };
+    let mut changed = ready.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .get_mut("riauth.migration.authentik")
+        .unwrap()["uuid"] = json!("uuid-other");
+    reject(changed);
+    let mut changed = ready.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .get_mut("riauth.migration.authentik")
+        .unwrap()["pk"] = json!("99");
+    reject(changed);
+    let mut changed = ready.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .get_mut("riauth.migration.authentik")
+        .unwrap()["source"] = json!("other");
+    reject(changed);
+    let mut changed = ready.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .remove("riauth.migration.authentik");
+    reject(changed);
+    let mut changed = ready.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .username = "alice2".into();
+    reject(changed);
+    let exported: riauth::state::Manifest = serde_json::from_value(state).unwrap();
+    let mut added = ready.clone();
+    let mut admin = exported
+        .users
+        .into_iter()
+        .find(|user| user.username == "admin")
+        .unwrap();
+    admin.attributes.insert(
+        "riauth.migration.authentik".into(),
+        json!({"pk": "1", "uuid": "uuid-admin"}),
+    );
+    added.users.push(admin);
+    reject(added);
+
+    let mut swapped = ready.clone();
+    swapped
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .insert(
+            "riauth.migration.authentik".into(),
+            json!({"uuid": "uuid-42", "pk": "42"}),
+        );
+    f.core.plan_state(&f.admin, swapped).unwrap();
+    let mut renamed = ready.clone();
+    renamed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .display_name = "Alice Renamed".into();
+    let planned = f.core.plan_state(&f.admin, renamed).unwrap();
+    assert!(
+        !planned.changes.is_empty()
+            && planned
+                .changes
+                .iter()
+                .all(|change| change.resource == "user/alice")
+    );
+    let mut noted = ready.clone();
+    noted
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .attributes
+        .insert("department".into(), json!("wiki"));
+    f.core.plan_state(&f.admin, noted).unwrap();
+    assert_eq!(stored_attribute(), attribute);
+}
+
+#[test]
 fn authentik_manifest_plans_only_on_its_exact_target_issuer() {
     use riauth::migration::{Classification::*, ItemKind::*};
     let f = Fixture::new();

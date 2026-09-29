@@ -297,7 +297,8 @@
 - Planning and applying a manifest bound to a target export now keep the proven
   issuer and subject pair: an existing explicit subject, the client issuer and
   pairwise sector that publish it, a source issuer, and the issuer stored on a
-  source link. The same check rejects an ambiguous export (two owners for one
+  source link. The same manifest cannot rename the account or add, replace, or remove
+  its recorded `riauth.migration.authentik` value. The same check rejects an ambiguous export (two owners for one
   account, subject or link, or a subject whose client is missing) and a stale
   source-link issuer, instead of matching one candidate. A failed apply rolls
   those bindings back with the rest of the manifest. Issuer and application
