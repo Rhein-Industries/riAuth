@@ -143,11 +143,15 @@ backup key that sealed the archives you hold is gone. `riauth doctor` is
 `operations/health`. A successful body carries `healthy`, `issuer`,
 `storage`, `encrypted_at_rest`, `enabled_administrators`, and `revision`.
 `encrypted_at_rest` true means this process was started with
-`database_key_file`. This section leaves that file where it is. A process
-that is still up can export after that file has been removed from disk,
-because the open store is already unlocked. Take the archive before that
-process exits. A later start without the database key file needs an
-archive and the backup key that sealed it. A caller who receives
+`database_key_file`. This section leaves that file where it is. The process
+reads that file when it opens the store. A disposable loopback drill removed
+only the file after `/readyz`, login, and `doctor` had succeeded. `doctor`
+still reported `encrypted_at_rest` true, and `backup` published a verified
+`riauth.backup/v3` archive. Those observations are in
+[Database key file removed while serving](#database-key-file-removed-while-serving).
+Take the archive before that process exits. A later start without the
+database key file needs an archive and the backup key that sealed it. That
+restart remains untested. A caller who receives
 `storage_unavailable` (exit 6) is in the PostgreSQL outage row above. A
 caller who cannot sign in follows
 [administrator lockout](admin-lockout.md) or
@@ -357,9 +361,59 @@ own server process on exit.
 
 The drill stopped with the restored serving gate closed. `recovery complete`,
 a restored `serve`, and a login on the restored issuer remain open, together
-with database-key removal, the Essentials binary, PostgreSQL, escrow, a
-relying party, and Compose, systemd, or Windows layouts. Archive frames were
-not decoded.
+with the Essentials binary, PostgreSQL, escrow, a relying party, and Compose,
+systemd, or Windows layouts. Archive frames were not decoded. That drill left
+the database key file in place.
+
+### Database key file removed while serving
+
+On 2026-09-29 a second loopback drill used a new temporary encrypted redb
+store. After `/readyz` returned 200 and login and `doctor` had succeeded, it
+removed only the database key file. The redacted observations are
+[d04-database-key-removed-redb-2026-09-29.json](roadmap/evidence/d04-database-key-removed-redb-2026-09-29.json).
+The binaries were the already built Platform debug `riauth` (SHA-256
+`7ede8878de9ad3d3a1b560ac41b6e15830cc54f81a6b187e674a9174cea0948d`) and
+`riauth-maintenance` (SHA-256
+`b987de72bb557822ea7e00563dc99b19616258a8c7e40e394eee2d5ae35b51ae`).
+The drill removed the temporary store, keys, archive, session, and its own
+server process on exit.
+
+- `riauth --json capabilities` reported edition `platform`, version
+  `0.1.1`, and build features `essentials` and `platform`.
+- Init used username `drill-admin` and a database key from `riauth keygen`.
+  `riauth serve` listened on `127.0.0.1`. The issuer was
+  `http://127.0.0.1:55540`. `doctor` reported `healthy` true, `storage`
+  `redb`, `encrypted_at_rest` true, one user, one enabled administrator,
+  store schema 3, and configuration revision 0.
+- Removing the database key file left `riauth.redb` in place. The live
+  configuration still named `database_key_file`. `doctor` succeeded again
+  with the same issuer, counts, revision 0, and `encrypted_at_rest` true.
+- `riauth-maintenance keygen` created the backup key with `data.created`
+  true. `backup --request-timeout 120` returned `ok` true, `data.verified`
+  true, `data.encrypted` true, `data.api_version` `riauth.backup/v3`, the
+  same issuer, stream `uP2vJJcNEoamH3pg7VZgkQ`, 3 frames, 20 records, and
+  12563 bytes.
+- `audit --limit 20` included `operations.backup.started` and
+  `operations.backup.completed` for that stream id, with targets under
+  `backup/`. Started details carried `max_archive_bytes` 4294967296.
+  Completed details carried `frames` 3, `records` 20, `bytes` 12563, and
+  `created_at`.
+- `riauth keygen` created a new database key, distinct from the removed
+  file. Restore of the new archive with that new database key into a new
+  directory returned `restored` true, `verified` true, `storage` `redb`,
+  `encrypted_at_rest` true, `serving_allowed` false, and recovery id
+  `35f9b68a-5bf5-4a5e-8bd7-595644c75297` (`riauth.recovery/v1`). It
+  invalidated one session and one session token and advanced one user
+  epoch. The directory contained `riauth.toml` and `data/riauth.redb`.
+  `recovery status` reported the same pending id, schema 3, backend
+  `redb`, and `serving_allowed` false.
+- The removed database key file was still absent. The live redb inode was
+  unchanged. `doctor` on the original server still succeeded with the same
+  issuer and counts.
+
+The restored serving gate stayed closed. The drill did not run
+`recovery complete`, did not serve the restored directory, and did not
+restart the original process after the database key file was gone.
 
 ## Archive restore
 
@@ -729,18 +783,19 @@ rollback of a migrated store stays in
 
 ## Recorded local drills
 
-These files are observations from 2026-09-29. The lost-backup-key drill
-added its own file and left the two R05 files as they were. Each drill used
-a disposable store, generated its own keys and accounts, and removed them
-on exit. None opened a deployment store.
+These files are observations from 2026-09-29. The lost-backup-key drill and
+the database-key-file drill added their own files and left the two R05 files
+as they were. Each drill used a disposable store, generated its own keys and
+accounts, and removed them on exit. None opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
 | [r05-local-2026-09-29.json](roadmap/evidence/r05-local-2026-09-29.json) | Disposable localhost redb. Binary SHA-256 `c125134b04154c39d58f953342cc20c2b50b512ebfc58e6fa6cf240a84aa2400`. | 16 checks passed. Wrong key and tampered archive: `invalid_request`, exit 2, output absent. Existing target: `conflict`, exit 5, marker kept. Restore invalidated 2 sessions, `serving_allowed` false, recovery id `cee9065f-38c1-457a-9737-3626de1cd44a`. After completion the restored service returned 200 for readiness, discovery, and JWKS, and accepted a fresh password login. |
 | [r05-postgres-local-2026-09-29.json](roadmap/evidence/r05-postgres-local-2026-09-29.json) | One temporary loopback PostgreSQL 16.14 cluster. Binary SHA-256 `8e26d768ce419a6b31fc22bd517aaf7b07c359a74fc5801990b1b33271333ffa`. | 16 checks passed. Archive restore into an empty database. Database stopped under the live process: liveness 200, readiness 503, login `storage_unavailable` exit 6. Wrong key: `invalid_request`, exit 2, target empty. Occupied source: `conflict`, exit 5, source still serving. Restore invalidated 2 sessions, recovery id `32365f9c-350f-4c7e-87ec-f9c77118677b`. After completion a fresh login and the health checks succeeded. |
 | [d04-backup-key-redb-2026-09-29.json](roadmap/evidence/d04-backup-key-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7`. Replacement key from `riauth-maintenance` SHA-256 `aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a`. | Backup key removed while `doctor` still succeeded. Replacement stream `verified` true, `riauth.backup/v3`, stream `UuFttJwvdA4RBUNEXjc1UA`. Old archive with that key: `invalid_request`, exit 2, output absent. Scratch restore recovery id `0dd34c51-0980-4a34-b227-47002097e8bf`, `serving_allowed` false. Live redb inode unchanged. |
+| [d04-database-key-removed-redb-2026-09-29.json](roadmap/evidence/d04-database-key-removed-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `7ede8878de9ad3d3a1b560ac41b6e15830cc54f81a6b187e674a9174cea0948d`. Backup key from `riauth-maintenance` SHA-256 `b987de72bb557822ea7e00563dc99b19616258a8c7e40e394eee2d5ae35b51ae`. | Database key file removed after `doctor` succeeded. Later `doctor` kept `encrypted_at_rest` true. New archive stream `uP2vJJcNEoamH3pg7VZgkQ`, `verified` true, `riauth.backup/v3`. Scratch restore with a new database key, recovery id `35f9b68a-5bf5-4a5e-8bd7-595644c75297`, `serving_allowed` false. Live redb inode unchanged. |
 
-The command lines that produced those files, and the gates they leave open,
+The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
 
 ## Remaining D04 gates
@@ -783,8 +838,11 @@ Still open:
   [Backup key lost, store still serving](#backup-key-lost-store-still-serving)
   replaced the backup key while `doctor` still succeeded, refused the old
   archive under the new key, and scratch-restored the new archive with
-  `serving_allowed` false. Escrow retrieval, database-key removal,
-  `recovery complete`, and a login on the restored issuer remain open.
+  `serving_allowed` false. A later loopback drill removed only the database
+  key file of a process that was already serving, then exported a new archive
+  and scratch-restored it with a new database key. Escrow retrieval, a restart
+  after that file is gone, `recovery complete`, and a login on the restored
+  issuer remain open.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
 - A TLS PostgreSQL connection. The disposable cluster used loopback trust
