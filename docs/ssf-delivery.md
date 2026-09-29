@@ -10,9 +10,10 @@ the row unchanged.
 
 Enqueue rules for account disable, session revoke, and credential change stay
 in [outbound behavior](enterprise/ENT-07.md#outbound-behavior). The serving
-commands that enqueue `session-revoked` for one session or for
-`user revoke-sessions` are in
-[credential compromise](credential-compromise.md). The design
+commands that call `signals::enqueue` for `session-revoked`, for one session
+or for `user revoke-sessions`, are in
+[credential compromise](credential-compromise.md). That page separates the
+call from a zero-or-more `ssf_deliveries` count. The design
 record for this read is
 [SSF delivery diagnostics](roadmap/o06-ssf-delivery-diagnostics.md). Mail,
 logout, and deactivation delivery stay on their own reads.

@@ -12,8 +12,9 @@ second administrator can still sign in stay in
 [administrator lockout](admin-lockout.md). Stopped-store break-glass, archive
 restore, and database-native recovery stay in
 [operational recovery](operational-recovery.md). Logout outbox behavior stays
-in [diagnostics and recovery](operations.md#diagnostics-and-recovery). A
-queued `session-revoked` or `credential-change` delivery is diagnosed with
+in [diagnostics and recovery](operations.md#diagnostics-and-recovery). An
+`ssf_deliveries` row for `session-revoked` or `credential-change`, when one
+is present, is diagnosed with
 [SSF delivery](ssf-delivery.md). Passkey ceremonies stay in
 [passkeys](passkeys.md). Agent ownership stays in [agent administration](agent.md).
 Vault Transit binding stays in [external signing](kms.md).
@@ -22,14 +23,38 @@ Vault Transit binding stays in [external signing](kms.md).
 
 | Concern | Command | Local result |
 | --- | --- | --- |
-| One known session | `riauth session revoke` | That session row is revoked. Logout is queued for its relying-party rows. One `session-revoked` signal is enqueued. |
-| Every session for a username | `riauth user revoke-sessions` | The account epoch advances by one. Logout is queued for that user's relying-party rows. One `session-revoked` signal is enqueued. |
-| One of your own passkeys, with another local credential remaining | `riauth passkey remove` | That passkey row is deleted. The epoch advances by one. Logout is queued for that user. |
-| Factors on an account that still has a password hash | `riauth user reset-mfa` | Passkeys, the authenticator secret, and recovery codes are cleared. The epoch advances by one. Logout is queued for that user. |
+| One known session | `riauth session revoke` | That session row commits with `revoked` true. The writer calls `queue_session` for that session and `signals::enqueue` for `session-revoked`. `logout_deliveries` and `ssf_deliveries` counts are zero or more, per the delivery-row paragraph under this table. |
+| Every session for a username | `riauth user revoke-sessions` | `user.epoch` commits one higher. The direct writer calls `queue_user` and `signals::enqueue` for `session-revoked`. Delivery-row counts are zero or more, per the delivery-row paragraph under this table. Other session rows keep their stored `revoked` flags. |
+| One of your own passkeys, with another local credential remaining | `riauth passkey remove` | That passkey row is deleted and `user.epoch` commits one higher. The writer calls `queue_user` and `signals::enqueue` for `credential-change` with type `public-key`. Delivery-row counts are zero or more, per the delivery-row paragraph under this table. |
+| Factors on an account that still has a password hash | `riauth user reset-mfa` | Passkeys, the authenticator secret, and recovery codes are cleared, and `user.epoch` commits one higher. The writer calls `queue_user`. Passkey deletion and a changed TOTP secret call `signals::enqueue` for `credential-change`. Delivery-row counts are zero or more, per the delivery-row paragraph under this table. |
 | A live agent token that should be replaced | `riauth agent rotate` | The previous token index entry is deleted and a new token is returned once. |
 | An agent credential that should stop | `riauth agent revoke` | The agent is disabled and its token index entry is deleted. |
-| A confidential client's shared secret | `riauth client rotate-secret` | The stored secret hash is replaced, that client's token families are revoked, and logout is queued for that client. |
+| A confidential client's shared secret | `riauth client rotate-secret` | The stored secret hash is replaced and that client's token families commit revoked. The writer calls `queue_client`. `logout_deliveries` rows for that client are zero or more, per the delivery-row paragraph under this table. |
 | The default signing key | `riauth rotate-key` | A new local RS256 active key is stored. The previous public JWK stays in the retired list until the retention time below. |
+
+Calling `queue_session`, `queue_user`, `queue_client`, or `signals::enqueue`
+is the writer's step. A delivery row is a separate result, and the committed
+local revocation is a third. `queue_matching` marks each matching RP session
+that is still live (`ended` false) as ended, and it inserts a
+`logout_deliveries` row when that client has `backchannel_logout_uri`. An
+already-ended row stays stored and adds no delivery. A live match with no
+back-channel URI is marked ended and adds no `logout_deliveries` row for
+that session. Zero eligible sessions leave zero logout rows. Several
+eligible sessions leave one logout row each. On Platform,
+`signals::enqueue` inserts one `ssf_deliveries` row for each external
+subject on each push stream whose `events` contain the event and whose
+`subjects` map that subject to this user id. Zero such bindings leave zero
+signal rows. Several bindings leave one row each. The first call in that
+transaction for the same user, event, and credential type writes those
+rows. A later call with the same triple returns from `mark_security_event`
+and adds none.
+On Essentials, `enqueue` for a supported event calls `ensure_absent`. Empty
+`ssf_streams`, `ssf_deliveries`, and `ssf_jti` succeed with zero signal
+rows, and the local write commits in that same transaction. A row already
+in any of those buckets makes `ensure_absent` return an error, and the
+transaction aborts before commit. The
+[successful-write section](#what-a-successful-write-leaves-unproved) restates
+this with the 2xx response.
 
 A passkey-only account, an empty password hash, and the offline
 `--reset-mfa` break-glass path stay on the lockout and recovery pages linked
@@ -106,9 +131,12 @@ actor on that branch is the agent id, and the named session row is the one
 revoked.
 
 `revoke_one` returns 404 `not_found` (`Session not found`) when the row is
-already revoked. Otherwise it sets `revoked` true, queues logout for that
-session id, enqueues `session-revoked` with an empty credential type, and
-audits `session.revoke`. The HTTP body is `revoked`, `saml_logout_url`, and
+already revoked. Otherwise it sets `revoked` true, calls `queue_session` for
+that session id, calls `signals::enqueue` for `session-revoked` with an empty
+credential type, and audits `session.revoke`. The committed local revocation
+is that one row's `revoked` flag. `logout_deliveries` and `ssf_deliveries`
+counts stay zero or more under the delivery-row paragraph in
+[Choose the action](#choose-the-action). The HTTP body is `revoked`, `saml_logout_url`, and
 `saml_logout` from `saml::logout::redirect`. A receipt is stored only when
 the caller sent `Idempotency-Key` and the target is a different session from
 the caller's current one. Revoking the current CLI session leaves no
@@ -120,9 +148,12 @@ session.
 `riauth user revoke-sessions USERNAME` sends `PATCH /api/users/{username}`
 with `revoke_sessions: true`. `update_user` increments `user.epoch` by one
 and calls `write_user_record` with `signal_session_revocation` true. On a
-direct write, an epoch change queues logout for every relying-party row of
-that user, and the signal flag enqueues `session-revoked`. The audit action
-is `user.update`. The direct writer leaves each session row's existing
+direct write, an epoch change calls `queue_user` for that user id, and the
+signal flag calls `signals::enqueue` for `session-revoked` with an empty
+credential type. The committed local revocation is the new epoch.
+`logout_deliveries` and `ssf_deliveries` counts stay zero or more under the
+delivery-row paragraph in [Choose the action](#choose-the-action). The
+audit action is `user.update`. The direct writer leaves each session row's existing
 `revoked` flag as it was. A Platform cloud sync or cloud disable that
 requests revocation also sets `revoked` on each of that user's unrevoked
 session rows. That cloud writer is a different path from this CLI patch.
@@ -216,14 +247,22 @@ passkey-only administrator with two or fewer passkeys returns 409
 unchanged. Rename returns `sessions_revoked: false` and leaves the epoch.
 
 On success the passkey row is deleted, `has_passkeys` follows the remaining
-count, `user.epoch` advances by one, logout is queued for that user, and
-the audit action is `passkey.remove`. The body is `removed: true` and
-`sessions_revoked: true`. The session rows keep the `revoked` flag they
-already had. The epoch check above is what fails a later local session.
-Deleting the passkey row is the store transition that enqueues
-`credential-change` with credential type `public-key` on Platform. The
-`session-revoked` signal from `write_user_record` is the
-`revoke_sessions` patch. This removal leaves that flag false.
+count, `user.epoch` advances by one, the writer calls `queue_user` for that
+user, and the audit action is `passkey.remove`. The body is `removed: true`
+and `sessions_revoked: true`. `sessions_revoked: true` records the epoch
+advance and the `queue_user` call. The committed local revocation is the
+deleted passkey and the new epoch.
+`logout_deliveries` counts stay zero or more under the delivery-row paragraph in
+[Choose the action](#choose-the-action). The session rows keep the `revoked`
+flag they already had. The epoch check above is what fails a later local
+session. Deleting the passkey row is the store transition that calls
+`signals::enqueue` for `credential-change` with credential type `public-key`.
+`ssf_deliveries` counts for that call stay zero or more under the same
+delivery-row paragraph, including a committed local write with zero signal
+rows when Essentials `enqueue` finds the SSF buckets empty. `write_user_record` calls
+`signals::enqueue` for `session-revoked` when `signal_session_revocation` is
+true, which is the `revoke_sessions` patch. This removal leaves that flag
+false.
 
 The deleted row is the server credential. The authenticator keeps the
 private key it holds.
@@ -235,12 +274,20 @@ key from the session revoke. `update_user` returns 409
 when `password_hash` is empty, before `passkey::clear`. Otherwise `clear`
 deletes that user's passkey rows, recovery codes are cleared, and the TOTP
 secret, pending secret, and last step are cleared. The epoch advances by
-one. `write_user_record` queues user logout because the epoch changed.
-The `session-revoked` signal stays tied to `revoke_sessions`, which this
-patch leaves false. A passkey row deleted by `clear` enqueues
-`credential-change` for `public-key`. A TOTP secret that changes enqueues
-`credential-change` for `otp`. The recovery-code signal records codes that
-were added. Clearing the set leaves that signal unsent.
+one. Because the epoch changed, `write_user_record` calls `queue_user`.
+The committed local revocation is that new epoch. `logout_deliveries`
+counts stay zero or more under the delivery-row paragraph in
+[Choose the action](#choose-the-action). This patch leaves
+`signal_session_revocation` false. `write_user_record` calls
+`signals::enqueue` for `session-revoked` when that flag is true. A passkey
+row deleted by `clear` calls `signals::enqueue` for `credential-change`
+with type `public-key`. A TOTP secret that changes calls `signals::enqueue`
+for `credential-change` with type `otp`. Each of those calls writes zero or
+more `ssf_deliveries` rows under the stream filter in that paragraph. On
+Platform, the first call in the transaction for one user, event, and
+credential type writes the rows, and a later call with the same triple adds
+none. The recovery-code signal records codes that were added. Clearing the
+set leaves that signal unsent.
 
 A delegated or agent caller who sends `reset_mfa` calls
 `mark_credential_exposure` first. An administrator target, a caller
@@ -339,9 +386,12 @@ returns the secret already issued. `Core::rotate_client_secret` requires `client
 no secret hash, so this command leaves that client's assertion key as it
 is. `Secret::Issue` replaces `secret_hash`. `authenticate_client` rejects
 a presented secret whose digest differs. Because the secret changed,
-`write_client` calls `revoke_client_grants`: logout is queued for that
+`write_client` calls `revoke_client_grants`: `queue_client` runs for that
 client id, access and refresh families for that client are marked revoked,
 and that client's authorization codes and device-flow rows are deleted.
+The committed local revocation is the new secret hash and those revoked
+families. `logout_deliveries` rows for that client stay zero or more under
+the delivery-row paragraph in [Choose the action](#choose-the-action).
 The audit action is `client.secret.rotate`.
 
 A later refresh, userinfo, or introspection on this server fails the
@@ -450,28 +500,50 @@ riauth --config "$live_config" --session-file "$session_file" --idempotency-key 
 
 ## What a successful write leaves unproved
 
-A 2xx response means the local transaction committed the write described
-above, including a logout or Shared Signals row queued in that same
-transaction.
+A 2xx response means the local transaction committed the revocation or
+credential write for that command. When that writer calls `queue_session`,
+`queue_user`, `queue_client`, or `signals::enqueue`, the same transaction
+finished that call. The finished call, the delivery rows, and the local
+revocation are three facts. `logout_deliveries` rows are one per eligible
+live RP session whose client has `backchannel_logout_uri`, and that count
+is zero when none qualify. `ssf_deliveries` rows are one per matching
+push-stream subject binding, and that count is zero when no binding matches.
+Several eligible sessions or several matching subjects produce several
+rows. A repeated Platform call in that transaction for the same user,
+event, and credential type adds no further signal row. Essentials
+`enqueue` commits zero signal rows when `ssf_streams`, `ssf_deliveries`,
+and `ssf_jti` are empty. The local fact in that commit is the one that
+command writes: the session `revoked` flag, the advanced `user.epoch`, the
+replaced or removed agent token, the replaced client secret and revoked
+grant families, or the new signing key with the previous public JWK
+retained. Any delivery row written in the transaction remains a local
+outbox record.
 
 These effects stay unproved by that response:
 
 - A relying party dropped an access token, ID token, cookie, or cached
-  JWKS. Logout delivery creates a `logout_deliveries` row only when the
-  client has `backchannel_logout_uri`. The relying-party row is marked
-  `ended` and kept until cleanup, which removes a row after `expires_at`
+  JWKS. `queue_matching` marks each matching live RP session `ended` and
+  keeps the row. It inserts a `logout_deliveries` row when that client has
+  `backchannel_logout_uri`. An already-ended row adds no second delivery.
+  A live match whose client has no back-channel URI is marked `ended` and
+  adds no `logout_deliveries` row for that session. Zero eligible sessions
+  leave zero logout rows. Cleanup removes an RP row after `expires_at`
   plus 86400 seconds. Signing-key retention reads that `expires_at`. The
   SAML logout URL and any front-channel URL are returned for a browser
   that opens them. The outbox rules, including an RP that ignores logout
   events, are in
   [diagnostics and recovery](operations.md#diagnostics-and-recovery).
 - A remote Shared Signals receiver stored the SET. Platform
-  `signals::enqueue` writes a delivery when the event is supported, the
-  stream's delivery method is push, the stream includes that event, and a
-  stream subject maps to the user id. Essentials `enqueue` returns without
-  a delivery when `ssf_streams`, `ssf_deliveries`, and `ssf_jti` are empty,
-  and it refuses the surrounding write when any of those buckets holds a
-  row. The diagnostic read, its redaction, and its withheld rows are
+  `signals::enqueue` writes one `ssf_deliveries` row for each external
+  subject on each push stream whose `events` contain the event and whose
+  `subjects` map that subject to this user id. Zero such bindings write
+  zero rows. Several bindings write one row each. A repeated call in the
+  same transaction for the same user, event, and credential type returns
+  from `mark_security_event` and adds no row. Essentials `enqueue` returns
+  with zero rows when `ssf_streams`, `ssf_deliveries`, and `ssf_jti` are
+  empty, and `ensure_absent` returns an error when any of those buckets
+  holds a row, so that transaction aborts before commit. The diagnostic
+  read, its redaction, and its withheld rows are
   [SSF delivery](ssf-delivery.md).
 - `doctor`, `/readyz`, and `/livez` changed their meaning. They remain the
   probes in [operations](operations.md#diagnostics-and-recovery). Queue
@@ -481,13 +553,22 @@ These effects stay unproved by that response:
 - A Windows device dropped a cached offline ticket. `windows_offline_verify`
   rejects a ticket presented to this server when the device secret fails,
   `device.revoked` is set, the account is disabled, or `user.epoch`
-  differs from the ticket. The four commands on this page leave
-  `device.revoked` as it was. `windows_credentials::revoke_user` runs in
-  the user transition when the account is disabled or when a previously
-  disabled account is written again. On Platform that function marks the
-  user's device rows revoked and deletes stored sign-in tickets. Essentials
-  refuses the transition when those buckets already hold a row. A device
-  that does not present the ticket to this server is outside the response.
+  differs from the ticket. `session revoke`, `logout`,
+  `user revoke-sessions`, `passkey remove`, `user reset-mfa`,
+  `agent rotate`, `agent revoke`, `client rotate-secret`, `rotate-key`,
+  and the `keys generate`, `keys bind`, and `keys import` writes described
+  above each leave `device.revoked` at the value already stored.
+  `windows_credentials::revoke_user` runs in the user
+  transition when the account is disabled or when a previously disabled
+  account is written again. That path is the account-disable write and the
+  write of an account that was already disabled. On Platform that function
+  marks the user's device rows revoked and deletes stored sign-in tickets.
+  Essentials refuses the transition when those buckets already hold a row.
+  An epoch advance from `user revoke-sessions`, `passkey remove`, or
+  `user reset-mfa` fails a later `windows_offline_verify` when the presented
+  ticket's epoch differs from `user.epoch`, and `device.revoked` stays at
+  its stored value. A device that presents no ticket to this server stays
+  outside the response.
   The device protocol is [ENT-13](enterprise/ENT-13.md). The device
   procedure in [windows/RECOVERY.md](../windows/RECOVERY.md) was not run.
 - RADIUS certificates, device-trust challenges, and remembered consents
@@ -552,12 +633,14 @@ still describes D04 at revision `96e23e2`.
   [src/management.rs](../src/management.rs); `RetiredKey` and
   `SigningKey::generate` in [src/crypto.rs](../src/crypto.rs);
   `public_keys` in [src/keyring.rs](../src/keyring.rs).
-- Logout queue: `queue_session` and `queue_user` in
+- Logout queue: `queue_session`, `queue_user`, `queue_client`, and
+  `queue_matching` in
   [src/identity/logout_queue.rs](../src/identity/logout_queue.rs).
-- Signals: `signals::enqueue` in
+- Signals: `signals::enqueue` and Essentials `ensure_absent` in
   [src/identity/signals.rs](../src/identity/signals.rs), re-exported by
-  [src/ssf.rs](../src/ssf.rs). The passkey and TOTP transitions are
-  `identity::record_transition`.
+  [src/ssf.rs](../src/ssf.rs). The same-transaction dedup is
+  `mark_security_event` in [src/store.rs](../src/store.rs). The passkey and
+  TOTP transitions are `identity::record_transition`.
 - Windows: `windows_offline_verify` in
   [src/assembly/windows_login.rs](../src/assembly/windows_login.rs) and
   `windows_credentials::revoke_user` in
