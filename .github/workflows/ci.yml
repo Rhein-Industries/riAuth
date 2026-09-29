@@ -94,6 +94,7 @@ jobs:
           python3 scripts/check-docs.py
           python3 scripts/generate-third-party-notices.py --check
           python3 -m unittest discover -s tests -p 'test_installed_release_gate.py'
+          python3 -m unittest discover -s tests -p 'test_run_conformance.py'
           bash -n scripts/*.sh
       - run: cargo build --release --locked
 
