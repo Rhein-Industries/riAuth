@@ -35,3 +35,7 @@ The SSF follow-up runs with `cargo test --locked --features test-support --test 
 ## Session-read benchmark slice
 
 `scripts/q09_benchmark_slice.py` measures `GET /api/me` (`Core::me`) on one fresh local binary and one backend, `redb` or `postgresql`. The JSON report records the commit, binary hash, hardware, security settings, latency percentiles, successes and errors, successful throughput, server RSS and CPU samples, host load, background-counter deltas, and a concurrent empty-group create. `python3 scripts/q09_benchmark_slice.py --self-check` checks that script against a fixture server and does not measure riAuth. It covers the default one-administrator dataset and a two-user, two-group directory whose administrator memberships are checked before the timed reads. `--directory-users` and `--directory-groups` default to zero. A relative `--binary` is resolved from the current directory before capabilities, init, and serve. The procedure and the open Q09 gate are in [the benchmark slice](roadmap/q09-benchmark-slice.md).
+
+## Release evidence
+
+`python3 scripts/check-release-evidence.py` reads the vulnerability intake text, release workflow, packager, bundle checker, and third-party notice generator. Exit 0 means that source still matches the written boundary. It does not build or download a release. The procedure and the open Q11 gaps are in [the release-evidence check](roadmap/q11-release-evidence.md). Its fixtures run with `python3 -m unittest discover -s tests -p 'test_release_evidence.py'`.

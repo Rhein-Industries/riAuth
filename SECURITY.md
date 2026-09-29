@@ -11,3 +11,5 @@ When private vulnerability reporting is enabled, use **Security â†’ Advisories â
 If the private reporting button is unavailable, open a public issue asking maintainers for a private contact method **without sharing vulnerability details**.
 
 We will acknowledge reports and coordinate a fix and disclosure with the reporter. No response or remediation deadline is promised for this initial release.
+
+The [release-evidence procedure](docs/roadmap/q11-release-evidence.md) records how this policy sits next to the current release workflow. It adds no contact and no deadline.

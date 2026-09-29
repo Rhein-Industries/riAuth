@@ -504,4 +504,7 @@ version you intend to deploy. Test startup, proxy behavior and
 restore in the target environment before directing users to the new version;
 a container capabilities smoke test does not exercise those paths. See the
 [release notes](release-notes.md) and [known limitations](limitations.md) for
-version-specific compatibility and acceptance boundaries.
+version-specific compatibility and acceptance boundaries. A checkout-only
+reading of the workflow and of the vulnerability intake text is the
+[Q11 release-evidence check](roadmap/q11-release-evidence.md). It does not
+download artifacts or replace checksum verification of a bundle you deploy.

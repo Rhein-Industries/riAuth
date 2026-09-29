@@ -41,6 +41,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | Local Essentials/Platform build, configuration and storage evidence; Linux release artifact gates |
 | [Q09 benchmark slice](roadmap/q09-benchmark-slice.md) | One local session-read measurement protocol, its fixture check, and the open benchmark gate |
 | [Q10 installed release gate](roadmap/q10-installed-release-gate.md) | Native packaged-binary transition and recovery gate, local preflight evidence, and remaining external checks |
+| [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake text, draft release workflow, and a verify-only checker; signatures, an SBOM, a review record, and Linux ARM64 execution stay open |
 | [Q03 independent OIDF pilot](roadmap/q03-conformance-pilot.md) | Pinned runner preflight, missing private pilot inputs, and the open independent run gate |
 | [Release limitations](limitations.md) | Unsupported profiles and deployment responsibilities |
 
