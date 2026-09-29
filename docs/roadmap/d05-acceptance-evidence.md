@@ -1,10 +1,12 @@
 # D05 acceptance evidence matrix
 
-Status: **not passed.** Snapshot date 2026-09-29. Accepted integration base
-for this branch is `cf827a9ee103672b329907a433fb96ac868fe178`. Every category
-stays **not passed**. D05 stays **not passed**. The workstream gate — a new
-user and a new operator can independently complete the documented workflows —
-has no recorded completion.
+Status: **not passed.** Snapshot date 2026-09-29. This D05 branch was not
+reset onto accepted integration. The parent snapshot is `328a3ac`, whose
+base is `cf827a9ee103672b329907a433fb96ac868fe178`. Accepted files were
+read from ledger head `03124272a6cfe14ac48227c504cc896c2f11d9aa`. Every
+category stays **not passed**. D05 stays **not passed**. The workstream
+gate — a new user and a new operator can independently complete the
+documented workflows — has no recorded completion.
 
 The previous snapshot is `09e68460d7836be8227568fbc84d8516d2d23e84`, the
 accepted form of `054ab05`. It described head `52df9a3`. This page keeps those
@@ -16,26 +18,29 @@ records and adds the slices accepted after them. A status other than
 
 | Source | Identity |
 | --- | --- |
-| This worktree | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24`, branch `roadmap/d05-acceptance-evidence-wave24`, reset onto `cf827a9ee103672b329907a433fb96ac868fe178` |
-| Ledger head | `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json`, `integration_head` `cf827a9ee103672b329907a433fb96ac868fe178` |
-| Accepted checkout | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted` was not edited, merged, or pushed. After the ledger read it was at `e926d75`, which is not this branch base |
+| This worktree | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24`, branch `roadmap/d05-acceptance-evidence-wave24`, parent snapshot `328a3ac` on base `cf827a9`. This refresh writes only the two D05 evidence files |
+| Ledger head | `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json`. The stored `integration_head` string is `0312427`. That prefix is commit `03124272a6cfe14ac48227c504cc896c2f11d9aa` |
+| Accepted checkout | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted` was read at that same commit and was not edited, merged, or pushed |
 
 The ledger `integration_status` is `local_commits_only_no_merge_to_main`.
-It has 415 `reviewed_slices`, 390 `integration_validation.checks`, and 16
+It has 456 `reviewed_slices`, 436 `integration_validation.checks`, and 17
 `open_checks`. D05 is one reviewed slice, integration commit `09e6846`,
 status `task_in_progress`. The task that started this refresh named
-`7e07e748a80b9cb39ffed3da8ce90690d72ab18c` and 413 slices. That commit is
-an ancestor. Before this snapshot was committed, the ledger head moved to
-`cf827a9`, adding the A03 source-configuration check at `1535cdc` and the
-G05 reference rehearsal. This branch base follows that ledger head.
+`ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1` and 454 slices. That commit is
+an ancestor. The ledger then included W07 at `3cfe28b` and Q06 at
+`0312427`. The validation `head` and the Q06 `run_head` are stored as
+the seven-character prefix `0312427`.
 
-After that ledger read, the accepted checkout advanced to
-`e926d75fd0e58ab743c98a5e3d5dc0cc09378c78` (`Route PAM retention cleanup
-through management writer`). That commit is not in the ledger validation
-checks and is not in this branch. It adds
-`pam_cleanup_preserves_api_replay_and_only_prunes_retained_history` in
-`tests/pam_management.rs`. This snapshot does not treat that test as run.
-It does not pass administration or security.
+The previous snapshot's statement that `e926d75` had no ledger check is
+stale. Ledger `run_head` `e926d75` records
+`CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 cargo test --locked --test pam_management -- --quiet; python3 scripts/check-module-boundaries.py; git diff --check HEAD~1 HEAD`
+with result text pass; 6 PAM management tests. The note says broader M03
+management parity work remains. That run is source-only and does not pass
+administration.
+
+Sentences about commits after `cf827a9` were read from the accepted
+objects. Paths that this worktree does not contain are named in backticks
+and are not markdown links.
 
 This slice did not run Cargo, a browser, a database, or a peer. Commands
 below are citations of docs and of the ledger. They were not re-executed
@@ -66,16 +71,16 @@ database run as `source-only`. Read the FreeRADIUS `radclient` run as
 
 | Category | Status | Strongest record at this snapshot | Gate that remains |
 | --- | --- | --- | --- |
-| Usability | not passed | source-only headless Playwright at `d039306` | Independent new-user completion, assistive technology, physical authenticator |
+| Usability | not passed | source-only password invitation at `58e5ef3` and simulated passkey invitation at `0312427`, each 3/3 | Independent new-user completion, assistive technology, a hardware or synced passkey, external mail |
 | Workflows | not passed | source-only configured consent at `a3ccbf1`: prior suite 8/8 and TOTP consent 1/1 | Browser and remembered consent, TOTP-only and recovery-code reauthentication, custom stages |
-| Administration | not passed | source-only reviewed-membership PostgreSQL 6/6 at `e3c26eb`, including fenced standby promotion | Human operator journey and the resources still outside exact multi-party approval |
+| Administration | not passed | source-only redb 11/11 and disposable PostgreSQL 9/9 at `cf4529e`, including encrypted reopen and fenced promotion | Human operator journey, broader dependency families, and resources still outside exact multi-party approval |
 | Interoperability | not passed | local peer OpenLDAP `ldapsearch` 2.7.1 LDAPS and STARTTLS at `fcba8a5` | Active Directory, a named directory application, a SAML service provider, a hardware NAS, and a cloud tenant |
-| Footprint | not passed | source-only macOS edition matrix at `4ca7558` | Linux release-artifact size and a measurement at `cf827a9` |
+| Footprint | not passed | source-only macOS edition matrix at `4ca7558` | Linux release-artifact size and a measurement at `0312427` |
 | Performance | not passed | source-only `q09-8u-8g` reports at `7aea083` with `performance_claim: false` | Named operator workload, RPO, and RTO |
 | Availability | not passed | source-only shared-store refusal at `7e07e748`, separate processes, disposable PostgreSQL | Shared-job leases, peer health, native TLS, and a deployment RTO or RPO |
 | Recovery | not passed | source-only disposable drills, 16/16, no source commit in the JSON | Release/deployment restore, key escrow, and a measured recovery time |
 | Migration | not passed | source-only synthetic reference relying party at `cf827a9`, focused 1/1 | A real Authentik export, a named relying party, and a production route rollback |
-| Security | not passed | source-only shared contracts at `7edfc42` and A03 assembly checks through `1535cdc` | Installed-artifact EG03, certification, and a release signature |
+| Security | not passed | source-only A03 source seam through `ee88af0`, and source SPDX binding at `b759216` | Installed-artifact EG03, certification, a release signature, and a release SBOM |
 
 ## Slices accepted after `09e6846`
 
@@ -192,7 +197,26 @@ The PostgreSQL run used loopback HTTP without native TLS and
 `local_unencrypted` PostgreSQL. It did not promote the standby. The note
 says shared-job leases, distributed rate limit, peer health, policy and
 trust and key agreement, and native TLS or HA proof are still absent.
-Availability stays not passed.
+
+Two later O03 checks are also source-only and do not record a deployment
+RTO. Ledger `run_head` `acf1d7c`:
+
+```text
+cargo test --locked --features test-support --test logout_lease --test background_logout --test operations --test identity_boundary -- --quiet; cargo test --locked --features test-support --test operations logout_network_failures_are_visible_and_clear_after_success -- --exact --quiet; RIAUTH_PG_TEST_TARGET=job_lease_postgres CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 bash scripts/test-postgres.sh
+```
+
+Result text: focused pass for background logout 1/1, identity boundary
+6/6, logout lease 1/1, operations logout 1/1, and disposable PostgreSQL
+two-worker lease 1/1. The same result says the full operations suite was
+11/15, with four backup and schema failures. Ledger `run_head` `75def67`:
+
+```text
+cargo test --locked --lib node_security:: -- --test-threads=2; RIAUTH_PG_TEST_TARGET=node_security_postgres bash scripts/test-postgres.sh
+```
+
+Result text: pass; redb unit 4/4 and disposable PostgreSQL process and
+upgrade 3/3. The note leaves deployment, rollback, and real multi-node
+evidence open. Availability stays not passed.
 
 `36ad584` is the earlier process-role commit on this history. Its ledger
 result is process-role 6/6 and two-process disposable PostgreSQL 1/1.
@@ -217,14 +241,48 @@ with `pg_ctl promote`, and reads the same membership, audits, and receipt
 on the promoted port. It is a loopback drill with trust authentication.
 It does not elect a leader, measure a recovery objective, or cover
 failback, partitions, or PITR. The encrypted TLS test from `52df9a3`
-remains a separate function. Administration and availability stay not
-passed: this is one resource family on a disposable cluster, not a human
-administration journey and not a deployment outage measurement.
+remains a separate function. That 6/6 result is the `e3c26eb` run. It is
+not the latest accepted suite.
 
-The ledger `open_checks` text that still says S04 standby promotion and
-encrypted PostgreSQL remain open was not updated after `52df9a3` and
-`e3c26eb`. Those two drills are recorded. The category targets are not
-met by correcting that stale sentence.
+Later accepted S04 runs, still source-only, are on the ledger head's
+history:
+
+| `run_head` | Command | Result text |
+| --- | --- | --- |
+| `60e69f3` | `CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 RUST_TEST_THREADS=1 cargo test --locked --test state_reconciliation -- --quiet; RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 bash scripts/test-postgres.sh; python3 scripts/check-docs.py; git diff --check HEAD~1 HEAD` | pass; 7 redb state reconciliation and 7 disposable PostgreSQL reviewed-membership tests |
+| `ef496c8` | `CARGO_BUILD_JOBS=2 cargo test --locked --test state_reconciliation client_name_desired_state -- --quiet; RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git diff --check HEAD^ HEAD` | pass; redb client-name 2/2, disposable PostgreSQL 8/8 with encrypted reopen and standby promotion |
+| `cf4529e` | `cargo test --locked --offline --test state_reconciliation -- --test-threads=8 --skip desired_state_client_and_password_disables_require_review; RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres ./scripts/test-postgres.sh` | pass; redb 11/11, disposable PostgreSQL 9/9 including encrypted reopen and promotion |
+
+The `cf4529e` redb command skips
+`desired_state_client_and_password_disables_require_review`. The 11/11
+count is the tests that command ran. At accepted `ee88af0`,
+`tests/reviewed_memberships_postgres.rs` has these nine PostgreSQL tests:
+`postgres_client_name_desired_state_dependencies_and_replay`,
+`postgres_group_desired_state_dependencies_and_replay`,
+`postgres_unrelated_revision_still_applies_reviewed_membership`,
+`postgres_affected_membership_user_and_policy_deny_stale_apply`,
+`postgres_reviewed_membership_reopen_and_receipt_replay`,
+`postgres_reviewed_membership_http_execute_race_replays_after_reopen`,
+`postgres_encrypted_reviewed_membership_replays_across_reopen`,
+`postgres_user_display_name_desired_state_dependencies_and_replay`, and
+`postgres_z_fenced_standby_promotion_replays_reviewed_membership`.
+Accepted `docs/testing.md` at `ee88af0` says the same runner applies one
+group-only desired-state plan, one client display-name plan, and one user
+display-name plan. A manifest that also names another family, changes
+client scopes, or changes a user's email still conflicts on the global
+revision. The promotion sentence is unchanged: loopback trust
+authentication, no leader election, no recovery objective, no failback,
+no partition, and no PITR.
+
+The `cf4529e` note says broader families and real deployment evidence
+remain open. Administration and availability stay not passed.
+
+Ledger `open_checks` entry 14 still says S04 redb concurrency plus
+PostgreSQL 3/3, and that standby promotion and encrypted PostgreSQL
+remain open. That sentence is stale. `52df9a3` recorded encrypted
+reopen, `e3c26eb` recorded promotion at 6/6, and `cf4529e` recorded
+redb 11/11 with PostgreSQL 9/9 including both. Correcting the sentence
+does not pass S04, administration, or availability.
 
 ### G05 — source-only
 
@@ -260,6 +318,144 @@ release/deployment rehearsal. [Migration](../migration.md) says these
 in-process results do not close the real application cutover or rollback
 gate. Migration stays not passed.
 
+### O06 — source-only
+
+Three bounded diagnostics are on the ledger. Each page read from
+accepted `ee88af0` says O06 stays open. None is a dashboard deployment.
+`doctor.healthy`, `/readyz`, and `/livez` keep their existing answers.
+
+| `run_head` | Command | Result text |
+| --- | --- | --- |
+| `7949aeb` | `CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 RUST_TEST_THREADS=1 cargo test --locked --test offboarding offboarding_diagnostics_reports_incomplete_and_failed_without_secrets -- --exact --quiet; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git diff --check ba64b66..HEAD` | pass; focused diagnostics 1/1 |
+| `7949aeb` | `CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 RUST_TEST_THREADS=1 cargo test --locked --test offboarding -- --quiet` | FAIL 24/30. The note says two representative failures reproduce on pre-O06 `ba64b66`, and four were not baseline-checked |
+| `644242f` | `cargo test --locked --test reconciliation_diagnostics -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; python3 scripts/check-module-boundaries.py` | pass; O06 diagnostic 1/1 |
+| `9a575d5` | `CARGO_BUILD_JOBS=2 cargo test --locked --offline --test offboarding_deactivation_diagnostics -- --test-threads=1; CARGO_BUILD_JOBS=2 cargo test --locked --offline --test offboarding -- --test-threads=4; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git diff --check 3f0a9c9..HEAD` | pass; deactivation diagnostics 2/2, offboarding 31/31. The result text says PostgreSQL was ignored in this command and attributes disposable PostgreSQL 1/1 to the source run |
+
+The 24/30 failure is that earlier check. It is not the last offboarding
+result. `6121456` later records the full offboarding suite 31/31 twice.
+O06 stays `task_in_progress`.
+
+`docs/roadmap/o06-offboarding-diagnostics.md` caps the job aggregate at
+50 items and 32 non-succeeded targets, and it scans the whole
+`offboard_jobs` bucket with no incomplete-downstream index. Its open
+list is dashboards, connector lag, node mismatch, storage pressure and
+key problems, failed jobs outside scheduled offboarding, doctor and
+`queues.offboard_jobs.failed`, deactivation rows, and a production
+deadline for the full job scan.
+
+`docs/roadmap/o06-deactivation-diagnostics.md` pages
+`provisioning_deactivations` by 128 and retains at most 50 attention
+rows. Each stored value is still decoded in full and has no size cap on
+that path. Its open list adds Essentials redacted aggregate, a
+`riauthctl` or new `riauth` diagnostics command, deactivation dispatch,
+the connector due cursor, mail, provisioning-job error text, and
+Prometheus or Grafana.
+
+`docs/roadmap/o06-reconciliation-diagnostics.md` caps the controller
+failure aggregate at 50 rows. Its open list adds the 256-job retention
+as short of a production backlog deadline, and it does not extend the
+offboarding aggregate. Administration stays not passed.
+
+### Q06 — source-only
+
+Ledger `run_head` `58e5ef3`:
+
+```text
+(cd tools/browser && npx playwright test invitation-password.spec.js --reporter=line); node --check tools/browser/invitation-password.spec.js; git diff --check b77e637..a4d0a1f
+```
+
+Result text: pass; accepted Chromium, Firefox, and WebKit browser
+journey 3/3. The note says the test covers keyboard and mobile-viewport
+password invitation acceptance, expired and replay rejection, no session
+on acceptance, later sign-in and sign-out, and zero passkey requests.
+It does not add a physical or synced passkey, a real mobile device, a
+screen reader, or external mail. An earlier Chromium virtual-authenticator
+invitation at `a72a086` is a separate 1/1 and leaves the same hardware
+and mail gates open.
+
+Ledger `run_head` `0312427` is the later simulated passkey invitation:
+
+```text
+(cd tools/browser && npx playwright test invitation-passkey-shim.spec.js --reporter=line); node --check tools/browser/invitation-passkey-shim.spec.js; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD
+```
+
+Result text: pass; simulated passkey invitation Chromium, Firefox, and
+WebKit 3/3. The note says the shim sets user verification itself. It does
+not prove browser-native, hardware, synced, phone, mobile OS, screen
+reader, or external mailbox behavior. Both journeys use the in-tree
+portal fixture. They are source-only, not a local peer. Usability and
+workflows stay not passed.
+
+### W07 — source-only
+
+Ledger `run_head` `f911e85` rejects a guest body above the translation
+fuel or timeout budget before Wasmi `Module::new`. Commands:
+
+```text
+cargo test --locked --offline --features platform --lib extension_gate:: -- --test-threads=2
+cargo test --locked --offline --no-default-features --features essentials --lib extension_gate:: -- --test-threads=2; python3 scripts/check-docs.py; git diff --check
+```
+
+Result text: pass; Platform extension gate 9/9, then Essentials 3/3.
+The note says a guest that fits still validates and executes on the
+caller without a wall-clock interrupt, and the native host remains
+unwired.
+
+Ledger `run_head` `3cfe28b`:
+
+```text
+CARGO_BUILD_JOBS=2 cargo test --locked --offline --features platform --lib extension_gate:: -- --test-threads=2; CARGO_BUILD_JOBS=2 cargo test --locked --offline --no-default-features --features essentials --lib extension_gate:: -- --test-threads=2; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD
+```
+
+Result text: pass; Platform extension_gate 10/10, Essentials 3/3. The
+note says guest output reads at most one declared workflow label, capped
+at 32 bytes, before copying from Wasm memory, and a larger length is
+denied without a read. Pinned Wasmi still lacks safe wall-clock
+interruption for a pure guest call. The native host and other custom
+graphs remain held. Workflows and security stay not passed.
+
+### Q11 — source-only
+
+Ledger `run_head` `b759216`:
+
+```text
+python3 -m unittest discover -s tests -p test_spdx_sbom.py -v; python3 -m unittest discover -s tests -p test_release_evidence.py -v; python3 -m unittest discover -s tests -p test_installed_release_gate.py -v; python3 scripts/check-release-evidence.py; bash -n scripts/package-release.sh; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD
+```
+
+Result text: pass; SPDX 33/33, release evidence 14/14, installed gate
+6/6. The source audit reports no release execution and no produced
+release SBOM. Accepted `docs/roadmap/q11-release-evidence.md` says
+`package-linux` binds the Linux packager to exact Essentials, Platform,
+and riauthctl archive and image bytes, and that the fixtures do not run
+`package-release.sh`. `sbom.release_sbom_produced` and release execution
+stay false. `sbom.packager_source_calls_producer` true records a source
+call, not a packager run. Open gates on that page: a signature, a release
+SBOM from a real packaged artifact run, a separate review record, a
+published asset set checked for a named tag, and Linux ARM64 execution.
+The installed-gate unit result is source-only. It is not a
+release/deployment artifact. Security, footprint, and recovery stay not
+passed.
+
+### A03 source seam — source-only
+
+Accepted source-transaction moves end at ledger head's parent
+`ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1`. Ledger `run_head` `ee88af0`:
+
+```text
+CARGO_BUILD_JOBS=2 cargo test --locked --offline --features test-support --test identity browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole -- --test-threads=1; python3 scripts/check-module-boundaries.py; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD
+```
+
+Result text: pass; browser link rollback and one-use regression 1/1.
+The note says `source_finish_browser` moved into assembly without
+changing bind and deliver rollback, the stage and workflow guard, factor
+charging, or audit. Wider A03 module-boundary work remains. Earlier
+notes on this seam named leftover source writes at `a2481b0` and
+`3f0a9c9`; those sentences belong to those commits. This slice did not
+re-count protocol files. Ledger `open_checks` entry 7 still says seven
+protocol files refer to Core and seven refer to storage, and that cloud
+plan, apply, and snapshot cleanup remain in the protocol surface.
+Security and administration stay not passed.
+
 ## Usability
 
 Target: ordinary account and admin journeys, including A02 E04–E11, on a
@@ -273,7 +469,7 @@ documented flows.
 | ancestor-local | Ledger `run_head` `d039306`: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --locked --example portal_fixture; CARGO_TARGET_DIR=target ./node_modules/.bin/playwright test multi-authenticator.spec.js --project=chromium --project=firefox --project=webkit --reporter=line; node --check tools/browser/multi-authenticator.spec.js; python3 scripts/check-docs.py; git diff 9065f59..HEAD --check`. Result text: pass; headless two-passkey journey Chromium/Firefox/WebKit 3/3. The Q06 ledger note says the journey uses Playwright WebAuthn shims and a CSS mobile viewport. |
 | ancestor-local | Ledger `run_head` `183915d` records a prose command, `U01 isolated two-node PostgreSQL bootstrap and Playwright setup.spec.js across Chromium/Firefox/WebKit`, result text `pass; PG 1, browsers 9`. The same ledger field is a description, not a shell line this slice re-ran. |
 | ancestor-local | `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/u01/evidence.txt`, dated 2026-09-28, base `roadmap/integration-accepted` at `14de533`. It records a Cua.ai Driver session that reached a backup Touch ID prompt. Backup completion was not claimed. It names screenshots `passkey-prompt.png` and `backup-prompt.png` in that directory. |
-| missing measurements | No result at `52df9a3` for 320, 768, and 1440 CSS pixels, 200% text scaling, keyboard-only completion, a screen reader, a physical security key, or an independent new user. The U10 ledger note, integration commit `5892563`, records a focused 320px empty-workspace sign-in on three browser engines and says physical mobile and a real screen reader remain outside that run. |
+| missing measurements | No result at `52df9a3` for 320, 768, and 1440 CSS pixels, 200% text scaling, a screen reader, a physical security key, or an independent new user. `58e5ef3` later records a source-only keyboard and mobile-viewport password invitation on three engines. The Q06 note leaves a physical or synced passkey, a real mobile device, a screen reader, and external mail open. The U10 ledger note, integration commit `5892563`, records a focused 320px empty-workspace sign-in and says physical mobile and a real screen reader remain outside that run. |
 
 Blockers: the guides withhold the human-completion claim; the browser runs are
 ancestor-local shims; assistive technology and hardware authenticators have
@@ -298,7 +494,7 @@ multi-party approval record, safe resume of changed content, broad
 environment binding, and end-to-end concurrency coverage on both storage
 backends. The later W02 note at `a3ccbf1` adds the password-and-TOTP
 consent graph and leaves browser, remembered-consent, TOTP-only, and
-recovery-code adapters unsupported. Workflows stay not passed.
+recovery-code adapters unsupported. The Q06 password invitation and the W07 guest cap are source-only records in the snapshot section. They do not finish browser reauthentication, remembered consent, custom stages other than the held guest, or an independent operator. Workflows stay not passed.
 
 ## Administration
 
@@ -308,13 +504,16 @@ administration, and exact-content review. A02 E12–E14, P14–P16, and G07.
 | Class | Record |
 | --- | --- |
 | accepted-head local | Ledger `run_head` `52df9a3`: `RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh; bash -n scripts/test-postgres.sh; python3 scripts/check-docs.py; git diff 6d9b72b..HEAD --check`. Result text: pass; disposable PostgreSQL suite 5/5, TLSv1.3 plus aes256gcm-v1 sealed record and encrypted race/reopen. On that commit the functions are `postgres_unrelated_revision_still_applies_reviewed_membership`, `postgres_affected_membership_user_and_policy_deny_stale_apply`, `postgres_reviewed_membership_reopen_and_receipt_replay`, `postgres_reviewed_membership_http_execute_race_replays_after_reopen`, and `postgres_encrypted_reviewed_membership_replays_across_reopen`. |
-| source-only | At `6d9b72b`, [testing.md](../testing.md) says this PostgreSQL target does not open an encrypted connection. At `52df9a3`, `docs/testing.md` and `docs/reviewed-group-memberships.md` say one test restarts the disposable primary, verifies a loopback CA, and opens `aes256gcm-v1` records. The `52df9a3` wording is the wording on this base. It is not the `6d9b72b` wording. |
+| source-only | At `6d9b72b`, [testing.md](../testing.md) says this PostgreSQL target does not open an encrypted connection. At `52df9a3`, `docs/testing.md` and `docs/reviewed-group-memberships.md` say one test restarts the disposable primary, verifies a loopback CA, and opens `aes256gcm-v1` records. Those `52df9a3` sentences are in this worktree. Accepted `ee88af0` adds the group, client, and user display-name plans described in the S04 snapshot. This worktree's product files were not updated to that text. |
 | ancestor-local | Ledger `run_head` `4357f6b` records `cargo check; cargo test --test admin_ui` with result text `pass; six admin UI cases`. Later ancestor-local `admin_ui` checks include `91f66d6`, `74ee172`, `567ea3e`, `dbcdce2`, `d790f69`, and `5e47d00`. None of those `run_head` values is `52df9a3`. |
 | missing measurements | No count of a person completing Applications, People, Groups, or Security administration on accepted HEAD. |
 
-Blockers: `e3c26eb` promotes a disposable standby for one reviewed
-membership and replays its receipt. That drill is source-only. It is not
-a human administration journey. Ledger `open_checks` still says advanced
+Blockers: `cf4529e` is the latest accepted redb and PostgreSQL drill,
+11/11 and 9/9, including encrypted reopen and fenced promotion. `e3c26eb`
+is the earlier 6/6 promotion run. Both are source-only disposable
+clusters. Neither is a human administration journey. The O06 diagnostics
+are bounded reads and leave dashboards, doctor, and a production backlog
+deadline open. Ledger `open_checks` still says advanced
 client credential and registration changes and other user, group, agent,
 federation, key, session, device, and recovery resources remain outside
 exact multi-party approval. The M05 ledger note is about logout endpoint
@@ -336,7 +535,7 @@ the snapshot section above. It does not pass this category.
 | source-only | [Q03 pilot preflight](q03-conformance-pilot.md) says that on 2026-09-29, at commit `19a69c66b473480c8b570498231fad4d4edb7a31`, the pinned suite checkout, private configuration, `CONFORMANCE_SERVER`, and `CONFORMANCE_TOKEN` were absent. No independent OIDF plan was run. That named commit is not an ancestor of `52df9a3`. The Q03 ledger note says the same inputs are still required. |
 | actual peer/tenant | No record in the docs read here, and no ledger check at `52df9a3`, names a completed Okta, Entra, Google, Active Directory, Workspace tenant, Vault, named relying party, named service provider, or named SCIM client run. |
 | local peer | OpenLDAP `ldapsearch` 2.7.1 at `fcba8a5` and `1caa093`, and FreeRADIUS `radclient` 3.2.10 at `38f82fe`. Both are loopback. Details and commands are in the snapshot section. |
-| release/deployment | No named tenant, production directory, hardware NAS, or relying-party deployment is recorded at `cf827a9`. |
+| release/deployment | No named tenant, production directory, hardware NAS, or relying-party deployment is recorded at `0312427`. |
 
 Blockers: the local peer runs do not name Active Directory, a production
 directory application, a SAML service provider, or a hardware NAS. D03's
@@ -391,8 +590,8 @@ as database high availability by itself.
 | --- | --- |
 | source-only | [Availability](../availability.md) says `/readyz` returns 503 while storage is unavailable and `/livez` stays independent of storage. It says the local harness enables synchronous replication and checks primary crash, fencing, standby promotion, reconnection, and surviving session and refresh tokens. The same page says the fixture does not set an RTO or RPO for a deployment. |
 | ancestor-local | Ledger `run_head` `f8c3602`: `CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh`. Result text: pass; fenced primary/standby failover. |
-| source-only | `e3c26eb` promotes a disposable standby for reviewed membership. `7e07e748` refuses an issuer or active-capability mismatch from separate processes on disposable PostgreSQL. Neither run records an outage duration or an RTO. |
-| release/deployment | No deployment RTO, RPO, or failed-request count is recorded at `cf827a9`. |
+| source-only | `e3c26eb` promotes a disposable standby for reviewed membership. `cf4529e` repeats promotion inside the 9/9 PostgreSQL suite and still records no outage duration or RTO. `7e07e748` refuses an issuer or active-capability mismatch. `75def67` later records node-security redb 4/4 and disposable PostgreSQL 3/3 for token lifetimes and password history. `acf1d7c` records a two-worker logout lease 1/1 and a full operations suite of 11/15. The deployment, rollback, and real multi-node gates in those notes stay open. |
+| release/deployment | No deployment RTO, RPO, or failed-request count is recorded at `0312427`. |
 
 Blockers: the promotion and the node-security refusal are disposable
 source-only runs. [Node security](o03-node-security.md) leaves shared-job
@@ -447,8 +646,8 @@ review record. A contract paragraph is not a passing test.
 | ancestor-local | Ledger `run_head` `7edfc42`: `cargo test --locked --features test-support,fuzzing --test contracts --test identity_boundary --test bootstrap --test q05_replay_concurrency --test scim_oauth --test removal_safeguards --test workflow_model -- --quiet` (result text: pass; 54 redb shared contracts) and `CARGO_BUILD_JOBS=2 bash scripts/test-contracts-postgres.sh` (result text: pass; 54 PostgreSQL shared contracts). |
 | ancestor-local | Ledger `run_head` `f8c3602`: `RIAUTH_PG_TEST_TARGET=q05_replay_concurrency CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh`. Result text: pass; Q05 PostgreSQL replay binding. |
 | source-only | [Q11 release evidence](q11-release-evidence.md) says the release workflow, packager, and bundle checker do not sign artifacts. The Q11 ledger note records 26/26 producer tests, 13/13 release-evidence tests, and a 355-package source SPDX document at integration commit `281493d`. That note calls the document a source document. The Q11 page says a source SPDX file is not a release SBOM. This slice did not open the orchestration SPDX file and did not treat it as release evidence. |
-| source-only | A03 checks at `97511e4`, `3aa997b`, `8704bb8`, and `1535cdc` move cloud reads, the credential write, and the source-configuration mutation into assembly. The protocol-boundary open check remains. |
-| release/deployment | No signature, published GitHub release, or installed-release gate success is recorded for `cf827a9`. Ledger `open_checks` says Q11 still requires signing, an SBOM, an independent release review, publication, a checked asset set, and Linux ARM64 execution. |
+| source-only | A03 checks through `ee88af0` move cloud reads, the credential write, the source-configuration mutation, and the browser source-finish transaction into assembly. Wider module-boundary work remains. `b759216` binds the source SPDX producer to the Linux packager's exact archive and image names. The accepted audit keeps `release_executed` and `release_sbom_produced` false. |
+| release/deployment | No signature, published GitHub release, packaged release SBOM, or installed-release success on shipped Linux archives is recorded for `0312427`. Ledger `open_checks` says Q11 still requires signing, an SBOM, an independent release review, publication, a checked asset set, and Linux ARM64 execution. |
 
 Blockers: source-only contract tests, A03 assembly checks, and a source
 SPDX file leave the security category open. The product contract says
@@ -458,7 +657,7 @@ result and no EG03 run of installed artifacts at this head. Ledger
 
 ## Ledger open checks that still block D05
 
-The ledger `open_checks` array has 16 entries at this read. The ones that
+The ledger `open_checks` array has 17 entries at this read. The ones that
 block a category above are included there. The rest also stay open and are
 not waived by this matrix:
 
@@ -474,11 +673,14 @@ not waived by this matrix:
 - S02 ordinary LDAP search no longer loads full Group values; Group writes
   and offline index rebuild still do, and whole-operation memory bounds
   remain open.
-- The S04 open-check sentence still says standby promotion and encrypted
-  PostgreSQL remain open. `52df9a3` records the encrypted replay and
-  `e3c26eb` records fenced promotion. Both are source-only disposable
-  drills. S04 and the administration and availability categories stay
-  not passed.
+- The S04 open-check sentence still says PostgreSQL 3/3 and that standby
+  promotion and encrypted PostgreSQL remain open. `cf4529e` records redb
+  11/11 and PostgreSQL 9/9, including encrypted reopen and fenced
+  promotion. Those drills are source-only. S04, administration, and
+  availability stay not passed.
+- `cargo fmt --all -- --check` fails on the accepted tree. The ledger
+  names a 19,306-line diff and a format-only sweep. That check does not
+  pass a category.
 
 ## What would be required before a category could pass
 

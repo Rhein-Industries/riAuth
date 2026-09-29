@@ -14,28 +14,31 @@
   "source": {
     "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24",
     "branch": "roadmap/d05-acceptance-evidence-wave24",
-    "commit": "cf827a9ee103672b329907a433fb96ac868fe178",
-    "named_task_head": "7e07e748a80b9cb39ffed3da8ce90690d72ab18c",
-    "note": "Branch base follows the ledger head. The task named 7e07e748, which remains an ancestor. The documentation snapshot is added on the D05 branch."
+    "commit": "328a3ac9e9522ac5984783a653ca36d2e53bc07b",
+    "named_task_head": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
+    "note": "This D05 branch was not reset. The snapshot is committed on top of 328a3ac. Accepted files were read from the ledger head and were not edited."
   },
   "accepted_integration": {
     "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted",
     "branch": "roadmap/integration-accepted",
-    "ledger_head": "cf827a9ee103672b329907a433fb96ac868fe178",
-    "checkout_read": "e926d75fd0e58ab743c98a5e3d5dc0cc09378c78",
-    "checkout_note": "After the ledger read, the checkout advanced to e926d75, Route PAM retention cleanup through management writer. That commit is not in the validation checks and is not this branch base. The added test pam_cleanup_preserves_api_replay_and_only_prunes_retained_history is not treated as run. This slice did not edit, merge, or push that checkout.",
+    "ledger_head": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "ledger_head_string": "0312427",
+    "named_task_head": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
+    "checkout_read": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "checkout_note": "Read at the same commit as the ledger head. The ledger stores the seven-character prefix 0312427. This slice did not edit, merge, or push that checkout.",
     "edited_by_this_slice": false
   },
   "ledger": {
     "path": "/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json",
-    "integration_head": "cf827a9ee103672b329907a433fb96ac868fe178",
-    "head_matches_this_branch_base": true,
+    "integration_head": "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+    "integration_head_string": "0312427",
+    "head_matches_this_branch_base": false,
     "integration_status": "local_commits_only_no_merge_to_main",
-    "reviewed_slices": 415,
-    "validation_checks": 390,
+    "reviewed_slices": 456,
+    "validation_checks": 436,
     "d05_integration_commit": "09e68460d7836be8227568fbc84d8516d2d23e84",
     "d05_status": "task_in_progress",
-    "open_checks": 16
+    "open_checks": 17
   },
   "cargo_run_by_this_slice": false,
   "classes": {
@@ -70,12 +73,15 @@
         "8704bb88dbc650cc45e675fc589196efabf2827c",
         "1535cdcfce622f9422f59572d7f6e9b31c597e56"
       ],
-      "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc"],
-      "result": "probe recheck 1/1, preflight 1/1, credential write recheck 2/2, source configuration boundary 1/1",
+      "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc", "ee88af0"],
+      "result": "probe recheck 1/1, preflight 1/1, credential write recheck 2/2, source configuration boundary 1/1, browser source finish 1/1",
       "source_configuration_command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test source_boundary -- --quiet; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short",
       "source_configuration_test": "source_configuration_keeps_scoped_receipt_revision_and_audit_order",
+      "source_finish_command": "CARGO_BUILD_JOBS=2 cargo test --locked --offline --features test-support --test identity browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole -- --test-threads=1; python3 scripts/check-module-boundaries.py; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "source_finish_test": "browser_link_finish_needs_the_original_fresh_local_session_and_rolls_back_whole",
+      "source_finish_commit": "ee88af0d02d4a8c1d2f7a9a903f00890aeaef7b1",
       "category_effect": "security and administration stay not_passed",
-      "remaining": "Broader protocol transaction inventory remains. Seven protocol files still refer to Core and seven to storage. Other source protocol transaction sites remain."
+      "remaining": "Wider A03 module-boundary work remains. Open check 7 still says seven protocol files refer to Core and seven refer to storage, and cloud plan, apply, and snapshot cleanup remain in the protocol surface."
     },
     {
       "code": "Q04",
@@ -96,18 +102,22 @@
       "command": "cargo test --locked --offline --lib node_security:: ; RIAUTH_PG_TEST_TARGET=node_security_postgres bash scripts/test-postgres.sh",
       "result": "pass; redb 2/2, disposable PostgreSQL separate-process 1/1",
       "category_effect": "availability stays not_passed",
-      "remaining": "No shared job leases, distributed rate limit, peer health, policy/trust/key agreement, or native TLS/HA proof."
+      "later_run_heads": ["acf1d7c", "75def67"],
+      "later_result": "acf1d7c logout lease focused pass and full operations 11/15; 75def67 redb 4/4 and disposable PostgreSQL 3/3",
+      "remaining": "acf1d7c records one logout lease and leaves other shared-job families open. Distributed rate limit, peer health, policy and trust and key agreement, native TLS, deployment, rollback, and real multi-node evidence remain open. The full operations suite at acf1d7c was 11/15."
     },
     {
       "code": "S04",
       "evidence": "source-only",
-      "integration_commit": "e3c26eb2879729ce7971852d62ffdfb0e5083803",
-      "run_head": "e3c26eb",
-      "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh",
-      "result": "pass; disposable PostgreSQL reviewed-membership suite 6/6 including fenced standby promotion",
+      "integration_commit": "cf4529e6bbd856add247bec43a7b70d793fa2add",
+      "earlier_run_head": "e3c26eb",
+      "earlier_result": "disposable PostgreSQL reviewed-membership suite 6/6 including fenced standby promotion",
+      "run_heads": ["60e69f3", "ef496c8", "cf4529e"],
+      "command": "cargo test --locked --offline --test state_reconciliation -- --test-threads=8 --skip desired_state_client_and_password_disables_require_review; RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres ./scripts/test-postgres.sh",
+      "result": "pass; redb 11/11 with that skip, disposable PostgreSQL 9/9 including encrypted reopen and fenced promotion",
       "test": "postgres_z_fenced_standby_promotion_replays_reviewed_membership",
       "category_effect": "administration and availability stay not_passed",
-      "remaining": "Loopback trust drill. No automatic election, partition, failback, PITR, or recovery objective."
+      "remaining": "Broader dependency families and real deployment evidence remain open. No leader election, recovery objective, failback, partition, or PITR. Open check 14 still says PostgreSQL 3/3 and that promotion and encrypted PostgreSQL remain open."
     },
     {
       "code": "G05",
@@ -122,6 +132,43 @@
       "cases": ["G05-01", "G05-02", "G05-03", "G05-04", "G05-05", "G05-06", "G05-07", "G05-08"],
       "category_effect": "migration stays not_passed",
       "remaining": "No real Authentik export, named relying party, browser or network callback, production route, or rollback sign-in. The page says this local case does not mark G05 complete."
+    },
+    {
+      "code": "O06",
+      "evidence": "source-only",
+      "run_heads": ["7949aeb", "644242f", "9a575d5"],
+      "result": "offboarding diagnostics focused 1/1; an earlier full offboarding run failed 24/30; reconciliation diagnostics 1/1; deactivation diagnostics 2/2 and later offboarding 31/31",
+      "category_effect": "administration stays not_passed",
+      "remaining": "Dashboards, connector lag, node mismatch, storage and key pressure, mail, doctor and readiness, a production backlog deadline, an Essentials redacted deactivation aggregate, and a deactivation value size cap remain open. O06 status stays task_in_progress."
+    },
+    {
+      "code": "Q06",
+      "evidence": "source-only",
+      "integration_commits": ["58e5ef3c0b15a8ab2e76e423bb6c592982041dc6", "03124272a6cfe14ac48227c504cc896c2f11d9aa"],
+      "command": "(cd tools/browser && npx playwright test invitation-password.spec.js --reporter=line); node --check tools/browser/invitation-password.spec.js; git diff --check b77e637..a4d0a1f",
+      "result": "pass; Chromium, Firefox, and WebKit password invitation 3/3",
+      "passkey_command": "(cd tools/browser && npx playwright test invitation-passkey-shim.spec.js --reporter=line); node --check tools/browser/invitation-passkey-shim.spec.js; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "passkey_result": "pass; simulated passkey invitation Chromium/Firefox/WebKit 3/3",
+      "category_effect": "usability and workflows stay not_passed",
+      "remaining": "The passkey shim sets user verification itself. It does not prove browser-native, hardware, synced, phone, mobile OS, screen reader, or external mailbox behavior."
+    },
+    {
+      "code": "W07",
+      "evidence": "source-only",
+      "integration_commit": "3cfe28b592f0167d93ad8e79e7e3a26ab0927233",
+      "run_heads": ["f911e85", "3cfe28b"],
+      "result": "Platform extension_gate 9/9 then 10/10; Essentials 3/3. Guest label copy is capped at 32 bytes.",
+      "category_effect": "workflows and security stay not_passed",
+      "remaining": "Pinned Wasmi has no safe wall-clock interruption for a pure guest call. The native host and other custom graphs remain held."
+    },
+    {
+      "code": "Q11",
+      "evidence": "source-only",
+      "integration_commit": "b759216",
+      "command": "python3 -m unittest discover -s tests -p test_spdx_sbom.py -v; python3 -m unittest discover -s tests -p test_release_evidence.py -v; python3 -m unittest discover -s tests -p test_installed_release_gate.py -v; python3 scripts/check-release-evidence.py; bash -n scripts/package-release.sh; python3 scripts/check-docs.py; git diff --check HEAD^ HEAD",
+      "result": "pass; SPDX 33/33, release evidence 14/14, installed gate 6/6; source audit reports no release execution or produced release SBOM",
+      "category_effect": "security, footprint, and recovery stay not_passed",
+      "remaining": "No signature, release SBOM from a packaged artifact run, independent review record, published asset set for a named tag, or Linux ARM64 execution."
     }
   ],
   "categories": [
@@ -268,7 +315,7 @@
         },
         {
           "class": "missing measurements",
-          "shows": "Q04 is a reviewed slice at fcba8a5. It is local peer OpenLDAP ldapsearch 2.7.1, not a named tenant. No conformance result for a named tenant at cf827a9."
+          "shows": "Q04 is a reviewed slice at fcba8a5. It is local peer OpenLDAP ldapsearch 2.7.1, not a named tenant. No conformance result for a named tenant at 0312427."
         }
       ],
       "blockers": [
@@ -360,7 +407,7 @@
           "class": "accepted-head local",
           "run_head": "52df9a3",
           "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh",
-          "shows": "52df9a3 did not promote the standby. e3c26eb later does, as a loopback trust drill, and records no RTO."
+          "shows": "52df9a3 did not promote the standby. e3c26eb later does, as a loopback trust drill, and records no RTO. cf4529e records redb 11/11 and PostgreSQL 9/9 including encrypted reopen and promotion, still with no RTO."
         },
         {
           "class": "missing measurements",
@@ -369,7 +416,7 @@
       ],
       "blockers": [
         "Failover pass is an ancestor-local disposable cluster.",
-        "e3c26eb promotes a disposable standby and records no deployment RTO or RPO."
+        "cf4529e promotes a disposable standby inside PostgreSQL 9/9 and records no deployment RTO or RPO. e3c26eb was the earlier 6/6 promotion run."
       ]
     },
     {
@@ -442,7 +489,7 @@
         },
         {
           "class": "release/deployment",
-          "shows": "No cutover duration, export byte count, live relying-party subject, production route change, or Authentik rollback sign-in at cf827a9."
+          "shows": "No cutover duration, export byte count, live relying-party subject, production route change, or Authentik rollback sign-in at 0312427. The cf827a9 rehearsal does not supply them either."
         }
       ],
       "blockers": [
@@ -492,7 +539,7 @@
         },
         {
           "class": "release/deployment",
-          "shows": "No signature, published GitHub release, or installed-release gate success for cf827a9. The same gap was already recorded for 52df9a3."
+          "shows": "No signature, published GitHub release, or packaged release SBOM for 0312427. b759216 source SPDX binding keeps release_executed and release_sbom_produced false. The same release gap was already recorded for 52df9a3."
         },
         {
           "class": "missing measurements",
