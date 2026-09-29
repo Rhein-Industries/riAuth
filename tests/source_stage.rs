@@ -1965,6 +1965,11 @@ async fn stage_resume_consumes_retried_request_after_cancel() {
         .get("sessions", &issued[0].identity.session_id)
         .unwrap()
         .unwrap();
+    assert_eq!(session.id, issued[0].identity.session_id);
+    assert_eq!(session.identity.session_id, session.id);
+    assert_eq!(session.identity.user_id, issued[0].identity.user_id);
+    assert_eq!(session.identity.source.as_ref().unwrap().id, "upstream");
+    assert!(!session.revoked);
     assert!(
         f.core
             .store

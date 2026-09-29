@@ -947,12 +947,7 @@ impl Core {
         let token = body["session_token"]
             .as_str()
             .ok_or_else(|| Error::internal("missing session"))?;
-        let sid = tx
-            .get::<String>("session_tokens", &digest(token))?
-            .ok_or_else(|| Error::internal("missing session"))?;
-        let session = tx
-            .get::<Session>("sessions", &sid)?
-            .ok_or_else(|| Error::internal("missing session"))?;
+        let session = crate::assembly::stage_resume_session(tx, token)?;
         // The bearer token was never returned, so the session is reachable only by its browser.
         self.discard_stage_resume_bearer(tx, token)?;
         let mut request = stage.request.clone();

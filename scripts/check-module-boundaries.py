@@ -1169,21 +1169,31 @@ def main() -> None:
             stage_resume = rust_function_body(source_protocol, "resume_stage")
             stage_resume_compact = re.sub(r"\s+", "", stage_resume or "")
             stage_resume_raw = rust_function_body(path.read_text(), "resume_stage")
+            session_read = rust_function_body(source_stage_assembly, "stage_resume_session")
+            session_read_compact = re.sub(r"\s+", "", session_read or "")
             discard_bearer = rust_function_body(source_stage_assembly, "discard_stage_resume_bearer")
             persist_resume = rust_function_body(source_stage_assembly, "persist_stage_resume_use")
             if (
                 stage_resume is None
                 or stage_resume_raw is None
                 or not (0 <= stage_resume_compact.find("self.complete_source_login(")
-                        < stage_resume_compact.find("tx.get::<String>(")
-                        < stage_resume_compact.find("tx.get::<Session>(")
+                        < stage_resume_compact.find("crate::assembly::stage_resume_session(tx,token)?")
                         < stage_resume_compact.find("self.discard_stage_resume_bearer(tx,token)?")
                         < stage_resume_compact.find("request.decision=Some(")
                         < stage_resume_compact.find("stage.used=true")
                         < stage_resume_compact.find("self.persist_stage_resume_use(tx,&stage)?")
                         < stage_resume_compact.find("self.authorize_session("))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:String|Session)>\s*\(\s*"(?:session_tokens|sessions)"', stage_resume_raw)
                 or re.search(r'\btx\s*\.\s*delete\s*\(\s*"session_tokens"', stage_resume_raw)
                 or re.search(r'\btx\s*\.\s*put\s*\(\s*"source_stages"', stage_resume_raw)
+                or session_read is None
+                or not (0 <= session_read_compact.find('tx.get::<String>("session_tokens",&digest(token))?')
+                        < session_read_compact.find('Error::internal("missingsession")')
+                        < session_read_compact.find('tx.get::<Session>("sessions",&sid)?')
+                        < session_read_compact.rfind('Error::internal("missingsession")'))
+                or session_read_compact.count('Error::internal("missingsession")') != 2
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", session_read)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::stage_resume_session\s*;", (SRC / "assembly.rs").read_text())
                 or discard_bearer is None
                 or not re.search(r"\bpub\(crate\)\s+fn\s+discard_stage_resume_bearer\s*\(", source_stage_assembly)
                 or 'tx.delete("session_tokens",&digest(token))' not in re.sub(r"\s+", "", discard_bearer)

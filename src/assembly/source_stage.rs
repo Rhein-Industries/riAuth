@@ -77,6 +77,14 @@ pub(crate) fn enforce_pending_stage(
     Ok(())
 }
 
+pub(crate) fn stage_resume_session(tx: &Tx<'_>, token: &str) -> Result<Session> {
+    let sid = tx
+        .get::<String>("session_tokens", &digest(token))?
+        .ok_or_else(|| Error::internal("missing session"))?;
+    tx.get::<Session>("sessions", &sid)?
+        .ok_or_else(|| Error::internal("missing session"))
+}
+
 impl Core {
     /// This write precedes the login-to-stage binding check in the caller. A failed
     /// check rolls it back together with the already reserved source login.
