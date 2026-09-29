@@ -22,9 +22,9 @@ use riauth::{
     crypto::{self, digest, now},
     error::Error,
     lifecycle::{Invitation, MailConfig, MailSecurity, Purpose},
-    model::{Attempts, Client, ClientPatch, Group, NewUser, Session, User, UserPatch},
+    model::{Attempts, Client, ClientPatch, Device, Group, NewUser, Session, User, UserPatch},
     offboarding::{self, ExecuteAt, Job, ScheduleRequest, Status},
-    oidc::{Authorization, TokenRequest},
+    oidc::{Authorization, DEVICE_GRANT, TokenRequest},
     signin,
     state::{ApplyRequest, Manifest},
 };
@@ -1358,6 +1358,227 @@ pub fn last_admin_failure_is_atomic(backend: Backend) {
     f.assert_snapshot(&before);
     assert!(f.core.me(&f.admin).is_ok());
     assert!(f.core.login("admin".into(), PASSWORD.into(), None).is_ok());
+}
+
+// A keyed device poll can replay only a committed non-secret protocol error.
+// The device code and live client remain the proof; terminal decisions and
+// token issuance stay one-use, including after a store restart.
+pub fn device_poll_protocol_receipt(backend: Backend) {
+    let f = backend.fixture();
+    f.client("poll-app", false);
+    f.client("other-app", false);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let call = |app: &axum::Router,
+                client: &str,
+                code: &str,
+                key: Option<&str>,
+                scope: Option<&str>,
+                dpop: Option<&str>| {
+        let mut form = url::form_urlencoded::Serializer::new(String::new());
+        form.append_pair("grant_type", DEVICE_GRANT)
+            .append_pair("client_id", client)
+            .append_pair("device_code", code);
+        if let Some(scope) = scope {
+            form.append_pair("scope", scope);
+        }
+        let mut request = Request::post("/oauth/token")
+            .header("content-type", "application/x-www-form-urlencoded");
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        if let Some(dpop) = dpop {
+            request = request.header("dpop", dpop);
+        }
+        runtime.block_on(async {
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::from(form.finish())).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            (status, body)
+        })
+    };
+    let start = f
+        .core
+        .device_start(TokenRequest {
+            client_id: Some("poll-app".into()),
+            scope: Some("openid".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let code = text(&start, "device_code");
+    let user_code = text(&start, "user_code");
+    let device_key = digest(&code);
+    let app = riauth::api::router(f.core.clone());
+    let first = call(&app, "poll-app", &code, Some("pending-1"), None, None);
+    assert_eq!(first.0, StatusCode::BAD_REQUEST);
+    assert_eq!(first.1["error"], "authorization_pending");
+    let device: Device = f.core.store.get("devices", &device_key).unwrap().unwrap();
+    assert!(device.last_poll_at.is_some());
+    assert_eq!(device.interval, 5);
+    let receipt_key = digest("oidc-device-poll-v1\0poll-app\0pending-1");
+    let receipt: Value = f.core.store.get("receipts", &receipt_key).unwrap().unwrap();
+    assert_eq!(receipt["result"]["error"], "authorization_pending");
+    let stored = receipt.to_string();
+    assert!(!stored.contains(&code) && !stored.contains(&user_code));
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("pending-1"), None, None),
+        first
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    assert_eq!(
+        call(
+            &app,
+            "poll-app",
+            &code,
+            Some("pending-1"),
+            Some("openid"),
+            None
+        )
+        .0,
+        StatusCode::CONFLICT,
+        "same key cannot bind a changed form body"
+    );
+    assert_eq!(
+        call(
+            &app,
+            "poll-app",
+            &code,
+            Some("pending-1"),
+            None,
+            Some("changed-proof")
+        )
+        .0,
+        StatusCode::CONFLICT,
+        "same key cannot bind a changed DPoP header"
+    );
+    assert_eq!(
+        call(&app, "other-app", &code, Some("pending-1"), None, None).1["error"],
+        "invalid_grant",
+        "another client cannot use this device code or receipt"
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    let slow = call(&app, "poll-app", &code, Some("slow-1"), None, None);
+    assert_eq!(slow.1["error"], "slow_down");
+    let slowed: Device = f.core.store.get("devices", &device_key).unwrap().unwrap();
+    assert_eq!(slowed.interval, 10);
+    let slowed_snapshot = f.snapshot().unwrap();
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("slow-1"), None, None),
+        slow
+    );
+    f.assert_http_mutation_snapshot(&slowed_snapshot);
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("pending-1"), None, None).0,
+        StatusCode::CONFLICT,
+        "an older receipt cannot roll back the polling clock"
+    );
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let restarted = f.snapshot().unwrap();
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("slow-1"), None, None),
+        slow
+    );
+    f.assert_http_mutation_snapshot(&restarted);
+    f.core.device_decide(&f.admin, &user_code, true).unwrap();
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("slow-1"), None, None).0,
+        StatusCode::CONFLICT,
+        "approval invalidates a pending polling receipt"
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let mut device: Device = tx.get("devices", &device_key)?.unwrap();
+            device.last_poll_at = Some(now() - 20);
+            tx.put("devices", &device_key, &device)
+        })
+        .unwrap();
+    let issued_before = audit_count(&f, "token.issued");
+    let issued = call(&app, "poll-app", &code, Some("issue-1"), None, None);
+    assert_eq!(issued.0, StatusCode::OK);
+    assert!(issued.1["id_token"].is_string());
+    assert_eq!(audit_count(&f, "token.issued"), issued_before + 1);
+    assert_eq!(
+        call(&app, "poll-app", &code, Some("issue-1"), None, None).1["error"],
+        "invalid_grant",
+        "token issuance must remain one-use"
+    );
+    assert_eq!(audit_count(&f, "token.issued"), issued_before + 1);
+
+    let expiring = f
+        .core
+        .device_start(TokenRequest {
+            client_id: Some("poll-app".into()),
+            scope: Some("openid".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let expiring_code = text(&expiring, "device_code");
+    assert_eq!(
+        call(
+            &app,
+            "poll-app",
+            &expiring_code,
+            Some("expiry-1"),
+            None,
+            None
+        )
+        .1["error"],
+        "authorization_pending"
+    );
+    let expiring_key = digest(&expiring_code);
+    f.core
+        .store
+        .write(|tx| {
+            let mut device: Device = tx.get("devices", &expiring_key)?.unwrap();
+            device.expires_at = now() - 1;
+            tx.put("devices", &expiring_key, &device)
+        })
+        .unwrap();
+    let expired = f.snapshot().unwrap();
+    assert_eq!(
+        call(
+            &app,
+            "poll-app",
+            &expiring_code,
+            Some("expiry-1"),
+            None,
+            None
+        )
+        .1["error"],
+        "expired_token",
+        "expired device proof cannot replay a receipt"
+    );
+    f.assert_http_mutation_snapshot(&expired);
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut client: Client = tx.get("clients", "poll-app")?.unwrap();
+            client.enabled = false;
+            tx.put("clients", "poll-app", &client)
+        })
+        .unwrap();
+    let disabled = f.snapshot().unwrap();
+    let denied = call(
+        &app,
+        "poll-app",
+        &expiring_code,
+        Some("expiry-1"),
+        None,
+        None,
+    );
+    assert_eq!(denied.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(denied.1["error"], "invalid_client");
+    f.assert_http_mutation_snapshot(&disabled);
 }
 
 // RI-MGT-001/003/004, RI-STORE-001/002, Q02-C04/C08/C09. HTTP supplies real

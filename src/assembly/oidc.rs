@@ -26,6 +26,136 @@ const PREPARED_ACTOR_DECISIONS: &str = "authorization_prepared_actor_decisions";
 const PREPARED_INDEX_VERSION: &str = "authorization_prepared_index_v1";
 const MAX_PREPARED_PER_REQUEST: usize = 64;
 
+/// Device polling has a protocol receipt, not a management mutation receipt.
+/// It records only a non-secret pending/slow-down error and the timing state
+/// committed with that error. A live client and device-code proof are checked
+/// again before replay; approval, denial, expiry, or another poll fences it.
+struct DevicePollReceipt {
+    key: String,
+    fingerprint: String,
+    authority: Value,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DevicePollResult {
+    error: String,
+    last_poll_at: Option<u64>,
+    interval: u64,
+    status_hash: String,
+    expires_at: u64,
+}
+
+impl DevicePollReceipt {
+    fn new(request: &TokenRequest, client: &Client, device_key: &str) -> Result<Option<Self>> {
+        let Some(context) = crate::context::current() else {
+            return Ok(None);
+        };
+        let Some(idempotency_key) = context.idempotency_key else {
+            return Ok(None);
+        };
+        // authenticate_client consumes a private_key_jwt assertion's jti. A
+        // subsequent exact request cannot reauthenticate with that proof, and
+        // bypassing assertion consumption to replay would weaken its fence.
+        if request.client_assertion.is_some() || request.client_assertion_type.is_some() {
+            return Err(Error::bad(
+                "Idempotent device polling does not support client assertions",
+            ));
+        }
+        if context.fingerprint.is_empty() {
+            return Err(Error::bad(
+                "Idempotent device polling requires an HTTP request fingerprint",
+            ));
+        }
+        let client_hash = digest(&serde_json::to_string(client).map_err(Error::internal)?);
+        let auth_method =
+            serde_json::to_string(&request.client_auth_method).map_err(Error::internal)?;
+        // HTTP fingerprints bind method, URI, If-Match and exact form bytes.
+        // DPoP and Basic are header inputs; the live client check verifies the
+        // Basic secret, while these hashes bind the exact retry to its headers.
+        let fingerprint = digest(&format!(
+            "{}\0{}\0{}\0{}",
+            context.fingerprint,
+            auth_method,
+            request
+                .client_secret
+                .as_deref()
+                .map(digest)
+                .unwrap_or_default(),
+            request
+                .dpop_proof
+                .as_deref()
+                .map(digest)
+                .unwrap_or_default(),
+        ));
+        Ok(Some(Self {
+            key: digest(&format!(
+                "oidc-device-poll-v1\0{}\0{idempotency_key}",
+                client.id
+            )),
+            fingerprint,
+            authority: json!({
+                "protocol": "oidc-device-poll-v1",
+                "client_id": client.id,
+                "client_hash": client_hash,
+                "device_code_hash": device_key,
+            }),
+        }))
+    }
+
+    fn replay(&self, tx: &Tx<'_>, device: &Device) -> Result<Option<Error>> {
+        let Some(value) =
+            crate::context::replay_receipt(tx, &self.key, &self.fingerprint, &self.authority)?
+        else {
+            return Ok(None);
+        };
+        let result: DevicePollResult = serde_json::from_value(value).map_err(Error::internal)?;
+        if result.expires_at != device.expires_at
+            || result.last_poll_at != device.last_poll_at
+            || result.interval != device.interval
+            || result.status_hash != device_poll_status_hash(&device.status)?
+        {
+            return Err(Error::conflict(
+                "Device polling state changed; use a new request key",
+            ));
+        }
+        let error = match result.error.as_str() {
+            "authorization_pending" => {
+                Error::oauth("authorization_pending", "Waiting for terminal approval")
+            }
+            "slow_down" => Error::oauth(
+                "slow_down",
+                "Increase your polling interval by five seconds",
+            ),
+            _ => return Err(Error::internal("Invalid device polling receipt")),
+        };
+        Ok(Some(error))
+    }
+
+    fn save(&self, tx: &Tx<'_>, device: &Device, error: &str) -> Result<()> {
+        let result = DevicePollResult {
+            error: error.into(),
+            last_poll_at: device.last_poll_at,
+            interval: device.interval,
+            status_hash: device_poll_status_hash(&device.status)?,
+            expires_at: device.expires_at,
+        };
+        crate::context::save_receipt(
+            tx,
+            &self.key,
+            self.fingerprint.clone(),
+            self.authority.clone(),
+            &serde_json::to_value(result).map_err(Error::internal)?,
+        )
+    }
+}
+
+fn device_poll_status_hash(status: &DeviceStatus) -> Result<String> {
+    Ok(digest(
+        &serde_json::to_string(status).map_err(Error::internal)?,
+    ))
+}
+
 /// Register one exact, one-use OIDC preparation inside the caller's write.
 /// Browser interactions use the same index and replay fences as terminal prepare.
 pub(crate) fn prepare_authentication_in(
@@ -1221,6 +1351,15 @@ impl Core {
             if device.expires_at <= now() {
                 return Ok(Err(Error::oauth("expired_token", "Device code expired")));
             }
+            let receipt = DevicePollReceipt::new(&request, &client, &key)?;
+            if let Some(replayed) = receipt
+                .as_ref()
+                .map(|receipt| receipt.replay(tx, &device))
+                .transpose()?
+                .flatten()
+            {
+                return Ok(Err(replayed));
+            }
             let at = now();
             if device
                 .last_poll_at
@@ -1229,6 +1368,9 @@ impl Core {
                 device.interval = device.interval.saturating_add(5);
                 device.last_poll_at = Some(at);
                 tx.put("devices", &key, &device)?;
+                if let Some(receipt) = &receipt {
+                    receipt.save(tx, &device, "slow_down")?;
+                }
                 return Ok(Err(Error::oauth(
                     "slow_down",
                     "Increase your polling interval by five seconds",
@@ -1238,6 +1380,9 @@ impl Core {
             match &device.status {
                 DeviceStatus::Pending => {
                     tx.put("devices", &key, &device)?;
+                    if let Some(receipt) = &receipt {
+                        receipt.save(tx, &device, "authorization_pending")?;
+                    }
                     Ok(Err(Error::oauth(
                         "authorization_pending",
                         "Waiting for terminal approval",
