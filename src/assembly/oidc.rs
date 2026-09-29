@@ -1636,7 +1636,10 @@ impl Core {
             };
             if let Some(grant) = grant
                 && let Some(mut family) = tx.get::<Family>("families", &grant.family_id)?
+                && !family.revoked
             {
+                // Keep the uniform revocation response on retry, while only
+                // the first authorized family transition writes and audits.
                 family.revoked = true;
                 tx.put("families", &grant.family_id, &family)?;
                 audit(tx, &client.id, "token.revoked", &grant.family_id)?;
