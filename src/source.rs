@@ -1217,10 +1217,6 @@ impl Core {
         self.store
             .write(|tx| self.resume_stage(tx, stage_id, authorization_id, otp.as_deref()))?
     }
-    pub fn source_stage_cancel(&self, stage_id: &str, authorization_id: &str) -> Result<Value> {
-        self.store
-            .write(|tx| self.cancel_stage(tx, stage_id, authorization_id))
-    }
     fn resume_stage(
         &self,
         tx: &Tx<'_>,
@@ -1373,7 +1369,12 @@ impl Core {
             "authorization_id": stage.authorization_id
         })))
     }
-    fn cancel_stage(&self, tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<Value> {
+    pub(crate) fn cancel_stage(
+        &self,
+        tx: &Tx<'_>,
+        stage_id: &str,
+        authorization_id: &str,
+    ) -> Result<Value> {
         let mut stage = load_stage(tx, stage_id, authorization_id)?;
         if stage.used || stage.cancelled {
             return Err(Error::conflict("Source stage already completed"));

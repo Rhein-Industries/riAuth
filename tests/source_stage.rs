@@ -1966,6 +1966,105 @@ async fn cancel_fails_the_authorization_without_a_code() {
     assert!(codes(&f).is_empty());
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn cancel_stage_binding_and_one_use_effects_commit_together() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let login_key = text(&stage, "login_key");
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    let poll_hash = text(&login, "poll_hash");
+    let before = f.snapshot().unwrap();
+
+    assert_eq!(
+        f.core
+            .source_stage_cancel(&stage_id, "wrong-authorization")
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    assert_eq!(
+        f.core
+            .source_stage_cancel("missing-stage", &authorization_id)
+            .unwrap_err()
+            .message,
+        "Source stage not found"
+    );
+    f.assert_snapshot(&before);
+
+    let cancelled = f
+        .core
+        .source_stage_cancel(&stage_id, &authorization_id)
+        .unwrap();
+    assert_eq!(cancelled["status"], "cancelled");
+    assert_eq!(cancelled["error"], "access_denied");
+    assert_eq!(cancelled["code_issued"], false);
+    let redirect = query(cancelled["redirect_uri"].as_str().unwrap());
+    assert_eq!(redirect["error"], "access_denied");
+    assert!(!redirect.contains_key("code"));
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stage["used"], true);
+    assert_eq!(stage["cancelled"], true);
+    assert_eq!(login["failed"], true);
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_polls", &poll_hash)
+            .unwrap()
+            .is_none()
+    );
+    assert!(codes(&f).is_empty());
+    let audits = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        audits
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "source.stage_cancel" && event["target"] == "upstream"
+            )
+            .count(),
+        1
+    );
+
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_cancel(&stage_id, &authorization_id)
+            .unwrap_err()
+            .message,
+        "Source stage already completed"
+    );
+    f.assert_snapshot(&after);
+}
+
 #[tokio::test]
 async fn upstream_account_must_match_the_bound_user_and_link_table() {
     let f = Fixture::new();
