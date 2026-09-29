@@ -709,22 +709,30 @@ filesystem. Fuel is 1–10,000. Wasmi 0.40.0 has no epoch or interrupt API.
 this guest links none, so the engine cannot preempt `route`. The server
 re-executes its own binary and the child parses, translates, instantiates, and
 runs `route` inside the step timeout. The 1–30 second field is that many
-thousands of fuel units and the wall-clock kill deadline. If the child is still
-running, the parent kills it, waits until it is reaped, and reports `elapsed`.
+thousands of fuel units and the parent's monotonic deadline, measured from
+just before spawn. That interval includes process creation, observation, and
+reap. It is not an exact kernel schedule. When the clock reaches the deadline,
+including a child that has already exited, the parent kills a child that is
+still running, reaps the process, discards its stdout, and reports `elapsed`.
 The child is not detached. Fuel exhaustion stays `fuel`, or `timeout` when the
 timeout fuel budget is strictly smaller than the manifest fuel. Admission
 refuses a function body whose 7-fuel-per-byte translation charge exceeds
 `min(manifest fuel, timeout_seconds × 1,000)` before `Module::new` and before
 a process starts. At the 10,000 fuel cap the body can be at most 1,428 bytes.
-`check` validates a fitting body once at configuration and drops the compiled
-module. Each `execute` is a new process, so each call pays the translation
-charge again inside the deadline. A tighter step budget can still skip
+`check` runs Wasmi `Module::new` in the helper under the manifest timeout and
+does not keep the image. A validation observed at or after that deadline is
+`elapsed` and is not admitted. Structural caps and the translation-budget
+arithmetic still run on the caller before that spawn. Each `execute` is a new
+process, so each call pays the translation charge again inside the deadline. A tighter step budget can still skip
 translation. A charge that fits is translated in the child. Validation of a
 fitting body is not fuel-metered. `route.call` holds `&mut Store` until it
 returns, so another thread inside the child cannot drain that store's fuel.
 Stopping a thread would require `unsafe`, which this crate forbids. The helper
 is `current_exe` with only the internal argv token. The child environment is
-cleared, its working directory is private and removed after reap, and the
+cleared. The helper refuses to run when any variable remains, except macOS
+`__CF_USER_TEXT_ENCODING` after exec when its value is three short `0x`
+hexadecimal fields. The parent does not pass that variable. Its working
+directory is private and removed after reap, and the
 request has no bearer token, password, configuration path, or database URL.
 File descriptors already open in the server can still be inherited. A missing
 helper or a spawn failure is `failed` and grants nothing. Stdout is capped;

@@ -1,14 +1,16 @@
 //! Isolated guest for one configured custom stage.
 //!
-//! Platform links Wasmi 0.40. Configuration [`check`] hashes the module and
-//! rejects a shape this guest cannot run, then drops the compiled image.
-//! A request binds that manifest without compiling it. [`execute`] re-executes
-//! this server binary. The child parses, translates, instantiates, and calls
-//! `route` inside the step's wall-clock deadline. If that child is still
-//! running, the parent kills it, waits until it is reaped, and reports
-//! `elapsed`. Fuel exhaustion stays `fuel` or `timeout`. Essentials does not
-//! link Wasmi; [`execute`] there returns `external_runtime_required` and does
-//! not spawn. The in-process host in [`super::extension`] stays unwired.
+//! Platform links Wasmi 0.40. Configuration [`check`] hashes the module,
+//! applies the structural caps, and runs `Module::new` in a child process
+//! under the manifest timeout. The parent does not keep that image. A request
+//! binds the manifest without compiling it. [`execute`] re-executes this
+//! server binary. The child parses, translates, instantiates, and calls
+//! `route` inside the step's wall-clock deadline. When the parent's monotonic
+//! clock is at or past that deadline, the parent reaps the child, discards
+//! its stdout, and reports `elapsed`, including when the child has already
+//! exited with a label. Fuel exhaustion stays `fuel` or `timeout`. Essentials
+//! does not link Wasmi; [`execute`] there returns `external_runtime_required`
+//! and does not spawn. The in-process host in [`super::extension`] stays unwired.
 //!
 //! Wasmi 0.40.0 has no epoch or interrupt. `Store::call_hook` runs only when
 //! the host calls Wasm or Wasm calls a host function, and `call_resumable`
@@ -17,8 +19,11 @@
 //! `&mut Store` for that call. The parent does not detach the child or an IO
 //! thread. Stopping a thread would require `unsafe`, which this crate forbids.
 //! The fuel budget is `min(manifest fuel, timeout_seconds * FUEL_PER_SECOND)`.
-//! The same `timeout_seconds` is the kill deadline. Equal fuel budgets report
-//! `fuel`. A strictly smaller timeout budget reports `timeout`.
+//! The same `timeout_seconds` is the parent's kill deadline, measured from
+//! just before spawn. That interval includes process creation and the time
+//! until the parent observes and reaps the child. It is not an exact kernel
+//! schedule. Equal fuel budgets report `fuel`. A strictly smaller timeout
+//! budget reports `timeout`.
 //!
 //! Admission applies a separate resource cap before `Module::new`: one
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
@@ -26,15 +31,20 @@
 //! fuel budget is refused before a process starts. Wasmi 0.40.0 charges
 //! [`GUEST_TRANSLATION_FUEL_PER_BYTE`] fuel per body byte on the child's first
 //! call. The refusal is `timeout` when the timeout budget is strictly smaller
-//! than the manifest fuel, and `fuel` otherwise. `check` validates a fitting
-//! body once at configuration. Each [`execute`] is a new process, so each call
-//! pays the translation charge again inside the deadline. Validation of a
-//! fitting body is not fuel-metered. The measured deadline is the child
-//! process, not an engine epoch.
+//! than the manifest fuel, and `fuel` otherwise. `check` runs `Module::new` for
+//! a fitting body in the helper under the manifest timeout and drops the
+//! result. A validation observed at or after that deadline is `elapsed` and is
+//! not admitted. Each [`execute`] is a new process, so each call pays the
+//! translation charge again inside the step deadline. Validation of a fitting
+//! body is not fuel-metered. The structural walk stays on the caller. The
+//! measured Wasmi deadline is the child process, not an engine epoch.
 //!
 //! The helper is this process's own executable, from `current_exe`, with only
 //! [`GUEST_ARGV`]. An installed or renamed server re-executes that path. The
-//! child environment is cleared, its working directory is a private empty
+//! child environment is cleared. The helper refuses to run when any variable
+//! remains, except macOS `__CF_USER_TEXT_ENCODING` after exec when its value
+//! is three short `0x` hexadecimal fields. The parent does not pass that
+//! variable. Its working directory is a private empty
 //! directory removed after reap, and stderr is discarded. The request carries
 //! the module, the projected identifier frame, the declared labels, and the
 //! caps. It does not carry a bearer token, password, configuration path, or
@@ -109,8 +119,10 @@ pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
 pub const MAX_ROUTE_LABEL_BYTES: u32 = 32;
 /// Instruction budget charged for one manifest second.
 ///
-/// That same second is the child-process kill deadline. Fuel exhaustion is
-/// not reported as elapsed time.
+/// That same second is the parent's monotonic deadline. A result observed at
+/// or after it is elapsed, including a child that has already exited. Fuel
+/// exhaustion is not reported as elapsed time. The interval includes spawn
+/// and reap overhead and is not an exact kernel schedule.
 pub const FUEL_PER_SECOND: u64 = 1_000;
 /// Fuel Wasmi 0.40.0 charges per function-body byte before lazy translation.
 ///
@@ -147,9 +159,12 @@ pub enum Denial {
     UndeclaredOutput,
     InputLimit,
     Failed,
-    /// The child was still running when the wall-clock deadline elapsed.
+    /// The parent's monotonic deadline passed before a result was accepted.
     ///
-    /// The parent has killed and reaped it. This is not fuel exhaustion.
+    /// A child that is still running is killed and reaped. A child that has
+    /// already exited is reaped without another signal, and its stdout is
+    /// discarded. This is not fuel exhaustion. The interval includes spawn
+    /// and reap overhead and is not an exact kernel schedule.
     Elapsed,
 }
 
@@ -403,13 +418,25 @@ pub(crate) fn covers(checked: &Checked, definition: &Definition) -> bool {
 }
 
 /// Validate bounds, pin the module hash, and on Platform reject a module that
-/// is not the fixed guest shape. A body that fits the translation budget is
-/// validated once with Wasmi and the compiled image is dropped. [`execute`]
-/// compiles again inside the child process.
+/// is not the fixed guest shape. Structural caps and the translation budget
+/// run on the caller. A fitting body is passed to `Module::new` in the helper
+/// under the manifest timeout, and that image is dropped. A result observed
+/// at or after the deadline is [`Denial::Elapsed`] and is not admitted.
+/// [`execute`] compiles again inside the step deadline.
 pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     let checked = decode_manifest(document)?;
     #[cfg(feature = "platform")]
-    admit_compiled(&checked.module, checked.fuel, checked.timeout_seconds)?;
+    {
+        let body_len = admit_sections(&checked.module)?;
+        admit_translation_budget(checked.fuel, checked.timeout_seconds, body_len)?;
+        let program = resolve_guest_program()?;
+        validate_with(
+            &program,
+            &checked,
+            std::time::Duration::from_secs(u64::from(checked.timeout_seconds)),
+            PollTiming::IMMEDIATE,
+        )?;
+    }
     Ok(checked)
 }
 
@@ -705,13 +732,6 @@ fn guest_config() -> wasmi::Config {
 }
 
 #[cfg(feature = "platform")]
-fn admit_compiled(wasm: &[u8], fuel: u32, timeout_seconds: u32) -> Result<(), Denial> {
-    let body_len = admit_sections(wasm)?;
-    admit_translation_budget(fuel, timeout_seconds, body_len)?;
-    fresh_module(wasm).map(|_| ())
-}
-
-#[cfg(feature = "platform")]
 fn admit_translation_budget(fuel: u32, timeout_seconds: u32, body_len: u32) -> Result<(), Denial> {
     let manifest_fuel = u64::from(fuel);
     let timeout_fuel = u64::from(timeout_seconds).saturating_mul(FUEL_PER_SECOND);
@@ -978,9 +998,13 @@ const MODE_HOLD: u8 = 1;
 #[cfg(feature = "platform")]
 const MODE_FLOOD: u8 = 2;
 #[cfg(feature = "platform")]
+const MODE_VALIDATE: u8 = 3;
+#[cfg(feature = "platform")]
 const STATUS_LABEL: u8 = 0;
 #[cfg(feature = "platform")]
 const STATUS_DENIAL: u8 = 1;
+#[cfg(feature = "platform")]
+const STATUS_VALID: u8 = 2;
 #[cfg(feature = "platform")]
 const REQUEST_HEADER_LEN: usize = 36;
 #[cfg(feature = "platform")]
@@ -1109,7 +1133,7 @@ fn decode_request(bytes: &[u8]) -> Result<DecodedRequest, Denial> {
         return Err(Denial::Failed);
     }
     let mode = bytes[9];
-    if mode > MODE_FLOOD {
+    if mode > MODE_VALIDATE {
         return Err(Denial::Failed);
     }
     let timeout_tighter = match bytes[10] {
@@ -1319,12 +1343,97 @@ fn failed_child(mut child: std::process::Child, workdir: &std::path::Path) {
     let _ = std::fs::remove_dir_all(workdir);
 }
 
+/// Parent-side delays around observation. Production uses [`PollTiming::IMMEDIATE`].
+///
+/// Tests place the parent after a child that has already finished. The delays
+/// are not a model of the kernel scheduler.
+#[cfg(feature = "platform")]
+#[derive(Clone, Copy)]
+struct PollTiming {
+    before_poll: std::time::Duration,
+    after_join: std::time::Duration,
+}
+
+#[cfg(feature = "platform")]
+impl PollTiming {
+    const IMMEDIATE: Self = Self {
+        before_poll: std::time::Duration::ZERO,
+        after_join: std::time::Duration::ZERO,
+    };
+}
+
+#[cfg(feature = "platform")]
+struct Observed {
+    status: std::process::ExitStatus,
+    captured: Captured,
+}
+
+#[cfg(feature = "platform")]
+struct Launched {
+    result: Result<Observed, Denial>,
+    #[cfg(test)]
+    pid: u32,
+}
+
 #[cfg(feature = "platform")]
 fn supervise(
     program: &std::path::Path,
     request: Vec<u8>,
     timeout: std::time::Duration,
 ) -> Result<Supervised, Denial> {
+    supervise_timed(program, request, timeout, PollTiming::IMMEDIATE)
+}
+
+#[cfg(feature = "platform")]
+fn supervise_timed(
+    program: &std::path::Path,
+    request: Vec<u8>,
+    timeout: std::time::Duration,
+    timing: PollTiming,
+) -> Result<Supervised, Denial> {
+    let launched = launch(program, request, timeout, timing)?;
+    let outcome = match launched.result {
+        Ok(observed) => interpret(observed.status, observed.captured),
+        Err(denial) => Err(denial),
+    };
+    Ok(Supervised {
+        outcome,
+        #[cfg(test)]
+        pid: launched.pid,
+    })
+}
+
+/// `Module::new` for configuration admission. Success is not a workflow label.
+#[cfg(feature = "platform")]
+fn validate_with(
+    program: &std::path::Path,
+    checked: &Checked,
+    timeout: std::time::Duration,
+    timing: PollTiming,
+) -> Result<(), Denial> {
+    let output_cap = checked.max_output_bytes.min(MAX_ROUTE_LABEL_BYTES);
+    let request = encode_request(
+        MODE_VALIDATE,
+        false,
+        u64::from(checked.fuel),
+        checked,
+        output_cap,
+        &[],
+    )?;
+    let launched = launch(program, request, timeout, timing)?;
+    match launched.result {
+        Ok(observed) => interpret_validation(observed.status, observed.captured),
+        Err(denial) => Err(denial),
+    }
+}
+
+#[cfg(feature = "platform")]
+fn launch(
+    program: &std::path::Path,
+    request: Vec<u8>,
+    timeout: std::time::Duration,
+    timing: PollTiming,
+) -> Result<Launched, Denial> {
     if request.is_empty() || request.len() > MAX_GUEST_REQUEST_BYTES || timeout.is_zero() {
         return Err(Denial::Failed);
     }
@@ -1373,9 +1482,9 @@ fn supervise(
         workdir,
         finished: false,
     };
-    let outcome = wait_for_guest(&mut guest, started + timeout, &overflowed);
-    Ok(Supervised {
-        outcome,
+    let result = wait_for_guest(&mut guest, started + timeout, &overflowed, timing);
+    Ok(Launched {
+        result,
         #[cfg(test)]
         pid,
     })
@@ -1386,28 +1495,42 @@ fn wait_for_guest(
     guest: &mut GuestProcess,
     deadline: std::time::Instant,
     overflowed: &std::sync::atomic::AtomicBool,
-) -> Result<Label, Denial> {
+    timing: PollTiming,
+) -> Result<Observed, Denial> {
+    if !timing.before_poll.is_zero() {
+        std::thread::sleep(timing.before_poll);
+    }
     loop {
+        if std::time::Instant::now() >= deadline {
+            return Err(expire(guest));
+        }
         if overflowed.load(std::sync::atomic::Ordering::Acquire) {
             guest.kill_wait();
-            let _discarded = guest.join_io();
+            discard_output(guest.join_io());
             return Err(Denial::Output);
         }
         match guest.child.try_wait() {
             Ok(Some(status)) => {
+                // `try_wait` has reaped the pid. Do not signal it again.
                 guest.finished = true;
+                if std::time::Instant::now() >= deadline {
+                    discard_output(guest.join_io());
+                    return Err(Denial::Elapsed);
+                }
                 let captured = guest.join_io();
-                return interpret(status, captured);
-            }
-            Ok(None) if std::time::Instant::now() >= deadline => {
-                guest.kill_wait();
-                let _discarded = guest.join_io();
-                return Err(Denial::Elapsed);
+                if !timing.after_join.is_zero() {
+                    std::thread::sleep(timing.after_join);
+                }
+                if std::time::Instant::now() >= deadline {
+                    discard_output(captured);
+                    return Err(Denial::Elapsed);
+                }
+                return Ok(Observed { status, captured });
             }
             Ok(None) => {}
             Err(_) => {
                 guest.kill_wait();
-                let _discarded = guest.join_io();
+                discard_output(guest.join_io());
                 return Err(Denial::Failed);
             }
         }
@@ -1419,6 +1542,27 @@ fn wait_for_guest(
     }
 }
 
+/// Reap a child that has reached the deadline and drop whatever it wrote.
+#[cfg(feature = "platform")]
+fn expire(guest: &mut GuestProcess) -> Denial {
+    match guest.child.try_wait() {
+        Ok(Some(_)) => guest.finished = true,
+        Ok(None) => guest.kill_wait(),
+        Err(_) => {
+            guest.kill_wait();
+            discard_output(guest.join_io());
+            return Denial::Failed;
+        }
+    }
+    discard_output(guest.join_io());
+    Denial::Elapsed
+}
+
+#[cfg(feature = "platform")]
+fn discard_output(mut captured: Captured) {
+    zeroize::Zeroize::zeroize(&mut captured.bytes);
+}
+
 #[cfg(feature = "platform")]
 fn interpret(status: std::process::ExitStatus, captured: Captured) -> Result<Label, Denial> {
     if captured.overflow {
@@ -1428,6 +1572,24 @@ fn interpret(status: std::process::ExitStatus, captured: Captured) -> Result<Lab
         return Err(Denial::Failed);
     }
     decode_response(&captured.bytes[..captured.len])
+}
+
+#[cfg(feature = "platform")]
+fn interpret_validation(
+    status: std::process::ExitStatus,
+    captured: Captured,
+) -> Result<(), Denial> {
+    if captured.overflow {
+        return Err(Denial::Output);
+    }
+    if captured.io_error || !status.success() {
+        return Err(Denial::Failed);
+    }
+    match captured.bytes[..captured.len] {
+        [STATUS_VALID] => Ok(()),
+        [STATUS_DENIAL, code] => Err(denial_from_code(code).unwrap_or(Denial::Failed)),
+        _ => Err(Denial::Failed),
+    }
 }
 
 #[cfg(feature = "platform")]
@@ -1510,6 +1672,43 @@ fn invoke_guest_inner(request: &DecodedRequest) -> Result<Label, Denial> {
     matched.ok_or(Denial::UndeclaredOutput)
 }
 
+/// Empty environment, or only macOS `__CF_USER_TEXT_ENCODING` in its short hex form.
+#[cfg(feature = "platform")]
+fn guest_environment_is_closed() -> bool {
+    let mut vars = std::env::vars_os();
+    match vars.next() {
+        None => true,
+        Some((key, value)) => {
+            vars.next().is_none()
+                && key == "__CF_USER_TEXT_ENCODING"
+                && corefoundation_text_encoding(&value)
+        }
+    }
+}
+
+#[cfg(feature = "platform")]
+fn corefoundation_text_encoding(value: &std::ffi::OsStr) -> bool {
+    let Some(text) = value.to_str() else {
+        return false;
+    };
+    if text.len() > 32 {
+        return false;
+    }
+    let mut fields = text.split(':');
+    fields.next().is_some_and(hex_field)
+        && fields.next().is_some_and(hex_field)
+        && fields.next().is_some_and(hex_field)
+        && fields.next().is_none()
+}
+
+#[cfg(feature = "platform")]
+fn hex_field(text: &str) -> bool {
+    let Some(digits) = text.strip_prefix("0x") else {
+        return false;
+    };
+    (1..=8).contains(&digits.len()) && digits.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 /// Platform server entry. Reads one bounded request and writes one status.
 ///
 /// The maintenance binary does not call this, and clap does not advertise it.
@@ -1521,6 +1720,9 @@ pub fn run_isolated_guest() -> i32 {
 #[cfg(feature = "platform")]
 fn isolated_guest_entry() -> Result<(), ()> {
     use std::io::Read;
+    if !guest_environment_is_closed() {
+        return write_status(Err(Denial::Failed)).map_err(|_| ());
+    }
     let mut input = Vec::new();
     let limit = u64::try_from(MAX_GUEST_REQUEST_BYTES)
         .map_err(|_| ())?
@@ -1542,7 +1744,26 @@ fn isolated_guest_entry() -> Result<(), ()> {
             let outcome = invoke_guest(&mut request);
             write_status(outcome).map_err(|_| ())
         }
+        MODE_VALIDATE => validate_module(&request),
         _ => write_status(Err(Denial::Failed)).map_err(|_| ()),
+    }
+}
+
+#[cfg(feature = "platform")]
+fn validate_module(request: &DecodedRequest) -> Result<(), ()> {
+    let outcome = fresh_module(&request.module).map(|_| ());
+    write_validation(outcome).map_err(|_| ())
+}
+
+#[cfg(feature = "platform")]
+fn write_validation(outcome: Result<(), Denial>) -> std::io::Result<()> {
+    match outcome {
+        Ok(()) => {
+            let mut out = std::io::stdout().lock();
+            std::io::Write::write_all(&mut out, &[STATUS_VALID])?;
+            std::io::Write::flush(&mut out)
+        }
+        Err(denial) => write_status(Err(denial)),
     }
 }
 
@@ -2769,6 +2990,312 @@ mod tests {
         assert!(!maintenance.contains("extension_gate"));
         assert!(MAX_GUEST_REQUEST_BYTES <= 80 * 1024);
         assert!(MAX_RESPONSE_BYTES <= 64);
+    }
+
+    #[cfg(feature = "platform")]
+    struct DisposableCopy {
+        root: std::path::PathBuf,
+        server: std::path::PathBuf,
+    }
+
+    #[cfg(feature = "platform")]
+    impl Drop for DisposableCopy {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    /// Copy of the built server under a temp name, outside the Cargo layout.
+    #[cfg(feature = "platform")]
+    fn disposable_server() -> DisposableCopy {
+        let source = resolve_guest_program().unwrap();
+        assert!(source.is_file(), "{source:?}");
+        assert_eq!(
+            source.file_name().and_then(|name| name.to_str()),
+            Some("riauth")
+        );
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("riauth-installed-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let server = root.join("identity-server");
+        std::fs::copy(&source, &server).unwrap();
+        let mode = std::fs::metadata(&source).unwrap().permissions();
+        std::fs::set_permissions(&server, mode).unwrap();
+        assert_ne!(server, source);
+        assert_eq!(guest_program(&server), server.as_path());
+        assert_eq!(
+            server.file_name().and_then(|name| name.to_str()),
+            Some("identity-server")
+        );
+        assert!(server.components().all(|component| {
+            let text = component.as_os_str().to_string_lossy();
+            text != "deps" && text != "target" && text != "debug"
+        }));
+        let rendered = server.to_string_lossy();
+        assert!(!rendered.contains("/deps/"), "{rendered}");
+        assert!(!rendered.contains("/target"), "{rendered}");
+        DisposableCopy { root, server }
+    }
+
+    #[cfg(feature = "platform")]
+    fn assert_deadline_discarded(
+        supervised: &Supervised,
+        elapsed: std::time::Duration,
+        lower: std::time::Duration,
+    ) {
+        assert_eq!(supervised.outcome.as_ref(), Err(&Denial::Elapsed));
+        assert!(elapsed >= lower, "{elapsed:?} lower {lower:?}");
+        // Hang detector. Startup and reap are inside the interval; this is not
+        // a kernel scheduling guarantee.
+        assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
+        assert!(
+            !process_alive(supervised.pid),
+            "guest pid {} is still alive",
+            supervised.pid
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn a_completed_guest_observed_after_the_deadline_is_not_a_label() {
+        let installed = disposable_server();
+        let document = fixture::document(&fixture::allow(), |_| {});
+        let checked = check(&document).unwrap();
+        let request = encode_request(MODE_RUN, false, 10_000, &checked, 32, &[]).unwrap();
+        let started = std::time::Instant::now();
+        let timely = supervise(
+            &installed.server,
+            request.clone(),
+            std::time::Duration::from_secs(30),
+        )
+        .unwrap();
+        let timely_elapsed = started.elapsed();
+        let label = timely.outcome.expect("in-time allow");
+        assert_eq!(label.as_str(), "allow");
+        assert!(label.as_str().len() <= 32);
+        assert!(
+            timely_elapsed < std::time::Duration::from_secs(15),
+            "in-time allow took {timely_elapsed:?}"
+        );
+        // The deadline is past this completion. The parent then waits longer,
+        // so it observes the finished child only after the deadline. The slack
+        // is process startup, not a kernel schedule.
+        let budget = timely_elapsed + std::time::Duration::from_secs(3);
+        let delay = budget + std::time::Duration::from_millis(500);
+
+        let late_poll = PollTiming {
+            before_poll: delay,
+            after_join: std::time::Duration::ZERO,
+        };
+        let started = std::time::Instant::now();
+        let delayed =
+            supervise_timed(&installed.server, request.clone(), budget, late_poll).unwrap();
+        assert_deadline_discarded(&delayed, started.elapsed(), delay);
+
+        let late_join = PollTiming {
+            before_poll: std::time::Duration::ZERO,
+            after_join: delay,
+        };
+        let started = std::time::Instant::now();
+        let joined = supervise_timed(&installed.server, request, budget, late_join).unwrap();
+        assert_deadline_discarded(&joined, started.elapsed(), delay);
+
+        assert!(
+            validate_with(
+                &installed.server,
+                &checked,
+                std::time::Duration::from_secs(30),
+                PollTiming::IMMEDIATE,
+            )
+            .is_ok()
+        );
+        let started = std::time::Instant::now();
+        let late_validation = validate_with(&installed.server, &checked, budget, late_poll);
+        assert_eq!(late_validation, Err(Denial::Elapsed));
+        let elapsed = started.elapsed();
+        assert!(elapsed >= delay, "{elapsed:?}");
+        assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
+    }
+
+    #[cfg(feature = "platform")]
+    fn assert_environment_refusal(
+        program: &std::path::Path,
+        root: &std::path::Path,
+        key: &str,
+        value: &str,
+    ) {
+        let slug: String = key
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .collect();
+        let workdir = root.join(format!("env-{slug}"));
+        let mut builder = std::fs::DirBuilder::new();
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(&workdir).unwrap();
+        let mut child = std::process::Command::new(program)
+            .arg(GUEST_ARGV)
+            .env_clear()
+            .env(key, value)
+            .current_dir(&workdir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut stdout = child.stdout.take().unwrap();
+        let reader = std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = [0u8; MAX_RESPONSE_BYTES + 1];
+            let mut len = 0usize;
+            while len < buf.len() {
+                match stdout.read(&mut buf[len..]) {
+                    Ok(0) => break,
+                    Ok(count) => len += count,
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+            (buf, len)
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(_) => break,
+            }
+        }
+        if child.try_wait().ok().flatten().is_none() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let (buf, len) = reader.join().expect("sentinel reader");
+        assert!(
+            (2..=MAX_RESPONSE_BYTES).contains(&len),
+            "response len {len}"
+        );
+        assert_ne!(buf[0], STATUS_LABEL);
+        assert_eq!(buf[0], STATUS_DENIAL);
+        assert_eq!(buf[1], Denial::Failed.code());
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn a_copied_renamed_server_serves_the_guest_with_an_empty_environment() {
+        let installed = disposable_server();
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        let request = encode_request(MODE_RUN, false, 10_000, &checked, 32, &[]).unwrap();
+        let allowed = supervise(
+            &installed.server,
+            request.clone(),
+            std::time::Duration::from_secs(30),
+        )
+        .unwrap();
+        let label = allowed.outcome.expect("empty environment still runs");
+        assert_eq!(label.as_str(), "allow");
+        assert!(label.as_str().len() <= 32);
+
+        let spin = check(&fixture::document(&fixture::spin(), |value| {
+            value["fuel"] = serde_json::json!(1_000);
+        }))
+        .unwrap();
+        let spinning = encode_request(MODE_RUN, false, 1_000, &spin, 32, &[]).unwrap();
+        let fueled = supervise(
+            &installed.server,
+            spinning,
+            std::time::Duration::from_secs(30),
+        )
+        .unwrap();
+        assert_eq!(fueled.outcome, Err(Denial::Fuel));
+
+        let holding = encode_request(MODE_HOLD, false, 10_000, &checked, 32, &[]).unwrap();
+        let started = std::time::Instant::now();
+        let held = supervise(
+            &installed.server,
+            holding,
+            std::time::Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_deadline_discarded(
+            &held,
+            started.elapsed(),
+            std::time::Duration::from_millis(900),
+        );
+
+        let flooding = encode_request(MODE_FLOOD, false, 10_000, &checked, 32, &[]).unwrap();
+        let flooded = supervise(
+            &installed.server,
+            flooding,
+            std::time::Duration::from_secs(30),
+        )
+        .unwrap();
+        assert_eq!(flooded.outcome, Err(Denial::Output));
+        assert!(
+            !process_alive(flooded.pid),
+            "guest pid {} is still alive",
+            flooded.pid
+        );
+
+        let missing = installed.root.join("missing-server");
+        assert!(!missing.exists());
+        assert_eq!(
+            supervise(&missing, request.clone(), std::time::Duration::from_secs(1)).err(),
+            Some(Denial::Failed)
+        );
+
+        let corrupt = installed.root.join("corrupt-server");
+        std::fs::write(&corrupt, b"\x7fELF not a real server").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&corrupt, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        // macOS can create the process and have it exit before main. Either
+        // shape is `failed` and neither is a label.
+        match supervise(&corrupt, request, std::time::Duration::from_secs(1)) {
+            Err(denial) => assert_eq!(denial, Denial::Failed),
+            Ok(supervised) => {
+                assert_eq!(supervised.outcome, Err(Denial::Failed));
+                assert!(
+                    !process_alive(supervised.pid),
+                    "guest pid {} is still alive",
+                    supervised.pid
+                );
+            }
+        }
+
+        let invalid = bind(&fixture::document(
+            &fixture::allow_with_invalid_tail(1),
+            |_| {},
+        ))
+        .unwrap();
+        assert_eq!(
+            validate_with(
+                &installed.server,
+                &invalid,
+                std::time::Duration::from_secs(30),
+                PollTiming::IMMEDIATE,
+            ),
+            Err(Denial::Malformed)
+        );
+        assert_environment_refusal(
+            &installed.server,
+            &installed.root,
+            "RIAUTH_TEST_SENTINEL",
+            "secret",
+        );
+        assert_environment_refusal(
+            &installed.server,
+            &installed.root,
+            "__CF_USER_TEXT_ENCODING",
+            "secret",
+        );
     }
 
     #[cfg(feature = "platform")]

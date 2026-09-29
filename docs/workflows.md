@@ -1138,14 +1138,15 @@ stores a password receipt.
 | `memory_bytes` | Exactly 65,536, one WebAssembly page |
 | `max_input_bytes` | 1–4,096 projected identifier bytes |
 | `max_output_bytes` | 1–4,096. The host copies at most 32 bytes, the maximum label length |
-| `timeout_seconds` | 1–30. The same number is thousands of fuel units and the child-process kill deadline in seconds |
+| `timeout_seconds` | 1–30. The same number is thousands of fuel units and the parent's monotonic deadline in seconds, from just before spawn through observation and reap. It is not an exact kernel schedule |
 | `module_base64` | Standard base64, 1 byte through 65,536 |
 | `module_sha256` | 64 lowercase hex characters of the decoded module |
 
 The hash is compared before the module is admitted. A mismatch is `integrity`.
-Uppercase hex is `malformed`. Platform then parses the bytes with Wasmi and
-rejects any other shape. Essentials stops after the hash and the numeric
-bounds, so it does not parse the module. `Checked` keeps the admitted bytes so
+Uppercase hex is `malformed`. Platform then applies the structural caps. Wasmi
+parses a fitting body in the helper and rejects any other shape. Essentials
+stops after the hash and the numeric bounds, so it does not parse the module
+and does not spawn. `Checked` keeps the admitted bytes so
 execution uses the hashed image, and its `Debug` output does not print them.
 `execute` admits that image again before it runs.
 
@@ -1153,8 +1154,11 @@ The guest exports `memory` and `route () -> i32` and has no imports. There is
 no WASI, filesystem, socket, clock, randomness, or host callback. The engine
 disables floats, multi-memory, bulk memory, reference types, tail calls, and
 saturating float-to-int, and ignores custom sections. Translation is lazy.
-Configuration `check` calls `Module::new` for a body that fits the translation
-budget, then drops that image. A request binds the same bytes without compiling
+Configuration `check` runs `Module::new` for a body that fits the translation
+budget in the helper under the manifest timeout, and does not keep that image.
+A validation observed at or after that deadline is `elapsed` and is not
+admitted. Structural caps and the translation-budget arithmetic still run on
+the caller, before that spawn. A request binds the same bytes without compiling
 them. Each `execute` re-executes the server binary, and that child calls
 `Module::new` and builds Wasmi IR inside the wall-clock deadline, so every call
 pays the translation charge. The structural check rejects a
@@ -1207,8 +1211,13 @@ child, then `route` runs until it returns, spends the fuel that remains, or
 the parent kills the process. Validation of a body that fits is not
 fuel-metered. `route.call` holds `&mut Store` until it returns, so another
 thread inside the child cannot drain that store's fuel. The parent does not
-detach the child. When the deadline is reached it kills the process and waits
-until it is reaped, then reports `elapsed`. Stopping a thread would require
+detach the child. When the parent's monotonic clock reaches the deadline,
+including a child that has already exited, the parent kills a child that is
+still running, reaps the process, discards its stdout, and reports `elapsed`.
+A label already written is discarded and is not accepted. That interval
+includes spawn, observation, and reap. It is not an exact kernel scheduling
+guarantee. A short timeout can elapse during process startup even when the
+guest would have returned a label. Stopping a thread would require
 `unsafe`, which this crate forbids. Fuel exhaustion is not `elapsed`. When the
 two budgets are equal, or fuel is smaller, execution exhaustion is `fuel`. A
 timeout of 10 seconds or more cannot be tighter than the 10,000 fuel cap, so
@@ -1219,9 +1228,14 @@ and passes only the internal argv token `riauth.extension-guest/v1`. The server
 recognizes that token before clap and does not list it in `--help`. An
 installed image at `/usr/local/bin/riauth`, or a renamed copy of that binary,
 re-executes its own path. The lookup does not read an environment override and
-does not assume a Cargo target directory. The child environment is cleared, its
-working directory is a private empty directory removed after reap, and stderr
-is discarded. The request is the module, the projected identifier frame, the
+does not assume a Cargo target directory. The child environment is cleared.
+The helper refuses to run when any variable remains, except the macOS
+CoreFoundation variable `__CF_USER_TEXT_ENCODING` after exec, and only when
+its value is three short `0x` hexadecimal fields. The parent does not pass
+that variable. Any other variable is `failed`, not a label. Its working
+directory is a private empty directory
+removed after reap, and stderr is discarded. The request is the module, the
+projected identifier frame, the
 declared labels, and the caps. It does not include a bearer token, password,
 configuration path, or database URL. File descriptors already open in the
 server can still be inherited, because closing them would require `unsafe`.
@@ -1256,7 +1270,9 @@ must fit `max_input_bytes` and the window. A missing required fact is
 an empty placeholder.
 
 A gate denial, including `elapsed`, becomes the built-in `failed` signal and
-routes to `denied`. It does not become an attacker-chosen label. The run binding stores
+routes to `denied`. A completion observed at or after the deadline is
+`elapsed`, and its stdout is discarded, so it does not become an
+attacker-chosen label. The run binding stores
 `extension_sha256`, the lowercase hex of the module that started the run, with
 the definition id, revision, and fingerprint. Resume, cancel, and password
 verification compare the live manifest with that hash. A different module seals
