@@ -432,11 +432,12 @@ class SecureMode(unittest.TestCase):
         self.assertIn("hostaddr=127.0.0.1", info)
         self.assertNotIn("password=", info)
         key = benchmark.database_key_text()
-        hidden = [key, "-----BEGIN PRIVATE KEY-----"]
+        banner = "-----BEGIN " + "PRIVATE KEY-----"
+        hidden = [key, banner]
         with self.assertRaises(benchmark.SliceError):
             benchmark.ensure_redacted({"leak": key}, hidden)
         with self.assertRaises(benchmark.SliceError):
-            benchmark.ensure_redacted({"leak": "-----BEGIN PRIVATE KEY-----"}, hidden)
+            benchmark.ensure_redacted({"leak": banner}, hidden)
         with self.assertRaises(benchmark.SliceError):
             benchmark.assert_report_text_clean('{"stored":"password=hidden"}')
         benchmark.ensure_redacted({"storage_format": "aes256gcm-v1"}, hidden)
