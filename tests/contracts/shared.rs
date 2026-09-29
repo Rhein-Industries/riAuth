@@ -2083,9 +2083,9 @@ pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
                     &generic(&format!("other-{index}"), json!({"status":"committed"})),
                 )?;
             }
-            // The fixture has already opened the current Core. Remove only this
-            // migration marker to represent a store written by the older binary.
-            tx.delete("meta", "agent_issuance_receipts_redacted_v1")?;
+            // A restore or older writer can introduce these rows into a store
+            // whose previous startup already recorded the completion marker.
+            tx.put("meta", "agent_issuance_receipts_redacted_v1", &true)?;
             Ok(())
         })
         .unwrap();
@@ -2187,7 +2187,7 @@ pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
     assert!(changed_request.message.contains("different request"));
     f.assert_snapshot(&stored);
 
-    // A late legacy row after the one-time marker is scrubbed by the bounded
+    // A late legacy row after startup is scrubbed by the bounded
     // maintenance pass without changing revision, audit or credential indexes.
     let late_key = digest(&format!("{admin_id}\0late-legacy-key"));
     f.core
@@ -2212,6 +2212,155 @@ pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
         Some(committed_revision)
     );
     assert_eq!(audit_count(&f, "agent.rotate"), rotate_audits);
+}
+
+// A page that committed before an interrupted scrub stays redacted. The next
+// real Core::open must finish the later page even with the historical marker.
+pub fn legacy_agent_receipt_scrub_resumes_after_interruption(backend: Backend) {
+    let f = backend.fixture();
+    let admin_id = user(&f, "admin").id;
+    f.user("agentparent");
+    let input = NewAgent {
+        id: "interrupted-issuance".into(),
+        ttl: 3600,
+        parent: Some("agentparent".into()),
+        permissions: vec![Permission {
+            action: "state.read".into(),
+            resource: "state/revision".into(),
+        }],
+    };
+    let created = f.core.create_agent(&f.admin, input.clone()).unwrap();
+    let old_token = text(&created["credential"], "token");
+    let rotated = f.core.rotate_agent(&f.admin, &input.id, 7200).unwrap();
+    let new_token = text(&rotated["credential"], "token");
+    let revision = f.core.store.get::<u64>("meta", "revision").unwrap();
+    let create_audits = audit_count(&f, "agent.create");
+    let rotate_audits = audit_count(&f, "agent.rotate");
+    let create_key = digest(&format!("{admin_id}\0interrupted-create"));
+    let rotate_key = digest(&format!("{admin_id}\0interrupted-rotate"));
+    let (low_key, low_result, low_token, high_key, high_result, high_token) =
+        if create_key < rotate_key {
+            (
+                &create_key,
+                &created,
+                &old_token,
+                &rotate_key,
+                &rotated,
+                &new_token,
+            )
+        } else {
+            (
+                &rotate_key,
+                &rotated,
+                &new_token,
+                &create_key,
+                &created,
+                &old_token,
+            )
+        };
+    let expiry = now() + 3600;
+    let generic = |fingerprint: &str, result: Value| json!({"fingerprint": fingerprint, "permissions": [], "result": result, "expires_at": expiry});
+    let unrelated = generic(
+        "dcr-fingerprint",
+        json!({"client_id":"dcr-client","registration_access_token":"dcr-secret-sentinel"}),
+    );
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "receipts",
+                low_key,
+                &generic("low-fingerprint", low_result.clone()),
+            )?;
+            // These keys sort strictly between the two real receipt digests, so
+            // the second agent credential remains on the next 128-record page.
+            for index in 0..130 {
+                tx.put(
+                    "receipts",
+                    &format!("{low_key}.{index:03}"),
+                    &generic(&format!("other-{index}"), json!({"status":"committed"})),
+                )?;
+            }
+            tx.put(
+                "receipts",
+                high_key,
+                &generic("high-fingerprint", high_result.clone()),
+            )?;
+            tx.put("receipts", "unrelated-dcr", &unrelated)?;
+            tx.put("meta", "agent_issuance_receipts_redacted_v1", &true)?;
+            Ok(())
+        })
+        .unwrap();
+    let seeded = f.snapshot().unwrap();
+    assert!(
+        seeded[&format!("receipts/{low_key}")]
+            .to_string()
+            .contains(low_token)
+    );
+    assert!(
+        seeded[&format!("receipts/{high_key}")]
+            .to_string()
+            .contains(high_token)
+    );
+
+    let interrupted =
+        riauth::context::interrupt_legacy_agent_receipt_scrub_after_page(&f.core.store)
+            .unwrap_err();
+    assert!(
+        interrupted
+            .message
+            .contains("Injected receipt scrub interruption")
+    );
+    let partial = f.snapshot().unwrap();
+    let marker = json!({"agent_id":"interrupted-issuance","credential_issued":true});
+    assert_eq!(partial[&format!("receipts/{low_key}")]["result"], marker);
+    assert!(
+        !partial[&format!("receipts/{low_key}")]
+            .to_string()
+            .contains(low_token)
+    );
+    assert_eq!(
+        partial[&format!("receipts/{high_key}")],
+        seeded[&format!("receipts/{high_key}")]
+    );
+    assert!(
+        partial[&format!("receipts/{high_key}")]
+            .to_string()
+            .contains(high_token)
+    );
+    assert_eq!(partial["receipts/unrelated-dcr"], unrelated);
+    assert_eq!(partial["meta/agent_issuance_receipts_redacted_v1"], true);
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        revision
+    );
+    assert_eq!(audit_count(&f, "agent.create"), create_audits);
+    assert_eq!(audit_count(&f, "agent.rotate"), rotate_audits);
+
+    let f = f.reopen_with(|_| {});
+    let stored = f.snapshot().unwrap();
+    for key in [low_key, high_key] {
+        assert_eq!(stored[&format!("receipts/{key}")]["result"], marker);
+        for field in ["fingerprint", "permissions", "expires_at"] {
+            assert_eq!(
+                stored[&format!("receipts/{key}")][field],
+                seeded[&format!("receipts/{key}")][field]
+            );
+        }
+    }
+    let serialized = serde_json::to_string(&stored).unwrap();
+    assert!(!serialized.contains(&old_token));
+    assert!(!serialized.contains(&new_token));
+    assert_eq!(stored["receipts/unrelated-dcr"], unrelated);
+    assert_eq!(stored["meta/agent_issuance_receipts_redacted_v1"], true);
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        revision
+    );
+    assert_eq!(audit_count(&f, "agent.create"), create_audits);
+    assert_eq!(audit_count(&f, "agent.rotate"), rotate_audits);
+    assert_eq!(f.core.me(&old_token).unwrap_err().code, "invalid_token");
+    assert!(f.core.me(&new_token).is_ok());
 }
 
 // Agent revoke is the secret-free lifecycle write: exact retries return only

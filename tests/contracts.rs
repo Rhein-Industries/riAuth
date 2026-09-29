@@ -48,6 +48,7 @@ backend_contract!(http_mutation_receipts_and_audit);
 backend_contract!(agent_create_issues_credential_once);
 backend_contract!(agent_rotation_issues_credential_once);
 backend_contract!(legacy_agent_receipts_scrub_on_open);
+backend_contract!(legacy_agent_receipt_scrub_resumes_after_interruption);
 backend_contract!(agent_revoke_requires_retry_binding);
 backend_contract!(device_poll_protocol_receipt);
 backend_contract!(plan_binding_atomicity_and_retry);

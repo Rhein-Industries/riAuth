@@ -233,7 +233,7 @@ impl Core {
         crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
-        crate::context::migrate_legacy_agent_receipts(&store)?;
+        crate::context::scrub_legacy_agent_receipts_on_open(&store)?;
         store.write(crate::assembly::backfill_prepared_index)?;
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
