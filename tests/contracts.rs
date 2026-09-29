@@ -45,6 +45,7 @@ backend_contract!(prepared_authority_revalidation);
 backend_contract!(prepared_deadline_revalidation);
 backend_contract!(last_admin_failure_is_atomic);
 backend_contract!(http_mutation_receipts_and_audit);
+backend_contract!(agent_create_issues_credential_once);
 backend_contract!(agent_revoke_requires_retry_binding);
 backend_contract!(device_poll_protocol_receipt);
 backend_contract!(plan_binding_atomicity_and_retry);

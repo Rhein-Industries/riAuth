@@ -216,7 +216,10 @@ impl Core {
         // Retain the existing validation order before receipt lookup; the writer
         // repeats validation at its own transaction boundary.
         management::validate_new_agent(&input)?;
-        self.mutation(token, |tx| management::create_agent(self, tx, token, input))
+        // This writer records only a redacted issuance marker. The generic
+        // mutation receipt would persist and replay the plaintext credential.
+        self.store
+            .write(|tx| management::create_agent(self, tx, token, input))
     }
     pub fn list_agents(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {

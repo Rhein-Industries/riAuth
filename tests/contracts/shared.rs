@@ -1581,6 +1581,185 @@ pub fn device_poll_protocol_receipt(backend: Backend) {
     f.assert_http_mutation_snapshot(&disabled);
 }
 
+fn agent_create_http(
+    app: &axum::Router,
+    runtime: &tokio::runtime::Runtime,
+    token: &str,
+    revision: Option<u64>,
+    key: Option<&str>,
+    body: &Value,
+) -> (StatusCode, Value) {
+    let mut request = Request::post("/api/agents")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json");
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    runtime.block_on(async {
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::from(body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        (status, body)
+    })
+}
+
+// A lost create response cannot be recovered from durable storage. The retry
+// identifies the committed request without re-disclosing its credential.
+pub fn agent_create_issues_credential_once(backend: Backend) {
+    let f = backend.fixture();
+    let ordinary = f.user("ordinary");
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let body = json!({
+        "id": "issued-once",
+        "permissions": [{"action": "state.read", "resource": "state/revision"}],
+        "ttl": 3600
+    });
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        agent_create_http(&app, &runtime, &f.admin, None, None, &body).0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        agent_create_http(&app, &runtime, &f.admin, Some(revision), None, &body).0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        agent_create_http(&app, &runtime, &f.admin, None, Some("create-once"), &body).0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        agent_create_http(
+            &app,
+            &runtime,
+            &ordinary,
+            Some(revision),
+            Some("ordinary-denied"),
+            &body
+        )
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        agent_create_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision + 1),
+            Some("stale"),
+            &body
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before);
+
+    let (status, created) = agent_create_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("create-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::OK);
+    let token = text(&created["credential"], "token");
+    assert_eq!(created["agent"]["id"], "issued-once");
+    let agent: Agent = f.core.store.get("agents", "issued-once").unwrap().unwrap();
+    assert_eq!(agent.token_hash, digest(&token));
+    assert_eq!(audit_count(&f, "agent.create"), 1);
+    let receipts = f.core.store.list::<Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+    assert!(!receipts[0].1.to_string().contains(&token));
+    let committed = f.snapshot().unwrap();
+
+    let (status, replay) = agent_create_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("create-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&token));
+    let mut changed = body.clone();
+    changed["id"] = json!("another-agent");
+    assert_eq!(
+        agent_create_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision),
+            Some("create-once"),
+            &changed
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        agent_create_http(
+            &app,
+            &runtime,
+            &f.admin,
+            Some(revision + 1),
+            Some("fresh-repeat"),
+            &body
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Agent>("agents", "another-agent")
+            .unwrap()
+            .is_none()
+    );
+    f.assert_http_mutation_snapshot(&committed);
+
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let (status, replay) = agent_create_http(
+        &app,
+        &runtime,
+        &f.admin,
+        Some(revision),
+        Some("create-once"),
+        &body,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert_eq!(audit_count(&f, "agent.create"), 1);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Agent>("agents", "issued-once")
+            .unwrap()
+            .unwrap()
+            .token_hash,
+        digest(&token)
+    );
+}
+
 // Agent revoke is the secret-free lifecycle write: exact retries return only
 // Agent::view, while a new request against a disabled row cannot audit again.
 pub fn agent_revoke_requires_retry_binding(backend: Backend) {

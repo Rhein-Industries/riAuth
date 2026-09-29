@@ -1920,6 +1920,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Agent { command } => match command {
             AgentCommand::Create { id, permissions, ttl, parent, out } => {
                 if out.exists() { bail!("Credential destination already exists"); }
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent creation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let permissions: Vec<crate::agent::Permission> = permissions.into_iter().map(|p| -> Result<_> {
                     let (action, resource) = p.split_once('=').context("Permission must be action=resource")?;
                     Ok(crate::agent::Permission { action: action.into(), resource: resource.into() })

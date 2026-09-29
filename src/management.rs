@@ -228,8 +228,65 @@ pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
     Ok(())
 }
 
+/// An uncertain remote retry can learn that issuance committed, but cannot
+/// recover the credential from a receipt. All other management receipts keep
+/// their established actor/key namespace and exact request fingerprint.
+struct AgentIssuanceReceipt {
+    key: String,
+    fingerprint: String,
+    revision: u64,
+}
+
+impl AgentIssuanceReceipt {
+    fn current(actor: &User) -> Result<Option<Self>> {
+        let Some(context) = crate::context::current() else {
+            return Ok(None);
+        };
+        let (Some(idempotency_key), Some(revision)) = (context.idempotency_key, context.revision)
+        else {
+            return Err(Error::new(
+                axum::http::StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Agent creation requires Idempotency-Key and If-Match",
+            ));
+        };
+        Ok(Some(Self {
+            key: digest(&format!("{}\0{idempotency_key}", actor.id)),
+            fingerprint: context.fingerprint,
+            revision,
+        }))
+    }
+
+    fn check(&self, tx: &Tx<'_>) -> Result<()> {
+        // [] is the generic receipt scope for a live full administrator.
+        // Existing receipts with a stored credential are never returned.
+        if crate::context::replay_receipt(tx, &self.key, &self.fingerprint, &json!([]))?.is_some() {
+            return Err(Error::new(
+                axum::http::StatusCode::CONFLICT,
+                "credential_already_issued",
+                "Agent credential was already issued; inspect the agent and rotate if delivery failed",
+            ));
+        }
+        let current = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+        if self.revision != current {
+            return Err(Error::conflict("Configuration revision changed"));
+        }
+        Ok(())
+    }
+
+    fn save(self, tx: &Tx<'_>, agent_id: &str) -> Result<()> {
+        crate::context::save_receipt(
+            tx,
+            &self.key,
+            self.fingerprint,
+            json!([]),
+            &json!({"agent_id": agent_id, "credential_issued": true}),
+        )
+    }
+}
+
 /// Issue exactly one agent credential in the caller's mutation transaction.
-/// The parent binding and token index are committed with the agent and audit.
+/// The parent binding, token index, redacted receipt and audit commit together.
 pub(crate) fn create_agent(
     core: &Core,
     tx: &Tx<'_>,
@@ -239,6 +296,10 @@ pub(crate) fn create_agent(
     // Bootstrap and delegation stay restricted to a live human administrator.
     let actor = core.admin(tx, token)?;
     validate_new_agent(&input)?;
+    let receipt = AgentIssuanceReceipt::current(&actor)?;
+    if let Some(receipt) = &receipt {
+        receipt.check(tx)?;
+    }
     if tx.get::<Agent>("agents", &input.id)?.is_some() {
         return Err(Error::conflict("Agent already exists"));
     }
@@ -267,6 +328,9 @@ pub(crate) fn create_agent(
     tx.put("agents", &agent.id, &agent)?;
     tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
     audit(tx, &actor.id, "agent.create", &agent.id)?;
+    if let Some(receipt) = receipt {
+        receipt.save(tx, &agent.id)?;
+    }
     Ok(
         json!({"agent": agent.view(), "credential": {"issuer": core.config.issuer, "agent_id": agent.id, "token": credential, "expires_at": agent.expires_at}}),
     )

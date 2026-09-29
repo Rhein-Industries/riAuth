@@ -59,14 +59,26 @@ fn success(output: Output) -> Value {
     envelope["data"].clone()
 }
 
+fn current_revision(dir: &Path, config: &Path, session: &Path) -> String {
+    success(invoke(dir, config, session, &["revision"], None))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string()
+}
+
 fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
     use serde_json::json;
     let agent = dir.join("identity-agent.json");
+    let revision = current_revision(dir, config, session);
     success(invoke(
         dir,
         config,
         session,
         &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "create-identity-manager",
             "agent",
             "create",
             "identity-manager",
@@ -391,11 +403,16 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
     assert!(!revoked.status.success());
     // Agent administration uses its own credential, even with a nonexistent human session file.
     let agent = dir.path().join("agent.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-deployer",
             "agent",
             "create",
             "deployer",
@@ -944,12 +961,116 @@ fn failure(output: Output) -> (i32, Value) {
 }
 
 #[test]
+fn cli_agent_create_requires_binding_and_never_replays_credential() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = current_revision(dir.path(), &config, &session);
+    let first_file = dir.path().join("issued-agent.json");
+    let retry_file = dir.path().join("retry-agent.json");
+    let command = [
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ];
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "issue-agent-once",
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        first_file.to_str().unwrap(),
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+    assert!(!first_file.exists());
+
+    let mut first_args = vec![
+        "--if-revision",
+        revision.as_str(),
+        "--idempotency-key",
+        "issue-agent-once",
+    ];
+    first_args.extend(command);
+    let first = success(cli(&first_args));
+    assert_eq!(first["agent"]["id"], "issued-agent");
+    assert!(first.get("credential").is_none());
+    let credential: Value = serde_json::from_slice(&std::fs::read(&first_file).unwrap()).unwrap();
+    let token = credential["token"].as_str().unwrap();
+    let (code, replay) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "issue-agent-once",
+        "agent",
+        "create",
+        "issued-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        retry_file.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert!(!replay.to_string().contains(token));
+    assert!(!retry_file.exists());
+    let current = current_revision(dir.path(), &config, &session);
+    assert_eq!(
+        current.parse::<u64>().unwrap(),
+        revision.parse::<u64>().unwrap() + 1
+    );
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.create" && event["target"] == "issued-agent")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn cli_agent_revoke_requires_bound_retry_and_audits_once() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());
     let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
     let credential_file = dir.path().join("revoke-agent.json");
+    let creation_revision = current_revision(dir.path(), &config, &session);
     success(cli(&[
+        "--if-revision",
+        &creation_revision,
+        "--idempotency-key",
+        "create-revoke-agent",
         "agent",
         "create",
         "revoke-agent",
@@ -2623,11 +2744,16 @@ fn cli_application_writes_share_management_seam() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());
     let agent = dir.path().join("agent.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-cli-manager",
             "agent",
             "create",
             "cli-manager",
@@ -2776,11 +2902,16 @@ fn cli_api_and_scim_user_writes_share_management_seam() {
         .unwrap()
         .to_owned();
     let agent_file = dir.path().join("scim-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-scim-manager",
             "agent",
             "create",
             "scim-manager",
@@ -3027,11 +3158,16 @@ fn cli_api_and_scim_group_writes_share_management_seam() {
         .unwrap()
         .to_owned();
     let agent_file = dir.path().join("scim-group-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-scim-group-manager",
             "agent",
             "create",
             "scim-group-manager",
@@ -3295,11 +3431,16 @@ fn cli_api_and_state_source_writes_share_management_seam() {
         .unwrap()
         .to_owned();
     let agent_file = dir.path().join("source-manager.json");
+    let agent_revision = current_revision(dir.path(), &config, &session);
     success(invoke(
         dir.path(),
         &config,
         &session,
         &[
+            "--if-revision",
+            &agent_revision,
+            "--idempotency-key",
+            "create-source-manager",
             "agent",
             "create",
             "source-manager",

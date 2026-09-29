@@ -167,8 +167,15 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
         Some("owned-writer")
     );
     assert_eq!(revision(), before + 1);
-    assert_eq!(create().await, (StatusCode::OK, created.clone()));
+    let (status, replay) = create().await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&credential));
     assert_eq!(revision(), before + 1);
+    let receipts = f.core.store.list::<serde_json::Value>("receipts").unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+    assert!(!receipts[0].1.to_string().contains(&credential));
 
     let current = revision();
     let (status, _) = agent_request(
