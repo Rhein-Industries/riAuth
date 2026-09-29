@@ -682,8 +682,10 @@ stores the module hash beside the source-registration pin used by
 source-verifier runs. A changed manifest seals the open run before the new
 bytes can run. Essentials does not link Wasmi, rejects `workflow_extensions`,
 and `execute` returns `external_runtime_required`. The capability
-`workflow.controlled_extensions` stays not configured. This is not the Q02
-engine adapter.
+`workflow.controlled_extensions` is configured and usable only for that active
+validated graph plus a matching admitted manifest. Default, inactive,
+unsupported, and Essentials configurations leave both flags false. This is not
+the Q02 engine adapter.
 
 **Missing coverage / later contract.** Q02-C07 needs the future engine adapter:
 missing/disabled stage, changed definition/dependency, forged next-stage state,

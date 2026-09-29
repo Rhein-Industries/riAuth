@@ -641,6 +641,44 @@ impl Facts {
     }
 }
 
+/// Platform reports this capability when one active workflow is the supported
+/// extension-then-password graph and an admitted manifest covers its stage.
+/// Essentials stays false. The predicate only reads configuration.
+fn controlled_extensions_configured(config: &Config) -> bool {
+    #[cfg(not(feature = "platform"))]
+    {
+        let _ = config;
+        false
+    }
+    #[cfg(feature = "platform")]
+    {
+        let Ok(registered) =
+            crate::workflow::extension_gate::stage_registration(&config.workflow_extensions)
+        else {
+            return false;
+        };
+        config.workflows.iter().any(|(name, workflow)| {
+            if !workflow.active || workflow.definition.id.as_str() != name.as_str() {
+                return false;
+            }
+            let mut environment = crate::workflow::configured_environment(&workflow.definition);
+            for (stage, guest) in &registered {
+                environment
+                    .stages
+                    .insert(stage.clone(), guest.permissions().clone());
+            }
+            let Ok(checked) = crate::workflow::validate(workflow.definition.clone(), &environment)
+            else {
+                return false;
+            };
+            crate::workflow::supported_configured_extension_password(checked.definition())
+                && registered.values().any(|guest| {
+                    crate::workflow::extension_gate::covers(guest, checked.definition())
+                })
+        })
+    }
+}
+
 fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
     match name {
         "operations.postgresql" => config.postgres.is_some(),
@@ -693,9 +731,10 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         "operations.vault_transit_signing" => !config.signers.is_empty(),
         "access.temporary_entitlements" => !config.pam_approvers.is_empty(),
         "ssf.push" => facts.ssf_stream,
-        // The host exists, but nothing in configuration or the executor registers
-        // or runs a stage. Advertising it as usable would skip that gate.
-        "workflow.controlled_extensions" => false,
+        // True only for one active validated extension-then-password workflow
+        // whose admitted manifest covers that stage. The flag does not run the
+        // guest or widen it: no imports, no network, fuel-only timeout.
+        "workflow.controlled_extensions" => controlled_extensions_configured(config),
         // Shared local protocols and Platform routes with no instance-wide
         // prerequisite can serve an authorized request immediately.
         _ => true,
@@ -1422,6 +1461,311 @@ mod tests {
         assert_eq!(state["reason"], "not_configured");
         assert!(
             !runtime(&core).unwrap()["features"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(CAPABILITY))
+        );
+    }
+
+    #[test]
+    fn controlled_extensions_follow_the_supported_guest() {
+        use crate::workflow::extension::CAPABILITY;
+        use crate::workflow::extension_gate::fixture;
+
+        assert_eq!(agent::FEATURES.len(), 87);
+        assert_eq!(agent::PLATFORM_FEATURES.len(), 27);
+        assert_eq!(
+            agent::FEATURES
+                .iter()
+                .filter(|name| !agent::PLATFORM_FEATURES.contains(name))
+                .count(),
+            60
+        );
+        assert!(
+            agent::PLATFORM_FEATURES
+                .iter()
+                .all(|name| agent::FEATURES.contains(name))
+        );
+
+        let active = supported_extension_config(true);
+        let manifest = &active.workflow_extensions["risk-check"];
+        assert!(manifest.contains("\"permissions\":[\"read_profile\"]"));
+        assert!(manifest.contains("\"network\":\"deny\""));
+        active.validate().unwrap();
+        assert!(configured(CAPABILITY, &active, &Facts::default()));
+
+        let inactive = supported_extension_config(false);
+        inactive.validate().unwrap();
+        assert!(!configured(CAPABILITY, &inactive, &Facts::default()));
+
+        let mut manifest_only = Config::default();
+        manifest_only.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
+        );
+        manifest_only.validate().unwrap();
+        assert!(!configured(
+            CAPABILITY,
+            &manifest_only,
+            &Facts::default()
+        ));
+
+        let mut mismatched_key = active.clone();
+        let stored = mismatched_key.workflows.remove("risk-route").unwrap();
+        mismatched_key
+            .workflows
+            .insert("other-route".into(), stored);
+        assert!(!configured(
+            CAPABILITY,
+            &mismatched_key,
+            &Facts::default()
+        ));
+
+        let mut rejected = active.clone();
+        rejected.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(&fixture::allow(), |value| {
+                value["module_sha256"] = json!("ab".repeat(32));
+            }))
+            .unwrap(),
+        );
+        assert!(!configured(CAPABILITY, &rejected, &Facts::default()));
+
+        let mut uncovered = active.clone();
+        uncovered.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(&fixture::allow(), |value| {
+                value["max_output_bytes"] = json!(64);
+            }))
+            .unwrap(),
+        );
+        assert!(!configured(CAPABILITY, &uncovered, &Facts::default()));
+
+        let mut other_stage = active.clone();
+        other_stage.workflow_extensions.clear();
+        other_stage.workflow_extensions.insert(
+            "other-stage".into(),
+            String::from_utf8(fixture::document(&fixture::allow(), |value| {
+                value["stage"] = json!("other-stage");
+            }))
+            .unwrap(),
+        );
+        assert!(!configured(CAPABILITY, &other_stage, &Facts::default()));
+
+        let mut unsupported = password_only_config();
+        unsupported.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
+        );
+        unsupported.validate().unwrap();
+        assert!(!configured(CAPABILITY, &unsupported, &Facts::default()));
+
+        let mut mixed = unsupported.clone();
+        let parked = supported_extension_config(false);
+        mixed.workflows.extend(parked.workflows);
+        mixed.workflow_extensions = parked.workflow_extensions;
+        mixed.validate().unwrap();
+        assert!(!configured(CAPABILITY, &mixed, &Facts::default()));
+
+        let started = started_runtime(active);
+        let state = &started["feature_states"][CAPABILITY];
+        assert_eq!(state["compiled"], true);
+        assert_eq!(state["enabled"], true);
+        assert_eq!(state["configured"], true);
+        assert_eq!(state["runtime_ready"], Value::Null);
+        assert_eq!(state["usable"], true);
+        assert_eq!(state["reason"], Value::Null);
+        assert!(
+            started["features"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(CAPABILITY))
+        );
+
+        for config in [inactive, unsupported] {
+            let started = started_runtime(config);
+            let state = &started["feature_states"][CAPABILITY];
+            assert_eq!(state["configured"], false);
+            assert_eq!(state["usable"], false);
+            assert_eq!(state["reason"], "not_configured");
+            assert!(
+                !started["features"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(CAPABILITY))
+            );
+        }
+    }
+
+    fn started_runtime(mut config: Config) -> Value {
+        let dir = tempfile::tempdir().unwrap();
+        config.data_dir = dir.path().into();
+        let core = Core::initialize(
+            config,
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        runtime(&core).unwrap()
+    }
+}
+
+#[cfg(test)]
+fn supported_extension_config(active: bool) -> Config {
+    use crate::workflow::extension_gate::fixture;
+    let definition = crate::workflow::parse(
+        json!({
+            "format": "riauth.workflow/v1",
+            "id": "risk-route",
+            "revision": 1,
+            "category": "authentication",
+            "origin": "configured",
+            "entry": "extension",
+            "limits": {"max_duration_seconds": 600, "max_executions": 4},
+            "steps": [
+                {
+                    "id": "extension",
+                    "action": {
+                        "type": "custom",
+                        "stage": "risk-check",
+                        "outputs": ["allow", "block"],
+                        "permissions": ["read_profile"],
+                        "max_output_bytes": 128
+                    },
+                    "max_attempts": 1,
+                    "timeout_seconds": 30,
+                    "cancellable": false,
+                    "transitions": [
+                        {"on": "allow", "to": "password"},
+                        {"on": "block", "to": "denied"},
+                        {"on": "failed", "to": "denied"}
+                    ]
+                },
+                {
+                    "id": "password",
+                    "action": {"type": "verify_password"},
+                    "max_attempts": 3,
+                    "timeout_seconds": 60,
+                    "cancellable": true,
+                    "transitions": [
+                        {"on": "verified", "to": "success"},
+                        {"on": "failed", "to": "denied"}
+                    ]
+                }
+            ],
+            "terminals": [
+                {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+                {"id": "denied", "outcome": "denied", "requires": []}
+            ]
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    let mut config = Config::default();
+    config.workflows.insert(
+        definition.id.as_str().to_owned(),
+        crate::workflow::ConfiguredWorkflow {
+            active,
+            definition,
+        },
+    );
+    config.workflow_extensions.insert(
+        "risk-check".into(),
+        String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
+    );
+    config
+}
+
+#[cfg(all(test, feature = "platform"))]
+fn password_only_config() -> Config {
+    let definition = crate::workflow::parse(
+        json!({
+            "format": "riauth.workflow/v1",
+            "id": "local-password",
+            "revision": 1,
+            "category": "authentication",
+            "origin": "configured",
+            "entry": "password",
+            "limits": {"max_duration_seconds": 600, "max_executions": 3},
+            "steps": [{
+                "id": "password",
+                "action": {"type": "verify_password"},
+                "max_attempts": 3,
+                "timeout_seconds": 120,
+                "cancellable": true,
+                "transitions": [
+                    {"on": "verified", "to": "success"},
+                    {"on": "failed", "to": "denied"}
+                ]
+            }],
+            "terminals": [
+                {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+                {"id": "denied", "outcome": "denied", "requires": []}
+            ]
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    let mut config = Config::default();
+    config.workflows.insert(
+        definition.id.as_str().to_owned(),
+        crate::workflow::ConfiguredWorkflow {
+            active: true,
+            definition,
+        },
+    );
+    config
+}
+
+#[cfg(all(test, not(feature = "platform")))]
+mod essentials_controlled_extensions {
+    use super::*;
+    use crate::model::NewUser;
+    use crate::workflow::extension::CAPABILITY;
+
+    #[test]
+    fn controlled_extensions_stay_unconfigured_without_platform() {
+        assert!(!compiled(CAPABILITY));
+        assert!(!compiled_for(
+            CAPABILITY,
+            crate::edition::Target::Essentials
+        ));
+        let populated = supported_extension_config(true);
+        assert!(!configured(CAPABILITY, &populated, &Facts::default()));
+        assert!(
+            !(compiled(CAPABILITY) && configured(CAPABILITY, &populated, &Facts::default()))
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let document = runtime(&core).unwrap();
+        let state = &document["feature_states"][CAPABILITY];
+        assert_eq!(state["compiled"], false);
+        assert_eq!(state["configured"], false);
+        assert_eq!(state["usable"], false);
+        assert_eq!(state["reason"], "not_compiled");
+        assert!(
+            !document["features"]
                 .as_array()
                 .unwrap()
                 .contains(&json!(CAPABILITY))

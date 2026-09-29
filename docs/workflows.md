@@ -951,9 +951,13 @@ not require a revision increase.
 
 ## Controlled extensions
 
-Platform compiles the capability `workflow.controlled_extensions`. The running
-instance reports it as not configured and not usable. This build rejects an
-attempt to disable that name. Essentials does not compile the capability.
+Platform compiles the capability `workflow.controlled_extensions`. A running
+instance reports that name configured and usable when one active workflow
+validates as the extension-then-password shape below and an admitted manifest
+covers its stage. A default configuration, an inactive workflow, an unsupported
+graph, or a rejected or non-covering manifest reports the name not configured
+and not usable. This build rejects an attempt to disable that name. Essentials
+does not compile the capability, so configured and usable stay false there.
 A custom stage with no checked manifest still fails configuration as an unknown
 stage. The one executable shape is the Wasmi guest documented below.
 
@@ -1094,7 +1098,9 @@ Rewriting both a stored definition and its fingerprint remains the existing
 store trust model; this hash stops a configuration-side module swap.
 
 Other custom graphs, other verifiers, and the Q02 engine adapter are still out
-of scope. The capability stays not configured and not usable.
+of scope. The capability is configured and usable for this active shape when
+the admitted manifest covers the stage. Default, inactive, unsupported, and
+Essentials configurations leave configured and usable false.
 
 ## Left to later work
 

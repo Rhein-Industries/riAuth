@@ -29,8 +29,9 @@ use std::{
 };
 
 /// Capability name in [`crate::agent::FEATURES`]. Platform compiles it. The
-/// instance report leaves it not configured, and this build cannot disable it,
-/// because the server path does not call [`Host`].
+/// instance report is configured only for one active extension-then-password
+/// workflow whose admitted manifest covers that stage. This build cannot
+/// disable the name. The server path does not call [`Host`].
 pub const CAPABILITY: &str = "workflow.controlled_extensions";
 pub const MAX_REGISTRATIONS: usize = 16;
 pub const MAX_IN_FLIGHT: usize = 4;
