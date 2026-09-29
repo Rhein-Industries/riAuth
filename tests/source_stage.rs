@@ -1543,6 +1543,201 @@ async fn workflow_source_evidence_is_bound_fresh_and_consumed_once() {
     );
 }
 
+/// A terminal source attempt loses its login and poll even when the source
+/// configuration is later restored. Only a new reservation may verify again.
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn workflow_source_retirement_survives_source_restore_and_allows_fresh_proof() {
+    use riauth::workflow::{Outcome, RunState};
+
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, false).await;
+    let alice = f.user("source-retirement-owner");
+    let link = f
+        .core
+        .source_start(
+            "upstream",
+            riauth::source::Start {
+                link: true,
+                authentication_transaction: None,
+            },
+            Some(&alice),
+        )
+        .unwrap();
+    upstream
+        .callback(&f, &link, "source-retirement-subject")
+        .await;
+    f.core
+        .source_finish(riauth::source::Finish {
+            credential: text(&link["credential"], "token"),
+            approve: true,
+            otp: None,
+        })
+        .unwrap();
+
+    let failed = f.core.workflow_source_start(&alice, "upstream").unwrap();
+    let failed_run: Value = f
+        .core
+        .store
+        .get("workflow_runs", &failed.workflow.id)
+        .unwrap()
+        .unwrap();
+    let failed_key = text(&failed_run["in_flight"]["source"], "login");
+    let mut failed_login: Value = f
+        .core
+        .store
+        .get("source_logins", &failed_key)
+        .unwrap()
+        .unwrap();
+    let failed_poll = text(&failed_login, "poll_hash");
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_polls", &failed_poll)
+            .unwrap()
+            .is_none()
+    );
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": failed.authorization_url}),
+            "source-retirement-subject",
+        )
+        .await;
+    failed_login = f
+        .core
+        .store
+        .get("source_logins", &failed_key)
+        .unwrap()
+        .unwrap();
+    failed_login["failed"] = json!(true);
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &failed_key, &failed_login))
+        .unwrap();
+    let failed_view = f
+        .core
+        .workflow_source_finish(&alice, &failed.workflow.id)
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &failed_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_polls", &failed_poll)
+            .unwrap()
+            .is_none()
+    );
+    if matches!(failed_view.state, RunState::Active { .. }) {
+        f.core.workflow_cancel(&alice, &failed.workflow.id).unwrap();
+    }
+
+    let cancelled = f.core.workflow_source_start(&alice, "upstream").unwrap();
+    let cancelled_run: Value = f
+        .core
+        .store
+        .get("workflow_runs", &cancelled.workflow.id)
+        .unwrap()
+        .unwrap();
+    let cancelled_key = text(&cancelled_run["in_flight"]["source"], "login");
+    let cancelled_login: Value = f
+        .core
+        .store
+        .get("source_logins", &cancelled_key)
+        .unwrap()
+        .unwrap();
+    let cancelled_poll = text(&cancelled_login, "poll_hash");
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": cancelled.authorization_url}),
+            "source-retirement-subject",
+        )
+        .await;
+    f.core
+        .workflow_cancel(&alice, &cancelled.workflow.id)
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &cancelled_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_polls", &cancelled_poll)
+            .unwrap()
+            .is_none()
+    );
+
+    let source: Value = f.core.store.get("sources", "upstream").unwrap().unwrap();
+    let mut disabled = source.clone();
+    disabled["enabled"] = json!(false);
+    f.core
+        .store
+        .write(|tx| tx.put("sources", "upstream", &disabled))
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| tx.put("sources", "upstream", &source))
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_source_finish(&alice, &failed.workflow.id)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_source_finish(&alice, &cancelled.workflow.id)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &failed_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &cancelled_key)
+            .unwrap()
+            .is_none()
+    );
+
+    let fresh = f.core.workflow_source_start(&alice, "upstream").unwrap();
+    upstream
+        .callback(
+            &f,
+            &json!({"authorization_url": fresh.authorization_url}),
+            "source-retirement-subject",
+        )
+        .await;
+    assert!(matches!(
+        f.core
+            .workflow_source_finish(&alice, &fresh.workflow.id)
+            .unwrap()
+            .state,
+        RunState::Finished {
+            outcome: Outcome::Authenticated,
+            ..
+        }
+    ));
+    assert!(
+        f.core
+            .workflow_source_finish(&alice, &fresh.workflow.id)
+            .is_err()
+    );
+}
+
 struct Upstream {
     source: riauth::source::Source,
     key: crypto::SigningKey,

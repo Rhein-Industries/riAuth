@@ -119,6 +119,10 @@ pub(crate) use source_stage::stage_resume_login;
 pub(crate) use source_stage::stage_resume_session;
 pub(crate) use source_stage::verify_stage_start_login;
 #[cfg(feature = "platform")]
+mod source_workflow;
+#[cfg(feature = "platform")]
+pub(crate) use source_workflow::SourceWorkflowTx;
+#[cfg(feature = "platform")]
 mod ssf;
 #[cfg(feature = "platform")]
 mod windows_login;

@@ -7,8 +7,6 @@ pub mod saml;
 mod saml_types;
 #[cfg(feature = "platform")]
 pub(crate) mod workflow;
-#[cfg(feature = "platform")]
-use crate::assembly::clear_browser_return;
 pub use crate::assembly::source_validate_identity as validate_identity;
 pub use crate::model::federation::SourceIdentity;
 use crate::{

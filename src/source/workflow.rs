@@ -3,6 +3,7 @@
 
 pub(crate) use super::WorkflowBinding as Binding;
 use super::*;
+use crate::assembly::SourceWorkflowTx;
 use crate::workflow::{
     Id,
     evidence::{SourceEvidence, SourceSession},
@@ -67,9 +68,8 @@ pub(crate) fn evidence_authority(
 ) -> Result<()> {
     authority(tx, pin, user)?;
     let source = enabled(tx, pin.source.as_str())?;
-    let link = tx
-        .get::<Link>("source_links", &evidence.link)?
-        .ok_or_else(Error::forbidden)?;
+    let storage = SourceWorkflowTx::new(tx);
+    let link = storage.link(&evidence.link)?.ok_or_else(Error::forbidden)?;
     if evidence.source != pin.source
         || evidence.fingerprint != pin.fingerprint
         || evidence.transaction.is_empty()
@@ -103,17 +103,14 @@ impl Core {
             None,
         )?;
         let key = digest(&started.state);
-        let mut login = tx
-            .get::<Login>("source_logins", &key)?
-            .ok_or_else(Error::forbidden)?;
+        let storage = SourceWorkflowTx::new(tx);
+        let mut login = storage.login(&key)?.ok_or_else(Error::forbidden)?;
         if login.fingerprint != pin.fingerprint || login.started_at < binding.started_at {
             return Err(Error::forbidden());
         }
         login.expires_at = login.expires_at.min(expires_at);
         login.workflow = Some(binding);
-        tx.put("source_logins", &key, &login)?;
-        // The ordinary CLI completion credential is neither returned nor usable.
-        tx.delete("source_polls", &login.poll_hash)?;
+        storage.bind_login(&key, &login)?;
         Ok((
             Attempt {
                 login: key,
@@ -133,8 +130,9 @@ pub(crate) fn consume(
     at: u64,
 ) -> Result<Verification> {
     authority(tx, pin, user)?;
-    let login = tx
-        .get::<Login>("source_logins", &attempt.login)?
+    let storage = SourceWorkflowTx::new(tx);
+    let login = storage
+        .login(&attempt.login)?
         .ok_or_else(Error::forbidden)?;
     if login.workflow.as_ref() != Some(binding)
         || login.source != pin.source.as_str()
@@ -221,8 +219,9 @@ pub(crate) fn authorization_identity(
             .source
             .as_ref()
             .ok_or_else(Error::forbidden)?;
-        let upstream: saml::UpstreamSession = tx
-            .get("saml_source_sessions", &session.id)?
+        let storage = SourceWorkflowTx::new(tx);
+        let upstream = storage
+            .upstream_session(&session.id)?
             .ok_or_else(Error::forbidden)?;
         if existing.id != evidence.source.as_str()
             || existing.fingerprint != evidence.fingerprint
@@ -246,13 +245,12 @@ pub(crate) fn authorization_identity(
 }
 
 pub(crate) fn discard(tx: &Tx<'_>, attempt: &Attempt, binding: &Binding) -> Result<()> {
-    if let Some(login) = tx.get::<Login>("source_logins", &attempt.login)? {
+    let storage = SourceWorkflowTx::new(tx);
+    if let Some(login) = storage.login(&attempt.login)? {
         if login.workflow.as_ref() != Some(binding) || login.nonce != attempt.nonce {
             return Err(Error::forbidden());
         }
-        super::clear_browser_return(tx, &login)?;
-        tx.delete("source_polls", &login.poll_hash)?;
-        tx.delete("source_logins", &attempt.login)?;
+        storage.discard_login(&attempt.login, &login)?;
     }
     Ok(())
 }

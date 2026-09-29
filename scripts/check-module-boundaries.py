@@ -802,6 +802,56 @@ def main() -> None:
                 or not re.search(r'audit\s*\(\s*tx\s*,\s*&actor\.id\s*,\s*"cloud_directory\.credential_verify"\s*,\s*scope\s*\)', record_raw)
             ):
                 errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
+        if path == SRC / "source/workflow.rs":
+            adapter = masked_rust_source(path.read_text())
+            port = (SRC / "assembly/source_workflow.rs").read_text()
+            assembly_root = (SRC / "assembly.rs").read_text()
+            bind = rust_function_body(port, "bind_login") or ""
+            retire = rust_function_body(port, "discard_login") or ""
+            compact_bind = re.sub(r"\s+", "", bind)
+            compact_retire = re.sub(r"\s+", "", retire)
+            uses = {
+                name: re.sub(r"\s+", "", rust_function_body(adapter, name) or "")
+                for name in (
+                    "evidence_authority", "begin_workflow_source", "consume",
+                    "authorization_identity", "discard",
+                )
+            }
+            if (
+                re.search(r"\btx\s*\.\s*(?:get|put|delete|list|maintenance_page)\b|\.\s*store\b", adapter)
+                or len(re.findall(r"\bSourceWorkflowTx::new\s*\(\s*tx\s*\)", adapter)) != 5
+                or not all(
+                    operation in uses[name]
+                    for name, operation in (
+                        ("evidence_authority", "storage.link(&evidence.link)?"),
+                        ("begin_workflow_source", "storage.login(&key)?"),
+                        ("begin_workflow_source", "storage.bind_login(&key,&login)?"),
+                        ("consume", "storage.login(&attempt.login)?"),
+                        ("authorization_identity", "storage.upstream_session(&session.id)?"),
+                        ("discard", "storage.login(&attempt.login)?"),
+                        ("discard", "storage.discard_login(&attempt.login,&login)?"),
+                    )
+                )
+                or not all(
+                    re.search(rf"\bfn\s+{name}\s*\(", port)
+                    for name in ("link", "login", "upstream_session", "bind_login", "discard_login")
+                )
+                or not all(
+                    fragment in re.sub(r"\s+", "", port)
+                    for fragment in (
+                        'self.tx.get("source_links",key)',
+                        'self.tx.get("source_logins",key)',
+                        'self.tx.get("saml_source_sessions",session_id)',
+                    )
+                )
+                or not (0 <= compact_bind.find('self.tx.put("source_logins",key,login)?')
+                        < compact_bind.find('self.tx.delete("source_polls",&login.poll_hash)'))
+                or not (0 <= compact_retire.find("super::clear_browser_return(self.tx,login)?")
+                        < compact_retire.find('self.tx.delete("source_polls",&login.poll_hash)?')
+                        < compact_retire.find('self.tx.delete("source_logins",key)'))
+                or not re.search(r'#\[cfg\(feature\s*=\s*"platform"\)\]\s*mod\s+source_workflow\s*;', assembly_root)
+            ):
+                errors.append("src/source/workflow.rs: workflow source storage belongs in assembly")
         if path == SRC / "source/saml.rs":
             saml_source = path.read_text()
             source_root = (SRC / "source.rs").read_text()
@@ -1643,10 +1693,6 @@ def main() -> None:
                 or clear_return is None
                 or not re.search(r'tx\.delete\s*\(\s*"source_returns"\s*,\s*token\s*\)', clear_return)
                 or not re.search(r"\bpub\(crate\)\s+use\s+source_finish::clear_browser_return\s*;", (SRC / "assembly.rs").read_text())
-                or not re.search(
-                    r'#\[cfg\(feature\s*=\s*"platform"\)\]\s*use\s+crate::assembly::clear_browser_return\s*;',
-                    path.read_text(),
-                )
             ):
                 errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
