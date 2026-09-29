@@ -2065,6 +2065,134 @@ async fn cancel_stage_binding_and_one_use_effects_commit_together() {
     f.assert_snapshot(&after);
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn resume_stage_charges_bad_factor_before_one_use_completion() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let alice = f.user("alice");
+    let link = f
+        .core
+        .source_start(
+            "upstream",
+            riauth::source::Start {
+                link: true,
+                authentication_transaction: None,
+            },
+            Some(&alice),
+        )
+        .unwrap();
+    upstream.callback(&f, &link, "subject-alice").await;
+    f.core
+        .source_finish(riauth::source::Finish {
+            credential: text(&link["credential"], "token"),
+            approve: true,
+            otp: None,
+        })
+        .unwrap();
+    let enrollment = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(&text(&enrollment, "secret"), "alice").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .unwrap();
+
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    let before_callback = f.snapshot().unwrap();
+    let pending = f
+        .core
+        .source_stage_resume(&stage_id, &authorization_id, None)
+        .unwrap();
+    assert_eq!(pending["status"], "pending");
+    assert_eq!(pending["code_issued"], false);
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, "wrong-authorization", None)
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    f.assert_snapshot(&before_callback);
+
+    upstream
+        .callback(&f, &prepared["source_stage"], "subject-alice")
+        .await;
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let login_key = text(&stage, "login_key");
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, Some("bad-code".into()))
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stage["used"], false);
+    assert_eq!(login["attempts"], 1);
+    assert!(codes(&f).is_empty());
+
+    let resumed = f
+        .core
+        .source_stage_resume(
+            &stage_id,
+            &authorization_id,
+            Some(totp.generate(now()).to_string()),
+        )
+        .unwrap();
+    assert_eq!(resumed["status"], "complete");
+    assert_eq!(resumed["code_issued"], true);
+    assert!(!resumed.to_string().contains("ri_session_"));
+    assert_eq!(codes(&f).len(), 1);
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stage["used"], true);
+    let audits = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        audits
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "source.stage_resume" && event["target"] == "upstream"
+            )
+            .count(),
+        1
+    );
+
+    let after = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage already used"
+    );
+    f.assert_snapshot(&after);
+}
+
 #[tokio::test]
 async fn upstream_account_must_match_the_bound_user_and_link_table() {
     let f = Fixture::new();

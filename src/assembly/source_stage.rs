@@ -4,6 +4,17 @@ use crate::{core::Core, error::Result};
 use serde_json::Value;
 
 impl Core {
+    pub fn source_stage_resume(
+        &self,
+        stage_id: &str,
+        authorization_id: &str,
+        otp: Option<String>,
+    ) -> Result<Value> {
+        // An inner failure can charge a wrong local code in the same transaction.
+        self.store
+            .write(|tx| self.resume_stage(tx, stage_id, authorization_id, otp.as_deref()))?
+    }
+
     pub fn source_stage_cancel(&self, stage_id: &str, authorization_id: &str) -> Result<Value> {
         self.store
             .write(|tx| self.cancel_stage(tx, stage_id, authorization_id))

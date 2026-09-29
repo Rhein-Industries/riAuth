@@ -1208,16 +1208,7 @@ impl Core {
             nonce: stage.nonce,
         })
     }
-    pub fn source_stage_resume(
-        &self,
-        stage_id: &str,
-        authorization_id: &str,
-        otp: Option<String>,
-    ) -> Result<Value> {
-        self.store
-            .write(|tx| self.resume_stage(tx, stage_id, authorization_id, otp.as_deref()))?
-    }
-    fn resume_stage(
+    pub(crate) fn resume_stage(
         &self,
         tx: &Tx<'_>,
         stage_id: &str,

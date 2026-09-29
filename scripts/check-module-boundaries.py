@@ -900,6 +900,25 @@ def main() -> None:
                 or not re.search(r"\bmod\s+source_stage\s*;", (SRC / "assembly.rs").read_text())
             ):
                 errors.append("src/source.rs: one-use source stage cancellation writer belongs in assembly")
+            source_stage_resume = rust_function_body(
+                masked_rust_source(source_stage_assembly), "source_stage_resume"
+            )
+            source_stage_resume_raw = rust_function_body(
+                source_stage_assembly, "source_stage_resume"
+            )
+            if (
+                rust_function_body(source_protocol, "source_stage_resume") is not None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+resume_stage\s*\(", source_protocol)
+                or source_stage_resume is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_stage_resume)
+                or source_stage_resume_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_stage_resume\s*\(", source_stage_assembly)
+                or not re.search(
+                    r"self\.store\s*\.\s*write\s*\(\s*\|tx\|\s*self\.resume_stage\s*\(\s*tx\s*,\s*stage_id\s*,\s*authorization_id\s*,\s*otp\.as_deref\s*\(\s*\)\s*\)\s*\)\s*\?",
+                    source_stage_resume_raw,
+                )
+            ):
+                errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
