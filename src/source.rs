@@ -188,9 +188,9 @@ pub(crate) struct WorkflowBinding {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Login {
+pub(crate) struct Login {
     source: String,
-    fingerprint: String,
+    pub(crate) fingerprint: String,
     poll_hash: String,
     verifier: String,
     nonce: String,
@@ -199,8 +199,8 @@ struct Login {
     target: Option<Identity>,
     authentication: Option<String>,
     claimed: bool,
-    result: Option<UpstreamIdentity>,
-    failed: bool,
+    pub(crate) result: Option<UpstreamIdentity>,
+    pub(crate) failed: bool,
     attempts: u32,
     /// Embedded authorization stage that must resume this login. Standalone logins leave this empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -228,7 +228,7 @@ fn legacy_browser_return_confirmed() -> bool {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct UpstreamIdentity {
+pub(crate) struct UpstreamIdentity {
     #[serde(default)]
     saml_session: Option<saml::UpstreamSession>,
     subject: String,
@@ -801,42 +801,7 @@ impl Core {
         let id = id.to_owned();
         let context = crate::context::HTTP_CONTEXT.try_with(Clone::clone).ok();
         tokio::task::spawn_blocking(move || {
-            crate::context::scope(context, || {
-                worker.store.write(|tx| {
-                    let mut current = tx
-                        .get::<Login>("source_logins", &digest(&state))?
-                        .ok_or_else(|| Error::bad("Source request expired"))?;
-                    // Identity was checked against the keys captured at claim. A replacement
-                    // committed before this write must not be stored for a later rollback.
-                    let trust_changed = match tx.get::<Source>("sources", &id)? {
-                        Some(source) => match source.fingerprint() {
-                            Ok(fingerprint) => fingerprint != current.fingerprint,
-                            Err(_) => true,
-                        },
-                        None => true,
-                    };
-                    match result {
-                        Ok(identity) if !trust_changed => current.result = Some(identity),
-                        _ => {
-                            current.failed = true;
-                            current.result = None;
-                        }
-                    }
-                    tx.put("source_logins", &digest(&state), &current)?;
-                    audit(
-                        tx,
-                        "upstream",
-                        if current.failed {
-                            "source.login_failed"
-                        } else {
-                            "source.authenticated"
-                        },
-                        &id,
-                    )?;
-                    // Never put a CLI session or completion credential in a browser response.
-                    callback_body(tx, &current, &digest(&state))
-                })
-            })
+            crate::context::scope(context, || worker.source_callback_record(state, id, result))
         })
         .await
         .map_err(Error::internal)?
@@ -1735,7 +1700,7 @@ fn clear_browser_return(tx: &Tx<'_>, pending: &Login) -> Result<()> {
     Ok(())
 }
 
-fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
+pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {
     let mut body = json!({
         "completed": !pending.failed,
         "instruction": "Return to the CLI to inspect and finish the request"

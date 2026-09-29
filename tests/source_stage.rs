@@ -2193,6 +2193,103 @@ async fn resume_stage_charges_bad_factor_before_one_use_completion() {
     f.assert_snapshot(&after);
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn source_stage_callback_result_commits_failure_and_success_once() {
+    let f = Fixture::new();
+    let upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    let url = url::Url::parse(
+        prepared["source_stage"]["authorization_url"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let state = url
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1
+        .to_string();
+    let callback = || {
+        f.core.source_callback(
+            "upstream",
+            vec![
+                ("state".into(), state.clone()),
+                ("iss".into(), "https://wrong-source.example.test".into()),
+                ("code".into(), "never-redeem".into()),
+            ],
+            None,
+        )
+    };
+
+    let failed = callback().await.unwrap();
+    assert_eq!(failed["completed"], false);
+    assert_eq!(failed["source_stage"]["stage_id"], stage_id);
+    assert!(failed.get("session_token").is_none());
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &digest(&state))
+        .unwrap()
+        .unwrap();
+    assert_eq!(login["claimed"], true);
+    assert_eq!(login["failed"], true);
+    assert!(login["result"].is_null());
+    assert!(codes(&f).is_empty());
+    let audits = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        audits
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "source.login_failed" && event["target"] == "upstream"
+            )
+            .count(),
+        1
+    );
+    let after_failure = f.snapshot().unwrap();
+    assert_eq!(
+        callback().await.unwrap_err().message,
+        "Source request expired, changed or already used"
+    );
+    assert!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .is_err()
+    );
+    f.assert_snapshot(&after_failure);
+
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request).unwrap();
+    let authenticated = upstream
+        .callback(&f, &prepared["source_stage"], "subject-2")
+        .await;
+    assert_eq!(authenticated["completed"], true);
+    assert_eq!(
+        authenticated["source_stage"]["stage_id"],
+        prepared["source_stage"]["stage_id"]
+    );
+    assert!(authenticated.get("session_token").is_none());
+    let audits = f.core.audit_events(&f.admin, 100).unwrap();
+    assert_eq!(
+        audits
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(
+                |event| event["action"] == "source.authenticated" && event["target"] == "upstream"
+            )
+            .count(),
+        1
+    );
+}
+
 #[tokio::test]
 async fn upstream_account_must_match_the_bound_user_and_link_table() {
     let f = Fixture::new();

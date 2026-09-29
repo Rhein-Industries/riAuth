@@ -919,6 +919,39 @@ def main() -> None:
                 )
             ):
                 errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
+            source_callback = rust_function_body(source_protocol, "source_callback")
+            source_callback_raw = rust_function_body(path.read_text(), "source_callback")
+            callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
+            callback_record = rust_function_body(
+                masked_rust_source(callback_assembly), "source_callback_record"
+            )
+            callback_record_raw = rust_function_body(
+                callback_assembly, "source_callback_record"
+            )
+            callback_record_compact = re.sub(r"\s+", "", callback_record or "")
+            if (
+                source_callback is None
+                or len(re.findall(r"\bworker\.store\.write\s*\(", source_callback)) != 1
+                or source_callback_raw is None
+                or not re.search(
+                    r"context::scope\s*\(\s*context\s*,\s*\|\|\s*worker\.source_callback_record\s*\(\s*state\s*,\s*id\s*,\s*result\s*\)",
+                    source_callback_raw,
+                )
+                or rust_function_body(source_protocol, "source_callback_record") is not None
+                or callback_record is None
+                or not (0 <= callback_record_compact.find("self.store.write")
+                        < callback_record_compact.find("tx.get::<Login>")
+                        < callback_record_compact.find("tx.get::<Source>")
+                        < callback_record_compact.find("matchresult")
+                        < callback_record_compact.find("tx.put")
+                        < callback_record_compact.find("audit")
+                        < callback_record_compact.find("callback_body"))
+                or callback_record_raw is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_callback_record\s*\(", callback_assembly)
+                or not re.search(r"current\.failed\s*=\s*true\s*;\s*current\.result\s*=\s*None", callback_record_raw)
+                or not re.search(r"\bmod\s+source_callback\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: post-verification callback write belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
