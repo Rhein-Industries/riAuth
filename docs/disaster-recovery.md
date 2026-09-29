@@ -11,6 +11,9 @@ defines the invalidation policy and the serving gate that every restore applies.
 [PostgreSQL and availability](availability.md) covers database-native backups and
 failover. This runbook adds no new commands or behaviour. Every command below exists
 in the current `riauth` or `riauth-maintenance` build.
+[Operational recovery decisions](operational-recovery.md) chooses which procedure
+to run, lists the preflight and the failure stops, and separates the recorded
+local drills from PostgreSQL PITR and peer recovery.
 
 ## What the archive holds
 

@@ -28,6 +28,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Configuration example](../examples/riauth.toml) | Base configuration; optional feature blocks are in their guides |
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
 | [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |
+| [Operational recovery](operational-recovery.md) | Which recovery procedure to run, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
 | [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
 | [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |

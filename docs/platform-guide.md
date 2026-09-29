@@ -889,9 +889,11 @@ Still outside this slice, as later tasks:
   The [Platform forward-auth recipe](recipes/platform-forward-auth.md) and
   the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md)
   are the D03 recipes written so far. The LDAP provider recipe is separate
-  from LDAP import. The other integration recipes (D03), emergency runbooks
-  beyond the entry points above (D04), and acceptance against category
-  targets (D05) are still open.
+  from LDAP import. The other integration recipes (D03) and acceptance
+  against category targets (D05) are still open. The first emergency
+  decision page is [operational recovery](operational-recovery.md) (D04).
+  The rest of D04 remains open; the backup commands in this guide remain
+  entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply
