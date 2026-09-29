@@ -26,9 +26,35 @@ index page. The script reads the administrator, the user list, and the group
 list before the timed passes and stops if they disagree with the directory it
 created.
 
-Database encryption is off. The listener is loopback HTTP without TLS.
-PostgreSQL, when selected, is a disposable loopback cluster with trust
-authentication, `sslmode=disable`, `local_unencrypted`, and pool size 8.
+By default the listener is loopback HTTP without TLS and database encryption
+is off. PostgreSQL, when selected in that default mode, is a disposable
+loopback cluster with trust authentication, `sslmode=disable`,
+`local_unencrypted`, and pool size 8.
+
+`--secure` is the other bounded mode. It keeps the same dataset, pace, and
+general-request estimate. It generates a fresh private CA, a server
+certificate whose SAN is `DNS:localhost` and `IP:127.0.0.1`, and a fresh
+`database_key_file` of 32 bytes in base64url without padding. The issuer is
+`https://127.0.0.1` on the same ephemeral port as the listener. The client
+trusts that CA, checks the hostname, and requires the handshake to fail for
+an unrelated CA and for the system trust store. Init receives
+`--database-key-file`. The TLS file paths are written into the private config
+before serve. The store format for that run is `aes256gcm-v1`.
+
+A secure PostgreSQL run listens with TLS and uses `scram-sha-256` on
+`hostssl` lines only. `local_unencrypted` is false. libpq preflight connects
+with `sslmode=verify-full`, `host=localhost`, `hostaddr=127.0.0.1`, and the
+private CA, and it must see server SSL on. The same preflight must fail for
+an unrelated CA and for `sslmode=disable`. The connection file riAuth reads
+uses `sslmode=require` with that host and hostaddr. This binary's parser
+accepts `disable`, `prefer`, and `require`, then the client sets
+`SslMode::Require`. rustls checks the hostname against the webpki roots and
+`ca_file`. Putting `sslmode=verify-full` in the file riAuth reads is rejected
+before connect. Product init with the unrelated CA must exit 6 with
+`storage_unavailable` and must not publish the config. Bootstrap sets the
+database credential with `initdb --pwfile` and a unix-socket `scram-sha-256`
+line, then reloads `pg_hba.conf` to the `hostssl` lines before either libpq
+preflight or riAuth init.
 
 A quiet pass sends the session read from one client. An interference pass
 repeats it while a second client sends `POST /api/groups` for empty groups,
@@ -101,7 +127,10 @@ supplied. The script still hashes the measured file and does not infer the
 compiler from it.
 
 Repeat with `--features platform` and, separately, `--backend postgresql` when
-`initdb`, `pg_ctl`, and `createdb` are installed. Keep the JSON from each run.
+`initdb`, `pg_ctl`, and `createdb` are installed. Add `--secure` for the
+private-CA HTTPS and `database_key_file` mode above. `--self-check` rejects
+that flag. A secure run needs `openssl` on `PATH`. A secure PostgreSQL run
+also needs `psql`. Keep the JSON from each run.
 Compare runs only when the commit, security settings, dataset, and hardware
 notes say they are the same measurement.
 
