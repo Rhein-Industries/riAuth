@@ -2,12 +2,14 @@ mod common;
 use common::{Fixture, PASSWORD, text};
 use riauth::{
     agent::{NewAgent, Permission},
-    crypto::{self, digest},
-    model::{Grant, User, UserPatch},
+    context::{self, RequestContext},
+    crypto::{self, digest, now},
+    model::{Grant, Group, User, UserPatch},
     oidc::TokenRequest,
+    pam::{AccessGrant, NewAccessRequest},
     windows_login::{EnrollDevice, WindowsLogin},
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 fn enroll(fx: &Fixture, id: &str, username: &str, offline_ttl: Option<u64>) -> Value {
     fx.core
@@ -729,5 +731,317 @@ fn device_writer_preserves_scope_binding_and_ticket_invalidation() {
             &rotated_ticket,
             &rebound_ticket,
         ],
+    );
+}
+
+#[test]
+fn agent_enrollment_fences_temporary_access_and_preserves_device_replay() {
+    let mut fx = Fixture::new();
+    let alice = fx.user("alice");
+    let bob = fx.user("bob");
+    fx.user("parent");
+    let approver = fx.user("approver");
+    fx.core.create_group(&fx.admin, "ops").unwrap();
+    fx.core
+        .config
+        .pam_approvers
+        .insert("ops".into(), ["approver".into()].into());
+    let created = fx
+        .core
+        .create_agent(
+            &fx.admin,
+            NewAgent {
+                id: "device-manager".into(),
+                permissions: ["laptop", "expiring-device"]
+                    .into_iter()
+                    .map(|id| Permission {
+                        action: "device.enroll".into(),
+                        resource: format!("device/{id}"),
+                    })
+                    .collect(),
+                ttl: 3600,
+                parent: Some("parent".into()),
+            },
+        )
+        .unwrap();
+    let agent = text(&created["credential"], "token");
+    let input = |id: &str, username: &str| EnrollDevice {
+        id: id.into(),
+        display_name: format!("{username} device"),
+        username: username.into(),
+        offline_ttl: Some(600),
+    };
+
+    let old = fx
+        .core
+        .windows_device_enroll(&fx.admin, input("laptop", "alice"))
+        .unwrap();
+    let old_secret = text(&old, "device_secret");
+    let old_offline = text(&old, "offline_ticket");
+    let old_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "alice",
+            &old_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+    let request = fx
+        .core
+        .request_access(
+            &alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Temporary device access".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = fx
+        .core
+        .decide_access(&approver, &text(&request, "id"), true)
+        .unwrap();
+    let grant_id = text(&decision["grant"], "id");
+    let alice_id = text(&fx.core.me(&alice).unwrap()["user"], "id");
+    assert_eq!(fx.core.me(&alice).unwrap()["groups"], json!(["ops"]));
+    let before = fx.snapshot().unwrap();
+    assert_eq!(
+        fx.core
+            .windows_device_enroll(&agent, input("laptop", "alice"))
+            .unwrap_err()
+            .status
+            .as_u16(),
+        403
+    );
+    fx.assert_snapshot(&before);
+    assert!(
+        fx.core
+            .store
+            .get::<Value>("support_credential_exposure", &alice_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        fx.core
+            .windows_offline_verify(&old_secret, &old_offline)
+            .is_ok()
+    );
+    assert!(fx.core.windows_ticket_redeem(&old_ticket).is_ok());
+    assert!(
+        !fx.core
+            .store
+            .get::<Group>("groups", "ops")
+            .unwrap()
+            .unwrap()
+            .members
+            .contains(&alice_id)
+    );
+
+    let pending_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "alice",
+            &old_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+    fx.core.revoke_access(&approver, &grant_id).unwrap();
+    assert_eq!(fx.core.me(&alice).unwrap()["groups"], json!([]));
+    let revision = fx
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
+    let receipt = RequestContext {
+        idempotency_key: Some("device-after-revoke".into()),
+        fingerprint: "laptop-alice-v1".into(),
+        revision: Some(revision),
+        ..Default::default()
+    };
+    let rotate = || {
+        fx.core
+            .windows_device_enroll(&agent, input("laptop", "alice"))
+    };
+    let rotated = context::scope(Some(receipt.clone()), rotate).unwrap();
+    let new_secret = text(&rotated, "device_secret");
+    assert_ne!(old_secret, new_secret);
+    assert!(
+        fx.core
+            .windows_offline_verify(&old_secret, &old_offline)
+            .is_err()
+    );
+    assert!(fx.core.windows_ticket_redeem(&pending_ticket).is_err());
+    assert!(
+        login(
+            &fx,
+            "laptop",
+            "alice",
+            &old_secret,
+            Some(PASSWORD),
+            None,
+            None
+        )
+        .is_err()
+    );
+    let new_ticket = text(
+        &login(
+            &fx,
+            "laptop",
+            "alice",
+            &new_secret,
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .unwrap(),
+        "signin_ticket",
+    );
+    assert_eq!(
+        context::scope(Some(receipt.clone()), rotate).unwrap(),
+        rotated
+    );
+    let mut changed = receipt.clone();
+    changed.fingerprint = "laptop-alice-changed-body".into();
+    let mut changed_input = input("laptop", "alice");
+    changed_input.display_name = "Alice changed device".into();
+    assert_eq!(
+        context::scope(Some(changed), || {
+            fx.core.windows_device_enroll(&agent, changed_input)
+        })
+        .unwrap_err()
+        .status
+        .as_u16(),
+        409
+    );
+    assert!(
+        fx.core
+            .store
+            .get::<Value>("support_credential_exposure", &alice_id)
+            .unwrap()
+            .is_some()
+    );
+    let events = fx.core.audit_events(&fx.admin, 100).unwrap();
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| { event["action"] == "device.enroll" && event["target"] == "laptop" })
+            .count(),
+        2
+    );
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "agent.credential_exposure" && event["target"] == alice_id
+            })
+            .count(),
+        1
+    );
+    fx.core.windows_device_revoke(&agent, "laptop").unwrap();
+    assert!(fx.core.windows_ticket_redeem(&new_ticket).is_err());
+    assert!(
+        login(
+            &fx,
+            "laptop",
+            "alice",
+            &new_secret,
+            Some(PASSWORD),
+            None,
+            None
+        )
+        .is_err()
+    );
+    assert_eq!(context::scope(Some(receipt), rotate).unwrap(), rotated);
+
+    let exposed_request = fx
+        .core
+        .request_access(
+            &alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Exposed device credential".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        fx.core
+            .decide_access(&approver, &text(&exposed_request, "id"), true)
+            .unwrap_err()
+            .status
+            .as_u16(),
+        409
+    );
+    let expiry_request = fx
+        .core
+        .request_access(
+            &bob,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Short access".into(),
+                ttl: 60,
+            },
+        )
+        .unwrap();
+    let expiry_decision = fx
+        .core
+        .decide_access(&approver, &text(&expiry_request, "id"), true)
+        .unwrap();
+    let expiry_id = text(&expiry_decision["grant"], "id");
+    assert_eq!(
+        fx.core
+            .windows_device_enroll(&agent, input("expiring-device", "bob"))
+            .unwrap_err()
+            .status
+            .as_u16(),
+        403
+    );
+    fx.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &expiry_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &expiry_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(fx.core.me(&bob).unwrap()["groups"], json!([]));
+    let bob_id = text(&fx.core.me(&bob).unwrap()["user"], "id");
+    let post_expiry = fx
+        .core
+        .windows_device_enroll(&agent, input("expiring-device", "bob"))
+        .unwrap();
+    assert!(
+        fx.core
+            .store
+            .get::<Value>("support_credential_exposure", &bob_id)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        login(
+            &fx,
+            "expiring-device",
+            "bob",
+            &text(&post_expiry, "device_secret"),
+            Some(PASSWORD),
+            None,
+            None,
+        )
+        .is_ok()
     );
 }

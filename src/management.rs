@@ -875,6 +875,12 @@ pub(crate) fn enroll_windows_device(
             return Err(Error::conflict("User has too many Windows devices"));
         }
     }
+    if actor.agent {
+        // Enrollment discloses a device secret and can issue an offline ticket.
+        // Fence live temporary authority and record exposure before rotation
+        // replaces the previous secret or invalidates its sign-in tickets.
+        crate::delegation::mark_credential_exposure(&core.config, tx, &actor, &user)?;
+    }
     let secret = crypto::random_token("ri_windev_");
     let at = now();
     let device = Device {
