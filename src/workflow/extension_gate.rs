@@ -10,8 +10,12 @@
 //! `Config` has no epoch or interrupt control. `Store::call_hook` runs only
 //! when the host calls Wasm or Wasm calls a host function, and `call_resumable`
 //! pauses only when a host function returns an error. This guest has no
-//! imports, so a translated `route` runs on the caller until it returns or
-//! spends its fuel. Fuel is the instruction budget
+//! imports, so validation, translation, and `route` run on the caller until
+//! they return or the call spends its fuel. `route.call` holds `&mut Store`
+//! for that whole call, so another thread cannot drain its fuel. A detached
+//! guest thread would still be running after the caller continued, and
+//! stopping it requires `unsafe`, which this crate forbids. Fuel is the
+//! instruction budget
 //! `timeout_seconds * FUEL_PER_SECOND`. The engine installs
 //! `min(manifest fuel, that budget)` before the instance starts. When those
 //! two budgets are equal, fuel exhaustion is reported as `fuel`.
@@ -36,6 +40,13 @@
 //! would make the live length reach the height. The host reports that trap as
 //! `limit`. A frame that fits still runs on the caller until it returns or
 //! spends its fuel. The call depth stays [`GUEST_CALL_DEPTH`] frames.
+//!
+//! `route` returns a label length. [`super::Label`] is at most
+//! [`MAX_ROUTE_LABEL_BYTES`] bytes, so the host reads at most that many bytes
+//! from guest memory even when the manifest output cap is 4,096. It reads only
+//! a length that equals a declared label. A longer return is `output` and is
+//! not read. A shorter length that equals no declared label is
+//! `undeclared_output` and is not read.
 
 use super::{
     Action, Definition, Id, Label, MAX_CUSTOM_OUTPUT_BYTES, MAX_CUSTOM_OUTPUTS,
@@ -74,6 +85,11 @@ pub const GUEST_CALL_DEPTH: usize = 16;
 pub const MAX_INPUT_BYTES: u32 = 4_096;
 pub const MAX_TIMEOUT_SECONDS: u32 = MAX_CUSTOM_TIMEOUT_SECONDS;
 pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
+/// `workflow::Label` is at most this many bytes.
+///
+/// The host copies at most this many bytes from guest memory. A higher
+/// manifest `max_output_bytes` stays valid and does not enlarge the copy.
+pub const MAX_ROUTE_LABEL_BYTES: u32 = 32;
 /// Instruction budget charged for one manifest second. This is Wasmi fuel,
 /// not a wall-clock second.
 pub const FUEL_PER_SECOND: u64 = 1_000;
@@ -562,10 +578,23 @@ fn execute_guest(
         Ok(length) => length,
         Err(error) => return Err(classify(&error, timeout_tighter)),
     };
-    if length < 0 || u32::try_from(length).ok() > Some(bounds.max_output_bytes) {
+    // Manifest caps reach 4,096 bytes. A label is at most 32, so the copy stays there.
+    let Ok(reported) = u32::try_from(length) else {
+        return Err(Denial::Output);
+    };
+    let output_cap = bounds.max_output_bytes.min(MAX_ROUTE_LABEL_BYTES);
+    if reported > output_cap {
         return Err(Denial::Output);
     }
-    let mut output = vec![0u8; length as usize];
+    let reported = usize::try_from(reported).map_err(|_| Denial::Output)?;
+    if !checked
+        .outputs
+        .iter()
+        .any(|label| label.as_str().len() == reported)
+    {
+        return Err(Denial::UndeclaredOutput);
+    }
+    let mut output = vec![0u8; reported];
     if memory.read(&store, 0, &mut output).is_err() {
         zeroize::Zeroize::zeroize(output.as_mut_slice());
         return Err(Denial::Output);
@@ -987,6 +1016,28 @@ pub(crate) mod fixture {
         module(&[], &i32_const(5_000), &[])
     }
 
+    pub fn return_length(length: i32) -> Vec<u8> {
+        module(&[], &i32_const(length), &[])
+    }
+
+    /// Write `len` copies of `byte` at offset 0 and return that length.
+    pub fn repeated_label(byte: u8, len: usize) -> Vec<u8> {
+        let mut body = Vec::new();
+        let word = i32::from_le_bytes([byte, byte, byte, byte]);
+        let mut at = 0usize;
+        while at + 4 <= len {
+            body.extend(i32_const(i32::try_from(at).expect("offset")));
+            body.extend(i32_const(word));
+            body.extend([0x36, 0x02, 0x00]);
+            at += 4;
+        }
+        while at < len {
+            body.extend(store8(i32::try_from(at).expect("offset"), byte));
+            at += 1;
+        }
+        module(&body, &i32_const(i32::try_from(len).expect("length")), &[])
+    }
+
     pub fn undeclared() -> Vec<u8> {
         module(&store_label(*b"nope", None), &i32_const(4), &[])
     }
@@ -1343,6 +1394,9 @@ mod tests {
         assert_eq!(GUEST_VALUE_STACK_SLOTS, 64);
         assert_eq!(GUEST_CALL_DEPTH, 16);
         assert_eq!(GUEST_TRANSLATION_FUEL_PER_BYTE, 7);
+        assert_eq!(MAX_ROUTE_LABEL_BYTES, 32);
+        assert!(Label::new("a".repeat(32)).is_ok());
+        assert!(Label::new("a".repeat(33)).is_err());
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
         assert!(cargo.contains("dep:wasmi"));
@@ -1804,6 +1858,95 @@ mod tests {
                 .unwrap()
                 .as_str(),
             "allow"
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn the_host_reads_at_most_one_label_from_the_guest() {
+        let wide = StepBounds {
+            timeout_seconds: 30,
+            max_output_bytes: MAX_OUTPUT_BYTES,
+        };
+        let widen = |value: &mut serde_json::Value| {
+            value["max_output_bytes"] = serde_json::json!(MAX_OUTPUT_BYTES);
+        };
+        assert_eq!(
+            run(
+                &fixture::return_length(i32::try_from(MAX_OUTPUT_BYTES).unwrap()),
+                widen,
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                wide
+            )
+            .unwrap_err(),
+            Denial::Output
+        );
+        assert_eq!(
+            run(
+                &fixture::return_length(i32::try_from(MAX_ROUTE_LABEL_BYTES).unwrap() + 1),
+                widen,
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                wide
+            )
+            .unwrap_err(),
+            Denial::Output
+        );
+        assert_eq!(
+            run(
+                &fixture::return_length(i32::try_from(MAX_ROUTE_LABEL_BYTES).unwrap()),
+                widen,
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                wide
+            )
+            .unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        assert_eq!(
+            run(
+                &fixture::return_length(4),
+                widen,
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                wide
+            )
+            .unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        let label = "a".repeat(usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap());
+        assert_eq!(
+            run(
+                &fixture::repeated_label(b'a', usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap()),
+                |value| {
+                    widen(value);
+                    value["outputs"] = serde_json::json!([label.clone()]);
+                },
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                wide
+            )
+            .unwrap()
+            .as_str(),
+            label
+        );
+        assert_eq!(
+            run(
+                &fixture::repeated_label(b'a', usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap()),
+                |value| {
+                    value["max_output_bytes"] = serde_json::json!(MAX_ROUTE_LABEL_BYTES - 1);
+                    value["outputs"] = serde_json::json!([label]);
+                },
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                StepBounds {
+                    timeout_seconds: 30,
+                    max_output_bytes: MAX_ROUTE_LABEL_BYTES - 1,
+                }
+            )
+            .unwrap_err(),
+            Denial::Output
         );
     }
 

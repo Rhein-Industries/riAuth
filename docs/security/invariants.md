@@ -712,7 +712,11 @@ module. A later `execute` parses the bytes again, so each call pays the
 translation charge. A tighter step budget can still skip translation on the
 first call. A charge that fits still translates on the caller, without a
 wall-clock interrupt, and then `route` does too until it returns or spends
-the fuel that remains. Validation of a fitting body is not fuel-metered. Before
+the fuel that remains. Validation of a fitting body is not fuel-metered.
+`route.call` holds `&mut Store` until it returns, so another thread cannot
+drain that store's fuel. A detached guest thread would still be running after
+the caller continued, and stopping it requires `unsafe`, which this crate
+forbids. Before
 compilation the gate allows one `() -> i32` function, two exports, and at most
 32 i32 locals, and it rejects a data segment. At the call, Wasmi reserves a
 value stack of 64 `UntypedVal` slots (8 bytes each, at least 512 bytes) and
@@ -720,7 +724,11 @@ refuses a frame that would make the live length reach 64, before `Vec::reserve`.
 That trap is `limit`. `ResourceLimiter` does not cover this stack; it allows
 the one 65,536-byte linear memory and reports a further page as `failed`. A
 frame that fits still runs until it returns or spends its fuel. Output is one declared
-label or the built-in `failed` signal, and it is not a proof. The run binding
+label or the built-in `failed` signal, and it is not a proof. The host reads at most
+32 bytes of that label, and only when the returned length equals a declared label.
+A longer return is `output` and is not read, including when the manifest output cap
+is 4,096. A length inside that cap that equals no declared label is `undeclared_output`
+and is not read. The run binding
 stores the module hash beside the source-registration pin used by
 source-verifier runs. A changed manifest seals the open run before the new
 bytes can run. Essentials does not link Wasmi, rejects `workflow_extensions`,

@@ -1126,7 +1126,7 @@ stores a password receipt.
 | `fuel` | 1–10,000 Wasmi fuel units |
 | `memory_bytes` | Exactly 65,536, one WebAssembly page |
 | `max_input_bytes` | 1–4,096 projected identifier bytes |
-| `max_output_bytes` | 1–4,096 |
+| `max_output_bytes` | 1–4,096. The host copies at most 32 bytes, the maximum label length |
 | `timeout_seconds` | 1–30, as an instruction budget, not a wall-clock preemption |
 | `module_base64` | Standard base64, 1 byte through 65,536 |
 | `module_sha256` | 64 lowercase hex characters of the decoded module |
@@ -1193,16 +1193,23 @@ still exhaust on the first call and skips translation when the charge exceeds
 the fuel in the store. A charge that fits is translated entirely on the
 caller, then `route` runs until it returns or spends the fuel that remains.
 Validation of a body that fits is not fuel-metered. None of these steps
-preempts the caller at a wall-clock deadline. When the two budgets are equal,
+preempts the caller at a wall-clock deadline. `route.call` holds `&mut Store`
+until it returns, so another thread cannot drain that store's fuel. Validation
+and translation run on the same caller. A detached guest thread would still be
+running after the caller continued, and stopping it requires `unsafe`, which
+this crate forbids. When the two budgets are equal,
 or fuel is smaller,
 execution exhaustion is `fuel`. A timeout of 10 seconds or more cannot be
 tighter than the 10,000 fuel cap, so that execution exhaustion is `fuel`.
 
-`route` writes its label at offset 0 and returns the length. A negative length,
-or a length above the tighter of the step and manifest output caps, is
-`output`. Any other byte string, including a prefix of a declared label, is
-`undeclared_output`. The host zeroizes its copy. Bytes after the returned
-length are not read.
+`route` writes its label at offset 0 and returns the length. A workflow label
+is at most 32 bytes. The host reads guest memory only when that length equals
+one declared label and is within `min(step max_output_bytes, manifest
+max_output_bytes, 32)`. A negative length, or a length above that cap, is
+`output` and is not read. A length inside the cap that equals no declared
+label, including a prefix, is `undeclared_output` and is not read. The host
+zeroizes the copy it did read. Bytes after the returned length are not read.
+A manifest cap of 4,096 stays valid and does not raise the 32-byte copy.
 
 The host writes input only at offset 4,096, inside a 4,096-byte window: a
 little-endian record count, then `kind`, `length`, and bytes. Kinds are account
