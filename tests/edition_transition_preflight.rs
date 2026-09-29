@@ -86,7 +86,7 @@ fn already_essentials_source_has_no_executable_transition_plan() {
             && issue["reason"]
                 .as_str()
                 .unwrap()
-                .contains("marked Platform source")
+                .contains("marked platform source")
     }));
     let error = riauth::edition::activate(&config, riauth::edition::Target::Essentials, "stale")
         .unwrap_err();

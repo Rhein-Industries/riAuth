@@ -25,7 +25,10 @@ fn shared_records(snapshot: BTreeMap<String, Value>) -> BTreeMap<String, Value> 
         .filter(|(key, _)| {
             !matches!(
                 key.as_str(),
-                "meta/revision" | "meta/version_activation" | "meta/edition_provenance"
+                "meta/revision"
+                    | "meta/version_activation"
+                    | "meta/edition_provenance"
+                    | "meta/node_security"
             ) && !key.starts_with("meta/edition_transition_history/")
         })
         .collect()
@@ -86,6 +89,7 @@ fn marked_compatible_transition_cross_build() {
     )
     .unwrap();
     let original_provenance = baseline["meta/edition_provenance"].clone();
+    let original_security = baseline["meta/node_security"].clone();
     drop(core);
 
     // Unknown legacy source and both historical and current Platform authority
@@ -149,6 +153,39 @@ fn marked_compatible_transition_cross_build() {
         .unwrap();
     drop(store);
 
+    for mutation in ["absent", "legacy", "future", "policy", "active"] {
+        let store = Store::from_config(&config).unwrap();
+        store
+            .write(|tx| {
+                let mut changed = original_security.clone();
+                match mutation {
+                    "absent" => return tx.delete("meta", "node_security"),
+                    "legacy" => changed["format"] = json!(1),
+                    "future" => changed["format"] = json!(3),
+                    "policy" => changed["authentication"]["session_ttl"] = json!(1),
+                    "active" => changed["active_capabilities"] = json!([]),
+                    _ => unreachable!(),
+                }
+                tx.put("meta", "node_security", &changed)
+            })
+            .unwrap();
+        drop(store);
+        let (status, blocked) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+        assert_eq!(status, 5, "{mutation}: {blocked}");
+        assert!(
+            blocked["data"]["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|issue| { issue["resource"] == "meta/node_security" }),
+            "{mutation}: {blocked}"
+        );
+        Store::from_config(&config)
+            .unwrap()
+            .write(|tx| tx.put("meta", "node_security", &original_security))
+            .unwrap();
+    }
+
     let (status, direct) = run(
         &config_path,
         &["transition-preflight", "--target", "essentials"],
@@ -204,7 +241,53 @@ fn marked_compatible_transition_cross_build() {
         .to_owned();
     assert_ne!(token, stale_token);
 
+    // A row outside the edition metadata still invalidates the full-snapshot plan.
+    Store::from_config(&config)
+        .unwrap()
+        .write(|tx| tx.put("meta", "plan_probe", &json!({"changed": true})))
+        .unwrap();
+    let (status, stale) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            &token,
+        ],
+    );
+    assert_eq!(status, 5, "{stale}");
+    Store::from_config(&config)
+        .unwrap()
+        .write(|tx| tx.delete("meta", "plan_probe"))
+        .unwrap();
+
     let mut changed_config = config.clone();
+    changed_config.reviewed_client_creation = !config.reviewed_client_creation;
+    fs::write(
+        &config_path,
+        toml::to_string_pretty(&changed_config).unwrap(),
+    )
+    .unwrap();
+    let (status, stale) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            &token,
+        ],
+    );
+    assert_eq!(status, 5, "{stale}");
+    assert!(
+        stale["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("token"),
+        "{stale}"
+    );
+
     changed_config.session_ttl += 1;
     fs::write(
         &config_path,
@@ -238,17 +321,76 @@ fn marked_compatible_transition_cross_build() {
     assert_eq!(activated["data"]["activated_edition"], "essentials");
     let store = Store::from_config(&config).unwrap();
     let after = store.read(|tx| tx.snapshot()).unwrap();
-    assert_eq!(shared_records(after.clone()), shared_records(baseline));
+    drop(store);
+    assert_eq!(
+        shared_records(after.clone()),
+        shared_records(baseline.clone())
+    );
     assert_eq!(
         after["meta/edition_provenance"]["last_activated_edition"],
         "essentials"
     );
     assert_eq!(after["meta/version_activation"]["edition"], "essentials");
+    assert_eq!(after["meta/node_security"]["format"], 2);
+    assert_eq!(
+        after["meta/node_security"]["issuer"],
+        original_security["issuer"]
+    );
+    assert_eq!(
+        after["meta/node_security"]["authentication"],
+        original_security["authentication"]
+    );
+    assert_ne!(
+        after["meta/node_security"]["active_capabilities"],
+        original_security["active_capabilities"]
+    );
     let history = activated["data"]["history_record"].as_str().unwrap();
     assert_eq!(
         after[history]["source_provenance"]["last_activated_edition"],
         "platform"
     );
+
+    let error = Core::open(config.clone())
+        .err()
+        .expect("old Platform build must refuse Essentials activation");
+    assert!(error.message.contains("active capabilities"), "{error}");
+    let (status, upgrade) = run(&config_path, &["transition-plan", "--target", "platform"]);
+    assert_eq!(status, 0, "{upgrade}");
+    let upgrade_token = upgrade["data"]["transition_token"].as_str().unwrap();
+    let (status, upgraded) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "platform",
+            "--token",
+            upgrade_token,
+        ],
+    );
+    assert_eq!(status, 0, "{upgraded}");
+    assert_eq!(upgraded["data"]["activated_edition"], "platform");
+    let reopened = Core::open(config.clone()).unwrap();
+    reopened.store.ready().unwrap();
+    drop(reopened);
+    let (status, return_plan) = run(&config_path, &["transition-plan", "--target", "essentials"]);
+    assert_eq!(status, 0, "{return_plan}");
+    let return_token = return_plan["data"]["transition_token"].as_str().unwrap();
+    let (status, returned) = run(
+        &config_path,
+        &[
+            "transition-activate",
+            "--target",
+            "essentials",
+            "--token",
+            return_token,
+        ],
+    );
+    assert_eq!(status, 0, "{returned}");
+    let final_snapshot = Store::from_config(&config)
+        .unwrap()
+        .read(|tx| tx.snapshot())
+        .unwrap();
+    assert_eq!(shared_records(final_snapshot), shared_records(baseline));
 }
 
 #[cfg(not(feature = "platform"))]

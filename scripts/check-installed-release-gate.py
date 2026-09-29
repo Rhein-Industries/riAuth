@@ -303,11 +303,23 @@ def drill(binaries, root):
                 and result.get("issuer") == base and backup.is_file(),
                 "installed backup was not verified")
     before = cli(platform_binary["maintenance"], "--config", config,
-                 "transition-preflight", "--target", "platform")
-    require(before.get("ready") is True and before.get("store_schema") is not None
+                 "transition-preflight", "--target", "platform", expected=5)
+    before = before["data"]
+    require(before.get("ready") is False and before.get("store_schema") is not None
             and before.get("store_index_version") is not None
-            and before.get("last_activated_edition") == "essentials",
+            and before.get("last_activated_edition") == "essentials"
+            and "meta/node_security" in {item["resource"] for item in before["blockers"]},
             "Essentials store metadata did not preflight for Platform")
+    upgrade = cli(platform_binary["maintenance"], "--config", config,
+                  "transition-plan", "--target", "platform")
+    require(upgrade.get("ready") is True and upgrade.get("transition_token"),
+            "supported clean upgrade handoff unavailable")
+    upgraded = cli(platform_binary["maintenance"], "--config", config,
+                   "transition-activate", "--target", "platform",
+                   "--token", upgrade["transition_token"])
+    require(upgraded.get("activated_edition") == "platform"
+            and upgraded.get("target_revision", 0) > upgraded.get("source_revision", 0),
+            "installed maintenance upgrade handoff failed")
     with serving(platform_binary["server"], config, base, root / "platform.log"):
         require(get_json(base + "/oauth/jwks") == (200, jwks),
                 "Platform open changed signing keys")

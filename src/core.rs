@@ -216,13 +216,13 @@ impl Core {
                 "Configured issuer does not match the initialized instance",
             ));
         }
+        // Edition compatibility is read-only and must run before either migration
+        // or restored-lineage reconciliation mutates shared state.
+        crate::edition::validate_store(&store)?;
         // An existing agreement is compared before any startup write. A missing
         // row is recorded only after the read-only edition and capability gates,
         // so a refused build does not become canonical.
         crate::node_security::enforce(&config, &store)?;
-        // Edition compatibility is read-only and must run before either migration
-        // or restored-lineage reconciliation mutates shared state.
-        crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
         crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
