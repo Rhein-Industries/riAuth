@@ -2,7 +2,10 @@
 
 import importlib.util
 import json
+import os
 import pathlib
+import shutil
+import tempfile
 import unittest
 
 
@@ -100,3 +103,80 @@ class FixtureRun(unittest.TestCase):
         self.assertEqual(report["settings"]["tls"], False)
         with self.assertRaises(benchmark.SliceError):
             benchmark.main(["--self-check", "--out", "fixture.json"])
+
+
+PROBE_BINARY = """#!/usr/bin/env python3
+import json, os, sys
+record = {"argv0": sys.argv[0], "cwd": os.getcwd(), "args": sys.argv[1:]}
+with open(__LOG_PATH__, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(record) + "\\n")
+    handle.flush()
+if "capabilities" in sys.argv:
+    data = {
+        "schema_version": "riauth.capabilities/v2",
+        "edition": "platform",
+        "build_features": ["essentials", "platform"],
+        "version": "relative-path-probe",
+        "target": {"os": "probe", "arch": "probe"},
+        "interface": "server",
+    }
+elif "init" in sys.argv:
+    sys.stdin.read()
+    data = {"initialized": True}
+elif "serve" in sys.argv:
+    raise SystemExit(0)
+else:
+    raise SystemExit(2)
+json.dump({"schema_version": "riauth.cli/v1", "ok": True, "data": data}, sys.stdout)
+sys.stdout.write("\\n")
+"""
+
+
+class RelativeBinary(unittest.TestCase):
+    def test_missing_relative_binary_names_the_absolute_path(self):
+        relative = "target/debug/riauth-q09-missing"
+        self.assertFalse((pathlib.Path.cwd() / relative).exists())
+        with self.assertRaises(benchmark.SliceError) as caught:
+            benchmark.absolute_binary(relative)
+        message = str(caught.exception)
+        self.assertIn("binary is not a file:", message)
+        recorded = pathlib.Path(message.split(": ", 1)[1])
+        self.assertTrue(recorded.is_absolute())
+        self.assertEqual(recorded, (pathlib.Path.cwd() / relative).resolve())
+
+    def test_relative_binary_executes_from_the_instance_directory(self):
+        checkout = pathlib.Path(tempfile.mkdtemp(prefix="q09-relative-binary-"))
+        previous = os.getcwd()
+        try:
+            binary = checkout / "target" / "debug" / "riauth"
+            binary.parent.mkdir(parents=True)
+            log = checkout / "invocations.jsonl"
+            binary.write_text(PROBE_BINARY.replace("__LOG_PATH__", json.dumps(str(log))))
+            binary.chmod(0o755)
+            os.chdir(checkout)
+            resolved = benchmark.absolute_binary("target/debug/riauth")
+            self.assertEqual(resolved, binary.resolve())
+            self.assertTrue(resolved.is_absolute())
+            with self.assertRaises(benchmark.SliceError) as caught:
+                benchmark.run_slice("target/debug/riauth", "redb", 12, 1, 4)
+            message = str(caught.exception)
+            self.assertNotIn("No such file or directory", message)
+            self.assertNotIn("target/debug/riauth", message)
+            self.assertTrue(log.is_file(), message)
+            lines = [json.loads(line) for line in log.read_text().splitlines() if line]
+            phases = []
+            for item in lines:
+                phase = next((name for name in ("capabilities", "init", "serve") if name in item["args"]), "?")
+                phases.append(phase)
+                argv0 = pathlib.Path(item["argv0"])
+                self.assertTrue(argv0.is_absolute(), item)
+                self.assertEqual(argv0.resolve(), resolved)
+            self.assertEqual(phases, ["capabilities", "init", "serve"], message)
+            self.assertEqual(pathlib.Path(lines[0]["cwd"]).resolve(), benchmark.ROOT.resolve())
+            instance = pathlib.Path(lines[1]["cwd"]).resolve()
+            self.assertNotEqual(instance, checkout.resolve())
+            self.assertFalse((instance / "target" / "debug" / "riauth").exists())
+            self.assertEqual(pathlib.Path(lines[2]["cwd"]).resolve(), instance)
+        finally:
+            os.chdir(previous)
+            shutil.rmtree(checkout)

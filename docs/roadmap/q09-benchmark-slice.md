@@ -77,6 +77,11 @@ Repeat with `--features platform` and, separately, `--backend postgresql` when
 Compare runs only when the commit, security settings, dataset, and hardware
 notes say they are the same measurement.
 
+`--binary` may be relative to the current directory, such as
+`target/debug/riauth`. The script resolves that path to an absolute file
+before capabilities, init, or serve. init and serve use a disposable directory
+as their working directory, and the report records the absolute artifact path.
+
 ## Evidence for this slice
 
 The check that runs with the source is `--self-check` and

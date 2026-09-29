@@ -10,8 +10,9 @@ python3 scripts/q09_benchmark_slice.py --self-check
 python3 scripts/q09_benchmark_slice.py --binary PATH --backend redb --out FILE
 
 Build the binary in a private CARGO_TARGET_DIR with CARGO_INCREMENTAL=0.
-Do not use another worktree's target directory. --self-check does not start
-riAuth and does not publish timings.
+Do not use another worktree's target directory. A relative --binary is
+resolved from the caller's directory before any subprocess. --self-check
+does not start riAuth and does not publish timings.
 """
 
 import argparse
@@ -488,6 +489,17 @@ def stop_process(process, hidden):
     return scrub("".join(getattr(process, "q09_stderr", []))[-800:], hidden)
 
 
+def absolute_binary(binary):
+    """Resolve a supplied executable from the caller's current directory."""
+    path = Path(binary).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    path = path.resolve()
+    if not path.is_file():
+        raise SliceError(f"binary is not a file: {path}")
+    return path
+
+
 def argv_for(binary, args, fixture):
     if fixture:
         return [sys.executable, str(SCRIPT), "--fixture-mode", *args]
@@ -701,6 +713,7 @@ def run_slice(binary, backend, iterations, warmup, interference_cap, fixture=Fal
     if backend not in ("redb", "postgresql"):
         raise SliceError("backend must be redb or postgresql")
     budget = validate_shape(iterations, warmup, interference_cap)
+    binary = absolute_binary(binary)
     hidden = []
     source = source_identity()
     host = hardware()
