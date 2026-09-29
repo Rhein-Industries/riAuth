@@ -3,8 +3,8 @@
 use crate::{
     agent::Principal,
     cloud_directory::{
-        CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, CloudSnapshotDraft, ENTRA_SNAPSHOTS, Settings,
-        WORKSPACE_SNAPSHOTS,
+        CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, CloudSnapshotDraft, ENTRA_SNAPSHOTS, Entry,
+        Settings, WORKSPACE_SNAPSHOTS, materialize_completed_draft,
     },
     connector_guard::ReviewBinding,
     core::Core,
@@ -53,6 +53,21 @@ impl Core {
         self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", resource)?;
             Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
+        })
+    }
+
+    pub(crate) fn cloud_plan_materialize(
+        &self,
+        token: &str,
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: &str,
+        draft: &CloudSnapshotDraft,
+    ) -> Result<Vec<Entry>> {
+        self.store.read(|tx| {
+            self.cloud_snapshot_actor(tx, token, settings, &actor.id, revision, authority_digest)?;
+            materialize_completed_draft(tx, settings, draft)
         })
     }
 

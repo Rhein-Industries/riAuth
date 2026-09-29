@@ -1496,6 +1496,14 @@ fn materialize(tx: &Tx<'_>, settings: &Settings, users: Vec<RemoteUser>) -> Resu
     Ok(entries)
 }
 
+pub(crate) fn materialize_completed_draft(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    draft: &CloudSnapshotDraft,
+) -> Result<Vec<Entry>> {
+    materialize(tx, settings, draft.snapshot.clone().into_users())
+}
+
 fn membership(
     config: &crate::config::Config,
     tx: &Tx<'_>,
@@ -2004,17 +2012,14 @@ impl Core {
                     restarted,
                 );
             }
-            let entries = self.store.read(|tx| {
-                self.cloud_snapshot_actor(
-                    tx,
-                    token,
-                    &settings,
-                    &actor.id,
-                    revision,
-                    &authority_digest,
-                )?;
-                materialize(tx, &settings, draft.snapshot.clone().into_users())
-            })?;
+            let entries = self.cloud_plan_materialize(
+                token,
+                &settings,
+                &actor,
+                revision,
+                &authority_digest,
+                &draft,
+            )?;
             (entries, (key, prior, authority_digest))
         };
         let (changes, impact) = self.cloud_plan_preview(
