@@ -155,9 +155,11 @@ The worker was killed and reaped. Its probe port refused a connection, the gatew
 - The post-setup handoff uses the same duty gate. The setup ceremony itself
   was not exercised for a gateway.
 - Worker TLS uses the same HTTP server path and was not given its own test.
-- Embedded redb remains one owner. There is no mismatch detection between
-  processes, no shared-job coordinator, and no separate role binary.
+- Embedded redb remains one owner. Processes that open one store compare
+  the issuer and the compiled-and-enabled capability set. Listen address,
+  browser UI, and process role stay local. Shared-job coordination and a
+  separate role binary remain open. See [node security](o03-node-security.md).
 - O02’s file lock is unchanged. Splitting duties does not add a new guard
   for a second host that mounts the same redb volume.
-- O03 mismatch detection, operational dashboards, and a tested distributed
-  compose layout are outside this slice.
+- Operational dashboards and a tested distributed compose layout are outside
+  this slice.

@@ -136,6 +136,10 @@ The only `capabilities.disabled` entry either build accepts is
 known name fails with `Capability {name} cannot be disabled by this build`.
 Putting a Platform-only name in that list on Essentials fails earlier,
 because the name is not compiled ([`src/capability.rs`](../src/capability.rs)).
+On an initialized store, the compiled names that remain enabled are stored
+with the issuer ([`src/node_security.rs`](../src/node_security.rs)). A process
+whose set differs is refused before it binds. `configured` and
+`runtime_ready` stay local. See [node security](roadmap/o03-node-security.md).
 
 ## Runtime prerequisites
 

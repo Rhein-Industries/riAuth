@@ -36,6 +36,24 @@ RIAUTH_PG_TEST_TARGET=process_role_postgres ./scripts/test-postgres.sh
 
 The script passes `--locked --features test-support` and `--ignored`. The test checks loopback HTTP with no native TLS files, unencrypted loopback PostgreSQL (`sslmode=disable`), the same issuer on both processes, gateway discovery and JWKS, the worker's probe-only `not_served` surface, one failed back-channel logout delivery written while the worker is up, and gateway `/readyz` remaining successful with `duties.background_jobs` false while the worker is absent. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [process roles](roadmap/o01-process-roles.md).
 
+## Shared security agreement
+
+The issuer and active-capability comparison runs on the Platform build with:
+
+```sh
+cargo test --locked --offline --lib -- node_security:: --test-threads=2
+```
+
+It checks that listen address, `browser_ui`, and process role stay out of the stored agreement, that disabling `identity.device_trust` refuses a second open without rewriting the agreement, and that a missing or malformed agreement row fails closed.
+
+Two mismatched `riauth serve` processes against one disposable PostgreSQL database are selected separately:
+
+```sh
+RIAUTH_PG_TEST_TARGET=node_security_postgres ./scripts/test-postgres.sh
+```
+
+The script passes `--locked --features test-support` and `--ignored`. One gateway with another listen address and `browser_ui` false becomes ready with `duties.background_jobs` false. A capability mismatch and an issuer mismatch each exit 2, accept no TCP connection, and leave `riauth_store.records_v1` unchanged. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [node security](roadmap/o03-node-security.md).
+
 ## Backup memory measurement
 
 `scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.

@@ -473,6 +473,17 @@ fn compiled_for(name: &str, target: crate::edition::Target) -> bool {
     target == crate::edition::Target::Platform || !agent::PLATFORM_FEATURES.contains(&name)
 }
 
+/// Compiled names the operator left enabled. Listener files and runtime
+/// readiness stay out of this set so two roles can differ locally.
+pub(crate) fn active_compiled(config: &Config) -> BTreeSet<String> {
+    agent::FEATURES
+        .iter()
+        .copied()
+        .filter(|name| compiled(name) && config.capabilities.enabled(name))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Certificate assurance uses only public trust anchors and revocation data;
 /// discovery must not probe unrelated adapter secrets or the durable store.
 pub(crate) fn https_client_certificates_usable(config: &Config) -> bool {

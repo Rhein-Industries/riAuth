@@ -69,6 +69,7 @@ pub mod mtls;
 #[path = "mtls_essentials.rs"]
 pub mod mtls;
 mod mtls_config;
+pub mod node_security;
 #[cfg(feature = "platform")]
 pub mod offboarding;
 #[cfg(not(feature = "platform"))]

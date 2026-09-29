@@ -156,6 +156,7 @@ impl Core {
                 &crate::store::maintenance::INDEX_VERSION,
             )?;
             tx.put("meta", "issuer", &config.issuer)?;
+            crate::node_security::stamp(&config, tx)?;
             tx.put(
                 "meta",
                 "keys",
@@ -209,10 +210,15 @@ impl Core {
                 "Configured issuer does not match the initialized instance",
             ));
         }
+        // An existing agreement is compared before any startup write. A missing
+        // row is recorded only after the read-only edition and capability gates,
+        // so a refused build does not become canonical.
+        crate::node_security::enforce(&config, &store)?;
         // Edition compatibility is read-only and must run before either migration
         // or restored-lineage reconciliation mutates shared state.
         crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
+        crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
         store.write(crate::assembly::backfill_prepared_index)?;

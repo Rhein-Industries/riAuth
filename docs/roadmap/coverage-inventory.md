@@ -32,7 +32,7 @@ The journey level separates a module or endpoint from a complete user or operato
 
 ## Summary
 
-Backlog items: **4 preserve · 47 extend · 38 build · 5 verify** (94). Product capabilities: 3 preserve · 19 extend · 4 build · 5 verify (31).
+Backlog items: **4 preserve · 48 extend · 37 build · 5 verify** (94). Product capabilities: 3 preserve · 19 extend · 4 build · 5 verify (31).
 
 | Workstream | Items | preserve | extend | build | verify |
 | --- | --- | --- | --- | --- | --- |
@@ -43,14 +43,14 @@ Backlog items: **4 preserve · 47 extend · 38 build · 5 verify** (94). Product
 | P — Provisioning and lifecycle automation | 8 | · | 6 | 2 | · |
 | I — Protocols, connectors, and devices | 10 | · | 4 | 3 | 3 |
 | S — Storage and scaling | 6 | 1 | 4 | 1 | · |
-| O — Deployment, availability, and operations | 7 | 1 | 5 | 1 | · |
+| O — Deployment, availability, and operations | 7 | 1 | 6 | · | · |
 | R — Backup and recovery | 5 | · | 3 | 2 | · |
 | G — Migration | 5 | · | 3 | 2 | · |
 | Q — Security, testing, benchmarks, and releases | 11 | 1 | 4 | 4 | 2 |
 | D — Documentation and product acceptance | 5 | · | 3 | 2 | · |
 | X — Demand-driven extensions | 4 | · | · | 4 | · |
 
-Journey levels: `complete-local` 7, `module` 37, `none` 26, `partial` 23, `process` 1.
+Journey levels: `complete-local` 7, `module` 38, `none` 25, `partial` 23, `process` 1.
 
 ## Biggest verified gaps
 
@@ -291,7 +291,7 @@ Implementation and doc paths are relative to `src/` and `docs/` unless shown oth
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | O01 | Support integrated and optional split roles | P2 | **extend** | `partial` | Default `integrated` runs product HTTP, optional LDAP/RADIUS/proxy listeners, and background workers in one process. Explicit `gateway` and `worker` require `process.accept_partial_duties = true`. Gateway serves product HTTP and configured listeners and does not start background loops. Worker starts those loops, serves only `/livez`, `/readyz`, and `/healthz`, and refuses browser UI and protocol listeners. One ignored test starts those two roles as processes on one disposable PostgreSQL database (loopback HTTP, no native TLS, unencrypted loopback PostgreSQL) and watches one logout delivery. Embedded redb remains one owner. | `process_role.rs`, `config.rs`, `bootstrap.rs`, `api/server.rs`, `api.rs`, `api/probes.rs` | `tests/worker_capacity.rs`<br>`tests/process_role.rs`<br>`src/process_role.rs`<br>`tests/process_role_postgres.rs` (not in CI; `RIAUTH_PG_TEST_TARGET=process_role_postgres`) | `architecture.md`, `availability.md`, `operations.md`, `roadmap/o01-process-roles.md` | No peer check for omitted duties; gateway readiness does not require background loops; manual connector on a gateway request; redb stays one owner; PostgreSQL split-role run had no native TLS or standby promotion and asserted one logout delivery |
 | O02 | Preserve single-owner embedded storage | P0 | **preserve** | `partial` | redb is owned by one process, and its file lock blocks concurrent opens. Listeners are in-process. The remote CLI uses HTTP. Multi-node deployments use PostgreSQL. Local maintenance commands open the store directly and rely on that lock. `tests/process_role.rs` observes `storage_owned` when a second open targets the same redb file while the first process still holds it. The guard is still that file lock. | `store.rs`, `cli.rs` | `tests/identity/operations.rs`<br>`tests/process_role.rs` | `availability.md` | Guard remains implicit (file lock) once components split |
-| O03 | Coordinate multi-node configuration | P2 | **build** | `none` | Nothing detects capability or configuration mismatches between nodes (no source match). The docs require operators to coordinate `riauth.toml`, trust files, and restarts. The `forward_auth` rate limit is per node. | `store.rs` | `tests/rate_limits.rs` | `availability.md` | Mismatch detection; Shared-job/cache-freshness contract |
+| O03 | Coordinate multi-node configuration | P2 | **extend** | `module` | Initialization stores the issuer and the compiled-and-enabled capability set. A later process with a different issuer or active set exits 2 before it binds. One disposable PostgreSQL run left every committed record unchanged while a gateway with another listen address and `browser_ui` false stayed ready with `duties.background_jobs` false. Shared jobs, the in-memory `forward_auth` rate limit, and cache freshness remain per process. | `node_security.rs`, `core.rs`, `capability.rs` | `src/node_security.rs`<br>`tests/node_security_postgres.rs` (not in CI; `RIAUTH_PG_TEST_TARGET=node_security_postgres`)<br>`tests/rate_limits.rs` | `availability.md`, `testing.md`, `roadmap/o03-node-security.md` | Shared-job leases; Per-node forward_auth rate limit; Cache freshness; Agreement omits token lifetimes, password policy, trusted proxies, signer files, and the database encryption key; Legacy stores adopt the first successful opener; PostgreSQL refusal had no native TLS and is not in CI |
 | O04 | Make upgrades and rollback explicit | P0 | **extend** | `partial` | Schema v3 upgrades atomically and rejects future versions. The documented procedure is: stop all older writers, back up, upgrade, and roll back by restore. There is no mixed-version operation or feature activation. | `upgrade.rs`, `store/maintenance.rs` | `tests/identity/operations.rs`<br>`tests/operations.rs` | `operations.md`, `release-notes.md` | Mixed-version rules; Readiness gating on activation |
 | O05 | Bound overload and isolate background work | P2 | **extend** | `complete-local` | The admission model is 8 worker permits, 4 credential permits, and 16 forward-auth permits, with a 2 s queue wait before 503. Probes bypass quotas. Background workers run sequential loops. Connector isolation from sign-in is not measured. | `api.rs`, `api/probes.rs`, `api/rates.rs`, `api/server.rs` | `tests/worker_capacity.rs`<br>`tests/outpost_traefik.rs`<br>`src/api/probes.rs`<br>`tests/operations.rs` | `architecture.md`, `operations.md` | Background-job isolation evidence |
 | O06 | Build operational dashboards and diagnostics | P2 | **extend** | `module` | Available now: Prometheus metrics, `doctor`, delivery endpoints (`/api/operations/logout`, `/mail`), an alert rules template, and an alert webhook. There are no dashboards, no connector-lag or node-mismatch signals, and incomplete offboarding is not surfaced. | `operations.rs`, `telemetry.rs`, `deploy/prometheus.yml`, `deploy/riauth-alerts.yml` | `tests/operations.rs` | `operations.md`, `enterprise/PLATFORM-04.md` | Dashboards; Connector/offboarding diagnostics |

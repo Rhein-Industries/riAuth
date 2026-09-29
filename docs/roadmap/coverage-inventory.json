@@ -28,15 +28,15 @@
   },
   "counts": {
     "items_by_label": {
-      "build": 38,
-      "extend": 47,
+      "build": 37,
+      "extend": 48,
       "preserve": 4,
       "verify": 5
     },
     "items_by_journey": {
       "complete-local": 7,
-      "module": 37,
-      "none": 26,
+      "module": 38,
+      "none": 25,
       "partial": 23,
       "process": 1
     },
@@ -2714,27 +2714,55 @@
         "A06",
         "Q02"
       ],
-      "label": "build",
-      "journey": "none",
-      "current_state": "Nothing detects capability or configuration mismatches between nodes (no source match). The docs require operators to coordinate `riauth.toml`, trust files, and restarts. The `forward_auth` rate limit is per node.",
+      "label": "extend",
+      "journey": "module",
+      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer or active set exits 2 before it binds. tests/node_security_postgres.rs starts one gateway and two mismatched serve processes on one disposable PostgreSQL database; both mismatches exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. Shared jobs, the in-memory forward_auth rate limit, and cache freshness remain per process.",
       "implementation": [
-        "src/store.rs"
+        "src/node_security.rs",
+        "src/core.rs",
+        "src/capability.rs"
       ],
       "tests_existing": [
+        {
+          "ref": "src/node_security.rs::agreement_tracks_issuer_and_active_capabilities_only",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/node_security.rs::open_refuses_a_different_active_set_without_rewriting_the_store",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/node_security_postgres.rs::capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
         {
           "ref": "tests/rate_limits.rs::a_full_shared_rate_table_evicts_its_oldest_window",
           "kind": "rust",
           "ci": "ci-check"
         }
       ],
-      "tests_run_in_this_task": [],
+      "tests_run_in_this_task": [
+        "node_security::tests::agreement_tracks_issuer_and_active_capabilities_only",
+        "node_security::tests::open_refuses_a_different_active_set_without_rewriting_the_store",
+        "capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres"
+      ],
       "documentation": [
-        "docs/availability.md"
+        "docs/availability.md",
+        "docs/testing.md",
+        "docs/roadmap/o03-node-security.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Mismatch detection",
-        "Shared-job/cache-freshness contract"
+        "Shared-job leases",
+        "Per-node forward_auth rate limit",
+        "Cache freshness",
+        "Agreement omits token lifetimes, password policy, trusted proxies, signer files, and the database encryption key",
+        "Legacy stores adopt the first successful opener",
+        "PostgreSQL refusal used loopback HTTP without native TLS and unencrypted loopback PostgreSQL",
+        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres"
       ],
       "unverified": []
     },
