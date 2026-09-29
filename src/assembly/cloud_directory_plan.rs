@@ -81,6 +81,34 @@ impl Core {
         })
     }
 
+    pub(crate) fn cloud_apply_snapshot_stage(
+        &self,
+        token: &str,
+        settings: &Settings,
+        plan: &Plan,
+        reviewed_plan: Option<&str>,
+        key: &str,
+        prior: Option<(String, u64)>,
+        apply: CloudApplyDraft,
+        restarted: bool,
+    ) -> Result<Value> {
+        self.store.write(|tx| {
+            self.cloud_apply_actor(tx, token, settings, plan, reviewed_plan)?;
+            let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, key)?;
+            if current
+                .as_ref()
+                .map(|apply| (&apply.draft.id, apply.draft.sequence))
+                != prior.as_ref().map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "Cloud apply snapshot advanced concurrently; resume the latest cursor",
+                ));
+            }
+            tx.put(CLOUD_APPLY_SNAPSHOTS, key, &apply)?;
+            Ok(apply.progress(restarted))
+        })
+    }
+
     pub(crate) fn cloud_reconcile_pending(
         &self,
         token: &str,

@@ -1338,7 +1338,7 @@ impl CloudApplyDraft {
         Ok(())
     }
 
-    fn progress(&self, restarted: bool) -> Value {
+    pub(crate) fn progress(&self, restarted: bool) -> Value {
         let mut progress = self.draft.progress(restarted);
         progress["plan_id"] = json!(self.plan_id);
         progress["operation"] = json!("apply_validation");
@@ -2207,21 +2207,16 @@ impl Core {
             apply.draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
             apply.bounded(&settings)?;
             if !apply.draft.snapshot.complete(&settings) {
-                return self.store.write(|tx| {
-                    self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
-                    let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
-                    if current
-                        .as_ref()
-                        .map(|apply| (&apply.draft.id, apply.draft.sequence))
-                        != prior.as_ref().map(|(id, sequence)| (id, *sequence))
-                    {
-                        return Err(Error::conflict(
-                            "Cloud apply snapshot advanced concurrently; resume the latest cursor",
-                        ));
-                    }
-                    tx.put(CLOUD_APPLY_SNAPSHOTS, &key, &apply)?;
-                    Ok(apply.progress(restarted))
-                });
+                return self.cloud_apply_snapshot_stage(
+                    token,
+                    &settings,
+                    &plan,
+                    reviewed_plan,
+                    &key,
+                    prior,
+                    apply,
+                    restarted,
+                );
             }
             let entries = self.store.read(|tx| {
                 self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;

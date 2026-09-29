@@ -394,6 +394,18 @@ def main() -> None:
                 or re.search(r"let\s*\(\s*prior\s*,\s*mut\s+apply\s*,\s*restarted\s*\)\s*=\s*self\s*\.\s*store\s*\.\s*read", apply_confirmed)
             ):
                 errors.append("src/cloud_directory.rs: apply snapshot authorization/read belongs in assembly")
+            apply_stage = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_snapshot_stage",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(r"\bcloud_apply_snapshot_stage\s*\(", apply_confirmed)
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", apply_confirmed)
+                or apply_stage is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", apply_stage)
+            ):
+                errors.append("src/cloud_directory.rs: apply snapshot staging write belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
                 errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
             cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")
