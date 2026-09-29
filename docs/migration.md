@@ -268,6 +268,8 @@ A single store supports per-provider issuer URLs in `settings.issuer`, including
 
 Rehearse in an isolated environment first. For every application, verify code/device login, original issuer/subject, group/role claims, scope policy, MFA, refresh, logout and callback behavior. Record each application's result and rollback procedure. This repository's synthetic RP tests do not replace that inventory. There is no claim that arbitrary Python mappings or authentication flows are equivalent to the supplied declarative translations.
 
+The [G05 local reference OIDC rehearsal](roadmap/g05-local-reference-oidc.md) gives a reproducible synthetic RP example and a per-case evidence template. Its in-process results do not close the real application cutover or rollback gate.
+
 Automatic API conversion does not extract private signing keys, live tokens, sessions or MFA secrets. Explicit private-key import can preserve a reviewed signing domain and `kid`; explicit TOTP secret references can migrate supported factors as described below. Live Authentik cookies and opaque tokens are not imported. Users reauthenticate and enroll any factors that were not migrated, and RPs refresh discovery/JWKS as required by the selected key strategy. Plan existing application sessions and offline token validators explicitly.
 
 Before cutover, preserve the existing Authentik deployment, take and verify a riAuth backup, and record application/proxy configuration. Rollback restores the previous RP routing/configuration and deployment; it does not merge identities or sessions created after cutover. Restore procedures are documented in [operations.md](operations.md).
