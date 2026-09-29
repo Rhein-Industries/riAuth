@@ -132,6 +132,16 @@ def main():
             finally:
                 connected.terminate()
                 connected.wait(timeout=5)
+            for _ in range(200):
+                remaining = subprocess.check_output([
+                    programs["psql"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test",
+                    "-d", database, "-At", "-c", "SELECT count(*) FROM pg_stat_activity WHERE application_name='riauth'",
+                ], text=True).strip()
+                if int(remaining) == 0:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError("other riAuth PostgreSQL client remained connected")
             upgrade = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
                                "transition-activate", "--target", "platform",
                                "--token", plan["transition_token"])
