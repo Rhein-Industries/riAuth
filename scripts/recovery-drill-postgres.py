@@ -69,7 +69,7 @@ def wait_ready(service, issuer):
     raise RuntimeError("service readiness timed out")
 
 
-def run(binary, pg_bin, evidence):
+def run(binary, pg_bin, evidence, maintenance_binary=None):
     with tempfile.TemporaryDirectory(prefix="riauth-pg-recovery-drill-") as workspace:
         root = Path(workspace)
         pg_data = root / "postgres"
@@ -116,8 +116,12 @@ def run(binary, pg_bin, evidence):
                 pg_running = False
 
         def cli(args, *, session=admin_session, password=None, remote=False, timeout=60):
-            argv = [str(binary), "--config", str(config), "--session-file", str(session),
-                    "--json", "--non-interactive"]
+            local_maintenance = maintenance_binary is not None and args[0] in (
+                "keygen", "init", "restore")
+            selected = maintenance_binary if local_maintenance else binary
+            argv = [str(selected), "--config", str(config), "--json", "--non-interactive"]
+            if not local_maintenance:
+                argv += ["--session-file", str(session)]
             if remote:
                 argv += ["--server", issuer]
             argv += list(map(str, args))
@@ -202,7 +206,10 @@ def run(binary, pg_bin, evidence):
                     "source PostgreSQL doctor checks failed")
             passed("source_ready", ready_http_status=200, storage="encrypted_postgresql",
                    doctor_healthy=True)
-            success(["user", "create", "drill-user", "--password-stdin"], remote=True,
+            revision = success(["revision"], remote=True)["revision"]
+            success(["user", "create", "drill-user", "--password-stdin",
+                     "--if-revision", str(revision),
+                     "--idempotency-key", secrets.token_hex(16)], remote=True,
                     password=user_password + "\n")
             success(["login", "drill-user", "--password-stdin"], session=user_session,
                     remote=True, password=user_password + "\n")
@@ -336,10 +343,13 @@ def run(binary, pg_bin, evidence):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True, help="built riauth binary")
+    parser.add_argument("--maintenance-binary", type=Path,
+                        help="separate installed riauth-maintenance for keygen/init/restore")
     parser.add_argument("--pg-bin", type=Path, help="directory with initdb, pg_ctl, createdb, psql")
     parser.add_argument("--evidence", type=Path, required=True, help="new JSON evidence file")
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
+    maintenance_binary = args.maintenance_binary.resolve(strict=True) if args.maintenance_binary else None
     pg_bin = args.pg_bin or Path(shutil.which("initdb") or "").parent
     require(pg_bin.is_dir(), "PostgreSQL tool directory is unavailable")
     require(args.evidence.parent.is_dir(), "evidence parent directory does not exist")
@@ -349,6 +359,8 @@ def main():
     evidence = {"schema_version": "riauth.postgres-recovery-drill/v1",
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                "maintenance_binary_sha256": (hashlib.sha256(maintenance_binary.read_bytes()).hexdigest()
+                                              if maintenance_binary else None),
                 "scope": "disposable loopback PostgreSQL cluster, real CLI and HTTP service",
                 "checks": [], "result": "failed",
                 "external_gates": ["lost backup or database key escrow", "referenced secret-file recovery",
@@ -356,7 +368,7 @@ def main():
                                    "external signers, mail, directories and provisioning",
                                    "real OIDC or SAML relying party"]}
     try:
-        run(binary, pg_bin, evidence)
+        run(binary, pg_bin, evidence, maintenance_binary)
         evidence["result"] = "passed"
     except Exception as error:
         evidence["failure"] = {"type": type(error).__name__, "message": str(error)}
