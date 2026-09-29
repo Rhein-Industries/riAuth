@@ -535,7 +535,7 @@ impl Config {
             }
             let checked = crate::workflow::validate(
                 configured.definition.clone(),
-                &crate::workflow::Environment::platform(),
+                &crate::workflow::configured_environment(&configured.definition),
             )
             .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
             if (crate::workflow::configured_password_path(checked.definition()).is_none()
@@ -547,6 +547,10 @@ impl Config {
                 && !crate::workflow::supported_configured_totp_first_passkey_enrollment(
                     checked.definition(),
                 )
+                && crate::workflow::configured_source_first_passkey_enrollment(
+                    checked.definition(),
+                )
+                .is_none()
                 && !crate::workflow::supported_configured_totp_enrollment(checked.definition())
                 && !crate::workflow::supported_configured_password_totp_enrollment(
                     checked.definition(),

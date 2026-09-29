@@ -1,4 +1,5 @@
-//! A server-defined source workflow using the same executor and completion store.
+//! Source reauthentication and exact configured first-passkey enrollment use
+//! the same signed verifier, executor and completion store.
 
 use super::*;
 use crate::workflow::{Category, Format, Limits, Origin, Outcome, Step, Terminal, Transition};
@@ -11,6 +12,18 @@ pub struct SourceStart {
 
 pub(super) const TOTP_WORKFLOW: &str = "platform-source-totp-reauthentication";
 pub(super) const SOURCE_WORKFLOW: &str = "platform-source-reauthentication";
+
+pub(super) fn session_matches(
+    session: &Session,
+    pin: &upstream::Pin,
+    link: Option<&str>,
+) -> bool {
+    session.identity.source.as_ref().is_some_and(|source| {
+        source.id == pin.source.as_str()
+            && source.fingerprint == pin.fingerprint
+            && link.is_none_or(|expected| source.link == expected)
+    })
+}
 
 pub(super) fn definition(source: &Id, totp: bool) -> Result<Validated> {
     definition_at_revision(source, totp, if totp { 2 } else { 1 })
@@ -132,6 +145,135 @@ pub(super) fn discard(tx: &Tx<'_>, run: &RuntimeRun) -> Result<()> {
 }
 
 impl Core {
+    /// The session receipt and upstream reservation are created in one writer.
+    /// Any failure leaves no active run that could block this bearer.
+    pub fn workflow_configured_source_passkey_start(
+        &self,
+        token: &str,
+        workflow: &str,
+    ) -> Result<SourceStart> {
+        let configured = self
+            .config
+            .workflows
+            .get(workflow)
+            .filter(|entry| entry.active)
+            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+        let source = configured_source_first_passkey_enrollment(&configured.definition)
+            .ok_or_else(|| Error::conflict("Configured workflow is unavailable"))?;
+        let mut environment = Environment::platform();
+        environment.sources.insert(source.clone());
+        let checked = validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        if checked.definition().id.as_str() != workflow {
+            return Err(Error::conflict("Configured workflow is unavailable"));
+        }
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            let pin = upstream::pin(tx, &source)?;
+            upstream::authority(tx, &pin, &user)?;
+            if user.has_passkeys
+                || crate::passkey::passkey_count(tx, &user.id)? != 0
+                || user.totp_secret.is_some()
+                || user.totp_pending.is_some()
+                || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None
+                || !session_matches(&session, &pin, None)
+            {
+                return Err(Error::forbidden());
+            }
+            let at = now();
+            if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
+                if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
+                    owned(self, tx, token, &active.record)?;
+                    let pinned = active.validated()?;
+                    settle_time(self, tx, &pinned, &mut active, at)?;
+                    if !active.record.state.is_final() {
+                        return Err(Error::conflict("A workflow is already active for this session"));
+                    }
+                }
+                tx.delete(ACTIVE_SESSIONS, &session.id)?;
+            }
+            let run_id = crypto::id();
+            let request_id = crypto::id();
+            let expires_at = at
+                .saturating_add(u64::from(checked.definition().limits.max_duration_seconds))
+                .min(session.expires_at);
+            let mut run = RuntimeRun {
+                record: StoredRun {
+                    id: run_id.clone(),
+                    account: user.id.clone(),
+                    account_epoch: user.epoch,
+                    session: Some(session.id.clone()),
+                    request: request_id.clone(),
+                    binding: checked.binding(),
+                    started_at: at,
+                    state: RunState::Active {
+                        step: checked.definition().entry.clone(),
+                        attempt: 1,
+                    },
+                    steps: vec![],
+                },
+                definition: checked.definition().clone(),
+                step_started_at: at,
+                executions: 0,
+                attempts: vec![],
+                in_flight: None,
+                authorization_response: None,
+                credential_mutation: None,
+            };
+            let request = RequestAuthority {
+                id: request_id.clone(),
+                run: run_id.clone(),
+                account: user.id,
+                account_epoch: user.epoch,
+                session: session.id.clone(),
+                token_hash: digest(token),
+                expires_at,
+                requires_mfa: false,
+                source: Some(pin.clone()),
+                authorization: None,
+                consent: None,
+                recovery: None,
+                invitation: None,
+                removal: None,
+            };
+            tx.put(REQUESTS, &request_id, &request)?;
+            tx.put(RUNS, &run_id, &run)?;
+            tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            enrollment::resume_session(self, tx, &checked, &mut run, at)?;
+            let RunState::Active { step, attempt } = &run.record.state else {
+                return Err(Error::forbidden());
+            };
+            if step.as_str() != "source" || *attempt != 1 {
+                return Err(Error::forbidden());
+            }
+            let mut reservation = InFlight {
+                nonce: crypto::id(),
+                step: step.clone(),
+                attempt: *attempt,
+                step_started_at: run.step_started_at,
+                source: None,
+                passkey: None,
+                totp: None,
+                recovery_code: None,
+                enrollment: None,
+                totp_enrollment: None,
+            };
+            let (attempt, authorization_url) = self.begin_workflow_source(
+                tx,
+                &pin,
+                binding(&run, &reservation)?,
+                expires_at,
+            )?;
+            reservation.source = Some(attempt);
+            run.in_flight = Some(reservation);
+            run.executions += 1;
+            tx.put(RUNS, &run_id, &run)?;
+            Ok(SourceStart {
+                workflow: run.view(&checked)?,
+                authorization_url,
+            })
+        })
+    }
+
     /// Start one bounded OIDC or SAML reauthentication for the exact live bearer
     /// session. The caller chooses an enabled source, never a workflow or proof.
     pub fn workflow_source_start(&self, token: &str, source: &str) -> Result<SourceStart> {
@@ -272,6 +414,7 @@ impl Core {
                 || reservation.passkey.is_some()
                 || reservation.totp.is_some()
                 || reservation.recovery_code.is_some()
+                || reservation.enrollment.is_some()
                 || reservation.totp_enrollment.is_some()
                 || reservation.attempt != *attempt
                 || reservation.step_started_at != run.step_started_at
@@ -283,6 +426,11 @@ impl Core {
                     && checked.definition().id.as_str() != TOTP_WORKFLOW)
                 || (checked.definition().id.as_str() == TOTP_WORKFLOW
                     && (user.totp_secret.is_none() || !request.requires_mfa))
+                || (configured_source_first_passkey_enrollment(checked.definition()).is_some()
+                    && (user.has_passkeys
+                        || crate::passkey::passkey_count(tx, &user.id)? != 0
+                        || user.totp_pending.is_some()
+                        || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None))
             {
                 return Err(Error::forbidden());
             }
@@ -307,6 +455,14 @@ impl Core {
                     expires_at,
                 } => (authority, auth_time, expires_at),
             };
+            if configured_source_first_passkey_enrollment(checked.definition()).is_some() {
+                let session: Session = tx
+                    .get("sessions", &request.session)?
+                    .ok_or_else(Error::forbidden)?;
+                if !session_matches(&session, pin, Some(&source.link)) {
+                    return Err(Error::forbidden());
+                }
+            }
             let receipt = StoredEvidence {
                 id: crypto::id(),
                 proof: Proof::Source,

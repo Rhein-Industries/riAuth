@@ -27,20 +27,22 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the exact configured consent shape described below.
-It supports seven configured enrollment shapes: a live session and fresh verified
+It supports eight configured enrollment shapes: a live session and fresh verified
 existing passkey followed by passkey registration, a new TOTP secret or TOTP
 replacement; or a password-only account's live session and fresh local-password
 proof followed by its first passkey or TOTP secret; or a local TOTP account
 without a passkey using its current TOTP to enroll a first passkey, or fresh
-password and current-TOTP proofs to replace TOTP.
+password and current-TOTP proofs to replace TOTP; or a linked upstream-only
+account using a fresh source assertion to enroll its first passkey.
 It also supports one configured recovery shape: explicit reset-mail verification
 and password reset in the same transaction, plus one configured sensitive action:
 removal of an exact passkey after a live session and fresh verified passkey proof.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
-The source paths use server-defined workflows and do not accept arbitrary
-configured definitions. Other configured enrollment and recovery shapes, custom
+Source reauthentication uses server-defined workflows; source-first passkey
+enrollment accepts only the exact configured definition described below.
+Other configured enrollment and recovery shapes, custom
 stages and other authentication chains or consent shapes remain unconnected.
 
 ## Scope
@@ -490,7 +492,7 @@ real ceremonies. The definition and request remain pinned across restart;
 cancellation or expiry discards a pending ceremony, and completion uses the
 same atomic epoch change and session revocation described above. Config,
 start and resume reject other configured passkey enrollment shapes except the
-two exact first-passkey paths below.
+three exact first-passkey paths below.
 
 ### Password-only first-passkey enrollment
 
@@ -530,6 +532,32 @@ it. No passkey is stored before the final writer atomically stores the signed
 credential, advances the account epoch, queues revocation, audits, consumes
 receipts and finalizes the run. The existing TOTP and recovery codes remain;
 the bearer gains no new assurance and no session is issued.
+
+### Linked-source first-passkey enrollment
+
+Platform accepts the exact configured `session → source → enroll` path for an
+enabled account with no local or directory password, passkey, TOTP factor or
+pending TOTP change. Start with the account's live bearer at
+`POST /api/workflows/configured/{workflow}/source-passkey`. The bearer must
+come from the same enabled OIDC or SAML source and account link named by the
+definition. The response supplies a workflow view and upstream authorization
+URL. Its signed callback is consumed at `POST /api/workflows/{id}/source` with
+the original bearer; ordinary source completion cannot consume the reservation.
+The fresh assertion must resolve to that same link. A source or link change
+blocks completion.
+
+Only after source verification may the same run use
+`/api/workflows/{id}/passkey-enrollment/start` and
+`/api/workflows/{id}/passkey-enrollment` for signed WebAuthn registration.
+Success requires session, source and enrolled receipts no older than 120
+seconds. The run lasts at most 600 seconds, with at most eight executions, one
+source attempt, 300-second source and registration steps, and cancellable
+steps. Cancellation or expiry discards the
+upstream reservation or pending registration. The final writer atomically
+stores the credential, advances the epoch, queues revocation, audits, consumes
+the receipts and finalizes the run. It issues no session or consent grant and
+does not change the stored bearer's assurance. Essentials rejects this
+configured shape. An invitation cannot use this session-bound path.
 
 ## Configured TOTP enrollment
 
@@ -925,9 +953,10 @@ These are not implemented or established by this slice:
   authorized passkey enrollment and removal, password-only and current-TOTP
   first-passkey enrollment, existing-passkey or password-only TOTP enrollment,
   existing-passkey or password-and-current-TOTP replacement, mail-proven
-  password reset, and invitation first-password/first-passkey enrollment:
-  upstream-only and other first-passkey paths, other TOTP replacement and other
-  initial credential paths remain blocked pending their real adapters.
+  password reset, invitation first-password/first-passkey enrollment, and
+  linked-source first-passkey enrollment: other upstream-only and first-passkey
+  paths, other TOTP replacement and other initial credential paths remain
+  blocked pending their real adapters.
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,

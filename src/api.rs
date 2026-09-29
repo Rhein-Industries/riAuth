@@ -923,6 +923,11 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         {
             ("account", 10)
         }
+        path if path.starts_with("/api/workflows/configured/")
+            && path.ends_with("/source-passkey") =>
+        {
+            ("source_start", 30)
+        }
         path if path.starts_with("/api/workflows/") && path.ends_with("/password") => ("login", 20),
         path if path.starts_with("/api/passkey/") => ("passkey", 30),
         path if path.starts_with("/api/account/") || path.starts_with("/api/portal/account/") => {

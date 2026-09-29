@@ -15,6 +15,7 @@ enum Mode {
     ExistingPasskey,
     FirstPasskey,
     FirstTotp,
+    FirstSource,
 }
 
 impl Mode {
@@ -23,6 +24,8 @@ impl Mode {
             Ok(Self::FirstPasskey)
         } else if supported_configured_totp_first_passkey_enrollment(definition) {
             Ok(Self::FirstTotp)
+        } else if configured_source_first_passkey_enrollment(definition).is_some() {
+            Ok(Self::FirstSource)
         } else if definition.id.as_str() == PASSKEY_ENROLLMENT
             || supported_configured_passkey_enrollment(definition)
         {
@@ -37,6 +40,7 @@ impl Mode {
             Self::ExistingPasskey => Proof::Passkey,
             Self::FirstPasskey => Proof::Password,
             Self::FirstTotp => Proof::Totp,
+            Self::FirstSource => Proof::Source,
         }
     }
 }
@@ -47,6 +51,8 @@ fn binding(run: &RuntimeRun, reservation: &InFlight) -> Result<String> {
             "workflow-first-passkey-enrollment/v1"
         } else if supported_configured_totp_first_passkey_enrollment(&run.definition) {
             "workflow-totp-first-passkey-enrollment/v1"
+        } else if configured_source_first_passkey_enrollment(&run.definition).is_some() {
+            "workflow-source-first-passkey-enrollment/v1"
         } else {
             "workflow-passkey-enrollment/v1"
         },
@@ -144,7 +150,7 @@ fn verified_session(
     let RunState::Active { step, .. } = &run.record.state else {
         return Err(Error::forbidden());
     };
-    if request.source.is_some()
+    if request.source.is_some() != (mode == Mode::FirstSource)
         || request.authorization.is_some()
         || request.consent.is_some()
         || request.recovery.is_some()
@@ -188,9 +194,20 @@ fn verified_session(
                 return Err(error);
             }
         }
+        Mode::FirstSource => {
+            if user.has_passkeys
+                || crate::passkey::passkey_count(tx, &user.id)? != 0
+                || user.totp_secret.is_some()
+                || user.totp_pending.is_some()
+                || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None
+            {
+                return Err(Error::forbidden());
+            }
+        }
         _ => {}
     }
     let mut auth_time = None;
+    let mut source_link = None;
     for (recorded, proof) in run
         .record
         .steps
@@ -217,6 +234,9 @@ fn verified_session(
         )
         .map_err(invalid_error)?;
         evidence_authority(core, tx, &run.record, &evidence, at)?;
+        if proof == Proof::Source {
+            source_link = evidence.source.as_ref().map(|source| source.link.clone());
+        }
         if proof == mode.proof() {
             auth_time = Some(evidence.verified_at);
         }
@@ -226,6 +246,15 @@ fn verified_session(
         .ok_or_else(Error::forbidden)?;
     let original = session.identity.clone();
     if mode == Mode::FirstTotp && !original.mfa {
+        return Err(Error::forbidden());
+    }
+    if mode == Mode::FirstSource
+        && !source::session_matches(
+            &session,
+            request.source.as_ref().ok_or_else(Error::forbidden)?,
+            Some(source_link.as_deref().ok_or_else(Error::forbidden)?),
+        )
+    {
         return Err(Error::forbidden());
     }
     session.identity = Identity {
@@ -242,6 +271,8 @@ fn verified_session(
             vec!["webauthn".into(), "mfa".into()]
         } else if mode == Mode::FirstTotp {
             original.amr
+        } else if mode == Mode::FirstSource {
+            vec!["federated".into()]
         } else {
             vec!["pwd".into()]
         },
@@ -295,7 +326,7 @@ impl Verified {
         }
         let (user, request) = authority(core, tx, run, now())?;
         if request.requires_mfa != (self.mode == Mode::FirstTotp)
-            || request.source.is_some()
+            || request.source.is_some() != (self.mode == Mode::FirstSource)
             || request.authorization.is_some()
             || request.consent.is_some()
             || request.recovery.is_some()
@@ -335,6 +366,31 @@ impl Verified {
                     .get("sessions", &request.session)?
                     .ok_or_else(Error::forbidden)?;
                 if !session.identity.mfa {
+                    return Err(Error::forbidden());
+                }
+            }
+            Mode::FirstSource => {
+                if user.has_passkeys
+                    || crate::passkey::passkey_count(tx, &user.id)? != 0
+                    || user.totp_secret.is_some()
+                    || user.totp_pending.is_some()
+                    || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None
+                {
+                    return Err(Error::forbidden());
+                }
+                let source_link = evidence
+                    .iter()
+                    .find(|receipt| receipt.proof == Proof::Source)
+                    .and_then(|receipt| receipt.source.as_ref())
+                    .ok_or_else(Error::forbidden)?;
+                let session: Session = tx
+                    .get("sessions", &request.session)?
+                    .ok_or_else(Error::forbidden)?;
+                if !source::session_matches(
+                    &session,
+                    request.source.as_ref().ok_or_else(Error::forbidden)?,
+                    Some(&source_link.link),
+                ) {
                     return Err(Error::forbidden());
                 }
             }

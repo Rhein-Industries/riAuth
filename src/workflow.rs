@@ -227,6 +227,25 @@ pub(crate) fn supported_configured_totp_first_passkey_enrollment(definition: &De
     supported_configured_passkey_change(definition, Proof::Totp)
 }
 
+/// This exact shape can name one source. The runtime still pins and checks the
+/// enabled source and its existing account link before accepting its proof.
+pub(crate) fn configured_source_first_passkey_enrollment(definition: &Definition) -> Option<Id> {
+    let Action::VerifySource { source } = &definition.steps.get(1)?.action else {
+        return None;
+    };
+    supported_configured_passkey_change(definition, Proof::Source).then(|| source.clone())
+}
+
+/// Static validation may recognize the source named by this one canonical
+/// shape. Runtime admission must resolve the source from the live registry.
+pub(crate) fn configured_environment(definition: &Definition) -> Environment {
+    let mut environment = Environment::platform();
+    if let Some(source) = configured_source_first_passkey_enrollment(definition) {
+        environment.sources.insert(source);
+    }
+    environment
+}
+
 fn supported_configured_passkey_change(definition: &Definition, factor_proof: Proof) -> bool {
     let existing_passkey = factor_proof == Proof::Passkey;
     let max_duration = if existing_passkey { 1_200 } else { 600 };
@@ -269,9 +288,10 @@ fn supported_configured_passkey_change(definition: &Definition, factor_proof: Pr
             })
     };
     let (factor_name, factor_action, factor_timeout) = match factor_proof {
-        Proof::Passkey => ("passkey", Action::VerifyPasskey {}, 300),
-        Proof::Password => ("password", Action::VerifyPassword {}, 300),
-        Proof::Totp => ("totp", Action::VerifyTotp {}, 120),
+        Proof::Passkey => ("passkey", matches!(factor.action, Action::VerifyPasskey {}), 300),
+        Proof::Password => ("password", matches!(factor.action, Action::VerifyPassword {}), 300),
+        Proof::Totp => ("totp", matches!(factor.action, Action::VerifyTotp {}), 120),
+        Proof::Source => ("source", matches!(factor.action, Action::VerifySource { .. }), 300),
         _ => return false,
     };
     session.id.as_str() == "session"
@@ -280,7 +300,7 @@ fn supported_configured_passkey_change(definition: &Definition, factor_proof: Pr
         && success.id.as_str() == "success"
         && denied.id.as_str() == "denied"
         && matches!(session.action, Action::ResumeSession {})
-        && factor.action == factor_action
+        && factor_action
         && matches!(
             enroll.action,
             Action::EnrollCredential {
@@ -289,6 +309,7 @@ fn supported_configured_passkey_change(definition: &Definition, factor_proof: Pr
         )
         && session.max_attempts == 1
         && factor.max_attempts <= 3
+        && (factor_proof != Proof::Source || factor.max_attempts == 1)
         && enroll.max_attempts == 1
         && session.timeout_seconds <= 60
         && factor.timeout_seconds <= factor_timeout

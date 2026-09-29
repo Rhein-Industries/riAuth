@@ -20,7 +20,8 @@ pub use totp::TotpChallenge as RecoveryChallenge;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
-    RunBinding, RunState, Target, Validated, builtin, configured_password_path,
+    RunBinding, RunState, Target, Validated, builtin, configured_environment,
+    configured_password_path, configured_source_first_passkey_enrollment,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
     supported_configured_passkey_enrollment, supported_configured_passkey_removal,
@@ -180,6 +181,7 @@ impl RuntimeRun {
             || supported_configured_passkey_enrollment(&self.definition)
             || supported_configured_password_passkey_enrollment(&self.definition)
             || supported_configured_totp_first_passkey_enrollment(&self.definition)
+            || configured_source_first_passkey_enrollment(&self.definition).is_some()
             || supported_configured_totp_enrollment(&self.definition)
             || supported_configured_password_totp_enrollment(&self.definition)
             || supported_configured_totp_replacement(&self.definition)
@@ -188,7 +190,11 @@ impl RuntimeRun {
             || supported_configured_password_reset(&self.definition)
             || supported_configured_consent(&self.definition)
         {
-            validate(self.definition.clone(), &Environment::platform()).map_err(invalid_error)?
+            validate(
+                self.definition.clone(),
+                &configured_environment(&self.definition),
+            )
+            .map_err(invalid_error)?
         } else {
             let Some(Action::VerifySource { source }) =
                 self.definition.steps.first().map(|s| &s.action)
@@ -409,6 +415,16 @@ fn evidence_authority(
     }
     match (&receipt.source, &request.source) {
         (Some(evidence), Some(pin)) => upstream::evidence_authority(tx, pin, &user, evidence),
+        (None, Some(_))
+            if matches!(
+                (receipt.proof, &receipt.action),
+                (Proof::Session, Action::ResumeSession {})
+                    | (Proof::Enrolled, Action::EnrollCredential { credential: Credential::Passkey })
+            ) && configured_source_first_passkey_enrollment(&load_runtime(tx, &run.id)?.definition)
+                .is_some() =>
+        {
+            Ok(())
+        }
         (None, Some(_))
             if matches!(
                 (receipt.proof, &receipt.action),
@@ -917,8 +933,11 @@ impl Core {
             .get(workflow)
             .filter(|entry| entry.active)
             .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let checked = validate(configured.definition.clone(), &Environment::platform())
-            .map_err(invalid_error)?;
+        let checked = validate(
+            configured.definition.clone(),
+            &configured_environment(&configured.definition),
+        )
+        .map_err(invalid_error)?;
         if (configured_password_path(checked.definition()).is_none()
             && !supported_configured_passkey(checked.definition())
             && !supported_configured_passkey_enrollment(checked.definition())
