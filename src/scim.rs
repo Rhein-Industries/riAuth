@@ -282,15 +282,17 @@ fn owner_scoped_group_members(
     let current = tx
         .get::<Group>("groups", group_name)?
         .ok_or_else(|| Error::missing("Group not found"))?;
-    // Group edges have no source tag. Live SCIM User records owned by this
-    // operator are the ownership boundary; preserve all other members.
-    let owned_members: BTreeSet<_> = tx
-        .list::<Record>("scim_users")?
-        .into_iter()
-        .filter(|(_, user)| !user.deleted && user.owner == actor.id)
-        .map(|(_, user)| user.local_id)
-        .collect();
-    requested.extend(current.members.difference(&owned_members).cloned());
+    // Group edges have no source tag. Drop this operator's live SCIM users
+    // from the directory member set one page at a time; every other member
+    // stays. The page is discarded, so the retained set is the group itself.
+    let mut preserved = current.members;
+    for_each_scim_record(tx, "scim_users", |_id, user| {
+        if !user.deleted && user.owner == actor.id {
+            preserved.remove(&user.local_id);
+        }
+        Ok(())
+    })?;
+    requested.extend(preserved);
     Ok(requested)
 }
 fn normalize(mut value: Value) -> Result<Value> {

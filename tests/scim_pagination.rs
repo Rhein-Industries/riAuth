@@ -1144,3 +1144,186 @@ fn postgres_scim_one_group_publication_spans_owners_and_pages() {
 fn postgres_encrypted_scim_one_group_publication_spans_owners_and_pages() {
     scim_one_group_publication_spans_owners_and_pages(Backend::EncryptedPostgres);
 }
+
+fn scim_group_member_replace_pages_owned_users(backend: Backend) {
+    let f = backend.fixture();
+    let owner = agent(&f, "scope-owner");
+    let other = agent(&f, "scope-other");
+    f.core
+        .scim_write(
+            &owner,
+            "Groups",
+            None,
+            json!({"schemas":[scim::GROUP],"displayName":"scope-group"}),
+            false,
+        )
+        .unwrap();
+    let mut first_id = String::new();
+    let mut last_id = String::new();
+    for index in 0..130 {
+        let user = f
+            .core
+            .scim_write(
+                &owner,
+                "Users",
+                None,
+                json!({"schemas":[scim::USER],"userName":format!("scope-user-{index:03}")}),
+                false,
+            )
+            .unwrap();
+        if index == 0 {
+            first_id = text(&user, "id");
+        }
+        if index == 129 {
+            last_id = text(&user, "id");
+        }
+    }
+    let foreign = f
+        .core
+        .scim_write(
+            &other,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"scope-foreign"}),
+            false,
+        )
+        .unwrap();
+    let foreign_id = text(&foreign, "id");
+    let foreign_local: String = f.core.store.get("usernames", "scope-foreign").unwrap().unwrap();
+    let first_local: String = f.core.store.get("usernames", "scope-user-000").unwrap().unwrap();
+    let last_local: String = f.core.store.get("usernames", "scope-user-129").unwrap().unwrap();
+    let kept_local: String = f.core.store.get("usernames", "scope-user-001").unwrap().unwrap();
+    f.core
+        .group_member(&f.admin, "scope-group", "scope-foreign", true)
+        .unwrap();
+    f.core
+        .group_member(&f.admin, "scope-group", "scope-user-000", true)
+        .unwrap();
+    let version = |token: &str, id: &str| -> String {
+        text(&f.core.scim_get(token, "Users", id).unwrap()["meta"], "version")
+    };
+    let group = f
+        .core
+        .scim_list(
+            &owner,
+            "Groups",
+            Query {
+                filter: Some("displayName eq \"scope-group\"".into()),
+                count: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let group_id = text(&group["Resources"][0], "id");
+    let group_before = text(
+        &f.core.scim_get(&owner, "Groups", &group_id).unwrap()["meta"],
+        "version",
+    );
+    let first_before = version(&owner, &first_id);
+    let last_before = version(&owner, &last_id);
+    let kept_id = text(
+        &f.core
+            .scim_list(
+                &owner,
+                "Users",
+                Query {
+                    filter: Some("userName eq \"scope-user-001\"".into()),
+                    count: Some(1),
+                    ..Default::default()
+                },
+            )
+            .unwrap()["Resources"][0],
+        "id",
+    );
+    let kept_before = version(&owner, &kept_id);
+    let foreign_before = version(&other, &foreign_id);
+
+    let scans = &f.core.store.telemetry().reads;
+    let unbounded_before = scans.scans(ReadContext::Writer, false).count();
+    let (bounded_before, page_before, rows_before) = writer_bounded_scans(&f);
+    let replaced = f
+        .core
+        .scim_write(
+            &owner,
+            "Groups",
+            Some(&group_id),
+            json!({
+                "schemas":[scim::GROUP],
+                "displayName":"scope-group",
+                "members":[{"value": last_id}]
+            }),
+            false,
+        )
+        .unwrap();
+    let bounded_scans = scans.scans(ReadContext::Writer, true).count() - bounded_before;
+    let bounded_rows = scans.scans(ReadContext::Writer, true).sum() - rows_before;
+    assert_eq!(
+        scans.scans(ReadContext::Writer, false).count(),
+        unbounded_before,
+        "group member replace listed the SCIM user collection"
+    );
+    assert!(
+        bounded_rows >= 130,
+        "group member replace read only {bounded_rows} rows"
+    );
+    assert!(
+        bounded_rows <= bounded_scans * 128,
+        "group member replace retained {bounded_rows} rows in {bounded_scans} scans"
+    );
+    let (bounded_after, page_after, _) = writer_bounded_scans(&f);
+    assert_eq!(
+        bounded_after - bounded_before,
+        page_after - page_before,
+        "a writer scan materialized more than 128 rows"
+    );
+    assert_eq!(
+        replaced["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| text(member, "value"))
+            .collect::<Vec<_>>(),
+        vec![last_id.clone()]
+    );
+    let stored: Value = f.core.store.get("groups", "scope-group").unwrap().unwrap();
+    let directory: Vec<_> = stored["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|member| member.as_str().unwrap().to_owned())
+        .collect();
+    assert!(directory.contains(&foreign_local));
+    assert!(directory.contains(&last_local));
+    assert!(!directory.contains(&first_local));
+    assert!(!directory.contains(&kept_local));
+    assert_eq!(directory.len(), 2);
+    assert_ne!(version(&owner, &first_id), first_before);
+    assert_ne!(version(&owner, &last_id), last_before);
+    assert_ne!(
+        text(
+            &f.core.scim_get(&owner, "Groups", &group_id).unwrap()["meta"],
+            "version"
+        ),
+        group_before
+    );
+    assert_eq!(version(&owner, &kept_id), kept_before);
+    assert_eq!(version(&other, &foreign_id), foreign_before);
+    assert_eq!(replaced, f.core.scim_get(&owner, "Groups", &group_id).unwrap());
+}
+
+#[test]
+fn redb_scim_group_member_replace_pages_owned_users() {
+    scim_group_member_replace_pages_owned_users(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_scim_group_member_replace_pages_owned_users() {
+    scim_group_member_replace_pages_owned_users(Backend::Postgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_scim_group_member_replace_pages_owned_users() {
+    scim_group_member_replace_pages_owned_users(Backend::EncryptedPostgres);
+}
