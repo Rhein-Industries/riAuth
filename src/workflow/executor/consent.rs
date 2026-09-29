@@ -1,4 +1,4 @@
-//! Explicit consent for one prepared OIDC request and one live bearer session.
+//! Explicit consent for one prepared OIDC request and one live session.
 //! A configured transition alone never supplies the consent receipt or a code.
 
 use super::*;
@@ -76,10 +76,11 @@ pub(super) fn bind(
     session: &Session,
     request: &Authorization,
     reauthentication: bool,
+    browser_interaction: Option<&str>,
     at: u64,
 ) -> Result<()> {
     if request.decision.is_some()
-        || request.request_binding.is_some()
+        || request.request_binding.as_deref() != browser_interaction
         || request.has_prompt("none")
         || request.has_prompt("select_account")
         || authority.source.is_some()
@@ -365,9 +366,200 @@ pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     Ok(())
 }
 
+fn decide_loaded(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &mut RuntimeRun,
+    approve: bool,
+) -> Result<View> {
+    let RunState::Active { step, attempt } = &run.record.state else {
+        return Err(Error::conflict("Workflow run is already final"));
+    };
+    let current = checked.step(step).map(|s| &s.action);
+    let early_denial = !approve
+        && ((super::super::supported_configured_passkey_consent(checked.definition())
+            && current == Some(&Action::VerifyPasskey {}))
+            || (super::super::supported_configured_password_totp_consent(checked.definition())
+                && matches!(current, Some(Action::VerifyPassword {} | Action::VerifyTotp {}))));
+    if !supported_configured_consent(checked.definition())
+        || (!early_denial && current != Some(&Action::RequestConsent {}))
+        || (!early_denial && run.in_flight.is_some())
+        || (run.executions >= checked.definition().limits.max_executions
+            && (!early_denial || run.in_flight.is_none()))
+    {
+        return Err(Error::forbidden());
+    }
+    let (user, request) = authority(core, tx, &run.record, now())?;
+    if request.consent.is_none() || request.authorization.is_some() || request.source.is_some() {
+        return Err(Error::forbidden());
+    }
+    let had_reservation = run.in_flight.is_some();
+    if early_denial {
+        passkey::discard(tx, run)?;
+        run.in_flight = None;
+    }
+    let at = now();
+    let evidence = approve.then(|| StoredEvidence {
+        id: crypto::id(),
+        proof: Proof::Consent,
+        action: Action::RequestConsent {},
+        step: step.clone(),
+        attempt: *attempt,
+        account: user.id.clone(),
+        account_epoch: user.epoch,
+        session: run.record.session.clone(),
+        request: request.id,
+        run: run.record.id.clone(),
+        binding: run.record.binding.clone(),
+        verified_at: at,
+        expires_at: request.expires_at.min(at.saturating_add(RECEIPT_SECONDS)),
+        consumed: false,
+        source: None,
+    });
+    run.attempts.push(Attempt {
+        step: step.clone(),
+        ordinal: *attempt,
+        started_at: run.step_started_at,
+        finished_at: at,
+        result: if approve { AttemptResult::Verified } else { AttemptResult::Failed },
+    });
+    if !early_denial || !had_reservation {
+        run.executions += 1;
+    }
+    finish_step(
+        core,
+        tx,
+        checked,
+        run,
+        Label::fixed(if approve { "granted" } else if early_denial { "failed" } else { "denied" }),
+        evidence,
+        at,
+    )?;
+    run.view(checked)
+}
+
+/// The browser holds an HttpOnly SSO cookie, never a bearer token. Its exact
+/// prepared interaction and explicit decision enter the same durable completion
+/// writer used by bearer consent, in a single transaction with the callback.
+pub(crate) fn browser_consent_decide_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    browser_expires_at: u64,
+) -> Result<String> {
+    if core.config.browser_consent_workflow.as_deref() != Some(workflow)
+        || authorization.request_binding.as_deref() != Some(interaction)
+        || authorization.decision.is_some()
+        || browser_expires_at <= now()
+    {
+        return Err(Error::forbidden());
+    }
+    let configured = core.config.workflows.get(workflow)
+        .filter(|entry| entry.active)
+        .ok_or_else(|| Error::conflict("Browser consent workflow changed"))?;
+    let checked = validate(configured.definition.clone(), &Environment::platform())
+        .map_err(invalid_error)?;
+    if checked.definition().id.as_str() != workflow
+        || !super::super::supported_configured_session_consent(checked.definition())
+    {
+        return Err(Error::conflict("Browser consent workflow changed"));
+    }
+    let at = now();
+    let user = core.identity_user(tx, &session.identity)?;
+    let live = core.browser_session(tx, Some(browser_cookie))?
+        .ok_or_else(Error::unauthorized)?;
+    if live.id != session.id || live.token_hash != session.token_hash {
+        return Err(Error::unauthorized());
+    }
+    let authentication = digest(authorization.transaction_id.as_deref().ok_or_else(Error::forbidden)?);
+    let mut prepared: AuthenticationTransaction = tx.get("authentication", &authentication)?
+        .ok_or_else(Error::forbidden)?;
+    if prepared.request_hash != authorization.request_hash()?
+        || prepared.expires_at <= at
+        || prepared.authenticated_session.is_some()
+        || prepared.source_stage.is_some()
+        || prepared.user_id.as_ref().is_some_and(|id| id != &user.id)
+    {
+        return Err(Error::forbidden());
+    }
+    crate::assembly::reject_preparation_actor_replay(tx, authorization, &user.id)?;
+    if prepared.user_id.is_none() {
+        prepared.user_id = Some(user.id.clone());
+        tx.put("authentication", &authentication, &prepared)?;
+    }
+    if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
+        let active = tx.get::<RuntimeRun>(RUNS, &active_id)?
+            .ok_or_else(|| Error::conflict("Active workflow binding changed"))?;
+        if !active.record.state.is_final() {
+            return Err(Error::conflict("An authorization workflow is already active"));
+        }
+        tx.delete(ACTIVE_SESSIONS, &session.id)?;
+    }
+    let reviewed = version::review_pin(core, tx, &checked, true)?;
+    let expires_at = at
+        .saturating_add(u64::from(checked.definition().limits.max_duration_seconds))
+        .min(session.expires_at)
+        .min(browser_expires_at);
+    let run_id = crypto::id();
+    let request_id = crypto::id();
+    let entry = checked.entry().ok_or_else(|| Error::internal("Missing workflow entry"))?;
+    let record = StoredRun {
+        id: run_id.clone(),
+        account: user.id.clone(),
+        account_epoch: user.epoch,
+        session: Some(session.id.clone()),
+        request: request_id.clone(),
+        binding: checked.binding(),
+        started_at: at,
+        state: RunState::Active { step: entry.id.clone(), attempt: 1 },
+        steps: vec![],
+    };
+    let mut run = RuntimeRun {
+        record,
+        definition: checked.definition().clone(),
+        step_started_at: at,
+        executions: 0,
+        attempts: vec![],
+        in_flight: None,
+        authorization_response: None,
+        credential_mutation: None,
+        reviewed,
+        reviewed_failure: None,
+    };
+    let mut request = RequestAuthority {
+        id: request_id.clone(),
+        run: run_id.clone(),
+        account: user.id.clone(),
+        account_epoch: user.epoch,
+        session: session.id.clone(),
+        token_hash: session.token_hash.clone(),
+        browser_hash: Some(digest(browser_cookie)),
+        expires_at,
+        requires_mfa: false,
+        source: None,
+        authorization: None,
+        consent: None,
+        recovery: None,
+        invitation: None,
+        removal: None,
+    };
+    bind(tx, &run.record, &mut request, session, authorization, false, Some(interaction), at)?;
+    tx.put(REQUESTS, &request_id, &request)?;
+    tx.put(RUNS, &run_id, &run)?;
+    tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+    version::track_account_run(tx, &user.id, &run_id)?;
+    enrollment::resume_session(core, tx, &checked, &mut run, at)?;
+    let view = decide_loaded(core, tx, &checked, &mut run, true)?;
+    view.authorization_response.ok_or_else(Error::forbidden)
+}
+
 impl Core {
-    /// Consume a prepared request only after this bearer explicitly approves or
-    /// denies its pinned consent step. The definition supplies no decision.
+    /// The bearer explicitly approves or denies its pinned consent step.
     pub fn workflow_consent_decide(&self, token: &str, id: &str, approve: bool) -> Result<View> {
         version::reject_stale_reviewed(self, id)?;
         self.store.write(|tx| {
@@ -381,90 +573,7 @@ impl Core {
             if run.record.state.is_final() {
                 return run.view(&checked);
             }
-            let RunState::Active { step, attempt } = &run.record.state else {
-                unreachable!()
-            };
-            let current = checked.step(step).map(|s| &s.action);
-            let early_denial = !approve
-                && ((super::super::supported_configured_passkey_consent(checked.definition())
-                    && current == Some(&Action::VerifyPasskey {}))
-                    || (super::super::supported_configured_password_totp_consent(
-                        checked.definition(),
-                    ) && matches!(
-                        current,
-                        Some(Action::VerifyPassword {} | Action::VerifyTotp {})
-                    )));
-            if !supported_configured_consent(checked.definition())
-                || (!early_denial && current != Some(&Action::RequestConsent {}))
-                || (!early_denial && run.in_flight.is_some())
-                || (run.executions >= checked.definition().limits.max_executions
-                    && (!early_denial || run.in_flight.is_none()))
-            {
-                return Err(Error::forbidden());
-            }
-            let (user, request) = authority(self, tx, &run.record, now())?;
-            if request.consent.is_none()
-                || request.authorization.is_some()
-                || request.source.is_some()
-            {
-                return Err(Error::forbidden());
-            }
-            let had_reservation = run.in_flight.is_some();
-            if early_denial {
-                // An explicit refusal may close the request before the user
-                // completes WebAuthn or local verification. Invalidate its
-                // reserved handle so a late submission cannot revive the run.
-                passkey::discard(tx, &run)?;
-                run.in_flight = None;
-            }
-            let at = now();
-            let evidence = approve.then(|| StoredEvidence {
-                id: crypto::id(),
-                proof: Proof::Consent,
-                action: Action::RequestConsent {},
-                step: step.clone(),
-                attempt: *attempt,
-                account: user.id.clone(),
-                account_epoch: user.epoch,
-                session: run.record.session.clone(),
-                request: request.id,
-                run: run.record.id.clone(),
-                binding: run.record.binding.clone(),
-                verified_at: at,
-                expires_at: request.expires_at.min(at.saturating_add(RECEIPT_SECONDS)),
-                consumed: false,
-                source: None,
-            });
-            run.attempts.push(Attempt {
-                step: step.clone(),
-                ordinal: *attempt,
-                started_at: run.step_started_at,
-                finished_at: at,
-                result: if approve {
-                    AttemptResult::Verified
-                } else {
-                    AttemptResult::Failed
-                },
-            });
-            if !early_denial || !had_reservation {
-                run.executions += 1;
-            }
-            finish_step(
-                self,
-                tx,
-                &checked,
-                &mut run,
-                Label::fixed(if approve {
-                    "granted"
-                } else if early_denial {
-                    "failed"
-                } else {
-                    "denied"
-                }),
-                evidence,
-                at,
-            )?;
-            run.view(&checked)
+            decide_loaded(self, tx, &checked, &mut run, approve)
         })
     }
 }

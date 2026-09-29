@@ -60,6 +60,9 @@ pub struct Config {
     /// Platform workflow definitions; only active entries may start new runs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub workflows: BTreeMap<String, crate::workflow::ConfiguredWorkflow>,
+    /// Opt-in browser OIDC consent adapter. Only an active session-to-consent graph is accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_consent_workflow: Option<String>,
     /// Checked extension manifests, keyed by stage id. Platform only.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub workflow_extensions: BTreeMap<String, String>,
@@ -396,6 +399,7 @@ impl Default for Config {
             state_reconciliation_mode: Default::default(),
             reconciliation_controllers: BTreeMap::new(),
             workflows: BTreeMap::new(),
+            browser_consent_workflow: None,
             workflow_extensions: BTreeMap::new(),
             reconciliation_quotas: ReconciliationQuotas::default(),
             signers: Default::default(),
@@ -608,6 +612,16 @@ impl Config {
                 )
             {
                 bail!("Configured workflow {name} has no executable adapter");
+            }
+        }
+        if let Some(name) = &self.browser_consent_workflow {
+            let selected = self.workflows.get(name).filter(|entry| entry.active);
+            if !cfg!(feature = "platform")
+                || selected.is_none_or(|entry| {
+                    !crate::workflow::supported_configured_session_consent(&entry.definition)
+                })
+            {
+                bail!("Browser consent needs an active session-only configured workflow");
             }
         }
         self.reconciliation_quotas.validate()?;

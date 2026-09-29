@@ -838,7 +838,7 @@ pub(crate) fn supported_configured_consent(definition: &Definition) -> bool {
         || supported_configured_password_totp_consent(definition)
 }
 
-fn supported_configured_session_consent(definition: &Definition) -> bool {
+pub(crate) fn supported_configured_session_consent(definition: &Definition) -> bool {
     if definition.origin != Origin::Configured
         || definition.category != Category::Consent
         || definition.steps.len() != 2

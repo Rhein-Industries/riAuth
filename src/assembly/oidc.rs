@@ -26,6 +26,28 @@ const PREPARED_ACTOR_DECISIONS: &str = "authorization_prepared_actor_decisions";
 const PREPARED_INDEX_VERSION: &str = "authorization_prepared_index_v1";
 const MAX_PREPARED_PER_REQUEST: usize = 64;
 
+/// Register one exact, one-use OIDC preparation inside the caller's write.
+/// Browser interactions use the same index and replay fences as terminal prepare.
+pub(crate) fn prepare_authentication_in(
+    tx: &Tx<'_>,
+    request: &Authorization,
+    user_id: Option<String>,
+    expires_at: u64,
+) -> Result<String> {
+    let transaction = crypto::random_token("ri_auth_");
+    let request_hash = request.request_hash()?;
+    let key = digest(&transaction);
+    tx.put("authentication", &key, &AuthenticationTransaction {
+        request_hash: request_hash.clone(),
+        user_id,
+        authenticated_session: None,
+        expires_at,
+        source_stage: None,
+    })?;
+    register_preparation(tx, &request_hash, &key, expires_at)?;
+    Ok(transaction)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PreparedRequests {
@@ -159,6 +181,19 @@ fn reject_direct_decision_replay(
         ));
     }
     Ok(())
+}
+
+/// A browser preparation can begin anonymously and later bind to an account.
+/// Before that upgrade, honor any direct no-ID decision fence for this exact
+/// prepared token and account, or the same preparation could issue twice.
+#[cfg(feature = "platform")]
+pub(crate) fn reject_preparation_actor_replay(
+    tx: &Tx<'_>, request: &Authorization, account: &str,
+) -> Result<()> {
+    let transaction = request.transaction_id.as_deref().ok_or_else(Error::forbidden)?;
+    reject_direct_decision_replay(
+        tx, &request.request_hash()?, account, &digest(transaction), now(),
+    )
 }
 
 fn matching_preparation(tx: &Tx<'_>, request_hash: &str, at: u64) -> Result<bool> {
@@ -574,18 +609,13 @@ impl Core {
                     "instruction": "Complete the embedded source stage at authorization_url. The original authorization stays pending until that stage resumes."
                 }));
             }
-            let transaction = crypto::random_token("ri_auth_");
-            let request_hash = request.request_hash()?;
-            let key = digest(&transaction);
             let expires_at = now() + 600;
-            tx.put("authentication", &key, &AuthenticationTransaction {
-                request_hash: request_hash.clone(),
-                user_id: session.as_ref().filter(|_| !request.has_prompt("select_account")).map(|(u, _)| u.id.clone()),
-                authenticated_session: None,
+            let transaction = prepare_authentication_in(
+                tx,
+                &request,
+                session.as_ref().filter(|_| !request.has_prompt("select_account")).map(|(u, _)| u.id.clone()),
                 expires_at,
-                source_stage: None,
-            })?;
-            register_preparation(tx, &request_hash, &key, expires_at)?;
+            )?;
             Ok(json!({"client_id": client.id, "application": client.name, "scopes": scopes, "resource":request.resource,"redirect_uri": request.redirect_uri, "response_mode": request.response_mode, "require_mfa": client.require_mfa, "transaction_id": transaction, "reauthentication_required": fresh, "select_account": request.has_prompt("select_account"), "username": session.map(|(u, _)| u.username), "instruction": "Run `riauthctl authorize` with this complete authorization URL to review and approve in your terminal."}))
         })
     }
@@ -685,6 +715,8 @@ impl Core {
         remembered: bool,
         proof_key: Option<&str>,
     ) -> Result<String> {
+        #[cfg(feature = "platform")]
+        crate::browser::reject_configured_pending(tx, &request)?;
         #[cfg(feature = "platform")]
         crate::workflow::executor::authorization::reject_reserved(tx, &request)?;
         self.authorize_session_proof_inner(tx, session, request, remembered, proof_key, false)

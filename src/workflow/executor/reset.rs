@@ -196,6 +196,7 @@ impl Core {
             account_epoch: user.epoch,
             session: String::new(),
             token_hash: pin.hash().to_owned(),
+            browser_hash: None,
             expires_at,
             requires_mfa: false,
             source: None,

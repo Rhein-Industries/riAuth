@@ -18,6 +18,8 @@ use riauth::{
     oidc::{Authorization, TokenRequest},
     signin,
 };
+#[cfg(feature = "platform")]
+use riauth::workflow::{self, ConfiguredWorkflow, Id, Origin};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, time::Instant};
@@ -869,6 +871,135 @@ async fn password_sign_in_then_consent_issues_code_once() {
     assert_eq!(silent.status, StatusCode::FOUND, "{}", silent.text);
     assert_eq!(silent.header("vary"), Some("Accept"));
     redeem(&f, "app", &silent.location(), &verifier, None);
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn configured_browser_consent_binds_preparation_session_and_decision_once() {
+    let mut f = Fixture::new();
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("browser-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.steps[1].timeout_seconds = 120;
+    definition.terminals[0].requires = vec![vec![workflow::Proof::Session, workflow::Proof::Consent]];
+    f.core.config.workflows.insert("browser-consent".into(), ConfiguredWorkflow {
+        active: true,
+        definition,
+    });
+    f.core.config.browser_consent_workflow = Some("browser-consent".into());
+    f.core.config.validate().unwrap();
+    let mut inactive = f.core.config.clone();
+    inactive.workflows.get_mut("browser-consent").unwrap().active = false;
+    assert!(inactive.validate().is_err());
+    client(&f, "app", true, false, ProviderSettings {
+        implicit_consent: true,
+        ..Default::default()
+    });
+    let alice = f.user("alice");
+    f.user("bob");
+    let alice_sso = browser(&f, "alice");
+    let bob_sso = browser(&f, "bob");
+    let alice_sid = sid(&f, &alice_sso);
+    let app = riauth::api::router(f.core.clone());
+    let verifier = crypto::random_token("");
+    let i = start(&f, &app, &f.request("app", &verifier), Some(&alice_sso)).await;
+    let pending: Value = f.core.store.get("browser_authorizations", &i.id).unwrap().unwrap();
+    let request: Authorization = serde_json::from_value(pending["request"].clone()).unwrap();
+    let transaction = text(&pending["request"], "transaction_id");
+    assert_eq!(pending["configured_consent"], "browser-consent");
+    assert_eq!(pending["request"]["request_binding"], i.id);
+    assert!(f.core.browser_details(&alice, &i.code).is_err());
+    let state = get_state(&app, &i, Some(&alice_sso)).await.body;
+    assert_eq!(state["status"], "consent");
+    assert_eq!(state["consent"]["required"], true);
+    assert_eq!(state["consent"]["remember_enabled"], false);
+    assert!(state["terminal"].is_null());
+    let bob_state = get_state(&app, &i, Some(&bob_sso)).await.body;
+    assert_eq!(bob_state["status"], "unavailable");
+    assert_ne!(decide(&app, &i, Some(&bob_sso), true, &bob_state).await.status, StatusCode::OK);
+    assert!(f.core.store.list::<Code>("codes").unwrap().is_empty());
+
+    drop(app);
+    let f = f.reopen_with(|config| assert_eq!(config.browser_consent_workflow.as_deref(), Some("browser-consent")));
+    let app = riauth::api::router(f.core.clone());
+    let state = get_state(&app, &i, Some(&alice_sso)).await.body;
+    let approved = decide(&app, &i, Some(&alice_sso), true, &state).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text);
+    assert_eq!(approved.body["status"], "complete");
+    assert!(f.core.store.get::<Value>("authentication", &digest(&transaction)).unwrap().is_none());
+    assert!(f.core.store.list::<Value>("consents").unwrap().is_empty());
+    let finished = f.core.store.list::<Value>("workflow_runs").unwrap();
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].1["record"]["state"]["outcome"], "consent_granted");
+    assert_eq!(finished[0].1["record"]["session"], alice_sid);
+    for step in finished[0].1["record"]["steps"].as_array().unwrap() {
+        let receipt: Value = f.core.store.get("workflow_evidence", step["evidence"].as_str().unwrap()).unwrap().unwrap();
+        assert_eq!(receipt["consumed"], true);
+    }
+    assert_eq!(decide(&app, &i, Some(&alice_sso), true, &state).await.status, StatusCode::CONFLICT);
+    let delivered = resume(&app, &i, Some(&alice_sso)).await;
+    assert_eq!(delivered.status, StatusCode::FOUND);
+    assert_eq!(grant(&f, &delivered.location()).identity.session_id, alice_sid);
+    assert_eq!(resume(&app, &i, Some(&alice_sso)).await.status, StatusCode::NOT_FOUND);
+    let mut replay = request;
+    replay.decision = Some("approve".into());
+    assert!(f.core.authorize(&alice, replay).is_err());
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let denied = start(&f, &app, &f.request("app", &crypto::random_token("")), None).await;
+    let denied_pending: Value = f.core.store.get("browser_authorizations", &denied.id).unwrap().unwrap();
+    let denied_transaction = text(&denied_pending["request"], "transaction_id");
+    let mut direct: Authorization = serde_json::from_value(denied_pending["request"].clone()).unwrap();
+    direct.transaction_id = None;
+    direct.decision = Some("approve".into());
+    assert_eq!(f.core.authorize(&alice, direct).unwrap_err().code, "conflict");
+    let refused = decide(&app, &denied, None, false, &get_state(&app, &denied, None).await.body).await;
+    assert_eq!(refused.status, StatusCode::OK, "{}", refused.text);
+    assert!(f.core.store.get::<Value>("authentication", &digest(&denied_transaction)).unwrap().is_none());
+    assert_eq!(decide(&app, &denied, None, false, &refused.body).await.status, StatusCode::CONFLICT);
+    let denial = resume(&app, &denied, None).await;
+    assert!(denial.location().contains("access_denied"));
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let stale = start(&f, &app, &f.request("app", &crypto::random_token("")), Some(&alice_sso)).await;
+    let stale_pending: Value = f.core.store.get("browser_authorizations", &stale.id).unwrap().unwrap();
+    let stale_key = digest(&text(&stale_pending["request"], "transaction_id"));
+    f.core.store.write(|tx| {
+        let mut row: Value = tx.get("authentication", &stale_key)?.unwrap();
+        row["expires_at"] = json!(now() - 1);
+        tx.put("authentication", &stale_key, &row)
+    }).unwrap();
+    let stale_state = get_state(&app, &stale, Some(&alice_sso)).await.body;
+    assert_eq!(stale_state["status"], "unavailable");
+    assert_ne!(decide(&app, &stale, Some(&alice_sso), true, &stale_state).await.status, StatusCode::OK);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let changed = start(&f, &app, &f.request("app", &crypto::random_token("")), Some(&alice_sso)).await;
+    f.core.store.write(|tx| {
+        let mut client: Client = tx.get("clients", "app")?.unwrap();
+        client.name.push_str(" changed");
+        tx.put("clients", "app", &client)
+    }).unwrap();
+    let changed_state = get_state(&app, &changed, Some(&alice_sso)).await.body;
+    assert_eq!(changed_state["status"], "unavailable");
+    assert_ne!(decide(&app, &changed, Some(&alice_sso), true, &changed_state).await.status, StatusCode::OK);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let signed_out = start(&f, &app, &f.request("app", &crypto::random_token("")), None).await;
+    assert_eq!(get_state(&app, &signed_out, None).await.body["status"], "authenticate");
+    let login = password(&app, &signed_out, None, "alice", None).await;
+    assert_eq!(login.status, StatusCode::OK, "{}", login.text);
+    assert_eq!(login.body["status"], "consent");
+    let new_sso = login.sso();
+    let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
+    let approved = decide(&app, &signed_out, Some(&new_sso), true, &login.body).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text);
+    let delivered = resume(&app, &signed_out, Some(&new_sso)).await;
+    assert_eq!(delivered.status, StatusCode::FOUND);
+    assert_eq!(grant(&f, &delivered.location()).identity.session_id, sid(&f, &new_sso));
+    assert_eq!(f.core.store.list::<Session>("sessions").unwrap().len(), sessions);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 2);
 }
 
 #[tokio::test]

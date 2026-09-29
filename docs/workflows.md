@@ -397,8 +397,32 @@ preparation remains usable. Expiry and cancellation discard only the pending
 transaction; completed and closed runs retain replay protection for that
 transaction. No new session or remembered consent grant is created. Other
 configured consent graphs, including TOTP-only and recovery-code consent
-reauthentication, are unsupported. Browser-initiated and remembered-consent
-adapters are not connected.
+reauthentication, are unsupported.
+
+Platform can opt browser OIDC interactions for all clients into the exact
+session-only graph by setting top-level
+`browser_consent_workflow = "local-consent"` in the server configuration,
+where the name identifies one active canonical `session` → `consent` definition.
+Configuration validation rejects a missing, inactive, or different graph;
+Essentials rejects the setting. For this selected browser path, the server
+prepares one cryptorandom OIDC transaction bound to the browser interaction ID
+and the account already signed in, if any. The HttpOnly SSO cookie, interaction
+binding cookie, live account/session, prepared transaction, request content,
+client policy, and explicit page decision are rechecked before approval. The
+session proof and approval receipt are consumed with code issuance in one write;
+the finished run is retained for replay checks. A signed-out Deny spends the
+same exact preparation and returns the normal denial callback without a code.
+The original browser delivers either callback once. Terminal user-code approval
+is unavailable for this selected path.
+
+The browser page always asks for a decision for a selected configured request,
+including when the client has implicit or previously remembered consent. Its
+Remember control is hidden, and a submitted `remember` value creates no grant.
+The selected path refuses embedded source stages, account selection, prompt
+login, `max_age=0`, or a session that still needs reauthentication. A missing
+or changed configured graph fails closed; it does not fall back to ordinary
+consent. Browser integration for the passkey and password/TOTP reauthentication
+graphs, SAML consent, and remembered-consent creation remains unsupported.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation

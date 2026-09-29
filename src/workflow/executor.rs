@@ -19,6 +19,7 @@ pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
 pub(crate) use version::seal_disabled_account;
+pub(crate) use consent::browser_consent_decide_in;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
@@ -96,6 +97,9 @@ struct RequestAuthority {
     account_epoch: u64,
     session: String,
     token_hash: String,
+    /// A browser-owned consent run instead pins the live HttpOnly SSO mapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    browser_hash: Option<String>,
     expires_at: u64,
     requires_mfa: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -375,7 +379,14 @@ fn authority(
     {
         return Err(Error::forbidden());
     }
-    if tx
+    if let Some(browser_hash) = &request.browser_hash {
+        let mapping = tx.get::<crate::browser::BrowserSession>("browser_sessions", browser_hash)?;
+        if mapping.is_none_or(|mapping| {
+            mapping.rotated || mapping.expires_at <= at || mapping.session_id != sid
+        }) {
+            return Err(Error::forbidden());
+        }
+    } else if tx
         .get::<String>("session_tokens", &request.token_hash)?
         .as_deref()
         != Some(sid)
@@ -1456,6 +1467,7 @@ impl Core {
                 account_epoch: user.epoch,
                 session: session.id.clone(),
                 token_hash: digest(token),
+                browser_hash: None,
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
                     || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa)
@@ -1479,6 +1491,7 @@ impl Core {
                         &session,
                         authorization,
                         configured_passkey_consent || configured_totp_consent,
+                        None,
                         at,
                     )?;
                 } else {

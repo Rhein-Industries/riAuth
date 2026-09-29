@@ -208,7 +208,7 @@
     $("consent-resource").textContent = c.resource ? `For ${c.resource}` : ""; $("consent-resource").hidden = !required || !c.resource;
     const host = next.application?.host;
     $("consent-host").textContent = host ? `You'll return to ${host}` : ""; $("consent-host").hidden = !host;
-    $("consent-remember-label").hidden = !required;
+    $("consent-remember-label").hidden = !required || c.remember_enabled === false;
     if (current !== "consent") { $("consent-remember").checked = c.remember_default !== false; clearError("consent-error"); }
     $("consent-allow").textContent = required ? "Allow" : "Continue";
     $("consent-deny").textContent = required ? "Deny" : "Cancel";
