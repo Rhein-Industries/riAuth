@@ -3342,12 +3342,47 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
         (status, value)
     }
 
+    async fn browser_guard_call(
+        app: &axum::Router,
+        path: &str,
+        cookie: &str,
+        origin: Option<&str>,
+        portal_header: bool,
+        fetch_site: Option<&str>,
+        revision: u64,
+        key: &str,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("cookie", format!("riauth_sso={cookie}"))
+            .header("if-match", format!("\"{revision}\""))
+            .header("idempotency-key", key);
+        if let Some(origin) = origin {
+            request = request.header("origin", origin);
+        }
+        if portal_header {
+            request = request.header("x-riauth-portal", "1");
+        }
+        if let Some(fetch_site) = fetch_site {
+            request = request.header("sec-fetch-site", fetch_site);
+        }
+        let response = app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        let status = response.status();
+        let value = serde_json::from_slice(
+            &to_bytes(response.into_body(), 64 * 1024).await.unwrap(),
+        )
+        .unwrap();
+        (status, value)
+    }
+
     let workspace = serve("workspace", vec![person("ws-1", "alice@example.test", "Alice", true)], SECRET);
     let entra = serve("entra", vec![person("en-1", "bob@example.test", "Bob", false)], SECRET);
     let mut fixture = Fixture::new();
     configure(&mut fixture, "workspace", "corp", &workspace, "");
     configure(&mut fixture, "entra", "tenant", &entra, "");
     let other = agent_token(&fixture, "entra_only", vec![permission("directory.sync", "entra/tenant")]);
+    let workspace_agent = agent_token(&fixture, "workspace_verifier", vec![permission("directory.sync", "workspace/corp")]);
     let sign_in = fixture.core.portal_sign_in().unwrap();
     fixture.core.portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true).unwrap();
     let binding = sign_in.cookies[0].split(';').next().unwrap().split_once('=').unwrap().1;
@@ -3359,6 +3394,19 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     let app = riauth::api::router(fixture.core.clone());
     let workspace_api = "/api/cloud-directories/workspace/corp/verify-credential";
     let workspace_browser = "/api/admin/cloud-directories/workspace/corp/verify-credential";
+    for (origin_header, portal_header, fetch_site) in [
+        (Some("https://other.example.test"), true, None),
+        (None, true, None),
+        (Some(origin.as_str()), false, None),
+        (Some(origin.as_str()), true, Some("cross-site")),
+    ] {
+        let (status, rejected) = browser_guard_call(
+            &app, workspace_browser, &cookie, origin_header, portal_header,
+            fetch_site, revision, "csrf-attempt",
+        ).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{rejected}");
+    }
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
     let (status, denied) = call(&app, "POST", workspace_api, &other, false, &origin, revision, "wrong-scope").await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
@@ -3373,6 +3421,12 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     let (status, replay) = call(&app, "POST", workspace_browser, &cookie, true, &origin, revision, "rotate-workspace").await;
     assert_eq!(status, StatusCode::OK, "{replay}");
     assert_eq!(replay, first);
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 1);
+    let (status, rejected_replay) = browser_guard_call(
+        &app, workspace_browser, &cookie, Some("https://other.example.test"),
+        true, Some("cross-site"), revision, "rotate-workspace",
+    ).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{rejected_replay}");
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 1);
     let (_, operations) = call(&app, "GET", "/api/cloud-directories/workspace/corp/operations", &fixture.admin, false, &origin, revision, "").await;
     assert_eq!(operations["last_connection_check"], first);
@@ -3398,9 +3452,84 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     let (_, entra_operations) = call(&app, "GET", "/api/cloud-directories/entra/tenant/operations", &fixture.admin, false, &origin, revision, "").await;
     assert_eq!(entra_operations["last_connection_check"], failed);
     assert_eq!(entra.state.token_hits.load(Ordering::Relaxed), 1);
+    std::fs::remove_file(secret_path(&fixture, "entra", "tenant")).unwrap();
+    let (status, missing_entra_secret) = call(&app, "POST", "/api/cloud-directories/entra/tenant/verify-credential", &fixture.admin, false, &origin, revision, "missing-entra-secret").await;
+    assert_eq!(status, StatusCode::OK, "{missing_entra_secret}");
+    assert_eq!(missing_entra_secret["connected"], false);
+    assert_eq!(missing_entra_secret["error"], "connection_failed");
+    assert_eq!(entra.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_redacted(&missing_entra_secret);
+    let (status, agent_check) = call(&app, "POST", workspace_api, &workspace_agent, false, &origin, revision, "agent-check").await;
+    assert_eq!(status, StatusCode::OK, "{agent_check}");
+    assert_eq!(agent_check["connected"], true);
+    let hits_before_revoke = workspace.state.token_hits.load(Ordering::Relaxed);
+    fixture.core.revoke_agent(&fixture.admin, "workspace_verifier").unwrap();
+    let current_revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    for (key, request_revision) in [("agent-check", revision), ("revoked-agent-new-key", current_revision)] {
+        let (status, revoked) = call(&app, "POST", workspace_api, &workspace_agent, false, &origin, request_revision, key).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{revoked}");
+    }
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+
+    let private_path = secret_path(&fixture, "workspace", "corp");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&private_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let (status, unsafe_file) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, current_revision, "unsafe-private-file").await;
+        assert_eq!(status, StatusCode::OK, "{unsafe_file}");
+        assert_eq!(unsafe_file["connected"], false);
+        assert_eq!(unsafe_file["error"], "connection_failed");
+        assert_redacted(&unsafe_file);
+        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+    }
+    std::fs::remove_file(&private_path).unwrap();
+    let (status, missing_file) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, current_revision, "missing-private-file").await;
+    assert_eq!(status, StatusCode::OK, "{missing_file}");
+    assert_eq!(missing_file["connected"], false);
+    assert_eq!(missing_file["error"], "connection_failed");
+    assert_redacted(&missing_file);
+    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+    let (_, unavailable) = call(&app, "GET", "/api/cloud-directories/workspace/corp/operations", &fixture.admin, false, &origin, current_revision, "").await;
+    assert_eq!(unavailable["credential"]["state"], "file_unavailable");
+    assert_eq!(unavailable["last_connection_check"], missing_file);
+    assert!(!unavailable.to_string().contains(&private_path.display().to_string()));
+    assert_redacted(&unavailable);
+    #[cfg(feature = "test-support")]
+    {
+        let direct_key_file = fixture._dir.path().join("missing-direct-service-account.json");
+        let config = fixture.core.config.workspace_directories.get_mut("corp").unwrap();
+        config.client_id.clear();
+        config.client_secret_file.clear();
+        config.direct_auth = Some(WorkspaceDirectAuth {
+            key_file: direct_key_file.clone(),
+            delegated_subject: "admin@example.test".into(),
+        });
+        assert!(config.validate().is_ok());
+        let direct_app = riauth::api::router(fixture.core.clone());
+        let (status, missing_direct_key) = call(&direct_app, "POST", workspace_browser, &cookie, true, &origin, current_revision, "missing-direct-key").await;
+        assert_eq!(status, StatusCode::OK, "{missing_direct_key}");
+        assert_eq!(missing_direct_key["connected"], false);
+        assert_eq!(missing_direct_key["error"], "connection_failed");
+        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+        assert_redacted(&missing_direct_key);
+
+        write_private(&direct_key_file, b"{invalid-service-account-key", true).unwrap();
+        let (status, invalid_direct_key) = call(&direct_app, "POST", workspace_browser, &cookie, true, &origin, current_revision, "invalid-direct-key").await;
+        assert_eq!(status, StatusCode::OK, "{invalid_direct_key}");
+        assert_eq!(invalid_direct_key["connected"], false);
+        assert_eq!(invalid_direct_key["error"], "connection_failed");
+        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+        let (_, direct_operations) = call(&direct_app, "GET", "/api/admin/cloud-directories/workspace/corp/operations", &cookie, true, &origin, current_revision, "").await;
+        assert_eq!(direct_operations["credential"]["state"], "file_readable");
+        assert_eq!(direct_operations["last_connection_check"], invalid_direct_key);
+        assert!(!direct_operations.to_string().contains(&direct_key_file.display().to_string()));
+        assert_redacted(&direct_operations);
+    }
     let audit = fixture.core.audit_events(&fixture.admin, 100).unwrap();
     assert_eq!(audit.as_array().unwrap().iter()
-        .filter(|event| event["action"] == "cloud_directory.credential_verify").count(), 3);
+        .filter(|event| event["action"] == "cloud_directory.credential_verify").count(),
+        6 + if cfg!(unix) { 1 } else { 0 } + if cfg!(feature = "test-support") { 2 } else { 0 });
     assert_redacted(&audit);
 }
 
