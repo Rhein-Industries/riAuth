@@ -2047,7 +2047,10 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
     assert_eq!(fresh["dismissal"], Value::Null);
     assert!(fresh["epoch"].as_u64().unwrap() > alice.epoch);
     // A held row with no ambiguous write can be waived for a missing identity.
+    // The retained sweep keeps its cutoff, so this later row is not claimed
+    // while that cursor is parked. The empty pass clears it; the next pass holds.
     f.core.config.reconciliation_controllers.clear();
+    assert!(!f.core.deactivation_step().unwrap());
     assert!(!f.core.deactivation_step().unwrap());
     let fresh_id = text(fresh, "id");
     let reviewed = f.core.provisioning_deactivations(&f.admin).unwrap();
@@ -2057,6 +2060,8 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
         .iter()
         .find(|row| row["id"] == fresh_id)
         .unwrap();
+    assert_eq!(reviewed["hold"], "awaiting_controller");
+    assert_eq!(reviewed["attempts"], 0);
     let absent = json!({"revision": reviewed["revision"], "reason": "remote_absent", "evidence": "Identity removed from payroll; OPS-44"});
     let (status, waived) = post(&f, &operator, &fresh_id, Some("absent"), &absent);
     assert_eq!(status, StatusCode::OK);
@@ -4276,4 +4281,175 @@ fn offboarding_diagnostics_reports_incomplete_and_failed_without_secrets() {
     }));
     assert_redacted(&flooded);
     assert_eq!(targets(&f.core, "offboard.execute").len(), executes);
+}
+
+/// A stored due cursor scans strictly after its key and survives reopen.
+/// Work made due again at an earlier key is invisible to that forward pass.
+/// The pass wraps once from the index start under the same frozen cutoff and
+/// runs the ordinary claim callback. The earlier deactivation is held, not
+/// dispatched. A row past the cutoff and a later leased row stay unchanged.
+#[test]
+fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.user("carol");
+    f.user("dave");
+    let (alice, carol, dave) = (
+        account(&f.core, "alice"),
+        account(&f.core, "carol"),
+        account(&f.core, "dave"),
+    );
+    let payroll = Scim::default();
+    let url = "http://127.0.0.1:9/scim/v2";
+    f.core
+        .config
+        .scim_targets
+        .insert("payroll".into(), scim_target(&f, "payroll", url, "payroll"));
+    linked(&f, &payroll, "payroll", url, &alice, "p-alice");
+    linked(&f, &payroll, "payroll", url, &carol, "p-carol");
+    let disable = || riauth::model::UserPatch {
+        enabled: Some(false),
+        ..Default::default()
+    };
+    f.core.update_user(&f.admin, "alice", disable()).unwrap();
+    f.core.update_user(&f.admin, "carol", disable()).unwrap();
+    let alice_id = text(&delivery(&f.core, "payroll", &alice), "id");
+    let carol_id = text(&delivery(&f.core, "payroll", &carol), "id");
+    assert!(delivery(&f.core, "payroll", &alice)["next_attempt"].as_u64().unwrap() > 3);
+    assert_eq!(delivery(&f.core, "payroll", &alice)["attempts"], 0);
+    assert_eq!(delivery(&f.core, "payroll", &carol)["attempts"], 0);
+    // `~` sorts after every digest, so this cursor sits after due time 1 and
+    // before due time 3. Cutoff 1 includes only the re-due row.
+    let cursor_key = format!("{:020}/~", 2u64);
+    let cursor = (cursor_key.clone(), 1u64);
+    let future = crypto::now().saturating_add(3_600);
+    let leased = downstream::Deactivation {
+        id: "leased-later".into(),
+        link: "leased-later-link".into(),
+        target: "payroll".into(),
+        target_url: url.into(),
+        user_id: dave.id.clone(),
+        username: dave.username.clone(),
+        epoch: dave.epoch,
+        remote_id: "p-dave".into(),
+        external_id: "ext-dave".into(),
+        link_digest: "leased-later".into(),
+        status: downstream::Status::Running,
+        hold: None,
+        attempts: 1,
+        next_attempt: future,
+        lease_owner: Some("retained-worker".into()),
+        lease_until: future,
+        dispatch_started: Some(false),
+        actor: None,
+        last_error: None,
+        outcome: None,
+        created_at: 1,
+        delivered_at: None,
+        uncertain: false,
+        resolution: None,
+        dismissal: None,
+        dispatch_recoveries: Vec::new(),
+        unlinked_create: None,
+    };
+    f.core
+        .store
+        .write(|tx| {
+            let mut early: Value = tx.get(downstream::BUCKET, &alice_id)?.unwrap();
+            early["next_attempt"] = json!(1);
+            tx.put(downstream::BUCKET, &alice_id, &early)?;
+            let mut sentinel: Value = tx.get(downstream::BUCKET, &carol_id)?.unwrap();
+            sentinel["next_attempt"] = json!(3);
+            tx.put(downstream::BUCKET, &carol_id, &sentinel)?;
+            tx.put(downstream::BUCKET, &leased.id, &leased)?;
+            tx.put("connector_due_cursors", downstream::BUCKET, &cursor)?;
+            Ok(())
+        })
+        .unwrap();
+    f = f.reopen_with(|_| {});
+    assert_eq!(
+        f.core
+            .store
+            .get::<(String, u64)>("connector_due_cursors", downstream::BUCKET)
+            .unwrap(),
+        Some(cursor)
+    );
+    let index: Vec<(String, String)> = f
+        .core
+        .store
+        .list("index_due_provisioning_deactivations")
+        .unwrap();
+    let key_of = |id: &str| {
+        index
+            .iter()
+            .find(|(_, row_id)| row_id == id)
+            .unwrap()
+            .0
+            .clone()
+    };
+    assert!(key_of(&alice_id) < cursor_key);
+    assert!(cursor_key < key_of(&carol_id));
+    assert!(cursor_key < key_of("leased-later"));
+    let sentinel_before = delivery(&f.core, "payroll", &carol);
+    let leased_before: Value = f
+        .core
+        .store
+        .get(downstream::BUCKET, "leased-later")
+        .unwrap()
+        .unwrap();
+    assert_eq!(delivery(&f.core, "payroll", &alice)["next_attempt"], 1);
+    assert_eq!(sentinel_before["next_attempt"], 3);
+    let deactivations = targets(&f.core, "provisioner.deactivate").len();
+    let at = crypto::now();
+    assert!(!f.core.deactivation_step().unwrap());
+    let held = delivery(&f.core, "payroll", &alice);
+    assert_eq!(held["status"], "pending");
+    assert_eq!(held["hold"], "awaiting_controller");
+    assert_eq!(held["attempts"], 0);
+    assert_eq!(held["outcome"], Value::Null);
+    assert!(held["delivered_at"].is_null());
+    assert!(held["lease_owner"].is_null());
+    assert!(held["next_attempt"].as_u64().unwrap() >= at.saturating_add(60));
+    // The cutoff row and the leased row were not claimed on the wrap.
+    assert_eq!(delivery(&f.core, "payroll", &carol), sentinel_before);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>(downstream::BUCKET, "leased-later")
+            .unwrap()
+            .unwrap(),
+        leased_before
+    );
+    // One inspected due row exhausts the page, so the parked cursor is cleared.
+    assert!(
+        f.core
+            .store
+            .get::<(String, u64)>("connector_due_cursors", downstream::BUCKET)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(targets(&f.core, "provisioner.deactivate").len(), deactivations);
+    // The next pass uses a fresh cutoff. It can hold the row that was past the
+    // frozen cutoff, and it does not dispatch or revisit the held row.
+    assert!(!f.core.deactivation_step().unwrap());
+    let again = delivery(&f.core, "payroll", &alice);
+    assert_eq!(again["attempts"], 0);
+    assert_eq!(again["hold"], "awaiting_controller");
+    assert_eq!(again["next_attempt"], held["next_attempt"]);
+    assert_eq!(again["status"], "pending");
+    let released = delivery(&f.core, "payroll", &carol);
+    assert_eq!(released["status"], "pending");
+    assert_eq!(released["hold"], "awaiting_controller");
+    assert_eq!(released["attempts"], 0);
+    assert_eq!(released["outcome"], Value::Null);
+    assert!(released["next_attempt"].as_u64().unwrap() >= at.saturating_add(60));
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>(downstream::BUCKET, "leased-later")
+            .unwrap()
+            .unwrap(),
+        leased_before
+    );
+    assert_eq!(targets(&f.core, "provisioner.deactivate").len(), deactivations);
 }

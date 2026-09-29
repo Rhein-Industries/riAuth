@@ -587,8 +587,11 @@ impl Tx<'_> {
     /// Bounded round-robin selection for connector claims. Advance only past
     /// inspected entries, so a busy target at the head cannot hide later due
     /// jobs. Freeze the due cutoff until wraparound; new retries/appends cannot
-    /// keep the cursor chasing the tail forever. Only cursor metadata changes
-    /// on a refused claim, never a job's retry time, lease or attempt count.
+    /// keep the cursor chasing the tail forever. A stored cursor whose forward
+    /// pass inspects no due row wraps once from the index start under that same
+    /// cutoff. A pass that already inspected a due row does not wrap. Only
+    /// cursor metadata changes on a refused claim, never a job's retry time,
+    /// lease or attempt count.
     pub(crate) fn connector_due<T: DeserializeOwned, R>(
         &self,
         bucket: &str,
@@ -600,35 +603,53 @@ impl Tx<'_> {
         if !matches!(bucket, "provisioning_jobs" | "provisioning_deactivations") {
             return Err(Error::internal("Collection has no connector cursor"));
         }
-        let cursor = self.get::<(String, u64)>(CURSORS, bucket)?;
-        let cutoff = cursor.as_ref().map_or(at, |(_, cutoff)| (*cutoff).min(at));
-        let entries = self.scan::<String>(
-            &format!("index_due_{bucket}"),
-            cursor.as_ref().map(|(key, _)| key.as_str()),
-            LIMIT,
-        )?;
-        let mut exhausted = entries.len() < LIMIT;
-        let mut last = None;
+        let stored = self.get::<(String, u64)>(CURSORS, bucket)?;
+        let cutoff = stored.as_ref().map_or(at, |(_, cutoff)| (*cutoff).min(at));
+        // No stored cursor already starts at the index head. A stored cursor
+        // scans strictly after its key, so this records that one empty forward
+        // pass may restart once.
+        let mut after = stored.map(|(key, _)| key);
+        let mut wrap = after.is_some();
         let mut selected = None;
-        for (key, id) in entries {
-            let due = key
-                .split('/')
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| Error::internal("Invalid due index"))?;
-            if due > cutoff {
-                exhausted = true;
-                break;
+        let mut exhausted;
+        let mut last;
+        loop {
+            let entries = self.scan::<String>(
+                &format!("index_due_{bucket}"),
+                after.as_deref(),
+                LIMIT,
+            )?;
+            exhausted = entries.len() < LIMIT;
+            last = None;
+            for (key, id) in entries {
+                let due = key
+                    .split('/')
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or_else(|| Error::internal("Invalid due index"))?;
+                if due > cutoff {
+                    exhausted = true;
+                    break;
+                }
+                last = Some(key);
+                if let Some(record) = self.get(bucket, &id)?
+                    && let Some(result) = claim(id, record)?
+                {
+                    selected = Some(result);
+                    // Remaining entries in this page have not been inspected.
+                    exhausted = false;
+                    break;
+                }
             }
-            last = Some(key);
-            if let Some(record) = self.get(bucket, &id)?
-                && let Some(result) = claim(id, record)?
-            {
-                selected = Some(result);
-                // Remaining entries in this page have not been inspected.
-                exhausted = false;
-                break;
+            // Re-due keys sort before a parked cursor. Claim each of them once
+            // on this restart. Do not restart after a pass that inspected a
+            // due row, and do not restart a second time in this call.
+            if wrap && last.is_none() && selected.is_none() {
+                wrap = false;
+                after = None;
+                continue;
             }
+            break;
         }
         if let Some(last) = last.filter(|_| !exhausted) {
             self.put(CURSORS, bucket, &(last, cutoff))?;
