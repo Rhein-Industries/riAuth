@@ -192,6 +192,41 @@ test('signed-in account controls stay inside a 320 pixel viewport', async ({ pag
   await fits(page);
 });
 
+test('empty sign-in marks each missing field invalid', async ({ page, browserName }) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(`${fixture.issuer}/apps`);
+  const username = page.locator('#login-username');
+  const password = page.locator('#login-password');
+  const error = page.locator('#auth-error');
+  await expect(username).toBeVisible();
+  await username.focus();
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter your username and password.');
+  await expect(username).toHaveAttribute('aria-invalid', 'true');
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  await expect(username).toHaveAttribute('aria-describedby', 'auth-error');
+  await expect(password).toHaveAttribute('aria-describedby', 'auth-error');
+  await expect(page.locator('#login-otp')).not.toHaveAttribute('aria-invalid');
+  expect(await onScreen(error)).toBe(true);
+  expect(await error.evaluate((el) => getComputedStyle(el).outlineStyle)).not.toBe('none');
+  expect(await username.evaluate((el) => getComputedStyle(el).borderTopColor)).toBe('rgb(161, 35, 27)');
+  await axe(page);
+  await tabTo(page, browserName, 'login-username');
+  await page.keyboard.type('ada');
+  await expect(username).not.toHaveAttribute('aria-invalid');
+  await expect(username).not.toHaveAttribute('aria-describedby');
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter your username and password.');
+  await expect(username).not.toHaveAttribute('aria-invalid');
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  await expect(password).toHaveAttribute('aria-describedby', 'auth-error');
+  await fits(page);
+});
+
 test('empty administrator password confirmation focuses the error', async ({ page, browserName }) => {
   test.setTimeout(90000);
   const admin = fixture.admin;

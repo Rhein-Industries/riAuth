@@ -176,8 +176,8 @@ The separate Chromium/Firefox/WebKit matrix includes keyboard interaction,
 responsive layout, text scaling, connection recovery and automated accessibility.
 `tools/browser/accessibility-journeys.spec.js` covers device approval, the
 password-reset page when email delivery is unavailable, sessions and consent after
-terminal approval, the sign-in and security dialog, and an administrator's empty
-password confirmation for another person. The fixture has no mail
+terminal approval, the sign-in and security dialog, an empty workspace sign-in, and an
+administrator's empty password confirmation for another person. The fixture has no mail
 delivery, so that reset page focuses the unavailable-recovery alert instead of
 asking for a username. Each of those pages must be reachable from the keyboard, report no WCAG 2.1
 A/AA axe violations, and avoid horizontal scrolling at 320, 768 and 1440 CSS pixels
@@ -187,7 +187,8 @@ a 320×480 viewport where that error would otherwise sit above the visible area.
 After a password sign-in, Sign out and the workspace navigation stay inside a 320 CSS
 pixel viewport. An empty new password in the administration confirmation dialog moves
 focus to the error and marks the password field invalid. That check cancels the dialog
-and does not change the password.
+and does not change the password. An empty username or password on the workspace
+sign-in form moves focus to the error and marks each missing field invalid.
 Chromium additionally cancels a virtual internal authenticator from the keyboard.
 The spec does not exercise a physical security key, a synced platform passkey, a
 phone hybrid transport, a mobile operating system, or a spoken screen reader.

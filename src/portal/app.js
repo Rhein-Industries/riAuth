@@ -382,6 +382,7 @@
   function clearAuthError() {
     $("auth-error").hidden = true; $("auth-error").textContent = "";
     for (const id of ["login-username", "login-password", "login-otp"]) $(id).removeAttribute("aria-invalid");
+    for (const id of ["login-username", "login-password"]) $(id).removeAttribute("aria-describedby");
   }
   async function signedIn() { $("login-password").value = ""; $("login-otp").value = ""; stopRequest(); await refresh(); }
   $("password-form").addEventListener("submit", (event) => {
@@ -390,7 +391,12 @@
       const username = $("login-username").value.trim(), password = $("login-password").value;
       $("login-password").value = "";
       clearAuthError();
-      if (!username || !password) { showError("auth-error", "Enter your username and password."); return; }
+      if (!username || !password) {
+        if (!username) { $("login-username").setAttribute("aria-invalid", "true"); $("login-username").setAttribute("aria-describedby", "auth-error"); }
+        if (!password) { $("login-password").setAttribute("aria-invalid", "true"); $("login-password").setAttribute("aria-describedby", "auth-error"); }
+        showError("auth-error", "Enter your username and password.");
+        return;
+      }
       try {
         if (!(await security.flows.signIn.cancel())) { showError("auth-error", "Finishing passkey sign-in. Please wait."); return; }
         $("passkey-login-cancel").hidden = true;
@@ -406,7 +412,10 @@
       }
     });
   });
-  for (const id of ["login-username", "login-password", "login-otp"]) $(id).addEventListener("input", () => $(id).removeAttribute("aria-invalid"));
+  for (const id of ["login-username", "login-password", "login-otp"]) $(id).addEventListener("input", () => {
+    $(id).removeAttribute("aria-invalid");
+    if (id !== "login-otp") $(id).removeAttribute("aria-describedby");
+  });
   $("passkey-login").addEventListener("click", () => RiAuth.inFlight($("passkey-login"), async () => {
     const generation = state.generation;
     clearAuthError();
