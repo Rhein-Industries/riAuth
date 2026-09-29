@@ -74,7 +74,7 @@ The archive stores paths, not those file contents. The full list is
 | Backup key (`--key-file`) | `restore` reads it before it creates `--out`. The file must be owner-only (mode 0600 or 0400), at most 128 bytes, and base64url for 32 bytes. |
 | Database key (`--database-key-file`) | Read before `--out` is created. Omit it only when the restored store should be plaintext. The same file rules apply. A native redb or PostgreSQL copy of an encrypted store still needs the key it was written with. |
 | PostgreSQL connection file and `postgres.json` | `--postgres-config` loads the JSON and connects before `--out` is created. The connection file is owner-only and at most 16 KiB, with 1–8 hosts. The target database must be empty. |
-| Device-trust PEM or JWKS (Platform) | `config.validate` reads the file before `--out` is created. A missing or invalid file fails as `Invalid backup configuration`. |
+| Device-trust PEM, JWKS, or Verified Access service-account file (Platform) | `config.validate` reads the file before `--out` is created. A missing or invalid file fails as `Invalid backup configuration`. |
 | RADIUS NAS secrets, RadSec, and EAP-TLS files (Platform) | Read when the restored store is reopened, after the import commits. A failure leaves `$new_output/.riauth.restore-pending.toml` and no published `riauth.toml`. |
 | SMTP password file | Read in serving preflight, before listeners start. A bad file fails `serve` as `SMTP configuration unusable`. |
 | TLS, LDAP, SCIM, signer, Workspace, and Entra files | Paths are copied into the restored configuration. Their contents are read at use. Vault Transit private keys stay in Vault; restore does not contact Vault. |

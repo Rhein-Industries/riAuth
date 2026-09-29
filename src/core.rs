@@ -7,7 +7,10 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
 
 /// Who receives a verified password login: a bearer token, or a staged browser login.
 #[doc(hidden)]
@@ -23,6 +26,11 @@ pub struct Core {
     pub store: Store,
     dummy_hash: Arc<String>,
     pub(crate) runtime: Arc<crate::capability::RuntimeStatus>,
+    #[cfg(feature = "platform")]
+    pub(crate) verified_access_cache: Arc<Mutex<crate::device_trust::TokenCache>>,
+    #[cfg(all(feature = "platform", feature = "test-support"))]
+    pub(crate) verified_access_transport:
+        Arc<Mutex<Option<Arc<dyn crate::device_trust::VerifiedAccessTransport>>>>,
 }
 
 impl Core {
@@ -193,6 +201,10 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            #[cfg(feature = "platform")]
+            verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
+            #[cfg(all(feature = "platform", feature = "test-support"))]
+            verified_access_transport: Arc::new(Mutex::new(None)),
         })
     }
     pub fn open(config: Config) -> Result<Self> {
@@ -231,6 +243,10 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            #[cfg(feature = "platform")]
+            verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
+            #[cfg(all(feature = "platform", feature = "test-support"))]
+            verified_access_transport: Arc::new(Mutex::new(None)),
         })
     }
 

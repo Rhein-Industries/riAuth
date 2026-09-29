@@ -10,6 +10,9 @@ pub const MAX_FRESHNESS: u64 = 3600;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrustConfig {
+    /// `local` (default) or `google_verified_access_v2`. There is no base-URL setting.
+    #[serde(default)]
+    pub provider: Option<String>,
     /// SPKI or PKCS#1 PEM public key. Mutually exclusive with `jwks_file`.
     #[serde(default)]
     pub pem_file: Option<PathBuf>,
@@ -22,6 +25,18 @@ pub struct TrustConfig {
     /// When set, the device JWT `kid` must equal this value (PEM has a single key).
     #[serde(default)]
     pub kid: Option<String>,
+    /// PKCS#8 Google service-account JSON. Only for `google_verified_access_v2`.
+    #[serde(default)]
+    pub service_account_file: Option<PathBuf>,
+    /// Enrolled device domain sent as Verified Access `expectedIdentity`.
+    #[serde(default)]
+    pub expected_identity: Option<String>,
+    /// Chrome customer id that must equal the verify response `customerId`.
+    #[serde(default)]
+    pub customer_id: Option<String>,
+    /// Explicit allowlist. `UNSPECIFIED`, developer mode, and `NO_KEY` are rejected.
+    #[serde(default)]
+    pub allowed_key_trust_levels: Vec<String>,
     /// How long a successful verification stays fresh. Default 300, maximum 3600.
     #[serde(default = "default_freshness")]
     pub freshness_ttl: u64,
@@ -34,10 +49,15 @@ fn default_freshness() -> u64 {
 impl Default for TrustConfig {
     fn default() -> Self {
         Self {
+            provider: None,
             pem_file: None,
             jwks_file: None,
             algorithm: None,
             kid: None,
+            service_account_file: None,
+            expected_identity: None,
+            customer_id: None,
+            allowed_key_trust_levels: Vec::new(),
             freshness_ttl: DEFAULT_FRESHNESS,
         }
     }
@@ -52,6 +72,15 @@ pub struct Challenge {
     pub epoch: u64,
     pub expires_at: u64,
     pub used: bool,
+    /// SHA-256 of a challenge response that was already accepted.
+    #[serde(default)]
+    pub response_sha256: String,
+    /// Keep the used challenge until this instant so that response cannot be replayed.
+    #[serde(default)]
+    pub response_retained_until: u64,
+    /// Unix time when this challenge was issued. Zero on rows written before the field existed.
+    #[serde(default)]
+    pub issued_at: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

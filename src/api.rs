@@ -3956,20 +3956,14 @@ async fn device_trust_challenge(State(app): State<App>, headers: HeaderMap) -> R
     app.run(move |core| core.device_challenge(&token).map(Json))
         .await
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg(feature = "platform")]
-struct DeviceTrustToken {
-    token: String,
-}
 #[cfg(feature = "platform")]
 async fn device_trust_verify(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(input): Json<DeviceTrustToken>,
+    Json(input): Json<crate::device_trust::DeviceTrustSubmission>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.device_verify(&token, &input.token).map(Json))
+    app.run(move |core| core.device_verify_submitted(&token, input).map(Json))
         .await
 }
 #[cfg(feature = "platform")]

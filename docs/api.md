@@ -233,7 +233,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | POST | `/api/source-login/finish` | Private source transaction, explicit approval and optional local OTP |
 | GET | `/api/source-links` | Current user's linked upstream identities |
 | DELETE | `/api/source-links/{id}` | Unlink own upstream identity and revoke associated sessions |
-| POST | `/api/device-trust/challenge`, `/api/device-trust/verify` | End-user bearer; nonce challenge and pinned local JWT verification; see [ENT-06](enterprise/ENT-06.md) |
+| POST | `/api/device-trust/challenge`, `/api/device-trust/verify` | End-user bearer; local nonce JWT, or a Verified Access v2 challenge response when that provider is configured; see [ENT-06](enterprise/ENT-06.md) |
 | GET | `/api/device/{code}` | Review device request |
 | POST | `/api/device/decision` | `user_code`, `approve`; enforce fresh identity/client policy |
 | GET | `/api/device/browser/{code}` | SSO-cookie review of verified client, scopes, claim names, account and request-bound `session_ref`; read-only |

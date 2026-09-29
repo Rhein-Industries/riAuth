@@ -106,7 +106,7 @@ Platform only. Essentials rejects all of these settings:
 | --- | --- |
 | `[signers.<name>].token_file`, `ca_file` | Vault token and Vault CA for a Transit signer; see [external signing](kms.md) |
 | `[client_certificates].trust_anchors_file`, `crl_file` | HTTPS client-certificate trust anchors and CRLs |
-| `[device_trust].pem_file` or `jwks_file` | Device-trust verification key. **Read during restore**; see [Restore order](#restore-order). |
+| `[device_trust].pem_file`, `jwks_file`, or `service_account_file` | Device-trust verifier material. **Read during restore**; see [Restore order](#restore-order). The service-account file is the Verified Access credential. |
 | `[radius_listeners.<id>]`: `tls_cert_file`, `tls_key_file`, `client_ca_file`; `nas.<nas>.shared_secret_file`; `eap_tls.certificate_file`, `key_file`, `client_ca_file`, `client_crl_file`, `ocsp_response_file` | RadSec, RADIUS and EAP-TLS material. **Read during restore.** A stale CRL stops the listener. |
 | `[ldap_listeners.<id>].tls_cert_file`, `tls_key_file` | LDAP provider listener certificate and key |
 | `[proxy_listeners.<id>].tls_cert_file`, `tls_key_file`; `routes."<origin>".ca_file` | Embedded reverse-proxy TLS and upstream CAs |
@@ -184,7 +184,7 @@ stop every node and fence a former database primary; see [availability](availabi
    file, the CA, the `postgres.json` and an empty dedicated database.
 3. **Provision referenced files.** Place the saved files at the paths in your saved
    `riauth.toml` (see [Keep outside the archive](#keep-outside-the-archive)). On
-   Platform, restore itself reads the `device_trust` key and all RADIUS listener
+   Platform, restore itself reads the `device_trust` verifier file (PEM, JWKS, or Verified Access service-account file) and all RADIUS listener
    material. If any is missing, restore fails, either as
    `Invalid backup configuration` or when the restored store is reopened. A relative
    `device_trust` path is checked from the working directory of the restore command.

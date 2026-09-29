@@ -747,6 +747,7 @@
           "label": "build",
           "implementation": [
             "src/device_trust.rs",
+            "src/verified_access.rs",
             "src/windows_login.rs",
             "src/mtls.rs"
           ],
@@ -754,7 +755,7 @@
             {
               "ref": "tests/device_trust.rs",
               "kind": "rust-suite",
-              "test_functions": 7,
+              "test_functions": 10,
               "ci": "ci-check (non-ignored tests)"
             },
             {
@@ -1240,8 +1241,9 @@
           "label": "build",
           "journey": "module",
           "gaps": [
-            "Vendor adapter",
-            "Provenance/freshness against managed devices"
+            "Managed Chrome tenant",
+            "Live generate and verify",
+            "Cryptographic binding of challengeResponse to the issued challenge"
           ]
         },
         "I08": {
@@ -5585,13 +5587,15 @@
       },
       "current_evidence": {
         "provisional_assessment": "build",
-        "summary": "Local compact-JWT verifier is a stand-in; no managed Chrome/Verified Access integration evidence.",
+        "summary": "The local compact-JWT stand-in remains the default. The google_verified_access_v2 adapter is present and was not executed against verifiedaccess.googleapis.com or a managed Chrome device.",
         "repository_paths": [
           "src/device_trust.rs",
+          "src/verified_access.rs",
+          "src/assembly/device_trust.rs",
           "tests/device_trust.rs",
           "docs/enterprise/ENT-06.md"
         ],
-        "review": "local source/document review; test paths indicate candidates, not executed results",
+        "review": "Local device_trust tests and verified_access lib tests passed in this worktree. That run did not call verifiedaccess.googleapis.com and did not use a managed Chrome device.",
         "released_artifact_verification": "not performed",
         "a01_reconciliation": {
           "status": "accepted inventory refreshed and reconciled with authorized target contract",
@@ -5603,7 +5607,21 @@
             "Q01",
             "Q04"
           ],
-          "tests_run_in_inventory": []
+          "tests_run_in_inventory": [
+            "tests/device_trust.rs::fresh_local_verification_allows_policy_and_issuance",
+            "tests/device_trust.rs::forged_replayed_expired_and_mismatched_signals_are_rejected",
+            "tests/device_trust.rs::missing_verifier_fails_closed_and_default_flag_does_not",
+            "tests/device_trust.rs::jwks_verifier_rejects_an_unknown_kid",
+            "tests/device_trust.rs::trust_is_bound_to_one_session_device_and_proof_lifetime",
+            "tests/device_trust.rs::legacy_unbound_trust_and_mismatched_epoch_fail_closed",
+            "tests/device_trust.rs::portal_and_proxy_require_the_originating_sessions_live_verification",
+            "tests/device_trust.rs::google::google_verified_access_v2_binds_the_issued_challenge_to_session_epoch_and_device",
+            "tests/device_trust.rs::google::google_verified_access_v2_fails_closed_on_replay_identity_and_endpoint_contracts",
+            "tests/device_trust.rs::google::google_verified_access_v2_config_rejects_untrusted_endpoints_and_weak_trust",
+            "src/config.rs::verified_access_service_account_path_is_resolved_beside_the_config",
+            "src/verified_access.rs::verify_body_requires_customer_device_and_allowed_trust",
+            "src/verified_access.rs::cleartext_and_unpinned_urls_are_refused"
+          ]
         },
         "assessment_basis": "Current-coverage assessment of the target row against accepted A01/Q01 evidence; narrower/fuller rows may differ from umbrella labels. Test presence does not claim execution."
       },

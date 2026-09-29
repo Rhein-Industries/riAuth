@@ -126,7 +126,7 @@ riauth logout-request approve USER-CODE --yes
 
 Temporary approved group grants participate in authorization and group claims while active, without modifying durable membership. Expiry/revocation is enforced on the next online check; an already issued JWT retains its signed claims until expiration when validated offline. See [temporary access](enterprise/ENT-01.md).
 
-`settings.require_device_trust` additionally requires fresh verification bound to the originating session, user epoch and device id. Challenges cannot cross sessions, and freshness ends at the earliest configured TTL, verifier JWT expiry or session expiry. The current verifier accepts a nonce-bound JWT under a configured local key; it is a stand-in, not a tested Chrome Enterprise/Verified Access integration. Sessions remain bearer credentials; hardware proof on each request is a separate integration. See [device trust](enterprise/ENT-06.md).
+`settings.require_device_trust` additionally requires fresh verification bound to the originating session, user epoch and device id. Challenges cannot cross sessions. Freshness ends at the earliest of the configured TTL and session expiry; the local provider also caps it by the verifier JWT expiry. The default verifier accepts a nonce-bound JWT under a configured local key. `google_verified_access_v2` is a separate adapter for the pinned Chrome Verified Access v2 endpoints. That adapter was not executed against `verifiedaccess.googleapis.com` or a managed device. Sessions remain bearer credentials; hardware proof on each request is a separate integration. See [device trust](enterprise/ENT-06.md).
 
 ## Keys, encryption and issuer continuity
 

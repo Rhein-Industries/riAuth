@@ -1,22 +1,45 @@
-//! Local stand-in for Chrome Enterprise device trust.
+//! Device trust: a local compact-JWT stand-in, or an explicit Chrome Verified Access v2 adapter.
 //!
-//! A managed Chrome deployment and Google's Verified Access API were not tested.
-//! The local compact-JWT contract requires a separate, reviewed adapter for a
-//! vendor verifier. Merely replacing the key does not establish compatibility.
+//! The local contract is a nonce-bound JWT under a pinned PEM or JWKS key. The v2
+//! adapter asks Google for a challenge and submits a signed challenge response.
+//! It does not accept the local JWT. Neither path was executed against a managed
+//! Chrome device or `verifiedaccess.googleapis.com`. Replacing the local public
+//! key does not establish managed-device compatibility.
 use crate::{
     crypto::now,
     error::{Error, Result},
     model::{Client, Identity, Session},
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use serde::Deserialize;
 use serde_json::Value;
-use std::{
-    fs::File,
-    io::Read,
-    path::Path,
+use std::{fs::File, io::Read, path::Path};
+
+pub use crate::device_trust_types::{
+    CHALLENGE_TTL, Challenge, DEFAULT_FRESHNESS, DeviceVerification, MAX_FRESHNESS, TrustConfig,
 };
 
-pub use crate::device_trust_types::{Challenge, DeviceVerification, TrustConfig, CHALLENGE_TTL, DEFAULT_FRESHNESS, MAX_FRESHNESS};
+#[path = "verified_access.rs"]
+pub(crate) mod verified_access;
+
+pub(crate) use verified_access::TokenCache;
+pub use verified_access::{
+    GENERATE_URL, GOOGLE_CHALLENGE_TTL, SCOPE, TOKEN_URL, VERIFY_URL, VerifiedAccessRequest,
+    VerifiedAccessResponse, VerifiedAccessTransport,
+};
+
+/// End-user verify body. The local provider accepts only `token`. The Verified
+/// Access provider accepts only `challenge` and `challenge_response`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceTrustSubmission {
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub challenge: Option<String>,
+    #[serde(default)]
+    pub challenge_response: Option<String>,
+}
 
 /// The pinned verifier configuration supplied by server assembly.
 pub trait DeviceTrustContext {
@@ -42,10 +65,56 @@ enum Verifier {
     Jwks(crate::jose::PublicJwks),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderKind {
+    Local,
+    GoogleVerifiedAccessV2,
+}
+
+pub(crate) fn provider_kind(config: &TrustConfig) -> Result<ProviderKind> {
+    match config.provider.as_deref() {
+        None | Some("local") => {
+            if config.service_account_file.is_some()
+                || config.expected_identity.is_some()
+                || config.customer_id.is_some()
+                || !config.allowed_key_trust_levels.is_empty()
+            {
+                return Err(Error::bad(
+                    "Local device trust rejects Verified Access settings",
+                ));
+            }
+            Ok(ProviderKind::Local)
+        }
+        Some("google_verified_access_v2") => {
+            if config.pem_file.is_some()
+                || config.jwks_file.is_some()
+                || config.algorithm.is_some()
+                || config.kid.is_some()
+            {
+                return Err(Error::bad("Verified Access rejects the local JWT verifier"));
+            }
+            Ok(ProviderKind::GoogleVerifiedAccessV2)
+        }
+        Some(_) => Err(Error::bad(
+            "Device trust provider must be local or google_verified_access_v2",
+        )),
+    }
+}
+
+pub(crate) fn provider_ready(config: &TrustConfig) -> Result<()> {
+    match provider_kind(config)? {
+        ProviderKind::Local => load_verifier(config).map(|_| ()),
+        ProviderKind::GoogleVerifiedAccessV2 => verified_access::validate_google_config(config),
+    }
+}
+
+/// Drop a challenge once its lifetime and any retained response hash have both ended.
+pub(crate) fn drop_challenge(challenge: &Challenge, at: u64) -> bool {
+    challenge.expires_at <= at && challenge.response_retained_until <= at
+}
+
 pub fn validate_config(config: &TrustConfig) -> anyhow::Result<()> {
-    load_verifier(config)
-        .map(|_| ())
-        .map_err(|error| anyhow::anyhow!(error.message))
+    provider_ready(config).map_err(|error| anyhow::anyhow!(error.message))
 }
 
 fn load_verifier(config: &TrustConfig) -> Result<Verifier> {
@@ -135,7 +204,7 @@ pub fn policy_reason(
     let Some(config) = context.device_trust_config() else {
         return Ok(Some("device_trust_verifier_unconfigured"));
     };
-    if load_verifier(config).is_err() {
+    if provider_ready(config).is_err() {
         return Ok(Some("device_trust_verifier_unconfigured"));
     }
     let Some(identity) = identity else {
@@ -263,7 +332,7 @@ pub(crate) fn device_identifier(claims: &Value) -> Result<String> {
 
 pub fn cleanup(tx: &impl DeviceTrustTx, at: u64) -> Result<()> {
     for (id, challenge) in tx.challenge_page()? {
-        if challenge.used || challenge.expires_at < at {
+        if drop_challenge(&challenge, at) {
             tx.delete_challenge(&id)?;
         }
     }

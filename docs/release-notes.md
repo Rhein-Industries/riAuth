@@ -1,3 +1,13 @@
+# Unreleased Chrome Verified Access v2 adapter (I07)
+
+- Platform can select `google_verified_access_v2` beside the existing local
+  device-trust JWT. The adapter calls only the pinned v2 generate and verify
+  endpoints and `https://oauth2.googleapis.com/token`, and it fails closed when
+  the service-account file, customer, device id, or key trust level is absent.
+- This slice was not executed against `verifiedaccess.googleapis.com` or a
+  managed Chrome device. `deviceSignals` are not evaluated, profile-only
+  responses are rejected, and I07 stays open.
+
 # Unreleased Authentik re-enrollment notices (G04)
 
 - [Re-enrollment and user communication](reenrollment.md) is the operator

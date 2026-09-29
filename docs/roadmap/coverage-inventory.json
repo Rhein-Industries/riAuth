@@ -2175,9 +2175,11 @@
       ],
       "label": "build",
       "journey": "module",
-      "current_state": "Device trust is a local stand-in: a locally signed JWT bound to session, epoch, and device, and it fails closed. It does not call Google Verified Access, and no managed Chrome has been tested (ENT-06).",
+      "current_state": "The local JWT stand-in remains the default. An explicit google_verified_access_v2 adapter calls only the pinned v2 generate and verify endpoints and the Google OAuth token endpoint, and it fails closed when the verifier or response identity is absent. It was not executed against verifiedaccess.googleapis.com or a managed Chrome device (ENT-06).",
       "implementation": [
-        "src/device_trust.rs"
+        "src/device_trust.rs",
+        "src/verified_access.rs",
+        "src/assembly/device_trust.rs"
       ],
       "tests_existing": [
         {
@@ -2191,17 +2193,85 @@
           "ci": "ci-check"
         }
       ],
-      "tests_run_in_this_task": [],
+      "tests_run_in_this_task": [
+        {
+          "ref": "tests/device_trust.rs::fresh_local_verification_allows_policy_and_issuance",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::forged_replayed_expired_and_mismatched_signals_are_rejected",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::missing_verifier_fails_closed_and_default_flag_does_not",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::jwks_verifier_rejects_an_unknown_kid",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::trust_is_bound_to_one_session_device_and_proof_lifetime",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::legacy_unbound_trust_and_mismatched_epoch_fail_closed",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::portal_and_proxy_require_the_originating_sessions_live_verification",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::google::google_verified_access_v2_binds_the_issued_challenge_to_session_epoch_and_device",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::google::google_verified_access_v2_fails_closed_on_replay_identity_and_endpoint_contracts",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/device_trust.rs::google::google_verified_access_v2_config_rejects_untrusted_endpoints_and_weak_trust",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/config.rs::verified_access_service_account_path_is_resolved_beside_the_config",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/verified_access.rs::verify_body_requires_customer_device_and_allowed_trust",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "src/verified_access.rs::cleartext_and_unpinned_urls_are_refused",
+          "kind": "rust",
+          "ci": "ci-check"
+        }
+      ],
       "documentation": [
         "docs/enterprise/ENT-06.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Vendor adapter",
-        "Provenance/freshness against managed devices"
+        "Managed Chrome tenant",
+        "Live generate and verify",
+        "Cryptographic binding of challengeResponse to the issued challenge"
       ],
       "unverified": [
-        "Any managed device"
+        "Any managed device",
+        "Live call to verifiedaccess.googleapis.com"
       ]
     },
     {
@@ -4853,6 +4923,7 @@
       "label": "build",
       "implementation": [
         "src/device_trust.rs",
+        "src/verified_access.rs",
         "src/windows_login.rs",
         "src/mtls.rs"
       ],
@@ -4860,7 +4931,7 @@
         {
           "ref": "tests/device_trust.rs",
           "kind": "rust-suite",
-          "test_functions": 7,
+          "test_functions": 10,
           "ci": "ci-check (non-ignored tests)"
         },
         {

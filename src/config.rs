@@ -867,9 +867,13 @@ impl Config {
             }
         }
         if let Some(trust) = value.device_trust.as_mut() {
-            for file in [&mut trust.pem_file, &mut trust.jwks_file]
-                .into_iter()
-                .flatten()
+            for file in [
+                &mut trust.pem_file,
+                &mut trust.jwks_file,
+                &mut trust.service_account_file,
+            ]
+            .into_iter()
+            .flatten()
             {
                 if file.is_relative() {
                     *file = path.parent().unwrap_or(Path::new(".")).join(&*file);
@@ -1125,5 +1129,21 @@ mod tests {
         let error = configured.validate().unwrap_err().to_string();
         assert!(error.contains("Platform"), "{error}");
         assert!(!crate::workflow::extension_gate::runtime_linked());
+    }
+
+    #[test]
+    fn verified_access_service_account_path_is_resolved_beside_the_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("riauth.toml");
+        std::fs::write(
+            &path,
+            "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n[device_trust]\nservice_account_file='verified-access.json'\n",
+        )
+        .unwrap();
+        let loaded = Config::load_for_preflight(&path).unwrap();
+        assert_eq!(
+            loaded.device_trust.unwrap().service_account_file.unwrap(),
+            dir.path().join("verified-access.json")
+        );
     }
 }
