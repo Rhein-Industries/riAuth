@@ -6,8 +6,10 @@
 //! That certificate step restarts the same primary. One group-only
 //! desired-state test, one client display-name test, one client catalogue
 //! description test, and one user display-name test reopen the pool and do
-//! not fence the primary. A later test stops the primary and promotes the
-//! standby. The promotion is a loopback drill, not production HA.
+//! not fence the primary. One test plans those families with a delegated
+//! grant and leaves them on the global revision. A later test stops the
+//! primary and promotes the standby. The promotion is a loopback drill, not
+//! production HA.
 #![cfg(feature = "test-support")]
 
 use axum::{
@@ -21,13 +23,14 @@ use riauth::{
     context::{self, RequestContext},
     core::Core,
     crypto::Keys,
+    delegation::{GrantInput, HumanRole},
     error::Result,
     model::{
         Client, ClientPatch, ClientPolicyBinding, ClientPolicyInput, Group, GroupChangeBinding,
         GroupMembershipInput, NewClient, NewUser, ProviderSettings, User, UserPatch,
     },
     postgres_store::PostgresConfig,
-    state::{ApplyRequest, GroupSpec, Manifest, Plan},
+    state::{ApplyRequest, DelegatedGrantSpec, GroupSpec, Manifest, Plan},
 };
 use serde_json::{Value, json};
 use std::{
@@ -3358,6 +3361,234 @@ fn postgres_client_description_desired_state_dependencies_and_replay() {
         description
     );
     drop(app);
+}
+
+const STALE_GLOBAL_REVISION: &str =
+    "Connector plan expired or source configuration or local revision changed; create a new plan";
+
+fn with_help_desk(mut manifest: Manifest, holder: &str, target: &str) -> Manifest {
+    manifest.delegated_grants = vec![DelegatedGrantSpec {
+        username: holder.into(),
+        grants: vec![GrantInput {
+            role: HumanRole::HelpDesk,
+            scope: format!("user/{target}"),
+        }],
+    }];
+    manifest
+}
+
+fn assert_unscoped(plan: &Plan) {
+    assert_eq!(
+        (
+            plan.group_dependencies.as_deref(),
+            plan.client_dependencies.as_deref(),
+            plan.user_dependencies.as_deref(),
+            plan.client_description_dependencies.as_deref(),
+        ),
+        (None, None, None, None)
+    );
+}
+
+fn assert_scoped(plan: &Plan, family: &str) {
+    let present = |value: &Option<String>| value.as_ref().is_some_and(|digest| !digest.is_empty());
+    assert_eq!(present(&plan.group_dependencies), family == "group");
+    assert_eq!(present(&plan.client_dependencies), family == "client");
+    assert_eq!(present(&plan.user_dependencies), family == "user");
+    assert_eq!(
+        present(&plan.client_description_dependencies),
+        family == "description"
+    );
+}
+
+fn has_change(plan: &Plan, resource: &str) -> bool {
+    plan.changes
+        .iter()
+        .any(|change| change.resource == resource)
+}
+
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_delegated_grant_manifests_stay_on_global_revision() {
+    let h = Harness::new();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    let alice = user_id(&h, "alice");
+    user_id(&h, "bob");
+    user_id(&h, "stranger");
+    portal(&h);
+    h.core.create_group(&h.admin, "ordinary").unwrap();
+    h.core
+        .group_member(&h.admin, "ordinary", "alice", true)
+        .unwrap();
+
+    let scoped = h
+        .core
+        .plan_state(&h.admin, group_manifest("ordinary", &["alice", "bob"]))
+        .unwrap();
+    assert_scoped(&scoped, "group");
+    let mixed = h
+        .core
+        .plan_state(
+            &h.admin,
+            with_help_desk(
+                group_manifest("ordinary", &["alice", "bob"]),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "group/ordinary"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename_user(&h, "stranger", "Unrelated groups");
+    assert!(revision(&h) > mixed.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mixed)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    let mut present = group_manifest("ordinary", &["alice", "bob"]);
+    present.delegated_grants = vec![DelegatedGrantSpec {
+        username: "bob".into(),
+        grants: Vec::new(),
+    }];
+    let present = h.core.plan_state(&h.admin, present).unwrap();
+    assert_unscoped(&present);
+    assert!(has_change(&present, "group/ordinary"));
+    assert!(
+        present
+            .changes
+            .iter()
+            .all(|change| !change.resource.starts_with("delegation/"))
+    );
+    rename_user(&h, "stranger", "Unrelated empty grant");
+    assert!(revision(&h) > present.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&present)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = h
+        .core
+        .plan_state(&h.admin, client_manifest(&h, "portal", "Portal", None))
+        .unwrap();
+    assert_scoped(&scoped, "client");
+    let mixed = h
+        .core
+        .plan_state(
+            &h.admin,
+            with_help_desk(
+                client_manifest(&h, "portal", "Portal desk", None),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "client/portal"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename_user(&h, "stranger", "Unrelated clients");
+    assert!(revision(&h) > mixed.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mixed)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = h
+        .core
+        .plan_state(&h.admin, user_manifest(&h, "alice", "Ada Lovelace", None))
+        .unwrap();
+    assert_scoped(&scoped, "user");
+    let mixed = h
+        .core
+        .plan_state(
+            &h.admin,
+            with_help_desk(
+                user_manifest(&h, "alice", "Grace Hopper", None),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "user/alice"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename_user(&h, "stranger", "Unrelated users");
+    assert!(revision(&h) > mixed.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mixed)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = h
+        .core
+        .plan_state(
+            &h.admin,
+            described_manifest(&h, "portal", "Operator catalogue"),
+        )
+        .unwrap();
+    assert_scoped(&scoped, "description");
+    let mixed = h
+        .core
+        .plan_state(
+            &h.admin,
+            with_help_desk(
+                described_manifest(&h, "portal", "Granted catalogue"),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "client/portal"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename_user(&h, "stranger", "Unrelated descriptions");
+    assert!(revision(&h) > mixed.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&mixed)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    let grants = h
+        .core
+        .plan_state(
+            &h.admin,
+            with_help_desk(
+                serde_json::from_value(json!({"api_version": "riauth/v1"})).unwrap(),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&grants);
+    assert!(has_change(&grants, "delegation/bob"));
+    rename_user(&h, "stranger", "Unrelated grants");
+    assert!(revision(&h) > grants.base_revision);
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&grants)),
+        409,
+        STALE_GLOBAL_REVISION,
+    );
+
+    assert_eq!(group_members(&h, "ordinary"), [alice].into());
+    assert_eq!(client_record(&h, "portal").name, "portal");
+    assert!(client_record(&h, "portal").settings.app.is_none());
+    assert_eq!(postgres_user_record(&h, "alice").display_name, "Test User");
+    assert_eq!(
+        h.core.human_grants(&h.admin, "bob").unwrap()["grants"],
+        json!([])
+    );
+    assert_eq!(audit_count(&h, "delegation.reconcile"), 0);
 }
 
 /// Runs last. Stopping the primary leaves the shared cluster without its

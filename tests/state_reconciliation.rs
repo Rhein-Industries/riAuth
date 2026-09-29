@@ -13,8 +13,9 @@ use riauth::{
     config::Config,
     connector_guard::ReconciliationMode,
     context::{self, RequestContext},
+    delegation::{GrantInput, HumanRole},
     model::{Group, User, UserPatch},
-    state::{ApplyRequest, GroupSpec, Manifest, Plan},
+    state::{ApplyRequest, DelegatedGrantSpec, GroupSpec, Manifest, Plan},
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, net::IpAddr};
@@ -2212,4 +2213,221 @@ async fn client_description_desired_state_http_replays_the_same_request() {
         Some("Operator catalogue")
     );
     drop(app);
+}
+
+const STALE_GLOBAL_REVISION: &str =
+    "Connector plan expired or source configuration or local revision changed; create a new plan";
+
+fn with_help_desk(mut manifest: Manifest, holder: &str, target: &str) -> Manifest {
+    manifest.delegated_grants = vec![DelegatedGrantSpec {
+        username: holder.into(),
+        grants: vec![GrantInput {
+            role: HumanRole::HelpDesk,
+            scope: format!("user/{target}"),
+        }],
+    }];
+    manifest
+}
+
+fn assert_unscoped(plan: &Plan) {
+    assert_eq!(
+        (
+            plan.group_dependencies.as_deref(),
+            plan.client_dependencies.as_deref(),
+            plan.user_dependencies.as_deref(),
+            plan.client_description_dependencies.as_deref(),
+        ),
+        (None, None, None, None)
+    );
+}
+
+fn assert_scoped(plan: &Plan, family: &str) {
+    let present = |value: &Option<String>| value.as_ref().is_some_and(|digest| !digest.is_empty());
+    assert_eq!(present(&plan.group_dependencies), family == "group");
+    assert_eq!(present(&plan.client_dependencies), family == "client");
+    assert_eq!(present(&plan.user_dependencies), family == "user");
+    assert_eq!(
+        present(&plan.client_description_dependencies),
+        family == "description"
+    );
+}
+
+fn has_change(plan: &Plan, resource: &str) -> bool {
+    plan.changes
+        .iter()
+        .any(|change| change.resource == resource)
+}
+
+#[test]
+fn delegated_grants_keep_scoped_families_on_global_revision() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.user("bob");
+    f.user("stranger");
+    f.client("portal", false);
+    f.core.create_group(&f.admin, "ordinary").unwrap();
+    f.core
+        .group_member(&f.admin, "ordinary", "alice", true)
+        .unwrap();
+    let alice = user_id(&f, "alice");
+
+    let scoped = f
+        .core
+        .plan_state(&f.admin, groups("ordinary", &["alice", "bob"]))
+        .unwrap();
+    assert_scoped(&scoped, "group");
+    let mixed = f
+        .core
+        .plan_state(
+            &f.admin,
+            with_help_desk(groups("ordinary", &["alice", "bob"]), "bob", "alice"),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "group/ordinary"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename(&f, "stranger", "Unrelated groups");
+    assert!(revision(&f) > mixed.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    let mut present = groups("ordinary", &["alice", "bob"]);
+    present.delegated_grants = vec![DelegatedGrantSpec {
+        username: "bob".into(),
+        grants: Vec::new(),
+    }];
+    let present = f.core.plan_state(&f.admin, present).unwrap();
+    assert_unscoped(&present);
+    assert!(has_change(&present, "group/ordinary"));
+    assert!(
+        present
+            .changes
+            .iter()
+            .all(|change| !change.resource.starts_with("delegation/"))
+    );
+    rename(&f, "stranger", "Unrelated empty grant");
+    assert!(revision(&f) > present.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&present)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = f
+        .core
+        .plan_state(&f.admin, client_manifest(&f, "portal", "Portal", None))
+        .unwrap();
+    assert_scoped(&scoped, "client");
+    let mixed = f
+        .core
+        .plan_state(
+            &f.admin,
+            with_help_desk(
+                client_manifest(&f, "portal", "Portal desk", None),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "client/portal"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename(&f, "stranger", "Unrelated clients");
+    assert!(revision(&f) > mixed.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = f
+        .core
+        .plan_state(&f.admin, named_user(&f, "alice", "Ada Lovelace", None))
+        .unwrap();
+    assert_scoped(&scoped, "user");
+    let mixed = f
+        .core
+        .plan_state(
+            &f.admin,
+            with_help_desk(
+                named_user(&f, "alice", "Grace Hopper", None),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "user/alice"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename(&f, "stranger", "Unrelated users");
+    assert!(revision(&f) > mixed.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    let scoped = f
+        .core
+        .plan_state(
+            &f.admin,
+            described_manifest(&f, "portal", "Operator catalogue"),
+        )
+        .unwrap();
+    assert_scoped(&scoped, "description");
+    let mixed = f
+        .core
+        .plan_state(
+            &f.admin,
+            with_help_desk(
+                described_manifest(&f, "portal", "Granted catalogue"),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&mixed);
+    assert!(has_change(&mixed, "client/portal"));
+    assert!(has_change(&mixed, "delegation/bob"));
+    rename(&f, "stranger", "Unrelated descriptions");
+    assert!(revision(&f) > mixed.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    let grants = f
+        .core
+        .plan_state(
+            &f.admin,
+            with_help_desk(
+                manifest(json!({"api_version": "riauth/v1"})),
+                "bob",
+                "alice",
+            ),
+        )
+        .unwrap();
+    assert_unscoped(&grants);
+    assert!(has_change(&grants, "delegation/bob"));
+    rename(&f, "stranger", "Unrelated grants");
+    assert!(revision(&f) > grants.base_revision);
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&grants)),
+        STALE_GLOBAL_REVISION,
+    );
+
+    assert_eq!(members(&f, "ordinary"), [alice].into());
+    assert_eq!(client_record(&f, "portal").name, "portal");
+    assert!(client_record(&f, "portal").settings.app.is_none());
+    assert_eq!(user_record(&f, "alice").display_name, "Test User");
+    assert_eq!(
+        f.core.human_grants(&f.admin, "bob").unwrap()["grants"],
+        json!([])
+    );
+    assert_eq!(audits(&f, "delegation.reconcile"), 0);
 }

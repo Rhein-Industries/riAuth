@@ -8,7 +8,8 @@ riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
 # the HTTP execute race, a pool reopen, one production TLS database, one
 # group-only desired-state apply, one client display-name desired-state apply,
 # one client catalogue-description desired-state apply, one user display-name
-# desired-state apply, and one fenced standby promotion after the other tests.
+# desired-state apply, one delegated-grant fence beside those families, and
+# one fenced standby promotion after the other tests.
 # The TLS test restarts the primary in place. The
 # desired-state tests do not fence the primary. The promotion test stops that
 # primary and promotes the standby.

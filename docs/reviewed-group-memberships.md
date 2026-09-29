@@ -105,7 +105,8 @@ Category, icon, accent, the hidden flag, launch URL, launch scopes, and a
 listener-bound client stay on the global revision. A single user display-name
 manifest keeps its stored base revision and compares
 that account's credentials, passkeys, and directory ownership; see
-[removal safeguards](removal-safeguards.md). SCIM User and Group If-Match
+[removal safeguards](removal-safeguards.md). Including delegated grants in any
+of those manifests keeps the global revision. SCIM User and Group If-Match
 compares the resource ETag. A caller that sends If-Match on this membership
 flow must send the current management revision. An unsent browser draft still stages
 with the revision it loaded, so an unrelated write between load and stage still

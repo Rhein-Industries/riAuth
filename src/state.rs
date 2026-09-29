@@ -772,10 +772,11 @@ fn require_immediate_grant_actor(actor: &Principal) -> Result<()> {
 const GROUP_DEPENDENCY_VERSION: &str = "riauth/desired-state-groups/v1";
 
 /// Only a manifest that names groups, and no other resource family, may
-/// ignore an unrelated management revision. A target-state fingerprint binds
-/// cross-resource migration identity and stays on the global counter.
+/// ignore an unrelated management revision. Delegated grants and a
+/// target-state fingerprint stay on the global counter.
 fn group_only(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
+        && manifest.delegated_grants.is_empty()
         && !manifest.groups.is_empty()
         && manifest.users.is_empty()
         && manifest.clients.is_empty()
@@ -864,10 +865,11 @@ fn group_dependency_digest(
 
 const CLIENT_NAME_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-name/v1";
 
-/// One existing client, and no other resource family. Secret rotation and a
-/// target-state fingerprint stay on the global counter.
+/// One existing client, and no other resource family. Secret rotation,
+/// delegated grants, and a target-state fingerprint stay on the global counter.
 fn client_name_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
+        && manifest.delegated_grants.is_empty()
         && manifest.users.is_empty()
         && manifest.groups.is_empty()
         && manifest.sources.is_empty()
@@ -1164,10 +1166,11 @@ fn client_description_dependencies(
 
 const USER_DISPLAY_DEPENDENCY_VERSION: &str = "riauth/desired-state-user-display-name/v1";
 
-/// One existing user, and no other resource family. Credential rotation and a
-/// target-state fingerprint stay on the global counter.
+/// One existing user, and no other resource family. Credential rotation,
+/// delegated grants, and a target-state fingerprint stay on the global counter.
 fn user_display_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
+        && manifest.delegated_grants.is_empty()
         && manifest.users.len() == 1
         && manifest.groups.is_empty()
         && manifest.clients.is_empty()
