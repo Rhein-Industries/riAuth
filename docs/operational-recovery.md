@@ -256,7 +256,10 @@ that file. `keygen` with `--json` returns `data.created` true and
 stream. A scratch restore is a separate command. The disposable redb drill
 below restored the replacement archive into a new directory, left
 `serving_allowed` false, and stopped before `recovery complete` and before
-any login on that restored issuer. The operator steps for that restore stay
+any login on that restored issuer. A later drill continued from that gate.
+See
+[Restored issuer after recovery complete](#restored-issuer-after-recovery-complete).
+The operator steps for that restore stay
 in [Archive restore](#archive-restore).
 
 Confirm the serving store, then stop if this caller cannot read it:
@@ -365,11 +368,12 @@ own server process on exit.
 - `doctor` on the original server still succeeded after the scratch
   restore, with the same issuer and counts.
 
-The drill stopped with the restored serving gate closed. `recovery complete`,
-a restored `serve`, and a login on the restored issuer remain open, together
-with the Essentials binary, PostgreSQL, escrow, a relying party, and Compose,
-systemd, or Windows layouts. Archive frames were not decoded. That drill left
-the database key file in place.
+The drill stopped with the restored serving gate closed. A later disposable
+store ran `recovery complete` and a fresh local password login. See
+[Restored issuer after recovery complete](#restored-issuer-after-recovery-complete).
+PostgreSQL, escrow, a relying party, and Compose, systemd, or Windows layouts
+remain in [Remaining D04 gates](#remaining-d04-gates). Archive frames were
+not decoded. That drill left the database key file in place.
 
 ### Database key file removed while serving
 
@@ -462,10 +466,73 @@ disposable temp file so the restart could be observed.
   were the same before and after the restart. The database key file was
   still absent.
 
-`recovery complete` and a login on a restored issuer remain in
-[Remaining D04 gates](#remaining-d04-gates). This run used the Essentials
-debug binary above. PostgreSQL, escrow, a relying party, and the Compose,
-systemd, and Windows layouts stay in those gates.
+[Restored issuer after recovery complete](#restored-issuer-after-recovery-complete)
+records a later disposable store that ran `recovery complete` and a fresh
+local password login. PostgreSQL, escrow, a relying party, and the Compose,
+systemd, and Windows layouts stay in
+[Remaining D04 gates](#remaining-d04-gates).
+
+### Restored issuer after recovery complete
+
+On 2026-09-29 a loopback drill used a new temporary encrypted redb store on
+a port other than D01's `9000`. It verified a v3 backup, restored that
+archive into an empty directory under a new database key, ran
+`recovery complete`, started the restored issuer, and logged in again. The
+redacted observations are
+[d04-recovery-complete-redb-2026-09-29.json](roadmap/evidence/d04-recovery-complete-redb-2026-09-29.json).
+The binary was a temp copy of the already built Essentials debug `riauth`
+(SHA-256
+`264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`).
+The drill removed the temporary store, keys, archive, session files, and
+both server processes on exit.
+
+- `riauth --json capabilities` reported edition `essentials`, version
+  `0.1.1`, and build feature `essentials`.
+- Init used username `drill-admin` and a database key from `riauth keygen`.
+  The issuer was `http://127.0.0.1:51677` and the listener was
+  `127.0.0.1:51677`. `/readyz` returned 200.
+- The backup login passed `--session-file` inside the temp directory.
+  Stdout had `ok` true, username `drill-admin`, `admin` true, and no
+  `session_token` field. The session file mode was 0600.
+- `backup --request-timeout 120` returned `verified` true, `encrypted`
+  true, `api_version` `riauth.backup/v3`, the same issuer, stream
+  `gGZx2QyH1chG01K4J7p5Pw`, 3 frames, 20 records, and 11180 bytes. The
+  archive file size matched that byte count.
+- A second `riauth keygen` wrote a different database key. Restore into a
+  new directory returned `restored` true, `verified` true, `storage`
+  `redb`, `encrypted_at_rest` true, `serving_allowed` false, and recovery
+  id `1d746ed2-45d3-4417-9abb-dd77194bc51d` (`riauth.recovery/v1`, cause
+  `backup_restore`). It invalidated one session and one session token and
+  advanced one user epoch. Reconcile counts were `enabled_accounts` 1,
+  `passwords` 1, and `signing_keys` 1. The restored config named the new
+  database key.
+- `recovery status` reported the same pending id, schema 3, backend
+  `redb`, and `serving_allowed` false.
+- The drill read those counts and passed
+  `--persistent-credentials-reconciled` with `--recovery-id`
+  `1d746ed2-45d3-4417-9abb-dd77194bc51d`.
+  The result had `serving_allowed` true and `completed_at` present for that
+  id. A second `recovery status` reported `serving_allowed` true and
+  `pending` null. The administrator password and the signing key were the
+  archived values.
+- The drill stopped the original process. Its command line contained the
+  temporary config. The listen port accepted a bind 30230 ms later.
+- `riauth serve` of the restored config reached `/readyz` 200. Stderr
+  contained `riAuth listening`.
+- `doctor` with the pre-restore session file exited 3. The JSON error was
+  `invalid_token`, HTTP 401, and message
+  `Authentication required or session expired`.
+- A new `--session-file` login of `drill-admin` returned `ok` true with no
+  `session_token` field. That file mode was 0600, and it was a different
+  file from the pre-restore session.
+- `doctor` with the new session reported `healthy` true, `storage` `redb`,
+  `encrypted_at_rest` true, schema 3, revision 4294967296, one user, one
+  enabled administrator, zero clients, `tls` `reverse_proxy`, and an active
+  signing key present. The issuer was `http://127.0.0.1:51677`.
+- The default home session file was unchanged.
+
+PostgreSQL, escrow, a real relying-party login, and the Compose, systemd,
+and Windows layouts stay in [Remaining D04 gates](#remaining-d04-gates).
 
 ## Archive restore
 
@@ -836,10 +903,10 @@ rollback of a migrated store stays in
 ## Recorded local drills
 
 These files are observations from 2026-09-29. The lost-backup-key drill, the
-database-key-file drill, and the database-key restart drill added their own
-files and left the two R05 files as they were. Each drill used a disposable
-store, generated its own keys and accounts, and removed them on exit. None
-opened a deployment store.
+database-key-file drill, the database-key restart drill, and the recovery
+complete drill added their own files and left the two R05 files as they were.
+Each drill used a disposable store, generated its own keys and accounts, and
+removed them on exit. None opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
@@ -848,6 +915,7 @@ opened a deployment store.
 | [d04-backup-key-redb-2026-09-29.json](roadmap/evidence/d04-backup-key-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `d3b0fef5f892db201aab906a221d4f13c34bb984f43cdc793398db6d08a0efb7`. Replacement key from `riauth-maintenance` SHA-256 `aa9eba54aa19b8d25ed2383276df6649c9f94f06f7012ac8ccad1cbe2ff24f5a`. | Backup key removed while `doctor` still succeeded. Replacement stream `verified` true, `riauth.backup/v3`, stream `UuFttJwvdA4RBUNEXjc1UA`. Old archive with that key: `invalid_request`, exit 2, output absent. Scratch restore recovery id `0dd34c51-0980-4a34-b227-47002097e8bf`, `serving_allowed` false. Live redb inode unchanged. |
 | [d04-database-key-removed-redb-2026-09-29.json](roadmap/evidence/d04-database-key-removed-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `7ede8878de9ad3d3a1b560ac41b6e15830cc54f81a6b187e674a9174cea0948d`. Backup key from `riauth-maintenance` SHA-256 `b987de72bb557822ea7e00563dc99b19616258a8c7e40e394eee2d5ae35b51ae`. | Database key file removed after `doctor` succeeded. Later `doctor` kept `encrypted_at_rest` true. New archive stream `uP2vJJcNEoamH3pg7VZgkQ`, `verified` true, `riauth.backup/v3`. Scratch restore with a new database key, recovery id `35f9b68a-5bf5-4a5e-8bd7-595644c75297`, `serving_allowed` false. Live redb inode unchanged. |
 | [d04-database-key-restart-redb-2026-09-29.json](roadmap/evidence/d04-database-key-restart-redb-2026-09-29.json) | Disposable loopback encrypted redb. Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Database key file removed while `/readyz` returned 200. After that process stopped and the listen port accepted a bind, restart with the original config exited 2 in 153 ms: `invalid_request`, HTTP 400, `Encryption key must be a private file of at most 128 bytes`. No listener. Live redb inode, size, mtime, and SHA-256 unchanged. |
+| [d04-recovery-complete-redb-2026-09-29.json](roadmap/evidence/d04-recovery-complete-redb-2026-09-29.json) | Disposable loopback encrypted redb on a port other than `9000`. Temp copy of Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Verified `riauth.backup/v3` stream `gGZx2QyH1chG01K4J7p5Pw`, 3 frames, 20 records, 11180 bytes. Restore under a new database key, recovery id `1d746ed2-45d3-4417-9abb-dd77194bc51d`, `serving_allowed` false. `recovery complete` left `serving_allowed` true. Restored `/readyz` 200. Pre-restore session exit 3, `invalid_token`. Fresh login and `doctor` succeeded, revision 4294967296. |
 
 The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -898,8 +966,10 @@ Still open:
   loopback store lost only its database key file while `/readyz` returned
   200. After that process stopped, `serve` with the original config exited 2
   with `invalid_request` before the listener opened, and the live redb was
-  unchanged. Escrow retrieval, `recovery complete`, and a login on the
-  restored issuer remain open.
+  unchanged. A further disposable encrypted redb store verified a
+  `riauth.backup/v3` archive, restored it under a new database key, ran
+  `recovery complete`, served the restored issuer, and accepted a fresh
+  local password login. Escrow retrieval remains open.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
 - A TLS PostgreSQL connection. The disposable cluster used loopback trust
