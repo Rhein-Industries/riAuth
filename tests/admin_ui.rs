@@ -873,17 +873,37 @@ async fn writes_use_the_management_path_and_guards() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let group_revision = fixture
+        .core
+        .store
+        .get("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
     let (status, _, body) = send(
         &app,
         "/api/admin/groups",
-        write("POST", Some(json!({"name": "engineering"}))),
+        Call {
+            revision: Some(group_revision),
+            key: Some("create-engineering"),
+            ..write("POST", Some(json!({"name": "engineering"})))
+        },
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    let member_revision = fixture
+        .core
+        .store
+        .get("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
     let (status, _, body) = send(
         &app,
         "/api/admin/groups/engineering/members/grace",
-        write("PUT", None),
+        Call {
+            revision: Some(member_revision),
+            key: Some("add-grace-to-engineering"),
+            ..write("PUT", None)
+        },
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -1084,6 +1104,335 @@ async fn user_creation_requires_receipt_and_revision_across_browser_and_bearer()
     assert_eq!(replay.2, second.2);
     assert_eq!(audit_count(), baseline_audit + 2);
     assert_eq!(revision(), current + 1);
+}
+
+#[tokio::test]
+async fn group_writes_require_retry_binding_across_browser_and_bearer() {
+    use riauth::agent::{NewAgent, Permission};
+
+    let fixture = Fixture::new();
+    let member_session = fixture.user("member");
+    let member_id = fixture.core.me(&member_session).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let outsider = fixture.user("outsider");
+    let scoped = fixture
+        .core
+        .create_agent(
+            &fixture.admin,
+            NewAgent {
+                id: "scoped-group-writer".into(),
+                ttl: 600,
+                parent: None,
+                permissions: ["group.write", "group.members"]
+                    .into_iter()
+                    .map(|action| Permission {
+                        action: action.into(),
+                        resource: "group/scoped".into(),
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let cookie = sso_cookie(&fixture.core, &fixture.admin);
+    let origin = origin(&fixture.core);
+    let app = riauth::api::router(fixture.core.clone());
+    let revision = || {
+        fixture
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let audit_count = |action: &str| {
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action)
+            .count()
+    };
+    let create = |browser: bool, key: Option<&'static str>, version, name| Call {
+        method: "POST",
+        cookie: browser.then_some(cookie.as_str()),
+        bearer: (!browser).then_some(fixture.admin.as_str()),
+        portal: browser,
+        origin: browser.then_some(origin.as_str()),
+        key,
+        revision: version,
+        body: Some(json!({"name": name})),
+    };
+    let membership = |browser: bool, method: &'static str, key: Option<&'static str>, version, body| Call {
+        method,
+        cookie: browser.then_some(cookie.as_str()),
+        bearer: (!browser).then_some(fixture.admin.as_str()),
+        portal: browser,
+        origin: browser.then_some(origin.as_str()),
+        key,
+        revision: version,
+        body,
+    };
+    let browser_groups = "/api/admin/groups";
+    let bearer_groups = "/api/groups";
+    let browser_member = "/api/admin/groups/engineering/members/member";
+    let bearer_member = "/api/groups/engineering/members/member";
+    let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    let script = script.as_str().unwrap();
+    assert!(script.contains("api(\"POST\", \"admin/groups\", { name }, { revision: data.revision, key })"));
+    assert!(script.contains("memberRetries.get(button)"));
+    assert!(script.contains("{ revision: retry.revision, key: retry.key }"));
+
+    let at = revision();
+    let before = fixture.snapshot().unwrap();
+    for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
+        assert_eq!(
+            send(&app, browser_groups, create(true, key, version, "engineering"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(&app, bearer_groups, create(false, key, version, "engineering"))
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(
+                &app,
+                browser_member,
+                membership(true, "PUT", key, version, None)
+            )
+            .await
+            .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(
+                &app,
+                bearer_member,
+                membership(false, "DELETE", key, version, None)
+            )
+            .await
+            .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        send(
+            &app,
+            bearer_groups,
+            Call {
+                bearer: Some(&outsider),
+                ..create(false, Some("unauthorized-create"), Some(at), "denied")
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+
+    let first = send(
+        &app,
+        browser_groups,
+        create(true, Some("browser-group-create"), Some(at), "engineering"),
+    )
+    .await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(first.2["name"], "engineering");
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        browser_groups,
+        create(true, Some("browser-group-create"), Some(at), "engineering"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, first.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count("group.create"), 1);
+    assert_eq!(revision(), at + 1);
+    assert_eq!(
+        send(
+            &app,
+            browser_groups,
+            create(true, Some("browser-group-create"), Some(at), "different")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_groups,
+            create(false, Some("stale-group-create"), Some(at), "research")
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    fixture.assert_http_mutation_snapshot(&committed);
+
+    let current = revision();
+    let second = send(
+        &app,
+        bearer_groups,
+        create(false, Some("bearer-group-create"), Some(current), "research"),
+    )
+    .await;
+    assert_eq!(second.0, StatusCode::OK);
+    assert_eq!(second.2["name"], "research");
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        bearer_groups,
+        create(false, Some("bearer-group-create"), Some(current), "research"),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, second.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count("group.create"), 2);
+    assert_eq!(revision(), current + 1);
+
+    let current = revision();
+    let added = send(
+        &app,
+        browser_member,
+        membership(true, "PUT", Some("browser-member-add"), Some(current), None),
+    )
+    .await;
+    assert_eq!(added.0, StatusCode::OK);
+    assert!(added.2["members"].as_array().unwrap().contains(&json!(member_id)));
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        browser_member,
+        membership(true, "PUT", Some("browser-member-add"), Some(current), None),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, added.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count("group.member.add"), 1);
+    assert_eq!(revision(), current + 1);
+    assert_eq!(
+        send(
+            &app,
+            browser_member,
+            membership(
+                true,
+                "PUT",
+                Some("browser-member-add"),
+                Some(current),
+                Some(json!({"ignored": true})),
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_member,
+            membership(false, "DELETE", Some("stale-member-remove"), Some(current), None)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    fixture.assert_http_mutation_snapshot(&committed);
+
+    let current = revision();
+    let removed = send(
+        &app,
+        bearer_member,
+        membership(false, "DELETE", Some("bearer-member-remove"), Some(current), None),
+    )
+    .await;
+    assert_eq!(removed.0, StatusCode::OK);
+    assert_eq!(removed.2["members"], json!([]));
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        bearer_member,
+        membership(false, "DELETE", Some("bearer-member-remove"), Some(current), None),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.2, removed.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count("group.member.remove"), 1);
+    assert_eq!(revision(), current + 1);
+
+    let scoped_at = revision();
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        send(
+            &app,
+            bearer_groups,
+            Call {
+                bearer: Some(&scoped),
+                ..create(false, Some("scoped-wrong-group"), Some(scoped_at), "denied")
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+    let scoped_create = || Call {
+        bearer: Some(&scoped),
+        ..create(false, Some("scoped-create"), Some(scoped_at), "scoped")
+    };
+    let created = send(&app, bearer_groups, scoped_create()).await;
+    assert_eq!(created.0, StatusCode::OK);
+    assert_eq!(created.2["name"], "scoped");
+    let committed = fixture.snapshot().unwrap();
+    assert_eq!(send(&app, bearer_groups, scoped_create()).await.2, created.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(revision(), scoped_at + 1);
+    let member_at = revision();
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        send(
+            &app,
+            bearer_member,
+            Call {
+                bearer: Some(&scoped),
+                ..membership(false, "PUT", Some("scoped-wrong-member"), Some(member_at), None)
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+    let scoped_member = "/api/groups/scoped/members/member";
+    let scoped_add = || Call {
+        bearer: Some(&scoped),
+        ..membership(false, "PUT", Some("scoped-member-add"), Some(member_at), None)
+    };
+    let added = send(&app, scoped_member, scoped_add()).await;
+    assert_eq!(added.0, StatusCode::OK);
+    let committed = fixture.snapshot().unwrap();
+    assert_eq!(send(&app, scoped_member, scoped_add()).await.2, added.2);
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(revision(), member_at + 1);
+    assert_eq!(audit_count("group.create"), 3);
+    assert_eq!(audit_count("group.member.add"), 2);
 }
 
 #[tokio::test]

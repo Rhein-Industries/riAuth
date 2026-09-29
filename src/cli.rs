@@ -1999,46 +1999,57 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::User { command } => run_user(&remote, command).await?,
         Command::Offboard { command } => run_offboard(&remote, command).await?,
         Command::Ssf { command } => run_ssf(&remote, command).await?,
-        Command::Group { command } => match command {
-            GroupCommand::Review { command } => memberships::run(&remote, command).await?,
-            GroupCommand::List => remote.call(Method::GET, "/api/groups", None, true).await?,
-            GroupCommand::Create { name } => {
-                remote
-                    .call(
-                        Method::POST,
-                        "/api/groups",
-                        Some(json!({"name": name})),
-                        true,
-                    )
-                    .await?
+        Command::Group { command } => {
+            if matches!(
+                &command,
+                GroupCommand::Create { .. }
+                    | GroupCommand::AddMember { .. }
+                    | GroupCommand::RemoveMember { .. }
+            ) && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+            {
+                bail!("Group writes require --idempotency-key and --if-revision (from `riauth revision`)");
             }
-            GroupCommand::AddMember { group, username } => {
-                remote
-                    .call(
-                        Method::PUT,
-                        &format!(
-                            "/api/groups/{}/members/{}",
-                            segment(&group)?,
-                            segment(&username)?
-                        ),
-                        None,
-                        true,
-                    )
-                    .await?
-            }
-            GroupCommand::RemoveMember { group, username } => {
-                remote
-                    .call(
-                        Method::DELETE,
-                        &format!(
-                            "/api/groups/{}/members/{}",
-                            segment(&group)?,
-                            segment(&username)?
-                        ),
-                        None,
-                        true,
-                    )
-                    .await?
+            match command {
+                GroupCommand::Review { command } => memberships::run(&remote, command).await?,
+                GroupCommand::List => remote.call(Method::GET, "/api/groups", None, true).await?,
+                GroupCommand::Create { name } => {
+                    remote
+                        .call(
+                            Method::POST,
+                            "/api/groups",
+                            Some(json!({"name": name})),
+                            true,
+                        )
+                        .await?
+                }
+                GroupCommand::AddMember { group, username } => {
+                    remote
+                        .call(
+                            Method::PUT,
+                            &format!(
+                                "/api/groups/{}/members/{}",
+                                segment(&group)?,
+                                segment(&username)?
+                            ),
+                            None,
+                            true,
+                        )
+                        .await?
+                }
+                GroupCommand::RemoveMember { group, username } => {
+                    remote
+                        .call(
+                            Method::DELETE,
+                            &format!(
+                                "/api/groups/{}/members/{}",
+                                segment(&group)?,
+                                segment(&username)?
+                            ),
+                            None,
+                            true,
+                        )
+                        .await?
+                }
             }
         },
         Command::Client { command } => run_client(&remote, command).await?,

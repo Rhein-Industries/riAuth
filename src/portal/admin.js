@@ -1652,15 +1652,23 @@
   }
 
   // ---- Groups ------------------------------------------------------------------------------
+  const memberRetries = new WeakMap();
   async function member(button, groupName, username, add) {
+    const binding = JSON.stringify([groupName, username, add, data.revision]);
+    let retry = memberRetries.get(button);
+    if (!retry || retry.binding !== binding) {
+      retry = { binding, revision: data.revision, key: requestKey() };
+      memberRetries.set(button, retry);
+    }
     button.disabled = true; button.setAttribute("aria-busy", "true");
     try {
-      await api(add ? "PUT" : "DELETE", `admin/groups/${seg(groupName)}/members/${seg(username)}`, undefined, { revision: data.revision, key: requestKey() });
+      await api(add ? "PUT" : "DELETE", `admin/groups/${seg(groupName)}/members/${seg(username)}`, undefined, { revision: retry.revision, key: retry.key });
       await saved(add ? `Added ${username} to ${groupName}.` : `Removed ${username} from ${groupName}.`);
+      memberRetries.delete(button);
     } catch (error) {
       if (error.status === 401) { gate("signin"); return; }
       button.disabled = false; button.removeAttribute("aria-busy");
-      toast(explain(error, { 0: "riAuth didn't answer, so the membership may or may not have changed. Reload to see the current members; adding or removing a member again is safe." }));
+      toast(explain(error, { 0: "riAuth didn't answer, so the membership may or may not have changed. Try the same selection again to apply it at most once, or reload to see the current members." }));
     }
   }
   function addTo(id, label, options, onAdd) {
@@ -1676,7 +1684,7 @@
     bindForm(create, async (key) => {
       const name = value(create, "new-group");
       if (!name) throw invalid("Enter a group name.");
-      await api("POST", "admin/groups", { name }, { key });
+      await api("POST", "admin/groups", { name }, { revision: data.revision, key });
       await saved(`Created ${name}.`, hash("groups", name));
     }, { 409: (error) => /already exists/i.test(error.message) ? "A group with this name already exists." : undefined });
     const apps = (name) => data.clients.filter((c) => c.allowed_groups.includes(name)).map((c) => c.name).sort(byName);

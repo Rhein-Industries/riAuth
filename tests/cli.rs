@@ -254,18 +254,45 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         ],
         Some("alice-integration-password\n"),
     ));
+    let group_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["group", "create", "engineering"],
+        &[
+            "--if-revision",
+            &group_revision,
+            "--idempotency-key",
+            "binary-create-engineering",
+            "group",
+            "create",
+            "engineering",
+        ],
         None,
     ));
+    let member_revision =
+        success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string();
     success(invoke(
         dir.path(),
         &config,
         &session,
-        &["group", "add-member", "engineering", "alice"],
+        &[
+            "--if-revision",
+            &member_revision,
+            "--idempotency-key",
+            "binary-add-alice-to-engineering",
+            "group",
+            "add-member",
+            "engineering",
+            "alice",
+        ],
         None,
     ));
     success(invoke(
@@ -983,6 +1010,98 @@ fn cli_user_creation_requires_retry_binding_and_replays_once() {
     assert_eq!(error["http_status"], 409);
 }
 
+#[test]
+fn cli_group_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || {
+        success(cli(&["revision"]))["revision"]
+            .as_u64()
+            .unwrap()
+            .to_string()
+    };
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "group", "create", "engineering"],
+        vec!["--idempotency-key", "missing-revision", "group", "create", "engineering"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Group writes require"));
+    }
+    let create = [
+        "--if-revision", &at, "--idempotency-key", "cli-create-engineering",
+        "group", "create", "engineering",
+    ];
+    let first = success(cli(&create));
+    assert_eq!(first["name"], "engineering");
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-create-engineering",
+        "group", "create", "research",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-stale-research",
+        "group", "create", "research",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let user_at = revision();
+    success(invoke(
+        dir.path(), &config, &session,
+        &[
+            "--if-revision", &user_at, "--idempotency-key", "cli-create-member",
+            "user", "create", "member", "--password-stdin",
+        ],
+        Some("cli-group-member-password\n"),
+    ));
+    let member_at = revision();
+    for args in [
+        vec!["--if-revision", &member_at, "group", "add-member", "engineering", "member"],
+        vec!["--idempotency-key", "missing-member-revision", "group", "remove-member", "engineering", "member"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Group writes require"));
+    }
+    let add = [
+        "--if-revision", &member_at, "--idempotency-key", "cli-add-member",
+        "group", "add-member", "engineering", "member",
+    ];
+    let added = success(cli(&add));
+    assert_eq!(success(cli(&add)), added);
+    assert_eq!(added["members"].as_array().unwrap().len(), 1);
+    assert_eq!(revision().parse::<u64>().unwrap(), member_at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &member_at, "--idempotency-key", "cli-add-member",
+        "group", "remove-member", "engineering", "member",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &member_at, "--idempotency-key", "cli-stale-remove",
+        "group", "remove-member", "engineering", "member",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+    let remove_at = revision();
+    let remove = [
+        "--if-revision", &remove_at, "--idempotency-key", "cli-remove-member",
+        "group", "remove-member", "engineering", "member",
+    ];
+    let removed = success(cli(&remove));
+    assert_eq!(removed["members"], serde_json::json!([]));
+    assert_eq!(success(cli(&remove)), removed);
+    assert_eq!(revision().parse::<u64>().unwrap(), remove_at.parse::<u64>().unwrap() + 1);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["group.create", "group.member.add", "group.member.remove"] {
+        assert_eq!(
+            events.as_array().unwrap().iter().filter(|event| event["action"] == action).count(),
+            1,
+            "{action} audited more than once"
+        );
+    }
+}
+
 /// M03: the CLI's direct and desired-state application writes reach the same
 /// management seam as the HTTP API, with the same type, retry and stale rules.
 #[test]
@@ -1404,6 +1523,7 @@ fn cli_api_and_scim_group_writes_share_management_seam() {
     let added = http.put(format!("{issuer}/api/groups/parity-group/members/parity-member"))
         .bearer_auth(token)
         .header("if-match", format!("\"{}\"", revision()))
+        .header("idempotency-key", "parity-api-group-add")
         .send().unwrap();
     assert_eq!(added.status(), reqwest::StatusCode::OK);
     let after_api: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
@@ -1416,7 +1536,16 @@ fn cli_api_and_scim_group_writes_share_management_seam() {
     assert_eq!(stale.status(), reqwest::StatusCode::PRECONDITION_FAILED);
 
     let at = revision();
-    success(cli(&["--if-revision", &at, "group", "remove-member", "parity-group", "parity-member"]));
+    success(cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "parity-cli-group-remove",
+        "group",
+        "remove-member",
+        "parity-group",
+        "parity-member",
+    ]));
     assert_eq!(success(cli(&["get", "group", "parity-group"]))["members"], json!([]));
     let after_cli: Value = http.get(&resource).bearer_auth(token).send().unwrap().json().unwrap();
     assert_eq!(after_cli["members"], json!([]));

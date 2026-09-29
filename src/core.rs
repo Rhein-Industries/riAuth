@@ -541,7 +541,20 @@ impl Core {
             ))
         })
     }
+    fn require_group_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Group writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
     pub fn create_group(&self, token: &str, name: &str) -> Result<Value> {
+        Self::require_group_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "group.write", &format!("group/{name}"))?;
             let written = crate::management::write_group(
@@ -565,6 +578,7 @@ impl Core {
         username: &str,
         add: bool,
     ) -> Result<Value> {
+        Self::require_group_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "group.members", &format!("group/{name}"))?;
             let user = user_by_name(tx, username)?;

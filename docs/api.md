@@ -255,8 +255,8 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET, POST | `/api/users` | Existing visible-user array / create user; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET | `/api/users?limit=100&cursor=...` | Opt-in JSON user pages; `items`, `next_cursor`, `limit`, `revision` |
 | PATCH | `/api/users/{username}` | User state, credentials, attributes, verified-email state, subjects and session/MFA reset; requires `Idempotency-Key` and `If-Match: "<revision>"` |
-| GET, POST | `/api/groups` | Visible groups / create group |
-| PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member |
+| GET, POST | `/api/groups` | Visible groups / create group; POST requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member; both writes require `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET, POST | `/api/clients` | Visible clients / register application |
 | PATCH | `/api/clients/{id}` | Client configuration, including `settings`; client ID and type are immutable |
 | POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants; requires `Idempotency-Key` and `If-Match: "<revision>"` |
