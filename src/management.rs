@@ -318,6 +318,9 @@ pub(crate) fn revoke_agent(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> R
     let mut agent = tx
         .get::<Agent>("agents", id)?
         .ok_or_else(|| Error::missing("Agent not found"))?;
+    if !agent.enabled {
+        return Err(Error::conflict("Agent already revoked"));
+    }
     agent.enabled = false;
     tx.put("agents", id, &agent)?;
     tx.delete("agent_tokens", &agent.token_hash)?;

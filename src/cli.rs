@@ -1935,7 +1935,12 @@ pub async fn run(cli: Cli) -> Result<()> {
                 json!({"agent": result["agent"], "credential_file":out})
             }
             AgentCommand::List => remote.call(Method::GET, "/api/agents", None, true).await?,
-            AgentCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/agents/{}", segment(&id)?), None, true).await?,
+            AgentCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Agent revocation requires --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/agents/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::Status => remote.call(Method::GET, "/healthz", None, false).await?,
         Command::Discovery => {

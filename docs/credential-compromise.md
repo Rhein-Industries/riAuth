@@ -348,7 +348,12 @@ overwrite the file.
 requires a human administrator, sets `enabled` false, deletes the token
 index entry, audits `agent.revoke`, and returns `Agent::view`. That view
 has id, parent, permissions, expiry, creation time, and `enabled`. It omits
-`token_hash`. A missing row is 404 `Agent not found`.
+`token_hash`. The HTTP write requires `Idempotency-Key` and the current
+numeric revision in `If-Match`; the CLI requires `--idempotency-key` and
+`--if-revision`. An exact retry returns that public view without another
+audit when both original headers are reused. A fresh attempt after revocation
+returns 409 without another audit.
+A missing row is 404 `Agent not found`.
 
 `Core::principal` resolves `ri_agent_` by the token hash. The next check
 requires the stored hash to match, `enabled`, an unexpired `expires_at`,
@@ -421,8 +426,10 @@ set -eu
 live_config="deployment-private/live/riauth.toml"
 session_file="deployment-private/live/operator-session.json"
 agent_id="replace-with-agent-id"
+current_revision="$(riauth --config "$live_config" --session-file "$session_file" --json revision | jq -r '.data.revision')"
+revoke_request_key="$(uuidgen)"
 
-riauth --config "$live_config" --session-file "$session_file" agent revoke "$agent_id"
+riauth --config "$live_config" --session-file "$session_file" --if-revision "$current_revision" --idempotency-key "$revoke_request_key" agent revoke "$agent_id"
 ```
 
 Replace a confidential client secret. Read a fresh revision first:

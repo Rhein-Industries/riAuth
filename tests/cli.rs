@@ -944,6 +944,103 @@ fn failure(output: Output) -> (i32, Value) {
 }
 
 #[test]
+fn cli_agent_revoke_requires_bound_retry_and_audits_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let credential_file = dir.path().join("revoke-agent.json");
+    success(cli(&[
+        "agent",
+        "create",
+        "revoke-agent",
+        "--permission",
+        "state.read=state/revision",
+        "--out",
+        credential_file.to_str().unwrap(),
+    ]));
+    let revision = success(cli(&["revision"]))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    let (_, missing_key) = failure(cli(&[
+        "--if-revision",
+        &revision,
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert!(
+        missing_key["message"]
+            .as_str()
+            .unwrap()
+            .contains("--idempotency-key")
+    );
+    let (_, missing_revision) = failure(cli(&[
+        "--idempotency-key",
+        "cli-agent-revoke",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert!(
+        missing_revision["message"]
+            .as_str()
+            .unwrap()
+            .contains("--if-revision")
+    );
+
+    let stale = (revision.parse::<u64>().unwrap() + 1).to_string();
+    let (code, error) = failure(cli(&[
+        "--if-revision",
+        &stale,
+        "--idempotency-key",
+        "cli-agent-stale",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+
+    let args = [
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "cli-agent-revoke",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ];
+    let first = success(cli(&args));
+    assert_eq!(first["enabled"], false);
+    assert!(first.get("credential").is_none());
+    assert_eq!(success(cli(&args)), first);
+    let current = success(cli(&["revision"]))["revision"].as_u64().unwrap();
+    assert_eq!(current, revision.parse::<u64>().unwrap() + 1);
+    let (code, error) = failure(cli(&[
+        "--if-revision",
+        &current.to_string(),
+        "--idempotency-key",
+        "cli-agent-fresh-repeat",
+        "agent",
+        "revoke",
+        "revoke-agent",
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(error["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "agent.revoke" && event["target"] == "revoke-agent")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn cli_user_creation_requires_retry_binding_and_replays_once() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());

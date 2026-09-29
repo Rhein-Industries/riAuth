@@ -284,7 +284,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/policy/explain` | `client_id`, `username`, scope array, optional assumed `mfa`; read-only explanation with projected claims |
 | POST | `/api/policy/simulate` | Read-only policy what-if for one `client_id`, `username`, `scope` array and required `assurance` (`password`, `mfa`, `federated`, `certificate`). Optional `group: {name, member}` changes one assumed membership; optional `source` assumes a verified configured source. Returns `decision` (`allow`, `deny`, `needs_live_proof`), reason codes, configuration `revision`, and `dependency_revision`; no claims or credentials. |
 | GET, POST | `/api/agents` | Human administrator: list/create scoped agents. Optional `parent` is an enabled non-administrator username |
-| DELETE | `/api/agents/{id}` | Human administrator: revoke credential |
+| DELETE | `/api/agents/{id}` | Human administrator: revoke credential; the first attempt requires `Idempotency-Key` and the current numeric revision in `If-Match`. An exact retry reuses both headers and returns the revoked public view; a fresh repeat is 409. |
 | GET, POST | `/api/windows-devices` | `device.enroll`: list devices, or enroll/rotate one. Secret and optional offline ticket are returned once. See [enterprise/ENT-13.md](enterprise/ENT-13.md) |
 | DELETE | `/api/windows-devices/{id}` | Revoke that device and its sign-in tickets |
 | POST | `/api/windows-devices/login` | No admin bearer. Device secret plus password or a fresh session. Returns a 300s single-use sign-in ticket, not an OAuth token |

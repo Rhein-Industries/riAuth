@@ -1581,6 +1581,130 @@ pub fn device_poll_protocol_receipt(backend: Backend) {
     f.assert_http_mutation_snapshot(&disabled);
 }
 
+// Agent revoke is the secret-free lifecycle write: exact retries return only
+// Agent::view, while a new request against a disabled row cannot audit again.
+pub fn agent_revoke_requires_retry_binding(backend: Backend) {
+    let f = backend.fixture();
+    let ordinary = f.user("ordinary");
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "receipt-revoke".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "state.read".into(),
+                    resource: "state/revision".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let agent_token = text(&created["credential"], "token");
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let call = |token: &str, revision: Option<u64>, key: Option<&str>, body: &str| {
+        let mut request = Request::delete("/api/agents/receipt-revoke")
+            .header("authorization", format!("Bearer {token}"));
+        if let Some(revision) = revision {
+            request = request.header("if-match", format!("\"{revision}\""));
+        }
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
+        runtime.block_on(async {
+            let response = app
+                .clone()
+                .oneshot(request.body(Body::from(body.to_owned())).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let body: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            (status, body)
+        })
+    };
+    let revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        call(&f.admin, None, None, "").0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        call(&f.admin, Some(revision), None, "").0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        call(&f.admin, None, Some("revoke-once"), "").0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        call(&ordinary, Some(revision), Some("ordinary-denied"), "").0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&agent_token, Some(revision), Some("agent-denied"), "").0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&f.admin, Some(revision + 1), Some("stale"), "").0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before);
+
+    let (status, revoked) = call(&f.admin, Some(revision), Some("revoke-once"), "");
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["enabled"], false);
+    assert!(!revoked.to_string().contains(&agent_token));
+    assert_eq!(audit_count(&f, "agent.revoke"), 1);
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(revision + 1)
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("agent_tokens", &digest(&agent_token))
+            .unwrap()
+            .is_none()
+    );
+    let committed = f.snapshot().unwrap();
+    assert_eq!(
+        call(&f.admin, Some(revision), Some("revoke-once"), ""),
+        (StatusCode::OK, revoked)
+    );
+    assert_eq!(
+        call(
+            &f.admin,
+            Some(revision),
+            Some("revoke-once"),
+            "different body"
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(&f.admin, Some(revision + 1), Some("fresh-repeat"), "").0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.core
+            .revoke_agent(&f.admin, "receipt-revoke")
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count(&f, "agent.revoke"), 1);
+}
+
 // RI-MGT-001/003/004, RI-STORE-001/002, Q02-C04/C08/C09. HTTP supplies real
 // fingerprints/preconditions; snapshots include receipt, secret, revision/audit.
 pub fn http_mutation_receipts_and_audit(backend: Backend) {

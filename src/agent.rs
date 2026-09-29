@@ -6,6 +6,7 @@ use crate::{
     model::{Session, User},
     store::Tx,
 };
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -229,6 +230,17 @@ impl Core {
         })
     }
     pub fn revoke_agent(&self, token: &str, id: &str) -> Result<Value> {
+        // Remote revocation must bind the exact request to a configuration
+        // revision. In-process lifecycle callers have no HTTP context.
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Agent revocation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| management::revoke_agent(self, tx, token, id))
     }
 }
