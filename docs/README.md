@@ -62,6 +62,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Platform SAML source recipe](recipes/platform-saml-source.md) | In-process IdP fixture, the assertions `exercise` makes, and the named-IdP gap that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
 | [Platform inbound SCIM recipe](recipes/platform-inbound-scim.md) | In-process HTTP fixture, the assertions that test makes, and the named-client gap that fixture leaves |
+| [Platform outbound SCIM recipe](recipes/platform-outbound-scim.md) | Second loopback riAuth, the assertions that test makes, and the named-directory gap that fixture leaves |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
 | [LDAP import recipe](recipes/ldap-import.md) | Disposable OpenLDAP fixture, the assertions the ignored import test makes, and the peer gaps that fixture leaves |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |

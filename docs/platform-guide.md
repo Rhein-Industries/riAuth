@@ -1669,11 +1669,14 @@ Still outside this slice, as later tasks:
   the [LDAP import recipe](recipes/ldap-import.md),
   the [upstream OIDC recipe](recipes/upstream-oidc.md),
   the [inbound SCIM recipe](recipes/platform-inbound-scim.md),
-  and the [SAML source recipe](recipes/platform-saml-source.md)
+  the [SAML source recipe](recipes/platform-saml-source.md),
+  and the [outbound SCIM recipe](recipes/platform-outbound-scim.md)
   are the D03 recipes written so far. The SAML source recipe follows
   the in-process `Upstream` helper, and no named external IdP is
-  connected. The LDAP import recipe and the
-  upstream OIDC recipe cover both editions. The relying-party recipe is the
+  connected. The outbound SCIM recipe follows a second riAuth
+  router on loopback HTTP, and no named SaaS directory is connected.
+  The LDAP import recipe, the upstream OIDC recipe, and the outbound
+  SCIM recipe cover both editions. The relying-party recipe is the
   authorization-code fixture, and its client is the in-tree router rather
   than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
   A named service provider remains an open peer. SAML source remains a
