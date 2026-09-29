@@ -4,7 +4,7 @@ use crate::{
     core::Core,
     error::{Error, Result},
     ldap_server::{Auth, PAGED, STARTTLS, Settings, WHOAMI, entry, matches_filter},
-    model::{Client, Group, User},
+    model::{Client, User},
     store::Tx,
 };
 use ldap3_proto::proto::{
@@ -482,24 +482,43 @@ impl Core {
                     }
                     continue;
                 }
-                let group = tx
-                    .get::<Group>("groups", name)?
-                    .ok_or_else(|| Error::bad("LDAP search group does not exist"))?;
                 let mut point_reads = 0;
                 let mut scan_users = false;
-                for id in &group.members {
-                    if self_user.as_ref().is_some_and(|me| me.id != *id) || users.contains_key(id) {
-                        continue;
-                    }
-                    if point_reads == MAX_MEMBER_POINT_READS {
-                        scan_users = true;
+                let mut after = None;
+                loop {
+                    let page = tx.group_member_index_page(name, after.as_deref())?;
+                    if page.is_empty() {
                         break;
                     }
-                    point_reads += 1;
-                    let Some(user) = tx.get::<User>("users", id)? else {
-                        continue;
-                    };
-                    retain_selected(&mut users, id, user)?;
+                    let full = page.len() == crate::store::maintenance::PAGE;
+                    after = page.last().map(|(key, _)| key.clone());
+                    for (_, id) in page {
+                        let Some(id) = id else {
+                            // An oversized member ID is not decoded by an
+                            // index scan. A paged User scan still finds any
+                            // real User with that ID through exact point reads.
+                            scan_users = true;
+                            break;
+                        };
+                        if !tx.user_has_group_index(&id, name)? {
+                            return Err(Error::internal("LDAP Group member index is not reciprocal"));
+                        }
+                        if users.contains_key(&id) {
+                            continue;
+                        }
+                        if point_reads == MAX_MEMBER_POINT_READS {
+                            scan_users = true;
+                            break;
+                        }
+                        point_reads += 1;
+                        let Some(user) = tx.get::<User>("users", &id)? else {
+                            continue;
+                        };
+                        retain_selected(&mut users, &id, user)?;
+                    }
+                    if scan_users || !full {
+                        break;
+                    }
                 }
                 if scan_users {
                     let mut after = None;
@@ -515,10 +534,12 @@ impl Core {
                         let full = page.len() == crate::store::maintenance::PAGE;
                         after = page.last().map(|(key, _)| key.clone());
                         for (id, user) in page {
-                            if group.members.contains(&id)
-                                && self_user.as_ref().is_none_or(|me| me.id == id)
-                                && !users.contains_key(&id)
-                            {
+                            let member = tx.group_has_member_index(name, &id)?;
+                            let reciprocal = tx.user_has_group_index(&id, name)?;
+                            if member != reciprocal {
+                                return Err(Error::internal("LDAP Group member index is not reciprocal"));
+                            }
+                            if member && !users.contains_key(&id) {
                                 retain_selected(&mut users, &id, user)?;
                             }
                         }
@@ -724,7 +745,7 @@ mod tests {
     use crate::{
         agent::{NewAgent, Permission},
         config::Config,
-        model::{NewClient, NewUser, ProviderSettings},
+        model::{Group, NewClient, NewUser, ProviderSettings},
         telemetry::ReadContext,
     };
     use ldap3_proto::proto::{LdapDerefAliases, LdapFilter};
@@ -1003,12 +1024,12 @@ mod tests {
         assert_eq!(after.0, before.0, "search must not list either bucket");
         assert_eq!(
             after.1 - before.1,
-            6,
-            "two membership-index cursors, two user memberships and two DN-fold checks"
+            7,
+            "Group member page, two membership cursors, two user memberships and two DN-fold checks"
         );
         assert_eq!(
             after.2 - before.2,
-            10,
+            13,
             "the 130 unrelated Groups must not enter the read path"
         );
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
@@ -1040,6 +1061,11 @@ mod tests {
         query.base = "dc=riauth,dc=test".into();
         query.scope = LdapSearchScope::Subtree;
         query.filter = LdapFilter::Present("uid".into());
+        let before_agent_bytes = scans.bytes(ReadContext::Read);
+        let (agent_rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let baseline_agent_bytes = scans.bytes(ReadContext::Read) - before_agent_bytes;
         let before_self_bytes = scans.bytes(ReadContext::Read);
         let (self_rows, _) = core
             .ldap_search_entries("ldap", Some(&user_auth), &query, false)
@@ -1072,6 +1098,54 @@ mod tests {
             large_bytes < baseline_self_bytes + 16_384,
             "self search loaded Group.members: {baseline_self_bytes} -> {large_bytes}"
         );
+        let before_large_agent_bytes = scans.bytes(ReadContext::Read);
+        let (large_agent_rows, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        let large_agent_bytes = scans.bytes(ReadContext::Read) - before_large_agent_bytes;
+        assert_eq!(
+            large_agent_rows.iter().map(|row| &row.dn).collect::<Vec<_>>(),
+            agent_rows.iter().map(|row| &row.dn).collect::<Vec<_>>()
+        );
+        for (before, after) in agent_rows.iter().zip(&large_agent_rows) {
+            assert_eq!(before.attributes.len(), after.attributes.len());
+            for (before, after) in before.attributes.iter().zip(&after.attributes) {
+                assert_eq!(before.atype, after.atype);
+                assert_eq!(before.vals, after.vals);
+            }
+        }
+        // The long stale ID causes a paged User fallback. Its byte cost comes
+        // from the 133 User rows, not the 200 KiB Group source record.
+        assert!(
+            large_agent_bytes < baseline_agent_bytes + 96 * 1024,
+            "service search loaded Group.members: {baseline_agent_bytes} -> {large_agent_bytes}"
+        );
+        // A genuinely long User ID must still be found by the overflow point
+        // lookup during the User fallback, while the long stale ID is ignored.
+        let long_id = format!("long-{}", "y".repeat(300));
+        core.store
+            .write(|tx| {
+                let selected_id: String = tx.get("usernames", "selected")?.unwrap();
+                let mut user: User = tx.get("users", &selected_id)?.unwrap();
+                user.id = long_id.clone();
+                user.username = "long-member".into();
+                tx.put("users", &long_id, &user)?;
+                let mut directory: Group = tx.get("groups", "directory")?.unwrap();
+                directory.members.insert(long_id.clone());
+                tx.put("groups", "directory", &directory)
+            })
+            .unwrap();
+        let (with_long_member, _) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        assert_eq!(
+            with_long_member
+                .iter()
+                .filter(|row| row.dn == "uid=long-member,ou=users,dc=riauth,dc=test")
+                .count(),
+            1
+        );
+        assert!(with_long_member.windows(2).all(|rows| rows[0].dn < rows[1].dn));
 
         query.base = "cn=a000,ou=groups,dc=riauth,dc=test".into();
         query.scope = LdapSearchScope::Base;
@@ -1513,13 +1587,15 @@ mod tests {
             scans.scans(ReadContext::Read, true).count(),
             scans.scans(ReadContext::Read, true).sum(),
         );
+        let user_rows = if disabled_members { 259 } else { 133 };
         assert!(
-            after.0 - before.0 <= MAX_MEMBER_POINT_READS as u64 + 32,
-            "non-retained members must not cause unbounded point reads"
+            after.0 - before.0
+                <= (2 * MAX_MEMBER_POINT_READS + 2 * user_rows + 64) as u64,
+            "User lookups and reciprocal index checks must stay bounded"
         );
         assert_eq!(after.1, before.1, "no unbounded bucket read");
-        assert_eq!(after.2 - before.2, if disabled_members { 8 } else { 7 });
-        assert_eq!(after.3 - before.3, if disabled_members { 263 } else { 137 });
+        assert_eq!(after.2 - before.2, if disabled_members { 10 } else { 9 });
+        assert_eq!(after.3 - before.3, if disabled_members { 519 } else { 393 });
         let dns: Vec<_> = rows.iter().map(|row| row.dn.as_str()).collect();
         assert!(dns.windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(dns.len(), 6);
@@ -1768,8 +1844,8 @@ mod tests {
             1
         );
         assert_eq!(after.0, before.0);
-        assert_eq!(after.1 - before.1, 142);
-        assert_eq!(after.2 - before.2, 393);
+        assert_eq!(after.1 - before.1, 143);
+        assert_eq!(after.2 - before.2, 394);
 
         // A non-visible case variant is harmless; making it visible conflicts
         // even though the query excludes every Group entry.
@@ -1912,7 +1988,7 @@ mod tests {
                     )?;
                 }
                 let mut directory: Group = tx.get("groups", "directory")?.unwrap();
-                directory.members.insert(id);
+                directory.members.insert(id.clone());
                 tx.put("groups", "directory", &directory)?;
                 assert_eq!(tx.group_dn_fold_page("team", None)?, ["TEAM", "team"]);
 
@@ -1928,6 +2004,10 @@ mod tests {
                 for name in ["TEAM", "team", "directory"] {
                     tx.delete("index_group_bindings", name)?;
                     tx.delete("index_group_source_digests", name)?;
+                    tx.delete(
+                        &format!("index_group_members/{}", crate::crypto::digest(name)),
+                        &crate::crypto::digest(&id),
+                    )?;
                 }
                 assert!(tx.group_dn_fold_page("team", None)?.is_empty());
                 assert!(tx.group_dn_fold_page("directory", None)?.is_empty());
@@ -2003,15 +2083,20 @@ mod tests {
                 activation["index_version"] = serde_json::json!(6);
                 tx.put("meta", "version_activation", &activation)?;
                 tx.put("meta", "index_version", &6u32)?;
+                let id: String = tx.get("usernames", "admin")?.unwrap();
                 for name in ["TEAM", "team", "directory"] {
                     tx.put("index_group_bindings", name, &name)?;
                     tx.delete("index_group_source_digests", name)?;
+                    tx.delete(
+                        &format!("index_group_members/{}", crate::crypto::digest(name)),
+                        &crate::crypto::digest(&id),
+                    )?;
                 }
                 Ok(())
             })
             .unwrap();
         drop(core);
-        let core = Core::open(config).unwrap();
+        let core = Core::open(config.clone()).unwrap();
         assert_eq!(
             core.store.get::<u32>("meta", "index_version").unwrap(),
             Some(crate::store::maintenance::INDEX_VERSION)
@@ -2022,6 +2107,46 @@ mod tests {
             assert_eq!(binding["name"], name);
             assert_eq!(binding["source_digest"], digest);
         }
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
+        );
+
+        // v7 has the source binding pair but no Group-to-member rows. Core
+        // startup must rebuild the new index before any service search.
+        core.store
+            .write(|tx| {
+                let mut activation: serde_json::Value =
+                    tx.get("meta", "version_activation")?.unwrap();
+                activation["index_version"] = serde_json::json!(7);
+                tx.put("meta", "version_activation", &activation)?;
+                tx.put("meta", "index_version", &7u32)?;
+                let id: String = tx.get("usernames", "admin")?.unwrap();
+                for name in ["TEAM", "team", "directory"] {
+                    tx.delete(
+                        &format!("index_group_members/{}", crate::crypto::digest(name)),
+                        &crate::crypto::digest(&id),
+                    )?;
+                }
+                assert!(tx.group_member_index_page("directory", None)?.is_empty());
+                Ok(())
+            })
+            .unwrap();
+        drop(core);
+        let core = Core::open(config).unwrap();
+        assert_eq!(
+            core.store.get::<u32>("meta", "index_version").unwrap(),
+            Some(crate::store::maintenance::INDEX_VERSION)
+        );
+        let id: String = core.store.get("usernames", "admin").unwrap().unwrap();
+        assert_eq!(
+            core.store
+                .read(|tx| tx.group_member_index_page("directory", None))
+                .unwrap(),
+            vec![(crate::crypto::digest(&id), Some(id))]
+        );
         assert_eq!(
             core.ldap_search_entries("ldap", Some(&agent), &query, false)
                 .unwrap_err()

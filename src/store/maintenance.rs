@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 7;
+pub const INDEX_VERSION: u32 = 8;
 pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -17,6 +17,11 @@ const USER_LINKS: &str = "index_user_provisioning_links";
 const GROUP_DN_FOLDS: &str = "index_group_dn_folds";
 pub(super) const GROUP_BINDINGS: &str = "index_group_bindings";
 pub(super) const GROUP_SOURCE_DIGESTS: &str = "index_group_source_digests";
+const GROUP_MEMBERS: &str = "index_group_members";
+const GROUP_MEMBER_OVERFLOW: &str = "index_group_member_overflow";
+// Index scans never decode an arbitrary-length stale member ID. Longer IDs
+// force a paged User scan and remain available for exact point verification.
+const INLINE_GROUP_MEMBER_BYTES: usize = 256;
 const COUNTED: [&str; 2] = ["http_rates", "mail_limits"];
 // Imported records can approach the archive's per-frame limit. The ordinary
 // maintenance PAGE would decode 128 such records before returning to rebuild.
@@ -293,10 +298,15 @@ impl Tx<'_> {
             self.delete(&fold_bucket, id)?;
         }
         let key = crypto::digest(id);
+        let member_bucket = format!("{GROUP_MEMBERS}/{key}");
+        let overflow_bucket = format!("{GROUP_MEMBER_OVERFLOW}/{key}");
         if let Some(old) = before {
             for user in &old.members {
                 if after.is_none_or(|new| new.name != old.name || !new.members.contains(user)) {
                     self.delete(&format!("index_user_groups/{}", crypto::digest(user)), &key)?;
+                    let member_key = crypto::digest(user);
+                    self.delete(&member_bucket, &member_key)?;
+                    self.delete(&overflow_bucket, &member_key)?;
                 }
             }
         }
@@ -308,6 +318,13 @@ impl Tx<'_> {
                         &key,
                         &new.name,
                     )?;
+                    let member_key = crypto::digest(user);
+                    if user.len() <= INLINE_GROUP_MEMBER_BYTES {
+                        self.put(&member_bucket, &member_key, &Some(user))?;
+                    } else {
+                        self.put(&member_bucket, &member_key, &None::<&String>)?;
+                        self.put(&overflow_bucket, &member_key, user)?;
+                    }
                 }
             }
         }
@@ -375,6 +392,48 @@ impl Tx<'_> {
                 "Group membership index has a mismatched name",
             )),
             None => Ok(false),
+        }
+    }
+    /// One bounded page of Group members. Long IDs are represented by a
+    /// sentinel so scans do not materialize their source-sized strings.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_member_index_page(
+        &self,
+        group_name: &str,
+        after: Option<&str>,
+    ) -> Result<Vec<(String, Option<String>)>> {
+        let bucket = format!("{GROUP_MEMBERS}/{}", crypto::digest(group_name));
+        let page = self.scan::<Option<String>>(&bucket, after, PAGE)?;
+        for (key, member) in &page {
+            if member.as_ref().is_some_and(|member| {
+                member.len() > INLINE_GROUP_MEMBER_BYTES || crypto::digest(member) != *key
+            }) {
+                return Err(Error::internal("LDAP Group member index binding mismatch"));
+            }
+        }
+        Ok(page)
+    }
+    /// Exact point membership after the User-scan fallback. The overflow row
+    /// is read only for a matching long User ID, never during the index scan.
+    #[cfg(feature = "platform")]
+    pub(crate) fn group_has_member_index(&self, group_name: &str, user_id: &str) -> Result<bool> {
+        let group = crypto::digest(group_name);
+        let key = crypto::digest(user_id);
+        match self.get::<Option<String>>(&format!("{GROUP_MEMBERS}/{group}"), &key)? {
+            None => Ok(false),
+            Some(Some(member)) if member == user_id => Ok(true),
+            Some(Some(_)) => Err(Error::internal("LDAP Group member index binding mismatch")),
+            Some(None) => {
+                let member = self.get::<String>(
+                    &format!("{GROUP_MEMBER_OVERFLOW}/{group}"),
+                    &key,
+                )?;
+                if user_id.len() > INLINE_GROUP_MEMBER_BYTES && member.as_deref() == Some(user_id) {
+                    Ok(true)
+                } else {
+                    Err(Error::internal("LDAP Group member overflow binding mismatch"))
+                }
+            }
         }
     }
     /// Group storage keys whose LDAP DNs have the same ASCII case fold.
@@ -622,6 +681,8 @@ impl Tx<'_> {
             GROUP_DN_FOLDS.into(),
             GROUP_BINDINGS.into(),
             GROUP_SOURCE_DIGESTS.into(),
+            GROUP_MEMBERS.into(),
+            GROUP_MEMBER_OVERFLOW.into(),
             USER_LINKS.into(),
         ];
         for bucket in COUNTED {

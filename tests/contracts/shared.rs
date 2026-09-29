@@ -383,9 +383,12 @@ pub fn direct_restore_postgres_archive_into_redb() {
 pub fn group_binding_metadata(backend: Backend) {
     let f = backend.fixture();
     let name = "large-binding-group";
+    let stale = format!("stale-{}", "x".repeat(200_000));
+    let member_bucket = format!("index_group_members/{}", digest(name));
+    let overflow_bucket = format!("index_group_member_overflow/{}", digest(name));
     let mut group = Group {
         name: name.into(),
-        members: BTreeSet::from([format!("stale-{}", "x".repeat(200_000))]),
+        members: BTreeSet::from([stale.clone()]),
     };
     f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
     let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
@@ -393,23 +396,76 @@ pub fn group_binding_metadata(backend: Backend) {
     assert_eq!(binding["name"], name);
     assert_eq!(binding["source_digest"], source);
     assert_eq!(source.len(), 43);
+    assert_eq!(
+        f.core.store.get::<Option<String>>(&member_bucket, &digest(&stale)).unwrap(),
+        Some(None)
+    );
+    assert_eq!(
+        f.core.store.get::<String>(&overflow_bucket, &digest(&stale)).unwrap(),
+        Some(stale.clone())
+    );
 
     group.members.insert("visible-user".into());
+    group.members.extend((0..129).map(|n| format!("short-{n:03}")));
     f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
     let changed: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
     let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
     assert_ne!(source, changed);
     assert_eq!(binding["source_digest"], changed);
+    let first = f.core.store.read(|tx| tx.scan::<Option<String>>(&member_bucket, None, 128)).unwrap();
+    let second = f.core.store.read(|tx| tx.scan::<Option<String>>(&member_bucket, Some(&first.last().unwrap().0), 128)).unwrap();
+    assert_eq!(first.len(), 128);
+    assert_eq!(first.len() + second.len(), 131);
+    assert_eq!(
+        f.core.store.get::<Option<String>>(&member_bucket, &digest("visible-user")).unwrap(),
+        Some(Some("visible-user".into()))
+    );
+
+    // A coherent v7 snapshot has neither Group-to-member collection. Opening
+    // it must backfill both the short page and long-ID overflow on each backend.
+    f.core.store.write(|tx| {
+        let mut activation: Value = tx.get("meta", "version_activation")?.unwrap();
+        activation["index_version"] = json!(7);
+        tx.put("meta", "version_activation", &activation)?;
+        tx.put("meta", "index_version", &7u32)?;
+        for bucket in ["index_group_members", "index_group_member_overflow"] {
+            for (key, _) in tx.list::<Value>(bucket)? {
+                tx.delete(bucket, &key)?;
+            }
+        }
+        Ok(())
+    }).unwrap();
+    let f = f.reopen_with(|_| {});
+    assert_eq!(
+        f.core.store.get::<u32>("meta", "index_version").unwrap(),
+        Some(riauth::store::maintenance::INDEX_VERSION)
+    );
+    let backfilled = f.core.store.read(|tx| tx.scan::<Option<String>>(&member_bucket, None, 128)).unwrap();
+    assert_eq!(backfilled.len(), 128);
+    assert_eq!(
+        f.core.store.get::<String>(&overflow_bucket, &digest(&stale)).unwrap(),
+        Some(stale.clone())
+    );
 
     f.core.store.write(|tx| tx.rebuild_indexes()).unwrap();
     let rebuilt: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
     let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
     assert_eq!(rebuilt, changed);
     assert_eq!(binding["source_digest"], changed);
+    assert_eq!(
+        f.core.store.get::<Option<String>>(&member_bucket, &digest(&stale)).unwrap(),
+        Some(None)
+    );
+    assert_eq!(
+        f.core.store.get::<String>(&overflow_bucket, &digest(&stale)).unwrap(),
+        Some(stale.clone())
+    );
 
     f.core.store.write(|tx| tx.delete("groups", name)).unwrap();
     assert!(f.core.store.get::<Value>("index_group_bindings", name).unwrap().is_none());
     assert!(f.core.store.get::<String>("index_group_source_digests", name).unwrap().is_none());
+    assert!(f.core.store.get::<Option<String>>(&member_bucket, &digest("visible-user")).unwrap().is_none());
+    assert!(f.core.store.get::<String>(&overflow_bucket, &digest(&stale)).unwrap().is_none());
 }
 
 /// S02: a large group directory has the same live membership and snapshot
