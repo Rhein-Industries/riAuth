@@ -31,8 +31,6 @@ use std::{
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
-const RETRY_LIMIT: u32 = 5;
-const RETRY_WINDOW: u64 = 900;
 const MAX_TOKEN_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_PROBE_RESPONSE_BYTES: usize = 1024 * 1024;
 const SYNC_BUDGET: Duration = Duration::from_secs(30);
@@ -76,13 +74,6 @@ fn unavailable(message: &'static str) -> Error {
         StatusCode::SERVICE_UNAVAILABLE,
         "directory_unavailable",
         message,
-    )
-}
-fn budget_exhausted() -> Error {
-    Error::new(
-        StatusCode::TOO_MANY_REQUESTS,
-        "rate_limited",
-        "Cloud directory retry budget exhausted",
     )
 }
 fn valid_label(value: &str, limit: usize) -> bool {
@@ -1388,11 +1379,6 @@ pub struct Plan {
     pub review: ReviewBinding,
     pub applied: bool,
 }
-#[derive(Clone, Serialize, Deserialize, Default)]
-struct SyncRun {
-    window_start: u64,
-    attempts: u32,
-}
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub(crate) kind: String,
@@ -1788,10 +1774,6 @@ fn reconcile(
     Ok(changes)
 }
 
-fn window_open(run: &SyncRun) -> bool {
-    run.window_start.saturating_add(RETRY_WINDOW) <= now() || run.attempts < RETRY_LIMIT
-}
-
 impl Core {
     /// One read-only upstream page for operational diagnostics. This does not
     /// create a plan, consume the sync retry budget, or persist connector state.
@@ -1930,45 +1912,6 @@ impl Core {
                 })
             }
         }
-    }
-    fn ensure_budget(&self, settings: &Settings) -> Result<()> {
-        self.store.read(|tx| {
-            let run = tx
-                .get::<SyncRun>("cloud_directory_runs", &settings.run_key())?
-                .unwrap_or_default();
-            if window_open(&run) {
-                Ok(())
-            } else {
-                Err(budget_exhausted())
-            }
-        })
-    }
-    fn record_failure(&self, settings: &Settings) -> Result<()> {
-        self.store.write(|tx| {
-            let mut run = tx
-                .get::<SyncRun>("cloud_directory_runs", &settings.run_key())?
-                .unwrap_or_default();
-            if run.window_start.saturating_add(RETRY_WINDOW) <= now() {
-                run.window_start = now();
-                run.attempts = 0;
-            }
-            run.attempts = run.attempts.saturating_add(1);
-            tx.put("cloud_directory_runs", &settings.run_key(), &run)?;
-            Ok(())
-        })
-    }
-    fn reset_budget(&self, settings: &Settings) -> Result<()> {
-        self.store.write(|tx| {
-            tx.put(
-                "cloud_directory_runs",
-                &settings.run_key(),
-                &SyncRun {
-                    window_start: now(),
-                    attempts: 0,
-                },
-            )?;
-            Ok(())
-        })
     }
     pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
@@ -2210,14 +2153,14 @@ impl Core {
                 draft.bounded(&settings)?;
                 Ok((prior, draft, restarted, authority_digest))
             })?;
-            self.ensure_budget(&settings)?;
+            self.cloud_budget_ensure(&settings.run_key())?;
             if let Err(error) = draft.snapshot.advance(&settings, settings.quota.pages_per_call) {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.record_failure(&settings)?;
+                    self.cloud_budget_record_failure(&settings.run_key())?;
                 }
                 return Err(error);
             }
-            self.reset_budget(&settings)?;
+            self.cloud_budget_reset(&settings.run_key())?;
             draft.sequence = draft.sequence.saturating_add(1);
             draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
             draft.bounded(&settings)?;
@@ -2425,18 +2368,18 @@ impl Core {
                 apply.bounded(&settings)?;
                 Ok((prior, apply, restarted))
             })?;
-            self.ensure_budget(&settings)?;
+            self.cloud_budget_ensure(&settings.run_key())?;
             if let Err(error) = apply
                 .draft
                 .snapshot
                 .advance(&settings, settings.quota.pages_per_call)
             {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.record_failure(&settings)?;
+                    self.cloud_budget_record_failure(&settings.run_key())?;
                 }
                 return Err(error);
             }
-            self.reset_budget(&settings)?;
+            self.cloud_budget_reset(&settings.run_key())?;
             apply.draft.sequence = apply.draft.sequence.saturating_add(1);
             apply.draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
             apply.bounded(&settings)?;
@@ -2560,10 +2503,6 @@ pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
             tx.delete("cloud_directory_plans", &id)?;
         }
     }
-    for (id, run) in tx.maintenance_page::<SyncRun>("cloud_directory_runs")? {
-        if run.window_start.saturating_add(86_400) < at {
-            tx.delete("cloud_directory_runs", &id)?;
-        }
-    }
+    crate::assembly::cloud_budget_cleanup(tx, at)?;
     Ok(())
 }

@@ -333,6 +333,14 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/directory.rs: LDAP import adapter refers directly to Core or storage")
+        if path == SRC / "cloud_directory.rs" and (
+            re.search(
+                r"\b(?:SyncRun|RETRY_LIMIT|RETRY_WINDOW|budget_exhausted|window_open|ensure_budget|record_failure|reset_budget)\b",
+                masked_rust_source(path.read_text()),
+            )
+            or '"cloud_directory_runs"' in path.read_text()
+        ):
+            errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
