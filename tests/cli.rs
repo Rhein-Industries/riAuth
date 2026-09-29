@@ -105,7 +105,8 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         all.extend_from_slice(args);
         invoke(dir, config, &dir.join("no-human-session"), &all, None)
     };
-    let plan_and_apply = |manifest: &Value, version: &str, expected: Vec<String>| {
+    let plan_and_apply =
+        |manifest: &Value, version: &str, expected: Vec<String>, confirm_removals: bool| {
         std::fs::write(&manifest_file, serde_json::to_vec(manifest).unwrap()).unwrap();
         let plan_file = dir.join(format!("identity-plan-{version}.json"));
         let planned = success(call(&[
@@ -126,7 +127,16 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         let mut expected = expected;
         expected.sort();
         assert_eq!(references, expected);
-        let applied = success(call(&["apply", "--plan", plan_file.to_str().unwrap()]));
+        assert_eq!(
+            planned["removal_impact"]["review_required"],
+            json!(confirm_removals)
+        );
+        let plan_arg = plan_file.to_str().unwrap();
+        let mut args = vec!["apply", "--plan", plan_arg];
+        if confirm_removals {
+            args.push("--confirm-removals");
+        }
+        let applied = success(call(&args));
         assert_eq!(applied["applied"], true);
         let printed = serde_json::to_string(&applied).unwrap();
         assert!(!printed.contains(std::str::from_utf8(password_value).unwrap()));
@@ -141,6 +151,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
             .iter()
             .map(|p| format!("file:{}", p.display()))
             .collect(),
+        false,
     );
     std::fs::remove_file(&password).unwrap();
     std::fs::remove_file(&source_secret).unwrap();
@@ -150,6 +161,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         &manifest,
         "factor-only",
         vec![format!("file:{}", factor.display())],
+        false,
     );
     std::fs::remove_file(&factor).unwrap();
     assert_eq!(
@@ -165,7 +177,7 @@ fn exercise_source_and_factor_plans(dir: &Path, config: &Path, session: &Path) {
         .as_object_mut()
         .unwrap()
         .remove("password_version");
-    plan_and_apply(&manifest, "disable-password", vec![]);
+    plan_and_apply(&manifest, "disable-password", vec![], true);
 }
 
 #[test]
