@@ -33,6 +33,15 @@ fn bearer(method: Method, path: &str, token: &str, key: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn keyless_bearer(method: Method, path: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 fn browser(cookie: &str, path: &str, key: &str, origin: &str, binding: &Value) -> Request<Body> {
     Request::builder()
         .method(Method::POST)
@@ -388,6 +397,7 @@ async fn session_revoke_writer_preserves_authority_and_replay_across_interfaces(
 async fn fresh_selected_rerevocation_rejects_across_interfaces_without_writes() {
     let f = Fixture::new();
     let alice = f.user("alice");
+    let bob = f.user("bob");
     let target = login(&f, "alice");
     let target_id = session_id(&f, &target);
     let browser_reply = f
@@ -429,6 +439,20 @@ async fn fresh_selected_rerevocation_rejects_across_interfaces_without_writes() 
     assert_eq!(committed.0, StatusCode::OK);
     let state = f.snapshot().unwrap();
     assert_eq!(
+        send(&app, keyless_bearer(Method::DELETE, &api_path, &bob))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(&app, keyless_bearer(Method::DELETE, &api_path, &alice))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
         send(
             &app,
             bearer(Method::DELETE, &api_path, &alice, "new-bearer-key")
@@ -453,6 +477,13 @@ async fn fresh_selected_rerevocation_rejects_across_interfaces_without_writes() 
         )
         .await
         .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(&app, keyless_bearer(Method::DELETE, &api_path, &agent))
+            .await
+            .0,
         StatusCode::NOT_FOUND
     );
     f.assert_http_mutation_snapshot(&state);
@@ -484,4 +515,82 @@ async fn fresh_selected_rerevocation_rejects_across_interfaces_without_writes() 
     );
     f.assert_http_mutation_snapshot(&state);
     assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
+}
+
+#[tokio::test]
+async fn concurrent_selected_revocation_commits_once_and_receipt_survives_restart() {
+    let f = Fixture::new();
+    let alice = f.user("alice");
+    #[cfg(feature = "platform")]
+    {
+        use riauth::{
+            crypto::SigningKey,
+            jose::PublicJwks,
+            ssf::{DeliverySpec, PUSH, SESSION_REVOKED, SsfAuth, StreamInput},
+        };
+        let key = SigningKey::generate_algorithm("ES256").unwrap();
+        f.core
+            .ssf_create(
+                &SsfAuth::Bearer(f.admin.clone()),
+                StreamInput {
+                    id: "session-revocation-once".into(),
+                    issuer: "https://security.example".into(),
+                    audience: "receiver".into(),
+                    events_requested: [SESSION_REVOKED.into()].into(),
+                    events: Default::default(),
+                    delivery: Some(DeliverySpec {
+                        method: PUSH.into(),
+                        endpoint_url: "https://receiver.example/events".into(),
+                        authorization_header: None,
+                    }),
+                    delivery_method: None,
+                    endpoint_url: None,
+                    jwks: PublicJwks {
+                        keys: vec![serde_json::from_value(key.jwk().unwrap()).unwrap()],
+                    },
+                    subjects: [("alice".into(), "alice".into())].into(),
+                },
+            )
+            .unwrap();
+    }
+    let target = login(&f, "alice");
+    let target_id = session_id(&f, &target);
+    let path = format!("/api/sessions/{target_id}");
+    let app = riauth::api::router(f.core.clone());
+
+    let (left, right) = tokio::join!(
+        send(&app, bearer(Method::DELETE, &path, &alice, "concurrent-left")),
+        send(&app, bearer(Method::DELETE, &path, &alice, "concurrent-right")),
+    );
+    let (winning_key, committed) = if left.0 == StatusCode::OK {
+        assert_eq!(right.0, StatusCode::NOT_FOUND);
+        ("concurrent-left", left)
+    } else {
+        assert_eq!(left.0, StatusCode::NOT_FOUND);
+        assert_eq!(right.0, StatusCode::OK);
+        ("concurrent-right", right)
+    };
+    assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
+    #[cfg(feature = "platform")]
+    assert_eq!(f.core.store.list::<riauth::ssf::Delivery>("ssf_deliveries").unwrap().len(), 1);
+
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let state = f.snapshot().unwrap();
+    assert_eq!(
+        send(&app, bearer(Method::DELETE, &path, &alice, winning_key)).await,
+        committed
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(
+        send(&app, keyless_bearer(Method::DELETE, &path, &alice))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    f.assert_http_mutation_snapshot(&state);
+    assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
+    #[cfg(feature = "platform")]
+    assert_eq!(f.core.store.list::<riauth::ssf::Delivery>("ssf_deliveries").unwrap().len(), 1);
 }
