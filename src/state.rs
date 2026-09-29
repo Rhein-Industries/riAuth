@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Resources reconciled by desired-state plan and apply.
+/// LDAP, Workspace, Entra, outbound SCIM, listeners, and PAM approvers stay
+/// in the process-local configuration and are rejected as unknown fields.
 #[derive(schemars::JsonSchema, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
@@ -2323,4 +2326,38 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Change, state_automation_safe};
+    use serde_json::{Value, json};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn connector_listener_and_pam_changes_are_not_automatic() {
+        for resource in [
+            "directory/staff",
+            "workspace/staff",
+            "entra/staff",
+            "scim/payroll",
+            "ldap_listener/legacy",
+            "proxy_listener/edge",
+            "radius_listener/wifi",
+            "pam/staff",
+        ] {
+            let change = Change {
+                resource: resource.into(),
+                action: "update".into(),
+                before: Value::Null,
+                after: json!({}),
+                credential_change: false,
+                secret_references: BTreeSet::new(),
+            };
+            assert!(
+                !state_automation_safe(std::slice::from_ref(&change)),
+                "{resource}"
+            );
+        }
+    }
 }

@@ -944,6 +944,12 @@ lab configuration, then `directory list`, `directory plan`, and
 remote calls on the server CLI session and are the same verbs on both
 editions.
 
+Those commands reconcile accounts for a directory already named in this file.
+Desired-state plan and apply do not create or update
+`[directories]`, `[workspace_directories]`, `[entra_directories]`, or
+`[scim_targets]`. The restart handoff, and the same limit for listeners and
+PAM approvers, is [Desired state](agent.md#desired-state).
+
 The Platform build also accepts `[workspace_directories]` and
 `[entra_directories]`. `riauth directory workspace` and
 `riauth directory entra` call `/api/workspace-directories` and
