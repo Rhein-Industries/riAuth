@@ -20,8 +20,8 @@ pub use totp::TotpChallenge as RecoveryChallenge;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
-    RunBinding, RunState, Target, Validated, builtin, configured_environment,
-    configured_password_path, configured_source_first_passkey_enrollment,
+    RunBinding, RunState, SourceRegistrationBinding, Target, Validated, builtin,
+    configured_environment, configured_password_path, configured_source_first_passkey_enrollment,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     supported_configured_consent, supported_configured_passkey,
     supported_configured_passkey_enrollment, supported_configured_passkey_removal,
@@ -159,7 +159,7 @@ impl RuntimeRun {
         // Revalidate the pinned snapshot on every resume so a changed or
         // corrupt row cannot alter routing. Configured runs retain the exact
         // definition active when they started.
-        let checked = if matches!(
+        let mut checked = if matches!(
             self.definition.id.as_str(),
             PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT | PASSWORD_RESET
         ) {
@@ -211,6 +211,11 @@ impl RuntimeRun {
             }
             checked
         };
+        if let Some(registration) = self.record.binding.source_registration.clone() {
+            checked = checked
+                .with_source_registration(registration)
+                .map_err(invalid_error)?;
+        }
         if checked.binding() != self.record.binding {
             return Err(Error::conflict("Workflow definition changed"));
         }
@@ -300,6 +305,13 @@ fn authority(
     let request = tx
         .get::<RequestAuthority>(REQUESTS, &run.request)?
         .ok_or_else(Error::forbidden)?;
+    if let Some(registration) = &run.binding.source_registration
+        && request.source.as_ref().is_none_or(|pin| {
+            pin.source != registration.source || pin.fingerprint != registration.fingerprint
+        })
+    {
+        return Err(Error::forbidden());
+    }
     if request.recovery.is_some() {
         let user = reset::authority(tx, run, &request, at)?;
         return Ok((user, request));

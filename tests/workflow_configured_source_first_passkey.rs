@@ -352,6 +352,12 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
         .workflow_configured_source_passkey_start(&alice, WORKFLOW)
         .unwrap();
     let id = started.workflow.id;
+    let registration = started.workflow.binding.source_registration.unwrap();
+    assert_eq!(registration.source.as_str(), "upstream");
+    assert_eq!(
+        registration.fingerprint,
+        upstream.source.fingerprint().unwrap()
+    );
     assert!(f.core.workflow_source_finish(&second, &id).is_err());
     assert!(f.core.workflow_source_finish(&bob, &id).is_err());
     assert!(
@@ -362,6 +368,31 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
     upstream
         .callback(&f, &started.authorization_url, "subject-1")
         .await;
+    let original: Value = f.core.store.get("workflow_runs", &id).unwrap().unwrap();
+    let mut wrong_binding = original.clone();
+    wrong_binding["record"]["binding"]["source_registration"]["fingerprint"] =
+        json!("A".repeat(43));
+    f.core
+        .store
+        .write(|tx| tx.put("workflow_runs", &id, &wrong_binding))
+        .unwrap();
+    assert!(f.core.workflow_source_finish(&alice, &id).is_err());
+    f.core
+        .store
+        .write(|tx| tx.put("workflow_runs", &id, &original))
+        .unwrap();
+    let source: Value = f.core.store.get("sources", "upstream").unwrap().unwrap();
+    let mut changed_source = source.clone();
+    changed_source["name"] = json!("Rotated registration");
+    f.core
+        .store
+        .write(|tx| tx.put("sources", "upstream", &changed_source))
+        .unwrap();
+    assert!(f.core.workflow_source_finish(&alice, &id).is_err());
+    f.core
+        .store
+        .write(|tx| tx.put("sources", "upstream", &source))
+        .unwrap();
     assert!(matches!(
         f.core.workflow_source_finish(&alice, &id).unwrap().state,
         RunState::Active { ref step, .. } if step.as_str() == "enroll"

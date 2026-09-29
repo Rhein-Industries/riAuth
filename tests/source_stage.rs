@@ -1237,6 +1237,12 @@ async fn workflow_source_evidence_is_bound_fresh_and_consumed_once() {
         .unwrap();
     let sessions_before = f.core.store.list::<Session>("sessions").unwrap().len();
     let start = f.core.workflow_source_start(&alice, "upstream").unwrap();
+    let registration = start.workflow.binding.source_registration.as_ref().unwrap();
+    assert_eq!(registration.source.as_str(), upstream.source.id.as_str());
+    assert_eq!(
+        registration.fingerprint,
+        upstream.source.fingerprint().unwrap()
+    );
     let run_id = start.workflow.id.clone();
     let run: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
     let login_key = run["in_flight"]["source"]["login"]
@@ -1375,6 +1381,12 @@ async fn workflow_source_evidence_is_bound_fresh_and_consumed_once() {
         json!("another-step"),
     );
     rejects_change("workflow_runs", &run_id, "/record/state/attempt", json!(2));
+    rejects_change(
+        "workflow_runs",
+        &run_id,
+        "/record/binding/source_registration/fingerprint",
+        json!("A".repeat(43)),
+    );
     rejects_change("sources", "upstream", "/enabled", json!(false));
     rejects_change(
         "sources",

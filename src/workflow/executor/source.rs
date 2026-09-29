@@ -13,6 +13,15 @@ pub struct SourceStart {
 pub(super) const TOTP_WORKFLOW: &str = "platform-source-totp-reauthentication";
 pub(super) const SOURCE_WORKFLOW: &str = "platform-source-reauthentication";
 
+fn bind_registration(checked: Validated, pin: &upstream::Pin) -> Result<Validated> {
+    checked
+        .with_source_registration(SourceRegistrationBinding {
+            source: pin.source.clone(),
+            fingerprint: pin.fingerprint.clone(),
+        })
+        .map_err(invalid_error)
+}
+
 pub(super) fn session_matches(
     session: &Session,
     pin: &upstream::Pin,
@@ -170,6 +179,7 @@ impl Core {
             let (user, session) = self.session(tx, token)?;
             let pin = upstream::pin(tx, &source)?;
             upstream::authority(tx, &pin, &user)?;
+            let checked = bind_registration(checked.clone(), &pin)?;
             if user.has_passkeys
                 || crate::passkey::passkey_count(tx, &user.id)? != 0
                 || user.totp_secret.is_some()
@@ -302,7 +312,7 @@ impl Core {
             let pin = upstream::pin(tx, &source)?;
             upstream::authority(tx, &pin, &user)?;
             let requires_mfa = user.totp_secret.is_some();
-            let checked = definition(&source, requires_mfa)?;
+            let checked = bind_registration(definition(&source, requires_mfa)?, &pin)?;
             let at = now();
             if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
                 if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {

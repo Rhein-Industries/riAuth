@@ -559,6 +559,16 @@ the receipts and finalizes the run. It issues no session or consent grant and
 does not change the stored bearer's assurance. Essentials rejects this
 configured shape. An invitation cannot use this session-bound path.
 
+New Platform source-verifier runs pin the selected source ID and live
+registration fingerprint in `RunBinding`, in addition to the definition
+fingerprint. The source reservation and evidence carry that binding. At verifier
+use and credential finalization, the executor compares it with the request's
+source pin and rechecks the enabled live registration. A changed registration
+cannot finish the run. Cancellation still requires a live owner session; a
+registration change can invalidate a source-backed bearer. Run expiry and
+cleanup remain bounded. In-flight runs created before this field existed
+retain the prior request-pin and live source checks until their 600-second limit.
+
 ## Configured TOTP enrollment
 
 Platform accepts one exact configured `enrollment` shape for an account that
@@ -964,12 +974,12 @@ These are not implemented or established by this slice:
   verifier paths store attempt timing, enforce retry and run bounds, cancellation
   and expiry, and recheck account, session, request and receipt authority in the
   final transaction. The password paths reject upstream-only accounts.
-* Binding runs to their security dependencies. `RunBinding` covers the
-  definition's ID, revision and fingerprint. It does not cover the `Environment`
-  (stage registrations and permissions) or any approval record
-  that RI-WF-002 requires.
-  The source reauthentication request now pins and rechecks its source fingerprint
-  and the receipt's explicit account link; broader dependency/approval binding remains.
+* Binding the remaining security dependencies. `RunBinding` covers the
+  definition's ID, revision and fingerprint, and new source-verifier runs also
+  pin the live source registration. It does not cover custom-stage registrations
+  and permissions or any approval record that RI-WF-002 requires. The source
+  receipt separately pins its explicit account link; broader
+  dependency/approval binding remains.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)

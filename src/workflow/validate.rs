@@ -149,6 +149,7 @@ fn scrub(text: &str) -> String {
 pub struct Validated {
     definition: Definition,
     fingerprint: String,
+    source_registration: Option<SourceRegistrationBinding>,
 }
 
 pub enum Target<'a> {
@@ -181,7 +182,40 @@ impl Validated {
             workflow: self.definition.id.clone(),
             revision: self.definition.revision,
             fingerprint: self.fingerprint.clone(),
+            source_registration: self.source_registration.clone(),
         }
+    }
+    /// Bind the one source action to the live registration selected by the
+    /// server. A definition document cannot provide this fingerprint.
+    #[cfg(feature = "platform")]
+    pub(crate) fn with_source_registration(
+        mut self,
+        registration: SourceRegistrationBinding,
+    ) -> Result<Self, Invalid> {
+        let mut sources = self.definition.steps.iter().filter_map(|step| {
+            if let Action::VerifySource { source } = &step.action {
+                Some(source)
+            } else {
+                None
+            }
+        });
+        if self.definition.origin != Origin::Configured
+            || sources.next() != Some(&registration.source)
+            || sources.next().is_some()
+            || registration.fingerprint.len() != 43
+            || !registration
+                .fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(fail(
+                Code::Binding,
+                "source_registration",
+                "Source registration does not match the workflow",
+            ));
+        }
+        self.source_registration = Some(registration);
+        Ok(self)
     }
     pub fn step(&self, id: &Id) -> Option<&Step> {
         self.definition.steps.iter().find(|s| &s.id == id)
@@ -498,6 +532,7 @@ pub fn validate(definition: Definition, environment: &Environment) -> Result<Val
     Ok(Validated {
         definition,
         fingerprint,
+        source_registration: None,
     })
 }
 

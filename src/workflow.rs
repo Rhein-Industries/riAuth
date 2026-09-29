@@ -990,13 +990,24 @@ impl RunState {
     }
 }
 
-/// Definition identity a run is bound to.
+/// Identity of the live source registration used by a source-verifier run.
+#[derive(JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceRegistrationBinding {
+    pub source: Id,
+    pub fingerprint: String,
+}
+
+/// Definition and registered dependency identity a run is bound to.
 #[derive(JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RunBinding {
     pub workflow: Id,
     pub revision: u32,
     pub fingerprint: String,
+    /// New source runs pin the live registration. Omitted by pre-upgrade runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_registration: Option<SourceRegistrationBinding>,
 }
 
 macro_rules! name_type {
