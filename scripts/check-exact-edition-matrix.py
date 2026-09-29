@@ -36,6 +36,7 @@ PLATFORM_ONLY = frozenset({
     "radius.radsec", "saml.assertion_encryption",
     "saml.idp_signed_browser_sso", "saml.logout_fanout",
     "saml.sp_initiated_logout", "saml.upstream_logout", "ssf.push",
+    "workflow.controlled_extensions",
 })
 SHARED_SENTINELS = frozenset({
     "identity.passkeys", "identity.oidc_sources", "directory.ldap_sync",
@@ -45,7 +46,7 @@ SHARED_SENTINELS = frozenset({
 PLATFORM_DIRECT_DEPS = frozenset({
     "flate2", "hmac", "hyper", "hyper-util", "ldap3_proto", "md-5", "psl",
     "risaml", "roxmltree", "sha1", "time", "tokio-rustls", "tokio-util",
-    "x509-parser",
+    "wasmi", "x509-parser",
 })
 RELEASE_NAMES = (
     "riauth-essentials-linux-{arch}.tar.gz",
@@ -316,8 +317,18 @@ def main():
                     report["checks"]["config_rejection"][label] = {"exit_code": status,
                         "message": document["error"]["message"], "platform_same_setting": "pending"}
                 else:
-                    serve(copies[edition]["riauth"], candidate, base)
-                    report["checks"]["config_rejection"][label]["platform_same_setting"] = "accepted_and_ready"
+                    if label == "saml_rate_limit":
+                        serve(copies[edition]["riauth"], candidate, base)
+                        result = "accepted_and_ready"
+                    else:
+                        status, document = envelope(copies[edition]["riauth"],
+                                                    "--config", str(candidate), "serve")
+                        require(status != 0 and
+                                "Configured active capabilities do not match the initialized instance"
+                                in document["error"]["message"],
+                                f"Platform changed initialized security agreement: {document}")
+                        result = "rejected_after_init_by_security_agreement"
+                    report["checks"]["config_rejection"][label]["platform_same_setting"] = result
         cluster, reason = postgres_cluster(scratch)
         if cluster is None:
             report["checks"]["storage"]["postgresql"] = {"status": "unavailable", "reason": reason}
