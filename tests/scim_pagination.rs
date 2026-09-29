@@ -684,3 +684,463 @@ fn postgres_paged_scim_lists() {
 fn postgres_encrypted_paged_scim_lists() {
     paged_scim_lists_count_without_building_every_resource(Backend::EncryptedPostgres);
 }
+
+fn one_listed(f: &common::Fixture, token: &str, kind: &str, filter: &str) -> Value {
+    let page = f
+        .core
+        .scim_list(
+            token,
+            kind,
+            Query {
+                filter: Some(filter.to_owned()),
+                count: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(page["totalResults"], 1);
+    page["Resources"][0].clone()
+}
+
+fn scim_management_membership_pages_version_publication(backend: Backend) {
+    let f = backend.fixture();
+    let owner = agent(&f, "transition-owner");
+    let user = f
+        .core
+        .scim_write(
+            &owner,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"transition-user","displayName":"Transition User"}),
+            false,
+        )
+        .unwrap();
+    let user_id = text(&user, "id");
+    for index in 0..129 {
+        f.core
+            .scim_write(
+                &owner,
+                "Users",
+                None,
+                json!({"schemas":[scim::USER],"userName":format!("transition-filler-{index:03}")}),
+                false,
+            )
+            .unwrap();
+    }
+    let group = f
+        .core
+        .scim_write(
+            &owner,
+            "Groups",
+            None,
+            json!({"schemas":[scim::GROUP],"displayName":"transition-group"}),
+            false,
+        )
+        .unwrap();
+    let group_id = text(&group, "id");
+    let user_before = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    let group_before = f.core.scim_get(&owner, "Groups", &group_id).unwrap();
+    assert_eq!(
+        user_before,
+        one_listed(&f, &owner, "Users", "userName eq \"transition-user\"")
+    );
+    assert_eq!(
+        group_before,
+        one_listed(&f, &owner, "Groups", "displayName eq \"transition-group\"")
+    );
+    assert!(user_before["groups"].as_array().unwrap().is_empty());
+    assert!(group_before["members"].as_array().unwrap().is_empty());
+    let user_version_before = text(&user_before["meta"], "version");
+    let group_version_before = text(&group_before["meta"], "version");
+
+    let scans = &f.core.store.telemetry().reads;
+    let unbounded_before = scans.scans(ReadContext::Writer, false).sum();
+    let bounded_before = scans.scans(ReadContext::Writer, true).sum();
+    f.core
+        .group_member(&f.admin, "transition-group", "transition-user", true)
+        .unwrap();
+    let unbounded_rows = scans.scans(ReadContext::Writer, false).sum() - unbounded_before;
+    let bounded_rows = scans.scans(ReadContext::Writer, true).sum() - bounded_before;
+    assert!(
+        unbounded_rows < 130,
+        "management membership write materialized {unbounded_rows} unbounded rows"
+    );
+    assert!(
+        bounded_rows >= 130,
+        "management membership write paged only {bounded_rows} SCIM rows"
+    );
+
+    let user_added = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    let group_added = f.core.scim_get(&owner, "Groups", &group_id).unwrap();
+    assert_eq!(
+        user_added,
+        one_listed(&f, &owner, "Users", "userName eq \"transition-user\"")
+    );
+    assert_eq!(
+        group_added,
+        one_listed(&f, &owner, "Groups", "displayName eq \"transition-group\"")
+    );
+    assert_eq!(
+        user_added["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| text(group, "value"))
+            .collect::<Vec<_>>(),
+        vec![group_id.clone()]
+    );
+    assert_eq!(
+        group_added["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| text(member, "value"))
+            .collect::<Vec<_>>(),
+        vec![user_id.clone()]
+    );
+    let user_version_added = text(&user_added["meta"], "version");
+    let group_version_added = text(&group_added["meta"], "version");
+    assert_ne!(user_version_added, user_version_before);
+    assert_ne!(group_version_added, group_version_before);
+
+    f.core
+        .group_member(&f.admin, "transition-group", "transition-user", false)
+        .unwrap();
+    let user_restored = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    let group_restored = f.core.scim_get(&owner, "Groups", &group_id).unwrap();
+    assert_eq!(
+        user_restored,
+        one_listed(&f, &owner, "Users", "userName eq \"transition-user\"")
+    );
+    assert_eq!(
+        group_restored,
+        one_listed(&f, &owner, "Groups", "displayName eq \"transition-group\"")
+    );
+    assert!(user_restored["groups"].as_array().unwrap().is_empty());
+    assert!(group_restored["members"].as_array().unwrap().is_empty());
+    let user_version = text(&user_restored["meta"], "version");
+    let group_version = text(&group_restored["meta"], "version");
+    assert_ne!(user_version, user_version_before);
+    assert_ne!(user_version, user_version_added);
+    assert_ne!(group_version, group_version_before);
+    assert_ne!(group_version, group_version_added);
+
+    let rename = json!({
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+        "Operations": [{"op": "replace", "path": "displayName", "value": "Published"}]
+    });
+    let before = f.snapshot().unwrap();
+    let missing = patch_user(&f, &owner, &user_id, None, rename.clone()).unwrap_err();
+    assert_eq!(missing.status, StatusCode::PRECONDITION_REQUIRED);
+    let stale = patch_user(
+        &f,
+        &owner,
+        &user_id,
+        Some(&user_version_before),
+        rename.clone(),
+    )
+    .unwrap_err();
+    assert_eq!(stale.status, StatusCode::PRECONDITION_FAILED);
+    let taken = patch_user(
+        &f,
+        &owner,
+        &user_id,
+        Some(&user_version),
+        json!({
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+            "Operations": [{"op": "replace", "path": "userName", "value": "taken-over"}]
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(taken.status, StatusCode::BAD_REQUEST);
+    assert_eq!(taken.code, "mutability");
+    f.assert_http_mutation_snapshot(&before);
+
+    let updated = patch_user(&f, &owner, &user_id, Some(&user_version), rename).unwrap();
+    assert_eq!(updated["userName"], "transition-user");
+    assert_eq!(updated["displayName"], "Published");
+    assert_ne!(updated["meta"]["version"], user_version);
+    assert_eq!(updated, f.core.scim_get(&owner, "Users", &user_id).unwrap());
+    assert_eq!(
+        f.core.scim_get(&owner, "Groups", &group_id).unwrap()["meta"]["version"],
+        group_version
+    );
+}
+
+#[test]
+fn redb_scim_management_membership_pages_version_publication() {
+    scim_management_membership_pages_version_publication(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_scim_management_membership_pages_version_publication() {
+    scim_management_membership_pages_version_publication(Backend::Postgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_scim_management_membership_pages_version_publication() {
+    scim_management_membership_pages_version_publication(Backend::EncryptedPostgres);
+}
+
+fn writer_bounded_scans(f: &common::Fixture) -> (u64, u64, u64) {
+    let mut output = String::new();
+    f.core.store.telemetry().render(&mut output);
+    let mut within_page = 0;
+    let mut scans = 0;
+    for line in output.lines() {
+        if let Some(value) = line.strip_prefix(
+            "riauth_storage_scan_rows_bucket{context=\"writer\",limit=\"bounded\",le=\"128\"} ",
+        ) {
+            within_page = value.parse().unwrap();
+        } else if let Some(value) = line.strip_prefix(
+            "riauth_storage_scan_rows_bucket{context=\"writer\",limit=\"bounded\",le=\"+Inf\"} ",
+        ) {
+            scans = value.parse().unwrap();
+        }
+    }
+    let rows = f
+        .core
+        .store
+        .telemetry()
+        .reads
+        .scans(ReadContext::Writer, true)
+        .sum();
+    (scans, within_page, rows)
+}
+
+fn scim_one_group_publication_spans_owners_and_pages(backend: Backend) {
+    let f = backend.fixture();
+    let owner = agent(&f, "cap-owner");
+    let other = agent(&f, "cap-other");
+    let user = f
+        .core
+        .scim_write(
+            &owner,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"cap-user","displayName":"Cap User"}),
+            false,
+        )
+        .unwrap();
+    let user_id = text(&user, "id");
+    let group = f
+        .core
+        .scim_write(
+            &owner,
+            "Groups",
+            None,
+            json!({"schemas":[scim::GROUP],"displayName":"cap-group"}),
+            false,
+        )
+        .unwrap();
+    let group_id = text(&group, "id");
+    let mut other_user_id = String::new();
+    let mut other_group_id = String::new();
+    for index in 0..129 {
+        let other_user = f
+            .core
+            .scim_write(
+                &other,
+                "Users",
+                None,
+                json!({"schemas":[scim::USER],"userName":format!("cap-other-user-{index:03}")}),
+                false,
+            )
+            .unwrap();
+        let other_group = f
+            .core
+            .scim_write(
+                &other,
+                "Groups",
+                None,
+                json!({"schemas":[scim::GROUP],"displayName":format!("cap-other-group-{index:03}")}),
+                false,
+            )
+            .unwrap();
+        if index == 0 {
+            other_user_id = text(&other_user, "id");
+            other_group_id = text(&other_group, "id");
+        }
+    }
+
+    let version = |kind: &str, id: &str| -> String {
+        text(
+            &f.core.scim_get(&owner, kind, id).unwrap()["meta"],
+            "version",
+        )
+    };
+    let other_version = |kind: &str, id: &str| -> String {
+        text(
+            &f.core.scim_get(&other, kind, id).unwrap()["meta"],
+            "version",
+        )
+    };
+    let user_before = version("Users", &user_id);
+    let group_before = version("Groups", &group_id);
+    let other_user_before = other_version("Users", &other_user_id);
+    let other_group_before = other_version("Groups", &other_group_id);
+
+    let scans = &f.core.store.telemetry().reads;
+    let unbounded_before = scans.scans(ReadContext::Writer, false).count();
+    let (bounded_scans_before, page_scans_before, bounded_rows_before) = writer_bounded_scans(&f);
+    f.core
+        .group_member(&f.admin, "cap-group", "cap-other-user-000", true)
+        .unwrap();
+    let foreign_scans = scans.scans(ReadContext::Writer, true).count() - bounded_scans_before;
+    let foreign_rows = scans.scans(ReadContext::Writer, true).sum() - bounded_rows_before;
+    assert_eq!(
+        scans.scans(ReadContext::Writer, false).count(),
+        unbounded_before,
+        "foreign membership write used an unbounded scan"
+    );
+    assert!(
+        foreign_scans >= 4,
+        "foreign membership write used only {foreign_scans} bounded scans"
+    );
+    assert!(
+        foreign_rows >= 260,
+        "foreign membership write read only {foreign_rows} rows"
+    );
+    assert!(
+        foreign_rows <= foreign_scans * 128,
+        "foreign membership write retained {foreign_rows} rows in {foreign_scans} scans"
+    );
+    let (bounded_scans_after, page_scans_after, _) = writer_bounded_scans(&f);
+    assert_eq!(
+        bounded_scans_after - bounded_scans_before,
+        page_scans_after - page_scans_before,
+        "a writer scan materialized more than 128 rows"
+    );
+    assert_eq!(version("Users", &user_id), user_before);
+    assert_eq!(version("Groups", &group_id), group_before);
+    assert_eq!(other_version("Users", &other_user_id), other_user_before);
+    assert_eq!(other_version("Groups", &other_group_id), other_group_before);
+    assert!(f.core.scim_get(&owner, "Groups", &group_id).unwrap()["members"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let (bounded_scans_before, page_scans_before, bounded_rows_before) = writer_bounded_scans(&f);
+    let unbounded_before = scans.scans(ReadContext::Writer, false).count();
+    f.core
+        .group_member(&f.admin, "cap-group", "cap-user", true)
+        .unwrap();
+    let owned_scans = scans.scans(ReadContext::Writer, true).count() - bounded_scans_before;
+    let owned_rows = scans.scans(ReadContext::Writer, true).sum() - bounded_rows_before;
+    assert_eq!(
+        scans.scans(ReadContext::Writer, false).count(),
+        unbounded_before
+    );
+    assert!(owned_scans >= 4, "owned membership write used only {owned_scans} scans");
+    assert!(owned_rows >= 260, "owned membership write read only {owned_rows} rows");
+    assert!(
+        owned_rows <= owned_scans * 128,
+        "owned membership write retained {owned_rows} rows in {owned_scans} scans"
+    );
+    let (bounded_scans_after, page_scans_after, _) = writer_bounded_scans(&f);
+    assert_eq!(
+        bounded_scans_after - bounded_scans_before,
+        page_scans_after - page_scans_before,
+        "a writer scan materialized more than 128 rows"
+    );
+    let published_user = f.core.scim_get(&owner, "Users", &user_id).unwrap();
+    let published_group = f.core.scim_get(&owner, "Groups", &group_id).unwrap();
+    assert_eq!(
+        published_user,
+        one_listed(&f, &owner, "Users", "userName eq \"cap-user\"")
+    );
+    assert_eq!(
+        published_group,
+        one_listed(&f, &owner, "Groups", "displayName eq \"cap-group\"")
+    );
+    assert_ne!(text(&published_user["meta"], "version"), user_before);
+    assert_ne!(text(&published_group["meta"], "version"), group_before);
+    assert_eq!(
+        published_group["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| text(member, "value"))
+            .collect::<Vec<_>>(),
+        vec![user_id.clone()]
+    );
+    assert_eq!(other_version("Users", &other_user_id), other_user_before);
+    assert_eq!(other_version("Groups", &other_group_id), other_group_before);
+    assert!(f
+        .core
+        .scim_get(&other, "Users", &other_user_id)
+        .unwrap()["groups"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    f.core
+        .store
+        .write(|tx| {
+            let mut duplicate: Value = tx.get("scim_groups", &group_id)?.unwrap();
+            let other_record: Value = tx.get("scim_groups", &other_group_id)?.unwrap();
+            duplicate["owner"] = other_record["owner"].clone();
+            tx.put("scim_groups", "cap-duplicate-group", &duplicate)
+        })
+        .unwrap();
+    let user_published = version("Users", &user_id);
+    let group_published = version("Groups", &group_id);
+    let other_user_published = other_version("Users", &other_user_id);
+    let other_group_published = other_version("Groups", &other_group_id);
+    let before = f.snapshot().unwrap();
+    let (bounded_scans_before, page_scans_before, bounded_rows_before) = writer_bounded_scans(&f);
+    let unbounded_before = scans.scans(ReadContext::Writer, false).count();
+    let duplicate = f
+        .core
+        .group_member(&f.admin, "cap-group", "cap-user", false)
+        .unwrap_err();
+    assert_eq!(duplicate.status, StatusCode::CONFLICT);
+    assert_eq!(duplicate.message, "SCIM group identity is not unique");
+    let duplicate_scans = scans.scans(ReadContext::Writer, true).count() - bounded_scans_before;
+    let duplicate_rows = scans.scans(ReadContext::Writer, true).sum() - bounded_rows_before;
+    assert_eq!(
+        scans.scans(ReadContext::Writer, false).count(),
+        unbounded_before
+    );
+    assert!(
+        duplicate_rows < 260,
+        "duplicate group publication scanned {duplicate_rows} rows across both collections"
+    );
+    assert!(
+        duplicate_rows <= duplicate_scans * 128,
+        "duplicate group publication retained {duplicate_rows} rows in {duplicate_scans} scans"
+    );
+    let (bounded_scans_after, page_scans_after, _) = writer_bounded_scans(&f);
+    assert_eq!(
+        bounded_scans_after - bounded_scans_before,
+        page_scans_after - page_scans_before
+    );
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(version("Users", &user_id), user_published);
+    assert_eq!(version("Groups", &group_id), group_published);
+    assert_eq!(other_version("Users", &other_user_id), other_user_published);
+    assert_eq!(other_version("Groups", &other_group_id), other_group_published);
+    assert_eq!(
+        f.core.scim_get(&owner, "Groups", &group_id).unwrap()["members"],
+        published_group["members"]
+    );
+}
+
+#[test]
+fn redb_scim_one_group_publication_spans_owners_and_pages() {
+    scim_one_group_publication_spans_owners_and_pages(Backend::Redb);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_scim_one_group_publication_spans_owners_and_pages() {
+    scim_one_group_publication_spans_owners_and_pages(Backend::Postgres);
+}
+
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_encrypted_scim_one_group_publication_spans_owners_and_pages() {
+    scim_one_group_publication_spans_owners_and_pages(Backend::EncryptedPostgres);
+}

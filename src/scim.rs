@@ -143,6 +143,29 @@ fn record_binding(kind: &str, record: &Record) -> Result<()> {
     Ok(())
 }
 
+fn for_each_scim_record(
+    tx: &Tx<'_>,
+    bucket: &str,
+    mut visit: impl FnMut(String, Record) -> Result<()>,
+) -> Result<()> {
+    let mut after = None;
+    loop {
+        let records = tx.scan::<Record>(bucket, after.as_deref(), 128)?;
+        if records.is_empty() {
+            break;
+        }
+        let last_page = records.len() < 128;
+        after = Some(records.last().unwrap().0.clone());
+        for (id, record) in records {
+            visit(id, record)?;
+        }
+        if last_page {
+            break;
+        }
+    }
+    Ok(())
+}
+
 /// Track effective changes made outside inbound SCIM as part of the same
 /// storage transaction. This keeps an old ETag stale even when a later write
 /// restores the same projected content. Server assembly calls this only in
@@ -168,12 +191,13 @@ pub(crate) fn record_transition(
             }) {
                 return Ok(());
             }
-            for (id, mut record) in tx.list::<Record>("scim_users")? {
+            for_each_scim_record(tx, "scim_users", |id, mut record| {
                 if !record.deleted && record.local_id == key {
                     record.version = crypto::id();
                     tx.put("scim_users", &id, &record)?;
                 }
-            }
+                Ok(())
+            })?;
         }
         "groups" => {
             let members = |value: Option<&Value>| -> Result<BTreeSet<String>> {
@@ -191,27 +215,42 @@ pub(crate) fn record_transition(
             if old == new {
                 return Ok(());
             }
-            let users = tx.list::<Record>("scim_users")?;
-            for (id, mut group) in tx.list::<Record>("scim_groups")? {
+            // One management key owns the group name. Create refuses to adopt
+            // that group, and a live SCIM record must use the name as its
+            // local id. Keep that one record; a second live record is corrupt
+            // and must not be accumulated.
+            let mut published: Option<(String, Record)> = None;
+            for_each_scim_record(tx, "scim_groups", |id, group| {
                 if group.deleted || group.local_id != key && name(&group) != key {
-                    continue;
+                    return Ok(());
                 }
                 record_binding("Groups", &group)?;
-                let mut visible_change = false;
-                for (user_id, mut user) in users.iter().cloned() {
-                    if user.deleted || user.owner != group.owner {
-                        continue;
-                    }
-                    if old.contains(&user.local_id) != new.contains(&user.local_id) {
-                        visible_change = true;
-                        user.version = crypto::id();
-                        tx.put("scim_users", &user_id, &user)?;
-                    }
+                if published.is_some() {
+                    return Err(Error::conflict("SCIM group identity is not unique"));
                 }
-                if visible_change {
-                    group.version = crypto::id();
-                    tx.put("scim_groups", &id, &group)?;
+                published = Some((id, group));
+                Ok(())
+            })?;
+            let Some((group_id, mut group)) = published else {
+                return Ok(());
+            };
+            let owner = group.owner.clone();
+            let mut visible = false;
+            for_each_scim_record(tx, "scim_users", |id, mut user| {
+                if user.deleted
+                    || user.owner != owner
+                    || old.contains(&user.local_id) == new.contains(&user.local_id)
+                {
+                    return Ok(());
                 }
+                visible = true;
+                user.version = crypto::id();
+                tx.put("scim_users", &id, &user)?;
+                Ok(())
+            })?;
+            if visible {
+                group.version = crypto::id();
+                tx.put("scim_groups", &group_id, &group)?;
             }
         }
         _ => {}
