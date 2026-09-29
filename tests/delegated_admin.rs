@@ -148,7 +148,7 @@ async fn call(
         request = request.header("if-match", format!("\"{rev}\""));
     }
     // Keep these authority probes distinct under the direct write receipt contract.
-    if (method == "POST" && uri == "/api/keys") || (method == "PATCH" && (
+    if (method == "POST" && matches!(uri, "/api/keys" | "/api/account/invitations")) || (method == "PATCH" && (
         uri.starts_with("/api/users/")
             || uri.starts_with("/api/admin/users/")
             || uri.starts_with("/api/clients/")
