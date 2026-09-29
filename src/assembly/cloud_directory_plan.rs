@@ -3,9 +3,10 @@
 use crate::{
     agent::Principal,
     cloud_directory::{
-        CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, Plan, Settings, authorize_reconcile,
+        CLOUD_APPLY_SNAPSHOTS, Change, CloudApplyDraft, Entry, Plan, Settings, authorize_reconcile,
+        reconcile, removal_impact,
     },
-    connector_guard::{ReconciliationDecision, ReconciliationMode, plan_content},
+    connector_guard::{ReconciliationDecision, ReconciliationMode, RemovalImpact, plan_content},
     core::Core,
     crypto::now,
     error::{Error, Result},
@@ -14,6 +15,23 @@ use crate::{
 use serde_json::{Value, json};
 
 impl Core {
+    pub(crate) fn cloud_plan_preview(
+        &self,
+        token: &str,
+        settings: &Settings,
+        actor: &Principal,
+        revision: u64,
+        authority_digest: &str,
+        entries: &[Entry],
+    ) -> Result<(Vec<Change>, RemovalImpact)> {
+        self.store.preview(|tx| {
+            self.cloud_snapshot_actor(tx, token, settings, &actor.id, revision, authority_digest)?;
+            let impact = removal_impact(tx, settings, entries)?;
+            let changes = reconcile(&self.config, tx, actor, settings, entries)?;
+            Ok((changes, impact))
+        })
+    }
+
     pub(crate) fn cloud_apply_actor(
         &self,
         tx: &Tx<'_>,

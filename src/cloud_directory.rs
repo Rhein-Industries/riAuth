@@ -1410,7 +1410,11 @@ pub(crate) fn binding_key(kind: &str, directory: &str, external_id: &str) -> Str
     digest(&format!("{kind}\0{directory}\0{external_id}"))
 }
 
-fn removal_impact(tx: &Tx<'_>, settings: &Settings, snapshot: &[Entry]) -> Result<RemovalImpact> {
+pub(crate) fn removal_impact(
+    tx: &Tx<'_>,
+    settings: &Settings,
+    snapshot: &[Entry],
+) -> Result<RemovalImpact> {
     let entries: BTreeMap<_, _> = snapshot
         .iter()
         .map(|entry| (entry.external_id.as_str(), entry))
@@ -1575,7 +1579,7 @@ pub(crate) fn authorize_reconcile(
     Ok(())
 }
 
-fn reconcile(
+pub(crate) fn reconcile(
     config: &crate::config::Config,
     tx: &Tx<'_>,
     actor: &Principal,
@@ -2013,19 +2017,14 @@ impl Core {
             })?;
             (entries, (key, prior, authority_digest))
         };
-        let (changes, impact) = self.store.preview(|tx| {
-            self.cloud_snapshot_actor(
-                tx,
-                token,
-                &settings,
-                &actor.id,
-                revision,
-                &snapshot_prior.2,
-            )?;
-            let impact = removal_impact(tx, &settings, &entries)?;
-            let changes = reconcile(&self.config, tx, &actor, &settings, &entries)?;
-            Ok((changes, impact))
-        })?;
+        let (changes, impact) = self.cloud_plan_preview(
+            token,
+            &settings,
+            &actor,
+            revision,
+            &snapshot_prior.2,
+            &entries,
+        )?;
         self.store.write(|tx| {
             let current_actor = self.cloud_snapshot_actor(
                 tx,
