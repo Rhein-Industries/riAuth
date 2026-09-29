@@ -1,0 +1,147 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "postgres",
+    "intended_connection": "verified_tls",
+    "loopback": true,
+    "san_dns": [
+      "localhost"
+    ],
+    "client_certificate": false,
+    "database_key_file": false,
+    "cargo_build": false,
+    "production_files": false,
+    "issuer": "http://127.0.0.1:56538",
+    "listen": "127.0.0.1:56538",
+    "postgres_port": 56537,
+    "temporary_files_removed": true,
+    "server_process_stopped": true
+  },
+  "outcome": "passed",
+  "detail": "A disposable loopback PostgreSQL 16.14 cluster presented a private CA server certificate with SAN DNS:localhost. Platform riauth init, serve, /readyz, login, and doctor succeeded over rustls with ca_file and host localhost. pg_stat_ssl showed ssl for the riauth backends. A wrong CA and a host of 127.0.0.1 were refused before a config was published or a store relation was created.",
+  "checks": [
+    {
+      "id": "binary",
+      "exit_code": 0,
+      "observed": {
+        "sha256": "de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069",
+        "bytes": 289661864,
+        "edition": "platform",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials",
+          "platform"
+        ],
+        "copied_from_snapshot": true,
+        "cargo_build": false
+      }
+    },
+    {
+      "id": "certificate",
+      "exit_code": 0,
+      "observed": {
+        "san_dns": [
+          "localhost"
+        ],
+        "ip_san": false,
+        "openssl_verify_exit": 0,
+        "private_ca": true,
+        "key_mode": "0600",
+        "lifetime": "bounded_temp"
+      }
+    },
+    {
+      "id": "cluster",
+      "exit_code": 0,
+      "observed": {
+        "postgres": "16.14",
+        "listen": "127.0.0.1",
+        "plaintext_tcp_exit": 2,
+        "libpq_verify_full": "true TLSv1.3",
+        "auth": "hostssl_trust",
+        "password_in_connection_file": false
+      }
+    },
+    {
+      "id": "init",
+      "exit_code": 0,
+      "schema_version": "riauth.cli/v1",
+      "ok": true,
+      "observed": {
+        "initialized": true,
+        "issuer": "http://127.0.0.1:56538",
+        "connection_file_mode": "0600",
+        "ca_file_present": true,
+        "local_unencrypted": false,
+        "pool_size": 1,
+        "host": "localhost",
+        "hostaddr": "127.0.0.1",
+        "redb_created": false,
+        "records": 17
+      }
+    },
+    {
+      "id": "wrong_ca",
+      "exit_code": 6,
+      "observed": {
+        "exit_code": 6,
+        "ok": false,
+        "code": "storage_unavailable",
+        "http_status": 503,
+        "message": "Storage unavailable; inspect state or retry with the same idempotency key",
+        "config_published": false,
+        "relation_created": false,
+        "positive_records_after": 17
+      }
+    },
+    {
+      "id": "wrong_hostname",
+      "exit_code": 6,
+      "observed": {
+        "exit_code": 6,
+        "ok": false,
+        "code": "storage_unavailable",
+        "http_status": 503,
+        "message": "Storage unavailable; inspect state or retry with the same idempotency key",
+        "config_published": false,
+        "relation_created": false,
+        "positive_records_after": 17
+      }
+    },
+    {
+      "id": "serve_readyz_login_doctor",
+      "exit_code": 0,
+      "observed": {
+        "readyz_http_status": 200,
+        "readyz_status": "ok",
+        "listening_log": true,
+        "login_user": "drill-admin",
+        "login_admin": true,
+        "session_file_mode": "0600",
+        "home_session_unchanged": true,
+        "doctor": {
+          "healthy": true,
+          "schema_version": 3,
+          "revision": 0,
+          "issuer": "http://127.0.0.1:56538",
+          "storage": "postgresql",
+          "encrypted_at_rest": false,
+          "users": 1,
+          "enabled_administrators": 1,
+          "clients": 0,
+          "pending_logout_deliveries": 0,
+          "tls": "reverse_proxy"
+        },
+        "pg_stat_ssl": [
+          {
+            "ssl": true,
+            "version": "TLSv1.3",
+            "cipher": "TLS_AES_256_GCM_SHA384",
+            "client_certificate": false
+          }
+        ],
+        "positive_records": 25
+      }
+    }
+  ]
+}

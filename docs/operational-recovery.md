@@ -468,9 +468,10 @@ disposable temp file so the restart could be observed.
 
 [Restored issuer after recovery complete](#restored-issuer-after-recovery-complete)
 records a later disposable store that ran `recovery complete` and a fresh
-local password login. PostgreSQL, escrow, a relying party, and the Compose,
-systemd, and Windows layouts stay in
-[Remaining D04 gates](#remaining-d04-gates).
+local password login. PostgreSQL PITR, escrow, a relying party, and the
+Compose, systemd, and Windows layouts stay in
+[Remaining D04 gates](#remaining-d04-gates). The loopback TLS result is
+[Loopback PostgreSQL TLS connection](#loopback-postgresql-tls-connection).
 
 ### Restored issuer after recovery complete
 
@@ -900,13 +901,59 @@ database-native procedure you have rehearsed on that deployment. Upgrade
 rollback of a migrated store stays in
 [Upgrade and rollback](operations.md#upgrade-and-rollback).
 
+## Loopback PostgreSQL TLS connection
+
+On 2026-09-29 a disposable PostgreSQL 16.14 cluster listened on `127.0.0.1`
+with a private CA and a server certificate whose SAN was DNS `localhost`.
+The certificate had no IP SAN. The connection file was mode 0600, named host
+`localhost` with hostaddr `127.0.0.1`, and contained no password.
+`pg_hba.conf` allowed `hostssl` trust from loopback. A `sslmode=disable`
+client exited 2. A libpq `sslmode=verify-full` preflight against the private
+CA reported TLS in use. `local_unencrypted` stayed false, and `ca_file`
+pointed at that CA. The binary was a temp copy of Platform `riauth` SHA-256
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`
+(edition `platform`, build features `essentials` and `platform`, version
+`0.1.1`). The issuer was `http://127.0.0.1:56538`, a port other than D01's
+`9000`.
+Redacted observations are
+[d04-postgres-tls-2026-09-29.json](roadmap/evidence/d04-postgres-tls-2026-09-29.json).
+
+- Init published the config and created the PostgreSQL store. No `riauth.redb`
+  file was created. The store held 17 records. `encrypted_at_rest` is false
+  because this config has no `database_key_file`.
+- A second init with a different CA exited 6. The code was
+  `storage_unavailable`, the HTTP status was 503, and the message was
+  `Storage unavailable; inspect state or retry with the same idempotency key`.
+  Its config file was absent and `riauth_store.records_v1` was absent. The
+  initialized record count stayed 17.
+- A second init with host `127.0.0.1` and the original CA exited 6 with the
+  same code, status, and message. Its config was absent and no relation was
+  created. The CLI maps a failed PostgreSQL connection to
+  `storage_unavailable` and prints that storage message.
+- Serve logged `riAuth listening`. `/readyz` returned 200 with `status` `ok`.
+  Login for `drill-admin` saved a mode 0600 session file and returned `admin`
+  true. The home session file was unchanged.
+- `doctor` reported `healthy` true, schema 3, revision 0, `storage`
+  `postgresql`, one user, one enabled administrator, zero clients, and `tls`
+  `reverse_proxy`. That `tls` field describes the HTTP listener. This config
+  had no `tls_cert_file`. The PostgreSQL session is the `pg_stat_ssl` row for
+  application name `riauth`: `ssl` true, TLSv1.3, cipher
+  `TLS_AES_256_GCM_SHA384`, and no client certificate.
+- After login the record count was 25. The temporary cluster, certificates,
+  connection file, session file, and server process were removed.
+
+PITR, base backup, `pg_dump` / `pg_restore`, promotion, fencing, multi-node
+readiness, a remote PostgreSQL host, a public CA, and client certificates
+remain open. The local password login is a service login on this issuer.
+
 ## Recorded local drills
 
 These files are observations from 2026-09-29. The lost-backup-key drill, the
-database-key-file drill, the database-key restart drill, and the recovery
-complete drill added their own files and left the two R05 files as they were.
-Each drill used a disposable store, generated its own keys and accounts, and
-removed them on exit. None opened a deployment store.
+database-key-file drill, the database-key restart drill, the recovery
+complete drill, and the PostgreSQL TLS drill added their own files and left
+the two R05 files as they were. Each drill used a disposable store, generated
+its own keys and accounts, and removed them on exit. None opened a deployment
+store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
@@ -916,6 +963,7 @@ removed them on exit. None opened a deployment store.
 | [d04-database-key-removed-redb-2026-09-29.json](roadmap/evidence/d04-database-key-removed-redb-2026-09-29.json) | Disposable loopback encrypted redb. Platform `riauth` SHA-256 `7ede8878de9ad3d3a1b560ac41b6e15830cc54f81a6b187e674a9174cea0948d`. Backup key from `riauth-maintenance` SHA-256 `b987de72bb557822ea7e00563dc99b19616258a8c7e40e394eee2d5ae35b51ae`. | Database key file removed after `doctor` succeeded. Later `doctor` kept `encrypted_at_rest` true. New archive stream `uP2vJJcNEoamH3pg7VZgkQ`, `verified` true, `riauth.backup/v3`. Scratch restore with a new database key, recovery id `35f9b68a-5bf5-4a5e-8bd7-595644c75297`, `serving_allowed` false. Live redb inode unchanged. |
 | [d04-database-key-restart-redb-2026-09-29.json](roadmap/evidence/d04-database-key-restart-redb-2026-09-29.json) | Disposable loopback encrypted redb. Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Database key file removed while `/readyz` returned 200. After that process stopped and the listen port accepted a bind, restart with the original config exited 2 in 153 ms: `invalid_request`, HTTP 400, `Encryption key must be a private file of at most 128 bytes`. No listener. Live redb inode, size, mtime, and SHA-256 unchanged. |
 | [d04-recovery-complete-redb-2026-09-29.json](roadmap/evidence/d04-recovery-complete-redb-2026-09-29.json) | Disposable loopback encrypted redb on a port other than `9000`. Temp copy of Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Verified `riauth.backup/v3` stream `gGZx2QyH1chG01K4J7p5Pw`, 3 frames, 20 records, 11180 bytes. Restore under a new database key, recovery id `1d746ed2-45d3-4417-9abb-dd77194bc51d`, `serving_allowed` false. `recovery complete` left `serving_allowed` true. Restored `/readyz` 200. Pre-restore session exit 3, `invalid_token`. Fresh login and `doctor` succeeded, revision 4294967296. |
+| [d04-postgres-tls-2026-09-29.json](roadmap/evidence/d04-postgres-tls-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Private CA, SAN DNS `localhost`, no IP SAN. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:56538`. | Init, serve, `/readyz` 200, `drill-admin` login, and `doctor` succeeded. `storage` `postgresql`, `encrypted_at_rest` false, `tls` `reverse_proxy` for the HTTP listener. `pg_stat_ssl` `ssl` true, TLSv1.3, no client certificate. Wrong CA and host `127.0.0.1` each exited 6, `storage_unavailable`, with no published config and no store relation. |
 
 The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -972,8 +1020,11 @@ Still open:
   local password login. Escrow retrieval remains open.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
   promotion, fencing, and multi-node readiness.
-- A TLS PostgreSQL connection. The disposable cluster used loopback trust
-  authentication.
+- PostgreSQL TLS for a remote host, a public CA, or client certificates. The
+  R05 disposable cluster used loopback trust authentication. The loopback
+  private-CA connection, the wrong-CA refusal, and the `127.0.0.1` hostname
+  refusal are recorded in
+  [Loopback PostgreSQL TLS connection](#loopback-postgresql-tls-connection).
 - A real OIDC or SAML relying-party login after restore. The drills'
   password login is a local service login.
 - Restore into the Compose, systemd, or released-image layouts.
