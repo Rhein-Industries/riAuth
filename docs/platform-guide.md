@@ -1665,8 +1665,10 @@ is the password completion and does not call the passkey endpoints.
 
 ### Browser test limits
 
-These limits were read from accepted `58e5ef3`, which also contains the
-passkey journey from `a72a086`. This task did not run either browser.
+The password journey and the Chromium CDP passkey journey were read from
+accepted `58e5ef3`, which contains the passkey page from `a72a086`.
+Accepted `0312427` adds a simulated-credential passkey journey on Chromium,
+Firefox, and WebKit. This task did not run any of them.
 
 `tools/browser/invitation-password.spec.js` is a headless keyboard journey
 at 390 by 844 CSS pixels on Chromium, Firefox, and WebKit. It uses the
@@ -1676,15 +1678,29 @@ stays unused. Success sets no session cookie and leaves `GET /api/portal`
 unauthorized. An expired link and a replay are rejected. The new password
 then signs in, and signing out removes that session.
 
-`tools/browser/invitation-passkey.spec.js` is the passkey journey. Chromium
-uses one CDP virtual authenticator. Firefox and WebKit skip it because that
-authenticator exists only in Chromium. The virtual authenticator is not a
-physical key, a synced passkey, a phone, or a mobile operating system.
+`tools/browser/invitation-passkey.spec.js` is the CDP passkey journey.
+Chromium uses one CDP virtual authenticator. Firefox and WebKit skip it
+because that authenticator exists only in Chromium. The virtual
+authenticator is not a physical key, a synced passkey, a phone, or a
+mobile operating system.
 
-Neither journey is an external mailbox, a spoken screen reader, a phone
-hybrid, a mobile operating system, or a release. Playwright stays outside
-CI. The viewport is CSS pixels. This checkout does not contain those spec
-files. This task did not run them, and it did not send mail.
+`tools/browser/invitation-passkey-shim.spec.js` is the later journey from
+accepted `0312427`. Chromium, Firefox, and WebKit each install Playwright's
+simulated WebAuthn credential before the page loads. The shim replaces
+`navigator.credentials`, generates a P-256 key in the test process, and
+sets the user-verified bit itself. It does not prompt, and it is not the
+browser's authenticator. An expired invitation and a whitespace name create
+no credential. A named passkey returns `completed` true and
+`login_required` true, sets no session cookie, and leaves `GET /api/portal`
+unauthorized. Replaying the link reports that it was already used. A later
+passkey sign-in opens the account, and signing out removes the session. The
+server does not prove discoverability. The CDP
+ceremony stays in `invitation-passkey.spec.js`.
+
+None of these journeys is an external mailbox, a spoken screen reader, a
+phone hybrid, a mobile operating system, or a release. Playwright stays
+outside CI. The viewport is CSS pixels. This checkout does not contain
+those spec files. This task did not run them, and it did not send mail.
 
 The page behavior was read from accepted `58e5ef3` in `src/portal/account.js`,
 `src/portal/account.html`, `src/portal/http.rs`, `src/api/invitation.rs`,
